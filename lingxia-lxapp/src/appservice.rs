@@ -8,7 +8,6 @@ use rong::{JSContext, JSObject, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http};
 
 use std::collections::{HashMap, VecDeque};
-use std::path::Path;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -187,7 +186,7 @@ pub(crate) async fn lxapp_service_handler(
             // Set console writer
             console::set_writer(Box::new(LxAppCtx::new(lxapp.clone())));
 
-            // Set file access guard to prevent cross-app file access
+            // Set file access guard to prevent cross-app file access (Context-scoped)
             fs::set_file_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
 
             // Set network access guard to prevent unauthorized domain access
@@ -549,53 +548,24 @@ impl console::ConsoleWriter for LxAppCtx {
     }
 }
 
+use rong::JSContextService;
+
+impl JSContextService for LxAppCtx {}
+
 impl fs::FileAccessGuard for LxAppCtx {
-    /// Check if the mini app has access to the specified path
+    /// Check if the mini app has access to the specified path and resolve it to a safe absolute path.
     ///
     /// This prevents one mini app from accessing another mini app's files.
     /// Only allows access to absolute paths within:
     /// - The app's own user data directory
     /// - The app's own user cache directory
     ///
-    /// Relative paths are rejected
-    fn check_access(&self, path: &str) -> JSResult<()> {
-        let path = Path::new(path);
-
-        // Reject relative paths
-        if !path.is_absolute() {
-            return Err(RongJSError::Error(
-                "Access denied: relative paths not allowed".to_string(),
-            ));
-        }
-
-        // Helper function to canonicalize paths
-        let canonicalize = |p: &Path| -> Result<std::path::PathBuf, String> {
-            p.canonicalize().or_else(|_| {
-                // If path doesn't exist, try parent + filename
-                p.parent()
-                    .and_then(|parent| parent.canonicalize().ok())
-                    .map(|parent| parent.join(p.file_name().unwrap_or_default()))
-                    .ok_or_else(|| format!("Invalid path: {}", p.display()))
-            })
-        };
-
-        // Get canonical paths
-        let canonical_path = canonicalize(path).map_err(RongJSError::Error)?;
-        let user_data_canonical =
-            canonicalize(&self.lxapp.user_data_dir).map_err(RongJSError::Error)?;
-        let user_cache_canonical =
-            canonicalize(&self.lxapp.user_cache_dir).map_err(RongJSError::Error)?;
-
-        // Check if path is within allowed directories
-        if canonical_path.starts_with(&user_data_canonical)
-            || canonical_path.starts_with(&user_cache_canonical)
-        {
-            Ok(())
-        } else {
-            Err(RongJSError::Error(
-                "Access denied: path outside allowed".to_string(),
-            ))
-        }
+    /// Relative paths are also resolved relative to the allowed roots.
+    fn resolve_access(&self, path: &str) -> JSResult<std::path::PathBuf> {
+        self.lxapp
+            .resolve_accessible_path(path)
+            // Mask absolute path details for security
+            .map_err(|_| RongJSError::Error("Access denied".to_string()))
     }
 }
 

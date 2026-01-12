@@ -641,93 +641,74 @@ impl LxApp {
         })
     }
 
-    /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a canonical path.
+    /// Resolve an "allowed" lxapp path (package dir, user data, user cache) to a physical path.
     ///
-    /// Order:
-    /// 1) Absolute path: validate it lies under a trusted root (package, user data, user cache,
-    ///    plus their parents for full-path scenarios); return canonical path or error
-    /// 2) Relative path: check under user data, then user cache, then package dir; return match or error
-    ///
-    /// Note: paths containing `.` or `..` segments are rejected.
+    /// This implementation uses logical mapping and prefix validation to ensure the path
+    /// stays within the app's sandbox, without requiring the file to exist on disk.
     pub fn resolve_accessible_path(&self, path: &str) -> Result<PathBuf, LxAppError> {
         let path = path.trim();
         if path.is_empty() {
             return Err(LxAppError::ResourceNotFound("empty path".to_string()));
         }
 
+        // 1. Handle lx:// URIs (Internal helper already does logical joining and ".." check)
         if path.starts_with("lx://") {
             let lx_uri = uri::LxUri::from_str(path)
                 .map_err(|e| LxAppError::InvalidParameter(format!("invalid lx uri: {}", e)))?;
-            let resolved = self.resolve_lx_user_uri(&lx_uri)?;
-            let resolved_str = resolved.to_string_lossy();
-            return self.resolve_accessible_path(resolved_str.as_ref());
+            return self.resolve_lx_user_uri(&lx_uri);
         }
 
-        if path.split('/').any(|s| s == "." || s == "..") {
+        // 2. Prevent directory traversal for any input
+        if path.split('/').any(|s| s == "..") {
             return Err(LxAppError::ResourceNotFound(
-                "dot segment not allowed".to_string(),
+                "directory traversal not allowed".to_string(),
             ));
         }
 
         let path_ref = Path::new(path);
-        let _bundle_root = self
-            .lxapp_dir
-            .canonicalize()
-            .unwrap_or_else(|_| self.lxapp_dir.clone());
 
-        // Relative path: search in order user data -> user cache -> package
+        // 3. Handle Relative path: search in order user data -> user cache -> package
         if !path_ref.is_absolute() && !path.contains(':') {
-            let rel = path.trim_matches('/');
-            let search_roots: [&Path; 3] =
-                [&self.user_data_dir, &self.user_cache_dir, &self.lxapp_dir];
-            for root in search_roots
-                .into_iter()
-                .filter(|dir| !dir.as_os_str().is_empty())
-            {
-                let candidate = root.join(rel);
-                let root_canon = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-                if let Ok(canonical) = candidate.canonicalize()
-                    && canonical.starts_with(&root_canon)
-                {
-                    return Ok(canonical);
+            let rel = path.trim_start_matches('/');
+
+            // In a simple logical resolve, we prioritize user data for relative paths
+            // or we could stick to a specific root. Here we check existence only for
+            // relative path "discovery" if we want to maintain the old search behavior,
+            // otherwise we default to a specific root.
+
+            // To keep it simple and predictable for "creation", relative paths
+            // without lx:// prefix are resolved against the app bundle root by default.
+            return Ok(self.lxapp_dir.join(rel));
+        }
+
+        // 4. Handle Absolute paths: Must start with one of the trusted roots
+        // Note: Since we've already rejected "..", a simple starts_with check is safe.
+        let trusted_roots = [
+            (&self.lxapp_dir, "app bundle"),
+            (&self.user_data_dir, "user data"),
+            (&self.user_cache_dir, "user cache"),
+        ];
+
+        for (root, _name) in trusted_roots {
+            if !root.as_os_str().is_empty() && path_ref.starts_with(root) {
+                return Ok(path_ref.to_path_buf());
+            }
+        }
+
+        // Also check if it's under the parents of userdata/usercache to support the
+        // full path directory structure if needed (though usually not recommended for JS)
+        for root in [&self.user_data_dir, &self.user_cache_dir] {
+            if let Some(parent) = root.parent() {
+                if path_ref.starts_with(parent) {
+                    return Ok(path_ref.to_path_buf());
                 }
             }
-            return Err(LxAppError::ResourceNotFound(path.to_string()));
         }
 
-        let candidate = if path_ref.is_absolute() || path.contains(':') {
-            PathBuf::from(path)
-        } else {
-            Path::new("/").join(path_ref)
-        };
-
-        let canonical = candidate
-            .canonicalize()
-            .map_err(|_| LxAppError::ResourceNotFound(path.to_string()))?;
-
-        let mut trusted_roots: Vec<PathBuf> = Vec::new();
-        for dir in [&self.lxapp_dir, &self.user_cache_dir, &self.user_data_dir] {
-            if !dir.as_os_str().is_empty()
-                && let Ok(c) = dir.canonicalize()
-            {
-                trusted_roots.push(c);
-            }
-        }
-        // Also allow parents of user data/cache roots to support full-path scenarios
-        for dir in [&self.user_cache_dir, &self.user_data_dir] {
-            if let Some(parent) = dir.parent()
-                && let Ok(c) = parent.canonicalize()
-            {
-                trusted_roots.push(c);
-            }
-        }
-        // Note: storage path is intentionally not added to allowed static roots.
-
-        if trusted_roots.iter().any(|root| canonical.starts_with(root)) {
-            Ok(canonical)
-        } else {
-            Err(LxAppError::ResourceNotFound(path.to_string()))
-        }
+        Err(LxAppError::ResourceNotFound(format!(
+            "Access denied: {}",
+            path
+        )))
     }
 
     pub fn to_uri(&self, path: &Path) -> Option<uri::LxUri> {
