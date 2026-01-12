@@ -40,6 +40,8 @@ pub struct Platform {
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
 }
 
+impl crate::traits::UpdateService for Platform {}
+
 // Note: No Drop impl needed for Platform because:
 // 1. resource_manager is borrowed from JS layer (no manual cleanup needed)
 // 2. All other fields are simple types (String, Option) that auto-drop

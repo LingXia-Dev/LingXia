@@ -16,6 +16,8 @@ pub struct Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
+impl crate::traits::UpdateService for Platform {}
+
 impl Platform {
     /// Create a new Platform instance
     pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, PlatformError> {

@@ -9,7 +9,7 @@ pub use core::{
     AnimationType, AppRuntime, Device, DeviceHardware, DeviceSecureStore, DocumentInteraction,
     Location, LocationRequestConfig, ModalOptions, OpenDocumentRequest, PermissionKind,
     PermissionStatus, Permissions, PopupPosition, PopupPresenter, PopupRequest, ToastIcon,
-    ToastOptions, ToastPosition, UIUpdate, UserFeedback,
+    ToastOptions, ToastPosition, UIUpdate, UpdateService, UserFeedback,
 };
 pub use media_interaction::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,

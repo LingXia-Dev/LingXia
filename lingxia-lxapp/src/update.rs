@@ -6,12 +6,63 @@ use crate::lxapp::{
     lxapp_fingermark, metadata, version::Version,
 };
 use crate::provider::{UpdatePackageInfo, UpdateTarget};
-use lingxia_platform::{AppRuntime, Platform};
-use rong::service_executor;
+use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
+use lingxia_platform::{AppRuntime, Platform, UpdateService};
+use rong::service_executor::{self, BodySink};
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Tracks download progress and reports to the UI layer
+struct ProgressSink {
+    total_bytes: u64,
+    downloaded_bytes: u64,
+    last_reported_progress: i32,
+    runtime: Option<Arc<Platform>>,
+}
+
+impl ProgressSink {
+    fn new(total_bytes: u64, runtime: Option<Arc<Platform>>) -> Self {
+        Self {
+            total_bytes,
+            downloaded_bytes: 0,
+            last_reported_progress: 0,
+            runtime,
+        }
+    }
+}
+
+impl BodySink for ProgressSink {
+    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
+        self.downloaded_bytes += chunk.len() as u64;
+
+        if self.total_bytes > 0 {
+            let progress =
+                ((self.downloaded_bytes as f64 / self.total_bytes as f64) * 100.0) as i32;
+            let progress = progress.min(100);
+
+            // Only update UI if progress changed by at least 1%
+            if progress > self.last_reported_progress {
+                self.last_reported_progress = progress;
+                if let Some(runtime) = &self.runtime {
+                    let _ = runtime.update_download_progress(progress);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn close(&mut self, result: &Result<(), String>) {
+        if result.is_ok() {
+            if let Some(runtime) = &self.runtime {
+                let _ = runtime.update_download_progress(100);
+            }
+        }
+    }
+}
 
 /// Coordinates update preparation, download, and installation for LxApps.
 #[derive(Clone)]
@@ -113,6 +164,110 @@ impl UpdateManager {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
             LxAppError::Runtime(e.to_string())
         })
+    }
+
+    /// Check for host app updates via the registered Provider.
+    /// Returns no update if no provider is registered.
+    pub async fn check_app_update(
+        current_version: Option<&str>,
+    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+        let provider = crate::get_provider();
+        let target = UpdateTarget::App {
+            current_version: current_version.map(|v| v.to_string()),
+        };
+
+        provider.check_update(target).await.map_err(|e| {
+            crate::error!("check_app_update failed: {}", e);
+            LxAppError::Runtime(e.to_string())
+        })
+    }
+
+    /// Spawn async flow: check -> prompt -> download -> install for host app updates.
+    pub fn spawn_app_update_flow(runtime: Arc<Platform>, current_version: Option<String>) {
+        let _ = service_executor::spawn_async(async move {
+            if let Err(err) =
+                UpdateManager::check_and_install_app_update(runtime, current_version.as_deref())
+                    .await
+            {
+                crate::warn!("App update flow failed: {}", err);
+            }
+        });
+    }
+
+    /// Check for host app updates and install when user confirms.
+    pub async fn check_and_install_app_update(
+        runtime: Arc<Platform>,
+        current_version: Option<&str>,
+    ) -> Result<(), LxAppError> {
+        crate::info!(
+            "App update flow start: current_version={:?}",
+            current_version
+        );
+        let update = UpdateManager::check_app_update(current_version).await?;
+        let Some(pkg) = update else {
+            crate::info!("No app update available");
+            return Ok(());
+        };
+        crate::info!(
+            "App update available: version={} url={}",
+            pkg.version,
+            pkg.url
+        );
+
+        // Build update info JSON for the UI
+        let update_info_json = if pkg.size.is_some() || pkg.release_notes.is_some() {
+            let mut json_obj = serde_json::Map::new();
+            json_obj.insert("version".to_string(), serde_json::json!(pkg.version));
+            if let Some(size) = pkg.size {
+                json_obj.insert("size".to_string(), serde_json::json!(size));
+            }
+            if let Some(notes) = &pkg.release_notes {
+                json_obj.insert("releaseNotes".to_string(), serde_json::json!(notes));
+            }
+            Some(serde_json::to_string(&json_obj).unwrap_or_default())
+        } else {
+            None
+        };
+
+        let (callback_id, receiver) = get_callback();
+        if let Err(e) = runtime.show_update_prompt(callback_id, update_info_json.as_deref()) {
+            let _ = remove_callback(callback_id);
+            return Err(LxAppError::Runtime(format!(
+                "Failed to show update prompt: {}",
+                e
+            )));
+        }
+
+        let confirmed = match receiver.await {
+            Ok(CallbackResult::Success(data)) => serde_json::from_str::<Value>(&data)
+                .ok()
+                .and_then(|json| json.get("confirm").and_then(|v| v.as_bool()))
+                .unwrap_or(false),
+            Ok(CallbackResult::Error(_)) => false,
+            Err(_) => false,
+        };
+
+        if !confirmed {
+            crate::info!("App update cancelled or deferred");
+            return Ok(());
+        }
+        crate::info!("App update confirmed, starting download");
+
+        let path = UpdateManager::download_app_update_with_checksum(
+            runtime.clone(),
+            &pkg.url,
+            &pkg.checksum_sha256,
+            &pkg.version,
+        )
+        .await?;
+        crate::info!("App update downloaded: {}", path.display());
+
+        runtime.install_update(&path).map_err(|e| {
+            LxAppError::Runtime(format!("Failed to request app update install: {}", e))
+        })?;
+        crate::info!("App update install requested");
+
+        Ok(())
     }
 
     /// Decide whether we should download/apply the server version for this app variant.
@@ -418,6 +573,103 @@ impl UpdateManager {
         self.downloads_dir.join(name)
     }
 
+    /// Download a host app update package and verify checksum when provided.
+    pub async fn download_app_update_with_checksum(
+        runtime: Arc<Platform>,
+        url: &str,
+        checksum_sha256: &str,
+        version: &str,
+    ) -> Result<PathBuf, LxAppError> {
+        crate::info!("App update download start: url={} version={}", url, version);
+        let dest_dir = runtime
+            .app_cache_dir()
+            .join(LINGXIA_DIR)
+            .join("app_updates");
+        let _ = fs::create_dir_all(&dest_dir);
+
+        let dest = dest_dir.join(app_update_filename(url, version));
+        crate::info!("App update download dest: {}", dest.display());
+
+        // Check if file already exists and is valid
+        if dest.exists() {
+            if checksum_sha256.is_empty() {
+                if dest.metadata().map(|m| m.len()).unwrap_or(0) > 0 {
+                    crate::info!("App update package already downloaded: {}", dest.display());
+                    let _ = runtime.dismiss_download_progress();
+                    return Ok(dest);
+                }
+                let _ = fs::remove_file(&dest);
+            }
+            if archive::verify_sha256(&dest, checksum_sha256).is_ok() {
+                crate::info!(
+                    "App update package already downloaded and verified: {}",
+                    dest.display()
+                );
+                let _ = runtime.dismiss_download_progress();
+                return Ok(dest);
+            }
+            // File exists but checksum failed, remove it
+            let _ = fs::remove_file(&dest);
+        }
+
+        // Get file size for progress tracking
+        let file_size = get_content_length(url).await.unwrap_or(0);
+
+        // Show progress dialog before starting download
+        if let Err(e) = runtime.show_download_progress() {
+            crate::warn!("Failed to show download progress: {}", e);
+        }
+
+        // Create progress sink if we have file size
+        let sink: Option<Box<dyn BodySink>> = if file_size > 0 {
+            Some(Box::new(ProgressSink::new(
+                file_size,
+                Some(runtime.clone()),
+            )))
+        } else {
+            None
+        };
+
+        let receiver =
+            match service_executor::request_download(url.to_string(), dest.clone(), None, sink) {
+                Ok(receiver) => receiver,
+                Err(e) => {
+                    let _ = runtime.dismiss_download_progress();
+                    return Err(LxAppError::IoError(format!(
+                        "failed to start download: {}",
+                        e
+                    )));
+                }
+            };
+
+        let result = match receiver
+            .await
+            .map_err(|_| LxAppError::IoError("download task cancelled".to_string()))?
+        {
+            Ok(()) => {
+                if !checksum_sha256.is_empty() {
+                    if let Err(e) = archive::verify_sha256(&dest, checksum_sha256) {
+                        let _ = fs::remove_file(&dest);
+                        Err(e)
+                    } else {
+                        Ok(dest)
+                    }
+                } else {
+                    Ok(dest)
+                }
+            }
+            Err(err) => {
+                let _ = fs::remove_file(&dest);
+                Err(LxAppError::IoError(format!("download failed: {}", err)))
+            }
+        };
+
+        // Dismiss progress dialog
+        let _ = runtime.dismiss_download_progress();
+
+        result
+    }
+
     /// Utility: hash url to a deterministic short hex string
     fn hash_url(url: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
@@ -467,5 +719,48 @@ fn filename_from_url_or_hash(url: &str) -> String {
     } else {
         // default to hash.tar.zst
         format!("{}.tar.zst", UpdateManager::hash_url(url))
+    }
+}
+
+fn app_update_filename(url: &str, version: &str) -> String {
+    let safe_version = version.replace(['/', '\\'], "_");
+    let main = url.split(&['?', '#'][..]).next().unwrap_or(url);
+    let seg = main.rsplit('/').next().unwrap_or(main);
+    if !seg.is_empty() && seg.contains('.') {
+        format!("app_{}_{}", safe_version, seg)
+    } else {
+        format!("app_{}_{}.apk", safe_version, UpdateManager::hash_url(url))
+    }
+}
+
+/// Get content length from URL via HEAD request
+async fn get_content_length(url: &str) -> Result<u64, String> {
+    use http::Request;
+    use http_body_util::{BodyExt, Empty};
+    use std::io::Error;
+
+    let request = Request::builder()
+        .method("HEAD")
+        .uri(url)
+        .body(
+            Empty::<bytes::Bytes>::new()
+                .map_err(|_| Error::new(std::io::ErrorKind::Other, "body error"))
+                .boxed(),
+        )
+        .map_err(|e| format!("Failed to build HEAD request: {}", e))?;
+
+    let response = service_executor::send_request(request, 1024, None)
+        .await
+        .map_err(|e| format!("HEAD request failed: {}", e))?;
+
+    if let Some(content_length) = response
+        .headers
+        .get(http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+    {
+        Ok(content_length)
+    } else {
+        Err("No Content-Length header".to_string())
     }
 }

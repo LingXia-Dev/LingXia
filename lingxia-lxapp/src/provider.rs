@@ -27,6 +27,8 @@ pub struct UpdatePackageInfo {
     pub version: String,
     pub url: String,
     pub checksum_sha256: String,
+    pub size: Option<u64>,
+    pub release_notes: Option<Vec<String>>,
 }
 
 /// Error type for provider operations.

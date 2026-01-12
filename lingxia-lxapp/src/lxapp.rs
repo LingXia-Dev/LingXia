@@ -1352,6 +1352,7 @@ pub fn init(runtime: Platform) -> Option<String> {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
+            let app_version = config.semantic_version.clone();
 
             // Check if installation is needed before creating LxApp
             // This ensures lxapp.json is only loaded once
@@ -1426,6 +1427,8 @@ pub fn init(runtime: Platform) -> Option<String> {
             }
 
             info!("LxApps initialized successfully");
+
+            UpdateManager::spawn_app_update_flow(runtime_arc.clone(), Some(app_version.clone()));
 
             Some(home_lxapp_appid)
         }
