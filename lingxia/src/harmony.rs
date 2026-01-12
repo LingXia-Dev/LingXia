@@ -405,7 +405,12 @@ fn on_callback(id: String, success: bool, data: String) -> bool {
         Err(data.parse::<u32>().unwrap_or(1000))
     };
 
-    invoke_callback(id, result)
+    if invoke_callback(id, result) {
+        true
+    } else {
+        log::warn!("[Harmony] Callback not found for id={}", id);
+        false
+    }
 }
 
 #[napi]
@@ -680,8 +685,8 @@ pub fn video_player_stop(component_id: String) -> bool {
 pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
     // Sanity check: Prevent massive values (e.g. i64::MAX or timestamps) that cause logic layer overflow.
     // Limit seek to ~100 years (valid playback range). 3e12 ms.
-    const MAX_SEEK_MS: f64 = 3_000_000_000_000.0; 
-    
+    const MAX_SEEK_MS: f64 = 3_000_000_000_000.0;
+
     // Prevent NaN, Infinite, negative, or massive values
     if !position_ms.is_finite() || position_ms < 0.0 || position_ms > MAX_SEEK_MS {
         log::error!(
@@ -697,7 +702,7 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
         component_id,
         position_ms
     );
-    
+
     if lingxia_platform::harmony::video_player::has_stream_decoder(&component_id) {
         let position_s = position_ms / 1000.0;
 
@@ -713,7 +718,9 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
         // Also dispatch to platform layer for UI sync (emits seeked event)
         let _ = lingxia_platform::harmony::video_player::dispatch_command(
             &component_id,
-            VideoPlayerCommand::Seek { position: position_s },
+            VideoPlayerCommand::Seek {
+                position: position_s,
+            },
         );
 
         return seek_result;

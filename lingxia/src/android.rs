@@ -636,7 +636,12 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
         Err(data_str.parse::<u32>().unwrap_or(1000))
     };
 
-    if invoke_callback(id, result) { 1 } else { 0 }
+    if invoke_callback(id, result) {
+        1
+    } else {
+        warn!("[Android] Callback not found for id={}", id);
+        0
+    }
 }
 
 /// Resolve a lx:// URI or sandbox path to a native-consumable URL/path.

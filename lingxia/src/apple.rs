@@ -427,7 +427,13 @@ pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
         // Parse data as u32 error code, default to 1000 (unknown error) if failed
         Err(data.parse::<u32>().unwrap_or(1000))
     };
-    invoke_callback(id, result)
+
+    if invoke_callback(id, result) {
+        true
+    } else {
+        log::warn!("[Apple] Callback not found for id={}", id);
+        false
+    }
 }
 
 /// Check if pull-down refresh is enabled for a specific page
