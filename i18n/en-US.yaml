@@ -146,3 +146,11 @@ date:
   last_week: "Last Week"
   this_month: "This Month"
   last_month: "Last Month"
+
+# App Update
+update:
+  title: "New Version Available"
+  message: "A new version is ready. Install now?"
+  confirm: "Download & Install"
+  downloading: "Downloading Update"
+  download_failed: "Download failed. Please try again."

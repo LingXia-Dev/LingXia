@@ -146,3 +146,11 @@ date:
   last_week: "上周"
   this_month: "本月"
   last_month: "上月"
+
+# App Update
+update:
+  title: "发现新版本"
+  message: "新版本已准备好，是否立即安装？"
+  confirm: "下载并安装"
+  downloading: "正在下载更新"
+  download_failed: "下载失败，请重试"
