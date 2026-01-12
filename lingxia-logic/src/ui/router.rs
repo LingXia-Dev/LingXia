@@ -97,11 +97,6 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
 async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &options.url)
-        .await
-        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
-
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))
