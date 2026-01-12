@@ -256,19 +256,19 @@ class LxApp private constructor(private val context: Context) {
                 override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
                     handleAppLink(activity.intent)
                     if (activity is LxAppActivity) {
-                        currentActivity = activity
+                        setCurrentActivity(activity)
                     }
                 }
 
                 override fun onActivityResumed(activity: android.app.Activity) {
                     if (activity is LxAppActivity) {
-                        currentActivity = activity
+                        setCurrentActivity(activity)
                     }
                 }
 
                 override fun onActivityDestroyed(activity: android.app.Activity) {
                     if (activity is LxAppActivity && currentActivity == activity) {
-                        currentActivity = null
+                        setCurrentActivity(null)
                     }
                 }
 
@@ -297,6 +297,7 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         internal fun setCurrentActivity(activity: LxAppActivity?) {
             currentActivity = activity
+            UpdateManager.init(activity)
         }
 
         /**

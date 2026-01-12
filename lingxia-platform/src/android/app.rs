@@ -23,6 +23,69 @@ pub struct Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
+impl crate::traits::UpdateService for Platform {
+    fn show_download_progress(&self) -> Result<(), PlatformError> {
+        super::update::show_download_progress().map_err(|e| {
+            PlatformError::Platform(format!("Failed to show download progress: {}", e))
+        })
+    }
+
+    fn update_download_progress(&self, progress: i32) -> Result<(), PlatformError> {
+        super::update::update_download_progress(progress).map_err(|e| {
+            PlatformError::Platform(format!("Failed to update download progress: {}", e))
+        })
+    }
+
+    fn dismiss_download_progress(&self) -> Result<(), PlatformError> {
+        super::update::dismiss_download_progress().map_err(|e| {
+            PlatformError::Platform(format!("Failed to dismiss download progress: {}", e))
+        })
+    }
+
+    fn show_update_prompt(
+        &self,
+        callback_id: u64,
+        update_info_json: Option<&str>,
+    ) -> Result<(), PlatformError> {
+        super::update::show_update_prompt(callback_id, update_info_json)
+            .map_err(|e| PlatformError::Platform(format!("Failed to show update prompt: {}", e)))
+    }
+
+    fn install_update(&self, apk_path: &Path) -> Result<(), PlatformError> {
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+
+            let update_manager_class: &JClass =
+                super::get_cached_class(super::CachedClass::UpdateManager)?
+                    .as_obj()
+                    .into();
+
+            let path_str = apk_path.to_str().ok_or_else(|| "Invalid APK path")?;
+            let path_jstring = env.new_string(path_str)?;
+
+            let result = env.call_static_method(
+                update_manager_class,
+                "installUpdate",
+                "(Ljava/lang/String;)Z",
+                &[JValue::Object(&path_jstring)],
+            )?;
+            let success = result
+                .z()
+                .map_err(|e| format!("Invalid installUpdate result: {}", e))?;
+            if !success {
+                return Err("installUpdate returned false".into());
+            }
+            Ok(())
+        }() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to install update: {}",
+                e
+            ))),
+        }
+    }
+}
+
 impl Permissions for Platform {
     fn check_permission(
         &self,

@@ -9,6 +9,7 @@ mod media;
 mod popup;
 mod pull_to_refresh;
 mod ui_update;
+mod update;
 mod user_feedback;
 mod video_player;
 pub use app::Platform;
@@ -31,10 +32,11 @@ pub enum CachedClass {
     LxAppDocument = 10,
     ComponentRouter = 11,
     LxAppPullToRefresh = 12,
+    UpdateManager = 13,
 }
 
 impl CachedClass {
-    const COUNT: usize = 13;
+    const COUNT: usize = 14;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -51,6 +53,7 @@ impl CachedClass {
             CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
+            CachedClass::UpdateManager => "com/lingxia/lxapp/UpdateManager",
         }
     }
 
@@ -108,12 +111,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppPullToRefresh"
             ),
+            CachedClass::UpdateManager => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/UpdateManager"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

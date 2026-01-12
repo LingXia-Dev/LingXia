@@ -718,9 +718,7 @@ extern "C" fn on_info_callback(
         };
 
         if let Some(status_value) = status_value {
-            let last_status = callback_data
-                .buffering_status
-                .load(Ordering::Acquire);
+            let last_status = callback_data.buffering_status.load(Ordering::Acquire);
             if last_status == status_value {
                 return;
             }
