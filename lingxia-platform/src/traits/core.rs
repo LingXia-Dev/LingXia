@@ -338,4 +338,9 @@ pub trait AppRuntime:
     ) -> Result<(), PlatformError>;
     /// Launches the given URL in the host environment.
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError>;
+    /// Gets the capsule button bounding rect in screen coordinates.
+    /// Returns JSON string with format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}
+    /// All values are in pixels, relative to screen top-left corner (0, 0).
+    /// Note: This only works when the page has showNavigationBar: false (webview is fullscreen).
+    fn get_capsule_rect(&self) -> Result<String, PlatformError>;
 }

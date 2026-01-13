@@ -1,6 +1,7 @@
 use rong::{JSContext, JSResult};
 
 mod action_sheet;
+mod capsule;
 mod modal;
 mod navbar;
 mod popup;
@@ -21,5 +22,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     router::init(ctx)?;
     popup::init(ctx)?;
     pull_to_refresh::init(ctx)?;
+    capsule::init(ctx)?;
     Ok(())
 }
