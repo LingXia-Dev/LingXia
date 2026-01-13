@@ -70,6 +70,7 @@ export class WebViewManager {
    */
   static createWebview(webtag: string): boolean {
     // Normalize to logical tag for registry keys (appid-path)
+    // Normalize to logical tag for registry keys (appid:path)
     const extracted = extractWebTag(webtag);
     const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
 
@@ -118,7 +119,7 @@ export class WebViewManager {
    * @returns WebView controller or null if not found
    */
   static findWebview(appId: string, path: string): webview.WebviewController | null {
-    const logicalTag = toWebTag(appId, path); // appId-path
+    const logicalTag = toWebTag(appId, path); // appId:path
 
     // Prefer exact match first
     const direct = WebViewManager.controllers.get(logicalTag);
@@ -149,6 +150,7 @@ export class WebViewManager {
    * @returns true if destroyed successfully, false if not found
    */
   static destroyWebview(webtag: string): boolean {
+    // Normalize to logical tag for registry keys (appid:path)
     const extracted = extractWebTag(webtag);
     const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
 
@@ -345,10 +347,10 @@ export class WebViewManager {
  * Create webtag from appId and path
  * @param appId - LxApp ID
  * @param path - Page path
- * @returns webtag in format "appId-path" or "appId-path#sessionId"
+ * @returns webtag in format "appId:path" or "appId:path#sessionId"
  */
 export function toWebTag(appId: string, path: string, sessionId?: string | number): string {
-  const base = `${appId}-${path}`;
+  const base = `${appId}:${path}`;
   if (sessionId === undefined || sessionId === null) {
     return base;
   }
@@ -366,17 +368,17 @@ export interface WebTagParts {
 
 /**
  * Extract appId and path from webtag
- * @param webtag - WebView tag in format "appId-path" or "appId-path#instance"
+ * @param webtag - WebView tag in format "appId:path" or "appId:path#instance"
  * @returns Object with appId, path, and optional sessionId, or null if invalid format
  */
 export function extractWebTag(webtag: string): WebTagParts | null {
-  const dashIndex = webtag.indexOf('-');
-  if (dashIndex === -1) {
+  const separatorIndex = webtag.indexOf(':');
+  if (separatorIndex === -1) {
     return null;
   }
 
-  const appId = webtag.substring(0, dashIndex);
-  let pathWithInstance = webtag.substring(dashIndex + 1);
+  const appId = webtag.substring(0, separatorIndex);
+  let pathWithInstance = webtag.substring(separatorIndex + 1);
   const hashIndex = pathWithInstance.indexOf('#');
   const path = hashIndex === -1 ? pathWithInstance : pathWithInstance.substring(0, hashIndex);
   const sessionId = hashIndex === -1 ? undefined : pathWithInstance.substring(hashIndex + 1) || undefined;
