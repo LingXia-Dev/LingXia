@@ -128,7 +128,7 @@ impl std::fmt::Display for WebTag {
 
 impl WebTag {
     pub fn new(appid: &str, path: &str, session_id: Option<u64>) -> Self {
-        let mut tag = format!("{}-{}", appid, path);
+        let mut tag = format!("{}:{}", appid, path);
         if let Some(session) = session_id {
             tag.push('#');
             tag.push_str(&session.to_string());
@@ -140,21 +140,21 @@ impl WebTag {
         &self.0
     }
 
-    /// Logical key for this tag (appid-path), with any `#instance` suffix stripped.
+    /// Logical key for this tag (appid:path), with any `#instance` suffix stripped.
     pub fn key(&self) -> &str {
         self.0.split('#').next().unwrap_or(&self.0)
     }
 
     /// Extract appid from the webtag
     pub fn extract_appid(&self) -> String {
-        self.key().split('-').next().unwrap_or("").to_string()
+        self.key().split(':').next().unwrap_or("").to_string()
     }
 
     /// Extract appid and path from WebTag
     /// This will always succeed since WebTag is constructed with a valid format
     pub fn extract_parts(&self) -> (String, String) {
         self.key()
-            .split_once('-')
+            .split_once(':')
             .map(|(appid, path)| (appid.to_string(), path.to_string()))
             .unwrap()
     }
