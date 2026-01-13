@@ -1,6 +1,10 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::event::PageLifecycleEvent;
-use crate::lxapp::{self, navbar::NavigationBarState, page_config::PageConfig};
+use crate::lxapp::{
+    self,
+    navbar::NavigationBarState,
+    page_config::{PageConfig, PageOrientation},
+};
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
@@ -56,6 +60,8 @@ pub struct PageState {
     pub(crate) navbar_state: NavigationBarState,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
+    // Page orientation
+    pub(crate) page_orientation: PageOrientation,
     // Query parameters
     pub(crate) query: serde_json::Value,
 }
@@ -115,6 +121,7 @@ impl Page {
             on_ready_fired: false,
             navbar_state: page_config.create_navbar_state(),
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
+            page_orientation: page_config.get_page_orientation(),
             query: serde_json::Value::Null,
         }
     }
@@ -345,6 +352,15 @@ impl Page {
             .lock()
             .ok()
             .map(|mut state| f(&mut state.navbar_state))
+    }
+
+    /// Get page orientation from state
+    pub fn get_page_orientation(&self) -> Option<PageOrientation> {
+        self.inner
+            .state
+            .lock()
+            .ok()
+            .map(|state| state.page_orientation)
     }
 
     /// Get WebView if available

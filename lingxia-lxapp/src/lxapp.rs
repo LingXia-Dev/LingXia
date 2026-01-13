@@ -828,6 +828,13 @@ impl LxApp {
             .unwrap_or_default()
     }
 
+    /// Get page orientation for a page; returns Auto if page not found.
+    pub fn get_page_orientation(&self, path: &str) -> page_config::PageOrientation {
+        self.get_page(path)
+            .and_then(|page| page.get_page_orientation())
+            .unwrap_or_default()
+    }
+
     /// Open a new runtime session for this LxApp instance:
     /// - Apply any downloaded update for this release_type (if present)
     /// - Record startup options
@@ -1410,7 +1417,6 @@ pub fn init(runtime: Platform) -> Option<String> {
             info!("LxApps initialized successfully");
 
             UpdateManager::spawn_app_update_flow(runtime_arc.clone(), Some(app_version.clone()));
-
             Some(home_lxapp_appid)
         }
 

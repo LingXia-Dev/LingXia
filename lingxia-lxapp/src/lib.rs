@@ -28,7 +28,7 @@ pub use error::LxAppError;
 pub use event::{AppServiceEvent, LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent};
 pub use lxapp::{
     LxApp, ReleaseType, config::LxAppInfo, get_current_lxapp, get_locale, get_platform, init,
-    is_pull_down_refresh_enabled, on_low_memory, tabbar, try_get,
+    is_pull_down_refresh_enabled, on_low_memory, page_config::PageOrientation, tabbar, try_get,
 };
 pub use page::NavigationType;
 pub use provider::{

@@ -3,6 +3,24 @@ use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState};
 use crate::warn;
 use serde::{Deserialize, Serialize};
 
+/// Page orientation configuration
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PageOrientation {
+    /// Portrait orientation (vertical)
+    Portrait,
+    /// Landscape orientation (horizontal)
+    Landscape,
+    /// Auto - follow device orientation
+    Auto,
+}
+
+impl Default for PageOrientation {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
 /// Page configuration loaded from page.json (immutable)
 /// This is the single source of truth for page configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -15,6 +33,10 @@ pub struct PageConfig {
     /// Enable pull-to-refresh
     #[serde(default)]
     pub enable_pull_down_refresh: bool,
+
+    /// Page orientation
+    #[serde(default)]
+    pub page_orientation: PageOrientation,
 }
 
 impl PageConfig {
@@ -50,6 +72,11 @@ impl PageConfig {
     /// Check if pull-to-refresh is enabled
     pub fn is_pull_down_refresh_enabled(&self) -> bool {
         self.enable_pull_down_refresh
+    }
+
+    /// Get page orientation
+    pub fn get_page_orientation(&self) -> PageOrientation {
+        self.page_orientation
     }
 }
 
