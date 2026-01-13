@@ -13,7 +13,6 @@ pub struct AppConfig {
     pub product_name: String,
     #[serde(rename = "semanticVersion")]
     pub semantic_version: String,
-    pub identifier: String, // Unique identifier for this application, used by the server to identify different clients
 
     // API server address (optional)
     #[serde(rename = "apiServer", default)]
@@ -71,12 +70,6 @@ impl AppConfig {
                 "semanticVersion must be a semantic version (major.minor.patch)".to_string(),
             )
         })?;
-
-        if config.identifier.is_empty() {
-            return Err(LxAppError::InvalidParameter(
-                "identifier is mandatory and cannot be empty".to_string(),
-            ));
-        }
 
         // Check homeLxAppID
         if config.home_lxapp_appid.is_empty() {

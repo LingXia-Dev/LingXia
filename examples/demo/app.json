@@ -1,7 +1,6 @@
 {
   "productName": "LingXia Mini App Demo",
   "semanticVersion": "1.0.0",
-  "identifier": "app.lingxia.demo",
   "apiServer": "https://api.lingxia.app",
   "apiKey": "demo_api_key_12345",
   "homeLxAppID": "homelxapp",
