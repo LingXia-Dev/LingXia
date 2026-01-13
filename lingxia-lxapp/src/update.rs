@@ -1,4 +1,5 @@
 use crate::archive;
+use crate::emit_app_event;
 use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
@@ -190,6 +191,72 @@ impl UpdateManager {
                     .await
             {
                 crate::warn!("App update flow failed: {}", err);
+            }
+        });
+    }
+
+    /// Spawn a background update check for a known appid.
+    pub fn spawn_background_update_check_for(target_appid: String, release_type: ReleaseType) {
+        let Some(lxapp) = lxapp::try_get(&target_appid) else {
+            crate::warn!(
+                "LxApp '{}' not found for background update check",
+                target_appid
+            );
+            return;
+        };
+
+        if lxapp.release_type != release_type {
+            return;
+        }
+
+        UpdateManager::spawn_background_update_check(lxapp);
+    }
+
+    /// Spawn a background check to download newer packages for the given app.
+    pub fn spawn_background_update_check(lxapp: Arc<lxapp::LxApp>) {
+        let target_appid = lxapp.appid.clone();
+        let release_type = lxapp.release_type;
+        let current_version = lxapp.current_version();
+
+        let _ = service_executor::spawn_async(async move {
+            let manager = UpdateManager::new(lxapp);
+
+            match manager
+                .check_update(&target_appid, release_type, Some(current_version.as_str()))
+                .await
+            {
+                Ok(Some(pkg)) => {
+                    if !manager.should_update(&pkg.version) {
+                        return;
+                    }
+
+                    let already_downloaded_same = matches!(
+                        manager.has_downloaded_update(&target_appid, release_type),
+                        Ok(Some(info)) if info.version == pkg.version
+                    );
+
+                    if already_downloaded_same {
+                        return;
+                    }
+
+                    let download_res = manager
+                        .download_archive_with_checksum(
+                            &target_appid,
+                            release_type,
+                            &pkg.url,
+                            &pkg.checksum_sha256,
+                            &pkg.version,
+                        )
+                        .await;
+
+                    if download_res.is_ok() {
+                        let _ = emit_app_event(&target_appid, "UpdateReady", None);
+                    } else {
+                        let _ = emit_app_event(&target_appid, "UpdateFailed", None);
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => {}
             }
         });
     }

@@ -1,6 +1,6 @@
 use crate::update;
 use lxapp::lx::{self, fast_api};
-use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
+use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, service_executor};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -61,7 +61,7 @@ async fn do_navigate_to_lxapp(
 
     lxapp.navigate_to(target_appid.clone(), startup_options)?;
 
-    update::spawn_background_update_check(target_appid, release_type);
+    UpdateManager::spawn_background_update_check_for(target_appid, release_type);
     Ok(())
 }
 

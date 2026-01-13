@@ -1,7 +1,7 @@
-use lxapp::{LxApp, ReleaseType, UpdateManager, emit_app_event, register_app_handler, warn};
+use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler};
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, js_class, js_export,
-    js_method, service_executor,
+    js_method,
 };
 use std::sync::Arc;
 
@@ -188,61 +188,4 @@ pub async fn ensure_first_install(
         .map_err(|e| RongJSError::Error(e.to_string()))?;
 
     Ok(())
-}
-
-/// Spawn a background task to check cloud updates for the given app and pre-download newer packages.
-pub fn spawn_background_update_check(target_appid: String, release_type: ReleaseType) {
-    let _ = service_executor::spawn_async(async move {
-        let Some(lxapp) = lxapp::try_get(&target_appid) else {
-            warn!(
-                "LxApp '{}' not found for background update check",
-                target_appid
-            );
-            return;
-        };
-        let manager = UpdateManager::new(lxapp.clone());
-
-        let current_version = lxapp.current_version();
-        match manager
-            .check_update(&target_appid, release_type, Some(current_version.as_str()))
-            .await
-        {
-            Ok(Some(pkg)) => {
-                if !manager.should_update(&pkg.version) {
-                    return;
-                }
-
-                let already_downloaded_same = matches!(
-                    manager.has_downloaded_update(&target_appid, release_type),
-                    Ok(Some(info)) if info.version == pkg.version
-                );
-
-                if already_downloaded_same {
-                    return;
-                }
-
-                let download_res = manager
-                    .download_archive_with_checksum(
-                        &target_appid,
-                        release_type,
-                        &pkg.url,
-                        &pkg.checksum_sha256,
-                        &pkg.version,
-                    )
-                    .await;
-
-                if download_res.is_ok() {
-                    let _ = emit_app_event(&target_appid, "UpdateReady", None);
-                } else {
-                    let _ = emit_app_event(&target_appid, "UpdateFailed", None);
-                }
-            }
-            Ok(None) => {
-                // No update available
-            }
-            Err(_) => {
-                // Ignore check errors in background
-            }
-        }
-    });
 }

@@ -1408,19 +1408,6 @@ pub fn init(runtime: Platform) -> Option<String> {
             let initial_route = home_lxapp.config.get_initial_route();
             home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
 
-            // In debug mode, always reinstall from assets for hot-reload during development
-            if home_lxapp.is_debug_enabled() {
-                if let Err(e) = crate::update::UpdateManager::install_from_assets(
-                    runtime_arc.clone(),
-                    &home_lxapp_appid,
-                    home_lxapp_version,
-                ) {
-                    error!("Failed to reinstall home LxApp in debug mode: {}", e);
-                }
-                // Reload config after reinstall
-                let _ = home_lxapp.load_config();
-            }
-
             // Add home lxapp to the manager
             let home_lxapp_arc = Arc::new(home_lxapp);
             lxapps_manager
@@ -1435,6 +1422,11 @@ pub fn init(runtime: Platform) -> Option<String> {
                 error!("Failed to trigger home app service: {}", e)
                     .with_appid(home_lxapp_appid.clone());
             }
+
+            UpdateManager::spawn_background_update_check_for(
+                home_lxapp_appid.clone(),
+                ReleaseType::Release,
+            );
 
             info!("LxApps initialized successfully");
 
