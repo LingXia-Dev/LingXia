@@ -560,11 +560,6 @@ impl AppRuntime for Platform {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
-    fn exit_app(&self) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("exitApp", &[])
-            .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
-    }
-
     fn get_system_locale(&self) -> &str {
         &self.locale
     }

@@ -127,48 +127,6 @@ impl AppRuntime for Platform {
         Box::new(entries.into_iter())
     }
 
-    fn exit_app(&self) -> Result<(), PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            use dispatch2::DispatchQueue;
-
-            // Exit app on main thread
-            DispatchQueue::main().exec_async(move || {
-                // Force exit after a short delay to allow cleanup
-                std::thread::sleep(std::time::Duration::from_millis(100));
-                std::process::exit(0);
-            });
-
-            Ok(())
-        }
-        #[cfg(target_os = "macos")]
-        {
-            use objc2::rc::Retained;
-            use objc2::{ClassType, extern_class, msg_send};
-            use objc2_foundation::NSObject;
-
-            extern_class!(
-                #[derive(Debug, PartialEq, Eq, Hash)]
-                #[unsafe(super(NSObject))]
-                pub struct NSApplication;
-            );
-
-            impl NSApplication {
-                pub fn shared() -> Retained<Self> {
-                    unsafe { msg_send![Self::class(), sharedApplication] }
-                }
-
-                pub fn terminate(&self, sender: Option<&NSObject>) {
-                    unsafe { msg_send![self, terminate: sender] }
-                }
-            }
-
-            let app = NSApplication::shared();
-            app.terminate(None);
-            Ok(())
-        }
-    }
-
     fn get_system_locale(&self) -> &str {
         &self.locale
     }

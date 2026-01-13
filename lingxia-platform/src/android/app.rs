@@ -458,24 +458,6 @@ impl AppRuntime for Platform {
         crate::traits::MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
 
-    fn exit_app(&self) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
-
-            env.call_static_method(lxapp_class, "exitApp", "()V", &[])?;
-            Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to exit app: {}",
-                e
-            ))),
-        }
-    }
-
     fn get_system_locale(&self) -> &str {
         &self.locale
     }

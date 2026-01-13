@@ -251,16 +251,6 @@ class NativeBridge {
       return LxAppContainer.refreshNavBar(appId);
     });
 
-    // App control APIs (only what's needed for AppRuntime)
-    this.register('exitApp', (): void => {
-      try {
-        const context = getContext() as common.UIAbilityContext;
-        context.terminateSelf();
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Failed to exit app: ${error}`);
-      }
-    });
-
     this.register('getScreenInfo', (callbackId: string): void => {
       LxAppDevice.getScreenInfo(callbackId);
     });

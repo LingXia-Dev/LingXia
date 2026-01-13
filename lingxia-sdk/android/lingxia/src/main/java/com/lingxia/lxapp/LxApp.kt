@@ -108,18 +108,6 @@ class LxApp private constructor(private val context: Context) {
         }
 
         @JvmStatic
-        fun exitApp() {
-            try {
-                val activity = currentActivity ?: throw IllegalStateException("No current activity")
-                activity.finishAffinity()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to exit app", e)
-                throw e
-            }
-        }
-
-        @JvmStatic
         fun getInstance(): LxApp {
             return instance ?: throw IllegalStateException("LxApp not initialized")
         }

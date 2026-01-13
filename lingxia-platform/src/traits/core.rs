@@ -323,8 +323,6 @@ pub trait AppRuntime:
     ) -> Result<(), PlatformError> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
-    /// Requests the host application to exit.
-    fn exit_app(&self) -> Result<(), PlatformError>;
     /// Returns the current system locale.
     fn get_system_locale(&self) -> &str;
     /// Show the UI container for the given LxApp and route.
