@@ -1440,14 +1440,20 @@ pub fn init(runtime: Platform) -> Option<String> {
 
             // Check if installation is needed before creating LxApp
             // This ensures lxapp.json is only loaded once
-            let needs_install = !metadata::exists(&home_lxapp_appid, ReleaseType::Release)
-                .unwrap_or(false)
-                || metadata::get(&home_lxapp_appid, ReleaseType::Release)
-                    .ok()
-                    .flatten()
-                    .map(|rec| rec.version_string())
-                    .as_deref()
-                    != Some(home_lxapp_version);
+            let installed_record = match metadata::get(&home_lxapp_appid, ReleaseType::Release) {
+                Ok(record) => record,
+                Err(e) => {
+                    warn!("Failed to read installed metadata for home lxapp: {}", e);
+                    None
+                }
+            };
+            let needs_install = match installed_record {
+                None => true,
+                Some(record) => {
+                    let install_path = Path::new(&record.install_path);
+                    record.install_path.is_empty() || !install_path.exists()
+                }
+            };
 
             if needs_install {
                 if let Err(e) = crate::update::UpdateManager::install_from_assets(
