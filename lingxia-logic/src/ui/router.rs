@@ -24,6 +24,11 @@ struct SwitchTab {
     url: String,
 }
 
+#[derive(FromJSObj, Deserialize)]
+struct ReLaunch {
+    url: String,
+}
+
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
         .peek_current_page()
@@ -39,7 +44,7 @@ async fn navigate_with_url(
     let current_path = current_page_path(&lxapp)?;
     let target_page = lxapp.get_or_create_page(&target_url);
 
-    if wait_ready {
+    if wait_ready && nav_type != NavigationType::Launch {
         target_page
             .wait_webview_ready()
             .await
@@ -47,7 +52,13 @@ async fn navigate_with_url(
     }
 
     if let Some(page) = lxapp.get_page(&current_path) {
-        page.navigate_to(target_page, nav_type)?;
+        let target_page = page.navigate_to(target_page, nav_type)?;
+        if wait_ready && nav_type == NavigationType::Launch {
+            target_page
+                .wait_webview_ready()
+                .await
+                .map_err(LxAppError::WebView)?;
+        }
         Ok(())
     } else {
         Err(LxAppError::Runtime("Current page not found".to_string()))
@@ -116,6 +127,20 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
         .map_err(|e| RongJSError::Error(format!("Failed to switch tab: {}", e)))
 }
 
+/// Relaunch to a new page (clear page stack)
+async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+
+    lxapp
+        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+
+    navigate_with_url(lxapp.clone(), options.url, NavigationType::Launch, false)
+        .await
+        .map_err(|e| RongJSError::Error(format!("Failed to relaunch: {}", e)))
+}
+
 fast_api!(NavigateToFastApi, NavigateTo, (), |lxapp: Arc<LxApp>,
                                               options: NavigateTo|
  -> Result<
@@ -179,6 +204,27 @@ fast_api!(SwitchTabFastApi, SwitchTab, (), |lxapp: Arc<LxApp>,
     Ok(())
 });
 
+fast_api!(ReLaunchFastApi, ReLaunch, (), |lxapp: Arc<LxApp>,
+                                          options: ReLaunch|
+ -> Result<
+    (),
+    LxAppError,
+> {
+    let url = options.url.clone();
+    let lxapp_clone = lxapp.clone();
+
+    service_executor::spawn_async(async move {
+        if let Err(err) =
+            navigate_with_url(lxapp_clone, options.url, NavigationType::Launch, true).await
+        {
+            lxapp::warn!("reLaunch failed url={} err={}", url, err);
+        }
+    })
+    .map_err(|err| LxAppError::Runtime(format!("reLaunch async dispatch failed: {}", err)))?;
+
+    Ok(())
+});
+
 fast_api!(
     NavigateBackFastApi,
     NavigateBack,
@@ -202,10 +248,14 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let switch_tab_func = JSFunc::new(ctx, switch_tab)?;
     lx::register_js_api(ctx, "switchTab", switch_tab_func)?;
 
+    let re_launch_func = JSFunc::new(ctx, re_launch)?;
+    lx::register_js_api(ctx, "reLaunch", re_launch_func)?;
+
     lx::register_fast_api("navigateTo", Arc::new(NavigateToFastApi));
     lx::register_fast_api("navigateBack", Arc::new(NavigateBackFastApi));
     lx::register_fast_api("redirectTo", Arc::new(RedirectToFastApi));
     lx::register_fast_api("switchTab", Arc::new(SwitchTabFastApi));
+    lx::register_fast_api("reLaunch", Arc::new(ReLaunchFastApi));
 
     Ok(())
 }

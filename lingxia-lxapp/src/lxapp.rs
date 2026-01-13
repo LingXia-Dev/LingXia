@@ -1207,6 +1207,28 @@ impl LxApp {
         state.page_stack.lock().unwrap().pop_back()
     }
 
+    /// Remove specific pages from the page map and terminate their PageSvc.
+    pub(crate) fn remove_pages(&self, paths: &[String]) {
+        let lxapp = self.clone_arc();
+        for path in paths {
+            let _ = self
+                .executor
+                .terminate_page_svc(lxapp.clone(), path.clone())
+                .map_err(|e| {
+                    warn!("Failed to request page termination: {}", e)
+                        .with_appid(self.appid.clone())
+                        .with_path(path.clone())
+                });
+        }
+
+        if let Ok(state) = self.state.lock() {
+            let mut pages = state.pages.lock().unwrap();
+            for path in paths {
+                pages.remove(path);
+            }
+        }
+    }
+
     /// Get the current page stack size
     pub(crate) fn get_page_stack_size(&self) -> usize {
         self.state.lock().unwrap().page_stack.lock().unwrap().len()

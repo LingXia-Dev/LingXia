@@ -194,14 +194,17 @@ impl LxApp {
                 .map(|t| t.get_tabbar_pages())
                 .unwrap_or_default();
             if let Some(tab_path) = tab_pages.get(index) {
-                if let Some(current_page_path) = self.peek_current_page()
-                    && let Some(page) = self.get_page(&current_page_path)
-                    && let Some(target_page) = self.get_page(tab_path)
-                    && page
+                if let Some(current_page_path) = self.peek_current_page() {
+                    let current_page = self
+                        .get_page(&current_page_path)
+                        .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
+                    let target_page = self.get_or_create_page(tab_path);
+                    if current_page
                         .navigate_to(target_page, NavigationType::SwitchTab)
                         .is_ok()
-                {
-                    return true;
+                    {
+                        return true;
+                    }
                 }
                 // Fallback or error handling if no current page
                 error!("Could not get current page to perform navigation")
@@ -274,10 +277,11 @@ impl LxApp {
                     NavigationType::Launch
                 };
 
-                if let Some(path) = self.peek_current_page()
-                    && let Some(page) = self.get_page(&path)
-                    && let Some(target_page) = self.get_page(&home_route)
-                {
+                if let Some(path) = self.peek_current_page() {
+                    let page = self
+                        .get_page(&path)
+                        .unwrap_or_else(|| self.get_or_create_page(&path));
+                    let target_page = self.get_or_create_page(&home_route);
                     let _ = page.navigate_to(target_page, navigate_type);
                 }
                 true

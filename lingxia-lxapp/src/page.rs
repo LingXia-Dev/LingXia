@@ -12,7 +12,7 @@ use http::StatusCode;
 use lingxia_platform::{AnimationType, AppRuntime};
 use lingxia_webview::{
     LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
-    create_webview,
+    create_webview, destroy_webview,
 };
 
 use rong::service_executor;
@@ -517,23 +517,32 @@ impl Page {
         lxapp: &Arc<LxApp>,
     ) -> Result<Page, LxAppError> {
         let path = target_page.path();
+        let mut target_page = target_page;
+        let is_tabbar_page = lxapp
+            .get_tabbar()
+            .map_or(false, |tabbar| tabbar.is_tabbar_page(&path));
+        let is_tab_switch = nav_type == NavigationType::SwitchTab
+            || (nav_type == NavigationType::Launch && is_tabbar_page);
 
-        // 2. Handle UI state based on navigation type (TabBar, NavBar)
-        let is_tab_switch = nav_type == NavigationType::SwitchTab;
-        lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
-        if is_tab_switch {
-            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path)) {
-                lxapp.with_tabbar_mut(|t| {
-                    t.set_selected_index(index);
-                });
-            }
-            // Reset back button visibility for Launch/SwitchTab
-            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(false));
-        }
-
-        // 3. Handle page stack modifications
+        // 2. Handle page stack modifications
         match nav_type {
             NavigationType::Launch | NavigationType::SwitchTab => {
+                if nav_type == NavigationType::Launch {
+                    let stack_paths = lxapp.get_page_stack();
+                    for stack_path in &stack_paths {
+                        if let Some(page) = lxapp.get_page(stack_path) {
+                            page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                            page.detach_webview();
+                        }
+                        destroy_webview(&WebTag::new(
+                            &lxapp.appid,
+                            stack_path,
+                            Some(lxapp.session.id),
+                        ));
+                    }
+                    lxapp.remove_pages(&stack_paths);
+                    target_page = lxapp.get_or_create_page(&path);
+                }
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
@@ -552,6 +561,20 @@ impl Page {
             }
         }
 
+        // 3. Handle UI state based on navigation type (TabBar, NavBar)
+        lxapp.with_tabbar_mut(|t| t.set_visible(is_tab_switch));
+        if is_tab_switch {
+            if let Some(Some(index)) = lxapp.with_tabbar_mut(|t| t.find_index_by_path(&path)) {
+                lxapp.with_tabbar_mut(|t| {
+                    t.set_selected_index(index);
+                });
+            }
+        }
+        if nav_type == NavigationType::Launch || is_tab_switch {
+            // Reset back button visibility for Launch/SwitchTab
+            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(false));
+        }
+
         lxapp.push_to_page_stack(&path)?;
 
         // Set navbar state AFTER page creation to avoid being overwritten
@@ -560,10 +583,14 @@ impl Page {
         }
 
         // 5. Dispatch lifecycle events for current and target pages
-        if nav_type == NavigationType::Replace {
-            self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-        } else {
-            self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
+        match nav_type {
+            NavigationType::Replace => {
+                self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+            }
+            NavigationType::Launch => {}
+            _ => {
+                self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
+            }
         }
 
         // Request onLoad for the target page; dispatch_lifecycle_event will gate:

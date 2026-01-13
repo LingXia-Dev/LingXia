@@ -409,7 +409,8 @@ export class LxNavigatorElement extends HTMLElement {
         await caller('switchTab', { url });
         break;
       case 'reLaunch':
-        throw new Error('reLaunch is not implemented');
+        await caller('reLaunch', { url });
+        break;
       case 'openUrl':
         await caller('openURL', { url });
         break;

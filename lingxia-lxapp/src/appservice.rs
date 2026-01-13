@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSObject, JSResult, JSRuntime, RongJSError, Source};
+use rong::{JSContext, JSResult, JSRuntime, RongJSError, Source};
 use rong_modules::{console, fs, http};
 
 use std::collections::{HashMap, VecDeque};
@@ -295,11 +295,7 @@ pub(crate) async fn lxapp_service_handler(
                 })
                 .unwrap_or(None);
 
-                if let Some(page_svc) = page_svc {
-                    if let Ok(registry) = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__") {
-                        registry.del(page_svc.page.path().as_str());
-                    }
-
+                if page_svc.is_some() {
                     bridge_events::clear_page(ctx, &path);
 
                     info!("[Worker {}] Removed page", worker_id)
