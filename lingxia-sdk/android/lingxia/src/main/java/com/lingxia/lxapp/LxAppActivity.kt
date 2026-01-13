@@ -21,6 +21,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.provider.Settings
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
@@ -229,6 +230,7 @@ class LxAppActivity : AppCompatActivity() {
     private var currentWebView: com.lingxia.lxapp.WebView? = null
     private var systemBottomInset: Int = 0
     private var isMediaFullscreen = false
+    private var isPageFullscreen = false  // For page-level fullscreen (landscape + custom navbar)
     private var mediaFullscreenState: MediaFullscreenState? = null
     private var pendingTabBarVisibility: Int? = null
     private var pendingNavBarVisibility: Int? = null
@@ -295,7 +297,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // Setup window insets listener
         ViewCompat.setOnApplyWindowInsetsListener(rootContainer) { view, insets ->
-            if (isMediaFullscreen) {
+            if (isMediaFullscreen || isPageFullscreen) {
                 view.setPadding(0, 0, 0, 0)
                 return@setOnApplyWindowInsetsListener WindowInsetsCompat.CONSUMED
             }
@@ -678,6 +680,9 @@ class LxAppActivity : AppCompatActivity() {
         }
         updatePullToRefreshEnabledForPath(currentPath)
 
+        // Apply page orientation
+        applyPageOrientation(currentPath)
+
         // Trigger onPageShow for initial WebView (this is the single place for initial page show)
         if (webView.getAppId() != null && webView.getCurrentPath() != null) {
             NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
@@ -927,8 +932,8 @@ class LxAppActivity : AppCompatActivity() {
         val tabBarConfig = NativeApi.getTabBarState(appId)
         val visible = tabBarConfig?.visible ?: false
         showTabBar(visible)
-        if (visible && tabBarConfig != null) {
-            tabBar?.setSelectedIndex(tabBarConfig.selectedIndex, notifyListener = false)
+        tabBarConfig?.let {
+            tabBar?.setSelectedIndex(it.selectedIndex, notifyListener = false)
         }
     }
 
@@ -1426,6 +1431,110 @@ class LxAppActivity : AppCompatActivity() {
      */
     private fun handleHomeButtonClick() {
         NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_HOME)
+    }
+
+    /**
+     * Apply page orientation configuration
+     */
+    private fun applyPageOrientation(path: String) {
+        val orientation = NativeApi.getPageOrientation(appId, path)
+
+        updateRequestedOrientation(orientation)
+        updateImmersiveMode(orientation, path)
+    }
+
+    private fun updateRequestedOrientation(orientation: Int) {
+        val targetOrientation = resolveScreenOrientation(orientation)
+        if (requestedOrientation != targetOrientation) {
+            requestedOrientation = targetOrientation
+        }
+    }
+
+    private fun resolveScreenOrientation(orientation: Int): Int {
+        return when (orientation) {
+            NativeApi.ORIENTATION_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            NativeApi.ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            NativeApi.ORIENTATION_AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    private fun updateImmersiveMode(orientation: Int, path: String) {
+        val shouldFullscreen = shouldEnterImmersiveMode(orientation, path)
+        if (shouldFullscreen) {
+            enterImmersiveMode()
+        } else {
+            exitImmersiveMode()
+        }
+    }
+
+    private fun shouldEnterImmersiveMode(orientation: Int, path: String): Boolean {
+        if (orientation != NativeApi.ORIENTATION_LANDSCAPE) {
+            return false
+        }
+
+        val navbarState = NativeApi.getNavigationBarState(appId, path)
+        return navbarState != null && !navbarState.showNavbar
+    }
+
+    /**
+     * Enter immersive fullscreen mode (hide status bar and navigation bar)
+     */
+    private fun enterImmersiveMode() {
+        if (isPageFullscreen) {
+            return
+        }
+        isPageFullscreen = true
+
+        // Allow content to extend into display cutout (notch/punch hole) area
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+
+        @Suppress("DEPRECATION")
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller?.apply {
+            hide(WindowInsetsCompat.Type.statusBars())
+            hide(WindowInsetsCompat.Type.navigationBars())
+            hide(WindowInsetsCompat.Type.displayCutout())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        // Trigger layout update
+        rootContainer.setPadding(0, 0, 0, 0)
+        rootContainer.requestApplyInsets()
+    }
+
+    /**
+     * Exit immersive mode (show status bar and navigation bar)
+     */
+    private fun exitImmersiveMode() {
+        if (!isPageFullscreen) {
+            return
+        }
+        isPageFullscreen = false
+
+        // Restore default cutout mode
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        }
+
+        @Suppress("DEPRECATION")
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller?.apply {
+            show(WindowInsetsCompat.Type.statusBars())
+            show(WindowInsetsCompat.Type.navigationBars())
+        }
+        // Trigger layout update
+        rootContainer.requestApplyInsets()
     }
 
     // Helper to calculate the Y translation based on visible bars

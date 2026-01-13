@@ -125,6 +125,19 @@ object NativeApi {
     external fun getNavigationBarState(appId: String, path: String): NavigationBarState?
 
     /**
+     * Get page orientation for a specific page
+     * @param appId The ID of the app
+     * @param path The page path
+     * @return Orientation int: 0=auto, 1=portrait, 2=landscape
+     */
+    @JvmStatic
+    external fun getPageOrientation(appId: String, path: String): Int
+
+    const val ORIENTATION_AUTO = 0
+    const val ORIENTATION_PORTRAIT = 1
+    const val ORIENTATION_LANDSCAPE = 2
+
+    /**
      * Check whether pull-to-refresh is enabled for a specific page/path
      * @param appId The ID of the app
      * @param path The page path
