@@ -6,6 +6,6 @@
     android:layout_height="match_parent"
     android:background="@android:color/black"
     app:use_controller="false"
-    app:show_buffering="when_playing"
+    app:show_buffering="never"
     app:resize_mode="fit"
     app:surface_type="texture_view" />
