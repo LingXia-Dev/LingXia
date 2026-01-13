@@ -4,10 +4,14 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Data class representing LxApp information from the native layer
@@ -354,6 +358,32 @@ class LxApp private constructor(private val context: Context) {
                 Log.w(TAG, "No matching activity for appId: $appId in updateNavBarUI")
                 false
             }
+        }
+
+        @JvmStatic
+        fun getCapsuleRect(): String {
+            val activity = currentActivity ?: return "{}"
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                return activity.getCapsuleRectJSON()
+            }
+
+            val result = AtomicReference("{}")
+            val latch = CountDownLatch(1)
+            activity.runOnUiThread {
+                try {
+                    result.set(activity.getCapsuleRectJSON())
+                } finally {
+                    latch.countDown()
+                }
+            }
+
+            try {
+                latch.await(300, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+
+            return result.get()
         }
     }
 

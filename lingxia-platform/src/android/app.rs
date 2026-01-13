@@ -592,4 +592,38 @@ impl AppRuntime for Platform {
             ))),
         }
     }
+
+    fn get_capsule_rect(&self) -> Result<String, PlatformError> {
+        match || -> Result<String, Box<dyn std::error::Error>> {
+            let mut env = get_env()?;
+
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
+
+            let result =
+                env.call_static_method(lxapp_class, "getCapsuleRect", "()Ljava/lang/String;", &[])?;
+            let json_obj = result.l()?;
+            let json_str: String = if json_obj.is_null() {
+                String::new()
+            } else {
+                env.get_string(&JString::from(json_obj))?.into()
+            };
+            Ok(json_str)
+        }() {
+            Ok(json) => {
+                if json.is_empty() || json == "{}" {
+                    Err(PlatformError::Platform(
+                        "Failed to get capsule button rect".to_string(),
+                    ))
+                } else {
+                    Ok(json)
+                }
+            }
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to get capsule rect: {}",
+                e
+            ))),
+        }
+    }
 }

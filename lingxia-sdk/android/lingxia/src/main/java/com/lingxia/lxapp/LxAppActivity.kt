@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
+import org.json.JSONObject
 
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -848,6 +849,50 @@ class LxAppActivity : AppCompatActivity() {
             rootContainer.removeView(rootContainer.findViewWithTag("capsule_button"))
             rootContainer.addView(capsule)
         }
+    }
+
+    fun getCapsuleRectJSON(): String {
+        if (isDisplayingHomeLxApp) {
+            return "{}"
+        }
+
+        val capsuleView = rootContainer.findViewWithTag<View>("capsule_button") ?: return "{}"
+        if (!capsuleView.isShown) {
+            return "{}"
+        }
+
+        val density = resources.displayMetrics.density.toDouble()
+        val widthPx = capsuleView.width
+        val heightPx = capsuleView.height
+
+        if (widthPx <= 0 || heightPx <= 0) {
+            return "{}"
+        }
+
+        val locationInWindow = IntArray(2)
+        capsuleView.getLocationInWindow(locationInWindow)
+
+        val baseView = if (this::webViewContainer.isInitialized) webViewContainer else rootContainer
+        val containerInWindow = IntArray(2)
+        baseView.getLocationInWindow(containerInWindow)
+
+        val left = (locationInWindow[0] - containerInWindow[0]).toDouble() / density
+        val topMarginPx = (capsuleView.layoutParams as? FrameLayout.LayoutParams)?.topMargin ?: 0
+        val extraTopPx = (topMarginPx - getStatusBarHeight(this)).coerceAtLeast(0)
+        val top = (locationInWindow[1] - containerInWindow[1] - extraTopPx).toDouble() / density
+        val width = widthPx.toDouble() / density
+        val height = heightPx.toDouble() / density
+        val right = left + width
+        val bottom = top + height
+
+        return JSONObject().apply {
+            put("width", width)
+            put("height", height)
+            put("top", top)
+            put("right", right)
+            put("bottom", bottom)
+            put("left", left)
+        }.toString()
     }
 
     override fun onResume() {
