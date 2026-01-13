@@ -35,6 +35,12 @@ fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
 }
 
+fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
+    lxapp
+        .ensure_page_exists(url)
+        .map_err(|e| RongJSError::Error(format!("Invalid page url: {}", e)))
+}
+
 async fn navigate_with_url(
     lxapp: Arc<LxApp>,
     target_url: String,
@@ -80,6 +86,8 @@ fn navigate_back_impl(lxapp: &LxApp, delta: u32) -> Result<(), LxAppError> {
 async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
+    ensure_page_exists_js(&lxapp, &options.url)?;
+
     // Ensure PageSvc for target page exists in this JSContext
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
@@ -108,6 +116,8 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
 async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
+    ensure_page_exists_js(&lxapp, &options.url)?;
+
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))
@@ -116,6 +126,8 @@ async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 /// Switch to a tab page
 async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+
+    ensure_page_exists_js(&lxapp, &options.url)?;
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
@@ -130,6 +142,8 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
 /// Relaunch to a new page (clear page stack)
 async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+
+    ensure_page_exists_js(&lxapp, &options.url)?;
 
     lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
@@ -147,6 +161,7 @@ fast_api!(NavigateToFastApi, NavigateTo, (), |lxapp: Arc<LxApp>,
     (),
     LxAppError,
 > {
+    lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
@@ -168,6 +183,7 @@ fast_api!(RedirectToFastApi, RedirectTo, (), |lxapp: Arc<LxApp>,
     (),
     LxAppError,
 > {
+    lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
@@ -189,6 +205,7 @@ fast_api!(SwitchTabFastApi, SwitchTab, (), |lxapp: Arc<LxApp>,
     (),
     LxAppError,
 > {
+    lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
@@ -210,6 +227,7 @@ fast_api!(ReLaunchFastApi, ReLaunch, (), |lxapp: Arc<LxApp>,
     (),
     LxAppError,
 > {
+    lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 

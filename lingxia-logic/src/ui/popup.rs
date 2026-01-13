@@ -109,6 +109,10 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
         ));
     }
 
+    lxapp
+        .ensure_page_exists(&options.url)
+        .map_err(|e| RongJSError::Error(format!("Invalid page url: {}", e)))?;
+
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await

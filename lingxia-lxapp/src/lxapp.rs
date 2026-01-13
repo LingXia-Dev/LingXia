@@ -1027,6 +1027,80 @@ impl LxApp {
         self.config.get_lxapp_info()
     }
 
+    /// Validate that a page URL resolves to a configured page before navigation.
+    pub fn ensure_page_exists(&self, url: &str) -> Result<(), LxAppError> {
+        let resolved = crate::route::resolve_route(self, url)?;
+        self.ensure_resolved_route_exists(&resolved)
+    }
+
+    fn ensure_resolved_route_exists(
+        &self,
+        resolved: &crate::route::ResolvedRoute,
+    ) -> Result<(), LxAppError> {
+        match &resolved.target {
+            crate::route::RouteTarget::Normal { path } => {
+                if self.is_configured_page(path) {
+                    Ok(())
+                } else {
+                    Err(LxAppError::ResourceNotFound(path.clone()))
+                }
+            }
+            crate::route::RouteTarget::Plugin { name, path } => {
+                if self.is_plugin_page_configured(name, path, &resolved.original) {
+                    Ok(())
+                } else {
+                    Err(LxAppError::ResourceNotFound(format!(
+                        "plugin/{}/{}",
+                        name, path
+                    )))
+                }
+            }
+        }
+    }
+
+    fn is_configured_page(&self, path: &str) -> bool {
+        let normalized = normalize_page_path(path);
+        if normalized.is_empty() {
+            return false;
+        }
+
+        self.config
+            .pages
+            .iter()
+            .any(|page| normalize_page_path(page) == normalized)
+    }
+
+    fn is_plugin_page_configured(
+        &self,
+        plugin_name: &str,
+        resolved_page_path: &str,
+        original_url: &str,
+    ) -> bool {
+        let plugin_cfg = match self.config.plugins.get(plugin_name) {
+            Some(cfg) => cfg,
+            None => return false,
+        };
+
+        let requested_path = extract_plugin_page_path(original_url)
+            .unwrap_or_else(|| resolved_page_path.to_string());
+
+        if !plugin_cfg.pages.is_empty() {
+            return plugin_page_map_contains(
+                &plugin_cfg.pages,
+                &requested_path,
+                resolved_page_path,
+            );
+        }
+
+        if let Some(pages) =
+            crate::plugin::load_plugin_manifest_pages(&self.runtime, plugin_name, plugin_cfg)
+        {
+            return plugin_page_map_contains(&pages, &requested_path, resolved_page_path);
+        }
+
+        true
+    }
+
     /// Get existing page or create a new one.
     /// PageSvc creation + HTML load are handled inside Page::new once WebView is ready.
     pub fn get_or_create_page(&self, url: &str) -> Page {
@@ -1527,4 +1601,29 @@ pub fn is_lxapp_open(lxappid: &str) -> bool {
         return app.is_opened();
     }
     false
+}
+
+fn normalize_page_path(path: &str) -> &str {
+    path.trim_start_matches('/')
+}
+
+fn extract_plugin_page_path(url: &str) -> Option<String> {
+    let (path, _) = crate::startup::split_path_query(url);
+    crate::plugin::parse_plugin_url(&path)
+        .or_else(|| crate::plugin::parse_plugin_page_path(&path))
+        .map(|(_, page_path)| page_path)
+}
+
+fn plugin_page_map_contains(
+    pages: &std::collections::BTreeMap<String, String>,
+    requested_path: &str,
+    resolved_path: &str,
+) -> bool {
+    let requested = normalize_page_path(requested_path);
+    let resolved = normalize_page_path(resolved_path);
+    pages.iter().any(|(key, value)| {
+        let key = normalize_page_path(key);
+        let value = normalize_page_path(value);
+        key == requested || value == requested || key == resolved || value == resolved
+    })
 }
