@@ -523,6 +523,7 @@ impl Page {
             .map_or(false, |tabbar| tabbar.is_tabbar_page(&path));
         let is_tab_switch = nav_type == NavigationType::SwitchTab
             || (nav_type == NavigationType::Launch && is_tabbar_page);
+        let is_initial_route = path == lxapp.config.get_initial_route();
 
         // 2. Handle page stack modifications
         match nav_type {
@@ -570,17 +571,17 @@ impl Page {
                 });
             }
         }
-        if nav_type == NavigationType::Launch || is_tab_switch {
-            // Reset back button visibility for Launch/SwitchTab
-            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(false));
-        }
-
         lxapp.push_to_page_stack(&path)?;
 
         // Set navbar state AFTER page creation to avoid being overwritten
-        if nav_type == NavigationType::Forward {
-            target_page.get_navbar_state_mut(|navbar| navbar.set_back_button_visibility(true));
-        }
+        let stack_size = lxapp.get_page_stack_size();
+        let show_back_button = stack_size > 1;
+        let show_home_button = stack_size <= 1 && !is_tabbar_page && !is_initial_route;
+        target_page.get_navbar_state_mut(|navbar| {
+            let allow_buttons = navbar.show_navbar;
+            navbar.set_back_button_visibility(show_back_button && allow_buttons);
+            navbar.set_home_button_visibility(show_home_button && allow_buttons);
+        });
 
         // 5. Dispatch lifecycle events for current and target pages
         match nav_type {
@@ -646,8 +647,12 @@ impl Page {
             // Update NavBar back button visibility based on the new stack size
             let new_stack_size = lxapp.get_page_stack_size();
             if let Some(dest_page) = lxapp.get_page(&path) {
+                let is_initial_route = path == lxapp.config.get_initial_route();
+                let show_home_button = new_stack_size <= 1 && !is_tabbar_page && !is_initial_route;
                 dest_page.get_navbar_state_mut(|navbar| {
-                    navbar.set_back_button_visibility(new_stack_size > 1);
+                    let allow_buttons = navbar.show_navbar;
+                    navbar.set_back_button_visibility(new_stack_size > 1 && allow_buttons);
+                    navbar.set_home_button_visibility(show_home_button && allow_buttons);
                 });
             }
 
