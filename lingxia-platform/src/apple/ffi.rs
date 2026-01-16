@@ -202,6 +202,11 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxApp.stopPullDownRefresh")]
         fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
+
+        // Get capsule button bounding rect
+        #[swift_bridge(swift_name = "LxAppCapsuleButtons.getCapsuleRect")]
+        fn get_capsule_rect(callback_id: u64);
+
     }
 }
 
@@ -216,7 +221,7 @@ pub use bridge::{
 #[allow(unused_imports)]
 pub use bridge::{
     choose_media, compress_image, configure_stream_audio, configure_stream_video,
-    copy_album_media_to_file, create_stream_decoder, dispatch_video_command, get_image_info,
-    push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
+    copy_album_media_to_file, create_stream_decoder, dispatch_video_command, get_capsule_rect,
+    get_image_info, push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
     start_pull_down_refresh, stop_pull_down_refresh, stop_stream_decoder,
 };

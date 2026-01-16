@@ -594,10 +594,18 @@ impl AppRuntime for Platform {
         lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
             .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
     }
+
+    fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
+        // Call ArkTS to get actual capsule rect from UI layer
+        let callback_id_str = callback_id.to_string();
+        lingxia_webview::tsfn::call_arkts("getCapsuleRect", &[&callback_id_str])
+            .map_err(|e| PlatformError::Platform(format!("Failed to get capsule rect: {}", e)))
+    }
 }
 
+
 #[allow(non_camel_case_types)]
-mod ffi {
+pub(super) mod ffi {
     use std::os::raw::{c_char, c_int};
 
     #[repr(C)]

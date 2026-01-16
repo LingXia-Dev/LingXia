@@ -14,6 +14,7 @@ import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import { LxAppDocument } from './APIs/LxAppDocument';
+import { LxAppCapsule } from './APIs/LxAppCapsule';
 import {
   createWebViewController,
   destroyWebViewController,
@@ -253,6 +254,12 @@ class NativeBridge {
 
     this.register('getScreenInfo', (callbackId: string): void => {
       LxAppDevice.getScreenInfo(callbackId);
+    });
+
+    this.register('getCapsuleRect', (callbackId: string): void => {
+      LxAppCapsule.getCapsuleRect(callbackId);
+    });
+
     });
 
     this.register('makePhoneCall', (phoneNumber: string): void => {

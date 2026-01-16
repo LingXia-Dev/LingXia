@@ -75,7 +75,7 @@ public struct LxAppTheme {
 
         private static var platformTrailingMargin: CGFloat {
             #if os(iOS)
-            return 16
+            return 12
             #else
             return 7
             #endif
@@ -88,18 +88,29 @@ public struct LxAppTheme {
             return 32
             #endif
         }
+
+        public static let capsuleTopMarginFromSafeArea: CGFloat = 8
+
+        public static func calculateCapsuleTop(statusBarHeight: CGFloat) -> CGFloat {
+            return statusBarHeight + capsuleTopMarginFromSafeArea
+        }
     }
 
-    /// Get the current status bar height dynamically
-    /// This should be called once at app startup and cached
     @MainActor
     public static func getStatusBarHeight() -> CGFloat {
         #if os(iOS)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            let height = windowScene.statusBarManager?.statusBarFrame.height ?? 20
-            return height  // Return actual system status bar height
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = windowScene.windows.first {
+            let safeAreaTop = window.safeAreaInsets.top
+            if safeAreaTop > 0 {
+                return safeAreaTop
+            }
         }
-        return 20  // Standard fallback
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            let height = windowScene.statusBarManager?.statusBarFrame.height ?? 44
+            return height
+        }
+        return 44
         #else
         return 0
         #endif

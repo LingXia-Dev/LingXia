@@ -1,11 +1,14 @@
 import SwiftUI
 import Foundation
+import os.log
 
 #if os(macOS)
 import AppKit
 #elseif os(iOS)
 import UIKit
 #endif
+
+private let capsuleLog = OSLog(subsystem: "LingXia", category: "Capsule")
 
 /// Unified SwiftUI Capsule Button management for LxApp - supports both iOS and macOS
 @MainActor
@@ -76,8 +79,7 @@ public class LxAppCapsuleButtons {
         hostingController.didMove(toParent: viewController)
 
         let statusBarHeight = LxAppTheme.getStatusBarHeight()
-        let navbarCenterY = statusBarHeight + (LxAppTheme.Metrics.navigationBarHeight / 2)
-        let topMargin = navbarCenterY - (LxAppTheme.Metrics.capsuleButtonHeight / 2)
+        let topMargin = LxAppTheme.Metrics.calculateCapsuleTop(statusBarHeight: statusBarHeight)
 
         NSLayoutConstraint.activate([
             hostingController.view.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
@@ -85,6 +87,11 @@ public class LxAppCapsuleButtons {
             hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
             hostingController.view.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: topMargin)
         ])
+        
+        viewController.view.layoutIfNeeded()
+        let frame = hostingController.view.frame
+        os_log("Actual capsule frame: x=%{public}.1f, y=%{public}.1f, width=%{public}.1f, height=%{public}.1f", log: capsuleLog, type: .info, frame.origin.x, frame.origin.y, frame.width, frame.height)
+        os_log("statusBarHeight=%{public}.1f, topMargin=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, topMargin)
     }
     #endif
 
@@ -102,6 +109,54 @@ public class LxAppCapsuleButtons {
     #if os(iOS)
     public static func removeCapsuleButton(from viewController: UIViewController) {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
+    }
+
+    public static func getMenuButtonBoundingRect() -> [String: Double] {
+        let statusBarHeight = LxAppTheme.getStatusBarHeight()
+        
+        // Match Web layout centering offset.
+        let top = statusBarHeight
+
+        let screenWidth = UIScreen.main.bounds.width
+
+        let width = LxAppTheme.Metrics.capsuleButtonWidth
+        let height = LxAppTheme.Metrics.capsuleButtonHeight
+        let right = screenWidth - LxAppTheme.Metrics.capsuleTrailingMargin
+        let left = right - width
+        let bottom = top + height
+
+        os_log("getCapsuleRect: statusBarHeight=%{public}.1f, top=%{public}.1f, screenWidth=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, top, screenWidth)
+
+        return [
+            "width": Double(width),
+            "height": Double(height),
+            "top": Double(top),
+            "right": Double(right),
+            "bottom": Double(bottom),
+            "left": Double(left)
+        ]
+    }
+
+    /// Get menu button bounding rect as JSON string (for FFI)
+    public static func getMenuButtonBoundingRectJSON() -> String {
+        let rect = getMenuButtonBoundingRect()
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
+              let jsonString = String(data: jsonData, encoding: .utf8) else {
+            return "{}"
+        }
+        return jsonString
+    }
+
+    /// Get capsule rect with async callback pattern (for cross-platform consistency)
+    nonisolated public static func getCapsuleRect(callback_id: UInt64) {
+        Task { @MainActor in
+            let jsonString = getMenuButtonBoundingRectJSON()
+            if jsonString.isEmpty || jsonString == "{}" {
+                let _ = onCallback(callback_id, false, "2001")
+            } else {
+                let _ = onCallback(callback_id, true, jsonString)
+            }
+        }
     }
     #endif
 
@@ -319,16 +374,9 @@ public struct LxAppCapsuleButtonModifier: ViewModifier {
 
     private var platformTopPadding: CGFloat {
         #if os(iOS)
-        let statusBarHeight: CGFloat
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            statusBarHeight = windowScene.statusBarManager?.statusBarFrame.height ?? 44
-        } else {
-            statusBarHeight = 44
-        }
-
-        // Align with navbar center
-        let navbarCenterY = statusBarHeight + (LxAppTheme.Metrics.navigationBarHeight / 2)
-        return navbarCenterY - (LxAppTheme.Metrics.capsuleButtonHeight / 2)
+        // Use unified getStatusBarHeight for consistency
+        let statusBarHeight = LxAppTheme.getStatusBarHeight()
+        return LxAppTheme.Metrics.calculateCapsuleTop(statusBarHeight: statusBarHeight)
         #else
         return 0
         #endif

@@ -173,7 +173,25 @@ impl AppRuntime for Platform {
         ffi::launch_with_url(&url);
         Ok(())
     }
+
+    fn get_capsule_rect(&self, _callback_id: u64) -> Result<(), PlatformError> {
+        #[cfg(target_os = "ios")]
+        {
+            // Call Swift, which will handle the callback
+            ffi::get_capsule_rect(_callback_id);
+            Ok(())
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            // macOS not supported yet - would need to invoke callback with error
+            // For now just return error to Rust caller
+            Err(PlatformError::Platform(
+                "getCapsuleRect is only supported on iOS".to_string(),
+            ))
+        }
+    }
 }
+
 
 impl Platform {
     /// Recursively collect all files from a directory
