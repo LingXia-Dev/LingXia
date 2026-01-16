@@ -43,7 +43,7 @@ export default function NavigatorPage() {
               <div className="grid grid-cols-2 gap-3">
                 {/* Navigate */}
                 <LxNavigator
-                  url="pages/location/index.tsx"
+                  url="pages/device/index.tsx?type=device"
                   openType="navigate"
                   onSuccess={() => addLog('✓ Navigate to home')}
                 >
@@ -56,7 +56,7 @@ export default function NavigatorPage() {
 
                 {/* Redirect */}
                 <LxNavigator
-                  url="pages/device/index.tsx"
+                  url="pages/device/index.tsx?type=device"
                   openType="redirect"
                   onSuccess={() => addLog('✓ Redirect to home')}
                 >
@@ -82,7 +82,7 @@ export default function NavigatorPage() {
 
                 {/* ReLaunch */}
                 <LxNavigator
-                  url="pages/home/index.tsx"
+                  url="pages/device/index.tsx?type=screen"
                   openType="reLaunch"
                   onSuccess={() => addLog('✓ ReLaunch to home')}
                 >

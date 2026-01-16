@@ -1,5 +1,5 @@
 use lxapp::lx::{self, fast_api};
-use lxapp::{LxApp, LxAppError, NavigationType};
+use lxapp::{LxApp, LxAppError, NavigationType, startup};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, service_executor};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -39,6 +39,28 @@ fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
     lxapp
         .ensure_page_exists(url)
         .map_err(|e| RongJSError::Error(format!("Invalid page url: {}", e)))
+}
+
+fn normalize_tabbar_path(url: &str) -> String {
+    let (path, _) = startup::split_path_query(url);
+    let mut trimmed = path.trim_start_matches('/').to_string();
+    if let Some(dot_pos) = trimmed.rfind('.') {
+        if trimmed.rfind('/').map_or(true, |slash| dot_pos > slash) {
+            trimmed.truncate(dot_pos);
+        }
+    }
+    trimmed
+}
+
+fn is_tabbar_page_url(lxapp: &LxApp, url: &str) -> bool {
+    let Some(tabbar) = lxapp.get_tabbar() else {
+        return false;
+    };
+    let target = normalize_tabbar_path(url);
+    tabbar
+        .list
+        .iter()
+        .any(|item| normalize_tabbar_path(&item.pagePath) == target)
 }
 
 async fn navigate_with_url(
@@ -117,6 +139,11 @@ async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     ensure_page_exists_js(&lxapp, &options.url)?;
+    if is_tabbar_page_url(&lxapp, &options.url) {
+        return Err(RongJSError::Error(
+            "redirectTo cannot navigate to a tabBar page".to_string(),
+        ));
+    }
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
@@ -129,7 +156,7 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
 
     ensure_page_exists_js(&lxapp, &options.url)?;
 
-    let page_svc = lxapp
+    let _page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
         .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
@@ -184,6 +211,11 @@ fast_api!(RedirectToFastApi, RedirectTo, (), |lxapp: Arc<LxApp>,
     LxAppError,
 > {
     lxapp.ensure_page_exists(&options.url)?;
+    if is_tabbar_page_url(&lxapp, &options.url) {
+        return Err(LxAppError::UnsupportedOperation(
+            "redirectTo cannot navigate to a tabBar page".to_string(),
+        ));
+    }
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
