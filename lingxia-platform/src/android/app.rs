@@ -593,37 +593,28 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn get_capsule_rect(&self) -> Result<String, PlatformError> {
-        match || -> Result<String, Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
+    fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
+        let mut env = get_env()
+            .map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))?;
 
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
+        let capsule_class: &JClass = super::get_cached_class(super::CachedClass::LxAppCapsule)
+            .map_err(|e| {
+                PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
+            })?
+            .as_obj()
+            .into();
 
-            let result =
-                env.call_static_method(lxapp_class, "getCapsuleRect", "()Ljava/lang/String;", &[])?;
-            let json_obj = result.l()?;
-            let json_str: String = if json_obj.is_null() {
-                String::new()
-            } else {
-                env.get_string(&JString::from(json_obj))?.into()
-            };
-            Ok(json_str)
-        }() {
-            Ok(json) => {
-                if json.is_empty() || json == "{}" {
-                    Err(PlatformError::Platform(
-                        "Failed to get capsule button rect".to_string(),
-                    ))
-                } else {
-                    Ok(json)
-                }
-            }
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to get capsule rect: {}",
-                e
-            ))),
-        }
+        env.call_static_method(
+            capsule_class,
+            "getCapsuleRect",
+            "(J)V",
+            &[JValue::Long(callback_id as i64)],
+        )
+        .map_err(|e| {
+            log::error!("[Android] getCapsuleRect JNI call failed: {}", e);
+            PlatformError::Platform(format!("Failed to get capsule rect: {}", e))
+        })?;
+
+        Ok(())
     }
 }

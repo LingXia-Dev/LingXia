@@ -1,5 +1,6 @@
 package com.lingxia.lxapp
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -153,6 +154,15 @@ class LxAppActivity : AppCompatActivity() {
 
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
+            val activity = context as? Activity
+            val insetTop = activity?.window?.decorView?.rootWindowInsets
+                ?.let { WindowInsetsCompat.toWindowInsetsCompat(it) }
+                ?.getInsets(WindowInsetsCompat.Type.statusBars())
+                ?.top ?: 0
+            if (insetTop > 0) {
+                return insetTop
+            }
+
             var result = 0
             val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
             if (resourceId > 0) {
@@ -761,50 +771,51 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun addCapsuleButton() {
-        // Don't show capsule button for the main/home app
         if (isDisplayingHomeLxApp) {
             return
         }
 
+        val density = resources.displayMetrics.density
         val statusBarHeight = getStatusBarHeight(this)
 
-        val density = resources.displayMetrics.density
+        val capsuleHeightPx = (LxAppTheme.Metrics.CAPSULE_HEIGHT_DP * density).toInt()
+        val capsuleTopMarginPx = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusBarHeight, density)
 
-        // Create capsule container
         val capsule = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            tag = "capsule_button" // Add tag to find it later
-            elevation = 1000f // Ensure it stays on top of other views
+            tag = "capsule_button"
+            elevation = 1000f
 
             LxNavBarUtils.applyCapsuleBackground(this)
 
-            // Capsule layout parameters - Position fixed relative to status bar
             val capsuleLayoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                (32 * density).toInt()
+                capsuleHeightPx
             ).apply {
                 gravity = Gravity.TOP or Gravity.END
-                // Position with fixed offset relative to status bar (moved up 4dp to avoid overlap with navbar)
-                topMargin = statusBarHeight + (4 * density).toInt()
-                rightMargin = (12 * density).toInt()
+                topMargin = capsuleTopMarginPx
+                rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
             }
             layoutParams = capsuleLayoutParams
 
             setPadding(
-                (2 * density).toInt(),
+                (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt(),
                 0,
-                (2 * density).toInt(),
+                (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt(),
                 0
             )
         }
 
-        // Create more button with custom dots drawable
+        val buttonWidthPx = (LxAppTheme.Metrics.CAPSULE_BUTTON_WIDTH_DP * density).toInt()
+        val dividerWidthPx = (LxAppTheme.Metrics.CAPSULE_DIVIDER_WIDTH_DP * density).toInt().coerceAtLeast(1)
+        val dividerHeightPx = (LxAppTheme.Metrics.CAPSULE_DIVIDER_HEIGHT_DP * density).toInt()
+
         val btnMore = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             LxNavBarUtils.configureCapsuleMenuButton(this)
             layoutParams = LinearLayout.LayoutParams(
-                (38 * density).toInt(),
+                buttonWidthPx,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
@@ -812,25 +823,23 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
-        // Create divider
         val divider = View(this).apply {
             background = LxNavBarUtils.createCapsuleDivider()
             layoutParams = LinearLayout.LayoutParams(
-                (0.5f * density).toInt().coerceAtLeast(1),
-                (20 * density).toInt()
+                dividerWidthPx,
+                dividerHeightPx
             ).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                marginStart = (2 * density).toInt()
-                marginEnd = (2 * density).toInt()
+                marginStart = (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt()
+                marginEnd = (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt()
             }
         }
 
-        // Create close button with custom circle drawable
         val btnClose = ImageButton(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             LxNavBarUtils.configureCapsuleCloseButton(this)
             layoutParams = LinearLayout.LayoutParams(
-                (38 * density).toInt(),
+                buttonWidthPx,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
             setOnClickListener {
@@ -838,14 +847,11 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
-        // Add views to capsule
         capsule.addView(btnMore)
         capsule.addView(divider)
         capsule.addView(btnClose)
 
-        // Add capsule to root container at the end to ensure it's on top
         rootContainer.post {
-            // Ensure we don't add multiple capsules if this runs multiple times
             rootContainer.removeView(rootContainer.findViewWithTag("capsule_button"))
             rootContainer.addView(capsule)
         }
@@ -861,29 +867,34 @@ class LxAppActivity : AppCompatActivity() {
             return "{}"
         }
 
-        val density = resources.displayMetrics.density.toDouble()
         val widthPx = capsuleView.width
         val heightPx = capsuleView.height
-
         if (widthPx <= 0 || heightPx <= 0) {
             return "{}"
         }
 
-        val locationInWindow = IntArray(2)
-        capsuleView.getLocationInWindow(locationInWindow)
+        val density = resources.displayMetrics.density
+        val statusBarHeight = getStatusBarHeight(this)
 
-        val baseView = if (this::webViewContainer.isInitialized) webViewContainer else rootContainer
-        val containerInWindow = IntArray(2)
-        baseView.getLocationInWindow(containerInWindow)
+        val capsuleTopDp = LxAppTheme.Metrics.calculateCapsuleTopDp(statusBarHeight, density)
+        
+        // Web layout uses items-center with height+16, causing an 8px centering offset
+        // Compensate by returning capsule_position - 8 (same strategy as iOS)
+        val top = (capsuleTopDp - 8).toDouble()
+        
+        val width = widthPx / density
+        val height = LxAppTheme.Metrics.CAPSULE_HEIGHT_DP.toDouble()
 
-        val left = (locationInWindow[0] - containerInWindow[0]).toDouble() / density
-        val topMarginPx = (capsuleView.layoutParams as? FrameLayout.LayoutParams)?.topMargin ?: 0
-        val extraTopPx = (topMarginPx - getStatusBarHeight(this)).coerceAtLeast(0)
-        val top = (locationInWindow[1] - containerInWindow[1] - extraTopPx).toDouble() / density
-        val width = widthPx.toDouble() / density
-        val height = heightPx.toDouble() / density
-        val right = left + width
+        val screenWidth = resources.displayMetrics.widthPixels / density
+        val right = screenWidth - LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP
+        val left = right - width
         val bottom = top + height
+
+        Log.i(
+            TAG,
+            "Capsule rect: top=${String.format("%.1f", top)}dp (capsule=${String.format("%.1f", capsuleTopDp)}dp, offset=-8) " +
+                "width=${String.format("%.1f", width)}dp height=${String.format("%.1f", height)}dp"
+        )
 
         return JSONObject().apply {
             put("width", width)

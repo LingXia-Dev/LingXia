@@ -82,6 +82,8 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         init_cached_java_class(&mut env, CachedClass::ComponentRouter);
         init_cached_java_class(&mut env, CachedClass::LxAppPullToRefresh);
         init_cached_java_class(&mut env, CachedClass::UpdateManager);
+        init_cached_java_class(&mut env, CachedClass::LxAppCapsule);
+        init_cached_java_class(&mut env, CachedClass::LxAppCapsule);
     }
 
     // Initialize JNI environment

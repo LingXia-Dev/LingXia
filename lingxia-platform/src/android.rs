@@ -33,10 +33,11 @@ pub enum CachedClass {
     ComponentRouter = 11,
     LxAppPullToRefresh = 12,
     UpdateManager = 13,
+    LxAppCapsule = 14,
 }
 
 impl CachedClass {
-    const COUNT: usize = 14;
+    const COUNT: usize = 15;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -54,6 +55,7 @@ impl CachedClass {
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
             CachedClass::UpdateManager => "com/lingxia/lxapp/UpdateManager",
+            CachedClass::LxAppCapsule => "com/lingxia/lxapp/APIs/LxAppCapsule",
         }
     }
 
@@ -115,12 +117,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/UpdateManager"
             ),
+            CachedClass::LxAppCapsule => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppCapsule"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
