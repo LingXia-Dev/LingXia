@@ -1,6 +1,7 @@
+use lingxia_messaging::get_callback;
 use lingxia_platform::AppRuntime;
 use lxapp::{LxApp, lx};
-use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;
 
 /// Get capsule button bounding client rect
@@ -15,16 +16,34 @@ struct JSCapsuleRect {
     left: Option<f64>,
 }
 
-fn get_capsule_rect(ctx: JSContext) -> JSResult<JSCapsuleRect> {
+/// Get capsule button bounding client rect (async)
+/// Returns Promise<{width, height, top, right, bottom, left}>
+async fn get_capsule_rect(ctx: JSContext) -> JSResult<JSCapsuleRect> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let json_str = lxapp
-        .runtime
-        .get_capsule_rect()
-        .unwrap_or_else(|_| "{}".to_string());
+    let (callback_id, receiver) = get_callback();
 
-    let rect: JSCapsuleRect = serde_json::from_str(&json_str).unwrap_or_default();
-    Ok(rect)
+    match lxapp.runtime.get_capsule_rect(callback_id) {
+        Ok(()) => match receiver.await {
+            Ok(result) => match result.into_result() {
+                Ok(json_str) => {
+                    let rect: JSCapsuleRect = serde_json::from_str(&json_str).unwrap_or_default();
+                    Ok(rect)
+                }
+                Err(code) => Err(RongJSError::Error(format!(
+                    "Failed to get capsule rect: error code {}",
+                    code
+                ))),
+            },
+            Err(_) => Err(RongJSError::Error(
+                "getCapsuleRect callback timeout or cancelled".to_string(),
+            )),
+        },
+        Err(e) => Err(RongJSError::Error(format!(
+            "Failed to get capsule rect: {}",
+            e
+        ))),
+    }
 }
 
 /// Initialize capsule button functions
