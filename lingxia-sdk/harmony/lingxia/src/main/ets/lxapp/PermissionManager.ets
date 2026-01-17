@@ -51,14 +51,63 @@ export class PermissionManager {
   }
 
   public static async ensureLocationAccess(): Promise<boolean> {
-    const granted = await PermissionManager.ensurePermissions([
+    const permissions: Permissions[] = [
       'ohos.permission.LOCATION' as Permissions,
       'ohos.permission.APPROXIMATELY_LOCATION' as Permissions
-    ]);
-    if (!granted) {
+    ];
+    const ctx = PermissionManager.context;
+    if (!ctx) {
+      hilog.warn(DOMAIN, TAG, 'ensureLocationAccess called before context is ready');
+      return false;
+    }
+
+    if (await PermissionManager.hasAnyPermission(ctx, permissions)) {
+      return true;
+    }
+
+    const grantedAll = await PermissionManager.ensurePermissions(permissions);
+    if (grantedAll) {
+      return true;
+    }
+
+    const grantedAny = await PermissionManager.hasAnyPermission(ctx, permissions);
+    if (!grantedAny) {
       hilog.warn(DOMAIN, TAG, 'Location permission not granted');
     }
-    return granted;
+    return grantedAny;
+  }
+
+  public static async ensureWifiAccess(): Promise<boolean> {
+    const ctx = PermissionManager.context;
+    if (!ctx) {
+      hilog.warn(DOMAIN, TAG, 'ensureWifiAccess called before context is ready');
+      return false;
+    }
+
+    // Request both GET and SET WiFi permissions
+    const wifiPermissionsGranted = await PermissionManager.ensurePermissions([
+      'ohos.permission.GET_WIFI_INFO' as Permissions,
+      'ohos.permission.SET_WIFI_INFO' as Permissions
+    ]);
+    if (!wifiPermissionsGranted) {
+      hilog.warn(DOMAIN, TAG, 'WiFi permissions not granted');
+      return false;
+    }
+
+    const locationGranted = await PermissionManager.ensureLocationAccess();
+    if (!locationGranted) {
+      hilog.warn(DOMAIN, TAG, 'WiFi location permission not granted');
+      return false;
+    }
+    return true;
+  }
+
+  private static async hasAnyPermission(
+    context: common.UIAbilityContext,
+    permissions: Permissions[]
+  ): Promise<boolean> {
+    const missing = await PermissionManager.collectMissingPermissions(context, permissions);
+    return missing.length < permissions.length;
   }
 
   public static async ensurePermissions(permissions: Permissions[]): Promise<boolean> {

@@ -65,16 +65,18 @@ impl crate::traits::Permissions for Platform {
         permission: PermissionKind,
         callback_id: u64,
     ) -> Result<(), PlatformError> {
-        match permission {
-            PermissionKind::Location => {
-                let id = callback_id.to_string();
-                tsfn::call_arkts("requestLocationPermission", &[id.as_str()])
-                    .map_err(|e| PlatformError::Platform(e.to_string()))
+        let permission_type = match permission {
+            PermissionKind::Location => "location",
+            _ => {
+                return Err(PlatformError::Platform(
+                    "Permission request not implemented for this kind on Harmony".to_string(),
+                ));
             }
-            _ => Err(PlatformError::Platform(
-                "Permission request not implemented for this kind on Harmony".to_string(),
-            )),
-        }
+        };
+
+        let id = callback_id.to_string();
+        tsfn::call_arkts("requestPermission", &[permission_type, &id])
+            .map_err(|e| PlatformError::Platform(e.to_string()))
     }
 }
 
@@ -596,13 +598,11 @@ impl AppRuntime for Platform {
     }
 
     fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
-        // Call ArkTS to get actual capsule rect from UI layer
         let callback_id_str = callback_id.to_string();
         lingxia_webview::tsfn::call_arkts("getCapsuleRect", &[&callback_id_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to get capsule rect: {}", e)))
     }
 }
-
 
 #[allow(non_camel_case_types)]
 pub(super) mod ffi {

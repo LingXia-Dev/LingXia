@@ -815,7 +815,7 @@ impl NativeVideoPlayer {
             );
             // Free the leaked Box to prevent memory leak
             unsafe {
-                Box::from_raw(callback_data_ptr as *mut InfoCallbackData);
+                let _ = Box::from_raw(callback_data_ptr as *mut InfoCallbackData);
             }
             return Ok(Self {
                 player,

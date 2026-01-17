@@ -14,6 +14,7 @@ import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import { LxAppDocument } from './APIs/LxAppDocument';
+import { LxAppWifi } from './APIs/LxAppWifi';
 import { LxAppCapsule } from './APIs/LxAppCapsule';
 import {
   createWebViewController,
@@ -260,6 +261,33 @@ class NativeBridge {
       LxAppCapsule.getCapsuleRect(callbackId);
     });
 
+    // WiFi APIs
+    this.register('startWifi', (callbackId: string): void => {
+      LxAppWifi.startWifi(callbackId);
+    });
+
+    this.register('stopWifi', (callbackId: string): void => {
+      LxAppWifi.stopWifi(callbackId);
+    });
+
+    this.register('connectWifi', (callbackId: string, ssid: string, password: string): void => {
+      LxAppWifi.connectWifi(callbackId, ssid, password);
+    });
+
+    this.register('getWifiList', (callbackId: string): void => {
+      LxAppWifi.getWifiList(callbackId);
+    });
+
+    this.register('getConnectedWifi', (callbackId: string): void => {
+      LxAppWifi.getConnectedWifi(callbackId);
+    });
+
+    this.register('addWifiStateListener', (callbackId: string): void => {
+      LxAppWifi.addWifiStateListener(callbackId);
+    });
+
+    this.register('removeWifiStateListener', (callbackId: string): void => {
+      LxAppWifi.removeWifiStateListener(callbackId);
     });
 
     this.register('makePhoneCall', (phoneNumber: string): void => {
