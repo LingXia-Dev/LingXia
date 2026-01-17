@@ -1437,6 +1437,16 @@ pub fn init(runtime: Platform) -> Option<String> {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
             let app_version = config.semantic_version.clone();
+            let stored_app_version = match metadata::app_version_get() {
+                Ok(version) => version,
+                Err(e) => {
+                    warn!("Failed to read host app version metadata: {}", e);
+                    None
+                }
+            };
+            let app_version_changed = stored_app_version
+                .as_deref()
+                .map_or(true, |version| version != app_version);
 
             // Check if installation is needed before creating LxApp
             // This ensures lxapp.json is only loaded once
@@ -1447,15 +1457,22 @@ pub fn init(runtime: Platform) -> Option<String> {
                     None
                 }
             };
-            let needs_install = match installed_record {
-                None => true,
-                Some(record) => {
-                    let install_path = Path::new(&record.install_path);
-                    record.install_path.is_empty() || !install_path.exists()
+            let mut should_install_from_assets = app_version_changed;
+            if !should_install_from_assets {
+                match installed_record.as_ref() {
+                    None => {
+                        should_install_from_assets = true;
+                    }
+                    Some(record) => {
+                        let install_path = Path::new(&record.install_path);
+                        if record.install_path.is_empty() || !install_path.exists() {
+                            should_install_from_assets = true;
+                        }
+                    }
                 }
-            };
+            }
 
-            if needs_install {
+            if should_install_from_assets {
                 if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
@@ -1464,6 +1481,9 @@ pub fn init(runtime: Platform) -> Option<String> {
                     error!("Failed to install home LxApp: {}", e);
                     return None;
                 }
+            }
+            if let Err(e) = metadata::app_version_set(&app_version) {
+                warn!("Failed to persist host app version: {}", e);
             }
 
             let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
@@ -1479,7 +1499,7 @@ pub fn init(runtime: Platform) -> Option<String> {
             }
 
             // Create the home LxApp instance (loads lxapp.json once)
-            let mut home_lxapp = LxApp::new_as_home(
+            let home_lxapp = LxApp::new_as_home(
                 home_lxapp_appid.clone(),
                 runtime_arc.clone(),
                 executor.clone(),

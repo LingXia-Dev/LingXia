@@ -10,6 +10,8 @@ use crate::LxAppError;
 
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
+const APP_META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("app_meta");
+const APP_VERSION_KEY: &str = "app_version";
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -124,6 +126,9 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         let _downloaded = write_txn
             .open_table(DOWNLOADED_TABLE)
             .map_err(|e| metadata_error("open downloaded table", e))?;
+        let _app_meta = write_txn
+            .open_table(APP_META_TABLE)
+            .map_err(|e| metadata_error("open app meta table", e))?;
     }
     write_txn
         .commit()
@@ -214,6 +219,45 @@ pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
 
 pub(crate) fn exists(lxappid: &str, release_type: ReleaseType) -> Result<bool, LxAppError> {
     Ok(get(lxappid, release_type)?.is_some())
+}
+
+pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(APP_META_TABLE)
+        .map_err(|e| metadata_error("open app meta table", e))?;
+    if let Some(value) = table
+        .get(APP_VERSION_KEY)
+        .map_err(|e| metadata_error("read app version", e))?
+    {
+        let version = String::from_utf8(value.value().to_vec()).map_err(|e| {
+            LxAppError::Runtime(format!("metadata app version decode failed: {}", e))
+        })?;
+        Ok(Some(version))
+    } else {
+        Ok(None)
+    }
+}
+
+pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(APP_META_TABLE)
+            .map_err(|e| metadata_error("open app meta table", e))?;
+        table
+            .insert(APP_VERSION_KEY, version.as_bytes())
+            .map_err(|e| metadata_error("write app version", e))?;
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit app meta write", e))?;
+    Ok(())
 }
 
 fn key_for(lxappid: &str, release_type: ReleaseType) -> String {
