@@ -203,10 +203,33 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.stopPullDownRefresh")]
         fn stop_pull_down_refresh(appid: &str, path: &str) -> bool;
 
-        // Get capsule button bounding rect
         #[swift_bridge(swift_name = "LxAppCapsuleButtons.getCapsuleRect")]
         fn get_capsule_rect(callback_id: u64);
 
+        // WiFi APIs
+        #[swift_bridge(swift_name = "LxAppWifi.startWifi")]
+        fn start_wifi(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppWifi.stopWifi")]
+        fn stop_wifi(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppWifi.connectWifi")]
+        fn connect_wifi(callback_id: u64, ssid: &str, password: Option<&str>);
+
+        #[swift_bridge(swift_name = "LxAppWifi.getWifiList")]
+        fn get_wifi_list(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppWifi.getConnectedWifi")]
+        fn get_connected_wifi(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppWifi.isWifiEnabled")]
+        fn is_wifi_enabled() -> bool;
+
+        #[swift_bridge(swift_name = "LxAppWifi.addWifiStateListener")]
+        fn add_wifi_state_listener(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppWifi.removeWifiStateListener")]
+        fn remove_wifi_state_listener(callback_id: u64);
     }
 }
 
@@ -224,4 +247,11 @@ pub use bridge::{
     copy_album_media_to_file, create_stream_decoder, dispatch_video_command, get_capsule_rect,
     get_image_info, push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
     start_pull_down_refresh, stop_pull_down_refresh, stop_stream_decoder,
+};
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[allow(unused_imports)]
+pub use bridge::{
+    add_wifi_state_listener, connect_wifi, get_connected_wifi, get_wifi_list, is_wifi_enabled,
+    remove_wifi_state_listener, start_wifi, stop_wifi,
 };

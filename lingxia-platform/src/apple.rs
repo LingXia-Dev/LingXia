@@ -14,6 +14,7 @@ mod resources;
 mod ui_update;
 mod user_feedback;
 mod video_player;
+mod wifi;
 
 // Re-export Platform
 pub use app::Platform;
