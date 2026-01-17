@@ -1,7 +1,8 @@
 Page({
   data: {
     currentType: '',
-    appBaseInfo: null
+    appBaseInfo: null,
+    systemSetting: null
   },
 
   onLoad: async function (options) {
@@ -9,6 +10,7 @@ Page({
     this.setData({
       currentType: options.type || 'appBaseInfo'
     });
+
   },
 
   onShow: function () {
@@ -30,6 +32,21 @@ Page({
       console.error('Failed to get app base info:', error);
       this.setData({
         appBaseInfo: null
+      });
+    }
+  },
+
+  getSystemSetting: function () {
+    try {
+      const info = lx.getSystemSetting();
+      console.log('System setting:', info);
+      this.setData({
+        systemSetting: info
+      });
+    } catch (error) {
+      console.error('Failed to get system setting:', error);
+      this.setData({
+        systemSetting: null
       });
     }
   }
