@@ -74,4 +74,36 @@ impl UIUpdate for Platform {
             ))),
         }
     }
+
+    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+        match || -> Result<(), Box<dyn std::error::Error>> {
+            let mut env = lingxia_webview::get_env()?;
+
+            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
+                .as_obj()
+                .into();
+
+            let appid_jstring = env.new_string(&appid)?;
+
+            let result = env.call_static_method(
+                lxapp_class,
+                "updateOrientationUI",
+                "(Ljava/lang/String;)Z",
+                &[JValue::Object(&appid_jstring.into())],
+            )?;
+
+            let success = result.z()?;
+            if success {
+                Ok(())
+            } else {
+                Err("updateOrientationUI returned false".into())
+            }
+        }() {
+            Ok(()) => Ok(()),
+            Err(e) => Err(PlatformError::Platform(format!(
+                "Failed to update orientation UI for appId: {}: {}",
+                appid, e
+            ))),
+        }
+    }
 }

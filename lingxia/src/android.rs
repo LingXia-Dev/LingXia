@@ -5,7 +5,7 @@ use jni::{JNIEnv, JavaVM};
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::CachedClass;
 use log::{error, info, warn};
-use lxapp::{LxAppDelegate, PageOrientation, UiEventType, log::LogLevel};
+use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType, log::LogLevel};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
 fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
@@ -285,7 +285,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_isPullDownRefreshEnabled
 }
 
 /// Get page orientation for a specific page
-/// Returns: 0=auto, 1=portrait, 2=landscape
+/// Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getPageOrientation<'a>(
     mut env: JNIEnv<'a>,
@@ -301,10 +301,16 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getPageOrientation<'a>(
     };
 
     let orientation = lxapp_instance.get_page_orientation(&path);
-    match orientation {
-        PageOrientation::Auto => 0,
-        PageOrientation::Portrait => 1,
-        PageOrientation::Landscape => 2,
+    orientation_to_android_value(orientation)
+}
+
+fn orientation_to_android_value(orientation: OrientationConfig) -> jint {
+    match (orientation.mode, orientation.rotation) {
+        (PageOrientation::Auto, _) => 0,
+        (PageOrientation::Portrait, 180) => 3,
+        (PageOrientation::Portrait, _) => 1,
+        (PageOrientation::Landscape, 180) => 4,
+        (PageOrientation::Landscape, _) => 2,
     }
 }
 

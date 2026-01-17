@@ -360,6 +360,28 @@ class LxApp private constructor(private val context: Context) {
             }
         }
 
+        /**
+         * Update orientation for a specific LxApp
+         * This triggers re-application of the current page orientation.
+         *
+         * @param appId The unique identifier of the mini app whose orientation needs updating
+         * @return true if successful, false otherwise
+         */
+        @JvmStatic
+        fun updateOrientationUI(appId: String): Boolean {
+            Log.d(TAG, "updateOrientationUI called for appId: $appId")
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            return if (activity != null) {
+                activity.runOnUiThread {
+                    LxAppActivity.updateOrientationUI(appId)
+                }
+                true
+            } else {
+                Log.w(TAG, "No matching activity for appId: $appId in updateOrientationUI")
+                false
+            }
+        }
+
         @JvmStatic
         fun getCapsuleRect(): String {
             val activity = currentActivity ?: return "{}"

@@ -152,6 +152,24 @@ class LxAppActivity : AppCompatActivity() {
             return false
         }
 
+        /**
+         * Update orientation UI for a specific appId
+         * Re-applies the current page orientation from native config.
+         */
+        @JvmStatic
+        fun updateOrientationUI(appId: String): Boolean {
+            val activity = LxApp.getCurrentActivity()
+            if (activity != null && activity.appId == appId) {
+                activity.runOnUiThread {
+                    val currentPath = activity.currentWebView?.getCurrentPath() ?: ""
+                    activity.applyPageOrientation(currentPath)
+                }
+                return true
+            }
+            Log.w(TAG, "No matching activity found for appId: $appId (current: ${activity?.appId})")
+            return false
+        }
+
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
             val activity = context as? Activity
@@ -1510,6 +1528,8 @@ class LxAppActivity : AppCompatActivity() {
         return when (orientation) {
             NativeApi.ORIENTATION_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             NativeApi.ORIENTATION_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            NativeApi.ORIENTATION_REVERSE_PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            NativeApi.ORIENTATION_REVERSE_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
             NativeApi.ORIENTATION_AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
@@ -1525,7 +1545,10 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun shouldEnterImmersiveMode(orientation: Int, path: String): Boolean {
-        if (orientation != NativeApi.ORIENTATION_LANDSCAPE) {
+        if (
+            orientation != NativeApi.ORIENTATION_LANDSCAPE &&
+            orientation != NativeApi.ORIENTATION_REVERSE_LANDSCAPE
+        ) {
             return false
         }
 

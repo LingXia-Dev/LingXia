@@ -128,7 +128,7 @@ object NativeApi {
      * Get page orientation for a specific page
      * @param appId The ID of the app
      * @param path The page path
-     * @return Orientation int: 0=auto, 1=portrait, 2=landscape
+     * @return Orientation int: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
      */
     @JvmStatic
     external fun getPageOrientation(appId: String, path: String): Int
@@ -136,6 +136,8 @@ object NativeApi {
     const val ORIENTATION_AUTO = 0
     const val ORIENTATION_PORTRAIT = 1
     const val ORIENTATION_LANDSCAPE = 2
+    const val ORIENTATION_REVERSE_PORTRAIT = 3
+    const val ORIENTATION_REVERSE_LANDSCAPE = 4
 
     /**
      * Check whether pull-to-refresh is enabled for a specific page/path
