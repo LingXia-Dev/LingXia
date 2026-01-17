@@ -1,4 +1,4 @@
-use crate::{error, warn};
+use crate::{error, info, warn};
 use rong::{JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, RongJSError};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -77,19 +77,35 @@ pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc)
     Ok(())
 }
 
-/// Unregister an app-scoped handler by event name (removes all handlers for that event).
-pub fn unregister_app_handler(ctx: &JSContext, event_name: &str) {
+/// Unregister an app-scoped handler by event name.
+/// When `callback` is `None`, removes all handlers for that event.
+/// Returns the remaining handler count for the event.
+pub fn unregister_app_handler(
+    ctx: &JSContext,
+    event_name: &str,
+    callback: Option<JSFunc>,
+) -> usize {
     if event_name.trim().is_empty() {
-        return;
+        return 0;
     }
     let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let mut remaining = 0usize;
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if !matches!(scope, Scope::App) {
             return true;
         }
-        entries.retain(|h| h.event_name != event_name);
+        if let Some(ref cb) = callback {
+            entries.retain(|h| h.event_name != event_name || h.callback != *cb);
+        } else {
+            entries.retain(|h| h.event_name != event_name);
+        }
+        remaining += entries
+            .iter()
+            .filter(|h| h.event_name == event_name)
+            .count();
         !entries.is_empty()
     });
+    remaining
 }
 
 /// Register a page-scoped handler (page_path required).
@@ -177,6 +193,13 @@ async fn emit_to_handlers(
     if handlers.is_empty() {
         return Ok(());
     }
+
+    info!(
+        "Dispatching {} scope={:?} handlers={}",
+        event_name,
+        scope,
+        handlers.len()
+    );
 
     let payload_base = if let Some(json) = payload_json {
         JSObject::from_json_string(ctx, json).unwrap_or_else(|_| JSObject::new(ctx))
