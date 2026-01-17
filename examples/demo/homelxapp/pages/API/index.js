@@ -52,6 +52,13 @@ Page({
     });
   },
 
+  // Navigate to WiFi API page
+  navigateToWifiPage: async function () {
+    await lx.navigateTo({
+      url: `pages/wifi/index.tsx`,
+    });
+  },
+
   // Navigate to System API page with specific type parameter
   navigateToSystemPage: async function (params) {
     const { type = "appBaseInfo" } = params || {};
@@ -86,7 +93,6 @@ Page({
     try {
       await lx.navigateToLxApp({
         appId: "testminiapp",
-        path: "pages/home/index.html?a=100&X=bcd",
       });
     } catch (err) {
       console.error("navigateToLxApp failed", err);
