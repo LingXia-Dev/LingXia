@@ -15,6 +15,7 @@ permission:
   limited_access_add_more_photos: "Add more\naccessible photos"
   location_reason: "Location permission required to provide location-based services"
   media_reason: "Media permission required to save images and videos to album"
+  wifi_reason: "WiFi permission required to scan and connect to WiFi networks"
 
 # Common UI
 common:
@@ -137,6 +138,17 @@ err_code:
   6000: "Feature not supported"
   6001: "Device not supported"
   6002: "System version too low"
+  # 12xxx - WiFi errors
+  12000: "Not initialized (call startWifi first)"
+  12001: "System error (internal error)"
+  12002: "Password error (incorrect WiFi password)"
+  12003: "Connection timeout"
+  12004: "Duplicate connection request"
+  12005: "Not supported on this platform (e.g., iOS WiFi scanning)"
+  12006: "Permission denied"
+  12007: "User did not respond"
+  12008: "User refused connection"
+  12009: "WiFi is disabled (Please enable WiFi in system settings)"
 
 # Date Range Picker
 date:

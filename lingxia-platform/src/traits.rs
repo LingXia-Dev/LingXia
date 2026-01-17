@@ -4,6 +4,7 @@ pub mod media_runtime;
 pub mod pull_to_refresh;
 pub mod stream_decoder;
 pub mod video_player;
+pub mod wifi;
 
 pub use core::{
     AnimationType, AppRuntime, Device, DeviceHardware, DeviceSecureStore, DocumentInteraction,
@@ -25,3 +26,4 @@ pub use stream_decoder::{
 pub use video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
+pub use wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest, WifiInfo};

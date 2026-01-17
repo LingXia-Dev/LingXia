@@ -15,6 +15,7 @@ permission:
   limited_access_add_more_photos: "添加更多\n可访问照片"
   location_reason: "LingXia需要位置权限为你提供服务"
   media_reason: "LingXia需要相册权限保存图片和视频"
+  wifi_reason: "LingXia需要WiFi权限来扫描和连接WiFi网络"
 
 # Common UI
 common:
@@ -137,6 +138,17 @@ err_code:
   6000: "功能不支持"
   6001: "设备不支持"
   6002: "系统版本过低"
+  # 12xxx - WiFi errors
+  12000: "未初始化（请先调用 startWifi）"
+  12001: "系统错误（内部错误）"
+  12002: "密码错误（WiFi 密码不正确）"
+  12003: "连接超时"
+  12004: "重复的连接请求"
+  12005: "该平台不支持（例如 iOS 不支持扫描 WiFi）"
+  12006: "权限被拒绝"
+  12007: "用户未响应"
+  12008: "用户拒绝连接"
+  12009: "WiFi 已关闭（请在系统设置中开启 WiFi）"
 
 # Date Range Picker
 date:

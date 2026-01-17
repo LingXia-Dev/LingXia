@@ -6,6 +6,7 @@ use crate::{AssetFileEntry, DeviceInfo, ScreenInfo};
 
 use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
+use super::wifi::Wifi;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastIcon {
@@ -299,6 +300,7 @@ pub trait AppRuntime:
     + UIUpdate
     + UpdateService
     + UserFeedback
+    + Wifi
     + 'static
 {
     /// Reads an asset file as a streaming reader.
