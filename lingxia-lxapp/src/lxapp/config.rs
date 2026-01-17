@@ -1,3 +1,4 @@
+use crate::lxapp::page_config::OrientationConfig;
 use crate::lxapp::tabbar::TabBar;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -61,6 +62,10 @@ pub(crate) struct LxAppConfig {
     /// Debug mode - when true, developer tools will be enabled for all pages
     #[serde(default)]
     pub debug: bool,
+
+    /// App-level orientation configuration
+    #[serde(default)]
+    pub orientation: OrientationConfig,
 }
 
 impl LxAppConfig {

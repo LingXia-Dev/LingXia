@@ -3,7 +3,7 @@ use crate::event::PageLifecycleEvent;
 use crate::lxapp::{
     self,
     navbar::NavigationBarState,
-    page_config::{PageConfig, PageOrientation},
+    page_config::{OrientationOverride, PageConfig},
 };
 use crate::plugin;
 use crate::startup::parse_query_string;
@@ -60,8 +60,8 @@ pub struct PageState {
     pub(crate) navbar_state: NavigationBarState,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
-    // Page orientation
-    pub(crate) page_orientation: PageOrientation,
+    // Page orientation overrides
+    pub(crate) orientation_override: OrientationOverride,
     // Query parameters
     pub(crate) query: serde_json::Value,
 }
@@ -121,7 +121,7 @@ impl Page {
             on_ready_fired: false,
             navbar_state: page_config.create_navbar_state(),
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
-            page_orientation: page_config.get_page_orientation(),
+            orientation_override: page_config.get_orientation_override(),
             query: serde_json::Value::Null,
         }
     }
@@ -354,13 +354,13 @@ impl Page {
             .map(|mut state| f(&mut state.navbar_state))
     }
 
-    /// Get page orientation from state
-    pub fn get_page_orientation(&self) -> Option<PageOrientation> {
+    /// Get page orientation overrides from state
+    pub fn get_orientation_override(&self) -> Option<OrientationOverride> {
         self.inner
             .state
             .lock()
             .ok()
-            .map(|state| state.page_orientation)
+            .map(|state| state.orientation_override)
     }
 
     /// Get WebView if available

@@ -1,7 +1,7 @@
 use crate::lxapp::LxApp;
 use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState};
 use crate::warn;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Page orientation configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -21,6 +21,137 @@ impl Default for PageOrientation {
     }
 }
 
+/// App-level orientation configuration with optional 180-degree rotation.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrientationConfig {
+    #[serde(default)]
+    pub mode: PageOrientation,
+    #[serde(default)]
+    pub rotation: u16,
+}
+
+impl Default for OrientationConfig {
+    fn default() -> Self {
+        Self {
+            mode: PageOrientation::Auto,
+            rotation: 0,
+        }
+    }
+}
+
+impl OrientationConfig {
+    pub fn normalize(mode: PageOrientation, rotation: u16) -> Self {
+        let rotation = match rotation {
+            0 | 180 => rotation,
+            _ => 0,
+        };
+        let rotation = if matches!(mode, PageOrientation::Auto) {
+            0
+        } else {
+            rotation
+        };
+        Self { mode, rotation }
+    }
+
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label.trim().to_lowercase().as_str() {
+            "auto" => Some(Self::normalize(PageOrientation::Auto, 0)),
+            "portrait" => Some(Self::normalize(PageOrientation::Portrait, 0)),
+            "landscape" => Some(Self::normalize(PageOrientation::Landscape, 0)),
+            "reverse-portrait" => Some(Self::normalize(PageOrientation::Portrait, 180)),
+            "reverse-landscape" => Some(Self::normalize(PageOrientation::Landscape, 180)),
+            _ => None,
+        }
+    }
+
+    pub fn to_label(self) -> &'static str {
+        match (self.mode, self.rotation) {
+            (PageOrientation::Auto, _) => "auto",
+            (PageOrientation::Portrait, 180) => "reverse-portrait",
+            (PageOrientation::Portrait, _) => "portrait",
+            (PageOrientation::Landscape, 180) => "reverse-landscape",
+            (PageOrientation::Landscape, _) => "landscape",
+        }
+    }
+}
+
+/// Page-level orientation overrides. Missing fields inherit from app defaults.
+#[derive(Debug, Clone, Copy, Serialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrientationOverride {
+    #[serde(default)]
+    pub mode: Option<PageOrientation>,
+    #[serde(default)]
+    pub rotation: Option<u16>,
+}
+
+impl OrientationOverride {
+    pub fn apply(self, base: OrientationConfig) -> OrientationConfig {
+        let mode = self.mode.unwrap_or(base.mode);
+        let rotation = self.rotation.unwrap_or(base.rotation);
+        OrientationConfig::normalize(mode, rotation)
+    }
+}
+
+// Shared deserialization helper for orientation types
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrientationObject {
+    #[serde(default)]
+    mode: Option<PageOrientation>,
+    #[serde(default)]
+    rotation: Option<u16>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum OrientationInput {
+    Label(String),
+    Object(OrientationObject),
+}
+
+fn deserialize_orientation<'de, D>(
+    deserializer: D,
+) -> Result<(Option<PageOrientation>, Option<u16>), D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let input = OrientationInput::deserialize(deserializer)?;
+    match input {
+        OrientationInput::Label(label) => {
+            let config = OrientationConfig::from_label(&label).ok_or_else(|| {
+                serde::de::Error::custom(format!("invalid orientation: {}", label))
+            })?;
+            Ok((Some(config.mode), Some(config.rotation)))
+        }
+        OrientationInput::Object(obj) => Ok((obj.mode, obj.rotation)),
+    }
+}
+
+impl<'de> Deserialize<'de> for OrientationConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (mode, rotation) = deserialize_orientation(deserializer)?;
+        Ok(Self::normalize(
+            mode.unwrap_or_default(),
+            rotation.unwrap_or_default(),
+        ))
+    }
+}
+
+impl<'de> Deserialize<'de> for OrientationOverride {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let (mode, rotation) = deserialize_orientation(deserializer)?;
+        Ok(Self { mode, rotation })
+    }
+}
+
 /// Page configuration loaded from page.json (immutable)
 /// This is the single source of truth for page configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -34,9 +165,13 @@ pub struct PageConfig {
     #[serde(default)]
     pub enable_pull_down_refresh: bool,
 
-    /// Page orientation
+    /// Legacy page orientation
     #[serde(default)]
-    pub page_orientation: PageOrientation,
+    pub page_orientation: Option<PageOrientation>,
+
+    /// Orientation overrides
+    #[serde(default)]
+    pub orientation: OrientationOverride,
 }
 
 impl PageConfig {
@@ -74,9 +209,12 @@ impl PageConfig {
         self.enable_pull_down_refresh
     }
 
-    /// Get page orientation
-    pub fn get_page_orientation(&self) -> PageOrientation {
-        self.page_orientation
+    /// Get page-level orientation overrides
+    pub fn get_orientation_override(&self) -> OrientationOverride {
+        OrientationOverride {
+            mode: self.orientation.mode.or(self.page_orientation),
+            rotation: self.orientation.rotation,
+        }
     }
 }
 

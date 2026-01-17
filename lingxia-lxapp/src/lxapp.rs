@@ -18,6 +18,7 @@ use crate::app::AppConfig;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
+use crate::lxapp::page_config::OrientationConfig;
 use crate::page::Page;
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
@@ -282,6 +283,9 @@ pub(crate) struct LxAppState {
 
     /// Currently displayed popup page (if any)
     pub(crate) current_popup: Option<String>,
+
+    /// App-level orientation override (runtime + persisted)
+    pub(crate) orientation_override: Option<OrientationConfig>,
 }
 
 impl LxAppState {
@@ -295,6 +299,7 @@ impl LxAppState {
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
             current_popup: None,
+            orientation_override: None,
         }
     }
 }
@@ -583,6 +588,11 @@ impl LxApp {
                     state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
                 }
 
+                if let Ok(override_config) = metadata::app_orientation_get(&self.appid) {
+                    let mut state = self.state.lock().unwrap();
+                    state.orientation_override = override_config;
+                }
+
                 Ok(())
             })
             .inspect_err(|_| {
@@ -617,6 +627,31 @@ impl LxApp {
             .map(|record| record.version_string())
             .filter(|version| !version.is_empty())
             .unwrap_or_else(|| DEFAULT_VERSION.to_string())
+    }
+
+    pub fn get_app_orientation(&self) -> OrientationConfig {
+        let state = self.state.lock().unwrap();
+        state
+            .orientation_override
+            .unwrap_or(self.config.orientation)
+    }
+
+    pub fn set_app_orientation(&self, orientation: OrientationConfig) -> Result<(), LxAppError> {
+        let orientation = OrientationConfig::normalize(orientation.mode, orientation.rotation);
+        let mut state = self.state.lock().unwrap();
+        state.orientation_override = Some(orientation);
+        metadata::app_orientation_set(&self.appid, &orientation)?;
+        Ok(())
+    }
+
+    /// Get resolved orientation for a page; falls back to app-level config.
+    pub fn get_page_orientation(&self, path: &str) -> OrientationConfig {
+        let app_orientation = self.get_app_orientation();
+        let page_override = self
+            .get_page(path)
+            .and_then(|page| page.get_orientation_override())
+            .unwrap_or_default();
+        page_override.apply(app_orientation)
     }
 
     // Reads binary data from the specified relative path
@@ -825,13 +860,6 @@ impl LxApp {
     pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
         self.get_page(path)
             .and_then(|page| page.get_navbar_state())
-            .unwrap_or_default()
-    }
-
-    /// Get page orientation for a page; returns Auto if page not found.
-    pub fn get_page_orientation(&self, path: &str) -> page_config::PageOrientation {
-        self.get_page(path)
-            .and_then(|page| page.get_page_orientation())
             .unwrap_or_default()
     }
 
