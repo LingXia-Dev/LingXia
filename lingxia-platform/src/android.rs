@@ -12,6 +12,7 @@ mod ui_update;
 mod update;
 mod user_feedback;
 mod video_player;
+mod wifi;
 pub use app::Platform;
 pub use device::get_android_id;
 
@@ -34,10 +35,11 @@ pub enum CachedClass {
     LxAppPullToRefresh = 12,
     UpdateManager = 13,
     LxAppCapsule = 14,
+    LxAppWifi = 15,
 }
 
 impl CachedClass {
-    const COUNT: usize = 15;
+    const COUNT: usize = 16;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -55,6 +57,7 @@ impl CachedClass {
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
             CachedClass::UpdateManager => "com/lingxia/lxapp/UpdateManager",
+            CachedClass::LxAppWifi => "com/lingxia/lxapp/APIs/LxAppWifi",
             CachedClass::LxAppCapsule => "com/lingxia/lxapp/APIs/LxAppCapsule",
         }
     }
@@ -117,6 +120,10 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/UpdateManager"
             ),
+            CachedClass::LxAppWifi => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppWifi"
+            ),
             CachedClass::LxAppCapsule => concat!(
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppCapsule"
@@ -127,6 +134,7 @@ impl CachedClass {
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
     static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
