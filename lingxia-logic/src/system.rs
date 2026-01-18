@@ -12,6 +12,10 @@ use std::sync::Arc;
 #[derive(Debug, Clone, IntoJSObj)]
 pub struct AppBaseInfo {
     language: String,
+    #[rename = "productName"]
+    product_name: String,
+    #[rename = "version"]
+    version: String,
 }
 
 /// System setting status
@@ -28,8 +32,12 @@ pub struct SystemSettingInfo {
 fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
+    let app_cfg =
+        lxapp::app_config().ok_or_else(|| RongJSError::Error("app config not available".into()))?;
     Ok(AppBaseInfo {
         language: locale.to_string(),
+        product_name: app_cfg.product_name.clone(),
+        version: app_cfg.product_version.clone(),
     })
 }
 
