@@ -83,7 +83,21 @@ impl MediaInteraction for Platform {
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::save_image_to_album(&request.file_uri)
+            let file_uri = request.file_uri.clone();
+            let callback_id = request.callback_id;
+            std::thread::spawn(move || {
+                let result = ios::save_image_to_album(&file_uri);
+                match result {
+                    Ok(()) => {
+                        let _ = lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
+                    }
+                    Err(err) => {
+                        let code = save_media_error_code(&err.to_string());
+                        let _ = lingxia_messaging::invoke_callback(callback_id, Err(code));
+                    }
+                }
+            });
+            Ok(())
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -98,7 +112,21 @@ impl MediaInteraction for Platform {
     fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::save_video_to_album(&request.file_uri)
+            let file_uri = request.file_uri.clone();
+            let callback_id = request.callback_id;
+            std::thread::spawn(move || {
+                let result = ios::save_video_to_album(&file_uri);
+                match result {
+                    Ok(()) => {
+                        let _ = lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
+                    }
+                    Err(err) => {
+                        let code = save_media_error_code(&err.to_string());
+                        let _ = lingxia_messaging::invoke_callback(callback_id, Err(code));
+                    }
+                }
+            });
+            Ok(())
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -108,6 +136,18 @@ impl MediaInteraction for Platform {
                 "save_video_to_photos_album is only supported on iOS".to_string(),
             ))
         }
+    }
+}
+
+#[cfg(target_os = "ios")]
+fn save_media_error_code(message: &str) -> u32 {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("permission") || lower.contains("denied") || lower.contains("restricted") {
+        3004
+    } else if lower.contains("not found") || lower.contains("does not exist") {
+        1001
+    } else {
+        1001
     }
 }
 

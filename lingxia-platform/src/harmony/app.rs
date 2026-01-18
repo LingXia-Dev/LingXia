@@ -1,8 +1,7 @@
 use crate::error::PlatformError;
-use crate::traits::{MediaKind, PermissionKind, PermissionStatus};
+use crate::traits::MediaKind;
 use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
 use libc::free;
-use lingxia_webview::tsfn;
 use log::warn;
 use napi_ohos::JsValue;
 use napi_ohos::bindgen_prelude::{Env, Object};
@@ -47,38 +46,6 @@ impl crate::traits::UpdateService for Platform {}
 // 2. All other fields are simple types (String, Option) that auto-drop
 // 3. If JS ResourceManager is destroyed, the native pointer becomes invalid but
 //    that's fine because Platform should be destroyed before JS cleanup anyway
-
-impl crate::traits::Permissions for Platform {
-    fn check_permission(
-        &self,
-        _permission: PermissionKind,
-    ) -> Result<PermissionStatus, PlatformError> {
-        // HarmonyOS permissions are coordinated at the UI layer. The Rust
-        // platform implementation treats the state as unknown and relies on
-        // operation-specific callbacks (or higher-level logic) to expose
-        // failures in a user-friendly way.
-        Ok(PermissionStatus::Unknown)
-    }
-
-    fn request_permission(
-        &self,
-        permission: PermissionKind,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
-        let permission_type = match permission {
-            PermissionKind::Location => "location",
-            _ => {
-                return Err(PlatformError::Platform(
-                    "Permission request not implemented for this kind on Harmony".to_string(),
-                ));
-            }
-        };
-
-        let id = callback_id.to_string();
-        tsfn::call_arkts("requestPermission", &[permission_type, &id])
-            .map_err(|e| PlatformError::Platform(e.to_string()))
-    }
-}
 
 impl Clone for Platform {
     fn clone(&self) -> Self {

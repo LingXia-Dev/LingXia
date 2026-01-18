@@ -73,22 +73,27 @@ export class LxAppMedia {
     }
   }
   //
-  private static async requestCameraPermissions(mode?: string): Promise<boolean> {
+  private static async requestCameraPermissions(mode?: string): Promise<string | null> {
     const normalizedMode = (mode || '').toLowerCase();
     const includeMicrophone =
       normalizedMode === 'videos' || normalizedMode === 'mix';
     try {
-      const granted: boolean = await PermissionManager.ensureCameraAccess(
-        includeMicrophone
-      );
-      return granted;
+      const cameraGranted: boolean = await PermissionManager.ensureCameraAccess(false);
+      if (!cameraGranted) {
+        return '3001';
+      }
+      if (!includeMicrophone) {
+        return null;
+      }
+      const micGranted: boolean = await PermissionManager.ensureMicrophoneAccess();
+      return micGranted ? null : '3003';
     } catch (error) {
       hilog.error(
         DOMAIN,
         TAG,
         `requestCameraPermissions error: ${String(error)}`
       );
-      return false;
+      return '1000';
     }
   }
 
@@ -149,10 +154,14 @@ export class LxAppMedia {
           maxDurationSeconds: normalized.maxDurationSeconds,
           cameraFacing: normalized.cameraFacing
         };
-        LxAppMedia.requestCameraPermissions(normalized.mode).then((granted: boolean) => {
-          if (!granted) {
-            hilog.warn(DOMAIN, TAG, 'Camera permissions not granted; cancelling chooseMedia(camera)');
-            onCallback(normalized.callbackId, false, "3001");
+        LxAppMedia.requestCameraPermissions(normalized.mode).then((denyCode: string | null) => {
+          if (denyCode) {
+            hilog.warn(
+              DOMAIN,
+              TAG,
+              `Camera permissions not granted; cancelling chooseMedia(camera), code=${denyCode}`
+            );
+            onCallback(normalized.callbackId, false, denyCode);
             return;
           }
           CameraCaptureOverlayManager.show(cap);
@@ -218,7 +227,7 @@ export class LxAppMedia {
         } catch (err) {
           const message = err instanceof Error ? err.message : `${err}`;
           hilog.error(DOMAIN, TAG, `chooseMedia (PhotoViewPicker) failed: ${message}`);
-          onCallback(normalized.callbackId, false, message);
+          onCallback(normalized.callbackId, false, '1000');
         }
       })();
 
@@ -232,13 +241,6 @@ export class LxAppMedia {
 
   public static async saveMedia(path: string, mediaType: number): Promise<boolean> {
     if (!path || mediaType === undefined || mediaType === null || !LxApp.context) { return false; }
-
-    // Ensure we have write access to media library before creating assets.
-    const hasWriteAccess: boolean = await PermissionManager.ensureMediaWriteAccess();
-    if (!hasWriteAccess) {
-      hilog.warn(DOMAIN, TAG, 'saveMedia: media write permission denied');
-      return false;
-    }
 
     // Deduplicate rapid duplicate requests for the same file/type (2s window)
     const now = Date.now();
@@ -273,6 +275,32 @@ export class LxAppMedia {
       hilog.error(DOMAIN, TAG, `saveMedia failed: ${err}`);
       return false;
     }
+  }
+
+  public static saveMediaWithCallback(path: string, mediaType: number, callbackId: string): void {
+    const cb = String(callbackId ?? '').trim();
+    if (!cb) { return; }
+
+    const normalizedPath = String(path ?? '').replace(/%7C/g, '|');
+    if (!normalizedPath || !Number.isFinite(mediaType)) {
+      onCallback(cb, false, '1000');
+      return;
+    }
+
+    (async () => {
+      try {
+        const granted = await PermissionManager.ensureMediaWriteAccess();
+        if (!granted) {
+          onCallback(cb, false, '3004');
+          return;
+        }
+        const ok = await LxAppMedia.saveMedia(normalizedPath, mediaType);
+        onCallback(cb, ok, ok ? '{}' : '1001');
+      } catch (error) {
+        hilog.error(DOMAIN, TAG, `saveMediaWithCallback error: ${String(error)}`);
+        onCallback(cb, false, '1000');
+      }
+    })();
   }
 
   private static resolveAssetUri(assetResult: PhotoAssetHandle | string | null | undefined): string | undefined {

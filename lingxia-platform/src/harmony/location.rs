@@ -3,10 +3,13 @@
 use log::warn;
 use serde_json::json;
 use std::ffi::c_void;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::PlatformError;
 use crate::traits::Location;
-use lingxia_messaging::invoke_callback;
+use lingxia_messaging::{CallbackResult, invoke_callback, register_handler, remove_callback};
+use lingxia_webview::tsfn;
 
 use super::Platform;
 
@@ -155,15 +158,61 @@ impl Location for Platform {
         callback_id: u64,
         config: crate::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
+        let platform = self.clone();
+        let request_config = config.clone();
+
+        let handler_id_cell = Arc::new(AtomicU64::new(0));
+        let handler_id_cell_inner = handler_id_cell.clone();
+
+        let handler_platform = platform.clone();
+        let handler_config = request_config.clone();
+        let handler_callback_id = callback_id;
+
+        let handler_id = register_handler(move |result| {
+            let handler_id = handler_id_cell_inner.load(Ordering::Relaxed);
+            if handler_id != 0 {
+                let _ = remove_callback(handler_id);
+            }
+
+            match result {
+                CallbackResult::Success(_) => {
+                    if let Err(err) =
+                        handler_platform.start_locating(handler_callback_id, handler_config.clone())
+                    {
+                        warn!("Harmony location: failed to start after permission granted: {err}");
+                        let _ = invoke_callback(handler_callback_id, Err(1001));
+                    }
+                }
+                CallbackResult::Error(code) => {
+                    let _ = invoke_callback(handler_callback_id, Err(code));
+                }
+            }
+        });
+        handler_id_cell.store(handler_id, Ordering::Relaxed);
+
+        let handler_id_str = handler_id.to_string();
+        if tsfn::call_arkts("requestLocationPermission", &[&handler_id_str]).is_ok() {
+            return Ok(());
+        }
+
+        let _ = remove_callback(handler_id);
+        platform.start_locating(callback_id, request_config)
+    }
+}
+
+impl Platform {
+    fn start_locating(
+        &self,
+        callback_id: u64,
+        config: crate::LocationRequestConfig,
+    ) -> Result<(), PlatformError> {
         unsafe {
             let request_config = OH_Location_CreateRequestConfig();
             if request_config.is_null() {
-                return Err(PlatformError::Platform(
-                    "Failed to create location request config".to_string(),
-                ));
+                let _ = invoke_callback(callback_id, Err(1001));
+                return Ok(());
             }
 
-            // Set interval based on accuracy requirements
             let interval = if config.is_high_accuracy { 1 } else { 5 };
             OH_LocationRequestConfig_SetInterval(request_config, interval);
 
@@ -188,7 +237,6 @@ impl Location for Platform {
                 invoke_callback(callback_id, Err(error_code));
                 return Ok(());
             }
-
             Ok(())
         }
     }

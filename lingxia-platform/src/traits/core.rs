@@ -180,36 +180,6 @@ pub trait Location: Send + Sync + 'static {
     ) -> Result<(), PlatformError>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PermissionKind {
-    Location,
-    Camera,
-    Microphone,
-    PhotoLibraryRead,
-    PhotoLibraryWrite,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PermissionStatus {
-    Granted,
-    Denied,
-    Restricted,
-    Unknown,
-}
-
-pub trait Permissions: Send + Sync + 'static {
-    fn check_permission(
-        &self,
-        permission: PermissionKind,
-    ) -> Result<PermissionStatus, PlatformError>;
-
-    fn request_permission(
-        &self,
-        permission: PermissionKind,
-        callback_id: u64,
-    ) -> Result<(), PlatformError>;
-}
-
 pub trait UIUpdate: Send + Sync + 'static {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError>;
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError>;
@@ -302,7 +272,6 @@ pub trait AppRuntime:
     + DeviceSecureStore
     + DocumentInteraction
     + Location
-    + Permissions
     + UIUpdate
     + UpdateService
     + UserFeedback

@@ -1,8 +1,8 @@
-use crate::{I18nKey, i18n::err_code_message, ui::present_action_sheet};
+use crate::{i18n::err_code_message, ui::present_action_sheet};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::{
     AppRuntime, CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind,
-    MediaSource, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
+    MediaSource,
 };
 use lxapp::{LxApp, lx};
 use rong::{
@@ -55,15 +55,6 @@ struct MediaKey {
     kind: String,
     #[serde(rename = "isOriginal", default = "default_is_original")]
     is_original: bool,
-}
-
-fn permission_toast_key(code: u32) -> Option<I18nKey> {
-    match code {
-        3001 => Some(I18nKey::PermissionCameraDenied),
-        3003 => Some(I18nKey::PermissionMicrophoneDenied),
-        3004 => Some(I18nKey::PermissionPhotoDenied),
-        _ => None,
-    }
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
@@ -134,17 +125,6 @@ async fn choose_media(
             // 2000 = user cancelled, return empty result
             if code == 2000 {
                 return Ok(Vec::new());
-            }
-
-            if let Some(key) = permission_toast_key(code) {
-                let _ = lxapp.runtime.show_toast(ToastOptions {
-                    title: crate::i18n::t(key),
-                    icon: ToastIcon::Error,
-                    image: None,
-                    duration: 2.0,
-                    mask: false,
-                    position: ToastPosition::Center,
-                });
             }
 
             let message =

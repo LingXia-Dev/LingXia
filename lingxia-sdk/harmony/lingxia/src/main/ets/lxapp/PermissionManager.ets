@@ -40,6 +40,16 @@ export class PermissionManager {
     return granted;
   }
 
+  public static async ensureMicrophoneAccess(): Promise<boolean> {
+    const granted = await PermissionManager.ensurePermissions([
+      'ohos.permission.MICROPHONE' as Permissions
+    ]);
+    if (!granted) {
+      hilog.warn(DOMAIN, TAG, 'Microphone permission not granted');
+    }
+    return granted;
+  }
+
   public static async ensureMediaWriteAccess(): Promise<boolean> {
     const granted = await PermissionManager.ensurePermissions([
       'ohos.permission.WRITE_IMAGEVIDEO' as Permissions

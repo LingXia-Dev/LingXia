@@ -107,7 +107,7 @@ impl MediaInteraction for Platform {
 
         lingxia_webview::tsfn::call_arkts("chooseMedia", &[payload_json.as_str()]).map_err(|e| {
             let message = format!("Failed to start chooseMedia flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, Err(1));
+            lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
             PlatformError::Platform(message)
         })
     }
@@ -136,17 +136,17 @@ impl MediaInteraction for Platform {
 
         lingxia_webview::tsfn::call_arkts("scanCode", &[payload_json.as_str()]).map_err(|e| {
             let message = format!("Failed to start scanCode flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, Err(1));
+            lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
             PlatformError::Platform(message)
         })
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE)
+        save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE, request.callback_id)
     }
 
     fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE)
+        save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE, request.callback_id)
     }
 }
 
@@ -169,10 +169,15 @@ impl MediaRuntime for Platform {
     }
 }
 
-fn save_media_resource(file_uri: &str, resource_type: i32) -> Result<(), PlatformError> {
+fn save_media_resource(file_uri: &str, resource_type: i32, callback_id: u64) -> Result<(), PlatformError> {
+    let safe_file_uri = file_uri.replace('|', "%7C");
     let media_type_str = resource_type.to_string();
-    lingxia_webview::tsfn::call_arkts("saveMedia", &[file_uri, &media_type_str])
-        .map_err(|e| PlatformError::Platform(format!("Failed to save media: {}", e)))
+    let callback_id_str = callback_id.to_string();
+    lingxia_webview::tsfn::call_arkts("saveMedia", &[safe_file_uri.as_str(), &media_type_str, &callback_id_str])
+        .map_err(|e| {
+            let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
+            PlatformError::Platform(format!("Failed to start save media: {}", e))
+        })
 }
 
 #[derive(Serialize)]

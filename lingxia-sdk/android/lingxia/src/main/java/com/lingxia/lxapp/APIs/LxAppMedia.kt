@@ -207,101 +207,111 @@ internal object LxAppMedia {
 
 
     @JvmStatic
-    fun saveImageToPhotosAlbum(imageUri: String): Boolean {
-        return saveMediaToGallery(imageUri, "image/jpeg", true)
+    fun saveImageToPhotosAlbum(imageUri: String, callbackId: Long) {
+        saveMediaToGalleryWithCallback(imageUri, "image/jpeg", true, callbackId)
     }
 
     @JvmStatic
-    fun saveVideoToPhotosAlbum(videoUri: String): Boolean {
-        return saveMediaToGallery(videoUri, "video/mp4", false)
+    fun saveVideoToPhotosAlbum(videoUri: String, callbackId: Long) {
+        saveMediaToGalleryWithCallback(videoUri, "video/mp4", false, callbackId)
     }
 
-    private fun saveMediaToGallery(uriString: String, mimeType: String, isImage: Boolean): Boolean {
-        val context = LxApp.applicationContext() ?: return false
+    private fun saveMediaToGalleryWithCallback(
+        uriString: String,
+        mimeType: String,
+        isImage: Boolean,
+        callbackId: Long
+    ) {
+        val context = LxApp.applicationContext()
+        if (context == null) {
+            com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, "1000")
+            return
+        }
 
+        Thread {
+            val errorCode = try {
+                saveMediaToGallery(context, uriString, mimeType, isImage)
+            } catch (sec: SecurityException) {
+                "3004"
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving media to gallery: ${e.message}", e)
+                "1000"
+            }
+
+            if (errorCode == null) {
+                com.lingxia.lxapp.NativeApi.onCallback(callbackId, true, "{}")
+            } else {
+                com.lingxia.lxapp.NativeApi.onCallback(callbackId, false, errorCode)
+            }
+        }.start()
+    }
+
+    // Returns null on success; otherwise returns error code string.
+    private fun saveMediaToGallery(
+        context: android.content.Context,
+        uriString: String,
+        mimeType: String,
+        isImage: Boolean
+    ): String? {
+        // Handle both file URIs (file://) and regular paths
+        val sourceFile = if (uriString.startsWith("file://")) {
+            File(android.net.Uri.parse(uriString).path ?: uriString)
+        } else {
+            File(uriString)
+        }
+
+        if (!sourceFile.exists()) {
+            Log.e(TAG, "Source file does not exist: $uriString")
+            return "1001"
+        }
+
+        val contentResolver = context.contentResolver
+        val contentValues = ContentValues()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Use MediaStore for Android 10+ (no permission required).
+            contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
+            contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            contentValues.put(
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                if (isImage) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_MOVIES
+            )
+            contentValues.put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
+            contentValues.put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
+        } else {
+            // For older Android versions, use MediaStore; permission may still be required.
+            contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
+            contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+        }
+
+        val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+
+        val uri = contentResolver.insert(collection, contentValues) ?: return "1001"
         return try {
-            // Handle both file URIs (file://) and regular paths
-            val sourceFile = if (uriString.startsWith("file://")) {
-                File(android.net.Uri.parse(uriString).path ?: uriString)
-            } else {
-                File(uriString)
+            contentResolver.openOutputStream(uri).use { outputStream ->
+                if (outputStream == null) {
+                    contentResolver.delete(uri, null, null)
+                    return "1001"
+                }
+                val ok = copyFile(sourceFile, outputStream)
+                if (!ok) {
+                    contentResolver.delete(uri, null, null)
+                    return "1001"
+                }
             }
-
-            if (!sourceFile.exists()) {
-                Log.e(TAG, "Source file does not exist: $uriString")
-                return false
-            }
-
-            val contentResolver = context.contentResolver
-            val contentValues = ContentValues()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Use MediaStore for Android 10+ (no permission required)
-                contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
-                contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                contentValues.put(
-                    MediaStore.MediaColumns.RELATIVE_PATH,
-                    if (isImage) Environment.DIRECTORY_PICTURES else Environment.DIRECTORY_MOVIES
-                )
-                contentValues.put(MediaStore.Video.Media.DATE_ADDED, System.currentTimeMillis() / 1000)
-                contentValues.put(MediaStore.Video.Media.DATE_MODIFIED, System.currentTimeMillis() / 1000)
-
-                val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-
-                val uri = contentResolver.insert(collection, contentValues)
-                uri?.let { contentUri ->
-                    try {
-                        contentResolver.openOutputStream(contentUri).use { outputStream ->
-                            if (outputStream != null) {
-                                copyFile(sourceFile, outputStream)
-                            }
-                        }
-                        true
-                    } catch (e: IOException) {
-                        Log.e(TAG, "Failed to copy file to MediaStore: ${e.message}")
-                        contentResolver.delete(contentUri, null, null) // Clean up on failure
-                        false
-                    }
-                } ?: false
-            } else {
-                // For older Android versions, use MediaStore to avoid needing WRITE_EXTERNAL_STORAGE
-                // This still requires WRITE_EXTERNAL_STORAGE permission, but we'll try the best approach
-                // First try to use MediaStore
-                contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, sourceFile.name)
-                contentValues.put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-
-                val collection = if (isImage) MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                else MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-
-                val uri = contentResolver.insert(collection, contentValues)
-                uri?.let { contentUri ->
-                    try {
-                        contentResolver.openOutputStream(contentUri).use { outputStream ->
-                            if (outputStream != null) {
-                                copyFile(sourceFile, outputStream)
-                            }
-                        }
-                        true
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Failed to save using MediaStore, attempting alternative method: ${e.message}")
-                        // On older Android versions without permission, we cannot save to public directories
-                        false
-                    }
-                } ?: false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error saving media to gallery: ${e.message}", e)
-            false
+            null
+        } catch (io: IOException) {
+            Log.e(TAG, "Failed to copy file to MediaStore: ${io.message}")
+            contentResolver.delete(uri, null, null)
+            "1001"
         }
     }
 
     private fun copyFile(sourceFile: File, outputStream: OutputStream): Boolean {
         return try {
             sourceFile.inputStream().use { inputStream ->
-                outputStream.use { output ->
-                    inputStream.copyTo(output)
-                }
+                inputStream.copyTo(outputStream)
             }
             true
         } catch (e: IOException) {

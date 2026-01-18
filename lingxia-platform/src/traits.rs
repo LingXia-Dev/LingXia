@@ -8,9 +8,9 @@ pub mod wifi;
 
 pub use core::{
     AnimationType, AppRuntime, Device, DeviceHardware, DeviceSecureStore, DocumentInteraction,
-    Location, LocationRequestConfig, ModalOptions, OpenDocumentRequest, PermissionKind,
-    PermissionStatus, Permissions, PopupPosition, PopupPresenter, PopupRequest, ToastIcon,
-    ToastOptions, ToastPosition, UIUpdate, UpdateService, UserFeedback,
+    Location, LocationRequestConfig, ModalOptions, OpenDocumentRequest, PopupPosition,
+    PopupPresenter, PopupRequest, ToastIcon, ToastOptions, ToastPosition, UIUpdate, UpdateService,
+    UserFeedback,
 };
 pub use media_interaction::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaQuality,

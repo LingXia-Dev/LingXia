@@ -3,6 +3,7 @@ import { scanBarcode, scanCore } from '@kit.ScanKit';
 import { LxApp } from '../LxApp';
 import { onCallback } from 'liblingxia.so';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { PermissionManager } from '../PermissionManager';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Scan';
@@ -52,6 +53,12 @@ export class LxAppScan {
     try {
       if (!LxApp.context) {
         onCallback(String(options.callbackId), false, '1000');
+        return;
+      }
+
+      const cameraGranted: boolean = await PermissionManager.ensureCameraAccess(false);
+      if (!cameraGranted) {
+        onCallback(String(options.callbackId), false, '3001');
         return;
       }
 

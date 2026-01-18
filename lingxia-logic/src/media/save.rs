@@ -1,6 +1,6 @@
-use lingxia_platform::{
-    MediaInteraction, SaveMediaRequest, ToastIcon, ToastOptions, ToastPosition, UserFeedback,
-};
+use crate::i18n::err_code_message;
+use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
+use lingxia_platform::{MediaInteraction, SaveMediaRequest};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
@@ -19,15 +19,15 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
-    save_media(ctx, options, true)
+async fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
+    save_media(ctx, options, true).await
 }
 
-fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
-    save_media(ctx, options, false)
+async fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
+    save_media(ctx, options, false).await
 }
 
-fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSResult<()> {
+async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
 
@@ -35,8 +35,10 @@ fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSRes
         .resolve_accessible_path(&options.file_path)
         .map_err(|err| RongJSError::Error(format!("saveMedia path error: {}", err)))?;
 
+    let (callback_id, receiver) = get_callback();
     let request = SaveMediaRequest {
         file_uri: resolved.to_string_lossy().into_owned(),
+        callback_id,
     };
 
     let op = if image {
@@ -45,26 +47,19 @@ fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSRes
         runtime.save_video_to_photos_album(request)
     };
 
-    match op {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            // Surface a user-visible hint when saving fails, typically due to
-            // missing photo library permissions or storage issues.
-            let _ = runtime.show_toast(ToastOptions {
-                title: "保存失败，请检查照片权限或可用空间".to_string(),
-                icon: ToastIcon::Error,
-                image: None,
-                duration: 2.0,
-                mask: false,
-                position: ToastPosition::Center,
-            });
+    if let Err(e) = op {
+        let _ = remove_callback(callback_id);
+        return Err(RongJSError::Error(format!("saveMedia failed to start: {}", e)));
+    }
 
-            let name = if image {
-                "saveImageToPhotosAlbum"
-            } else {
-                "saveVideoToPhotosAlbum"
-            };
-            Err(RongJSError::Error(format!("{} failed: {}", name, e)))
-        }
+    let result = receiver
+        .await
+        .map_err(|_| RongJSError::Error("saveMedia cancelled or failed".to_string()))?;
+
+    match result {
+        CallbackResult::Success(_) => Ok(()),
+        CallbackResult::Error(code) => Err(RongJSError::Error(
+            err_code_message(code).unwrap_or_else(|| format!("saveMedia error: {}", code)),
+        )),
     }
 }

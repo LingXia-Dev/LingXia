@@ -58,29 +58,11 @@ impl MediaInteraction for Platform {
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        match save_media_impl(request, "saveImageToPhotosAlbum") {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(PlatformError::Platform(
-                "Failed to save image to photos album".to_string(),
-            )),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to save image to photos album: {}",
-                e
-            ))),
-        }
+        save_media_impl(request, "saveImageToPhotosAlbum")
     }
 
     fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        match save_media_impl(request, "saveVideoToPhotosAlbum") {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(PlatformError::Platform(
-                "Failed to save video to photos album".to_string(),
-            )),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to save video to photos album: {}",
-                e
-            ))),
-        }
+        save_media_impl(request, "saveVideoToPhotosAlbum")
     }
 }
 
@@ -200,29 +182,43 @@ fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Er
 fn save_media_impl(
     request: SaveMediaRequest,
     method: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
+) -> Result<(), PlatformError> {
+    let mut env = get_env()
+        .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
 
-    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
+        PlatformError::Platform(format!("Failed to get cached Java class LxAppMedia: {}", e))
+    })?;
 
-    let path_java = with_jni(&mut env, |env| env.new_string(&request.file_uri))?;
+    let path_java = with_jni(&mut env, |env| env.new_string(&request.file_uri)).map_err(|err| {
+        let _ = lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
+        PlatformError::Platform(format!(
+            "Failed to create Java string for media path: {}",
+            err
+        ))
+    })?;
     let path_obj: JObject = path_java.into();
 
-    let result = with_jni(&mut env, |env| {
+    let callback_id = request.callback_id as jlong;
+
+    if let Err(err) = with_jni(&mut env, |env| {
         let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
         let class = JClass::from(class_ref);
         env.call_static_method(
             class,
             method,
-            "(Ljava/lang/String;)Z", // (String) returns boolean
-            &[JValue::Object(&path_obj)],
+            "(Ljava/lang/String;J)V",
+            &[JValue::Object(&path_obj), JValue::Long(callback_id)],
         )
-    })?;
+    }) {
+        let _ = lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
+        return Err(PlatformError::Platform(format!(
+            "Failed to start {}: {}",
+            method, err
+        )));
+    }
 
-    // Extract the boolean result using .z() method
-    let success = result.z()?;
-
-    Ok(success)
+    Ok(())
 }
 
 fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::error::Error>> {

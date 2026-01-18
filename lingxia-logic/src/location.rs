@@ -1,49 +1,16 @@
-use crate::{I18nKey, i18n::err_code_message};
+use crate::i18n::err_code_message;
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{
-    Location, LocationRequestConfig, PermissionKind, Permissions, ToastIcon, ToastOptions,
-    ToastPosition, UserFeedback,
-};
+use lingxia_platform::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-// Tracks whether this process has already observed a location permission denial
-// while trying to perform a location request. Once set, subsequent calls will
-// not start a new native location request and will instead surface a toast
-// directing the user to enable location in system settings.
-static LOCATION_PERMISSION_BLOCKED: AtomicBool = AtomicBool::new(false);
-
-fn is_location_permission_denied(code: u32) -> bool {
-    code == 3002 || code == 201
-}
-
-fn show_location_permission_toast(lxapp: &LxApp) {
-    let _ = lxapp.runtime.show_toast(ToastOptions {
-        title: crate::i18n::t(I18nKey::PermissionLocationDenied),
-        icon: ToastIcon::Error,
-        image: None,
-        duration: 2.0,
-        mask: false,
-        position: ToastPosition::Center,
-    });
-}
 
 fn location_error_message(code: u32) -> String {
-    if is_location_permission_denied(code) {
-        err_code_message(3002).unwrap_or_else(|| crate::i18n::t(I18nKey::PermissionLocationDenied))
-    } else {
-        err_code_message(code).unwrap_or_else(|| format!("Location error: {}", code))
-    }
+    err_code_message(code).unwrap_or_else(|| format!("Location error: {}", code))
 }
 
-fn handle_location_error(lxapp: &LxApp, code: u32) -> RongJSError {
-    if is_location_permission_denied(code) {
-        LOCATION_PERMISSION_BLOCKED.store(true, Ordering::Relaxed);
-        show_location_permission_toast(lxapp);
-    }
+fn handle_location_error(code: u32) -> RongJSError {
     RongJSError::Error(location_error_message(code))
 }
 
@@ -197,36 +164,6 @@ async fn get_location(
     options: Optional<JSLocationOptions>,
 ) -> JSResult<LocationObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let blocked = LOCATION_PERMISSION_BLOCKED.load(Ordering::Relaxed);
-    // If we already know that location permission has been denied in this
-    // process, do not start a new native request. Instead, surface a unified
-    // toast guiding the user to enable location in system settings.
-    if blocked {
-        return Err(handle_location_error(&lxapp, 3002));
-    }
-
-    // Optional permission preflight for platforms that support it (e.g. Harmony).
-    // If the platform returns an error for this preflight request we treat it as
-    // the user denying permission for this call and do not start the location
-    // request itself.
-    let (perm_callback_id, perm_receiver) = get_callback();
-    let permission_preflight_supported = lxapp
-        .runtime
-        .request_permission(PermissionKind::Location, perm_callback_id)
-        .is_ok();
-
-    if permission_preflight_supported {
-        let perm_result = perm_receiver.await.map_err(|_| {
-            RongJSError::Error("Location permission request cancelled or failed".to_string())
-        })?;
-
-        match perm_result {
-            CallbackResult::Error(code) => {
-                return Err(handle_location_error(&lxapp, code));
-            }
-            CallbackResult::Success(_) => {}
-        }
-    }
 
     // Get callback ID and receiver for the actual location request
     let (callback_id, receiver) = get_callback();
@@ -250,7 +187,7 @@ async fn get_location(
                 Ok(result) => {
                     match result {
                         CallbackResult::Error(code) => {
-                            return Err(handle_location_error(&lxapp, code));
+                            return Err(handle_location_error(code));
                         }
                         CallbackResult::Success(data) => {
                             let mut location = LocationObj::from(CallbackResult::Success(data));

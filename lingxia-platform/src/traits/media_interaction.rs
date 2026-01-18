@@ -95,6 +95,7 @@ impl Default for ScanCodeRequest {
 #[derive(Debug, Clone)]
 pub struct SaveMediaRequest {
     pub file_uri: String,
+    pub callback_id: u64,
 }
 
 pub trait MediaInteraction: Send + Sync + 'static {

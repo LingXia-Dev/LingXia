@@ -64,7 +64,7 @@ impl Location for Platform {
         }() {
             Ok(()) => Ok(()),
             Err(e) => {
-                lingxia_messaging::invoke_callback(callback_id, Err(1));
+                lingxia_messaging::invoke_callback(callback_id, Err(1000));
                 Err(PlatformError::Platform(format!(
                     "Failed to request location via JNI: {}",
                     e

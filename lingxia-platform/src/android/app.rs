@@ -1,5 +1,4 @@
 use crate::error::PlatformError;
-use crate::traits::{PermissionKind, PermissionStatus, Permissions};
 use crate::{AppRuntime, AssetFileEntry};
 use jni::objects::{GlobalRef, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
@@ -83,55 +82,6 @@ impl crate::traits::UpdateService for Platform {
                 e
             ))),
         }
-    }
-}
-
-impl Permissions for Platform {
-    fn check_permission(
-        &self,
-        permission: PermissionKind,
-    ) -> Result<PermissionStatus, PlatformError> {
-        match permission {
-            PermissionKind::Location => {
-                // Query the current location permission state via the Android helper.
-                let mut env = get_env()
-                    .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
-
-                let class_name = "com/lingxia/lxapp/APIs/LxAppLocation";
-                let clazz = env.find_class(class_name).map_err(|e| {
-                    PlatformError::Platform(format!("Failed to find {}: {:?}", class_name, e))
-                })?;
-
-                let method_name = "isLocationEnabled";
-                let method_sig = "()Z";
-                let is_enabled = env
-                    .call_static_method(&clazz, method_name, method_sig, &[])
-                    .and_then(|v| v.z())
-                    .map_err(|e| {
-                        PlatformError::Platform(format!(
-                            "Failed to call {}.{}: {:?}",
-                            class_name, method_name, e
-                        ))
-                    })?;
-
-                Ok(if is_enabled {
-                    PermissionStatus::Granted
-                } else {
-                    PermissionStatus::Unknown
-                })
-            }
-            _ => Ok(PermissionStatus::Unknown),
-        }
-    }
-
-    fn request_permission(
-        &self,
-        _permission: PermissionKind,
-        _callback_id: u64,
-    ) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
-            "Permission requests are handled in the Android UI layer".to_string(),
-        ))
     }
 }
 

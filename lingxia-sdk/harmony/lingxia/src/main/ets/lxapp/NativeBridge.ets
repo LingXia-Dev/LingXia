@@ -302,12 +302,11 @@ class NativeBridge {
       return LxAppMedia.chooseMedia(payload);
     });
 
-    this.register('saveMedia', (path: string, mediaTypeStr: string): boolean => {
+    this.register('saveMedia', (path: string, mediaTypeStr: string, callbackId: string): boolean => {
+      const cb = String(callbackId ?? '').trim();
+      if (!cb) { return false; }
       const mediaType = Number(mediaTypeStr);
-      if (!path || Number.isNaN(mediaType)) { return false; }
-      LxAppMedia.saveMedia(path, mediaType).catch((err: Error) => {
-        hilog.error(DOMAIN, TAG, `saveMedia async error: ${err}`);
-      });
+      LxAppMedia.saveMediaWithCallback(path, mediaType, cb);
       return true;
     });
 
@@ -433,16 +432,11 @@ class NativeBridge {
       (async () => {
         try {
           const granted: boolean = await PermissionManager.ensureLocationAccess();
-          let payload: string;
           if (granted) {
-            payload = JSON.stringify({ code: 'ok' });
+            onCallback(id, true, '{}');
           } else {
-            payload = JSON.stringify({
-              code: 'location_permission_denied',
-              error: 'Location permission not granted'
-            });
+            onCallback(id, false, '3002');
           }
-          onCallback(id, granted, payload);
           hilog.info(DOMAIN, TAG, `requestLocationPermission result: ${granted}`);
         } catch (error) {
           const message = String(error);
@@ -451,7 +445,7 @@ class NativeBridge {
             TAG,
             `requestLocationPermission failed: ${message}`
           );
-          onCallback(id, false, message);
+          onCallback(id, false, '1000');
         }
       })();
 

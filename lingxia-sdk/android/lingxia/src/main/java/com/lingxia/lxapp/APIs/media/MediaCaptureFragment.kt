@@ -157,10 +157,26 @@ class MediaCaptureFragment : Fragment() {
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        if (grants.values.all { it }) {
+        val ctx = context
+        val cameraGranted = grants[Manifest.permission.CAMERA]
+            ?: (ctx?.let {
+                ContextCompat.checkSelfPermission(it, Manifest.permission.CAMERA) ==
+                    android.content.pm.PackageManager.PERMISSION_GRANTED
+            } ?: false)
+        val micRequired = isVideoMode()
+        val micGranted = if (!micRequired) {
+            true
+        } else {
+            grants[Manifest.permission.RECORD_AUDIO]
+                ?: (ctx?.let {
+                    ContextCompat.checkSelfPermission(it, Manifest.permission.RECORD_AUDIO) ==
+                        android.content.pm.PackageManager.PERMISSION_GRANTED
+                } ?: false)
+        }
+        if (cameraGranted && micGranted) {
             startCamera()
         } else {
-            cancelCapture(3001)
+            cancelCapture(if (!cameraGranted) 3001 else 3003)
         }
     }
 

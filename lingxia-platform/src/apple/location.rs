@@ -252,27 +252,6 @@ pub(crate) mod ios {
         Ok(enabled)
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum AuthorizationState {
-        Authorized,
-        Denied,
-        Restricted,
-        NotDetermined,
-    }
-
-    pub(crate) fn current_authorization_status() -> AuthorizationState {
-        #[allow(deprecated)]
-        let status = unsafe { CLLocationManager::authorizationStatus_class() };
-        match status {
-            CLAuthorizationStatus::AuthorizedWhenInUse
-            | CLAuthorizationStatus::AuthorizedAlways => AuthorizationState::Authorized,
-            CLAuthorizationStatus::Denied => AuthorizationState::Denied,
-            CLAuthorizationStatus::Restricted => AuthorizationState::Restricted,
-            CLAuthorizationStatus::NotDetermined => AuthorizationState::NotDetermined,
-            _ => AuthorizationState::NotDetermined,
-        }
-    }
-
     pub(super) fn request_location_with_config(
         callback_id: u64,
         config: crate::LocationRequestConfig,
@@ -280,7 +259,7 @@ pub(crate) mod ios {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
             log::error!("iOS Location: Services disabled");
-            lingxia_messaging::invoke_callback(callback_id, Err(202));
+            lingxia_messaging::invoke_callback(callback_id, Err(4001));
             // Error is fully reported via callback; no additional PlatformError needed.
             return Ok(());
         }
@@ -341,7 +320,7 @@ pub(crate) mod ios {
                     );
                     DispatchQueue::main().exec_async(move || {
                         cleanup_request(callback_id);
-                        lingxia_messaging::invoke_callback(callback_id, Err(203));
+                        lingxia_messaging::invoke_callback(callback_id, Err(5002));
                     });
                 }
             });
@@ -377,10 +356,25 @@ pub(crate) mod ios {
             manager.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
 
             let status = manager.authorizationStatus();
+            if matches!(
+                status,
+                CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted
+            ) {
+                return Err("Location permission denied".to_string());
+            }
+
             if status == CLAuthorizationStatus::NotDetermined {
                 manager.requestWhenInUseAuthorization();
             }
         }
+
+        let should_request_location_now = unsafe {
+            let status = manager.authorizationStatus();
+            matches!(
+                status,
+                CLAuthorizationStatus::AuthorizedWhenInUse | CLAuthorizationStatus::AuthorizedAlways
+            )
+        };
 
         insert_active_request(
             callback_id,
@@ -390,8 +384,10 @@ pub(crate) mod ios {
             },
         );
 
-        unsafe {
-            manager.requestLocation();
+        if should_request_location_now {
+            unsafe {
+                manager.requestLocation();
+            }
         }
 
         Ok(())
@@ -424,7 +420,7 @@ impl Location for Platform {
         #[cfg(not(target_os = "ios"))]
         {
             let _ = config;
-            let _ = lingxia_messaging::invoke_callback(callback_id, Err(1));
+            let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
             Err(PlatformError::Platform(
                 "Location not available on this platform".into(),
             ))
