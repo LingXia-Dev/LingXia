@@ -17,7 +17,7 @@ pub enum PageOrientation {
 
 impl Default for PageOrientation {
     fn default() -> Self {
-        Self::Auto
+        Self::Portrait
     }
 }
 
@@ -34,7 +34,7 @@ pub struct OrientationConfig {
 impl Default for OrientationConfig {
     fn default() -> Self {
         Self {
-            mode: PageOrientation::Auto,
+            mode: PageOrientation::Portrait,
             rotation: 0,
         }
     }

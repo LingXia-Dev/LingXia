@@ -633,13 +633,15 @@ impl LxApp {
         let state = self.state.lock().unwrap();
         state
             .orientation_override
-            .unwrap_or(self.config.orientation)
+            .unwrap_or_default()
     }
 
     pub fn set_app_orientation(&self, orientation: OrientationConfig) -> Result<(), LxAppError> {
         let orientation = OrientationConfig::normalize(orientation.mode, orientation.rotation);
-        let mut state = self.state.lock().unwrap();
-        state.orientation_override = Some(orientation);
+        {
+            let mut state = self.state.lock().unwrap();
+            state.orientation_override = Some(orientation);
+        }
         metadata::app_orientation_set(&self.appid, &orientation)?;
         Ok(())
     }
