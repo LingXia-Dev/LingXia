@@ -18,6 +18,7 @@ pub mod startup;
 pub mod stream_source;
 mod update;
 
+pub use app::{app_config, product_name, product_version};
 pub use appservice::PageSvc;
 pub use appservice::bridge_events::{
     emit_app_event, emit_page_event, register_app_handler, register_page_handler,

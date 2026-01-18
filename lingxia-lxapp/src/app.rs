@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use crate::error::LxAppError;
 use crate::lxapp::version::Version;
@@ -11,8 +12,8 @@ use serde::{Deserialize, Serialize};
 pub struct AppConfig {
     #[serde(rename = "productName")]
     pub product_name: String,
-    #[serde(rename = "semanticVersion")]
-    pub semantic_version: String,
+    #[serde(rename = "productVersion")]
+    pub product_version: String,
 
     // API server address (optional)
     #[serde(rename = "apiServer", default)]
@@ -28,6 +29,20 @@ pub struct AppConfig {
 
     #[serde(rename = "homeLxAppVersion")]
     pub home_lxapp_version: String, // Version of the home lx application
+}
+
+static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
+
+pub fn app_config() -> Option<&'static AppConfig> {
+    APP_CONFIG.get()
+}
+
+pub fn product_name() -> Option<&'static str> {
+    APP_CONFIG.get().map(|c| c.product_name.as_str())
+}
+
+pub fn product_version() -> Option<&'static str> {
+    APP_CONFIG.get().map(|c| c.product_version.as_str())
 }
 
 impl AppConfig {
@@ -47,6 +62,7 @@ impl AppConfig {
         // Validate the config immediately
         Self::validate_config(&config)?;
 
+        let _ = APP_CONFIG.set(config.clone());
         Ok(config)
     }
 
@@ -59,15 +75,15 @@ impl AppConfig {
             ));
         }
 
-        if config.semantic_version.is_empty() {
+        if config.product_version.is_empty() {
             return Err(LxAppError::InvalidParameter(
-                "semanticVersion is mandatory and cannot be empty".to_string(),
+                "productVersion is mandatory and cannot be empty".to_string(),
             ));
         }
 
-        Version::parse(&config.semantic_version).map_err(|_| {
+        Version::parse(&config.product_version).map_err(|_| {
             LxAppError::InvalidParameter(
-                "semanticVersion must be a semantic version (major.minor.patch)".to_string(),
+                "productVersion must be a semantic version (major.minor.patch)".to_string(),
             )
         })?;
 

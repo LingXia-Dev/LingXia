@@ -1466,7 +1466,7 @@ pub fn init(runtime: Platform) -> Option<String> {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
-            let app_version = config.semantic_version.clone();
+            let app_version = config.product_version.clone();
             let stored_app_version = match metadata::app_version_get() {
                 Ok(version) => version,
                 Err(e) => {
