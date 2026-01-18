@@ -36,6 +36,22 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     }
     const pluginId = pluginConfig?.lxPluginId?.trim();
 
+    // Validate JSON configuration files
+    const jsonFiles = [
+      path.join(projectPath, isPluginMode ? 'lxplugin.json' : 'lxapp.json'),
+      ...configManager.getPages({ plugin: isPluginMode }).map(p =>
+        path.join(projectPath, path.dirname(p), `${path.basename(p, path.extname(p))}.json`)
+      )
+    ].filter(f => fs.existsSync(f));
+
+    for (const file of jsonFiles) {
+      try {
+        JSON.parse(fs.readFileSync(file, 'utf-8'));
+      } catch (e) {
+        throw new Error(`Invalid JSON: ${path.relative(projectPath, file)}\n${e instanceof Error ? e.message : e}`);
+      }
+    }
+
     // Clean and prepare output directory
     fileUtils.cleanDirectory(outputDir);
 
