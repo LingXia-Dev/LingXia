@@ -4,7 +4,7 @@ use super::bridge::{
 use crate::PageServiceEvent;
 use crate::error;
 use crate::error::LxAppError;
-use crate::lx::fastapi::get_fast_api;
+use crate::host::get_host;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
@@ -55,11 +55,11 @@ impl MessageTransport for PageSvc {
 
 impl MessageHandler for PageSvc {
     fn get_service_type(&self, service_name: &str) -> ServiceType {
-        // Check if it's a FastAPI call with lx. prefix
-        if let Some(api_name) = service_name.strip_prefix("lx.")
-            && let Some(handler) = get_fast_api(api_name)
+        // Check if it's a host API call with host. prefix
+        if let Some(api_name) = service_name.strip_prefix("host.")
+            && let Some(handler) = get_host(api_name)
         {
-            return ServiceType::FastAPI(handler);
+            return ServiceType::HostAPI(handler);
         }
 
         // Check page-specific JS functions
@@ -129,12 +129,12 @@ impl MessageHandler for PageSvc {
                         };
                         rong::spawn(task);
                     }
-                    ServiceType::FastAPI(handler) => {
-                        // For FastAPI, handle directly and reply
+                    ServiceType::HostAPI(handler) => {
+                        // For Host API, handle directly and reply
                         let lxapp = match LxApp::from_ctx(&ctx) {
                             Ok(app) => app,
                             Err(e) => {
-                                error!("FastAPI call '{}' missing LxApp: {}", name, e);
+                                error!("Host API call '{}' missing LxApp: {}", name, e);
                                 return;
                             }
                         };
@@ -150,7 +150,7 @@ impl MessageHandler for PageSvc {
                                 }
                             }
                             Err(e) => {
-                                error!("Fast API call '{}' failed: {}", name, e);
+                                error!("Host API call '{}' failed: {}", name, e);
                                 // Reply with error for Call messages
                                 if matches!(
                                     dispatch_msg.message_type(),

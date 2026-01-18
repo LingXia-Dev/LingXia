@@ -1,4 +1,3 @@
-use crate::appservice::lx;
 use crate::error::LxAppError;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,8 +19,8 @@ pub(crate) enum ServiceType {
     None,
     /// JavaScript function (needs immediate reply, data returned via setData)
     JSFunc(rong::JSFunc),
-    /// Fast API implemented by Rust (returns result directly)
-    FastAPI(Arc<dyn lx::FastApiHandler>),
+    /// Host API implemented by Rust (returns result directly)
+    HostAPI(Arc<dyn crate::HostHandler>),
 }
 
 /// Trait for message transport - handles message sending only
@@ -517,8 +516,8 @@ impl Bridge {
                             }
                             handler.handle_message(dispatch_msg, service_type).await;
                         }
-                        ServiceType::FastAPI(ref _fast_api_handler) => {
-                            // FastAPI handlers don't need the MessageHandler interface
+                        ServiceType::HostAPI(ref _host_handler) => {
+                            // Host API handlers don't need the MessageHandler interface
                             // They are called directly in PageSvc
                             handler.handle_message(dispatch_msg, service_type).await;
                         }

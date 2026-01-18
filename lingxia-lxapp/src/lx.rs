@@ -1,11 +1,8 @@
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
 pub mod extension;
-pub mod fastapi;
 
-pub use crate::fast_api;
 pub use extension::{LxLogicExtension, register_logic_extension};
-pub use fastapi::{FastApiHandler, register_fast_api};
 
 /// Register the global `lx` object in the JavaScript context.
 /// This function must be called before using any other `lx` APIs.

@@ -5,17 +5,17 @@ use std::sync::{Mutex, OnceLock};
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 
-/// FastAPI handler trait
-pub trait FastApiHandler: Send + Sync + 'static {
+/// Host API handler trait - for page layer to call host app capabilities directly
+pub trait HostHandler: Send + Sync + 'static {
     fn call(&self, lxapp: Arc<LxApp>, input: Option<&str>) -> Result<String, LxAppError>;
 }
 
-/// FastAPI registry - stores FastAPI handlers
-struct FastApiRegistry {
-    handlers: HashMap<String, Arc<dyn FastApiHandler>>,
+/// Host API registry - stores host handlers
+struct HostRegistry {
+    handlers: HashMap<String, Arc<dyn HostHandler>>,
 }
 
-impl FastApiRegistry {
+impl HostRegistry {
     fn new() -> Self {
         Self {
             handlers: HashMap::new(),
@@ -23,17 +23,17 @@ impl FastApiRegistry {
     }
 }
 
-/// Global FastAPI registry instance
-static GLOBAL_FAST_API_REGISTRY: OnceLock<Mutex<FastApiRegistry>> = OnceLock::new();
+/// Global host API registry instance
+static GLOBAL_HOST_REGISTRY: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
 
-/// Get global FastAPI registry
-fn get_fast_api_registry() -> &'static Mutex<FastApiRegistry> {
-    GLOBAL_FAST_API_REGISTRY.get_or_init(|| Mutex::new(FastApiRegistry::new()))
+/// Get global host API registry
+fn get_host_registry() -> &'static Mutex<HostRegistry> {
+    GLOBAL_HOST_REGISTRY.get_or_init(|| Mutex::new(HostRegistry::new()))
 }
 
-/// Register FastAPI handler
-pub fn register_fast_api(name: &str, handler: Arc<dyn FastApiHandler>) {
-    let registry = get_fast_api_registry();
+/// Register host API handler
+pub fn register_host(name: &str, handler: Arc<dyn HostHandler>) {
+    let registry = get_host_registry();
     registry
         .lock()
         .unwrap()
@@ -41,20 +41,20 @@ pub fn register_fast_api(name: &str, handler: Arc<dyn FastApiHandler>) {
         .insert(name.to_string(), handler);
 }
 
-/// Check if FastAPI exists and return the handler if found
-pub(crate) fn get_fast_api(name: &str) -> Option<Arc<dyn FastApiHandler>> {
-    let registry = get_fast_api_registry();
+/// Check if host API exists and return the handler if found
+pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
+    let registry = get_host_registry();
     registry.lock().unwrap().handlers.get(name).cloned()
 }
 
-/// Macro: simplify FastAPI implementation
+/// Macro: simplify host API implementation
 #[macro_export]
-macro_rules! fast_api {
+macro_rules! host_api {
     // No parameter version
     ($name:ident, $output:ty, $body:expr) => {
         pub struct $name;
 
-        impl $crate::lx::fastapi::FastApiHandler for $name {
+        impl $crate::host::HostHandler for $name {
             fn call(
                 &self,
                 lxapp: std::sync::Arc<$crate::LxApp>,
@@ -71,7 +71,7 @@ macro_rules! fast_api {
     ($name:ident, $input:ty, $output:ty, $body:expr) => {
         pub struct $name;
 
-        impl $crate::lx::fastapi::FastApiHandler for $name {
+        impl $crate::host::HostHandler for $name {
             fn call(
                 &self,
                 lxapp: std::sync::Arc<$crate::LxApp>,
