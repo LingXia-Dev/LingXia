@@ -40,6 +40,8 @@ export default function SystemPage() {
                       <h4 className="text-sm font-semibold text-gray-700">Result</h4>
                     </div>
                     <InfoRow label="Language" value={appBaseInfo.language} />
+                    <InfoRow label="Product Name" value={appBaseInfo.productName} />
+                    <InfoRow label="Product Version" value={appBaseInfo.version} />
                   </div>
                 </div>
               )}
