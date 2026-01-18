@@ -4,7 +4,9 @@ const globalData = app.globalData;
 Page({
   data: {
     greeting: globalData.greeting,
-    imageUrl: "../../public/futuristic.jpg",
+    imageUrl:
+      "https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg",
+
     ipAddr: globalData.ipAddr,
     greetCount: 0,
   },

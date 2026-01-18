@@ -1,10 +1,6 @@
 import React from 'react';
 import '../../tailwind.css';
 
-declare const lx: {
-  makePhoneCall: (options: { phoneNumber: string }) => Promise<unknown> | unknown;
-};
-
 export default function DevicePage() {
   const {
     data,
@@ -12,6 +8,7 @@ export default function DevicePage() {
     getScreenInfo,
     vibrateShort,
     vibrateLong,
+    makePhoneCall,
   } = useLingXia();
 
   const {
@@ -33,11 +30,11 @@ export default function DevicePage() {
     }
 
     try {
-      await lx.makePhoneCall({ phoneNumber: trimmed });
+      await makePhoneCall({ phoneNumber: trimmed });
     } catch (error) {
       console.error('makePhoneCall failed:', error);
     }
-  }, [phoneNumber]);
+  }, [phoneNumber, makePhoneCall]);
 
   const renderDeviceInfoSection = () => (
     <>

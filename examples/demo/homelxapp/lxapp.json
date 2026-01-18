@@ -10,13 +10,15 @@
     "pages/media/index.tsx",
     "pages/ui/index.tsx",
     "pages/device/index.tsx",
+    "pages/wifi/index.tsx",
     "pages/system/index.tsx",
     "pages/location/index.tsx",
     "pages/document/index.tsx",
     "pages/components/index.tsx",
     "pages/pulltorefresh/index.tsx",
     "pages/todo/index.tsx",
-    "pages/picker/index.tsx"
+    "pages/picker/index.tsx",
+    "pages/navigator/index.tsx"
   ],
   "debug": true,
   "tabBar": {

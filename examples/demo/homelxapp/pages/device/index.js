@@ -69,4 +69,14 @@ Page({
       console.error("Failed to trigger long vibration:", error);
     }
   },
+
+  // Make a phone call
+  makePhoneCall: async function (options) {
+    try {
+      await lx.makePhoneCall(options);
+      console.log("Making phone call to:", options.phoneNumber);
+    } catch (error) {
+      console.error("Failed to make phone call:", error);
+    }
+  },
 });
