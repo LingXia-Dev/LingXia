@@ -325,20 +325,20 @@ export class LxNavigatorElement extends HTMLElement {
     this.dispatchEvent(completeEvent);
   }
 
-  private getLxCaller(): ((name: string, payload?: any) => Promise<any>) | null {
-    const lx = (window as any).lx;
-    if (lx && typeof lx === 'object') {
+  private getHostCaller(): ((name: string, payload?: any) => Promise<any>) | null {
+    const host = (window as any).host;
+    if (host && typeof host === 'object') {
       return (name: string, payload?: any) => {
-        if (typeof lx[name] !== 'function') {
-          return Promise.reject(new Error(`lx.${name} is not available`));
+        if (typeof host[name] !== 'function') {
+          return Promise.reject(new Error(`host.${name} is not available`));
         }
-        return lx[name](payload);
+        return host[name](payload);
       };
     }
 
     const bridge = (window as any).LingXiaBridge;
     if (bridge && typeof bridge.call === 'function') {
-      return (name: string, payload?: any) => bridge.call(`lx.${name}`, payload ?? null);
+      return (name: string, payload?: any) => bridge.call(`host.${name}`, payload ?? null);
     }
 
     return null;
@@ -352,7 +352,7 @@ export class LxNavigatorElement extends HTMLElement {
     lxAppId?: string | null;
     path?: string | null;
   }) {
-    const caller = this.getLxCaller();
+    const caller = this.getHostCaller();
     if (!caller) {
       throw new Error('LingXia bridge not available');
     }
