@@ -58,7 +58,7 @@ declare global {
     NativeComponentBridge?: {
       postMessage: (message: string) => void;
     };
-    lx?: Record<string, (...args: unknown[]) => Promise<unknown>>;
+    host?: Record<string, (...args: unknown[]) => Promise<unknown>>;
     webkit?: {
       messageHandlers: {
         [key: string]: {

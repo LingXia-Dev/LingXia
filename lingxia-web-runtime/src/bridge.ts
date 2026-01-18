@@ -675,7 +675,8 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 };
 
-export const lx: Record<string, (...args: unknown[]) => Promise<unknown>> =
+// Host API proxy for page layer to call host app capabilities directly
+export const host: Record<string, (...args: unknown[]) => Promise<unknown>> =
   new Proxy(
     {},
     {
@@ -690,14 +691,14 @@ export const lx: Record<string, (...args: unknown[]) => Promise<unknown>> =
             payload = args[0];
           } else if (args.length > 1) {
             warn(
-              `lx.${prop} called with multiple arguments, only the first object argument will be used`
+              `host.${prop} called with multiple arguments, only the first object argument will be used`
             );
             if (typeof args[0] === 'object' && args[0] !== null) {
               payload = args[0];
             }
           }
 
-          return LingXiaBridge.call(`lx.${prop}`, payload);
+          return LingXiaBridge.call(`host.${prop}`, payload);
         };
       },
     }
@@ -719,7 +720,7 @@ export function initBridge(): void {
   }
 
   window.LingXiaBridge = LingXiaBridge;
-  window.lx = lx;
+  window.host = host;
   installNativeComponentCoverageMonitor({ os: getPlatformOS(), send: sendNativeComponentMessage });
 
   log('LingXia Bridge initialization completed');
