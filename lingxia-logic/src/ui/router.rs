@@ -1,4 +1,5 @@
-use lxapp::lx::{self, fast_api};
+use lxapp::host_api;
+use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, service_executor};
 use serde::Deserialize;
@@ -182,8 +183,8 @@ async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
         .map_err(|e| RongJSError::Error(format!("Failed to relaunch: {}", e)))
 }
 
-fast_api!(NavigateToFastApi, NavigateTo, (), |lxapp: Arc<LxApp>,
-                                              options: NavigateTo|
+host_api!(NavigateToHost, NavigateTo, (), |lxapp: Arc<LxApp>,
+                                           options: NavigateTo|
  -> Result<
     (),
     LxAppError,
@@ -204,8 +205,8 @@ fast_api!(NavigateToFastApi, NavigateTo, (), |lxapp: Arc<LxApp>,
     Ok(())
 });
 
-fast_api!(RedirectToFastApi, RedirectTo, (), |lxapp: Arc<LxApp>,
-                                              options: RedirectTo|
+host_api!(RedirectToHost, RedirectTo, (), |lxapp: Arc<LxApp>,
+                                           options: RedirectTo|
  -> Result<
     (),
     LxAppError,
@@ -231,12 +232,9 @@ fast_api!(RedirectToFastApi, RedirectTo, (), |lxapp: Arc<LxApp>,
     Ok(())
 });
 
-fast_api!(SwitchTabFastApi, SwitchTab, (), |lxapp: Arc<LxApp>,
-                                            options: SwitchTab|
- -> Result<
-    (),
-    LxAppError,
-> {
+host_api!(SwitchTabHost, SwitchTab, (), |lxapp: Arc<LxApp>,
+                                         options: SwitchTab|
+ -> Result<(), LxAppError> {
     lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
@@ -253,12 +251,9 @@ fast_api!(SwitchTabFastApi, SwitchTab, (), |lxapp: Arc<LxApp>,
     Ok(())
 });
 
-fast_api!(ReLaunchFastApi, ReLaunch, (), |lxapp: Arc<LxApp>,
-                                          options: ReLaunch|
- -> Result<
-    (),
-    LxAppError,
-> {
+host_api!(ReLaunchHost, ReLaunch, (), |lxapp: Arc<LxApp>,
+                                       options: ReLaunch|
+ -> Result<(), LxAppError> {
     lxapp.ensure_page_exists(&options.url)?;
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
@@ -275,8 +270,8 @@ fast_api!(ReLaunchFastApi, ReLaunch, (), |lxapp: Arc<LxApp>,
     Ok(())
 });
 
-fast_api!(
-    NavigateBackFastApi,
+host_api!(
+    NavigateBackHost,
     NavigateBack,
     (),
     |lxapp: Arc<LxApp>, options: NavigateBack| -> Result<(), LxAppError> {
@@ -301,11 +296,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let re_launch_func = JSFunc::new(ctx, re_launch)?;
     lx::register_js_api(ctx, "reLaunch", re_launch_func)?;
 
-    lx::register_fast_api("navigateTo", Arc::new(NavigateToFastApi));
-    lx::register_fast_api("navigateBack", Arc::new(NavigateBackFastApi));
-    lx::register_fast_api("redirectTo", Arc::new(RedirectToFastApi));
-    lx::register_fast_api("switchTab", Arc::new(SwitchTabFastApi));
-    lx::register_fast_api("reLaunch", Arc::new(ReLaunchFastApi));
+    lxapp::register_host("navigateTo", Arc::new(NavigateToHost));
+    lxapp::register_host("navigateBack", Arc::new(NavigateBackHost));
+    lxapp::register_host("redirectTo", Arc::new(RedirectToHost));
+    lxapp::register_host("switchTab", Arc::new(SwitchTabHost));
+    lxapp::register_host("reLaunch", Arc::new(ReLaunchHost));
 
     Ok(())
 }

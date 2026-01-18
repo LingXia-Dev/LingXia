@@ -1,9 +1,6 @@
-use lingxia_platform::{AppRuntime, DocumentInteraction, OpenDocumentRequest};
-use lxapp::lx::{self, fast_api};
-use lxapp::{LxApp, LxAppError};
+use lingxia_platform::{DocumentInteraction, OpenDocumentRequest};
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
-use serde::Deserialize;
-use std::sync::Arc;
 
 #[derive(FromJSObj)]
 struct JSOpenDocumentOptions {
@@ -17,19 +14,6 @@ struct JSOpenDocumentOptions {
     ///   * All platforms: No effect (always opens with default system app)
     #[rename = "showMenu"]
     show_menu: Option<bool>,
-}
-
-#[derive(FromJSObj, Deserialize)]
-struct JSOpenURLOptions {
-    #[serde(rename = "url")]
-    #[rename = "url"]
-    url: String,
-    /// Opens URL in external browser (default) or internal webview
-    /// - "external": Open in system browser (current behavior)
-    /// - "internal": Open in internal webview (future support)
-    #[serde(rename = "openIn")]
-    #[rename = "openIn"]
-    _open_in: Option<String>,
 }
 
 /// Maps file type string to appropriate MIME type
@@ -80,44 +64,9 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
         .map_err(|e| RongJSError::Error(format!("openDocument failed: {}", e)))
 }
 
-fn open_url_impl(lxapp: &LxApp, options: &JSOpenURLOptions) -> Result<(), LxAppError> {
-    if options.url.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "openURL requires url".to_string(),
-        ));
-    }
-
-    // TODO: Add support for openIn option in the future
-    // For now, always open in external browser (ignore openIn option)
-    lxapp
-        .runtime
-        .launch_with_url(options.url.clone())
-        .map_err(|e| LxAppError::Runtime(format!("openURL failed: {}", e)))?;
-    Ok(())
-}
-
-fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    open_url_impl(&lxapp, &options).map_err(|e| RongJSError::Error(e.to_string()))
-}
-
-fast_api!(
-    OpenURL,
-    JSOpenURLOptions,
-    (),
-    |lxapp: Arc<LxApp>, options: JSOpenURLOptions| -> Result<(), LxAppError> {
-        open_url_impl(&lxapp, &options)
-    }
-);
-
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let open_document_func = JSFunc::new(ctx, open_document)?;
     lx::register_js_api(ctx, "openDocument", open_document_func)?;
-
-    let open_url_func = JSFunc::new(ctx, open_url)?;
-    lx::register_js_api(ctx, "openURL", open_url_func)?;
-
-    lx::register_fast_api("openURL", Arc::new(OpenURL));
 
     Ok(())
 }

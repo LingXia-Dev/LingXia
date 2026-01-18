@@ -1,6 +1,12 @@
-use lingxia_platform::{AppRuntime, Location, UIUpdate, Wifi};
-use lxapp::{LxApp, OrientationConfig, lx};
+//! System information and OS-level operations.
+
+use lingxia_platform::{AppRuntime, Location, Wifi};
+use lxapp::host_api;
+use lxapp::lx;
+use lxapp::{LxApp, LxAppError};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use serde::Deserialize;
+use std::sync::Arc;
 
 /// AppBase information
 #[derive(Debug, Clone, IntoJSObj)]
@@ -19,26 +25,7 @@ pub struct SystemSettingInfo {
     wifi_enabled: bool,
 }
 
-/// App orientation status
-#[derive(Debug, Clone, IntoJSObj)]
-pub struct AppOrientationInfo {
-    orientation: String,
-}
-
-#[derive(FromJSObj)]
-pub(crate) struct SetAppOrientationOptions {
-    orientation: String,
-}
-
-impl From<OrientationConfig> for AppOrientationInfo {
-    fn from(config: OrientationConfig) -> Self {
-        Self {
-            orientation: config.to_label().to_string(),
-        }
-    }
-}
-
-pub(crate) fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
+fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
     Ok(AppBaseInfo {
@@ -46,7 +33,7 @@ pub(crate) fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     })
 }
 
-pub(crate) fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
+fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let location_enabled = lxapp
         .runtime
@@ -64,46 +51,60 @@ pub(crate) fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> 
     })
 }
 
-pub(crate) fn get_app_orientation(ctx: JSContext) -> JSResult<AppOrientationInfo> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    Ok(lxapp.get_app_orientation().into())
+#[derive(FromJSObj, Deserialize)]
+struct JSOpenURLOptions {
+    #[serde(rename = "url")]
+    #[rename = "url"]
+    url: String,
+    /// Opens URL in external browser (default) or internal webview
+    /// - "external": Open in system browser (current behavior)
+    /// - "internal": Open in internal webview (future support)
+    #[serde(rename = "openIn")]
+    #[rename = "openIn"]
+    _open_in: Option<String>,
 }
 
-pub(crate) fn set_app_orientation(
-    ctx: JSContext,
-    options: SetAppOrientationOptions,
-) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let config = OrientationConfig::from_label(&options.orientation).ok_or_else(|| {
-        RongJSError::Error(format!(
-            "Invalid orientation value: {}",
-            options.orientation
-        ))
-    })?;
-    lxapp
-        .set_app_orientation(config)
-        .map_err(|e| RongJSError::Error(format!("Failed to set app orientation: {}", e)))?;
-
-    if let Err(e) = lxapp.runtime.update_orientation_ui(lxapp.appid.clone()) {
-        eprintln!("Failed to update orientation UI: {}", e);
-        return Ok(false);
+fn open_url_impl(lxapp: &LxApp, options: &JSOpenURLOptions) -> Result<(), LxAppError> {
+    if options.url.is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "openURL requires url".to_string(),
+        ));
     }
 
-    Ok(true)
+    // TODO: Add support for openIn option in the future
+    // For now, always open in external browser (ignore openIn option)
+    lxapp
+        .runtime
+        .launch_with_url(options.url.clone())
+        .map_err(|e| LxAppError::Runtime(format!("openURL failed: {}", e)))?;
+    Ok(())
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
+fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    open_url_impl(&lxapp, &options).map_err(|e| RongJSError::Error(e.to_string()))
+}
+
+host_api!(
+    OpenURL,
+    JSOpenURLOptions,
+    (),
+    |lxapp: Arc<LxApp>, options: JSOpenURLOptions| -> Result<(), LxAppError> {
+        open_url_impl(&lxapp, &options)
+    }
+);
+
+pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let get_app_base_info = JSFunc::new(ctx, get_system_locale)?;
     lx::register_js_api(ctx, "getAppBaseInfo", get_app_base_info)?;
 
     let get_system_setting_func = JSFunc::new(ctx, get_system_setting)?;
     lx::register_js_api(ctx, "getSystemSetting", get_system_setting_func)?;
 
-    let get_app_orientation_func = JSFunc::new(ctx, get_app_orientation)?;
-    lx::register_js_api(ctx, "getAppOrientation", get_app_orientation_func)?;
+    let open_url_func = JSFunc::new(ctx, open_url)?;
+    lx::register_js_api(ctx, "openURL", open_url_func)?;
 
-    let set_app_orientation_func = JSFunc::new(ctx, set_app_orientation)?;
-    lx::register_js_api(ctx, "setAppOrientation", set_app_orientation_func)?;
+    lxapp::register_host("openURL", Arc::new(OpenURL));
 
     Ok(())
 }

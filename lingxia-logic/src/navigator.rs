@@ -1,5 +1,6 @@
 use crate::update;
-use lxapp::lx::{self, fast_api};
+use lxapp::host_api;
+use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, service_executor};
 use serde::Deserialize;
@@ -92,7 +93,7 @@ async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     Ok(())
 }
 
-fast_api!(
+host_api!(
     NavigateToLxApp,
     NavigateToOptions,
     (),
@@ -117,7 +118,7 @@ fast_api!(
     }
 );
 
-fast_api!(
+host_api!(
     NavigateBackLxApp,
     (),
     |lxapp: Arc<LxApp>| -> Result<(), LxAppError> {
@@ -134,8 +135,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let navigate_back_lxapp = JSFunc::new(ctx, navigate_back_lxapp)?;
     lx::register_js_api(ctx, "navigateBackLxApp", navigate_back_lxapp)?;
 
-    lx::register_fast_api("navigateToLxApp", Arc::new(NavigateToLxApp));
-    lx::register_fast_api("navigateBackLxApp", Arc::new(NavigateBackLxApp));
+    lxapp::register_host("navigateToLxApp", Arc::new(NavigateToLxApp));
+    lxapp::register_host("navigateBackLxApp", Arc::new(NavigateBackLxApp));
 
     Ok(())
 }
