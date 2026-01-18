@@ -28,6 +28,8 @@
     <!-- Location permission description for runtime prompts -->
     <key>NSLocationWhenInUseUsageDescription</key>
     <string>Allow LingXia to access your location to provide location-based features.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Allow LingXia to access your location to read WiFi information.</string>
 
     <!-- Photos library permission descriptions -->
     <key>NSPhotoLibraryAddUsageDescription</key>
