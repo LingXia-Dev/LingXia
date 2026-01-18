@@ -30,6 +30,34 @@ const TAG = 'LingXia.Modal';
 export class LxAppModal {
   private static modalManagerRef: ModalManager | null = null;
 
+  public static normalizeNativeArgs(rawArgs: Object[]): Object[] | null {
+    if (!Array.isArray(rawArgs)) {
+      return null;
+    }
+
+    // Legacy format may have 9 args:
+    // title, content, showCancel, cancelText, confirmText, editable, placeholder, confirmColor, callbackId
+    if (rawArgs.length === 9) {
+      return [
+        rawArgs[0], // title
+        rawArgs[1], // content
+        rawArgs[2], // showCancel
+        rawArgs[3], // cancelText
+        rawArgs[4], // confirmText
+        rawArgs[7], // confirmColor
+        rawArgs[8]  // callbackId
+      ];
+    }
+
+    // New format with 7 args:
+    // title, content, showCancel, cancelText, confirmText, confirmColor, callbackId
+    if (rawArgs.length >= 7) {
+      return rawArgs.slice(0, 7);
+    }
+
+    return null;
+  }
+
   /**
    * Show modal with individual string parameters (refactored for direct parameter passing)
    * @param title - Modal title (required)
@@ -49,6 +77,12 @@ export class LxAppModal {
     confirmColor: string,
     callbackId: string
   ): void {
+    const cb = String(callbackId ?? '').trim();
+    if (!cb) {
+      hilog.warn(DOMAIN, TAG, 'showModal: missing callbackId');
+      return;
+    }
+
     const config: ModalConfig = {
       title: title,
       content: content,
@@ -59,11 +93,10 @@ export class LxAppModal {
     };
 
     if (LxAppModal.modalManagerRef) {
-      LxAppModal.modalManagerRef.showModal(config, callbackId);
+      LxAppModal.modalManagerRef.showModal(config, cb);
     } else {
       hilog.warn(DOMAIN, TAG, 'Modal manager not initialized');
-      // Call callback with error
-      onCallback(callbackId, false, 'Modal manager not initialized');
+      onCallback(cb, false, '1000');
     }
   }
 

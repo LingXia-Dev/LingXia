@@ -41,6 +41,55 @@ export class LxAppToast {
   private static currentTimer: number | null = null;
   private static toastManagerRef: ToastManager | null = null;
 
+  public static normalizeNativeArgs(rawArgs: Object[]): Object[] | null {
+    if (!Array.isArray(rawArgs) || rawArgs.length < 6) {
+      return null;
+    }
+
+    const iconMap: Record<string, number> = { 'success': 0, 'error': 1, 'loading': 2, 'none': 3 };
+    const positionMap: Record<string, number> = { 'top': 0, 'center': 1, 'bottom': 2 };
+
+    const parseIcon = (v: Object): number => {
+      const s = String(v ?? '').toLowerCase().trim();
+      const mapped = iconMap[s];
+      if (mapped !== undefined) { return mapped; }
+      const n = Number(s);
+      if (Number.isFinite(n) && n >= 0 && n <= 3) { return Math.floor(n); }
+      return 3;
+    };
+
+    const parsePosition = (v: Object): number => {
+      const s = String(v ?? '').toLowerCase().trim();
+      const mapped = positionMap[s];
+      if (mapped !== undefined) { return mapped; }
+      const n = Number(s);
+      if (Number.isFinite(n) && n >= 0 && n <= 2) { return Math.floor(n); }
+      return 1;
+    };
+
+    const parseBool = (v: Object): boolean => {
+      const s = String(v ?? '').toLowerCase().trim();
+      if (s === 'true' || s === '1') { return true; }
+      if (s === 'false' || s === '0' || s === '') { return false; }
+      return !!v;
+    };
+
+    const parseDurationSeconds = (v: Object): number => {
+      const num = Number(String(v ?? '').trim());
+      if (!Number.isFinite(num) || num < 0) { return 1.5; }
+      return num >= 50 ? (num / 1000) : num;
+    };
+
+    return [
+      String(rawArgs[0] ?? ''),
+      parseIcon(rawArgs[1]),
+      String(rawArgs[2] ?? ''),
+      parseDurationSeconds(rawArgs[3]),
+      parseBool(rawArgs[4]),
+      parsePosition(rawArgs[5])
+    ];
+  }
+
   /**
    * Show toast with specified configuration
    * @param title - Toast message content

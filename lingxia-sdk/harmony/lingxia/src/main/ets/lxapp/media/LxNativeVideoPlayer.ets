@@ -27,6 +27,25 @@ import { resolveLxUriForFileAccess } from './LxUri';
 const TAG = 'LingXia.NativeVideoPlayer';
 function log(message: string): void { console.info(`${TAG}: ${message}`); }
 type StreamPlaybackState = 'idle' | 'waiting' | 'playing' | 'ended';
+type NativePlayerEvent =
+  | 'seekDone'
+  | 'error'
+  | 'buffering'
+  | 'prepared'
+  | 'stop'
+  | 'playing'
+  | 'pause'
+  | 'ended'
+  | 'waiting'
+  | 'streamConfig'
+  | 'duration'
+  | 'enterFullscreen'
+  | 'exitFullscreen';
+
+interface StreamVideoConfig {
+  width?: number;
+  height?: number;
+}
 
 // Event detail types
 // NOTE: All time values in event details use SECONDS (not milliseconds) for cross-platform Rust callback contract.
@@ -186,6 +205,7 @@ export struct LxNativeVideoPlayer {
   private static rebindInstance: Map<string, LxNativeVideoPlayer> = new Map();
   private static originalSurfaceIds: Map<string, string> = new Map();
   private static streamVideoSizes: Map<string, StreamVideoSize> = new Map();
+  private static nativeEventLastPayload: Map<string, string> = new Map();
   private static instanceCounter: number = 0;  // Global counter to generate unique XComponent IDs
   // Global registry of componentIds that have ever rendered a frame.
   // Once a frame is rendered, poster should NEVER show again (cold start only).
@@ -340,6 +360,10 @@ export struct LxNativeVideoPlayer {
     if (state?.isPlaying) LxNativeVideoPlayer.playStatic(componentId);
   }
 
+  private static clearNativeEventCache(componentId: string): void {
+    LxNativeVideoPlayer.nativeEventLastPayload.delete(`${componentId}:buffering`);
+  }
+
   static destroyStatic(componentId: string): void {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance) {
@@ -350,6 +374,7 @@ export struct LxNativeVideoPlayer {
       LxNativeVideoPlayer.runtimeState.delete(componentId);
       LxNativeVideoPlayer.keepAliveIds.delete(componentId);
       LxNativeVideoPlayer.originalSurfaceIds.delete(componentId);
+      LxNativeVideoPlayer.clearNativeEventCache(componentId);
     }
   }
 
@@ -365,6 +390,91 @@ export struct LxNativeVideoPlayer {
     } else {
       const state = LxNativeVideoPlayer.runtimeState.get(componentId);
       if (state) state.currentTime = positionMs;
+    }
+  }
+
+  static handleNativeEvent(componentId: string, event: string, payload?: string): boolean {
+    const eventName = event as NativePlayerEvent;
+    if (eventName === 'buffering') {
+      const key = `${componentId}:buffering`;
+      const value = payload ?? '';
+      const last = LxNativeVideoPlayer.nativeEventLastPayload.get(key);
+      if (value !== last) {
+        LxNativeVideoPlayer.nativeEventLastPayload.set(key, value);
+        log(`nativeEvent: componentId=${componentId} event=${eventName} payload=${value}`);
+      }
+    } else if (
+      eventName === 'playing' ||
+      eventName === 'pause' ||
+      eventName === 'waiting' ||
+      eventName === 'prepared' ||
+      eventName === 'stop' ||
+      eventName === 'ended'
+    ) {
+      log(`nativeEvent: componentId=${componentId} event=${eventName}`);
+    }
+
+    switch (eventName) {
+      case 'seekDone': {
+        const position = parseInt(payload ?? '', 10);
+        if (!Number.isFinite(position)) return false;
+        LxNativeVideoPlayer.onSeekDone(componentId, position);
+        return true;
+      }
+      case 'error': {
+        LxNativeVideoPlayer.onError(componentId, payload ?? '');
+        return true;
+      }
+      case 'buffering':
+        LxNativeVideoPlayer.onBufferingChange(componentId, (payload ?? '') === '1');
+        return true;
+      case 'prepared':
+        LxNativeVideoPlayer.onPrepared(componentId);
+        return true;
+      case 'stop':
+        LxNativeVideoPlayer.onStopped(componentId);
+        return true;
+      case 'playing':
+        LxNativeVideoPlayer.onPlaying(componentId);
+        return true;
+      case 'pause':
+        LxNativeVideoPlayer.onPaused(componentId);
+        return true;
+      case 'ended':
+        LxNativeVideoPlayer.onEnded(componentId);
+        return true;
+      case 'waiting':
+        LxNativeVideoPlayer.onBufferingChange(componentId, true);
+        return true;
+      case 'streamConfig': {
+        if (!payload) return false;
+        try {
+          const config = JSON.parse(payload) as StreamVideoConfig;
+          const width = Number(config?.width ?? 0);
+          const height = Number(config?.height ?? 0);
+          if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
+          LxNativeVideoPlayer.setStreamVideoSize(componentId, width, height);
+          return true;
+        } catch (error) {
+          log(`nativeEvent: streamConfig parse error=${String(error)}`);
+          return false;
+        }
+      }
+      case 'duration': {
+        const duration = parseInt(payload ?? '', 10);
+        if (!Number.isFinite(duration)) return false;
+        LxNativeVideoPlayer.onDuration(componentId, duration);
+        return true;
+      }
+      case 'enterFullscreen':
+        LxNativeVideoPlayer.enterFullscreenStatic(componentId);
+        return true;
+      case 'exitFullscreen':
+        LxNativeVideoPlayer.exitFullscreen(componentId);
+        return true;
+      default:
+        log(`nativeEvent: unknown event=${String(event)}`);
+        return false;
     }
   }
 
@@ -762,6 +872,7 @@ export struct LxNativeVideoPlayer {
     this.appliedCornerRadius = 0;
     if (LxNativeVideoPlayer.rebindInstance.get(this.componentId) === this) {
       LxNativeVideoPlayer.rebindInstance.delete(this.componentId);
+      LxNativeVideoPlayer.clearNativeEventCache(this.componentId);
       log(`[${this.componentId}] aboutToDisappear: removed instance from registry`);
     } else {
       log(`[${this.componentId}] aboutToDisappear: instance registry mismatch (already replaced?), skipping remove`);
@@ -1103,6 +1214,7 @@ export struct LxNativeVideoPlayer {
     LxNativeVideoPlayer.setNativePlayerExists(this.componentId, false);
     // Clear runtime state to avoid stale data when video is recreated with different source
     LxNativeVideoPlayer.runtimeState.delete(this.componentId);
+    LxNativeVideoPlayer.clearNativeEventCache(this.componentId);
   }
 
   play(): void {

@@ -26,6 +26,32 @@ const TAG = 'LingXia.ActionSheet';
 export class LxAppActionSheet {
   private static actionSheetManagerRef: ActionSheetManager | null = null;
 
+  public static showActionSheetFromJson(
+    optionsJson: string,
+    cancelText: string,
+    itemColor: string,
+    callbackId: string
+  ): boolean {
+    const cb = String(callbackId ?? '').trim();
+    if (!cb) {
+      hilog.warn(DOMAIN, TAG, 'showActionSheetFromJson: missing callbackId');
+      return false;
+    }
+
+    try {
+      const options = JSON.parse(String(optionsJson ?? '')) as string[];
+      if (!Array.isArray(options)) {
+        onCallback(cb, false, '1000');
+        return false;
+      }
+      return LxAppActionSheet.showActionSheet(options, cancelText, itemColor, cb);
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `showActionSheetFromJson parse error: ${String(error)}`);
+      onCallback(cb, false, '1000');
+      return false;
+    }
+  }
+
   /**
    * Show ActionSheet
    * @param options - Array of option strings
@@ -33,7 +59,7 @@ export class LxAppActionSheet {
    * @param itemColor - Color for option items
    * @param callbackId - Callback ID for result
    */
-  public static showActionSheet(options: string[], cancelText: string, itemColor: string, callbackId: string): void {
+  public static showActionSheet(options: string[], cancelText: string, itemColor: string, callbackId: string): boolean {
     const config: ActionSheetConfig = {
       options: options,
       cancelText: cancelText,
@@ -42,8 +68,11 @@ export class LxAppActionSheet {
 
     if (LxAppActionSheet.actionSheetManagerRef) {
       LxAppActionSheet.actionSheetManagerRef.showActionSheet(config, callbackId);
+      return true;
     } else {
       hilog.warn(DOMAIN, TAG, 'ActionSheet manager not initialized, ignoring request');
+      onCallback(callbackId, false, '1000');
+      return false;
     }
   }
 

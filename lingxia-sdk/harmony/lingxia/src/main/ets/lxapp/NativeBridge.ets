@@ -1,11 +1,8 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { webview } from '@kit.ArkWeb';
-import common from '@ohos.app.ability.common';
-import { onCallback } from 'liblingxia.so';
 import { setComponentCallback } from './NativeComponents/NativeCallbackRegistry';
 import { LxApp } from './LxApp';
 import { LxAppToast, ToastIcon, ToastPosition } from './APIs/LxAppToast';
-import { LxAppModal, ModalResult } from './APIs/LxAppModal';
+import { LxAppModal } from './APIs/LxAppModal';
 import { LxAppActionSheet } from './APIs/LxAppActionSheet';
 import { LxAppPicker } from './APIs/LxAppPicker';
 import { LxAppDevice } from './APIs/LxAppDevice';
@@ -29,11 +26,6 @@ import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
-
-class StreamVideoConfig {
-  width?: number;
-  height?: number;
-}
 
 // UI Event Constants
 export const UI_EVENT_TABBAR_CLICK = 0;
@@ -71,7 +63,6 @@ function parseBoolean(value: Object | undefined, defaultValue: boolean): boolean
 class NativeBridge {
   private static callbacks: Map<string, Function> = new Map();
   private static instance: NativeBridge | null = null;
-  private static videoEventLastPayload: Map<string, string> = new Map();
 
   private constructor() {
     this.registerDefaultCallbacks();
@@ -180,15 +171,8 @@ class NativeBridge {
     });
 
     // ActionSheet APIs
-    this.register('showActionSheet', (options: string, cancelText: string, itemColor: string, callbackId: string): void => {
-      try {
-        // Parse options from JSON string
-        const optionsArray: string[] = JSON.parse(options);
-
-        LxAppActionSheet.showActionSheet(optionsArray, cancelText, itemColor, callbackId);
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `Error showing action sheet: ${error}`);
-      }
+    this.register('showActionSheet', (options: string, cancelText: string, itemColor: string, callbackId: string): boolean => {
+      return LxAppActionSheet.showActionSheetFromJson(options, cancelText, itemColor, callbackId);
     });
 
     // Picker APIs (matching Rust interface)
@@ -201,21 +185,17 @@ class NativeBridge {
       confirmButtonColor: string,
       confirmTextColor: string,
       callbackId: string
-    ): void => {
-      try {
-        LxAppPicker.showPicker(
-          columns,
-          cancelText,
-          cancelButtonColor,
-          cancelTextColor,
-          confirmText,
-          confirmButtonColor,
-          confirmTextColor,
-          callbackId
-        );
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `showPicker error: ${error}`);
-      }
+    ): boolean => {
+      return LxAppPicker.showPicker(
+        columns,
+        cancelText,
+        cancelButtonColor,
+        cancelTextColor,
+        confirmText,
+        confirmButtonColor,
+        confirmTextColor,
+        callbackId
+      );
     });
 
     this.register('showPopup', (
@@ -306,8 +286,7 @@ class NativeBridge {
       const cb = String(callbackId ?? '').trim();
       if (!cb) { return false; }
       const mediaType = Number(mediaTypeStr);
-      LxAppMedia.saveMediaWithCallback(path, mediaType, cb);
-      return true;
+      return LxAppMedia.saveMedia(path, mediaType, cb);
     });
 
     this.register('openDocument', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
@@ -331,80 +310,7 @@ class NativeBridge {
     });
 
     this.register('videoPlayerEvent', (componentId: string, event: string, payload?: string): boolean => {
-      // Key trace logs for debugging playback state issues (keep low-noise by logging only transitions).
-      if (event === 'buffering') {
-        const key = `${componentId}:buffering`;
-        const value = payload ?? '';
-        const last = NativeBridge.videoEventLastPayload.get(key);
-        if (value !== last) {
-          NativeBridge.videoEventLastPayload.set(key, value);
-          hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event} payload=${value}`);
-        }
-      } else if (event === 'playing' || event === 'pause' || event === 'waiting' || event === 'prepared' || event === 'stop' || event === 'ended') {
-        hilog.info(DOMAIN, TAG, `videoPlayerEvent: componentId=${componentId} event=${event}`);
-      }
-      switch (event) {
-        case 'seekDone': {
-          const position = parseInt(payload ?? '', 10);
-          if (isNaN(position)) return false;
-          LxNativeVideoPlayer.onSeekDone(componentId, position);
-          return true;
-        }
-        case 'error': {
-          LxNativeVideoPlayer.onError(componentId, payload ?? '');
-          return true;
-        }
-        case 'buffering':
-          LxNativeVideoPlayer.onBufferingChange(componentId, (payload ?? '') === '1');
-          return true;
-        case 'prepared':
-          LxNativeVideoPlayer.onPrepared(componentId);
-          return true;
-        case 'stop':
-          LxNativeVideoPlayer.onStopped(componentId);
-          return true;
-        case 'playing':
-          LxNativeVideoPlayer.onPlaying(componentId);
-          return true;
-        case 'pause':
-          LxNativeVideoPlayer.onPaused(componentId);
-          return true;
-        case 'ended':
-          LxNativeVideoPlayer.onEnded(componentId);
-          return true;
-        case 'waiting':
-          LxNativeVideoPlayer.onBufferingChange(componentId, true);
-          return true;
-        case 'streamConfig': {
-          if (!payload) return false;
-          try {
-            const config = JSON.parse(payload) as StreamVideoConfig;
-            const width = Number(config?.width ?? 0);
-            const height = Number(config?.height ?? 0);
-            if (!Number.isFinite(width) || !Number.isFinite(height)) return false;
-            LxNativeVideoPlayer.setStreamVideoSize(componentId, width, height);
-            return true;
-          } catch (error) {
-            hilog.warn(DOMAIN, TAG, `videoPlayerEvent: streamConfig parse error=${error}`);
-            return false;
-          }
-        }
-        case 'duration': {
-          const duration = parseInt(payload ?? '', 10);
-          if (!Number.isFinite(duration)) return false;
-          LxNativeVideoPlayer.onDuration(componentId, duration);
-          return true;
-        }
-        case 'enterFullscreen':
-          LxNativeVideoPlayer.enterFullscreenStatic(componentId);
-          return true;
-        case 'exitFullscreen':
-          LxNativeVideoPlayer.exitFullscreen(componentId);
-          return true;
-        default:
-          hilog.warn(DOMAIN, TAG, `videoPlayerEvent: unknown event=${event}`);
-          return false;
-      }
+      return LxNativeVideoPlayer.handleNativeEvent(componentId, event, payload);
     });
 
 
@@ -423,33 +329,7 @@ class NativeBridge {
     // so that the logic layer can decide whether to proceed with the location
     // request or surface an error.
     this.register('requestLocationPermission', (callbackId: string): boolean => {
-      const id = String(callbackId ?? '').trim();
-      if (!id) {
-        hilog.warn(DOMAIN, TAG, 'requestLocationPermission: missing callbackId');
-        return false;
-      }
-
-      (async () => {
-        try {
-          const granted: boolean = await PermissionManager.ensureLocationAccess();
-          if (granted) {
-            onCallback(id, true, '{}');
-          } else {
-            onCallback(id, false, '3002');
-          }
-          hilog.info(DOMAIN, TAG, `requestLocationPermission result: ${granted}`);
-        } catch (error) {
-          const message = String(error);
-          hilog.error(
-            DOMAIN,
-            TAG,
-            `requestLocationPermission failed: ${message}`
-          );
-          onCallback(id, false, '1000');
-        }
-      })();
-
-      return true;
+      return PermissionManager.requestLocationPermission(callbackId);
     });
 
     hilog.info(DOMAIN, TAG, `Registered ${NativeBridge.callbacks.size} default callbacks`);
@@ -496,80 +376,10 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
 
       // Convert arguments based on function type
       let args: Object[] = rawArgs;
-      if (functionName === 'showToast' && rawArgs.length >= 6) {
-        // Convert showToast arguments: title, icon, image, duration, mask, position
-        // Accept both string and numeric forms for icon/position, and ms/seconds for duration
-        const iconMap: Record<string, number> = { 'success': 0, 'error': 1, 'loading': 2, 'none': 3 };
-        const positionMap: Record<string, number> = { 'top': 0, 'center': 1, 'bottom': 2 };
-
-        const parseIcon = (v: Object): number => {
-          const s = String(v ?? '').toLowerCase().trim();
-          const mapped = iconMap[s];
-          if (mapped !== undefined) { return mapped; }
-          const n = Number(s);
-          if (Number.isFinite(n) && n >= 0 && n <= 3) { return Math.floor(n); }
-          return 3; // default none
-        };
-
-        const parsePosition = (v: Object): number => {
-          const s = String(v ?? '').toLowerCase().trim();
-          const mapped = positionMap[s];
-          if (mapped !== undefined) { return mapped; }
-          const n = Number(s);
-          if (Number.isFinite(n) && n >= 0 && n <= 2) { return Math.floor(n); }
-          return 1; // default center
-        };
-
-        const parseBool = (v: Object): boolean => {
-          const s = String(v ?? '').toLowerCase().trim();
-          if (s === 'true' || s === '1') { return true; }
-          if (s === 'false' || s === '0' || s === '') { return false; }
-          return !!v;
-        };
-
-        const parseDurationSeconds = (v: Object): number => {
-          const num = Number(String(v ?? '').trim());
-          if (!Number.isFinite(num) || num < 0) { return 1.5; }
-          // Heuristic: treat values >= 50 as milliseconds and convert to seconds
-          // (common web pattern passes 1500/2000 ms)
-          const secs = num >= 50 ? (num / 1000) : num;
-          return secs;
-        };
-
-        args = [
-          String(rawArgs[0] ?? ''),                          // title
-          parseIcon(rawArgs[1]),                              // icon
-          String(rawArgs[2] ?? ''),                           // image
-          parseDurationSeconds(rawArgs[3]),                   // duration (seconds)
-          parseBool(rawArgs[4]),                              // mask
-          parsePosition(rawArgs[5])                           // position
-        ];
-      } else if (functionName === 'showModal' && rawArgs.length >= 7) {
-        // Handle showModal arguments - skip legacy editable/placeholder parameters if present
-        // Expected: title, content, showCancel, cancelText, confirmText, confirmColor, callbackId
-        // Legacy format may have 9 args: title, content, showCancel, cancelText, confirmText, editable, placeholder, confirmColor, callbackId
-        if (rawArgs.length === 9) {
-          // Legacy format with editable and placeholder - skip them
-          args = [
-            rawArgs[0], // title
-            rawArgs[1], // content
-            rawArgs[2], // showCancel
-            rawArgs[3], // cancelText
-            rawArgs[4], // confirmText
-            rawArgs[7], // confirmColor (skip editable and placeholder)
-            rawArgs[8]  // callbackId
-          ];
-        } else {
-          // New format with 7 args
-          args = rawArgs;
-        }
-      } else if (functionName === 'showPicker' && rawArgs.length >= 8) {
-        // Handle showPicker arguments: columns, cancelText, cancelButtonColor, cancelTextColor, confirmText, confirmButtonColor, confirmTextColor, callbackId
-        // All arguments are strings, no conversion needed
-        args = rawArgs;
-      } else if (functionName === 'showPopup' && rawArgs.length >= 5) {
-        // appId, path, widthRatio, heightRatio, position as strings
-        args = rawArgs;
+      if (functionName === 'showToast') {
+        args = LxAppToast.normalizeNativeArgs(rawArgs) ?? rawArgs;
+      } else if (functionName === 'showModal') {
+        args = LxAppModal.normalizeNativeArgs(rawArgs) ?? rawArgs;
       }
 
       const result = NativeBridge.call(functionName, ...args);

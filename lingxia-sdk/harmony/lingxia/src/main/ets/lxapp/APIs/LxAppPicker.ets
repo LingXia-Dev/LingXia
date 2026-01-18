@@ -44,6 +44,26 @@ export class LxAppPicker {
   // Local callback registry for native components
   public static localCallbacks: Map<string, (success: boolean, result: string) => void> = new Map();
 
+  private static finalizeCallback(callbackId: string, success: boolean, result: string): void {
+    const cb = String(callbackId ?? '').trim();
+    if (!cb) {
+      hilog.warn(DOMAIN, TAG, 'finalizeCallback: missing callbackId');
+      return;
+    }
+
+    const localCallback = LxAppPicker.localCallbacks.get(cb);
+    if (localCallback) {
+      try {
+        localCallback(success, result);
+      } finally {
+        LxAppPicker.localCallbacks.delete(cb);
+      }
+      return;
+    }
+
+    onCallback(cb, success, result);
+  }
+
   /**
    * Show picker with individual parameters (matching Rust interface)
    */
@@ -56,21 +76,35 @@ export class LxAppPicker {
     confirmButtonColor: string,
     confirmTextColor: string,
     callbackId: string
-  ): void {
+  ): boolean {
+    const cb = String(callbackId ?? '').trim();
+    if (!cb) {
+      hilog.warn(DOMAIN, TAG, 'showPicker: missing callbackId');
+      return false;
+    }
+
     try {
-      const parsedData: (string[] | Record<string, string[]>)[] = JSON.parse(columns);
+      const parsedData: Object[] = JSON.parse(String(columns ?? '')) as Object[];
+      if (!Array.isArray(parsedData)) {
+        LxAppPicker.finalizeCallback(cb, false, '1000');
+        return false;
+      }
 
       let config: PickerConfig;
 
       // Check if this is cascading picker (second element is object, not array)
-      if (Array.isArray(parsedData) && parsedData.length === 2 &&
-          Array.isArray(parsedData[0]) &&
-          typeof parsedData[1] === 'object' && !Array.isArray(parsedData[1])) {
+      if (
+        parsedData.length === 2 &&
+        Array.isArray(parsedData[0]) &&
+        typeof parsedData[1] === 'object' &&
+        parsedData[1] !== null &&
+        !Array.isArray(parsedData[1])
+      ) {
         // Cascading picker
         config = {
-          columns: [parsedData[0]], // Only first column initially
+          columns: [parsedData[0] as string[]], // Only first column initially
           cascading: true,
-          cascadingData: parsedData[1],
+          cascadingData: parsedData[1] as Record<string, string[]>,
           cancelText: cancelText,
           cancelButtonColor: cancelButtonColor,
           cancelTextColor: cancelTextColor,
@@ -80,7 +114,11 @@ export class LxAppPicker {
         };
       } else {
         // Regular picker (single or dual column)
-        const parsedColumns: string[][] = parsedData as string[][];
+        const parsedColumns = parsedData as string[][];
+        if (!Array.isArray(parsedColumns) || parsedColumns.length === 0) {
+          LxAppPicker.finalizeCallback(cb, false, '1000');
+          return false;
+        }
         config = {
           columns: parsedColumns,
           cancelText: cancelText,
@@ -93,12 +131,17 @@ export class LxAppPicker {
       }
 
       if (LxAppPicker.pickerManagerRef) {
-        LxAppPicker.pickerManagerRef.showPicker(config, callbackId);
+        LxAppPicker.pickerManagerRef.showPicker(config, cb);
+        return true;
       } else {
         hilog.warn(DOMAIN, TAG, 'Picker manager not initialized, ignoring request');
+        LxAppPicker.finalizeCallback(cb, false, '1000');
+        return false;
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to parse columns: ${error}`);
+      LxAppPicker.finalizeCallback(cb, false, '1000');
+      return false;
     }
   }
 

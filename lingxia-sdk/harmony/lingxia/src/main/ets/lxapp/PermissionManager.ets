@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { abilityAccessCtrl, Permissions } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
+import { onCallback } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Permission';
@@ -85,6 +86,32 @@ export class PermissionManager {
       hilog.warn(DOMAIN, TAG, 'Location permission not granted');
     }
     return grantedAny;
+  }
+
+  public static requestLocationPermission(callbackId: string): boolean {
+    const id = String(callbackId ?? '').trim();
+    if (!id) {
+      hilog.warn(DOMAIN, TAG, 'requestLocationPermission: missing callbackId');
+      return false;
+    }
+
+    (async () => {
+      try {
+        const granted: boolean = await PermissionManager.ensureLocationAccess();
+        if (granted) {
+          onCallback(id, true, '{}');
+        } else {
+          onCallback(id, false, '3002');
+        }
+        hilog.info(DOMAIN, TAG, `requestLocationPermission result: ${granted}`);
+      } catch (error) {
+        const message = String(error);
+        hilog.error(DOMAIN, TAG, `requestLocationPermission failed: ${message}`);
+        onCallback(id, false, '1000');
+      }
+    })();
+
+    return true;
   }
 
   public static async ensureWifiAccess(): Promise<boolean> {

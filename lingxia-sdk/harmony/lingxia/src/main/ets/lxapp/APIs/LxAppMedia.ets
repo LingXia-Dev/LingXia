@@ -239,7 +239,7 @@ export class LxAppMedia {
     }
   }
 
-  public static async saveMedia(path: string, mediaType: number): Promise<boolean> {
+  public static async saveMediaToAlbum(path: string, mediaType: number): Promise<boolean> {
     if (!path || mediaType === undefined || mediaType === null || !LxApp.context) { return false; }
 
     // Deduplicate rapid duplicate requests for the same file/type (2s window)
@@ -257,13 +257,13 @@ export class LxAppMedia {
     let uri: string | undefined;
     try {
       uri = LxAppMedia.resolveAssetUri(await helper.createAsset(type, ext));
-      if (!uri) { hilog.error(DOMAIN, TAG, 'saveMedia: empty asset uri'); return false; }
+      if (!uri) { hilog.error(DOMAIN, TAG, 'saveMediaToAlbum: empty asset uri'); return false; }
       const src = await fileIo.open(path, fileIo.OpenMode.READ_ONLY);
       try {
         const dst = await fileIo.open(uri, fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE);
         try {
           await fileIo.copyFile(src.fd, dst.fd);
-          hilog.info(DOMAIN, TAG, `saveMedia: saved to ${uri}`);
+          hilog.info(DOMAIN, TAG, `saveMediaToAlbum: saved to ${uri}`);
           return true;
         } finally {
           try { await fileIo.close(dst.fd); } catch {}
@@ -272,19 +272,19 @@ export class LxAppMedia {
         try { await fileIo.close(src.fd); } catch {}
       }
     } catch (err) {
-      hilog.error(DOMAIN, TAG, `saveMedia failed: ${err}`);
+      hilog.error(DOMAIN, TAG, `saveMediaToAlbum failed: ${err}`);
       return false;
     }
   }
 
-  public static saveMediaWithCallback(path: string, mediaType: number, callbackId: string): void {
+  public static saveMedia(path: string, mediaType: number, callbackId: string): boolean {
     const cb = String(callbackId ?? '').trim();
-    if (!cb) { return; }
+    if (!cb) { return false; }
 
     const normalizedPath = String(path ?? '').replace(/%7C/g, '|');
     if (!normalizedPath || !Number.isFinite(mediaType)) {
       onCallback(cb, false, '1000');
-      return;
+      return false;
     }
 
     (async () => {
@@ -294,13 +294,15 @@ export class LxAppMedia {
           onCallback(cb, false, '3004');
           return;
         }
-        const ok = await LxAppMedia.saveMedia(normalizedPath, mediaType);
+        const ok = await LxAppMedia.saveMediaToAlbum(normalizedPath, mediaType);
         onCallback(cb, ok, ok ? '{}' : '1001');
       } catch (error) {
-        hilog.error(DOMAIN, TAG, `saveMediaWithCallback error: ${String(error)}`);
+        hilog.error(DOMAIN, TAG, `saveMedia error: ${String(error)}`);
         onCallback(cb, false, '1000');
       }
     })();
+
+    return true;
   }
 
   private static resolveAssetUri(assetResult: PhotoAssetHandle | string | null | undefined): string | undefined {
