@@ -789,25 +789,15 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun addCapsuleButton() {
-        if (isDisplayingHomeLxApp) {
-            return
-        }
+        if (isDisplayingHomeLxApp) return
 
         val density = resources.displayMetrics.density
         val statusBarHeight = getStatusBarHeight(this)
-
         val capsuleHeightPx = (LxAppTheme.Metrics.CAPSULE_HEIGHT_DP * density).toInt()
         val capsuleTopMarginPx = LxAppTheme.Metrics.calculateCapsuleTopMargin(statusBarHeight, density)
 
-        val capsule = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            tag = "capsule_button"
-            elevation = 1000f
-
-            LxNavBarUtils.applyCapsuleBackground(this)
-
-            val capsuleLayoutParams = FrameLayout.LayoutParams(
+        val capsule = CapsuleButton(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 capsuleHeightPx
             ).apply {
@@ -815,59 +805,13 @@ class LxAppActivity : AppCompatActivity() {
                 topMargin = capsuleTopMarginPx
                 rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
             }
-            layoutParams = capsuleLayoutParams
-
-            setPadding(
-                (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt(),
-                0,
-                (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt(),
-                0
-            )
-        }
-
-        val buttonWidthPx = (LxAppTheme.Metrics.CAPSULE_BUTTON_WIDTH_DP * density).toInt()
-        val dividerWidthPx = (LxAppTheme.Metrics.CAPSULE_DIVIDER_WIDTH_DP * density).toInt().coerceAtLeast(1)
-        val dividerHeightPx = (LxAppTheme.Metrics.CAPSULE_DIVIDER_HEIGHT_DP * density).toInt()
-
-        val btnMore = ImageButton(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            LxNavBarUtils.configureCapsuleMenuButton(this)
-            layoutParams = LinearLayout.LayoutParams(
-                buttonWidthPx,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setOnClickListener {
+            setOnMenuClickListener {
                 NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_MORE)
             }
-        }
-
-        val divider = View(this).apply {
-            background = LxNavBarUtils.createCapsuleDivider()
-            layoutParams = LinearLayout.LayoutParams(
-                dividerWidthPx,
-                dividerHeightPx
-            ).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                marginStart = (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt()
-                marginEnd = (LxAppTheme.Metrics.CAPSULE_PADDING_HORIZONTAL_DP * density).toInt()
-            }
-        }
-
-        val btnClose = ImageButton(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            LxNavBarUtils.configureCapsuleCloseButton(this)
-            layoutParams = LinearLayout.LayoutParams(
-                buttonWidthPx,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setOnClickListener {
+            setOnCloseClickListener {
                 NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_CLOSE)
             }
         }
-
-        capsule.addView(btnMore)
-        capsule.addView(divider)
-        capsule.addView(btnClose)
 
         rootContainer.post {
             rootContainer.removeView(rootContainer.findViewWithTag("capsule_button"))
