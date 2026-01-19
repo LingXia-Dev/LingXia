@@ -179,12 +179,9 @@ fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Er
     Ok(())
 }
 
-fn save_media_impl(
-    request: SaveMediaRequest,
-    method: &str,
-) -> Result<(), PlatformError> {
-    let mut env = get_env()
-        .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
+fn save_media_impl(request: SaveMediaRequest, method: &str) -> Result<(), PlatformError> {
+    let mut env =
+        get_env().map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
 
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
         PlatformError::Platform(format!("Failed to get cached Java class LxAppMedia: {}", e))

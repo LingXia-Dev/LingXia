@@ -380,3 +380,47 @@ impl DeviceHardware for Platform {
 }
 
 impl DeviceSecureStore for Platform {}
+
+/// Get Android API level (SDK_INT).
+pub fn get_api_level() -> i32 {
+    get_system_property("ro.build.version.sdk")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Check if device has telephony feature (is a phone).
+pub fn has_telephony_feature() -> bool {
+    match || -> Result<bool, Box<dyn std::error::Error>> {
+        let mut env = get_env()?;
+        let context = get_lxapp_context(&mut env)?;
+
+        // PackageManager pm = context.getPackageManager()
+        let pm = env
+            .call_method(
+                context,
+                "getPackageManager",
+                "()Landroid/content/pm/PackageManager;",
+                &[],
+            )?
+            .l()?;
+
+        // pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)
+        let feature_str = env.new_string("android.hardware.telephony")?;
+        let has_feature = env
+            .call_method(
+                pm,
+                "hasSystemFeature",
+                "(Ljava/lang/String;)Z",
+                &[JValue::Object(&feature_str)],
+            )?
+            .z()?;
+
+        Ok(has_feature)
+    }() {
+        Ok(result) => result,
+        Err(e) => {
+            log::warn!("[device] Failed to check telephony feature: {}", e);
+            false
+        }
+    }
+}

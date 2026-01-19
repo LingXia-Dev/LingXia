@@ -372,7 +372,8 @@ pub(crate) mod ios {
             let status = manager.authorizationStatus();
             matches!(
                 status,
-                CLAuthorizationStatus::AuthorizedWhenInUse | CLAuthorizationStatus::AuthorizedAlways
+                CLAuthorizationStatus::AuthorizedWhenInUse
+                    | CLAuthorizationStatus::AuthorizedAlways
             )
         };
 

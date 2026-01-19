@@ -40,7 +40,9 @@ pub mod harmony;
 
 // Export Platform and Device types for each platform
 #[cfg(target_os = "android")]
-pub use android::{CachedClass, Platform, get_android_id, init_cached_class};
+pub use android::{
+    CachedClass, Platform, get_android_id, get_api_level, has_telephony_feature, init_cached_class,
+};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub use apple::Platform;

@@ -89,7 +89,8 @@ impl MediaInteraction for Platform {
                 let result = ios::save_image_to_album(&file_uri);
                 match result {
                     Ok(()) => {
-                        let _ = lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
+                        let _ =
+                            lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
                     }
                     Err(err) => {
                         let code = save_media_error_code(&err.to_string());
@@ -118,7 +119,8 @@ impl MediaInteraction for Platform {
                 let result = ios::save_video_to_album(&file_uri);
                 match result {
                     Ok(()) => {
-                        let _ = lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
+                        let _ =
+                            lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
                     }
                     Err(err) => {
                         let code = save_media_error_code(&err.to_string());
