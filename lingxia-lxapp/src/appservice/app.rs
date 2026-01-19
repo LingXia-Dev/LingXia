@@ -58,7 +58,8 @@ impl LxAppSvc {
                     match evt {
                         AppServiceEvent::OnLaunch
                         | AppServiceEvent::OnShow
-                        | AppServiceEvent::OnHide => {
+                        | AppServiceEvent::OnHide
+                        | AppServiceEvent::OnUserCaptureScreen => {
                             self.event_handlers.insert(evt, func);
                         }
                     }

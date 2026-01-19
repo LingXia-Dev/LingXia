@@ -631,9 +631,7 @@ impl LxApp {
 
     pub fn get_app_orientation(&self) -> OrientationConfig {
         let state = self.state.lock().unwrap();
-        state
-            .orientation_override
-            .unwrap_or_default()
+        state.orientation_override.unwrap_or_default()
     }
 
     pub fn set_app_orientation(&self, orientation: OrientationConfig) -> Result<(), LxAppError> {

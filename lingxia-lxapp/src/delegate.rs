@@ -40,6 +40,8 @@ pub trait LxAppDelegate {
 
 impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String) -> String {
+        let previous_appid = lxapp::get_current_lxapp().0;
+
         let raw_url = if path.is_empty() {
             self.config.get_initial_route()
         } else {
@@ -65,12 +67,25 @@ impl LxAppDelegate for LxApp {
             .with_appid(self.appid.clone())
             .with_path(resolved_path.clone());
 
-        if !was_already_opened {
-            // Push to lxapp navigation stack
-            if let Some(manager) = lxapp::get_lxapps_manager() {
-                manager.push_lxapp_stack(self.appid.clone());
+        // When switching to this app, hide the previously active app (if any).
+        if !previous_appid.is_empty() && previous_appid != self.appid {
+            if let Some(previous) = lxapp::try_get(&previous_appid) {
+                let args = crate::event::AppServiceEventArgs {
+                    source: crate::event::AppServiceEventSource::Lxapp,
+                    reason: crate::event::AppServiceEventReason::SwitchAway,
+                }
+                .to_json_string();
+                let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
             }
+        }
 
+        // Move this app to the top of the navigation stack.
+        if let Some(manager) = lxapp::get_lxapps_manager() {
+            manager.remove_from_stack(&self.appid);
+            manager.push_lxapp_stack(self.appid.clone());
+        }
+
+        if !was_already_opened {
             let page = self.get_or_create_page(&resolved_path);
             if let Some(query) = resolved.query.clone() {
                 page.set_query(query);
@@ -118,8 +133,25 @@ impl LxAppDelegate for LxApp {
 
         // App-level onShow still fires here (app layer), independent of page service readiness.
         let options = self.state.lock().unwrap().startup_options.clone();
-        let options_str = serde_json::to_string(&options).ok();
-        let _ = self.appservice_notify(AppServiceEvent::OnShow, options_str);
+        let mut args = serde_json::to_value(&options).unwrap_or_else(|_| serde_json::json!({}));
+        if let serde_json::Value::Object(map) = &mut args {
+            map.insert(
+                "source".to_string(),
+                serde_json::to_value(crate::event::AppServiceEventSource::Lxapp)
+                    .unwrap_or_else(|_| serde_json::Value::String("lxapp".to_string())),
+            );
+            map.insert(
+                "reason".to_string(),
+                serde_json::to_value(if was_already_opened {
+                    crate::event::AppServiceEventReason::SwitchBack
+                } else {
+                    crate::event::AppServiceEventReason::Open
+                })
+                .unwrap_or_else(|_| serde_json::Value::String("unknown".to_string())),
+            );
+        }
+        let args_str = serde_json::to_string(&args).ok();
+        let _ = self.appservice_notify(AppServiceEvent::OnShow, args_str);
 
         resolved_path
     }
@@ -136,8 +168,13 @@ impl LxAppDelegate for LxApp {
             manager.schedule_delayed_destroy(self.appid.clone());
         }
 
-        // Trigger onHide
-        if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, None) {
+        // Trigger onHide with reason so JS can distinguish lxapp close vs host background.
+        let args = crate::event::AppServiceEventArgs {
+            source: crate::event::AppServiceEventSource::Lxapp,
+            reason: crate::event::AppServiceEventReason::Close,
+        }
+        .to_json_string();
+        if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, Some(args)) {
             error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
         }
 

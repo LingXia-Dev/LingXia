@@ -27,7 +27,10 @@ pub use appservice::bridge_events::{
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, UiEventType};
 pub use error::LxAppError;
-pub use event::{AppServiceEvent, LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent};
+pub use event::{
+    AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
+    LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent,
+};
 pub use host::{HostHandler, register_host};
 pub use lxapp::{
     LxApp, ReleaseType, config::LxAppInfo, get_current_lxapp, get_locale, get_platform, init,

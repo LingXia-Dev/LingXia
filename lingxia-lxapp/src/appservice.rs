@@ -115,7 +115,10 @@ async fn handle_app_service_event(
 
     if matches!(
         event,
-        AppServiceEvent::OnLaunch | AppServiceEvent::OnShow | AppServiceEvent::OnHide
+        AppServiceEvent::OnLaunch
+            | AppServiceEvent::OnShow
+            | AppServiceEvent::OnHide
+            | AppServiceEvent::OnUserCaptureScreen
     ) {
         if let Err(e) = svc.call_event(ctx, event, args.clone()).await {
             error!(

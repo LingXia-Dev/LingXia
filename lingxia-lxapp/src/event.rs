@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::fmt;
 use std::hash::Hash;
 
@@ -8,6 +9,38 @@ pub enum AppServiceEvent {
     OnLaunch,
     OnShow,
     OnHide,
+    OnUserCaptureScreen,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppServiceEventSource {
+    Host,
+    Lxapp,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppServiceEventReason {
+    Foreground,
+    Background,
+    Screenshot,
+    Open,
+    Close,
+    SwitchBack,
+    SwitchAway,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
+pub struct AppServiceEventArgs {
+    pub source: AppServiceEventSource,
+    pub reason: AppServiceEventReason,
+}
+
+impl AppServiceEventArgs {
+    pub fn to_json_string(self) -> String {
+        serde_json::to_string(&self).unwrap_or_else(|_| "{}".to_string())
+    }
 }
 
 impl AppServiceEvent {
@@ -16,6 +49,7 @@ impl AppServiceEvent {
             AppServiceEvent::OnLaunch => "onLaunch",
             AppServiceEvent::OnShow => "onShow",
             AppServiceEvent::OnHide => "onHide",
+            AppServiceEvent::OnUserCaptureScreen => "onUserCaptureScreen",
         }
     }
 
@@ -24,6 +58,7 @@ impl AppServiceEvent {
             "onLaunch" => Some(AppServiceEvent::OnLaunch),
             "onShow" => Some(AppServiceEvent::OnShow),
             "onHide" => Some(AppServiceEvent::OnHide),
+            "onUserCaptureScreen" => Some(AppServiceEvent::OnUserCaptureScreen),
             _ => None,
         }
     }
