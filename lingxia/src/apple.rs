@@ -145,6 +145,15 @@ mod bridge {
 
         #[swift_bridge(swift_name = "resolveLxUri")]
         fn resolve_lx_uri(appid: &str, input: &str) -> Option<String>;
+
+        #[swift_bridge(swift_name = "onAppShow")]
+        fn on_app_show(lxappid: &str);
+
+        #[swift_bridge(swift_name = "onAppHide")]
+        fn on_app_hide(lxappid: &str);
+
+        #[swift_bridge(swift_name = "onUserCaptureScreen")]
+        fn on_user_capture_screen(lxappid: &str);
     }
 }
 
@@ -439,4 +448,43 @@ pub fn on_callback(id: u64, success: bool, data: &str) -> bool {
 /// Check if pull-down refresh is enabled for a specific page
 pub fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool {
     lxapp::is_pull_down_refresh_enabled(appid, path)
+}
+
+/// Notify that app entered foreground
+/// Called from Swift when UIApplication receives willEnterForeground notification
+pub fn on_app_show(lxappid: &str) {
+    if let Some(lxapp) = lxapp::try_get(lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Foreground,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnShow, Some(args));
+    }
+}
+
+/// Notify that app entered background
+/// Called from Swift when UIApplication receives didEnterBackground notification
+pub fn on_app_hide(lxappid: &str) {
+    if let Some(lxapp) = lxapp::try_get(lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Background,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnHide, Some(args));
+    }
+}
+
+/// Notify that user captured a screenshot
+/// Called from Swift when UIApplication receives userDidTakeScreenshot notification
+pub fn on_user_capture_screen(lxappid: &str) {
+    if let Some(lxapp) = lxapp::try_get(lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Screenshot,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnUserCaptureScreen, Some(args));
+    }
 }

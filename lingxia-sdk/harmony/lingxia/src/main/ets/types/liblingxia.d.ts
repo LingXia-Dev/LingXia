@@ -23,6 +23,13 @@ declare module 'liblingxia.so' {
   }
 
   /**
+   * App lifecycle notifications from host UIAbility.
+   */
+  export function onAppShow(lxappid: string): void;
+  export function onAppHide(lxappid: string): void;
+  export function onUserCaptureScreen(lxappid: string): void;
+
+  /**
    * TabBar position enum
    */
   export enum TabBarPosition {

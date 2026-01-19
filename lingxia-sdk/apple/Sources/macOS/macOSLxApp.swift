@@ -110,6 +110,10 @@ public class macOSLxApp: ObservableObject {
     private static var activeWindowControllers: [LxAppWindowController] = []
     private static var tabWindowController: LxAppWindowController?
 
+    /// Lifecycle event observers
+    nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private static var hasResignedActive = false
+
     private init() {}
 
     /// Open specific LxApp
@@ -273,8 +277,55 @@ public class macOSLxApp: ObservableObject {
 
         if !isInitialized {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
+        } else {
+            // Setup lifecycle observers
+            setupLifecycleObservers()
         }
         return isInitialized
+    }
+
+    /// Setup observers for app lifecycle events
+    private static func setupLifecycleObservers() {
+        // App became active (foreground)
+        let activeObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            handleAppShow()
+        }
+        lifecycleObservers.append(activeObserver)
+
+        // App resigned active (background)
+        let resignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            handleAppHide()
+        }
+        lifecycleObservers.append(resignObserver)
+
+        // Note: macOS doesn't have a built-in screenshot notification like iOS
+        // Screenshot detection on macOS would require using CGDisplayStreamCreate
+        // or monitoring file system changes in ~/Desktop, which is more complex
+    }
+
+    /// Handle app becoming active
+    private static func handleAppShow() {
+        guard hasResignedActive else { return }
+        hasResignedActive = false
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        os_log("App became active, notifying appId: %@", log: log, type: .info, currentAppId)
+        lingxia.onAppShow(currentAppId)
+    }
+
+    /// Handle app resigning active
+    private static func handleAppHide() {
+        hasResignedActive = true
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        os_log("App resigned active, notifying appId: %@", log: log, type: .info, currentAppId)
+        lingxia.onAppHide(currentAppId)
     }
 }
 

@@ -17,6 +17,9 @@ public class iOSLxApp {
     /// Single manager instance for all LxApps
     private var lxAppManager: LxAppViewController?
 
+    /// Lifecycle event observers
+    private var lifecycleObservers: [NSObjectProtocol] = []
+
     private init(context: UIApplication) {
         self.context = context
     }
@@ -47,6 +50,63 @@ public class iOSLxApp {
         LxAppCore.initializeCore()
         configureGlobalSystemBars()
         iOSPushManager.shared.initialize()
+
+        // Setup lifecycle observers
+        instance?.setupLifecycleObservers()
+    }
+
+    /// Setup observers for app lifecycle events
+    private func setupLifecycleObservers() {
+        // App entered foreground
+        let foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleAppShow()
+        }
+        lifecycleObservers.append(foregroundObserver)
+
+        // App entered background
+        let backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleAppHide()
+        }
+        lifecycleObservers.append(backgroundObserver)
+
+        // User took screenshot
+        let screenshotObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.userDidTakeScreenshotNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleUserCaptureScreen()
+        }
+        lifecycleObservers.append(screenshotObserver)
+    }
+
+    /// Handle app entering foreground
+    private func handleAppShow() {
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        os_log("App entering foreground, notifying appId: %@", log: Self.log, type: .info, currentAppId)
+        lingxia.onAppShow(currentAppId)
+    }
+
+    /// Handle app entering background
+    private func handleAppHide() {
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        os_log("App entering background, notifying appId: %@", log: Self.log, type: .info, currentAppId)
+        lingxia.onAppHide(currentAppId)
+    }
+
+    /// Handle user taking screenshot
+    private func handleUserCaptureScreen() {
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        os_log("User captured screenshot, notifying appId: %@", log: Self.log, type: .info, currentAppId)
+        lingxia.onUserCaptureScreen(currentAppId)
     }
 
     /// Opens a lxapp

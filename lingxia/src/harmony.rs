@@ -853,3 +853,44 @@ pub fn video_player_destroy(component_id: String) -> bool {
     );
     lingxia_platform::harmony::video_player::destroy_player(&component_id).is_ok()
 }
+
+/// Notify that app entered foreground
+/// Called from LingxiaBaseAbility.onForeground
+#[napi]
+pub fn on_app_show(lxappid: String) {
+    if let Some(lxapp) = lxapp::try_get(&lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Foreground,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnShow, Some(args));
+    }
+}
+
+/// Notify that app entered background
+/// Called from LingxiaBaseAbility.onBackground
+#[napi]
+pub fn on_app_hide(lxappid: String) {
+    if let Some(lxapp) = lxapp::try_get(&lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Background,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnHide, Some(args));
+    }
+}
+
+/// Notify that user captured a screenshot
+#[napi]
+pub fn on_user_capture_screen(lxappid: String) {
+    if let Some(lxapp) = lxapp::try_get(&lxappid) {
+        let args = lxapp::AppServiceEventArgs {
+            source: lxapp::AppServiceEventSource::Host,
+            reason: lxapp::AppServiceEventReason::Screenshot,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnUserCaptureScreen, Some(args));
+    }
+}
