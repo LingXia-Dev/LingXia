@@ -5,7 +5,10 @@ use jni::{JNIEnv, JavaVM};
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::CachedClass;
 use log::{error, info, warn};
-use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType, log::LogLevel};
+use lxapp::{
+    AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
+    LxAppDelegate, OrientationConfig, PageOrientation, UiEventType, log::LogLevel,
+};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
 fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
@@ -658,6 +661,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
         Ok(s) => s.into(),
         Err(e) => {
             error!("[Android] Failed to get data string: {}", e);
+            let _ = invoke_callback(id, Err(1000));
             return 0;
         }
     };
@@ -673,6 +677,64 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
     } else {
         warn!("[Android] Callback not found for id={}", id);
         0
+    }
+}
+
+/// Notify native layer that app entered foreground
+/// This should be called from LxAppActivity.onStart
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppShow(
+    mut env: JNIEnv,
+    _class: JClass,
+    lxappid: JString,
+) {
+    let lxappid: String = match env.get_string(&lxappid) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!(
+                "[Android] Failed to get lxappid string for onAppShow: {}",
+                e
+            );
+            return;
+        }
+    };
+
+    if let Some(lxapp) = lxapp::try_get(&lxappid) {
+        let args = AppServiceEventArgs {
+            source: AppServiceEventSource::Host,
+            reason: AppServiceEventReason::Foreground,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(AppServiceEvent::OnShow, Some(args));
+    }
+}
+
+/// Notify native layer that app entered background
+/// This should be called from LxAppActivity.onStop
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppHide(
+    mut env: JNIEnv,
+    _class: JClass,
+    lxappid: JString,
+) {
+    let lxappid: String = match env.get_string(&lxappid) {
+        Ok(s) => s.into(),
+        Err(e) => {
+            error!(
+                "[Android] Failed to get lxappid string for onAppHide: {}",
+                e
+            );
+            return;
+        }
+    };
+
+    if let Some(lxapp) = lxapp::try_get(&lxappid) {
+        let args = AppServiceEventArgs {
+            source: AppServiceEventSource::Host,
+            reason: AppServiceEventReason::Background,
+        }
+        .to_json_string();
+        let _ = lxapp.appservice_notify(AppServiceEvent::OnHide, Some(args));
     }
 }
 

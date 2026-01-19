@@ -189,4 +189,20 @@ object NativeApi {
      */
     @JvmStatic
     external fun onCallback(id: Long, success: Boolean, data: String): Boolean
+
+    /**
+     * Notify native layer that app entered foreground
+     * Called from LxAppActivity.onStart
+     * @param lxappId The ID of the lxapp
+     */
+    @JvmStatic
+    external fun onAppShow(lxappId: String)
+
+    /**
+     * Notify native layer that app entered background
+     * Called from LxAppActivity.onStop
+     * @param lxappId The ID of the lxapp
+     */
+    @JvmStatic
+    external fun onAppHide(lxappId: String)
 }

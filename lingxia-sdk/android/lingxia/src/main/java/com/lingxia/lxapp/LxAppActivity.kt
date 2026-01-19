@@ -252,6 +252,7 @@ class LxAppActivity : AppCompatActivity() {
     private var tabBar: TabBar? = null
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
+    private var hasEnteredBackground = false
     private var pendingWebViewSetup = false
     private var isDisplayingHomeLxApp: Boolean = false
 
@@ -871,9 +872,8 @@ class LxAppActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (!pendingWebViewSetup) {
-            currentWebView?.visibility = View.VISIBLE // Ensure visibility
             webViewContainer.visibility = View.VISIBLE
-            currentWebView?.resume()
+            attachWebViewToUI(currentWebView)
         }
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
@@ -882,8 +882,31 @@ class LxAppActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         currentWebView?.pause()
-        // Pause native components (e.g., pause video playback)
         currentWebView?.let { NativeBridge.notifyPageInactive(it) }
+    }
+
+    override fun onStart() {
+        super.onStart()
+
+        if (::appId.isInitialized && appId.isNotBlank()) {
+            updateCapsuleButtonVisibility(appId)
+            if (hasEnteredBackground) {
+                NativeApi.onAppShow(appId)
+                hasEnteredBackground = false
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+
+        // Avoid spurious background/foreground events during configuration changes (e.g. rotation).
+        if (isChangingConfigurations) return
+
+        if (::appId.isInitialized && appId.isNotBlank()) {
+            NativeApi.onAppHide(appId)
+            hasEnteredBackground = true
+        }
     }
 
     /**
