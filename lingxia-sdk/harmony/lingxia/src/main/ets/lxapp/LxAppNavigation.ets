@@ -2,19 +2,28 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { pauseAllComponentsByAppId } from './WebView';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onUiEvent, UiEventType } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
-import { MediaPreviewOverlayManager, MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
+import { MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay } from './APIs/document/PdfSinglePageViewerOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
+
+// Back handling
+const KEYCODE_BACK: number = 2;
+const BACK_PRESS_THROTTLE_MS: number = 200;
+
+// Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility)
+const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 24;
+const EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP: number = 60;
+const EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP: number = 80;
 
 /**
  * Animation type enum for page transitions
@@ -35,7 +44,6 @@ export struct LxAppNavigation {
   @State isReady: boolean = false
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
-  @State homeAppExternalPath: string = '' // For triggering navigation changes
   @State errorMessage: string = ''
 
   // Current modal LxApp state (only one modal app can be shown at a time)
@@ -46,12 +54,118 @@ export struct LxAppNavigation {
   // Navigation state for triggering path changes
   @State private navigationTrigger: number = 0
 
-  @Provide navPageInfos: NavPathStack = new NavPathStack()
+  private isBackHandling: boolean = false
+  private lastBackHandledAt: number = 0
+
+  private edgeBackSwipeTracking: boolean = false
+  private edgeBackSwipeTriggered: boolean = false
+  private edgeBackSwipeFingerId: number = -1
+  private edgeBackSwipeStartX: number = 0
+  private edgeBackSwipeStartY: number = 0
 
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'LxAppNavigation starting with WebView preservation');
     LxApp.setNavigationInstance(this);
     this.initializeLxApp();
+  }
+
+  private handleSystemBackPress(): boolean {
+    const now = Date.now();
+    if (this.isBackHandling || (now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
+      return true;
+    }
+
+    this.isBackHandling = true;
+    try {
+      const current: CurrentLxApp = getCurrentLxapp();
+      if (current && current.appid && current.appid.length > 0) {
+        hilog.info(DOMAIN, TAG, `Forwarding system back press to ${current.appid}`);
+        const handled: boolean = onUiEvent(current.appid, UiEventType.BackPress, '');
+        if (handled) {
+          this.lastBackHandledAt = now;
+        }
+        return handled;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error handling system back press: ${error}`);
+    } finally {
+      this.isBackHandling = false;
+    }
+    return false;
+  }
+
+  private resetEdgeBackSwipe(): void {
+    this.edgeBackSwipeTracking = false;
+    this.edgeBackSwipeTriggered = false;
+    this.edgeBackSwipeFingerId = -1;
+    this.edgeBackSwipeStartX = 0;
+    this.edgeBackSwipeStartY = 0;
+  }
+
+  private handleEdgeBackSwipeTouch(event: TouchEvent): void {
+    if (!event || !event.changedTouches || event.changedTouches.length === 0) {
+      return;
+    }
+
+    const touch: TouchObject = event.changedTouches[0];
+    const triggerDistancePx: number = vp2px(EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP);
+    const maxVerticalDriftPx: number = vp2px(EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP);
+
+    if (event.type === TouchType.Down) {
+      this.edgeBackSwipeTracking = true;
+      this.edgeBackSwipeTriggered = false;
+      this.edgeBackSwipeFingerId = touch.id;
+      this.edgeBackSwipeStartX = touch.windowX;
+      this.edgeBackSwipeStartY = touch.windowY;
+      return;
+    }
+
+    if (!this.edgeBackSwipeTracking || this.edgeBackSwipeTriggered || touch.id !== this.edgeBackSwipeFingerId) {
+      return;
+    }
+
+    if (event.type === TouchType.Move) {
+      const deltaX: number = touch.windowX - this.edgeBackSwipeStartX;
+      const deltaY: number = touch.windowY - this.edgeBackSwipeStartY;
+
+      // If user is clearly doing vertical scroll, abandon tracking.
+      if (Math.abs(deltaY) > maxVerticalDriftPx && Math.abs(deltaY) > Math.abs(deltaX)) {
+        this.resetEdgeBackSwipe();
+        return;
+      }
+
+      if (deltaX >= triggerDistancePx && Math.abs(deltaY) <= maxVerticalDriftPx) {
+        this.edgeBackSwipeTriggered = true;
+        event.stopPropagation();
+        this.handleSystemBackPress();
+        this.resetEdgeBackSwipe();
+      }
+      return;
+    }
+
+    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+      this.resetEdgeBackSwipe();
+    }
+  }
+
+  private handleKeyEventDispatch(event: KeyEvent): boolean {
+    if (event && event.keyCode === KEYCODE_BACK && event.type === KeyType.Down) {
+      return this.handleSystemBackPress();
+    }
+    return false;
+  }
+
+  @Builder
+  private buildEdgeBackSwipeZone(): void {
+    Column()
+      .width(EDGE_BACK_SWIPE_ZONE_WIDTH_VP)
+      .height('100%')
+      .position({ x: 0, y: 0 })
+      .backgroundColor(Color.Transparent)
+      .zIndex(20000)
+      .onTouch((event: TouchEvent) => {
+        this.handleEdgeBackSwipeTouch(event);
+      })
   }
 
   private async initializeLxApp(): Promise<void> {
@@ -305,9 +419,14 @@ export struct LxAppNavigation {
       // Integrated PDF single-page viewer (closed, safe-area aware)
       PdfSinglePageViewerOverlay()
         .zIndex(10007)
+
+      // Custom edge-swipe back gesture zone
+      this.buildEdgeBackSwipeZone()
     }
     .width('100%')
     .height('100%')
+    .focusable(true)
+    .onKeyEventDispatch((event: KeyEvent): boolean => this.handleKeyEventDispatch(event))
   }
 
   @Builder
