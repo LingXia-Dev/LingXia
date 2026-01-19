@@ -34,12 +34,16 @@ App({
     }
   },
 
-  onHide: function () {
-    console.log("Lxapp is hidden");
+  onHide: function (e) {
+    console.log("App.onHide:", e);
   },
 
   onShow: function (options) {
-    console.log("Options in App's onShow: ", options);
+    console.log("App.onShow:", options);
+  },
+
+  onUserCaptureScreen: function (e) {
+    console.log("App.onUserCaptureScreen:", e);
   },
 
   globalData: {
