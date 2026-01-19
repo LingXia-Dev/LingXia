@@ -1,10 +1,11 @@
 use super::app::Platform;
 use super::ffi::preview_media;
 use crate::error::PlatformError;
-use crate::traits::{
-    ChooseMediaRequest, CompressImageRequest, ImageInfo, MediaInteraction, MediaKind, MediaRuntime,
-    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
+use crate::traits::media_interaction::{
+    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
+    ScanCodeRequest,
 };
+use crate::traits::media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -262,7 +263,7 @@ impl MediaRuntime for Platform {
 mod ios {
     use super::*;
     use crate::apple::ffi::{choose_media, scan_code};
-    use crate::traits::ScanType;
+    use crate::traits::media_interaction::{CameraFacing, ChooseMediaMode, MediaSource, ScanType};
     use block2::RcBlock;
     use dispatch2::{DispatchSemaphore, DispatchTime, dispatch_block_t, run_on_main};
     use objc2_foundation::{NSError, NSString, NSURL};
@@ -435,21 +436,21 @@ mod ios {
     pub(super) fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
         let max_count = request.max_count;
         let mode = match request.mode {
-            crate::traits::ChooseMediaMode::Images => "image",
-            crate::traits::ChooseMediaMode::Videos => "video",
-            crate::traits::ChooseMediaMode::Mix => "mix",
+            ChooseMediaMode::Images => "image",
+            ChooseMediaMode::Videos => "video",
+            ChooseMediaMode::Mix => "mix",
         };
         let source_types: Vec<String> = request
             .source_types
             .iter()
             .map(|s| match s {
-                crate::traits::MediaSource::Album => "album".to_string(),
-                crate::traits::MediaSource::Camera => "camera".to_string(),
+                MediaSource::Album => "album".to_string(),
+                MediaSource::Camera => "camera".to_string(),
             })
             .collect();
         let camera_facing = request.camera_facing.map(|c| match c {
-            crate::traits::CameraFacing::Front => "front",
-            crate::traits::CameraFacing::Back => "back",
+            CameraFacing::Front => "front",
+            CameraFacing::Back => "back",
         });
         let max_duration = request.max_duration_seconds;
         let callback_id = request.callback_id;

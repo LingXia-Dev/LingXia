@@ -3,7 +3,8 @@ use crate::event::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::{LxApp, error, info, lxapp};
-use lingxia_platform::{AppRuntime, PullToRefresh};
+use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use std::sync::Arc;
 use std::time::Instant;
 

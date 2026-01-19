@@ -1,4 +1,6 @@
-use lingxia_platform::{MediaInteraction, MediaKind, PreviewMediaItem, PreviewMediaRequest};
+use lingxia_platform::traits::media_interaction::{
+    MediaInteraction, MediaKind, PreviewMediaItem, PreviewMediaRequest,
+};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 

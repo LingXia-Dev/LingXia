@@ -1,6 +1,8 @@
 //! System information and OS-level operations.
 
-use lingxia_platform::{AppRuntime, Location, Wifi};
+use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::location::Location;
+use lingxia_platform::traits::wifi::Wifi;
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError};

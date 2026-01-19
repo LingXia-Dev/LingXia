@@ -1,5 +1,6 @@
+use crate::AssetFileEntry;
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry};
+use crate::traits::app_runtime::AppRuntime;
 use jni::objects::{GlobalRef, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use lingxia_webview::get_env;
@@ -22,7 +23,7 @@ pub struct Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
-impl crate::traits::UpdateService for Platform {
+impl crate::traits::update::UpdateService for Platform {
     fn show_download_progress(&self) -> Result<(), PlatformError> {
         super::update::show_download_progress().map_err(|e| {
             PlatformError::Platform(format!("Failed to show download progress: {}", e))
@@ -403,9 +404,11 @@ impl AppRuntime for Platform {
         &self,
         uri: &str,
         dest_path: &Path,
-        kind: crate::traits::MediaKind,
+        kind: crate::traits::media_interaction::MediaKind,
     ) -> Result<(), PlatformError> {
-        crate::traits::MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
+        crate::traits::media_runtime::MediaRuntime::copy_album_media_to_file(
+            self, uri, dest_path, kind,
+        )
     }
 
     fn get_system_locale(&self) -> &str {
@@ -471,7 +474,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        animation_type: crate::traits::AnimationType,
+        animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let mut env = get_env()?;

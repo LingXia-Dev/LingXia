@@ -1,6 +1,6 @@
 use crate::i18n::err_code_message;
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
-use lingxia_platform::{MediaInteraction, SaveMediaRequest};
+use lingxia_platform::traits::media_interaction::{MediaInteraction, SaveMediaRequest};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 
@@ -49,7 +49,10 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
 
     if let Err(e) = op {
         let _ = remove_callback(callback_id);
-        return Err(RongJSError::Error(format!("saveMedia failed to start: {}", e)));
+        return Err(RongJSError::Error(format!(
+            "saveMedia failed to start: {}",
+            e
+        )));
     }
 
     let result = receiver

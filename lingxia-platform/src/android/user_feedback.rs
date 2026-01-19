@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{ModalOptions, ToastOptions, UserFeedback};
+use crate::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
 use jni::objects::{JClass, JObject, JValue};
 
 impl UserFeedback for Platform {

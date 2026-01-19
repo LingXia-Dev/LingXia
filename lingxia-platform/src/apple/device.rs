@@ -1,7 +1,7 @@
 //! Apple platform device implementation
 use super::Platform;
 use crate::error::PlatformError;
-use crate::traits::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 
 #[cfg(target_os = "ios")]

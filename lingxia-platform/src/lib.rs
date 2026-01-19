@@ -27,7 +27,7 @@ pub struct ScreenInfo {
     pub scale: f64,
 }
 
-mod traits;
+pub mod traits;
 
 #[cfg(target_os = "android")]
 mod android;
@@ -53,6 +53,3 @@ pub use harmony::Platform;
 pub mod error;
 // Re-export error types
 pub use error::*;
-
-// Re-export traits
-pub use traits::*;

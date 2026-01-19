@@ -1,7 +1,7 @@
 //! Android platform location implementation
 
 use crate::error::PlatformError;
-use crate::traits::Location;
+use crate::traits::location::Location;
 use jni::objects::JValue;
 use jni::sys::{JNI_FALSE, JNI_TRUE};
 use lingxia_webview::get_env;
@@ -31,7 +31,7 @@ impl Location for Platform {
     fn request_location(
         &self,
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let location_class: &jni::objects::JClass =

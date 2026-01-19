@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use crate::traits::ui::{ModalOptions, ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {

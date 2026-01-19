@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{PopupPresenter, PopupRequest};
+use crate::traits::ui::{PopupPresenter, PopupRequest};
 use jni::objects::{JClass, JObject, JValue};
 
 impl PopupPresenter for Platform {

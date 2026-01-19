@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::UIUpdate;
+use crate::traits::ui::UIUpdate;
 use jni::objects::{JClass, JValue};
 
 impl UIUpdate for Platform {

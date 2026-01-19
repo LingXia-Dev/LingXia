@@ -1,7 +1,7 @@
 use super::app::Platform;
 use super::ffi::open_document;
 use crate::error::PlatformError;
-use crate::traits::{DocumentInteraction, OpenDocumentRequest};
+use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
 
 impl DocumentInteraction for Platform {
     fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {

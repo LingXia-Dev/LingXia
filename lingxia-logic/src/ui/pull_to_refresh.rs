@@ -1,4 +1,4 @@
-use lingxia_platform::PullToRefresh;
+use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use lxapp::{LxApp, lx};
 use rong::{JSContext, JSFunc, JSResult, RongJSError};
 

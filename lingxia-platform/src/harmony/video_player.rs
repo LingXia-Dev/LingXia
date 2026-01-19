@@ -2,10 +2,12 @@
 
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{
-    AudioCodec, AudioFrame, AudioStreamConfig, VideoFrame, VideoPlayerCommand, VideoPlayerHandle,
-    VideoPlayerHandleImpl, VideoPlayerManager, VideoStreamConfig, VideoStreamDecoderHandle,
-    VideoStreamDecoderManager,
+use crate::traits::stream_decoder::{
+    AudioCodec, AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig,
+    VideoStreamDecoderHandle, VideoStreamDecoderManager,
+};
+use crate::traits::video_player::{
+    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
 use core::ffi::{c_char, c_void};
 use std::collections::{HashMap, VecDeque};
@@ -1722,7 +1724,8 @@ impl StreamDecoderState {
         self.gate_audio_deadline = Some(Instant::now() + Duration::from_secs(2));
         if !matches!(
             config.format,
-            crate::traits::VideoFormat::AnnexB | crate::traits::VideoFormat::Avcc
+            crate::traits::stream_decoder::VideoFormat::AnnexB
+                | crate::traits::stream_decoder::VideoFormat::Avcc
         ) {
             return Err(PlatformError::Platform(
                 "Harmony decoder expects AnnexB/Avcc format".to_string(),
@@ -1830,9 +1833,13 @@ impl StreamDecoderState {
             .is_some_and(|wrapper| wrapper.video_force_annexb.load(Ordering::Acquire));
         let (codec_config_kind, codec_config) = if force_annexb {
             ("annexb_csd(forced)", build_codec_config(&config))
-        } else if matches!(config.format, crate::traits::VideoFormat::Avcc)
-            && matches!(config.codec, crate::traits::VideoCodec::H264)
-        {
+        } else if matches!(
+            config.format,
+            crate::traits::stream_decoder::VideoFormat::Avcc
+        ) && matches!(
+            config.codec,
+            crate::traits::stream_decoder::VideoCodec::H264
+        ) {
             ("avcC", build_avcc_config(&config))
         } else {
             ("annexb_csd", build_codec_config(&config))
@@ -2208,7 +2215,11 @@ impl StreamDecoderState {
         let force_annexb = wrapper.video_force_annexb.load(Ordering::Acquire);
         if force_annexb {
             if let Some(config) = self.last_video_config.as_ref() {
-                if matches!(config.format, crate::traits::VideoFormat::Avcc) && !data_is_annexb {
+                if matches!(
+                    config.format,
+                    crate::traits::stream_decoder::VideoFormat::Avcc
+                ) && !data_is_annexb
+                {
                     let nal_length_size = config.nal_length_size.unwrap_or(4);
                     if let Some(converted) = avcc_to_annexb(nal_length_size, &data) {
                         data = converted;
@@ -2543,15 +2554,17 @@ impl StreamDecoderState {
 
 fn detect_keyframe(config: &VideoStreamConfig, data: &[u8]) -> bool {
     match config.format {
-        crate::traits::VideoFormat::AnnexB => detect_keyframe_annexb(config.codec, data),
-        crate::traits::VideoFormat::Avcc => {
+        crate::traits::stream_decoder::VideoFormat::AnnexB => {
+            detect_keyframe_annexb(config.codec, data)
+        }
+        crate::traits::stream_decoder::VideoFormat::Avcc => {
             let nal_length_size = config.nal_length_size.unwrap_or(4);
             detect_keyframe_avcc(config.codec, nal_length_size, data)
         }
     }
 }
 
-fn detect_keyframe_annexb(codec: crate::traits::VideoCodec, data: &[u8]) -> bool {
+fn detect_keyframe_annexb(codec: crate::traits::stream_decoder::VideoCodec, data: &[u8]) -> bool {
     let mut i = 0usize;
     while i + 3 < data.len() {
         let (start, header_offset) = if data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 1 {
@@ -2581,7 +2594,7 @@ fn detect_keyframe_annexb(codec: crate::traits::VideoCodec, data: &[u8]) -> bool
 }
 
 fn detect_keyframe_avcc(
-    codec: crate::traits::VideoCodec,
+    codec: crate::traits::stream_decoder::VideoCodec,
     nal_length_size: u8,
     data: &[u8],
 ) -> bool {
@@ -2636,10 +2649,10 @@ fn avcc_to_annexb(nal_length_size: u8, data: &[u8]) -> Option<Vec<u8>> {
     if out.is_empty() { None } else { Some(out) }
 }
 
-fn is_keyframe_nal(codec: crate::traits::VideoCodec, nal_header: u8) -> bool {
+fn is_keyframe_nal(codec: crate::traits::stream_decoder::VideoCodec, nal_header: u8) -> bool {
     match codec {
-        crate::traits::VideoCodec::H264 => (nal_header & 0x1F) == 5,
-        crate::traits::VideoCodec::H265 => {
+        crate::traits::stream_decoder::VideoCodec::H264 => (nal_header & 0x1F) == 5,
+        crate::traits::stream_decoder::VideoCodec::H265 => {
             let nal_type = (nal_header >> 1) & 0x3F;
             matches!(nal_type, 16 | 17 | 18 | 19 | 20 | 21)
         }
@@ -2847,7 +2860,10 @@ fn build_codec_config(config: &VideoStreamConfig) -> Vec<u8> {
 }
 
 fn build_avcc_config(config: &VideoStreamConfig) -> Vec<u8> {
-    if !matches!(config.codec, crate::traits::VideoCodec::H264) {
+    if !matches!(
+        config.codec,
+        crate::traits::stream_decoder::VideoCodec::H264
+    ) {
         return Vec::new();
     }
     if config.sps.len() < 4 || config.pps.is_empty() {
@@ -2869,10 +2885,12 @@ fn build_avcc_config(config: &VideoStreamConfig) -> Vec<u8> {
     data
 }
 
-fn video_mime(codec: crate::traits::VideoCodec) -> *const c_char {
+fn video_mime(codec: crate::traits::stream_decoder::VideoCodec) -> *const c_char {
     match codec {
-        crate::traits::VideoCodec::H264 => unsafe { OH_AVCODEC_MIMETYPE_VIDEO_AVC },
-        crate::traits::VideoCodec::H265 => unsafe { OH_AVCODEC_MIMETYPE_VIDEO_HEVC },
+        crate::traits::stream_decoder::VideoCodec::H264 => unsafe { OH_AVCODEC_MIMETYPE_VIDEO_AVC },
+        crate::traits::stream_decoder::VideoCodec::H265 => unsafe {
+            OH_AVCODEC_MIMETYPE_VIDEO_HEVC
+        },
     }
 }
 

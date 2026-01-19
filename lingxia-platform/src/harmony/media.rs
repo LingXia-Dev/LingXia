@@ -1,10 +1,10 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{
-    ChooseMediaMode, ChooseMediaRequest, CompressImageRequest, ImageInfo, MediaInteraction,
-    MediaKind, MediaRuntime, MediaSource, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest,
-    ScanType,
+use crate::traits::media_interaction::{
+    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
+    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
+use crate::traits::media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -95,8 +95,8 @@ impl MediaInteraction for Platform {
         let payload = ChooseMediaPayload {
             max_duration_seconds: request.max_duration_seconds,
             camera_facing: request.camera_facing.as_ref().map(|f| match f {
-                crate::traits::CameraFacing::Front => "front".to_string(),
-                crate::traits::CameraFacing::Back => "back".to_string(),
+                CameraFacing::Front => "front".to_string(),
+                CameraFacing::Back => "back".to_string(),
             }),
             ..payload
         };
@@ -214,7 +214,7 @@ struct ChooseMediaPayload {
 
 mod image_native {
     use super::PlatformError;
-    use crate::traits::{CompressImageRequest, ImageInfo};
+    use crate::traits::media_runtime::{CompressImageRequest, ImageInfo};
     use core::ffi::{c_char, c_void};
     use std::ffi::CString;
     use std::fs::{self, OpenOptions};

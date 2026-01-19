@@ -1,14 +1,13 @@
 use crate::error::PlatformError;
 #[cfg(target_os = "ios")]
-use crate::traits::{AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig};
-use crate::traits::{
-    VideoPlayerHandle, VideoPlayerManager, VideoStreamDecoderHandle, VideoStreamDecoderManager,
-};
+use crate::traits::stream_decoder::{AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig};
+use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
+use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 
 use super::Platform;
 
 #[cfg(target_os = "ios")]
-use crate::traits::{VideoPlayerCommand, VideoPlayerHandleImpl};
+use crate::traits::video_player::{VideoPlayerCommand, VideoPlayerHandleImpl};
 
 #[cfg(target_os = "ios")]
 use super::ffi;
@@ -73,12 +72,12 @@ fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
 #[cfg(target_os = "ios")]
 fn ios_video_config_json(config: &VideoStreamConfig) -> Result<String, PlatformError> {
     let codec = match config.codec {
-        crate::traits::VideoCodec::H264 => "h264",
-        crate::traits::VideoCodec::H265 => "h265",
+        crate::traits::stream_decoder::VideoCodec::H264 => "h264",
+        crate::traits::stream_decoder::VideoCodec::H265 => "h265",
     };
     let format = match config.format {
-        crate::traits::VideoFormat::AnnexB => "annexb",
-        crate::traits::VideoFormat::Avcc => "avcc",
+        crate::traits::stream_decoder::VideoFormat::AnnexB => "annexb",
+        crate::traits::stream_decoder::VideoFormat::Avcc => "avcc",
     };
 
     let sps_b64 = general_purpose::STANDARD.encode(&config.sps);
@@ -101,8 +100,8 @@ fn ios_video_config_json(config: &VideoStreamConfig) -> Result<String, PlatformE
 #[cfg(target_os = "ios")]
 fn ios_audio_config_json(config: &AudioStreamConfig) -> Result<String, PlatformError> {
     let codec = match config.codec {
-        crate::traits::AudioCodec::Aac => "aac",
-        crate::traits::AudioCodec::PcmS16le => "pcm_s16le",
+        crate::traits::stream_decoder::AudioCodec::Aac => "aac",
+        crate::traits::stream_decoder::AudioCodec::PcmS16le => "pcm_s16le",
     };
 
     let asc_b64 = general_purpose::STANDARD.encode(&config.audio_specific_config);

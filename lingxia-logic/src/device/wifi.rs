@@ -1,5 +1,5 @@
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
-use lingxia_platform::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
+use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lxapp::{LxApp, emit_app_event, lx, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;

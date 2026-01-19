@@ -1,6 +1,6 @@
 use crate::i18n::err_code_message;
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{Location, LocationRequestConfig};
+use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};

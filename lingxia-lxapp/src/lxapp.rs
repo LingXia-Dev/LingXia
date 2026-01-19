@@ -1,6 +1,8 @@
 use dashmap::DashMap;
 use http::Uri as HttpUri;
-use lingxia_platform::{AppRuntime, Platform, PopupPresenter, PopupRequest};
+use lingxia_platform::Platform;
+use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::ui::{PopupPresenter, PopupRequest};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};

@@ -1,4 +1,4 @@
-use lingxia_platform::Device;
+use lingxia_platform::traits::device::Device;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;

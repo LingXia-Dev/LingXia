@@ -1,4 +1,4 @@
-use lingxia_platform::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 

@@ -1,4 +1,4 @@
-use lingxia_platform::{DocumentInteraction, OpenDocumentRequest};
+use lingxia_platform::traits::document::{DocumentInteraction, OpenDocumentRequest};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
 

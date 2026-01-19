@@ -1,7 +1,7 @@
 use super::app::Platform;
 use super::ffi;
 use crate::error::PlatformError;
-use crate::traits::UIUpdate;
+use crate::traits::ui::UIUpdate;
 
 impl UIUpdate for Platform {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {

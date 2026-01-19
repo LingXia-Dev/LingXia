@@ -5,7 +5,7 @@ use crate::warn;
 use base64::Engine;
 use base64::engine::general_purpose;
 use http::{Method, Request, Response, StatusCode, Uri};
-use lingxia_platform::AppRuntime;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
 use rong::service_executor as net;
 use std::fs;

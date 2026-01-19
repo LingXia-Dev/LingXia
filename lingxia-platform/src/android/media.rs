@@ -1,9 +1,10 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{
-    ChooseMediaRequest, CompressImageRequest, ImageInfo, MediaInteraction, MediaKind, MediaRuntime,
-    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
+use crate::traits::media_interaction::{
+    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
+    ScanCodeRequest, ScanType,
 };
+use crate::traits::media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jlong};
@@ -225,17 +226,17 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
 
     // Map enums to integers expected by Android side
     let mode_value: jint = match request.mode {
-        crate::traits::ChooseMediaMode::Images => 0,
-        crate::traits::ChooseMediaMode::Videos => 1,
-        crate::traits::ChooseMediaMode::Mix => 2,
+        crate::traits::media_interaction::ChooseMediaMode::Images => 0,
+        crate::traits::media_interaction::ChooseMediaMode::Videos => 1,
+        crate::traits::media_interaction::ChooseMediaMode::Mix => 2,
     };
 
     let mut has_album = false;
     let mut has_camera = false;
     for source in &request.source_types {
         match source {
-            crate::traits::MediaSource::Album => has_album = true,
-            crate::traits::MediaSource::Camera => has_camera = true,
+            crate::traits::media_interaction::MediaSource::Album => has_album = true,
+            crate::traits::media_interaction::MediaSource::Camera => has_camera = true,
         }
     }
 
@@ -253,8 +254,8 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
     let camera_facing_value: jint = request
         .camera_facing
         .map(|c| match c {
-            crate::traits::CameraFacing::Front => 0,
-            crate::traits::CameraFacing::Back => 1,
+            crate::traits::media_interaction::CameraFacing::Front => 0,
+            crate::traits::media_interaction::CameraFacing::Back => 1,
         })
         .unwrap_or(-1);
 

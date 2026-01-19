@@ -1,4 +1,4 @@
-use lingxia_platform::{CompressImageRequest, MediaRuntime};
+use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use std::fs;

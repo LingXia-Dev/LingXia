@@ -1,6 +1,6 @@
 //! Harmony platform device implementation
 use crate::error::PlatformError;
-use crate::traits::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 use log::warn;
 use std::ffi::CString;

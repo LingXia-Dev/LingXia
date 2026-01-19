@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::traits::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
+use crate::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 
 use super::Platform;
 

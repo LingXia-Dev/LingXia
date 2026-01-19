@@ -1,6 +1,6 @@
 use lingxia_messaging::invoke_callback;
-use lingxia_platform::VideoPlayerCommand;
 use lingxia_platform::harmony::camera;
+use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::{tsfn, webview_controller_created, webview_controller_destroyed};
 use log::LevelFilter;
 use lxapp::log::LogLevel;

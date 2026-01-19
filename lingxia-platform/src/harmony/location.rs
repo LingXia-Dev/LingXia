@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::error::PlatformError;
-use crate::traits::Location;
+use crate::traits::location::Location;
 use lingxia_messaging::{CallbackResult, invoke_callback, register_handler, remove_callback};
 use lingxia_webview::tsfn;
 
@@ -156,7 +156,7 @@ impl Location for Platform {
     fn request_location(
         &self,
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         let platform = self.clone();
         let request_config = config.clone();
@@ -204,7 +204,7 @@ impl Platform {
     fn start_locating(
         &self,
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         unsafe {
             let request_config = OH_Location_CreateRequestConfig();

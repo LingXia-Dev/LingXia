@@ -1,6 +1,8 @@
+use crate::AssetFileEntry;
 use crate::error::PlatformError;
-use crate::traits::MediaKind;
-use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
+use crate::traits::app_runtime::AppRuntime;
+use crate::traits::media_interaction::MediaKind;
+use crate::traits::media_runtime::MediaRuntime;
 use libc::free;
 use log::warn;
 use napi_ohos::JsValue;
@@ -39,7 +41,7 @@ pub struct Platform {
     js_resource_manager: Option<napi_ohos::sys::napi_value>,
 }
 
-impl crate::traits::UpdateService for Platform {}
+impl crate::traits::update::UpdateService for Platform {}
 
 // Note: No Drop impl needed for Platform because:
 // 1. resource_manager is borrowed from JS layer (no manual cleanup needed)
@@ -547,7 +549,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        animation_type: crate::traits::AnimationType,
+        animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let anim_type_int = animation_type as i32;
         lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &anim_type_int.to_string()])

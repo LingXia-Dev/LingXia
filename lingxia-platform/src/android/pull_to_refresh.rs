@@ -1,5 +1,5 @@
 use crate::error::PlatformError;
-use crate::traits::PullToRefresh;
+use crate::traits::pull_to_refresh::PullToRefresh;
 use jni::objects::{JClass, JValue};
 use lingxia_webview::get_env;
 

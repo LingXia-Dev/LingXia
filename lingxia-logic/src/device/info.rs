@@ -1,4 +1,5 @@
-use lingxia_platform::{Device, DeviceInfo, ScreenInfo};
+use lingxia_platform::traits::device::Device;
+use lingxia_platform::{DeviceInfo, ScreenInfo};
 use lxapp::LxApp;
 use lxapp::lx;
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult};

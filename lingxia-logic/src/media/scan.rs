@@ -1,9 +1,7 @@
 use crate::i18n::err_code_message;
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{
-    MediaInteraction, ScanCodeRequest, ScanType, ToastIcon, ToastOptions, ToastPosition,
-    UserFeedback,
-};
+use lingxia_platform::traits::media_interaction::{MediaInteraction, ScanCodeRequest, ScanType};
+use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, function::Optional};
 use serde_json::Value;

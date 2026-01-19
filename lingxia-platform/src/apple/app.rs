@@ -1,6 +1,8 @@
 use super::ffi;
+use crate::AssetFileEntry;
 use crate::error::PlatformError;
-use crate::{AppRuntime, AssetFileEntry, MediaRuntime};
+use crate::traits::app_runtime::AppRuntime;
+use crate::traits::media_runtime::MediaRuntime;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 
@@ -15,7 +17,7 @@ pub struct Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
-impl crate::traits::UpdateService for Platform {}
+impl crate::traits::update::UpdateService for Platform {}
 
 impl Platform {
     /// Create a new Platform instance
@@ -54,7 +56,7 @@ impl AppRuntime for Platform {
         &self,
         uri: &str,
         dest_path: &std::path::Path,
-        kind: crate::traits::MediaKind,
+        kind: crate::traits::media_interaction::MediaKind,
     ) -> Result<(), PlatformError> {
         MediaRuntime::copy_album_media_to_file(self, uri, dest_path, kind)
     }
@@ -107,7 +109,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
-        animation_type: crate::traits::AnimationType,
+        animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         if ffi::navigate(&appid, &path, animation_type as i32) {
             Ok(())

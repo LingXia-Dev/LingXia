@@ -1,7 +1,7 @@
 use super::app::Platform;
 use super::ffi::{PopupPositionBridge, hide_popup, show_popup};
 use crate::error::PlatformError;
-use crate::traits::{PopupPosition, PopupPresenter, PopupRequest};
+use crate::traits::ui::{PopupPosition, PopupPresenter, PopupRequest};
 
 impl PopupPresenter for Platform {
     fn show_popup(&self, request: PopupRequest) -> Result<(), PlatformError> {

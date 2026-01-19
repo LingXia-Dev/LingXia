@@ -1,8 +1,10 @@
 use crate::error::PlatformError;
-use crate::traits::{
+use crate::traits::stream_decoder::{
     AudioCodec, AudioFrame, AudioStreamConfig, VideoCodec, VideoFormat, VideoFrame,
-    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
     VideoStreamConfig, VideoStreamDecoderHandle, VideoStreamDecoderManager,
+};
+use crate::traits::video_player::{
+    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
 use jni::JNIEnv;
 use jni::objects::{JClass, JThrowable, JValue};

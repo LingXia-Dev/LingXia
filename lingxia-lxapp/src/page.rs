@@ -9,7 +9,7 @@ use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use http::StatusCode;
-use lingxia_platform::{AnimationType, AppRuntime};
+use lingxia_platform::traits::app_runtime::{AnimationType, AppRuntime};
 use lingxia_webview::{
     LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
     create_webview, destroy_webview,

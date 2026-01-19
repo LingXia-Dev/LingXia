@@ -1,6 +1,6 @@
-use lingxia_platform::{
-    AudioFrame, AudioStreamConfig, PlatformError, VideoFrame, VideoStreamConfig,
-    VideoStreamDecoderHandle,
+use lingxia_platform::PlatformError;
+use lingxia_platform::traits::stream_decoder::{
+    AudioFrame, AudioStreamConfig, VideoFrame, VideoStreamConfig, VideoStreamDecoderHandle,
 };
 use serde_json::Value;
 use std::collections::HashMap;

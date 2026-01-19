@@ -1,6 +1,6 @@
 use crate::{I18nKey, i18n::t};
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::UserFeedback;
+use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;

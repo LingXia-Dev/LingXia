@@ -1,6 +1,6 @@
 //! Display and screen orientation APIs.
 
-use lingxia_platform::UIUpdate;
+use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::lx;
 use lxapp::{LxApp, OrientationConfig};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};

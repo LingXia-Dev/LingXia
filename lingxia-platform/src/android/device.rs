@@ -1,7 +1,7 @@
 //! Android platform device implementation
 
 use crate::error::PlatformError;
-use crate::traits::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 use jni::objects::{JObject, JValue};
 use lingxia_webview::get_env;

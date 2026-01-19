@@ -2,7 +2,7 @@
 
 use super::Platform;
 use crate::error::PlatformError;
-use crate::traits::Location;
+use crate::traits::location::Location;
 
 #[cfg(target_os = "ios")]
 pub(crate) mod ios {
@@ -32,7 +32,7 @@ pub(crate) mod ios {
     #[allow(dead_code)]
     struct LocationCallbackInfo {
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
         start_time: Instant,
     }
 
@@ -254,7 +254,7 @@ pub(crate) mod ios {
 
     pub(super) fn request_location_with_config(
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
@@ -411,7 +411,7 @@ impl Location for Platform {
     fn request_location(
         &self,
         callback_id: u64,
-        config: crate::LocationRequestConfig,
+        config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {

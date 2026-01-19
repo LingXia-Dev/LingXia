@@ -1,5 +1,5 @@
 use lingxia_messaging::get_callback;
-use lingxia_platform::AppRuntime;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, lx};
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde::Deserialize;

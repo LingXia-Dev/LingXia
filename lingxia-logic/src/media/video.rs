@@ -1,7 +1,10 @@
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
-use lingxia_platform::{
-    Platform, VideoPlayerCommand, VideoPlayerHandle, VideoPlayerManager, VideoStreamDecoderHandle,
-    VideoStreamDecoderManager,
+use lingxia_platform::Platform;
+use lingxia_platform::traits::stream_decoder::{
+    VideoStreamDecoderHandle, VideoStreamDecoderManager,
+};
+use lingxia_platform::traits::video_player::{
+    VideoPlayerCommand, VideoPlayerHandle, VideoPlayerManager,
 };
 use log::{debug, info, warn};
 use lxapp::stream_source::{FrameSink, StreamSession, get_stream_provider};

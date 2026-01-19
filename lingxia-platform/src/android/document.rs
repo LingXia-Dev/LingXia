@@ -1,6 +1,6 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::{DocumentInteraction, OpenDocumentRequest};
+use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
 use jni::objects::{JClass, JObject, JString, JValue};
 use lingxia_webview::get_env;
 use std::error::Error;

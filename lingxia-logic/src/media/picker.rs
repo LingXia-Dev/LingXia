@@ -1,8 +1,8 @@
 use crate::{i18n::err_code_message, ui::present_action_sheet};
 use lingxia_messaging::{CallbackResult, get_callback};
-use lingxia_platform::{
-    AppRuntime, CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind,
-    MediaSource,
+use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::media_interaction::{
+    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
 };
 use lxapp::{LxApp, lx};
 use rong::{

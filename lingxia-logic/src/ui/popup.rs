@@ -1,4 +1,6 @@
-use lingxia_platform::{Device, PopupPosition, PopupRequest, ScreenInfo};
+use lingxia_platform::ScreenInfo;
+use lingxia_platform::traits::device::Device;
+use lingxia_platform::traits::ui::{PopupPosition, PopupRequest};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 

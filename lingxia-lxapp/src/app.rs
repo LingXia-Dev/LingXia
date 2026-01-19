@@ -4,7 +4,8 @@ use std::sync::OnceLock;
 
 use crate::error::LxAppError;
 use crate::lxapp::version::Version;
-use lingxia_platform::{AppRuntime, Platform};
+use lingxia_platform::Platform;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use serde::{Deserialize, Serialize};
 
 /// Configuration loaded from app.json
