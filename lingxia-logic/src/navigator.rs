@@ -2,7 +2,7 @@ use crate::update;
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, service_executor};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -74,22 +74,32 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    if !should_navigate_to_lxapp(&lxapp, &options)
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?
-    {
+    if !should_navigate_to_lxapp(&lxapp, &options).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to navigate to lxapp: {}", e),
+        ))
+    })? {
         return Ok(());
     }
 
-    do_navigate_to_lxapp(lxapp, options)
-        .await
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate to lxapp: {}", e)))?;
+    do_navigate_to_lxapp(lxapp, options).await.map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to navigate to lxapp: {}", e),
+        ))
+    })?;
     Ok(())
 }
 
 async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    do_navigate_back_lxapp(&lxapp)
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))?;
+    do_navigate_back_lxapp(&lxapp).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to navigate back: {}", e),
+        ))
+    })?;
     Ok(())
 }
 
@@ -105,15 +115,11 @@ host_api!(
         let lxapp_clone = lxapp.clone();
 
         // Fire-and-forget to avoid blocking the JS worker.
-        service_executor::spawn_async(async move {
+        let _ = rong::bg::spawn(async move {
             if let Err(err) = do_navigate_to_lxapp(lxapp_clone, options).await {
                 lxapp::warn!("navigateToLxApp failed appId={} err={}", target_appid, err);
             }
-        })
-        .map_err(|err| {
-            LxAppError::Runtime(format!("navigateToLxApp async dispatch failed: {}", err))
-        })?;
-
+        });
         Ok(())
     }
 );

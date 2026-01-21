@@ -11,7 +11,7 @@ use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
-use rong::service_executor::{self, BodySink};
+use rong_modules::http::{self as service_executor, BodySink};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -187,7 +187,7 @@ impl UpdateManager {
 
     /// Spawn async flow: check -> prompt -> download -> install for host app updates.
     pub fn spawn_app_update_flow(runtime: Arc<Platform>, current_version: Option<String>) {
-        let _ = service_executor::spawn_async(async move {
+        let _ = rong::bg::spawn(async move {
             if let Err(err) =
                 UpdateManager::check_and_install_app_update(runtime, current_version.as_deref())
                     .await
@@ -220,7 +220,7 @@ impl UpdateManager {
         let release_type = lxapp.release_type;
         let current_version = lxapp.current_version();
 
-        let _ = service_executor::spawn_async(async move {
+        let _ = rong::bg::spawn(async move {
             let manager = UpdateManager::new(lxapp);
 
             match manager

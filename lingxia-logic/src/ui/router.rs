@@ -1,7 +1,7 @@
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, service_executor};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, error::HostError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -37,9 +37,12 @@ fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
 }
 
 fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
-    lxapp
-        .ensure_page_exists(url)
-        .map_err(|e| RongJSError::Error(format!("Invalid page url: {}", e)))
+    lxapp.ensure_page_exists(url).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Invalid page url: {}", e),
+        ))
+    })
 }
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -115,11 +118,21 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to ensure target page svc: {}", e),
+            ))
+        })?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Forward, false)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to navigate: {}", e),
+            ))
+        })?;
 
     let response = JSObject::new(&ctx);
     response.set("eventEmitter", page_svc.get_event_emitter())?;
@@ -131,8 +144,12 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
 fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    navigate_back_impl(&lxapp, options.delta)
-        .map_err(|e| RongJSError::Error(format!("Failed to navigate back: {}", e)))
+    navigate_back_impl(&lxapp, options.delta).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to navigate back: {}", e),
+        ))
+    })
 }
 
 /// Redirect to a new page (replace current page)
@@ -141,14 +158,20 @@ async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 
     ensure_page_exists_js(&lxapp, &options.url)?;
     if is_tabbar_page_url(&lxapp, &options.url) {
-        return Err(RongJSError::Error(
-            "redirectTo cannot navigate to a tabBar page".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "redirectTo cannot navigate to a tabBar page",
+        )));
     }
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to redirect: {}", e)))
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to redirect: {}", e),
+            ))
+        })
 }
 
 /// Switch to a tab page
@@ -160,11 +183,21 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
     let _page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to ensure target page svc: {}", e),
+            ))
+        })?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::SwitchTab, false)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to switch tab: {}", e)))
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to switch tab: {}", e),
+            ))
+        })
 }
 
 /// Relaunch to a new page (clear page stack)
@@ -176,11 +209,21 @@ async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
     lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to ensure target page svc: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to ensure target page svc: {}", e),
+            ))
+        })?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Launch, false)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to relaunch: {}", e)))
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to relaunch: {}", e),
+            ))
+        })
 }
 
 host_api!(NavigateToHost, NavigateTo, (), |lxapp: Arc<LxApp>,
@@ -193,14 +236,13 @@ host_api!(NavigateToHost, NavigateTo, (), |lxapp: Arc<LxApp>,
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
-    service_executor::spawn_async(async move {
+    let _ = rong::bg::spawn(async move {
         if let Err(err) =
             navigate_with_url(lxapp_clone, options.url, NavigationType::Forward, true).await
         {
             lxapp::warn!("navigateTo failed url={} err={}", url, err);
         }
-    })
-    .map_err(|err| LxAppError::Runtime(format!("navigateTo async dispatch failed: {}", err)))?;
+    });
 
     Ok(())
 });
@@ -220,14 +262,13 @@ host_api!(RedirectToHost, RedirectTo, (), |lxapp: Arc<LxApp>,
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
-    service_executor::spawn_async(async move {
+    let _ = rong::bg::spawn(async move {
         if let Err(err) =
             navigate_with_url(lxapp_clone, options.url, NavigationType::Replace, true).await
         {
             lxapp::warn!("redirectTo failed url={} err={}", url, err);
         }
-    })
-    .map_err(|err| LxAppError::Runtime(format!("redirectTo async dispatch failed: {}", err)))?;
+    });
 
     Ok(())
 });
@@ -239,14 +280,13 @@ host_api!(SwitchTabHost, SwitchTab, (), |lxapp: Arc<LxApp>,
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
-    service_executor::spawn_async(async move {
+    let _ = rong::bg::spawn(async move {
         if let Err(err) =
             navigate_with_url(lxapp_clone, options.url, NavigationType::SwitchTab, true).await
         {
             lxapp::warn!("switchTab failed url={} err={}", url, err);
         }
-    })
-    .map_err(|err| LxAppError::Runtime(format!("switchTab async dispatch failed: {}", err)))?;
+    });
 
     Ok(())
 });
@@ -258,14 +298,13 @@ host_api!(ReLaunchHost, ReLaunch, (), |lxapp: Arc<LxApp>,
     let url = options.url.clone();
     let lxapp_clone = lxapp.clone();
 
-    service_executor::spawn_async(async move {
+    let _ = rong::bg::spawn(async move {
         if let Err(err) =
             navigate_with_url(lxapp_clone, options.url, NavigationType::Launch, true).await
         {
             lxapp::warn!("reLaunch failed url={} err={}", url, err);
         }
-    })
-    .map_err(|err| LxAppError::Runtime(format!("reLaunch async dispatch failed: {}", err)))?;
+    });
 
     Ok(())
 });

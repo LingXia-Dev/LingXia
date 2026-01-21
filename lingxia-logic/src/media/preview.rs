@@ -2,7 +2,7 @@ use lingxia_platform::traits::media_interaction::{
     MediaInteraction, MediaKind, PreviewMediaItem, PreviewMediaRequest,
 };
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 
 #[derive(FromJSObj)]
 struct JSPreviewMediaItem {
@@ -28,9 +28,10 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     if options.sources.is_empty() {
-        return Err(RongJSError::Error(
-            "previewMedia requires at least one item".into(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "previewMedia requires at least one item",
+        )));
     }
 
     let items: Vec<PreviewMediaItem> = options
@@ -43,13 +44,20 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
                 cover_path,
             } = item;
 
-            let raw_path =
-                path.ok_or_else(|| RongJSError::Error("previewMedia item requires path".into()))?;
+            let raw_path = path.ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    "previewMedia item requires path",
+                ))
+            })?;
 
             let resolved_path = lxapp
                 .resolve_accessible_path(raw_path.trim())
                 .map_err(|err| {
-                    RongJSError::Error(format!("previewMedia path not accessible: {}", err))
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        format!("previewMedia path not accessible: {}", err),
+                    ))
                 })?;
             let normalized_path = resolved_path.to_string_lossy().into_owned();
 
@@ -61,9 +69,9 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
                         Ok(cover)
                     } else {
                         let resolved = lxapp.resolve_accessible_path(&cover).map_err(|err| {
-                            RongJSError::Error(format!(
-                                "previewMedia coverPath not accessible: {}",
-                                err
+                            RongJSError::from(HostError::new(
+                                rong::error::E_INTERNAL,
+                                format!("previewMedia coverPath not accessible: {}", err),
                             ))
                         })?;
                         Ok(resolved.to_string_lossy().into_owned())
@@ -81,10 +89,12 @@ fn preview_media(ctx: JSContext, options: JSPreviewMediaOptions) -> JSResult<()>
 
     let request = PreviewMediaRequest { items };
 
-    lxapp
-        .runtime
-        .preview_media(request)
-        .map_err(|e| RongJSError::Error(format!("previewMedia failed: {}", e)))
+    lxapp.runtime.preview_media(request).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("previewMedia failed: {}", e),
+        ))
+    })
 }
 
 fn parse_media_kind(value: Option<String>) -> MediaKind {

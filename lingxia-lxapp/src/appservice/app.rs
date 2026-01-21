@@ -1,7 +1,7 @@
 use crate::appservice::set_app_svc_for_ctx;
 use crate::event::AppServiceEvent;
 use rong::{
-    JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, js_class, js_export,
+    JSContext, JSFunc, JSObject, JSResult, JSValue, Source, error::HostError, js_class, js_export,
     js_method,
 };
 use std::collections::HashMap;
@@ -36,9 +36,9 @@ impl LxAppSvc {
         F: FnMut(&JSValue),
     {
         for (_, func) in self.event_handlers.iter() {
-            mark_fn(func.as_jsvalue());
+            mark_fn(func.as_js_value());
         }
-        mark_fn(self.this.as_jsvalue());
+        mark_fn(self.this.as_js_value());
     }
 }
 
@@ -92,10 +92,11 @@ impl LxAppSvc {
             .await?;
             return Ok(());
         }
-        Err(RongJSError::Error(format!(
-            "No event handler for {}",
-            event.as_str()
-        )))
+        Err(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("No event handler for {}", event.as_str()),
+        )
+        .into())
     }
 }
 

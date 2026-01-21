@@ -3,7 +3,10 @@ use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::media_interaction::{MediaInteraction, ScanCodeRequest, ScanType};
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, function::Optional};
+use rong::{
+    FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError,
+    function::Optional,
+};
 use serde_json::Value;
 
 #[derive(FromJSObj, Clone, Default)]
@@ -42,14 +45,19 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         callback_id,
     };
 
-    lxapp
-        .runtime
-        .scan_code(request)
-        .map_err(|e| RongJSError::Error(format!("scan failed to start: {}", e)))?;
+    lxapp.runtime.scan_code(request).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("scan failed to start: {}", e),
+        ))
+    })?;
 
-    let result = receiver
-        .await
-        .map_err(|_| RongJSError::Error("scan cancelled or failed".to_string()))?;
+    let result = receiver.await.map_err(|_| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "scan cancelled or failed",
+        ))
+    })?;
 
     let data = match result {
         CallbackResult::Success(data) => data,
@@ -71,7 +79,10 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
                 mask: false,
                 position: ToastPosition::Center,
             });
-            return Err(RongJSError::Error(message));
+            return Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                message,
+            )));
         }
     };
 
@@ -99,8 +110,12 @@ fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
     let mut out: Vec<ScanType> = Vec::new();
     if let Some(list) = value {
         for token in list {
-            let t = parse_scan_type_token(token.as_str())
-                .ok_or_else(|| RongJSError::Error("invalid scanType token".to_string()))?;
+            let t = parse_scan_type_token(token.as_str()).ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    "invalid scanType token",
+                ))
+            })?;
             if !out.contains(&t) {
                 out.push(t);
             }

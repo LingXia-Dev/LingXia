@@ -2,7 +2,7 @@ use lingxia_platform::ScreenInfo;
 use lingxia_platform::traits::device::Device;
 use lingxia_platform::traits::ui::{PopupPosition, PopupRequest};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, error::HostError};
 
 #[derive(FromJSObj)]
 struct JSPopupOptions {
@@ -106,19 +106,28 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(RongJSError::Error(
-            "LxApp is closed; popup suppressed".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "LxApp is closed; popup suppressed",
+        )));
     }
 
-    lxapp
-        .ensure_page_exists(&options.url)
-        .map_err(|e| RongJSError::Error(format!("Invalid page url: {}", e)))?;
+    lxapp.ensure_page_exists(&options.url).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Invalid page url: {}", e),
+        ))
+    })?;
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| RongJSError::Error(format!("Failed to ensure popup page service: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to ensure popup page service: {}", e),
+            ))
+        })?;
 
     let position = parse_position(options.position);
     let screen = lxapp.runtime.screen_info();
@@ -130,9 +139,12 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
     request.height_ratio = height_ratio;
     request.position = position;
 
-    lxapp
-        .show_popup(request)
-        .map_err(|e| RongJSError::Error(format!("Failed to show popup: {}", e)))?;
+    lxapp.show_popup(request).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to show popup: {}", e),
+        ))
+    })?;
 
     let event_emitter = page_svc.get_event_emitter();
 
@@ -149,9 +161,12 @@ fn hide_popup(ctx: JSContext) -> JSResult<()> {
         return Ok(());
     }
 
-    lxapp
-        .hide_popup()
-        .map_err(|e| RongJSError::Error(format!("Failed to hide popup: {}", e)))
+    lxapp.hide_popup().map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to hide popup: {}", e),
+        ))
+    })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

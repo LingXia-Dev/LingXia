@@ -2,7 +2,7 @@ use crate::{I18nKey, i18n::t};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -33,16 +33,20 @@ async fn show_action_sheet(
     } = options;
 
     if item_list.is_empty() {
-        return Err(RongJSError::Error("itemList cannot be empty".to_string()));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "itemList cannot be empty",
+        )));
     }
 
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(RongJSError::Error(
-            "LxApp is closed; actionSheet suppressed".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "LxApp is closed; actionSheet suppressed",
+        )));
     }
 
     let selected_index = present_action_sheet(&lxapp, item_list, None, item_color).await?;
@@ -58,12 +62,16 @@ pub(crate) async fn present_action_sheet(
     item_color: Option<String>,
 ) -> Result<Option<usize>, RongJSError> {
     if !lxapp.is_opened() {
-        return Err(RongJSError::Error(
-            "LxApp is closed; actionSheet suppressed".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "LxApp is closed; actionSheet suppressed",
+        )));
     }
     if item_list.is_empty() {
-        return Err(RongJSError::Error("itemList cannot be empty".to_string()));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "itemList cannot be empty",
+        )));
     }
 
     let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
@@ -75,10 +83,18 @@ pub(crate) async fn present_action_sheet(
     lxapp
         .runtime
         .show_action_sheet(item_list, cancel_text, item_color, callback_id)
-        .map_err(|e| RongJSError::Error(format!("Failed to show action sheet: {}", e)))?;
+        .map_err(|e| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to show action sheet: {}", e),
+            ))
+        })?;
 
     let result = receiver.await.map_err(|_| {
-        RongJSError::Error("Action sheet callback timeout or cancelled".to_string())
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "Action sheet callback timeout or cancelled",
+        ))
     })?;
 
     let data = match result {

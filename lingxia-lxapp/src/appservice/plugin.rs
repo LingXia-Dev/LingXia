@@ -1,17 +1,18 @@
 use crate::error;
 use crate::lxapp::LxApp;
 use crate::plugin;
-use rong::{JSContext, JSFunc, JSResult, RongJSError, Source};
+use rong::{JSContext, JSFunc, JSResult, Source, error::HostError};
 
 pub(crate) async fn ensure_plugin_logic_loaded(ctx: &JSContext, plugin_name: &str) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
 
     let Some(plugin_cfg) = lxapp.config.plugins.get(plugin_name) else {
         error!("Plugin not configured: {}", plugin_name).with_appid(lxapp.appid.clone());
-        return Err(RongJSError::Error(format!(
-            "Plugin not configured: {}",
-            plugin_name
-        )));
+        return Err(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Plugin not configured: {}", plugin_name),
+        )
+        .into());
     };
 
     let mut logic_js_path = plugin::get_plugin_logic_js(&lxapp.runtime, plugin_name, plugin_cfg);
@@ -25,29 +26,32 @@ pub(crate) async fn ensure_plugin_logic_loaded(ctx: &JSContext, plugin_name: &st
             Err(e) => {
                 error!("Failed to download/install plugin {}: {}", plugin_name, e)
                     .with_appid(lxapp.appid.clone());
-                return Err(RongJSError::Error(format!(
-                    "Failed to download/install plugin {}: {}",
-                    plugin_name, e
-                )));
+                return Err(HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("Failed to download/install plugin {}: {}", plugin_name, e),
+                )
+                .into());
             }
         }
     }
 
     let Some(logic_js_path) = logic_js_path else {
-        return Err(RongJSError::Error(format!(
-            "Plugin logic.js not found: {}",
-            plugin_name
-        )));
+        return Err(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Plugin logic.js not found: {}", plugin_name),
+        )
+        .into());
     };
 
     let should_load = match super::runtime_ctx::mark_plugin_loaded_if_new(ctx, plugin_name) {
         Ok(v) => v,
         Err(e) => {
             error!("Plugin logic load check failed: {}", e).with_appid(lxapp.appid.clone());
-            return Err(RongJSError::Error(format!(
-                "Plugin logic load check failed: {}",
-                e
-            )));
+            return Err(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Plugin logic load check failed: {}", e),
+            )
+            .into());
         }
     };
     if !should_load {
@@ -82,9 +86,11 @@ pub(crate) async fn ensure_plugin_logic_loaded_for_page_path(
 async fn require_plugin(ctx: JSContext, plugin_name: String) -> JSResult<()> {
     let name = plugin_name.trim();
     if name.is_empty() {
-        return Err(RongJSError::Error(
-            "requirePlugin: plugin name is empty".to_string(),
-        ));
+        return Err(HostError::new(
+            rong::error::E_INTERNAL,
+            "requirePlugin: plugin name is empty",
+        )
+        .into());
     }
     ensure_plugin_logic_loaded(&ctx, name).await
 }

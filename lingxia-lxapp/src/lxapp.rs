@@ -180,7 +180,7 @@ impl LxApps {
 
             let mgr_weak = Arc::downgrade(self);
             let task_appid = appid.clone();
-            let _ = rong::service_executor::spawn_async(async move {
+            let _ = rong::bg::spawn(async move {
                 let sleep = time::sleep(Duration::from_secs(1800));
                 tokio::pin!(rx);
                 tokio::pin!(sleep);
@@ -973,7 +973,7 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let _ = rong::service_executor::spawn_async(async move {
+        let _ = rong::bg::spawn(async move {
             // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
                 let new_app = manager.recreate_lxapp(appid.clone(), release_type);

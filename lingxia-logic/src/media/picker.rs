@@ -6,7 +6,7 @@ use lingxia_platform::traits::media_interaction::{
 };
 use lxapp::{LxApp, lx};
 use rong::{
-    FromJSObj, JSContext, JSEngineValue, JSFunc, JSObject, JSResult, RongJSError,
+    FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError,
     function::Optional,
 };
 use serde::{Deserialize, Serialize};
@@ -29,24 +29,15 @@ struct JSChooseMediaOptions {
     max_duration: Option<f64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, IntoJSObj)]
 struct ChosenMediaEntry {
+    #[rename = "tempFilePath"]
     path: String,
+    #[rename = "fileType"]
     kind: String,
+    #[rename = "isOriginal"]
     is_original: bool,
 }
-
-impl rong::IntoJSValue<JSEngineValue> for ChosenMediaEntry {
-    fn into_js_value(self, ctx: &JSContext) -> JSEngineValue {
-        let obj = JSObject::new(ctx);
-        obj.set("tempFilePath", self.path).ok();
-        obj.set("fileType", self.kind).ok();
-        obj.set("isOriginal", self.is_original).ok();
-        obj.into_value()
-    }
-}
-
-impl rong::function::JSParameterType for ChosenMediaEntry {}
 
 #[derive(Deserialize, Serialize, Hash, Clone)]
 struct MediaKey {
@@ -58,7 +49,9 @@ struct MediaKey {
 }
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
-    let choose_media_func = JSFunc::new(ctx, choose_media)?;
+    let choose_media_func = JSFunc::new(ctx, |ctx, options| async move {
+        choose_media(ctx, options).await
+    })?;
     lx::register_js_api(ctx, "chooseMedia", choose_media_func)?;
     Ok(())
 }
@@ -89,9 +82,10 @@ async fn choose_media(
     };
 
     if matches!(selected_source, MediaSource::Camera) && matches!(mode, ChooseMediaMode::Mix) {
-        return Err(RongJSError::Error(
-            "camera source does not support selecting both image and video; specify a single mediaType entry".into(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "camera source does not support selecting both image and video; specify a single mediaType entry",
+        )));
     }
 
     let (callback_id, receiver) = get_callback();
@@ -110,14 +104,19 @@ async fn choose_media(
         callback_id,
     };
 
-    lxapp
-        .runtime
-        .choose_media(request)
-        .map_err(|e| RongJSError::Error(format!("chooseMedia failed to start: {}", e)))?;
+    lxapp.runtime.choose_media(request).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("chooseMedia failed to start: {}", e),
+        ))
+    })?;
 
-    let result = receiver
-        .await
-        .map_err(|_| RongJSError::Error("chooseMedia cancelled or failed".to_string()))?;
+    let result = receiver.await.map_err(|_| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "chooseMedia cancelled or failed",
+        ))
+    })?;
 
     let data = match result {
         CallbackResult::Success(data) => data,
@@ -129,31 +128,44 @@ async fn choose_media(
 
             let message =
                 err_code_message(code).unwrap_or_else(|| format!("chooseMedia error: {}", code));
-            return Err(RongJSError::Error(message));
+            return Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                message,
+            )));
         }
     };
 
-    let parsed: Value = serde_json::from_str(&data)
-        .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
+    let parsed: Value = serde_json::from_str(&data).map_err(|_| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "chooseMedia invalid payload",
+        ))
+    })?;
 
     if parsed.is_null() {
         return Ok(Vec::new());
     }
 
     if parsed.as_object().is_some() {
-        return Err(RongJSError::Error(
-            "chooseMedia invalid payload".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "chooseMedia invalid payload",
+        )));
     }
 
     if !parsed.is_array() {
-        return Err(RongJSError::Error(
-            "chooseMedia invalid payload".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "chooseMedia invalid payload",
+        )));
     }
 
-    let arr: Vec<MediaKey> = serde_json::from_str(&data)
-        .map_err(|_| RongJSError::Error("chooseMedia invalid payload".to_string()))?;
+    let arr: Vec<MediaKey> = serde_json::from_str(&data).map_err(|_| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "chooseMedia invalid payload",
+        ))
+    })?;
 
     let mut out: Vec<ChosenMediaEntry> = Vec::new();
     for key in arr.into_iter() {
@@ -178,9 +190,9 @@ async fn choose_media(
                 Ok(path) => path,
                 Err(_) => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
                     fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
-                        RongJSError::Error(format!(
-                            "chooseMedia failed to copy temp file into cache: {}",
-                            e
+                        RongJSError::from(HostError::new(
+                            rong::error::E_INTERNAL,
+                            format!("chooseMedia failed to copy temp file into cache: {}", e),
                         ))
                     })
                 })?,
@@ -195,16 +207,22 @@ async fn choose_media(
             };
             ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
-                    .map_err(|err| RongJSError::Error(format!("copyMedia failed: {}", err)))
+                    .map_err(|err| {
+                        RongJSError::from(HostError::new(
+                            rong::error::E_INTERNAL,
+                            format!("copyMedia failed: {}", err),
+                        ))
+                    })
             })?
         };
 
         let final_uri = lxapp
             .to_uri(&final_path)
             .ok_or_else(|| {
-                RongJSError::Error(
-                    "chooseMedia failed to convert output path to lx:// uri".to_string(),
-                )
+                RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    "chooseMedia failed to convert output path to lx:// uri",
+                ))
             })?
             .into_string();
 
@@ -226,9 +244,12 @@ fn ensure_cached_media_path<F>(
 where
     F: FnOnce(&Path) -> Result<(), RongJSError>,
 {
-    let cache = lxapp
-        .cache()
-        .map_err(|e| RongJSError::Error(format!("cache unavailable: {}", e)))?;
+    let cache = lxapp.cache().map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("cache unavailable: {}", e),
+        ))
+    })?;
 
     match cache.resolve_path_with_ext(key, ext) {
         lxapp::ResolveResult::Exists(path) => Ok(path),
@@ -249,9 +270,9 @@ fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseMediaMode> {
             "image" => has_image = true,
             "video" => has_video = true,
             other => {
-                return Err(RongJSError::Error(format!(
-                    "chooseMedia invalid mediaType token \"{}\"",
-                    other
+                return Err(RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("chooseMedia invalid mediaType token \"{}\"", other),
                 )));
             }
         }
@@ -279,9 +300,9 @@ fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSource>> {
             "album" => MediaSource::Album,
             "camera" => MediaSource::Camera,
             other => {
-                return Err(RongJSError::Error(format!(
-                    "chooseMedia invalid sourceType token \"{}\"",
-                    other
+                return Err(RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("chooseMedia invalid sourceType token \"{}\"", other),
                 )));
             }
         };
@@ -314,7 +335,10 @@ async fn present_source_picker(
             .get(idx)
             .copied()
             .ok_or_else(|| {
-                RongJSError::Error("chooseMedia source picker returned invalid index".to_string())
+                RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    "chooseMedia source picker returned invalid index",
+                ))
             })
             .map(Some),
         None => Ok(None),

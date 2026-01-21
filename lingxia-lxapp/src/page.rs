@@ -15,7 +15,6 @@ use lingxia_webview::{
     create_webview, destroy_webview,
 };
 
-use rong::service_executor;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::{oneshot, watch};
@@ -158,7 +157,7 @@ impl Page {
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
-        if let Err(e) = service_executor::spawn_async(async move {
+        if let Err(e) = rong::bg::spawn(async move {
             match ready_rx.await {
                 Ok(Ok(webview_controller)) => {
                     // First attach WebView to page
@@ -191,7 +190,7 @@ impl Page {
             error!("Failed to spawn async task for WebView creation: {}", e)
                 .with_appid(appid.clone())
                 .with_path(path.clone());
-            page.mark_webview_ready(Err(e));
+            page.mark_webview_ready(Err(e.to_string()));
         }
 
         page

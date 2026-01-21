@@ -7,7 +7,7 @@ use base64::engine::general_purpose;
 use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
-use rong::service_executor as net;
+use rong_modules::http as net;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -555,7 +555,7 @@ impl LxApp {
                                         Ok(rx) => {
                                             let cleanup_tmp_dest_path = tmp_dest_path.clone();
                                             let cleanup_tmp_part_path = tmp_part_path.clone();
-                                            let spawned = net::spawn_async(async move {
+                                            let spawned = rong::bg::spawn(async move {
                                                 let _ = rx.await;
                                                 let _ = fs::remove_file(&cleanup_tmp_dest_path);
                                                 let _ = fs::remove_file(&cleanup_tmp_part_path);
@@ -629,7 +629,7 @@ impl LxApp {
                                     Ok(rx) => {
                                         let cleanup_lock_path = lock_path.clone();
                                         let cleanup_part_path = part_path.clone();
-                                        let spawned = net::spawn_async(async move {
+                                        let spawned = rong::bg::spawn(async move {
                                             let res = rx.await.unwrap_or_else(|_| {
                                                 Err("download dropped".to_string())
                                             });

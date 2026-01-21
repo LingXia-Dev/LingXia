@@ -8,8 +8,8 @@ use crate::host::get_host;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, function::Optional,
-    js_class, js_export, js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, error::HostError,
+    function::Optional, js_class, js_export, js_method,
 };
 use rong_modules::event::EventEmitter;
 use std::collections::HashMap;
@@ -194,9 +194,12 @@ impl PageSvc {
         let lxapp = LxApp::from_ctx(&ctx)?;
 
         // Get the page from LxApp
-        let page = lxapp
-            .get_page(&path)
-            .ok_or_else(|| RongJSError::Error(format!("Page not found: {}", path)))?;
+        let page = lxapp.get_page(&path).ok_or_else(|| {
+            RongJSError::from(HostError::new(
+                rong::error::E_NOT_FOUND,
+                format!("Page not found: {}", path),
+            ))
+        })?;
 
         let init_data = JSObject::new(&ctx);
 
@@ -250,9 +253,10 @@ impl PageSvc {
 
         // Check if bridge is ready
         if !self.bridge.is_ready() {
-            return Err(RongJSError::Error(format!(
-                "Bridge of {} is not ready to receive data",
-                self.page.path()
+            let page_path = self.page.path();
+            return Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Bridge of {} is not ready", page_path),
             )));
         }
 
@@ -270,7 +274,9 @@ impl PageSvc {
         self.bridge
             .set_data(self, &data, callback_id)
             .await
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
+            .map_err(|e| {
+                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+            })?;
 
         Ok(())
     }
@@ -286,13 +292,13 @@ impl PageSvc {
         F: FnMut(&JSValue),
     {
         for (_, func) in self.functions.iter() {
-            mark_fn(func.as_jsvalue());
+            mark_fn(func.as_js_value());
         }
-        mark_fn(self.this.as_jsvalue());
+        mark_fn(self.this.as_js_value());
 
         if let Ok(state) = self.state.try_lock() {
             for (_, func) in state.callback.iter() {
-                mark_fn(func.as_jsvalue());
+                mark_fn(func.as_js_value());
             }
         }
     }
@@ -332,7 +338,10 @@ impl PageSvc {
                 None => func.call_async::<_, ()>(Some(self.this.clone()), ()).await,
             };
         }
-        Err(RongJSError::Error(format!("No service: {}", func_name)))
+        Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("No service: {}", func_name),
+        )))
     }
 
     // Typed page event caller using PageServiceEvent
@@ -356,9 +365,9 @@ impl PageSvc {
             )
             .await
         } else {
-            Err(RongJSError::Error(format!(
-                "No page event handler: {}",
-                event
+            Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("No page event handler: {}", event),
             )))
         }
     }
@@ -372,9 +381,9 @@ impl PageSvc {
             return callback.call::<_, ()>(None, ());
         }
 
-        Err(RongJSError::Error(format!(
-            "No callback handler for {}",
-            callbackid
+        Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("No callback handler for {}", callbackid),
         )))
     }
 
@@ -387,7 +396,12 @@ impl PageSvc {
             self.bridge
                 .set_data(self, &data.json_stringify()?, None)
                 .await
-                .map_err(|e| RongJSError::Error(e.to_string()))?;
+                .map_err(|_| {
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        "Failed to post init data to view",
+                    ))
+                })?;
         }
 
         // We dispatch onLoad once here so the page can read query in onLoad and
@@ -414,11 +428,15 @@ impl PageSvc {
         let create_page = ctx
             .global()
             .get::<_, JSFunc>("__CREATE_PAGE__")
-            .map_err(|e| RongJSError::Error(e.to_string()))?;
+            .map_err(|e| {
+                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+            })?;
 
         create_page
             .call::<_, ()>(None, (path.to_string(),))
-            .map_err(|e| RongJSError::Error(e.to_string()))
+            .map_err(|e: RongJSError| {
+                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+            })
     }
 
     /// Get the native Page associated with this PageSvc
@@ -435,7 +453,7 @@ impl LxApp {
 
         page.wait_webview_ready()
             .await
-            .map_err(RongJSError::Error)?;
+            .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e)))?;
 
         let path = page.path();
 
@@ -446,7 +464,10 @@ impl LxApp {
                 .get(path.as_str())
                 .cloned()
                 .ok_or_else(|| {
-                    RongJSError::Error("Page service not found after creation".to_string())
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        "Page service not found after creation",
+                    ))
                 })
         })
     }

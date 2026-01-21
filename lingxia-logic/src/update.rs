@@ -1,7 +1,7 @@
 use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler};
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, js_class, js_export,
-    js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, error::HostError, js_class,
+    js_export, js_method,
 };
 use std::sync::Arc;
 
@@ -13,24 +13,22 @@ struct UpdateManagerState {
     handlers_registered: bool,
 }
 
-impl rong::JSContextService for UpdateManagerState {}
-
 fn with_update_state(ctx: &JSContext, update: impl FnOnce(&mut UpdateManagerState)) {
     let mut state = ctx
-        .get_service::<UpdateManagerState>()
+        .get_state::<UpdateManagerState>()
         .cloned()
         .unwrap_or_default();
     update(&mut state);
-    ctx.set_service::<UpdateManagerState>(state);
+    ctx.set_state(state);
 }
 
 fn manager_from_state(ctx: &JSContext) -> Option<JSObject> {
-    ctx.get_service::<UpdateManagerState>()
+    ctx.get_state::<UpdateManagerState>()
         .and_then(|state| state.manager.clone())
 }
 
 fn callbacks_from_state(ctx: &JSContext) -> (Option<JSFunc>, Option<JSFunc>) {
-    ctx.get_service::<UpdateManagerState>()
+    ctx.get_state::<UpdateManagerState>()
         .map(|state| (state.on_ready.clone(), state.on_failed.clone()))
         .unwrap_or((None, None))
 }
@@ -38,7 +36,7 @@ fn callbacks_from_state(ctx: &JSContext) -> (Option<JSFunc>, Option<JSFunc>) {
 // Register event handlers once per JSContext
 fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let already_registered = ctx
-        .get_service::<UpdateManagerState>()
+        .get_state::<UpdateManagerState>()
         .map(|state| state.handlers_registered)
         .unwrap_or(false);
 
@@ -89,9 +87,10 @@ impl JSUpdateManager {
 impl JSUpdateManager {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(RongJSError::TypeError(
-            "UpdateManager cannot be directly constructed".to_string(),
-        ))
+        Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "UpdateManager cannot be directly constructed",
+        )))
     }
 
     /// Apply update by restarting the app
@@ -119,10 +118,10 @@ impl JSUpdateManager {
     #[js_method(gc_mark)]
     fn gc_mark(&self, mut mark_fn: impl FnMut(&JSValue)) {
         if let Some(cb) = &self.on_ready {
-            mark_fn(cb.as_jsvalue());
+            mark_fn(cb.as_js_value());
         }
         if let Some(cb) = &self.on_failed {
-            mark_fn(cb.as_jsvalue());
+            mark_fn(cb.as_js_value());
         }
     }
 }
@@ -160,7 +159,7 @@ pub async fn ensure_first_install(
 
     if manager
         .is_installed(target_appid, release_type)
-        .map_err(|e| RongJSError::Error(e.to_string()))?
+        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?
     {
         return Ok(());
     }
@@ -168,11 +167,11 @@ pub async fn ensure_first_install(
     let pkg = manager
         .check_update(target_appid, release_type, None)
         .await
-        .map_err(|e| RongJSError::Error(e.to_string()))?
+        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?
         .ok_or_else(|| {
-            RongJSError::Error(format!(
-                "No package available for first install of {}",
-                target_appid
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("No package available for first install of {}", target_appid),
             ))
         })?;
 
@@ -185,7 +184,7 @@ pub async fn ensure_first_install(
             &pkg.version,
         )
         .await
-        .map_err(|e| RongJSError::Error(e.to_string()))?;
+        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?;
 
     Ok(())
 }

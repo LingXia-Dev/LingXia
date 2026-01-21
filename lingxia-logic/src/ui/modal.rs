@@ -2,7 +2,7 @@ use crate::{I18nKey, i18n::t};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 use serde_json::Value;
 
 /// Modal options from JavaScript (compatible with WeChat mini-program API)
@@ -79,9 +79,10 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModal
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(RongJSError::Error(
-            "LxApp is closed; modal suppressed".to_string(),
-        ));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "LxApp is closed; modal suppressed",
+        )));
     }
 
     // Get callback ID and receiver
@@ -93,12 +94,16 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModal
             // Wait for result from callback
             match receiver.await {
                 Ok(result) => Ok(result.into()),
-                Err(_) => Err(RongJSError::Error(
-                    "Modal callback timeout or cancelled".to_string(),
-                )),
+                Err(_) => Err(RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    "Modal callback timeout or cancelled",
+                ))),
             }
         }
-        Err(e) => Err(RongJSError::Error(format!("Failed to show modal: {}", e))),
+        Err(e) => Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to show modal: {}", e),
+        ))),
     }
 }
 

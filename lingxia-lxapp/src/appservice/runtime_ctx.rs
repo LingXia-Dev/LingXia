@@ -3,7 +3,7 @@ use crate::lxapp::LxApp;
 use super::app::LxAppSvc;
 use super::page::PageSvc;
 
-use rong::{JSContext, JSContextService, JSResult, JSRuntime, JSRuntimeService, RongJSError};
+use rong::{JSContext, JSResult, JSRuntime, JSRuntimeService, error::HostError};
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -15,8 +15,6 @@ use std::sync::{Arc, Weak};
 pub(crate) struct LxAppIdentity {
     pub(crate) appid: String,
 }
-
-impl JSContextService for LxAppIdentity {}
 
 /// Per-LxApp runtime context stored in a runtime-level registry.
 ///
@@ -52,7 +50,7 @@ pub(crate) fn register_app_ctx(
     lxapp: &Arc<LxApp>,
 ) -> Rc<RefCell<HashMap<String, PageSvc>>> {
     // Bind identity of this LxApp to JSContext for later lookups.
-    ctx.set_service::<LxAppIdentity>(LxAppIdentity {
+    ctx.set_state(LxAppIdentity {
         appid: lxapp.appid.clone(),
     });
 
@@ -82,15 +80,18 @@ fn with_lxapp_ctx<F, R>(ctx: &JSContext, f: F) -> JSResult<R>
 where
     F: FnOnce(&LxAppRuntimeCtx) -> JSResult<R>,
 {
-    let ident = ctx
-        .get_service::<LxAppIdentity>()
-        .ok_or_else(|| RongJSError::Error("LxAppIdentity not set in JSContext".into()))?;
+    let ident = ctx.get_state::<LxAppIdentity>().ok_or_else(|| {
+        HostError::new(
+            rong::error::E_INTERNAL,
+            "LxAppIdentity not set in JSContext",
+        )
+    })?;
 
     let registry = ctx.runtime().get_or_init_service::<LxAppRegistry>();
     let apps = registry.apps.borrow();
-    let app_ctx = apps
-        .get(&ident.appid)
-        .ok_or_else(|| RongJSError::Error("LxApp runtime context not found".into()))?;
+    let app_ctx = apps.get(&ident.appid).ok_or_else(|| {
+        HostError::new(rong::error::E_INTERNAL, "LxApp runtime context not found")
+    })?;
     f(app_ctx)
 }
 
@@ -102,7 +103,7 @@ where
         let app = app_ctx
             .app
             .upgrade()
-            .ok_or_else(|| RongJSError::Error("LxApp has been dropped".into()))?;
+            .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "LxApp has been dropped"))?;
         f(&app)
     })
 }
@@ -115,17 +116,22 @@ where
         if let Some(ref svc) = app_ctx.app_svc {
             f(svc)
         } else {
-            Err(RongJSError::Error(
-                "LxAppSvc not loaded in LxApp runtime context".to_string(),
-            ))
+            Err(HostError::new(
+                rong::error::E_INTERNAL,
+                "LxAppSvc not loaded in LxApp runtime context",
+            )
+            .into())
         }
     })
 }
 
 pub(crate) fn set_app_svc_for_ctx(ctx: &JSContext, app_svc: LxAppSvc) -> JSResult<()> {
-    let ident = ctx
-        .get_service::<LxAppIdentity>()
-        .ok_or_else(|| RongJSError::Error("LxAppIdentity not set in JSContext".into()))?;
+    let ident = ctx.get_state::<LxAppIdentity>().ok_or_else(|| {
+        HostError::new(
+            rong::error::E_INTERNAL,
+            "LxAppIdentity not set in JSContext",
+        )
+    })?;
 
     let registry = ctx.runtime().get_or_init_service::<LxAppRegistry>();
     let mut apps = registry.apps.borrow_mut();
@@ -133,9 +139,7 @@ pub(crate) fn set_app_svc_for_ctx(ctx: &JSContext, app_svc: LxAppSvc) -> JSResul
         entry.app_svc = Some(app_svc);
         Ok(())
     } else {
-        Err(RongJSError::Error(
-            "LxApp runtime context not found".to_string(),
-        ))
+        Err(HostError::new(rong::error::E_INTERNAL, "LxApp runtime context not found").into())
     }
 }
 

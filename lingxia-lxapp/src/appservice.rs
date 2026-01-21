@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSResult, JSRuntime, RongJSError, Source};
+use rong::{JSContext, JSResult, JSRuntime, RongJSError, Source, error::HostError};
 use rong_modules::{console, fs, http};
 
 use std::collections::{HashMap, VecDeque};
@@ -547,10 +547,6 @@ impl console::ConsoleWriter for LxAppCtx {
     }
 }
 
-use rong::JSContextService;
-
-impl JSContextService for LxAppCtx {}
-
 impl fs::FileAccessGuard for LxAppCtx {
     /// Check if the mini app has access to the specified path and resolve it to a safe absolute path.
     ///
@@ -564,7 +560,9 @@ impl fs::FileAccessGuard for LxAppCtx {
         self.lxapp
             .resolve_accessible_path(path)
             // Mask absolute path details for security
-            .map_err(|_| RongJSError::Error("Access denied".to_string()))
+            .map_err(|_| {
+                RongJSError::from(HostError::new(rong::error::E_INTERNAL, "Access denied"))
+            })
     }
 }
 
@@ -575,9 +573,9 @@ impl http::NetworkAccessGuard for LxAppCtx {
         if self.lxapp.is_domain_allowed(domain) {
             Ok(())
         } else {
-            Err(RongJSError::Error(format!(
-                "Access denied: domain '{}' is not allowed ",
-                domain
+            Err(RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Access denied: domain '{}' is not allowed", domain),
             )))
         }
     }

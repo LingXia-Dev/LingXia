@@ -3,7 +3,7 @@
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::lx;
 use lxapp::{LxApp, OrientationConfig};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 
 /// App orientation status
 #[derive(Debug, Clone, IntoJSObj)]
@@ -32,14 +32,17 @@ fn get_app_orientation(ctx: JSContext) -> JSResult<AppOrientationInfo> {
 fn set_app_orientation(ctx: JSContext, options: SetAppOrientationOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let config = OrientationConfig::from_label(&options.orientation).ok_or_else(|| {
-        RongJSError::Error(format!(
-            "Invalid orientation value: {}",
-            options.orientation
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Invalid orientation value: {}", options.orientation),
         ))
     })?;
-    lxapp
-        .set_app_orientation(config)
-        .map_err(|e| RongJSError::Error(format!("Failed to set app orientation: {}", e)))?;
+    lxapp.set_app_orientation(config).map_err(|e| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("Failed to set app orientation: {}", e),
+        ))
+    })?;
 
     if let Err(e) = lxapp.runtime.update_orientation_ui(lxapp.appid.clone()) {
         eprintln!("Failed to update orientation UI: {}", e);

@@ -1,5 +1,7 @@
 use crate::{error, info, warn};
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, RongJSError};
+use rong::{
+    JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, RongJSError, error::HostError,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -59,7 +61,10 @@ pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
 /// Register an app-scoped handler.
 pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc) -> JSResult<()> {
     if event_name.trim().is_empty() {
-        return Err(RongJSError::Error("event_name is required".into()));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "event_name is required",
+        )));
     }
 
     let entry = HandlerEntry {
@@ -116,10 +121,16 @@ pub fn register_page_handler(
     callback: JSFunc,
 ) -> JSResult<()> {
     if event_name.trim().is_empty() {
-        return Err(RongJSError::Error("event_name is required".into()));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "event_name is required",
+        )));
     }
     if page_path.trim().is_empty() {
-        return Err(RongJSError::Error("page_path is required".into()));
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "page_path is required",
+        )));
     }
 
     let entry = HandlerEntry {

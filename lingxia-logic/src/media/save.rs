@@ -2,7 +2,7 @@ use crate::i18n::err_code_message;
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::traits::media_interaction::{MediaInteraction, SaveMediaRequest};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 
 #[derive(FromJSObj)]
 struct JSSaveMediaOptions {
@@ -33,7 +33,12 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
 
     let resolved = lxapp
         .resolve_accessible_path(&options.file_path)
-        .map_err(|err| RongJSError::Error(format!("saveMedia path error: {}", err)))?;
+        .map_err(|err| {
+            RongJSError::from(HostError::new(
+                rong::error::E_INTERNAL,
+                format!("saveMedia path error: {}", err),
+            ))
+        })?;
 
     let (callback_id, receiver) = get_callback();
     let request = SaveMediaRequest {
@@ -49,20 +54,24 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
 
     if let Err(e) = op {
         let _ = remove_callback(callback_id);
-        return Err(RongJSError::Error(format!(
-            "saveMedia failed to start: {}",
-            e
+        return Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            format!("saveMedia failed to start: {}", e),
         )));
     }
 
-    let result = receiver
-        .await
-        .map_err(|_| RongJSError::Error("saveMedia cancelled or failed".to_string()))?;
+    let result = receiver.await.map_err(|_| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "saveMedia cancelled or failed",
+        ))
+    })?;
 
     match result {
         CallbackResult::Success(_) => Ok(()),
-        CallbackResult::Error(code) => Err(RongJSError::Error(
+        CallbackResult::Error(code) => Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
             err_code_message(code).unwrap_or_else(|| format!("saveMedia error: {}", code)),
-        )),
+        ))),
     }
 }

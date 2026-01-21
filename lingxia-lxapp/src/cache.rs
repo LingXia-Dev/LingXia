@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use rong::service_executor::{self as net, BodySink};
+use rong_modules::http::{self as net, BodySink};
 use thiserror::Error;
 
 type HashId = String;
@@ -295,7 +295,7 @@ impl LxAppCache {
                     sleep(Duration::from_millis(200)).await;
                 }
             };
-            rong::spawn(task);
+            let _ = rong::bg::spawn(task);
         }
 
         target_path
