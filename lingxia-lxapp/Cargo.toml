@@ -22,6 +22,10 @@ ring = "0.17.14"
 
 # Local dependencies
 rong_modules = { workspace = true }
+rong_http = { workspace = true }
+rong_fs = { workspace = true }
+rong_console = { workspace = true }
+rong_event = { workspace = true }
 lingxia-platform = { path = "../lingxia-platform" }
 lingxia-webview = { path = "../lingxia-webview" }
 lingxia-messaging = { path = "../lingxia-messaging" }

@@ -1,6 +1,6 @@
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use lxapp::{LxApp, lx};
-use rong::{JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{HostError, JSContext, JSFunc, JSResult};
 
 /// lx.startPullDownRefresh()
 ///
@@ -8,22 +8,19 @@ use rong::{JSContext, JSFunc, JSResult, RongJSError, error::HostError};
 /// This will show the refresh indicator and trigger the onPullDownRefresh lifecycle method.
 fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let path = lxapp.peek_current_page().ok_or_else(|| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "No current page found",
-        ))
-    })?;
+    let path = lxapp
+        .peek_current_page()
+        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
 
     lxapp
         .runtime
         .start_pull_down_refresh(&lxapp.appid, &path)
         .map_err(|e| {
             lxapp::error!("start_pull_down_refresh failed: {}", e);
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to start pull down refresh: {}", e),
-            ))
+            )
         })?;
 
     Ok(())
@@ -35,22 +32,19 @@ fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
 /// This should be called after the refresh operation is complete.
 fn stop_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let path = lxapp.peek_current_page().ok_or_else(|| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "No current page found",
-        ))
-    })?;
+    let path = lxapp
+        .peek_current_page()
+        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
 
     lxapp
         .runtime
         .stop_pull_down_refresh(&lxapp.appid, &path)
         .map_err(|e| {
             lxapp::error!("stop_pull_down_refresh failed: {}", e);
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to stop pull down refresh: {}", e),
-            ))
+            )
         })?;
 
     Ok(())

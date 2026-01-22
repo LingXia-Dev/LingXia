@@ -1,7 +1,7 @@
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -38,10 +38,7 @@ fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
 
 fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
     lxapp.ensure_page_exists(url).map_err(|e| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Invalid page url: {}", e),
-        ))
+        HostError::new(rong::error::E_INTERNAL, format!("Invalid page url: {}", e)).into()
     })
 }
 
@@ -128,10 +125,10 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Forward, false)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to navigate: {}", e),
-            ))
+            )
         })?;
 
     let response = JSObject::new(&ctx);
@@ -145,10 +142,11 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     navigate_back_impl(&lxapp, options.delta).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to navigate back: {}", e),
-        ))
+        )
+        .into()
     })
 }
 
@@ -158,19 +156,21 @@ async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 
     ensure_page_exists_js(&lxapp, &options.url)?;
     if is_tabbar_page_url(&lxapp, &options.url) {
-        return Err(RongJSError::from(HostError::new(
+        return Err(HostError::new(
             rong::error::E_INTERNAL,
             "redirectTo cannot navigate to a tabBar page",
-        )));
+        )
+        .into());
     }
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to redirect: {}", e),
-            ))
+            )
+            .into()
         })
 }
 
@@ -184,19 +184,20 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to ensure target page svc: {}", e),
-            ))
+            )
         })?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::SwitchTab, false)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to switch tab: {}", e),
-            ))
+            )
+            .into()
         })
 }
 
@@ -210,19 +211,20 @@ async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to ensure target page svc: {}", e),
-            ))
+            )
         })?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Launch, false)
         .await
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Failed to relaunch: {}", e),
-            ))
+            )
+            .into()
         })
 }
 

@@ -7,7 +7,7 @@ use base64::engine::general_purpose;
 use http::{Method, Request, Response, StatusCode, Uri};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::{SystemPipeReader, WebResourceResponse};
-use rong_modules::http as net;
+use rong_http as net;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};

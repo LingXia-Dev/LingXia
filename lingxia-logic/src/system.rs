@@ -6,7 +6,7 @@ use lingxia_platform::traits::wifi::Wifi;
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -34,12 +34,8 @@ pub struct SystemSettingInfo {
 fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
-    let app_cfg = lxapp::app_config().ok_or_else(|| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "app config not available",
-        ))
-    })?;
+    let app_cfg = lxapp::app_config()
+        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "app config not available"))?;
     Ok(AppBaseInfo {
         language: locale.to_string(),
         product_name: app_cfg.product_name.clone(),
@@ -50,16 +46,16 @@ fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
 fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let location_enabled = lxapp.runtime.is_location_enabled().map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to get location setting: {}", e),
-        ))
+        )
     })?;
     let wifi_enabled = lxapp.runtime.is_wifi_enabled().map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to get WiFi setting: {}", e),
-        ))
+        )
     })?;
 
     Ok(SystemSettingInfo {
@@ -101,7 +97,7 @@ fn open_url_impl(lxapp: &LxApp, options: &JSOpenURLOptions) -> Result<(), LxAppE
 fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     open_url_impl(&lxapp, &options)
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
 }
 
 host_api!(

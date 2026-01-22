@@ -1,7 +1,7 @@
 use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler};
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, error::HostError, js_class,
-    js_export, js_method,
+    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, js_class, js_export,
+    js_method,
 };
 use std::sync::Arc;
 
@@ -87,10 +87,11 @@ impl JSUpdateManager {
 impl JSUpdateManager {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
+        Err(HostError::new(
+            rong::error::E_ILLEGAL_CONSTRUCTOR,
             "UpdateManager cannot be directly constructed",
-        )))
+        )
+        .into())
     }
 
     /// Apply update by restarting the app
@@ -159,7 +160,7 @@ pub async fn ensure_first_install(
 
     if manager
         .is_installed(target_appid, release_type)
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
     {
         return Ok(());
     }
@@ -167,12 +168,12 @@ pub async fn ensure_first_install(
     let pkg = manager
         .check_update(target_appid, release_type, None)
         .await
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?
+        .map_err(|e| HostError::new(rong::error::E_NETWORK, e.to_string()))?
         .ok_or_else(|| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
+            HostError::new(
+                rong::error::E_NOT_FOUND,
                 format!("No package available for first install of {}", target_appid),
-            ))
+            )
         })?;
 
     manager
@@ -184,7 +185,7 @@ pub async fn ensure_first_install(
             &pkg.version,
         )
         .await
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?;
+        .map_err(|e| HostError::new(rong::error::E_NETWORK, e.to_string()))?;
 
     Ok(())
 }

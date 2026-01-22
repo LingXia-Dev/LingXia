@@ -5,7 +5,9 @@ use crate::lxapp::LxApp;
 use crate::{error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, RongJSError, Source, error::HostError};
-use rong_modules::{console, fs, http};
+use rong_console as console;
+use rong_fs as fs;
+use rong_http as http;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};

@@ -3,7 +3,7 @@ use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
 
 fn location_error_message(code: u32) -> String {
@@ -11,10 +11,7 @@ fn location_error_message(code: u32) -> String {
 }
 
 fn handle_location_error(code: u32) -> RongJSError {
-    RongJSError::from(HostError::new(
-        rong::error::E_INTERNAL,
-        location_error_message(code),
-    ))
+    HostError::new(rong::error::E_INTERNAL, location_error_message(code)).into()
 }
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
@@ -212,16 +209,18 @@ async fn get_location(
                         }
                     }
                 }
-                Err(_) => Err(RongJSError::from(HostError::new(
+                Err(_) => Err(HostError::new(
                     rong::error::E_INTERNAL,
                     "Location callback timeout or cancelled",
-                ))),
+                )
+                .into()),
             }
         }
-        Err(e) => Err(RongJSError::from(HostError::new(
+        Err(e) => Err(HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to get location: {}", e),
-        ))),
+        )
+        .into()),
     }
 }
 

@@ -2,7 +2,7 @@ use crate::update;
 use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -75,19 +75,19 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     if !should_navigate_to_lxapp(&lxapp, &options).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to navigate to lxapp: {}", e),
-        ))
+        )
     })? {
         return Ok(());
     }
 
     do_navigate_to_lxapp(lxapp, options).await.map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to navigate to lxapp: {}", e),
-        ))
+        )
     })?;
     Ok(())
 }
@@ -95,10 +95,10 @@ async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResu
 async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     do_navigate_back_lxapp(&lxapp).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to navigate back: {}", e),
-        ))
+        )
     })?;
     Ok(())
 }

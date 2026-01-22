@@ -2,7 +2,7 @@ use lingxia_platform::ScreenInfo;
 use lingxia_platform::traits::device::Device;
 use lingxia_platform::traits::ui::{PopupPosition, PopupRequest};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError};
 
 #[derive(FromJSObj)]
 struct JSPopupOptions {
@@ -106,18 +106,14 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "LxApp is closed; popup suppressed",
-        )));
+        return Err(
+            HostError::new(rong::error::E_INTERNAL, "LxApp is closed; popup suppressed").into(),
+        );
     }
 
-    lxapp.ensure_page_exists(&options.url).map_err(|e| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Invalid page url: {}", e),
-        ))
-    })?;
+    lxapp
+        .ensure_page_exists(&options.url)
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, format!("Invalid page url: {}", e)))?;
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
@@ -140,10 +136,10 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
     request.position = position;
 
     lxapp.show_popup(request).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to show popup: {}", e),
-        ))
+        )
     })?;
 
     let event_emitter = page_svc.get_event_emitter();
@@ -162,10 +158,11 @@ fn hide_popup(ctx: JSContext) -> JSResult<()> {
     }
 
     lxapp.hide_popup().map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to hide popup: {}", e),
-        ))
+        )
+        .into()
     })
 }
 

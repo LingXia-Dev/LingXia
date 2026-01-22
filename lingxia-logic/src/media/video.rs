@@ -10,8 +10,8 @@ use log::{debug, info, warn};
 use lxapp::stream_source::{FrameSink, StreamSession, get_stream_provider};
 use lxapp::{LxApp, lx};
 use rong::{
-    FromJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, error::HostError,
-    js_class, js_export, js_method,
+    FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, js_class,
+    js_export, js_method,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -73,10 +73,11 @@ fn parse_stream_params(params: Option<JSObject>) -> JSResult<Value> {
     };
     let json = obj.json_stringify()?;
     serde_json::from_str(&json).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("params must be JSON-compatible: {}", e),
-        ))
+        )
+        .into()
     })
 }
 
@@ -140,12 +141,10 @@ impl VideoContextSharedState {
         component_id: &str,
     ) -> JSResult<u64> {
         {
-            let guard = shared.callback_id.lock().map_err(|_| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "Callback lock poisoned",
-                ))
-            })?;
+            let guard = shared
+                .callback_id
+                .lock()
+                .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Callback lock poisoned"))?;
             if let Some(id) = *guard {
                 return Ok(id);
             }
@@ -159,12 +158,10 @@ impl VideoContextSharedState {
             }
         });
 
-        let mut guard = shared.callback_id.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Callback lock poisoned",
-            ))
-        })?;
+        let mut guard = shared
+            .callback_id
+            .lock()
+            .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Callback lock poisoned"))?;
         if let Some(existing) = *guard {
             remove_callback(new_callback_id);
             return Ok(existing);
@@ -209,10 +206,7 @@ fn shared_state_for(runtime: &Arc<Platform>, component_id: &str) -> Arc<VideoCon
 impl JSVideoContext {
     pub fn create(ctx: &JSContext, component_id: String) -> JSResult<Self> {
         if component_id.trim().is_empty() {
-            return Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "componentId required",
-            )));
+            return Err(HostError::new(rong::error::E_INTERNAL, "componentId required").into());
         }
 
         let lxapp = LxApp::from_ctx(ctx)?;
@@ -221,12 +215,10 @@ impl JSVideoContext {
         let callback_id = VideoContextSharedState::register_callback(&shared, &component_id)?;
         runtime
             .set_player_callback(&component_id, callback_id)
-            .map_err(|e| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-            })?;
-        let handle = runtime.bind_player(&component_id).map_err(|e| {
-            RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-        })?;
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
+        let handle = runtime
+            .bind_player(&component_id)
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
 
         // Register stream seek callback so FFI layer can trigger seek without depending on logic layer.
         // Only register once per shared state to avoid callback being lost when JSVideoContext is GC'd.
@@ -254,16 +246,14 @@ impl JSVideoContext {
     fn dispatch(&self, command: VideoPlayerCommand) -> JSResult<()> {
         self.player_handle
             .dispatch(command)
-            .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
     }
 
     fn stop_stream_session_async(&self) -> JSResult<()> {
-        let mut guard = self.shared.stream_session.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream session lock poisoned",
-            ))
-        })?;
+        let mut guard =
+            self.shared.stream_session.lock().map_err(|_| {
+                HostError::new(rong::error::E_INTERNAL, "Stream session lock poisoned")
+            })?;
         let session = guard.take();
         drop(guard);
 
@@ -278,12 +268,10 @@ impl JSVideoContext {
     }
 
     fn ensure_stream_decoder(&self) -> JSResult<Arc<dyn VideoStreamDecoderHandle>> {
-        let mut guard = self.shared.stream_decoder.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream decoder lock poisoned",
-            ))
-        })?;
+        let mut guard =
+            self.shared.stream_decoder.lock().map_err(|_| {
+                HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned")
+            })?;
         if let Some(decoder) = guard.as_ref() {
             return Ok(decoder.clone());
         }
@@ -291,31 +279,25 @@ impl JSVideoContext {
         let decoder = self
             .runtime
             .create_stream_decoder(&self.component_id)
-            .map_err(|e| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-            })?;
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
         let decoder: Arc<dyn VideoStreamDecoderHandle> = decoder.into();
         *guard = Some(decoder.clone());
         Ok(decoder)
     }
 
     fn has_stream_source(&self) -> JSResult<bool> {
-        let guard = self.shared.last_stream_source.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream source lock poisoned",
-            ))
-        })?;
+        let guard =
+            self.shared.last_stream_source.lock().map_err(|_| {
+                HostError::new(rong::error::E_INTERNAL, "Stream source lock poisoned")
+            })?;
         Ok(guard.is_some())
     }
 
     fn has_stream_session(&self) -> JSResult<bool> {
-        let guard = self.shared.stream_session.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream session lock poisoned",
-            ))
-        })?;
+        let guard =
+            self.shared.stream_session.lock().map_err(|_| {
+                HostError::new(rong::error::E_INTERNAL, "Stream session lock poisoned")
+            })?;
         Ok(guard.is_some())
     }
 
@@ -332,10 +314,7 @@ impl JSVideoContext {
 impl JSVideoContext {
     #[js_method(constructor)]
     fn _ctor() -> JSResult<()> {
-        Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "Use lx.createVideoContext()",
-        )))
+        Err(HostError::new(rong::error::E_INTERNAL, "Use lx.createVideoContext()").into())
     }
 
     #[js_method]
@@ -431,18 +410,15 @@ impl JSVideoContext {
     #[js_method(rename = "setStreamSource")]
     fn set_stream_source(&self, options: JSStreamSourceOptions) -> JSResult<()> {
         if options.provider.trim().is_empty() {
-            return Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "provider is required",
-            )));
+            return Err(HostError::new(rong::error::E_INTERNAL, "provider is required").into());
         }
 
         let provider = options.provider;
         let provider_impl = get_stream_provider(&provider).ok_or_else(|| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Stream provider not found: {}", provider),
-            ))
+            )
         })?;
         let params = parse_stream_params(options.params)?;
         let is_live = options.is_live;
@@ -484,10 +460,7 @@ impl JSVideoContext {
 
         let force_hard = {
             let guard = self.shared.last_stream_source.lock().map_err(|_| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "Stream source lock poisoned",
-                ))
+                HostError::new(rong::error::E_INTERNAL, "Stream source lock poisoned")
             })?;
             match guard.as_ref() {
                 Some(prev) if prev.provider != provider => true,
@@ -508,10 +481,7 @@ impl JSVideoContext {
 
         let existing_decoder = {
             let guard = self.shared.stream_decoder.lock().map_err(|_| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "Stream decoder lock poisoned",
-                ))
+                HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned")
             })?;
             guard.clone()
         };
@@ -542,10 +512,7 @@ impl JSVideoContext {
             if had_existing_decoder {
                 let old_decoder = {
                     let mut guard = self.shared.stream_decoder.lock().map_err(|_| {
-                        RongJSError::from(HostError::new(
-                            rong::error::E_INTERNAL,
-                            "Stream decoder lock poisoned",
-                        ))
+                        HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned")
                     })?;
                     guard.take()
                 };
@@ -573,12 +540,10 @@ impl JSVideoContext {
         }
 
         // Update stream source after successfully switching the decoder state.
-        let mut source_guard = self.shared.last_stream_source.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream source lock poisoned",
-            ))
-        })?;
+        let mut source_guard =
+            self.shared.last_stream_source.lock().map_err(|_| {
+                HostError::new(rong::error::E_INTERNAL, "Stream source lock poisoned")
+            })?;
         *source_guard = Some(StreamSourceState { provider, params });
 
         if reuse_decoder {
@@ -979,12 +944,10 @@ fn ensure_stream_decoder_shared(
     shared: &Arc<VideoContextSharedState>,
     component_id: &str,
 ) -> Result<Arc<dyn VideoStreamDecoderHandle>, RongJSError> {
-    let mut guard = shared.stream_decoder.lock().map_err(|_| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "Stream decoder lock poisoned",
-        ))
-    })?;
+    let mut guard = shared
+        .stream_decoder
+        .lock()
+        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned"))?;
     if let Some(decoder) = guard.as_ref() {
         return Ok(decoder.clone());
     }
@@ -992,7 +955,7 @@ fn ensure_stream_decoder_shared(
     let decoder = shared
         .runtime
         .create_stream_decoder(component_id)
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))?;
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
     let decoder: Arc<dyn VideoStreamDecoderHandle> = decoder.into();
     *guard = Some(decoder.clone());
     Ok(decoder)
@@ -1005,7 +968,7 @@ fn reset_decoder_soft_shared(
     let decoder = ensure_stream_decoder_shared(shared, component_id)?;
     decoder
         .reset_stream(false)
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
 }
 
 fn reset_decoder_soft_if_present_shared(
@@ -1015,19 +978,14 @@ fn reset_decoder_soft_if_present_shared(
     let decoder = shared
         .stream_decoder
         .lock()
-        .map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream decoder lock poisoned",
-            ))
-        })?
+        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned"))?
         .clone();
     let Some(decoder) = decoder else {
         return Ok(());
     };
     decoder
         .reset_stream(false)
-        .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())))
+        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
 }
 
 pub fn stop_stream_session_async_shared(shared: &Arc<VideoContextSharedState>) {
@@ -1072,12 +1030,10 @@ pub fn resume_stream_session_shared(
     let _reset = Reset(&shared.stream_starting);
 
     let source = {
-        let guard = shared.last_stream_source.lock().map_err(|_| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                "Stream source lock poisoned",
-            ))
-        })?;
+        let guard = shared
+            .last_stream_source
+            .lock()
+            .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream source lock poisoned"))?;
         guard.clone()
     };
 
@@ -1086,10 +1042,10 @@ pub fn resume_stream_session_shared(
     };
 
     let provider = get_stream_provider(&source.provider).ok_or_else(|| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Stream provider not found: {}", source.provider),
-        ))
+        )
     })?;
 
     let epoch = shared.stream_epoch.fetch_add(1, Ordering::Relaxed) + 1;
@@ -1170,18 +1126,16 @@ pub fn resume_stream_session_shared(
         });
 
     let session = provider.start(source.params, sink).map_err(|err| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Stream provider start failed: {}", err),
-        ))
+        )
     })?;
 
-    let mut guard = shared.stream_session.lock().map_err(|_| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "Stream session lock poisoned",
-        ))
-    })?;
+    let mut guard = shared
+        .stream_session
+        .lock()
+        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream session lock poisoned"))?;
     *guard = Some(session);
 
     ensure_platform_stream_play(shared, component_id);

@@ -24,7 +24,7 @@ use crate::warn;
 use dashmap::DashMap;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use rong_modules::http as service_executor;
+use rong_http as service_executor;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};

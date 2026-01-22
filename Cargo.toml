@@ -30,6 +30,11 @@ napi-derive-ohos = "1.1.0"
 # Local dependencies
 rong = { path = "../starfire" }
 rong_modules = { path = "../starfire/rong_modules", features=["default", "storage"]}
+rong_http = { path = "../starfire/modules/rong_http" }
+rong_fs = { path = "../starfire/modules/rong_fs" }
+rong_console = { path = "../starfire/modules/rong_console" }
+rong_event = { path = "../starfire/modules/rong_event" }
+rong_storage = { path = "../starfire/modules/rong_storage" }
 
 [profile.release]
 opt-level = 'z'

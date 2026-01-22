@@ -1,6 +1,6 @@
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 
 /// Check if NavigationBar is currently visible for the current page
@@ -17,12 +17,9 @@ fn update_current_navbar(
     mutator: impl FnOnce(&Arc<LxApp>, &str) -> bool,
 ) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let current_path = lxapp.peek_current_page().ok_or_else(|| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "No current page found",
-        ))
-    })?;
+    let current_path = lxapp
+        .peek_current_page()
+        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
 
     let updated = mutator(&lxapp, &current_path);
     if updated && is_navbar_visible(&lxapp, &current_path) {

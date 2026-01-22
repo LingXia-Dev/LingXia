@@ -1,6 +1,6 @@
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -54,10 +54,10 @@ async fn get_image_info_api(
     let original_path = options.path;
     let trimmed_path = original_path.trim();
     let resolved = lxapp.resolve_accessible_path(trimmed_path).map_err(|err| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("getImageInfo path error: {}", err),
-        ))
+        )
     })?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
@@ -69,10 +69,10 @@ async fn get_image_info_api(
             lxapp
                 .to_uri(&resolved)
                 .ok_or_else(|| {
-                    RongJSError::from(HostError::new(
+                    HostError::new(
                         rong::error::E_INTERNAL,
                         "getImageInfo failed to convert path to lx:// uri",
-                    ))
+                    )
                 })?
                 .into_string()
         };
@@ -93,10 +93,11 @@ async fn get_image_info_api(
             }
         })
         .map_err(|e| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("getImageInfo failed: {}", e),
-            ))
+            )
+            .into()
         })
 }
 
@@ -110,10 +111,10 @@ async fn compress_image_api(
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
         .map_err(|err| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 format!("compressImage path error: {}", err),
-            ))
+            )
         })?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
@@ -128,19 +129,19 @@ async fn compress_image_api(
     };
 
     let path = runtime.compress_image(&request).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("compressImage failed: {}", e),
-        ))
+        )
     })?;
 
     let uri = lxapp
         .to_uri(&path)
         .ok_or_else(|| {
-            RongJSError::from(HostError::new(
+            HostError::new(
                 rong::error::E_INTERNAL,
                 "compressImage failed to convert output path to lx:// uri",
-            ))
+            )
         })?
         .into_string();
 
@@ -167,10 +168,11 @@ fn is_bundle_relative_path(value: &str) -> bool {
 
 fn ensure_dir(path: &Path) -> JSResult<()> {
     if let Err(err) = fs::create_dir_all(path) {
-        return Err(RongJSError::from(HostError::new(
+        return Err(HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to prepare directory {}: {}", path.display(), err),
-        )));
+        )
+        .into());
     }
     Ok(())
 }

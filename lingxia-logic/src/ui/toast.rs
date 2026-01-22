@@ -1,6 +1,6 @@
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, JSContext, JSFunc, JSResult, RongJSError, error::HostError};
+use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
 
 /// Toast options from JavaScript
 #[derive(FromJSObj)]
@@ -59,17 +59,16 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "LxApp is closed; toast suppressed",
-        )));
+        return Err(
+            HostError::new(rong::error::E_INTERNAL, "LxApp is closed; toast suppressed").into(),
+        );
     }
 
     lxapp.runtime.show_toast(toast_options).map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to show toast: {}", e),
-        ))
+        )
     })?;
 
     Ok(())
@@ -80,10 +79,10 @@ fn hide_toast(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     lxapp.runtime.hide_toast().map_err(|e| {
-        RongJSError::from(HostError::new(
+        HostError::new(
             rong::error::E_INTERNAL,
             format!("Failed to hide toast: {}", e),
-        ))
+        )
     })?;
 
     Ok(())

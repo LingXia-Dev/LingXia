@@ -11,7 +11,7 @@ use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
-use rong_modules::http::{self as service_executor, BodySink};
+use rong_http::{self as service_executor, BodySink};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};

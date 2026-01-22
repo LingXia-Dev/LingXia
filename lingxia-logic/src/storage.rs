@@ -1,6 +1,6 @@
 use lxapp::{LxApp, lx};
-use rong::{JSContext, JSContextService, JSFunc, JSResult, RongJSError, error::HostError};
-use rong_modules::storage::{Storage as RongStorage, StorageOptions};
+use rong::{HostError, JSContext, JSContextService, JSFunc, JSResult};
+use rong_storage::{Storage as RongStorage, StorageOptions};
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
 const STORAGE_MAX_VALUE_BYTES: u32 = 5 * 1024 * 1024;
@@ -38,10 +38,11 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     if lxapp.storage_file_path.as_os_str().is_empty() {
-        return Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
+        return Err(HostError::new(
+            rong::error::E_INVALID_STATE,
             "Storage path is not configured for this app",
-        )));
+        )
+        .into());
     }
 
     let options = storage_options();

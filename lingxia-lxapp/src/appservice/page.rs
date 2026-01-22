@@ -11,7 +11,7 @@ use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, error::HostError,
     function::Optional, js_class, js_export, js_method,
 };
-use rong_modules::event::EventEmitter;
+use rong_event::EventEmitter;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -169,7 +169,7 @@ impl MessageHandler for PageSvc {
             DispatchMessageType::Callback { callback_id } => {
                 // Callbacks are always handled the same way regardless of service_type
                 let callback_id_owned = callback_id.clone();
-                let mut page_svc_clone = self.clone();
+                let page_svc_clone = self.clone();
 
                 let task = async move {
                     if let Err(e) = page_svc_clone.callback(&callback_id_owned).await {
@@ -248,7 +248,7 @@ impl PageSvc {
     }
 
     #[js_method(rename = "_setData")]
-    async fn set_data(&mut self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
+    async fn set_data(&self, data: String, callback: Optional<JSFunc>) -> JSResult<()> {
         let mut state = self.state.lock().await;
 
         // Check if bridge is ready
@@ -373,7 +373,7 @@ impl PageSvc {
     }
 
     // handler for bridge type: callback
-    async fn callback(&mut self, callbackid: &str) -> JSResult<()> {
+    async fn callback(&self, callbackid: &str) -> JSResult<()> {
         let mut state = self.state.lock().await;
         if let Some(callback) = state.callback.remove(callbackid) {
             // Release the lock before calling the callback to avoid potential deadlocks
