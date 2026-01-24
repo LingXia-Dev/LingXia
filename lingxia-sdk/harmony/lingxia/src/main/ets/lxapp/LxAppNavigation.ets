@@ -9,9 +9,9 @@ import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
 import { PopupManager } from './APIs/LxAppPopup';
-import { MediaPreviewOverlay } from './APIs/media/MediaPreviewOverlay';
-import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
-import { PdfSinglePageViewerOverlay } from './APIs/document/PdfSinglePageViewerOverlay';
+import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
+import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
+import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -21,9 +21,12 @@ const KEYCODE_BACK: number = 2;
 const BACK_PRESS_THROTTLE_MS: number = 200;
 
 // Edge-swipe back gesture area (system gesture-back is disabled in LingxiaBaseAbility)
-const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 24;
-const EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP: number = 60;
-const EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP: number = 80;
+const EDGE_BACK_SWIPE_ZONE_WIDTH_VP: number = 40;
+const EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP: number = 18;
+const EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP: number = 200;
+const EDGE_BACK_SWIPE_VERTICAL_CANCEL_MARGIN_VP: number = 8;
+const EDGE_BACK_SWIPE_LEFT_DRIFT_CANCEL_VP: number = 4;
+const EDGE_BACK_SWIPE_TRIGGER_HORIZONTAL_BIAS_VP: number = 6;
 
 /**
  * Animation type enum for page transitions
@@ -62,6 +65,11 @@ export struct LxAppNavigation {
   private edgeBackSwipeFingerId: number = -1
   private edgeBackSwipeStartX: number = 0
   private edgeBackSwipeStartY: number = 0
+  private edgeBackSwipeTriggerDistancePx: number = 0
+  private edgeBackSwipeMaxVerticalDriftPx: number = 0
+  private edgeBackSwipeVerticalCancelMarginPx: number = 0
+  private edgeBackSwipeHorizontalTriggerBiasPx: number = 0
+  private edgeBackSwipeLeftCancelThresholdPx: number = 0
 
   aboutToAppear() {
     hilog.info(DOMAIN, TAG, 'LxAppNavigation starting with WebView preservation');
@@ -69,9 +77,53 @@ export struct LxAppNavigation {
     this.initializeLxApp();
   }
 
+  private closeActiveOverlayIfAny(): boolean {
+    // Keep ordering aligned with zIndex (topmost first).
+    try {
+      if (PdfSingleViewerOverlayManager.isShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay PdfSinglePageViewerOverlay');
+        PdfSingleViewerOverlayManager.hide();
+        return true;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error closing overlay PdfSinglePageViewerOverlay: ${error}`);
+    }
+
+    try {
+      if (CameraCaptureOverlayManager.isShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay CameraCaptureOverlay');
+        CameraCaptureOverlayManager.hide();
+        return true;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error closing overlay CameraCaptureOverlay: ${error}`);
+    }
+
+    try {
+      if (MediaPreviewOverlayManager.isOverlayShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay MediaPreviewOverlay');
+        MediaPreviewOverlayManager.hide();
+        return true;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error closing overlay MediaPreviewOverlay: ${error}`);
+    }
+
+    return false;
+  }
+
   private handleSystemBackPress(): boolean {
     const now = Date.now();
-    if (this.isBackHandling || (now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
+    if (this.isBackHandling) {
+      return true;
+    }
+
+    // Overlays should be closed before forwarding BackPress into the LxApp stack.
+    if (this.closeActiveOverlayIfAny()) {
+      return true;
+    }
+
+    if ((now - this.lastBackHandledAt) < BACK_PRESS_THROTTLE_MS) {
       return true;
     }
 
@@ -102,39 +154,89 @@ export struct LxAppNavigation {
     this.edgeBackSwipeStartY = 0;
   }
 
+  private updateEdgeBackSwipeMetrics(): void {
+    if (this.edgeBackSwipeTriggerDistancePx > 0) {
+      return;
+    }
+    this.edgeBackSwipeTriggerDistancePx = vp2px(EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP);
+    this.edgeBackSwipeMaxVerticalDriftPx = vp2px(EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP);
+    this.edgeBackSwipeVerticalCancelMarginPx = vp2px(EDGE_BACK_SWIPE_VERTICAL_CANCEL_MARGIN_VP);
+    this.edgeBackSwipeHorizontalTriggerBiasPx = vp2px(EDGE_BACK_SWIPE_TRIGGER_HORIZONTAL_BIAS_VP);
+    this.edgeBackSwipeLeftCancelThresholdPx = vp2px(EDGE_BACK_SWIPE_LEFT_DRIFT_CANCEL_VP);
+  }
+
+  private getTouchByFingerId(event: TouchEvent, fingerId: number): TouchObject | null {
+    if (!event || !event.changedTouches) {
+      return null;
+    }
+    for (let i = 0; i < event.changedTouches.length; i++) {
+      const touch: TouchObject = event.changedTouches[i];
+      if (touch.id === fingerId) {
+        return touch;
+      }
+    }
+    return null;
+  }
+
   private handleEdgeBackSwipeTouch(event: TouchEvent): void {
-    if (!event || !event.changedTouches || event.changedTouches.length === 0) {
+    if (!event) {
       return;
     }
 
-    const touch: TouchObject = event.changedTouches[0];
-    const triggerDistancePx: number = vp2px(EDGE_BACK_SWIPE_TRIGGER_DISTANCE_VP);
-    const maxVerticalDriftPx: number = vp2px(EDGE_BACK_SWIPE_MAX_VERTICAL_DRIFT_VP);
+    if (event.type === TouchType.Cancel) {
+      this.resetEdgeBackSwipe();
+      return;
+    }
+
+    if (!event.changedTouches || event.changedTouches.length === 0) {
+      return;
+    }
+
+    const firstTouch: TouchObject = event.changedTouches[0];
 
     if (event.type === TouchType.Down) {
+      this.updateEdgeBackSwipeMetrics();
       this.edgeBackSwipeTracking = true;
       this.edgeBackSwipeTriggered = false;
-      this.edgeBackSwipeFingerId = touch.id;
-      this.edgeBackSwipeStartX = touch.windowX;
-      this.edgeBackSwipeStartY = touch.windowY;
+      this.edgeBackSwipeFingerId = firstTouch.id;
+      this.edgeBackSwipeStartX = firstTouch.windowX;
+      this.edgeBackSwipeStartY = firstTouch.windowY;
       return;
     }
 
-    if (!this.edgeBackSwipeTracking || this.edgeBackSwipeTriggered || touch.id !== this.edgeBackSwipeFingerId) {
+    if (!this.edgeBackSwipeTracking || this.edgeBackSwipeTriggered) {
       return;
     }
+
+    const trackingTouch: TouchObject | null = this.getTouchByFingerId(event, this.edgeBackSwipeFingerId);
 
     if (event.type === TouchType.Move) {
-      const deltaX: number = touch.windowX - this.edgeBackSwipeStartX;
-      const deltaY: number = touch.windowY - this.edgeBackSwipeStartY;
+      if (!trackingTouch) {
+        return;
+      }
+      const deltaX: number = trackingTouch.windowX - this.edgeBackSwipeStartX;
+      const deltaY: number = trackingTouch.windowY - this.edgeBackSwipeStartY;
 
-      // If user is clearly doing vertical scroll, abandon tracking.
-      if (Math.abs(deltaY) > maxVerticalDriftPx && Math.abs(deltaY) > Math.abs(deltaX)) {
+      // Swiping left (or drifting left) should not be considered for back.
+      if (deltaX < -this.edgeBackSwipeLeftCancelThresholdPx) {
         this.resetEdgeBackSwipe();
         return;
       }
 
-      if (deltaX >= triggerDistancePx && Math.abs(deltaY) <= maxVerticalDriftPx) {
+      // If user is clearly doing vertical scroll, abandon tracking.
+      if (
+        Math.abs(deltaY) > this.edgeBackSwipeMaxVerticalDriftPx &&
+        Math.abs(deltaY) > (Math.abs(deltaX) + this.edgeBackSwipeVerticalCancelMarginPx)
+      ) {
+        this.resetEdgeBackSwipe();
+        return;
+      }
+
+      if (
+        deltaX >= this.edgeBackSwipeTriggerDistancePx &&
+        Math.abs(deltaY) <= this.edgeBackSwipeMaxVerticalDriftPx &&
+        deltaX > (Math.abs(deltaY) + this.edgeBackSwipeHorizontalTriggerBiasPx)
+      ) {
         this.edgeBackSwipeTriggered = true;
         event.stopPropagation();
         this.handleSystemBackPress();
@@ -143,8 +245,10 @@ export struct LxAppNavigation {
       return;
     }
 
-    if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
-      this.resetEdgeBackSwipe();
+    if (event.type === TouchType.Up) {
+      if (trackingTouch) {
+        this.resetEdgeBackSwipe();
+      }
     }
   }
 
@@ -163,6 +267,8 @@ export struct LxAppNavigation {
       .position({ x: 0, y: 0 })
       .backgroundColor(Color.Transparent)
       .zIndex(20000)
+      // Allow taps/clicks (e.g. navbar back button, PDF viewer back button) to pass through.
+      .hitTestBehavior(HitTestMode.Transparent)
       .onTouch((event: TouchEvent) => {
         this.handleEdgeBackSwipeTouch(event);
       })
