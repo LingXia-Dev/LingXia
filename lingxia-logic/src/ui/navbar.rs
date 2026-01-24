@@ -40,7 +40,9 @@ struct SetNavigationBarTitleOptions {
 /// Options for setNavigationBarColor
 #[derive(FromJSObj)]
 struct SetNavigationBarColorOptions {
+    #[rename = "frontColor"]
     front_color: String,
+    #[rename = "backgroundColor"]
     background_color: String,
 }
 
