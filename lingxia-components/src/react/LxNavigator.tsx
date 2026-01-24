@@ -20,6 +20,9 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
   lxAppId?: string;
   path?: string; // Supports query string
 
+  // Phone call
+  phoneNumber?: string;
+
   // Hover effect
   hoverClass?: string;
   hoverStopPropagation?: boolean;
@@ -48,6 +51,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       delta = 1,
       lxAppId,
       path,
+      phoneNumber,
       hoverClass = 'navigator-hover',
       hoverStopPropagation = false,
       hoverStartTime = 20,
@@ -108,6 +112,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
         delta: delta.toString(),
         'lx-app-id': lxAppId,
         path,
+        'phone-number': phoneNumber,
         'hover-class': hoverClass,
         'hover-stop-propagation': hoverStopPropagation.toString(),
         'hover-start-time': hoverStartTime.toString(),

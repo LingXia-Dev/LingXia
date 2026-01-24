@@ -8,7 +8,8 @@ export type NavigatorOpenType =
   | 'reLaunch'      // Restart app with new page
   | 'switchTab'     // Switch to tab page
   | 'exit'          // Exit current lxapp
-  | 'openUrl';      // Open external URL or lxapp
+  | 'openUrl'       // Open external URL or lxapp
+  | 'tel';          // Make a phone call
 
 export type NavigatorTarget =
   | 'self'          // Navigate within current lxapp (default)
@@ -34,6 +35,9 @@ export type LxNavigatorAttributes = {
   // Open external lxapp
   'lx-app-id'?: string;           // Target lxapp ID
   path?: string;                  // Path in target lxapp (supports query string)
+
+  // Phone call
+  'phone-number'?: string;        // Phone number for tel open-type
 
   // Hover effect
   'hover-class'?: string;         // CSS class for hover state
@@ -73,6 +77,7 @@ export class LxNavigatorElement extends HTMLElement {
       "delta",
       "lx-app-id",
       "path",
+      "phone-number",
       "hover-class",
       "hover-stop-propagation",
       "hover-start-time",
@@ -222,6 +227,7 @@ export class LxNavigatorElement extends HTMLElement {
     const delta = parseInt(this.getAttribute('delta') || '1', 10);
     const lxAppId = this.getAttribute('lx-app-id');
     const path = this.getAttribute('path');
+    const phoneNumber = this.getAttribute('phone-number');
 
     // Auto-infer target if not explicitly specified
     const target = this.inferTarget(explicitTarget, url, lxAppId);
@@ -232,7 +238,8 @@ export class LxNavigatorElement extends HTMLElement {
       target,
       delta,
       lxAppId,
-      path
+      path,
+      phoneNumber
     });
   }
 
@@ -271,6 +278,7 @@ export class LxNavigatorElement extends HTMLElement {
     delta: number;
     lxAppId?: string | null;
     path?: string | null;
+    phoneNumber?: string | null;
   }) {
     console.log('[LxNavigator] Navigate:', options);
 
@@ -351,6 +359,7 @@ export class LxNavigatorElement extends HTMLElement {
     delta: number;
     lxAppId?: string | null;
     path?: string | null;
+    phoneNumber?: string | null;
   }) {
     const caller = this.getHostCaller();
     if (!caller) {
@@ -359,6 +368,14 @@ export class LxNavigatorElement extends HTMLElement {
 
     const url = options.url || '';
     const delta = Number.isFinite(options.delta) && options.delta > 0 ? options.delta : 1;
+
+    if (options.openType === 'tel') {
+      if (!options.phoneNumber) {
+        throw new Error('tel requires phone-number attribute');
+      }
+      await caller('makePhoneCall', { phoneNumber: options.phoneNumber });
+      return;
+    }
 
     if (options.openType === 'exit') {
       await caller('navigateBackLxApp');
@@ -426,8 +443,9 @@ export class LxNavigatorElement extends HTMLElement {
     delta: number;
     lxAppId?: string | null;
     path?: string | null;
+    phoneNumber?: string | null;
   }) {
-    const { url, openType, target, delta, lxAppId, path } = options;
+    const { url, openType, target, delta, lxAppId, path, phoneNumber } = options;
 
     switch (openType) {
       case 'navigate':
@@ -460,6 +478,9 @@ export class LxNavigatorElement extends HTMLElement {
         } else {
           console.log(`[LxNavigator] Open in browser: ${url}`);
         }
+        break;
+      case 'tel':
+        console.log(`[LxNavigator] Make phone call: ${phoneNumber}`);
         break;
     }
   }
