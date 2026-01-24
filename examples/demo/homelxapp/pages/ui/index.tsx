@@ -543,8 +543,8 @@ export default function UIPage() {
                         const bgColor = document.getElementById('navbarBgColor').value || '#ffffff';
                         const textColor = document.getElementById('navbarTextColor').value || '#000000';
                         setNavigationBarColor({
-                          background_color: bgColor,
-                          front_color: textColor
+                          backgroundColor: bgColor,
+                          frontColor: textColor
                         });
                       }}
                       className="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-1 focus:ring-green-500"
@@ -563,7 +563,7 @@ export default function UIPage() {
                     <button
                       onClick={() => {
                         setNavigationBarTitle({ title: "Dark Theme" });
-                        setNavigationBarColor({ background_color: "#1f2937", front_color: "#ffffff" });
+                        setNavigationBarColor({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-gray-800 text-white rounded hover:bg-gray-900 text-xs"
                     >
@@ -572,7 +572,7 @@ export default function UIPage() {
                     <button
                       onClick={() => {
                         setNavigationBarTitle({ title: "Blue Theme" });
-                        setNavigationBarColor({ background_color: "#3b82f6", front_color: "#ffffff" });
+                        setNavigationBarColor({ backgroundColor: "#3b82f6", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs"
                     >
@@ -581,7 +581,7 @@ export default function UIPage() {
                     <button
                       onClick={() => {
                         setNavigationBarTitle({ title: "Light Theme" });
-                        setNavigationBarColor({ background_color: "#ffffff", front_color: "#000000" });
+                        setNavigationBarColor({ backgroundColor: "#ffffff", frontColor: "#000000" });
                       }}
                       className="px-2 py-1.5 bg-white text-black border border-gray-300 rounded hover:bg-gray-50 text-xs"
                     >
@@ -590,7 +590,7 @@ export default function UIPage() {
                     <button
                       onClick={() => {
                         setNavigationBarTitle({ title: "Green Theme" });
-                        setNavigationBarColor({ background_color: "#10b981", front_color: "#ffffff" });
+                        setNavigationBarColor({ backgroundColor: "#10b981", frontColor: "#ffffff" });
                       }}
                       className="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs"
                     >

@@ -174,6 +174,45 @@ export default function NavigatorPage() {
           </div>
         </div>
 
+        {/* Phone Call */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+            <div className="w-1 h-4 bg-rose-500 rounded-full" />
+            <h2 className="text-base font-semibold text-gray-900">Phone Call</h2>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="text-sm font-medium text-gray-900">Make Phone Call</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Trigger system dialer with tel open-type</div>
+                </div>
+              </div>
+              <LxNavigator
+                openType="tel"
+                phoneNumber="10086"
+                onSuccess={() => addLog('✓ Making phone call')}
+                onFail={() => addLog('✗ Failed to make call')}
+              >
+                <div className="w-full py-3 px-4 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 active:from-rose-700 active:to-pink-700 text-white rounded-xl text-sm font-medium text-center transition-all shadow-sm">
+                  <div className="flex items-center justify-center gap-3">
+                    <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                        <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+                      </svg>
+                    </div>
+                    <div className="flex flex-col items-start">
+                      <span className="text-white/80 text-xs">Call</span>
+                      <span className="text-base font-semibold tracking-wide">10086</span>
+                    </div>
+                  </div>
+                </div>
+              </LxNavigator>
+            </div>
+          </div>
+        </div>
+
         {/* Info Card */}
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
           <div className="flex gap-3">
