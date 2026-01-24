@@ -170,19 +170,31 @@ async fn choose_media(
         };
         let is_original = key.is_original;
 
-        let local_path = uri
-            .strip_prefix("file://")
-            .map(PathBuf::from)
-            .or_else(|| Path::new(uri).is_absolute().then(|| PathBuf::from(uri)));
+        // Only treat `file://...` URIs as local filesystem paths when the remainder is an absolute
+        // path. Pickers may also return non-filesystem URIs (e.g. Android `content://...`, iOS
+        // Photos identifiers, or Harmony `file://media/...`), which must be copied via the
+        // platform runtime (copy_album_media_to_file).
+        let local_path = if let Some(path_str) = uri.strip_prefix("file://") {
+            Path::new(path_str)
+                .is_absolute()
+                .then(|| PathBuf::from(path_str))
+        } else {
+            Path::new(uri).is_absolute().then(|| PathBuf::from(uri))
+        };
 
         let final_path: PathBuf = if let Some(source_path) = local_path {
             match lxapp.resolve_accessible_path(source_path.to_string_lossy().as_ref()) {
-                Ok(path) => path,
-                Err(_) => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
+                Ok(path) if lxapp.to_uri(&path).is_some() => path,
+                _ => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
                     fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
                         RongJSError::from(HostError::new(
                             rong::error::E_INTERNAL,
-                            format!("chooseMedia failed to copy temp file into cache: {}", e),
+                            format!(
+                                "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
+                                source_path.display(),
+                                dest_path.display(),
+                                e
+                            ),
                         ))
                     })
                 })?,
@@ -241,6 +253,18 @@ where
     match cache.resolve_path_with_ext(key, ext) {
         lxapp::ResolveResult::Exists(path) => Ok(path),
         lxapp::ResolveResult::NonExists(dest_path) => {
+            if let Some(parent) = dest_path.parent() {
+                fs::create_dir_all(parent).map_err(|e| {
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        format!(
+                            "chooseMedia failed to create cache directory {}: {}",
+                            parent.display(),
+                            e
+                        ),
+                    ))
+                })?;
+            }
             write(&dest_path)?;
             Ok(dest_path)
         }

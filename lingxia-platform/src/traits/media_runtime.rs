@@ -21,6 +21,18 @@ pub struct CompressImageRequest {
 }
 
 pub trait MediaRuntime: Send + Sync + 'static {
+    /// Copy a picked/album media asset identified by `uri` into a local file at `dest_path`.
+    ///
+    /// Notes:
+    /// - `uri` is an opaque platform media reference coming from platform pickers and may not be a
+    ///   directly readable filesystem path.
+    /// - Implementations should support platform-specific schemes as applicable, for example:
+    ///   - Android: `content://...`
+    ///   - iOS: `ph://...` (or other Photos identifiers)
+    ///   - Harmony: picker URIs such as `file://media/...`
+    ///   - Some platforms may also provide `file:///absolute/path` (or an absolute path string).
+    /// - Implementations should create parent directories for `dest_path` if needed and write the
+    ///   file content so that `dest_path` exists on success.
     fn copy_album_media_to_file(
         &self,
         uri: &str,
