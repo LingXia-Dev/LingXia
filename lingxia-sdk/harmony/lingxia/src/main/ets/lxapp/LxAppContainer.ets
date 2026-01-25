@@ -83,7 +83,7 @@ export struct LxAppContainer {
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
-  @State popupOverlayWebTag: string = '' // WebView currently displayed in popup
+  @State popupOverlayWebTag: string = '' // WebView tag currently displayed in popup (may include #instance suffix)
   @State overlayActive: boolean = false
   @State overlayWidthVp: number = 0
   @State overlayHeightVp: number = 0
@@ -493,29 +493,50 @@ export struct LxAppContainer {
           }
           break;
       case 'popup_show':
-        if (info.webtag.startsWith(`${this.appId}-`)) {
-          this.webViewComponents.set(info.webtag, info.controller);
-          this.webViewKeys = Array.from(this.webViewComponents.keys());
-          const layout: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
-      if (layout && layout.appId === this.appId) {
-        this.applyOverlayState(info.webtag, true, layout.widthVp, layout.heightVp, layout.position as number, layout.bottomInset, layout.fullWidth, layout.fullHeight);
-        hilog.info(DOMAIN, TAG, `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`);
-      } else {
-        this.applyOverlayState(info.webtag, true);
-      }
-          hilog.info(DOMAIN, TAG, `Popup overlay active for ${info.webtag}`);
+        {
+          const extracted = extractWebTag(info.webtag);
+          if (extracted && extracted.appId === this.appId) {
+            this.webViewComponents.set(info.webtag, info.controller);
+            this.webViewKeys = Array.from(this.webViewComponents.keys());
+
+            const layout: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
+            if (layout && layout.appId === this.appId) {
+              this.applyOverlayState(
+                info.webtag,
+                true,
+                layout.widthVp,
+                layout.heightVp,
+                layout.position as number,
+                layout.bottomInset,
+                layout.fullWidth,
+                layout.fullHeight
+              );
+              hilog.info(
+                DOMAIN,
+                TAG,
+                `Overlay style set for ${info.webtag}: w=${layout.widthVp} h=${layout.heightVp} pos=${layout.position}`
+              );
+            } else {
+              this.applyOverlayState(info.webtag, true);
+            }
+
+            hilog.info(DOMAIN, TAG, `Popup overlay active for ${info.webtag}`);
+          }
         }
         break;
       case 'popup_hide':
-        if (info.webtag.startsWith(`${this.appId}-`)) {
-          this.webViewComponents.set(info.webtag, info.controller);
-          this.webViewKeys = Array.from(this.webViewComponents.keys());
-          if (this.keepAliveTags.indexOf(info.webtag) < 0) {
-            this.keepAliveTags = [...this.keepAliveTags, info.webtag];
+        {
+          const extracted = extractWebTag(info.webtag);
+          if (extracted && extracted.appId === this.appId) {
+            this.webViewComponents.set(info.webtag, info.controller);
+            this.webViewKeys = Array.from(this.webViewComponents.keys());
+            if (this.keepAliveTags.indexOf(info.webtag) < 0) {
+              this.keepAliveTags = [...this.keepAliveTags, info.webtag];
+            }
+            this.pageShowTriggered.delete(info.webtag);
+            this.applyOverlayState(info.webtag, false);
+            hilog.info(DOMAIN, TAG, `Popup overlay cleared for ${info.webtag}`);
           }
-          this.pageShowTriggered.delete(info.webtag);
-          this.applyOverlayState(info.webtag, false);
-          hilog.info(DOMAIN, TAG, `Popup overlay cleared for ${info.webtag}`);
         }
         break;
     }
@@ -787,7 +808,7 @@ export struct LxAppContainer {
       this.animateOverlayMask(true);
       hilog.info(DOMAIN, TAG, `Overlay enabled for ${webTag} w=${this.overlayWidthVp} h=${this.overlayHeightVp}`);
     } else {
-      if (this.popupOverlayWebTag === webTag) {
+      if (this.popupOverlayWebTag && this.getLogicalWebTag(this.popupOverlayWebTag) === this.getLogicalWebTag(webTag)) {
         this.popupOverlayWebTag = '';
       }
       this.overlayActive = false;
@@ -1658,8 +1679,19 @@ export struct LxAppContainer {
     return base;
   }
 
+  private getLogicalWebTag(webTag: string): string {
+    const extracted = extractWebTag(webTag);
+    if (extracted) {
+      return toWebTag(extracted.appId, extracted.path);
+    }
+    return webTag.split('#')[0] || webTag;
+  }
+
   private isOverlayWebView(webTag: string): boolean {
-    return this.overlayActive && webTag === this.popupOverlayWebTag;
+    if (!this.overlayActive || !this.popupOverlayWebTag) {
+      return false;
+    }
+    return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.popupOverlayWebTag);
   }
 
   private getRenderVisibility(webTag: string): Visibility {
