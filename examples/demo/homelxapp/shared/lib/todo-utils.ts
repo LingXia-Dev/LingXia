@@ -1,7 +1,7 @@
 // Common todo utilities
 import { uniqueId } from "lodash-es";
 
-export function generateTodoId() {
+export function generateTodoId(): string {
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
@@ -13,10 +13,10 @@ export function generateTodoId() {
   return `todo_${timestamp}_${random}`;
 }
 
-export function validateTodoText(text) {
-  return text && typeof text === "string" && text.trim().length > 0;
+export function validateTodoText(text: unknown): boolean {
+  return text != null && typeof text === "string" && text.trim().length > 0;
 }
 
-export function getCurrentTimestamp() {
+export function getCurrentTimestamp(): string {
   return new Date().toISOString();
 }

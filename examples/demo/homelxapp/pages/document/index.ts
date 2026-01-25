@@ -68,10 +68,6 @@ Page({
     this.setData({ showMenu: !this.data.showMenu });
   },
 
-  toggleShowMenu: function () {
-    this.setData({ showMenu: !this.data.showMenu });
-  },
-
   openPdf: async function () {
     const url = this.data.pdfUrl?.trim();
     if (!url) {
