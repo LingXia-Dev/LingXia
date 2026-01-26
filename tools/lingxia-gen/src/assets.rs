@@ -6,9 +6,9 @@ use walkdir::WalkDir;
 
 #[derive(Args, Debug)]
 pub struct AssetsConfig {
-    /// Path to the source assets directory
-    #[arg(short, long, default_value = "lingxia-sdk/resources/assets")]
-    pub input: PathBuf,
+    /// Optional path to additional static assets directory
+    #[arg(short, long)]
+    pub input: Option<PathBuf>,
 
     /// Path to runtime assets directory (lingxia-web-runtime/dist)
     #[arg(long, default_value = "lingxia-web-runtime/dist")]
@@ -28,14 +28,13 @@ pub struct AssetsConfig {
 }
 
 pub fn run(config: AssetsConfig) -> Result<()> {
-    println!("Syncing assets from: {:?}", config.input);
-
-    let input_exists = config.input.exists();
-    if !input_exists {
-        println!(
-            "Warning: Input directory does not exist: {:?}",
-            config.input
-        );
+    let input_exists = config.input.as_ref().is_some_and(|p| p.exists());
+    if let Some(input) = &config.input {
+        if input_exists {
+            println!("Syncing extra assets from: {:?}", input);
+        } else {
+            println!("Warning: Input directory does not exist: {:?}", input);
+        }
     }
 
     let mut runtime_exists = config.runtime_input.exists();
@@ -49,8 +48,9 @@ pub fn run(config: AssetsConfig) -> Result<()> {
     }
 
     if input_exists && runtime_exists {
-        if let (Ok(input_path), Ok(runtime_path)) =
-            (config.input.canonicalize(), config.runtime_input.canonicalize())
+        if let Some(input) = &config.input
+            && let (Ok(input_path), Ok(runtime_path)) =
+                (input.canonicalize(), config.runtime_input.canonicalize())
             && input_path == runtime_path
         {
             println!("Runtime assets path matches input; skipping duplicate sync.");
@@ -60,7 +60,7 @@ pub fn run(config: AssetsConfig) -> Result<()> {
 
     if let Some(path) = &config.android_out {
         if input_exists {
-            sync_dir(&config.input, path)?;
+            sync_dir(config.input.as_ref().expect("input exists"), path)?;
         }
         if runtime_exists {
             sync_dir(&config.runtime_input, path)?;
@@ -70,7 +70,7 @@ pub fn run(config: AssetsConfig) -> Result<()> {
 
     if let Some(path) = &config.ios_out {
         if input_exists {
-            sync_dir(&config.input, path)?;
+            sync_dir(config.input.as_ref().expect("input exists"), path)?;
         }
         if runtime_exists {
             sync_dir(&config.runtime_input, path)?;
@@ -80,7 +80,7 @@ pub fn run(config: AssetsConfig) -> Result<()> {
 
     if let Some(path) = &config.harmony_out {
         if input_exists {
-            sync_dir(&config.input, path)?;
+            sync_dir(config.input.as_ref().expect("input exists"), path)?;
         }
         if runtime_exists {
             sync_dir(&config.runtime_input, path)?;

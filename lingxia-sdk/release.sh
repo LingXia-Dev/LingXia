@@ -87,7 +87,6 @@ done
 
 I18N_DIR="$ROOT_DIR/i18n"
 ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
-ASSETS_DIR="$ROOT_DIR/lingxia-sdk/resources/assets"
 WEB_RUNTIME_DIST="$ROOT_DIR/lingxia-web-runtime/dist"
 
 ANDROID_SDK_DIR="$ROOT_DIR/lingxia-sdk/android"
@@ -181,7 +180,7 @@ generate_resources() {
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
   local i18n_args=(cargo run -p lingxia-gen -- i18n --input "$I18N_DIR")
-  local assets_args=(cargo run -p lingxia-gen -- assets --input "$ASSETS_DIR" --runtime-input "$WEB_RUNTIME_DIST")
+  local assets_args=(cargo run -p lingxia-gen -- assets --runtime-input "$WEB_RUNTIME_DIST")
   local icons_args=(cargo run -p lingxia-gen -- icons --input "$ICONS_SVG_DIR")
 
   if $WANT_ANDROID; then
