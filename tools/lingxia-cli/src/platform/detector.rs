@@ -34,9 +34,8 @@ impl FromStr for PlatformType {
     }
 }
 
-/// Detect all available platforms in the project
-///
-/// Returns a vector of platform types that are actually present in the project directory
+#[cfg(test)]
+/// Detect all available platforms in the project (test helper).
 pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
     let mut platforms = Vec::new();
 

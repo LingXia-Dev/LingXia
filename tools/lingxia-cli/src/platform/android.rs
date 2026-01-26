@@ -1,6 +1,4 @@
-use super::{
-    BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
-};
+use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
 use adb_client::{server::ADBServer, ADBDeviceExt};
 use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
@@ -66,11 +64,7 @@ impl AndroidPlatform {
     }
 
     /// Build Rust library for Android
-    fn build_rust_library(
-        &self,
-        project_root: &Path,
-        config: &BuildConfig,
-    ) -> Result<()> {
+    fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<()> {
         if !config.build_native {
             println!("  {} Skipping native compilation", "⏭️".bold());
             return Ok(());
@@ -109,6 +103,19 @@ impl AndroidPlatform {
     ) -> Result<()> {
         println!("  → Building for {}...", target.cyan());
 
+        let lingxia_config = config
+            .lingxia_config
+            .as_ref()
+            .ok_or_else(|| anyhow!("lingxia.config.json is required to build native libraries"))?;
+        let rust_lib_dir = project_root.join(format!("{}-lib", lingxia_config.project.name));
+        let rust_manifest = rust_lib_dir.join("Cargo.toml");
+        if !rust_manifest.exists() {
+            return Err(anyhow!(
+                "Rust library manifest not found: {}",
+                rust_manifest.display()
+            ));
+        }
+
         // Get API level from config or default to 33
         let api_level = config
             .lingxia_config
@@ -135,7 +142,9 @@ impl AndroidPlatform {
         cmd.arg("build")
             .arg("--target")
             .arg(target)
-            .current_dir(project_root);
+            .arg("--manifest-path")
+            .arg(&rust_manifest)
+            .current_dir(&rust_lib_dir);
 
         // Add --release flag for release builds (debug is the default)
         if matches!(config.profile, super::BuildProfile::Release) {
@@ -176,10 +185,11 @@ impl AndroidPlatform {
         let cxx_path = bin_dir.join(&cxx_bin);
 
         let target_upper = target.to_uppercase().replace('-', "_");
-        cmd.env(format!("AR_{}", target), &ar_path);
+        let target_env = target.replace('-', "_");
+        cmd.env(format!("AR_{}", target_env), &ar_path);
         cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &cc_path);
-        cmd.env(format!("CC_{}", target), &cc_path);
-        cmd.env(format!("CXX_{}", target), &cxx_path);
+        cmd.env(format!("CC_{}", target_env), &cc_path);
+        cmd.env(format!("CXX_{}", target_env), &cxx_path);
 
         let status = cmd.status().context("Failed to execute cargo build")?;
 
@@ -242,10 +252,8 @@ impl AndroidPlatform {
 
     /// Auto-detect APK path from build output
     fn auto_detect_apk(&self, android_root: &Path) -> Result<PathBuf> {
-        let debug_apk = android_root
-            .join("app/build/outputs/apk/debug/app-debug.apk");
-        let release_apk = android_root
-            .join("app/build/outputs/apk/release/app-release.apk");
+        let debug_apk = android_root.join("app/build/outputs/apk/debug/app-debug.apk");
+        let release_apk = android_root.join("app/build/outputs/apk/release/app-release.apk");
 
         if release_apk.exists() {
             Ok(release_apk)
@@ -267,7 +275,10 @@ impl Platform for AndroidPlatform {
 
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
-        println!("  Android directory: {}", android_root.display().to_string().cyan());
+        println!(
+            "  Android directory: {}",
+            android_root.display().to_string().cyan()
+        );
 
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
@@ -312,21 +323,16 @@ impl Platform for AndroidPlatform {
                 .context(format!("Failed to get device: {}", device_id))?
         } else {
             // Get the only connected device (errors if 0 or >1 devices)
-            server
-                .get_device()
-                .context("Failed to get device. Use --device to specify a device if multiple are connected")?
+            server.get_device().context(
+                "Failed to get device. Use --device to specify a device if multiple are connected",
+            )?
         };
 
-        let device_id = device
-            .identifier
-            .as_deref()
-            .unwrap_or("unknown");
+        let device_id = device.identifier.as_deref().unwrap_or("unknown");
         println!("  Installing on device: {}", device_id.cyan());
 
         // Install APK using adb_client
-        device
-            .install(&apk_path)
-            .context("Failed to install APK")?;
+        device.install(&apk_path).context("Failed to install APK")?;
 
         println!("  {} APK installed successfully", "✓".green());
 
@@ -349,9 +355,9 @@ impl Platform for AndroidPlatform {
                 .get_device_by_name(device_id)
                 .context(format!("Failed to get device: {}", device_id))?
         } else {
-            server
-                .get_device()
-                .context("Failed to get device. Use --device to specify a device if multiple are connected")?
+            server.get_device().context(
+                "Failed to get device. Use --device to specify a device if multiple are connected",
+            )?
         };
 
         let activity = if let Some(ref activity) = config.main_activity {

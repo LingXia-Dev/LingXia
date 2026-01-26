@@ -121,11 +121,11 @@ impl LingXiaConfig {
             );
         }
 
-        let content = fs::read_to_string(&config_path)
-            .context("Failed to read lingxia.config.json")?;
+        let content =
+            fs::read_to_string(&config_path).context("Failed to read lingxia.config.json")?;
 
-        let config: LingXiaConfig = serde_json::from_str(&content)
-            .context("Failed to parse lingxia.config.json")?;
+        let config: LingXiaConfig =
+            serde_json::from_str(&content).context("Failed to parse lingxia.config.json")?;
 
         Ok(config)
     }
@@ -134,18 +134,11 @@ impl LingXiaConfig {
     pub fn save(&self, project_root: &Path) -> Result<()> {
         let config_path = project_root.join("lingxia.config.json");
 
-        let content = serde_json::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let content = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(&config_path, content)
-            .context("Failed to write lingxia.config.json")?;
+        fs::write(&config_path, content).context("Failed to write lingxia.config.json")?;
 
         Ok(())
-    }
-
-    /// Try to load config, return None if not found (instead of error)
-    pub fn try_load(project_root: &Path) -> Option<Self> {
-        Self::load(project_root).ok()
     }
 
     /// Create a default Android config
@@ -163,7 +156,7 @@ impl LingXiaConfig {
                 target_sdk: Some(35),
                 compile_sdk: Some(35),
                 ndk_version: None, // Auto-detect
-                api_level: None, // Derive from targetSdk
+                api_level: None,   // Derive from targetSdk
             }),
             ios: None,
             harmony: None,

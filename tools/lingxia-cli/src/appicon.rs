@@ -33,9 +33,7 @@ pub fn normalize_android_color(color: &str) -> Result<String> {
     }
 
     if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
-        anyhow::bail!(
-            "Invalid Android color '{with_hash}'. Only 0-9 and A-F are allowed."
-        );
+        anyhow::bail!("Invalid Android color '{with_hash}'. Only 0-9 and A-F are allowed.");
     }
 
     Ok(with_hash.to_ascii_uppercase())
@@ -72,7 +70,10 @@ pub fn generate_android_icons(
         eprintln!("Warning: Source icon is smaller than 1024x1024. Quality may be affected.");
     }
 
-    println!("Generating Android icons from {}x{} source...", width, height);
+    println!(
+        "Generating Android icons from {}x{} source...",
+        width, height
+    );
 
     let mut count = 0;
 
@@ -140,10 +141,7 @@ pub fn generate_android_icons(
 
 /// Generate iOS app icons from a source image (future implementation)
 #[allow(dead_code)]
-pub fn generate_ios_icons(
-    _source_icon: &Path,
-    _ios_dir: &Path,
-) -> Result<()> {
+pub fn generate_ios_icons(_source_icon: &Path, _ios_dir: &Path) -> Result<()> {
     anyhow::bail!("iOS icon generation not yet implemented");
 }
 

@@ -125,14 +125,7 @@ fn main() -> Result<()> {
             icon,
             yes,
         } => {
-            commands::new::execute(
-                name,
-                project_type,
-                platform,
-                package_id,
-                icon,
-                yes,
-            )?;
+            commands::new::execute(name, project_type, platform, package_id, icon, yes)?;
         }
         Commands::Icon {
             icon_path,

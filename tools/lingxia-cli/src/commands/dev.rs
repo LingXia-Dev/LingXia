@@ -1,10 +1,8 @@
 use crate::config::LingXiaConfig;
-use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, RunConfig};
-use anyhow::{anyhow, Context, Result};
+use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
+use anyhow::{anyhow, Result};
 use colored::Colorize;
 use std::env;
-use std::fs;
-use std::path::PathBuf;
 
 /// Execute the dev command
 ///
@@ -20,38 +18,36 @@ pub fn execute(
     device: Option<String>,
 ) -> Result<()> {
     println!();
-    println!("{}", "🚀 Development Mode: Build → Install → Launch".bold().cyan());
+    println!(
+        "{}",
+        "🚀 Development Mode: Build → Install → Launch"
+            .bold()
+            .cyan()
+    );
     println!();
 
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
 
-    // Try to load config file
-    let config = LingXiaConfig::try_load(&project_root);
+    // Config is required for all project commands.
+    let config = LingXiaConfig::load(&project_root)?;
 
     // Log config status
-    if let Some(ref cfg) = config {
-        println!("  📄 Using lingxia.config.json");
-        if let Some(ref android) = cfg.android {
-            println!(
-                "  📱 Android SDK: min={}, target={}, compile={}",
-                android.min_sdk.unwrap_or(28),
-                android.target_sdk.unwrap_or(35),
-                android.compile_sdk.unwrap_or(35)
-            );
-        }
+    println!("  📄 Using lingxia.config.json");
+    if let Some(ref android) = config.android {
+        println!(
+            "  📱 Android SDK: min={}, target={}, compile={}",
+            android.min_sdk.unwrap_or(28),
+            android.target_sdk.unwrap_or(35),
+            android.compile_sdk.unwrap_or(35)
+        );
     }
 
     // Parse build profile
     let build_profile = match profile.as_deref() {
         Some("debug") | None => BuildProfile::Debug,
         Some("release") => BuildProfile::Release,
-        Some(p) => {
-            return Err(anyhow!(
-                "Invalid profile: {}. Use 'debug' or 'release'",
-                p
-            ))
-        }
+        Some(p) => return Err(anyhow!("Invalid profile: {}. Use 'debug' or 'release'", p)),
     };
 
     // Default targets if none specified
@@ -61,8 +57,18 @@ pub fn execute(
         targets
     };
 
-    // Detect platform
-    let platform = platform::detector::detect_platform(&project_root)?;
+    // Determine platform from config (no auto-detection/fallback).
+    if !config
+        .project
+        .platforms
+        .iter()
+        .any(|p| p.eq_ignore_ascii_case("android"))
+    {
+        return Err(anyhow!(
+            "This command currently supports Android projects only. Add 'android' to project.platforms in lingxia.config.json."
+        ));
+    }
+    let platform = platform::android::AndroidPlatform::new();
 
     // Step 1: Build
     println!("{}", "Step 1/3: Building...".bold());
@@ -72,7 +78,7 @@ pub fn execute(
         features,
         build_native,
         targets: build_targets,
-        lingxia_config: config.clone(),
+        lingxia_config: Some(config.clone()),
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -95,10 +101,15 @@ pub fn execute(
     // Step 3: Launch app
     println!("{}", "Step 3/3: Launching app...".bold());
 
-    // Auto-detect package ID from Android Gradle project
-    let android_root = platform::detector::resolve_android_dir(&project_root);
-    let package_id = detect_package_id(&android_root)?;
-    println!("  Detected package: {}", package_id.cyan());
+    let package_id = config
+        .android
+        .as_ref()
+        .map(|android| android.package_id.clone())
+        .ok_or_else(|| {
+            anyhow!(
+                "Missing android.packageId in lingxia.config.json (required to launch the app)."
+            )
+        })?;
 
     let run_config = RunConfig {
         device_id: device,
@@ -111,67 +122,13 @@ pub fn execute(
     println!();
     println!("{}", "✅ Dev workflow complete!".green().bold());
     println!();
-    println!("  {} Platform: {}", "📦".bold(), artifacts.platform_name().cyan());
+    println!(
+        "  {} Platform: {}",
+        "📦".bold(),
+        artifacts.platform_name().cyan()
+    );
     println!("  {} Artifact: {}", "📦".bold(), artifacts.path().display());
-    println!("  {} Package: {}", "📱".bold(), package_id.cyan());
     println!();
 
     Ok(())
-}
-
-/// Detect package ID from build.gradle.kts
-fn detect_package_id(project_root: &PathBuf) -> Result<String> {
-    // Try app/build.gradle.kts first
-    let gradle_kts = project_root.join("app").join("build.gradle.kts");
-    let gradle = project_root.join("app").join("build.gradle");
-
-    let content = if gradle_kts.exists() {
-        fs::read_to_string(&gradle_kts)
-            .context("Failed to read app/build.gradle.kts")?
-    } else if gradle.exists() {
-        fs::read_to_string(&gradle)
-            .context("Failed to read app/build.gradle")?
-    } else {
-        return Err(anyhow!("Could not find build.gradle or build.gradle.kts in app/"));
-    };
-
-    // Parse applicationId from gradle file
-    // Look for: applicationId = "com.example.app" or applicationId "com.example.app"
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        // Kotlin DSL: applicationId = "..."
-        if let Some(stripped) = trimmed.strip_prefix("applicationId") {
-            let rest = stripped.trim();
-            if let Some(rest) = rest.strip_prefix('=') {
-                let rest = rest.trim();
-                if let Some(id) = extract_quoted_string(rest) {
-                    return Ok(id);
-                }
-            } else if let Some(id) = extract_quoted_string(rest) {
-                // Groovy DSL: applicationId "..."
-                return Ok(id);
-            }
-        }
-    }
-
-    Err(anyhow!(
-        "Could not find applicationId in build.gradle.kts. Please ensure it's defined in android.defaultConfig block."
-    ))
-}
-
-/// Extract string from quotes (handles both "..." and '...')
-fn extract_quoted_string(s: &str) -> Option<String> {
-    let s = s.trim();
-    if s.starts_with('"') && s.contains('"') {
-        let start = s.find('"')? + 1;
-        let end = s[start..].find('"')? + start;
-        Some(s[start..end].to_string())
-    } else if s.starts_with('\'') && s.contains('\'') {
-        let start = s.find('\'')? + 1;
-        let end = s[start..].find('\'')? + start;
-        Some(s[start..end].to_string())
-    } else {
-        None
-    }
 }

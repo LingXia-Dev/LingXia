@@ -459,7 +459,11 @@ fn generate_config_file(config: &ProjectConfig) -> Result<()> {
     Ok(())
 }
 
-fn generate_app_icons(config: &ProjectConfig, icon_path: &str, background_color: &str) -> Result<()> {
+fn generate_app_icons(
+    config: &ProjectConfig,
+    icon_path: &str,
+    background_color: &str,
+) -> Result<()> {
     use crate::appicon;
     use std::path::PathBuf;
 

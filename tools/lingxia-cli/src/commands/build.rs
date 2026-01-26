@@ -21,23 +21,26 @@ pub fn execute(
     println!("{}", "🚀 LingXia Build".bold().cyan());
     println!();
 
-    // Try to load config file
-    let config = LingXiaConfig::try_load(&project_root);
+    // Config is required for all project commands.
+    let config = LingXiaConfig::load(&project_root)?;
 
     // Log config status
-    if let Some(ref cfg) = config {
-        println!("  Using lingxia.config.json");
-        println!("  Project: {}", cfg.project.name.cyan());
-        println!("  Type: {}", cfg.project.project_type.cyan());
-    }
+    println!("  Using lingxia.config.json");
+    println!("  Project: {}", config.project.name.cyan());
+    println!("  Type: {}", config.project.project_type.cyan());
 
-    // Detect available platforms in the project directory
-    let available_platforms = platform::detector::detect_available_platforms(&project_root);
+    // Determine platforms from config (no auto-detection/fallback).
+    let available_platforms: Vec<platform::detector::PlatformType> = config
+        .project
+        .platforms
+        .iter()
+        .map(|p| p.parse())
+        .collect::<Result<Vec<_>, _>>()?;
 
     if available_platforms.is_empty() {
         return Err(anyhow!(
-            "No platform detected in project directory.\n\
-             Make sure you have at least one platform directory (android/, ios/, or harmony/)"
+            "No platform configured in lingxia.config.json.\n\
+             Set project.platforms to include at least one of: android, ios, harmony"
         ));
     }
 
@@ -68,12 +71,7 @@ pub fn execute(
     let build_profile = match profile.as_deref() {
         Some("debug") | None => BuildProfile::Debug,
         Some("release") => BuildProfile::Release,
-        Some(p) => {
-            return Err(anyhow!(
-                "Invalid profile: {}. Use 'debug' or 'release'",
-                p
-            ))
-        }
+        Some(p) => return Err(anyhow!("Invalid profile: {}. Use 'debug' or 'release'", p)),
     };
 
     // Default targets if none specified
@@ -89,8 +87,7 @@ pub fn execute(
     for platform_type in platforms_to_build {
         println!(
             "{}",
-            format!("📦 Building {} platform...", platform_type.as_str())
-                .bold()
+            format!("📦 Building {} platform...", platform_type.as_str()).bold()
         );
         println!();
 
@@ -116,7 +113,7 @@ pub fn execute(
             features: features.clone(),
             build_native,
             targets: build_targets.clone(),
-            lingxia_config: config.clone(),
+            lingxia_config: Some(config.clone()),
         };
 
         let artifacts = platform.build(&build_config)?;

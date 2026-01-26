@@ -61,8 +61,7 @@ fn check_java() -> bool {
 fn check_android_sdk() -> bool {
     print!("Checking Android SDK... ");
 
-    let android_home = std::env::var("ANDROID_HOME")
-        .or_else(|_| std::env::var("ANDROID_SDK_ROOT"));
+    let android_home = std::env::var("ANDROID_HOME").or_else(|_| std::env::var("ANDROID_SDK_ROOT"));
 
     match android_home {
         Ok(path) => {
@@ -147,8 +146,7 @@ fn check_rust() -> bool {
 fn check_android_ndk() -> bool {
     print!("Checking Android NDK... ");
 
-    let ndk_home = std::env::var("ANDROID_NDK_HOME")
-        .or_else(|_| std::env::var("NDK_HOME"));
+    let ndk_home = std::env::var("ANDROID_NDK_HOME").or_else(|_| std::env::var("NDK_HOME"));
 
     match ndk_home {
         Ok(path) => {

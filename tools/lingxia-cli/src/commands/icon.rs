@@ -7,7 +7,11 @@ use std::path::PathBuf;
 const DEFAULT_ICON_BACKGROUND_COLOR: &str = "#FFFFFF";
 
 /// Execute the icon command to generate or update app icons
-pub fn execute(icon_path: String, platform: Option<String>, background_color: Option<String>) -> Result<()> {
+pub fn execute(
+    icon_path: String,
+    platform: Option<String>,
+    background_color: Option<String>,
+) -> Result<()> {
     println!("{}", "Generate/Update App Icons".bold());
     println!();
 
@@ -39,7 +43,10 @@ pub fn execute(icon_path: String, platform: Option<String>, background_color: Op
             .unwrap_or(DEFAULT_ICON_BACKGROUND_COLOR),
     )?;
 
-    println!("  Icon source:      {}", icon_path.display().to_string().cyan());
+    println!(
+        "  Icon source:      {}",
+        icon_path.display().to_string().cyan()
+    );
     println!("  Target platform:  {}", platforms.join(", ").cyan());
     println!("  Background color: {}", bg_color.cyan());
     println!();
@@ -53,7 +60,11 @@ pub fn execute(icon_path: String, platform: Option<String>, background_color: Op
                 let android_res = current_dir.join("android/app/src/main/res");
 
                 if !android_res.exists() {
-                    eprintln!("  {} Android res directory not found: {:?}", "Warning:".yellow(), android_res);
+                    eprintln!(
+                        "  {} Android res directory not found: {:?}",
+                        "Warning:".yellow(),
+                        android_res
+                    );
                     eprintln!("  Skipping Android icon generation.");
                     continue;
                 }
@@ -63,11 +74,17 @@ pub fn execute(icon_path: String, platform: Option<String>, background_color: Op
             }
             "ios" => {
                 println!("{}", "Generating iOS icons...".bold());
-                eprintln!("  {} iOS icon generation not yet implemented", "Warning:".yellow());
+                eprintln!(
+                    "  {} iOS icon generation not yet implemented",
+                    "Warning:".yellow()
+                );
             }
             "harmony" | "harmonyos" => {
                 println!("{}", "Generating HarmonyOS icons...".bold());
-                eprintln!("  {} HarmonyOS icon generation not yet implemented", "Warning:".yellow());
+                eprintln!(
+                    "  {} HarmonyOS icon generation not yet implemented",
+                    "Warning:".yellow()
+                );
             }
             _ => {
                 eprintln!("  {} Unknown platform: {}", "Warning:".yellow(), platform);

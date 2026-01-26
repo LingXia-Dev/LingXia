@@ -10,8 +10,10 @@ pub fn process_template_dir(
     vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Read all entries in the template directory
-    let entries = fs::read_dir(template_dir)
-        .context(format!("Failed to read template directory: {}", template_dir.display()))?;
+    let entries = fs::read_dir(template_dir).context(format!(
+        "Failed to read template directory: {}",
+        template_dir.display()
+    ))?;
 
     for entry in entries {
         let entry = entry?;
@@ -23,7 +25,8 @@ pub fn process_template_dir(
         if file_name_str == ".gradle"
             || file_name_str == "build"
             || file_name_str == ".idea"
-            || file_name_str == "target" {
+            || file_name_str == "target"
+        {
             continue;
         }
 
@@ -63,11 +66,27 @@ fn is_binary_file(path: &Path) -> bool {
     // Check by extension
     if let Some(ext) = path.extension() {
         let ext_str = ext.to_string_lossy();
-        if matches!(ext_str.as_ref(),
-            "jar" | "so" | "a" | "dylib" | "db" |
-            "png" | "jpg" | "jpeg" | "gif" | "ico" |
-            "ttf" | "otf" | "woff" | "woff2" |
-            "apk" | "aar" | "zip" | "tar" | "gz"
+        if matches!(
+            ext_str.as_ref(),
+            "jar"
+                | "so"
+                | "a"
+                | "dylib"
+                | "db"
+                | "png"
+                | "jpg"
+                | "jpeg"
+                | "gif"
+                | "ico"
+                | "ttf"
+                | "otf"
+                | "woff"
+                | "woff2"
+                | "apk"
+                | "aar"
+                | "zip"
+                | "tar"
+                | "gz"
         ) {
             return true;
         }
@@ -75,11 +94,12 @@ fn is_binary_file(path: &Path) -> bool {
 
     // Check by file name
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    if matches!(file_name,
-        "gradlew" | "gradlew.bat" |
-        ".lock" | "*.lock" |
-        ".bin" | "*.bin"
-    ) || file_name.ends_with(".lock") || file_name.ends_with(".bin") {
+    if matches!(
+        file_name,
+        "gradlew" | "gradlew.bat" | ".lock" | "*.lock" | ".bin" | "*.bin"
+    ) || file_name.ends_with(".lock")
+        || file_name.ends_with(".bin")
+    {
         return true;
     }
 
