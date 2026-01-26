@@ -38,8 +38,12 @@ android {
 }
 
 dependencies {
+    val lingxiaSdkVersion = (project.findProperty("LINGXIA_SDK_VERSION") as String?)
+        ?: System.getenv("LINGXIA_SDK_VERSION")
+        ?: "dev"
+
     // Depend on local Maven-published SDK
-    implementation("com.lingxia:lingxia:0.0.1")
+    implementation("com.lingxia:lingxia:$lingxiaSdkVersion")
 
     // App's own dependencies
     implementation(libs.androidx.core.ktx)
