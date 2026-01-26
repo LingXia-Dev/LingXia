@@ -11,7 +11,8 @@ pub struct BuildConfig {
     pub project_root: PathBuf,
     pub profile: BuildProfile,
     pub features: Vec<String>,
-    pub skip_native: bool,
+    /// Whether to build native Rust libraries
+    pub build_native: bool,
     pub targets: Vec<String>,
     /// Optional project configuration
     pub lingxia_config: Option<LingXiaConfig>,

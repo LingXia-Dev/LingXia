@@ -15,7 +15,7 @@ use std::path::PathBuf;
 pub fn execute(
     profile: Option<String>,
     features: Vec<String>,
-    skip_native: bool,
+    build_native: bool,
     targets: Vec<String>,
     device: Option<String>,
 ) -> Result<()> {
@@ -70,7 +70,7 @@ pub fn execute(
         project_root: project_root.clone(),
         profile: build_profile,
         features,
-        skip_native,
+        build_native,
         targets: build_targets,
         lingxia_config: config.clone(),
     };
@@ -95,8 +95,9 @@ pub fn execute(
     // Step 3: Launch app
     println!("{}", "Step 3/3: Launching app...".bold());
 
-    // Auto-detect package ID from build.gradle.kts
-    let package_id = detect_package_id(&project_root)?;
+    // Auto-detect package ID from Android Gradle project
+    let android_root = platform::detector::resolve_android_dir(&project_root);
+    let package_id = detect_package_id(&android_root)?;
     println!("  Detected package: {}", package_id.cyan());
 
     let run_config = RunConfig {

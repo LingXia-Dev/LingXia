@@ -27,7 +27,7 @@ struct BuildOptions {
     #[arg(short = 'f', long, value_delimiter = ',')]
     features: Vec<String>,
 
-    /// Skip native library compilation (use existing binaries)
+    /// Skip native Rust library compilation (use existing binaries)
     #[arg(long)]
     skip_native: bool,
 
@@ -82,6 +82,10 @@ enum Commands {
     Build {
         #[command(flatten)]
         build_options: BuildOptions,
+
+        /// Platforms to build (comma-separated). Defaults to all detected platforms.
+        #[arg(long, value_delimiter = ',')]
+        platform: Vec<String>,
     },
 
     /// Install the built app to a device
@@ -137,12 +141,16 @@ fn main() -> Result<()> {
         } => {
             commands::icon::execute(icon_path, platform, background_color)?;
         }
-        Commands::Build { build_options } => {
+        Commands::Build {
+            build_options,
+            platform,
+        } => {
             commands::build::execute(
                 build_options.profile,
                 build_options.features,
-                build_options.skip_native,
+                !build_options.skip_native,
                 build_options.targets,
+                platform,
             )?;
         }
         Commands::Install { artifact, device } => {
@@ -155,7 +163,7 @@ fn main() -> Result<()> {
             commands::dev::execute(
                 build_options.profile,
                 build_options.features,
-                build_options.skip_native,
+                !build_options.skip_native,
                 build_options.targets,
                 device,
             )?;

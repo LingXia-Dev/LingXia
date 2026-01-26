@@ -71,7 +71,7 @@ impl AndroidPlatform {
         project_root: &Path,
         config: &BuildConfig,
     ) -> Result<()> {
-        if config.skip_native {
+        if !config.build_native {
             println!("  {} Skipping native compilation", "⏭️".bold());
             return Ok(());
         }
@@ -241,10 +241,10 @@ impl AndroidPlatform {
     }
 
     /// Auto-detect APK path from build output
-    fn auto_detect_apk(&self, project_root: &Path) -> Result<PathBuf> {
-        let debug_apk = project_root
+    fn auto_detect_apk(&self, android_root: &Path) -> Result<PathBuf> {
+        let debug_apk = android_root
             .join("app/build/outputs/apk/debug/app-debug.apk");
-        let release_apk = project_root
+        let release_apk = android_root
             .join("app/build/outputs/apk/release/app-release.apk");
 
         if release_apk.exists() {
@@ -265,11 +265,15 @@ impl Platform for AndroidPlatform {
         println!("{}", "🏗️  Building Android project...".bold().cyan());
         println!();
 
+        // Resolve Android project directory (handle multi-platform layout)
+        let android_root = super::detector::resolve_android_dir(&config.project_root);
+        println!("  Android directory: {}", android_root.display().to_string().cyan());
+
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
 
         // Build Gradle project
-        let apk_path = self.build_gradle(&config.project_root, config)?;
+        let apk_path = self.build_gradle(&android_root, config)?;
 
         println!();
         println!("{}", "✅ Build complete!".green().bold());
@@ -282,12 +286,15 @@ impl Platform for AndroidPlatform {
         println!("{}", "📲 Installing APK...".bold().cyan());
         println!();
 
+        // Resolve Android project directory
+        let android_root = super::detector::resolve_android_dir(&config.project_root);
+
         // Determine APK path: use provided path or auto-detect
         let apk_path = if let Some(ref path) = config.artifact_path {
             path.clone()
         } else {
             // Auto-detect APK from build output
-            self.auto_detect_apk(&config.project_root)?
+            self.auto_detect_apk(&android_root)?
         };
 
         if !apk_path.exists() {
