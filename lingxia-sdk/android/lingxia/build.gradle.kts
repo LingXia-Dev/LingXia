@@ -6,11 +6,11 @@ plugins {
 
 android {
     namespace = "com.lingxia.lxapp"
-    compileSdk = 33
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 29
-        lint.targetSdk = 33
+        lint.targetSdk = 35
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -65,7 +65,7 @@ publishing {
         create<MavenPublication>("release") {
             groupId = "com.lingxia"
             artifactId = "lingxia"
-            version = "0.0.1"
+            version = (project.findProperty("version") as String?) ?: "0.0.1"
             afterEvaluate {
                 from(components["release"])
             }
