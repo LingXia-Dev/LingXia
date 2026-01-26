@@ -17,7 +17,8 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(name: "lingxia", path: "../../../lingxia-sdk/apple"),
+        // In dev, `examples/ios/dev.sh` stages the Apple SDK under `target/spm/lingxia`
+        .package(name: "lingxia", path: "../../../target/spm/lingxia"),
     ],
     targets: [
         .target(

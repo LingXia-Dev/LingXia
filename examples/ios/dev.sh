@@ -1,16 +1,8 @@
 #!/bin/bash
 
-# Build and deploy LingXia Example iOS App
+# Dev build & deploy LingXia Example iOS App
 #
-# Architecture:
-#   SDK (lingxia-sdk/apple/):
-#     - Swift Package: LingXia framework
-#     - Rust .a: liblingxia_lib.a (user extensions + framework core)
-#
-#   App (examples/ios/):
-#     - Swift app using LingXia SDK
-#
-# Usage: ./build_deploy_ios.sh [skip-rust]
+# Usage: ./dev.sh [skip-rust]
 
 set -euo pipefail
 
@@ -34,39 +26,35 @@ done
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT"
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./build_deploy_ios.sh
+LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
 
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
 echo "RESOURCES_DIR: $RESOURCES_DIR"
 
-# Generate i18n resources and icons for iOS
-echo "Generating i18n resources for iOS..."
-cargo run -p lingxia-gen -- i18n \
-  --input "$LINGXIA_ROOT/i18n" \
-  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
-
-echo "Generating runtime assets for iOS..."
-cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
-  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources"
-
-echo "Converting shared SVG icons to PDF for iOS bundle..."
-cargo run -p lingxia-gen -- icons \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
-  --ios-out "$LINGXIA_ROOT/lingxia-sdk/apple/Sources/Resources/icons"
-
-# Build Rust library for iOS unless skip-rust flag is set
+# Generate Swift bridge bindings before staging the Apple SDK into target/spm/lingxia.
+# This creates/updates: lingxia-sdk/apple/Sources/generated/...
 if [ "$SKIP_RUST" = false ]; then
-    echo "[1/4] Building Rust libraries..."
+    echo "[0/4] Generating Swift bridge bindings..."
     cd "$WORKSPACE_ROOT"
 
     TARGET="aarch64-apple-ios"
-
-    # Generate Swift bridge bindings (runs swift-bridge-build in lingxia's build.rs)
-    # This creates/updates: lingxia-sdk/apple/Sources/generated/LingXiaRustAPI/
-    echo "  → Generating Swift bridge bindings..."
     LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release 2>&1 | grep -E "Generated|warning:" | head -5 || true
+fi
+
+echo "[1/4] Preparing iOS SDK resources..."
+# For dev: generate Resources/icons/runtime assets via the unified SDK script.
+bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+  --platforms ios \
+  --version dev \
+  --ios-no-zip \
+  --no-shasums \
+  --out "$LINGXIA_ROOT/target/sdk-dev"
+
+# Build Rust library for iOS unless skip-rust flag is set
+if [ "$SKIP_RUST" = false ]; then
+    echo "[2/4] Building Rust libraries..."
+    cd "$WORKSPACE_ROOT"
 
     # Build lingxia-lib as staticlib for iOS (native library + user extensions)
     # Note: iOS requires staticlib (.a), not cdylib (.dylib)

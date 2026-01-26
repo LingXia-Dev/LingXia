@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Build and deploy LingXia Example HarmonyOS App
-# Usage: ./build_deploy_harmony.sh [skip-rust]
+# Dev build & deploy LingXia Example HarmonyOS App
+# Usage: ./dev.sh [skip-rust]
 
 set -euo pipefail
 
@@ -31,7 +31,7 @@ SDK_DIR="$LINGXIA_ROOT/lingxia-sdk/harmony"
 RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia_lib.so"
 APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
 
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./build_deploy_harmony.sh
+LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
 
 # Example app config
 APP_PACKAGE="app.lingxia.lxapp.example"
@@ -76,26 +76,17 @@ stage_so() {
 
 # Clean previous HAR/build outputs to ensure a fresh bundle
 HAR_BUNDLE="$LINGXIA_ROOT/target/ohpm/lingxia.har"
-SDK_BUILD_SH="$LINGXIA_ROOT/lingxia-sdk/harmony/build.sh"
 echo "Cleaning previous HAR artifacts..."
 rm -f "$HAR_BUNDLE" 2>/dev/null || true
 rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
 
-# 0) Generate resources for HarmonyOS
-echo "Generating i18n resources for HarmonyOS..."
-cargo run -p lingxia-gen -- i18n \
-  --input "$LINGXIA_ROOT/i18n" \
-  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources"
-
-echo "Generating runtime assets for HarmonyOS..."
-cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
-  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile"
-
-echo "Generating icons for HarmonyOS..."
-cargo run -p lingxia-gen -- icons \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
-  --harmony-out "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/src/main/resources/rawfile/icons"
+# 0) Generate resources + build SDK HAR (no obsolete build.sh)
+echo "[0/4] Preparing HarmonyOS SDK resources + HAR..."
+bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+  --platforms harmony \
+  --version dev \
+  --no-shasums \
+  --out "$LINGXIA_ROOT/target/sdk-dev"
 
 # 1) Build Rust native library
 if [ "$SKIP_RUST" = false ]; then
@@ -105,10 +96,7 @@ else
 fi
 stage_so
 
-# 2) Build SDK HAR (ArkTS only, no native library bundled)
-echo "Building SDK HAR (ArkTS framework only)..."
-bash "$SDK_BUILD_SH" skip-rust || { echo "❌ Failed to build SDK HAR" >&2; exit 1; }
-
+# 2) Ensure SDK HAR exists for local ohpm dependency
 if [ ! -f "$HAR_BUNDLE" ]; then
   echo "❌ HAR not found after build: $HAR_BUNDLE" >&2; exit 1
 fi
@@ -172,3 +160,4 @@ grep -E "(${PATTERN})" < "$PIPE" || true
 cleanup_logs
 
 echo "✅ Done."
+

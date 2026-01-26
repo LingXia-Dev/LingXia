@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build and run LingXia Example Android App
+# Dev build & run LingXia Example Android App
 #
 # Architecture:
 #   SDK (lingxia-sdk/android/):
@@ -11,13 +11,14 @@
 #     - lingxia-lib crate: native library + user extensions
 #     - Output: liblingxia.so (final linked library)
 #
-# Usage: ./build.sh [skip-rust]
+# Usage: ./dev.sh [skip-rust] [arm32]
 
 set -euo pipefail
 
 # Parse command line arguments
 SKIP_RUST=false
 BUILD_ARMV7=false
+USE_ES5_RUNTIME=false
 for arg in "$@"; do
     case $arg in
         skip-rust)
@@ -27,10 +28,20 @@ for arg in "$@"; do
         arm32|with-arm32|with-armv7)
             BUILD_ARMV7=true
             echo "✅ Enabling 32-bit (armeabi-v7a) build"
+            USE_ES5_RUNTIME=true
+            echo "✅ Enabling ES5 web runtime (recommended for older Android WebView)"
+            ;;
+        es5|legacy|with-es5)
+            USE_ES5_RUNTIME=true
+            echo "✅ Enabling ES5 web runtime"
+            ;;
+        es2020|modern)
+            USE_ES5_RUNTIME=false
+            echo "✅ Using modern web runtime"
             ;;
         *)
             echo "Unknown argument: $arg"
-            echo "Usage: $0 [skip-rust] [arm32]"
+            echo "Usage: $0 [skip-rust] [arm32] [es5|es2020]"
             exit 1
             ;;
     esac
@@ -41,7 +52,14 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT"
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./build.sh
+LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
+BASE_SDK_VERSION="dev"
+LINGXIA_SDK_VERSION="$BASE_SDK_VERSION"
+ANDROID_ES5_FLAG=""
+if $USE_ES5_RUNTIME; then
+    ANDROID_ES5_FLAG="--android-es5"
+    LINGXIA_SDK_VERSION="${BASE_SDK_VERSION}-es5"
+fi
 
 # Package name of the app
 APP_PACKAGE="com.lingxia.example.lxapp"
@@ -67,9 +85,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-GRADLE_BUILD_DIR="$LINGXIA_SDK_ANDROID/lingxia/build/generated/lingxia-webview"
-mkdir -p "$GRADLE_BUILD_DIR"
-export LINGXIA_JAR_OUTPUT_DIR="$GRADLE_BUILD_DIR"
+LOCAL_MAVEN_DIR="$LINGXIA_ROOT/target/maven"
 
 build_rust_android() {
     local target="$1"
@@ -122,23 +138,14 @@ build_rust_android() {
     fi
 }
 
-# Generate i18n resources for Android
-echo "Generating i18n resources for Android..."
-cargo run -p lingxia-gen -- i18n \
-  --input "$LINGXIA_ROOT/i18n" \
-  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res"
-
-# Generate asset manifests for Android
-echo "Generating runtime assets for Android..."
-cargo run -p lingxia-gen -- assets \
-  --input "$LINGXIA_ROOT/lingxia-web-runtime/dist" \
-  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/assets"
-
-# Generate Android Vector Drawable XML icons from SVG
-echo "Generating Android icons from SVG..."
-cargo run -p lingxia-gen -- icons \
-  --input "$LINGXIA_ROOT/lingxia-sdk/resources/icons/svg" \
-  --android-out "$LINGXIA_SDK_ANDROID/lingxia/src/main/res/drawable"
+echo "[0/4] Preparing Android SDK (resources + local Maven)..."
+bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+  --platforms android \
+  --version "$BASE_SDK_VERSION" \
+  $ANDROID_ES5_FLAG \
+  --android-maven-dir "$LOCAL_MAVEN_DIR" \
+  --android-no-zip \
+  --no-shasums
 
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
@@ -174,28 +181,7 @@ else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi
 
-# Ensure lingxia-webview.jar exists; if missing (skip-rust path), build via Makefile
-LINGXIA_WEBVIEW_JAR="$GRADLE_BUILD_DIR/lingxia-webview.jar"
-if [ ! -f "$LINGXIA_WEBVIEW_JAR" ]; then
-    echo "Building lingxia-webview.jar via Makefile (no Rust)..."
-    JAVA_SRC_DIR="$WORKSPACE_ROOT/lingxia-webview/src/android/java"
-    if [ ! -d "$JAVA_SRC_DIR" ]; then
-        echo "❌ Java source dir not found: $JAVA_SRC_DIR"; exit 1
-    fi
-    (cd "$JAVA_SRC_DIR" && TARGET_DIR="$GRADLE_BUILD_DIR" make)
-    if [ ! -f "$LINGXIA_WEBVIEW_JAR" ]; then
-        echo "❌ Failed to create $LINGXIA_WEBVIEW_JAR"; exit 1
-    fi
-fi
-
-
-echo "[2/4] Publishing SDK AAR (release) to local Maven ..."
-cd "$LINGXIA_SDK_ANDROID"
-LOCAL_MAVEN_DIR="$LINGXIA_ROOT/target/maven"
-./gradlew :lingxia:publish -PLOCAL_MAVEN_REPO_DIR="$LOCAL_MAVEN_DIR"
-if [ ! -f "$LOCAL_MAVEN_DIR/com/lingxia/lingxia/0.0.1/lingxia-0.0.1.aar" ]; then
-    echo "❌ Failed to publish SDK AAR to $LOCAL_MAVEN_DIR"; exit 1
-fi
+echo "[2/4] Local Maven ready: $LOCAL_MAVEN_DIR (version: $LINGXIA_SDK_VERSION)"
 
 # Create assets directory if it doesn't exist
 mkdir -p "$ASSETS_DIR"
@@ -228,7 +214,7 @@ fi
 echo "[4/4] Building and installing Android example app (release)..."
 cd "$SCRIPT_DIR"
 # ./gradlew clean
-./gradlew assembleRelease
+./gradlew assembleRelease -PLINGXIA_SDK_VERSION="$LINGXIA_SDK_VERSION"
 
 echo "Installing APK on all connected devices..."
 for device in $(adb devices | awk 'NR>1 && NF>0 {print $1}'); do
