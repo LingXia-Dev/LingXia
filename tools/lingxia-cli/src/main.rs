@@ -1,8 +1,10 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod appicon;
 mod commands;
 mod config;
+mod path_completion;
 mod platform;
 
 #[derive(Parser)]
@@ -53,9 +55,27 @@ enum Commands {
         #[arg(long)]
         package_id: Option<String>,
 
+        /// Path to app icon (PNG, recommended 1024x1024)
+        #[arg(long)]
+        icon: Option<String>,
+
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
         yes: bool,
+    },
+
+    /// Generate or update app icons
+    Icon {
+        /// Path to app icon (PNG, recommended 1024x1024)
+        icon_path: String,
+
+        /// Target platform (if not specified, use all platforms from config)
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
+
+        /// Background color for adaptive icons (hex, e.g., "#FFFFFF")
+        #[arg(short = 'b', long)]
+        background_color: Option<String>,
     },
 
     /// Build the project
@@ -98,6 +118,7 @@ fn main() -> Result<()> {
             project_type,
             platform,
             package_id,
+            icon,
             yes,
         } => {
             commands::new::execute(
@@ -105,8 +126,16 @@ fn main() -> Result<()> {
                 project_type,
                 platform,
                 package_id,
+                icon,
                 yes,
             )?;
+        }
+        Commands::Icon {
+            icon_path,
+            platform,
+            background_color,
+        } => {
+            commands::icon::execute(icon_path, platform, background_color)?;
         }
         Commands::Build { build_options } => {
             commands::build::execute(

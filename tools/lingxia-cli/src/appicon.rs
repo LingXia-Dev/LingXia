@@ -1,0 +1,189 @@
+//! App Icon Generator
+//!
+//! Converts a source app icon (PNG) to platform-specific formats and sizes.
+//! Supports Android, iOS, and HarmonyOS (future).
+
+use anyhow::{Context, Result};
+use image::imageops::{self, FilterType};
+use image::{DynamicImage, GenericImageView, ImageFormat};
+use std::fs;
+use std::path::Path;
+
+/// Normalize and validate an Android color hex string.
+///
+/// Accepts `#RGB`, `#ARGB`, `#RRGGBB`, `#AARRGGBB` (with or without the leading `#`).
+pub fn normalize_android_color(color: &str) -> Result<String> {
+    let trimmed = color.trim();
+    if trimmed.is_empty() {
+        anyhow::bail!("Background color cannot be empty");
+    }
+
+    let with_hash = if let Some(rest) = trimmed.strip_prefix('#') {
+        format!("#{rest}")
+    } else {
+        format!("#{trimmed}")
+    };
+
+    let hex = &with_hash[1..];
+    match hex.len() {
+        3 | 4 | 6 | 8 => {}
+        _ => anyhow::bail!(
+            "Invalid Android color '{with_hash}'. Use #RGB, #ARGB, #RRGGBB, or #AARRGGBB."
+        ),
+    }
+
+    if !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        anyhow::bail!(
+            "Invalid Android color '{with_hash}'. Only 0-9 and A-F are allowed."
+        );
+    }
+
+    Ok(with_hash.to_ascii_uppercase())
+}
+
+/// Generate Android app icons from a source image
+///
+/// # Arguments
+/// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
+/// * `res_dir` - Path to Android app/src/main/res directory
+/// * `background_color` - Background color for adaptive icons (hex, e.g., "#FFFFFF")
+pub fn generate_android_icons(
+    source_icon: &Path,
+    res_dir: &Path,
+    background_color: &str,
+) -> Result<()> {
+    let background_color = normalize_android_color(background_color)?;
+
+    if !source_icon.exists() {
+        anyhow::bail!("Source icon not found: {:?}", source_icon);
+    }
+
+    let img = image::open(source_icon).context("Failed to open source image")?;
+    let (width, height) = img.dimensions();
+
+    if width != height {
+        eprintln!(
+            "Warning: Source icon is not square ({}x{}). Icons may be distorted.",
+            width, height
+        );
+    }
+
+    if width < 1024 {
+        eprintln!("Warning: Source icon is smaller than 1024x1024. Quality may be affected.");
+    }
+
+    println!("Generating Android icons from {}x{} source...", width, height);
+
+    let mut count = 0;
+
+    // Generate mipmap icons for each density
+    for &(density, icon_size, adaptive_size) in ANDROID_DENSITIES {
+        let mipmap_dir = res_dir.join(format!("mipmap-{}", density));
+        fs::create_dir_all(&mipmap_dir)?;
+
+        // Regular launcher icon
+        let resized = img.resize_exact(icon_size, icon_size, FilterType::Lanczos3);
+        resized.save_with_format(mipmap_dir.join("ic_launcher.webp"), ImageFormat::WebP)?;
+        count += 1;
+
+        // Round launcher icon (same as regular for now, Android will mask it)
+        resized.save_with_format(mipmap_dir.join("ic_launcher_round.webp"), ImageFormat::WebP)?;
+        count += 1;
+
+        // Foreground for adaptive icon (centered in larger canvas)
+        let foreground = create_adaptive_foreground(&img, adaptive_size);
+        foreground.save_with_format(
+            mipmap_dir.join("ic_launcher_foreground.webp"),
+            ImageFormat::WebP,
+        )?;
+        count += 1;
+    }
+
+    // Generate adaptive icon XML files
+    let mipmap_anydpi = res_dir.join("mipmap-anydpi-v26");
+    fs::create_dir_all(&mipmap_anydpi)?;
+
+    let adaptive_icon_xml = r#"<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
+"#;
+
+    fs::write(mipmap_anydpi.join("ic_launcher.xml"), adaptive_icon_xml)?;
+    fs::write(
+        mipmap_anydpi.join("ic_launcher_round.xml"),
+        adaptive_icon_xml,
+    )?;
+    count += 2;
+
+    // Generate background color resource
+    let values_dir = res_dir.join("values");
+    fs::create_dir_all(&values_dir)?;
+
+    let colors_xml = format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">{}</color>
+</resources>
+"#,
+        background_color
+    );
+
+    fs::write(values_dir.join("ic_launcher_background.xml"), colors_xml)?;
+    count += 1;
+
+    println!("  Generated {} Android icon files", count);
+
+    Ok(())
+}
+
+/// Generate iOS app icons from a source image (future implementation)
+#[allow(dead_code)]
+pub fn generate_ios_icons(
+    _source_icon: &Path,
+    _ios_dir: &Path,
+) -> Result<()> {
+    anyhow::bail!("iOS icon generation not yet implemented");
+}
+
+/// Generate HarmonyOS app icons from a source image (future implementation)
+#[allow(dead_code)]
+pub fn generate_harmony_icons(
+    _source_icon: &Path,
+    _harmony_dir: &Path,
+    _background_color: &str,
+) -> Result<()> {
+    anyhow::bail!("HarmonyOS icon generation not yet implemented");
+}
+
+// =============================================================================
+// Android Icon Generation Helpers
+// =============================================================================
+
+/// Android mipmap densities: (folder_suffix, icon_size, adaptive_size)
+const ANDROID_DENSITIES: &[(&str, u32, u32)] = &[
+    ("mdpi", 48, 108),
+    ("hdpi", 72, 162),
+    ("xhdpi", 96, 216),
+    ("xxhdpi", 144, 324),
+    ("xxxhdpi", 192, 432),
+];
+
+/// Create foreground image for adaptive icon (icon centered in 108dp equivalent canvas)
+fn create_adaptive_foreground(img: &DynamicImage, canvas_size: u32) -> DynamicImage {
+    // The icon should occupy the inner 66/108 = ~61% of the canvas (safe zone is 66dp in 108dp)
+    let icon_size = (canvas_size as f32 * 66.0 / 108.0).round() as u32;
+    let offset = (canvas_size - icon_size) / 2;
+
+    let resized = img
+        .resize_exact(icon_size, icon_size, FilterType::Lanczos3)
+        .to_rgba8();
+
+    // Create transparent canvas
+    let mut canvas = image::RgbaImage::new(canvas_size, canvas_size);
+
+    imageops::overlay(&mut canvas, &resized, offset as i64, offset as i64);
+
+    DynamicImage::ImageRgba8(canvas)
+}

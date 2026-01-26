@@ -2,6 +2,7 @@ mod template;
 mod validation;
 
 use crate::config::{AndroidConfig, LingXiaConfig, ProjectConfig as ConfigProjectConfig};
+use crate::path_completion::FilePathCompleter;
 use anyhow::{anyhow, Result};
 use colored::Colorize;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
@@ -13,6 +14,7 @@ use template::process_template_dir;
 use validation::{validate_package_id, validate_project_name};
 
 const DEFAULT_PACKAGE_PREFIX: &str = "com.example";
+const DEFAULT_ICON_BACKGROUND_COLOR: &str = "#FFFFFF";
 
 /// Locate the templates directory
 fn locate_templates_dir() -> Result<PathBuf> {
@@ -123,12 +125,14 @@ pub fn execute(
     project_type: Option<String>,
     platform: Option<String>,
     package_id: Option<String>,
+    icon: Option<String>,
     yes: bool,
 ) -> Result<()> {
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
     let config = gather_project_info(name, project_type, platform, package_id)?;
+    let theme = ColorfulTheme::default();
 
     println!();
     println!("{}", "Project Configuration:".bold());
@@ -143,7 +147,7 @@ pub fn execute(
     println!();
 
     if !yes {
-        let confirmed = Confirm::with_theme(&ColorfulTheme::default())
+        let confirmed = Confirm::with_theme(&theme)
             .with_prompt("Create project?")
             .default(true)
             .interact()?;
@@ -157,6 +161,47 @@ pub fn execute(
     create_project(&config)?;
     create_rust_library(&config)?;
     generate_config_file(&config)?;
+
+    // Ask user if they want to configure app icon (if not provided via CLI)
+    let icon_config = match (icon, yes) {
+        (Some(path), _) => Some((path, DEFAULT_ICON_BACKGROUND_COLOR.to_string())),
+        (None, true) => None,
+        (None, false) => {
+            println!();
+            let configure_icon = Confirm::with_theme(&theme)
+                .with_prompt("Do you want to configure an app icon?")
+                .default(false)
+                .interact()?;
+
+            if !configure_icon {
+                None
+            } else {
+                let path: String = Input::with_theme(&theme)
+                    .with_prompt("Path to app icon (PNG, recommended 1024x1024)")
+                    .completion_with(&FilePathCompleter::new())
+                    .interact_text()?;
+                let background_color: String = Input::with_theme(&theme)
+                    .with_prompt("Adaptive icon background color (e.g. #FFFFFF)")
+                    .default(DEFAULT_ICON_BACKGROUND_COLOR.to_string())
+                    .validate_with(|input: &String| -> Result<(), String> {
+                        crate::appicon::normalize_android_color(input)
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    })
+                    .interact_text()?;
+
+                Some((
+                    path,
+                    crate::appicon::normalize_android_color(&background_color)?,
+                ))
+            }
+        }
+    };
+
+    // Generate app icons if icon path is provided
+    if let Some((icon_path, background_color)) = icon_config {
+        generate_app_icons(&config, &icon_path, &background_color)?;
+    }
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
@@ -410,6 +455,40 @@ fn generate_config_file(config: &ProjectConfig) -> Result<()> {
     lingxia_config.save(&config.target_dir)?;
 
     println!("  Created lingxia.config.json");
+
+    Ok(())
+}
+
+fn generate_app_icons(config: &ProjectConfig, icon_path: &str, background_color: &str) -> Result<()> {
+    use crate::appicon;
+    use std::path::PathBuf;
+
+    let icon_path = PathBuf::from(icon_path);
+    if !icon_path.exists() {
+        eprintln!("Warning: Icon file not found: {:?}", icon_path);
+        eprintln!("Skipping icon generation.");
+        return Ok(());
+    }
+
+    println!("  Generating app icons...");
+
+    match config.platform {
+        Platform::Android => {
+            let res_dir = config.target_dir.join("android/app/src/main/res");
+            if !res_dir.exists() {
+                eprintln!("Warning: Android res directory not found: {:?}", res_dir);
+                eprintln!("Skipping Android icon generation.");
+                return Ok(());
+            }
+            appicon::generate_android_icons(&icon_path, &res_dir, background_color)?;
+        }
+        Platform::Ios => {
+            eprintln!("Warning: iOS icon generation not yet implemented");
+        }
+        Platform::Harmony => {
+            eprintln!("Warning: HarmonyOS icon generation not yet implemented");
+        }
+    }
 
     Ok(())
 }
