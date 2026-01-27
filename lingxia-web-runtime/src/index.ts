@@ -14,7 +14,7 @@ export type {
   NativeComponentMessage,
 } from './types';
 
-export { LingXiaBridge, lx, initBridge } from './bridge';
+export { LingXiaBridge, host, initBridge } from './bridge';
 export { renderErrorUI, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 
