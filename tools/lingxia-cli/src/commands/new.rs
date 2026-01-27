@@ -2,6 +2,7 @@ mod template;
 mod validation;
 
 use crate::config::{AndroidConfig, LingXiaConfig, ProjectConfig as ConfigProjectConfig};
+use crate::lxapp;
 use crate::path_completion::FilePathCompleter;
 use anyhow::{anyhow, Result};
 use colored::Colorize;
@@ -32,8 +33,11 @@ fn locate_templates_dir() -> Result<PathBuf> {
         .parent()
         .ok_or_else(|| anyhow!("Failed to get executable directory"))?;
 
-    // Try npm distribution structure: bin/lingxia -> ../templates
-    let npm_templates = exe_dir.parent().map(|p| p.join("templates"));
+    // Try npm distribution structure: npm/vendor/lingxia -> ../../templates
+    let npm_templates = exe_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("templates"));
     if let Some(ref path) = npm_templates {
         if path.exists() {
             return Ok(path.clone());
@@ -131,7 +135,21 @@ pub fn execute(
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
-    let config = gather_project_info(name, project_type, platform, package_id)?;
+    let name = gather_project_name(name)?;
+    let project_type = gather_project_type(project_type)?;
+    if matches!(project_type, ProjectType::LxApp) {
+        let framework = gather_framework()?;
+        let mut args = vec!["create".to_string(), name];
+        if let Some(framework) = framework {
+            args.push("--framework".to_string());
+            args.push(framework);
+        }
+        println!("  Using LxApp template creator");
+        println!();
+        return lxapp::run(&args);
+    }
+
+    let config = gather_native_project_info(name, project_type, platform, package_id)?;
     let theme = ColorfulTheme::default();
 
     println!();
@@ -215,17 +233,11 @@ pub fn execute(
     Ok(())
 }
 
-fn gather_project_info(
-    name: Option<String>,
-    project_type: Option<String>,
-    platform: Option<String>,
-    package_id: Option<String>,
-) -> Result<ProjectConfig> {
-    // 1. Project Name
-    let name = match name {
+fn gather_project_name(name: Option<String>) -> Result<String> {
+    match name {
         Some(n) => {
             validate_project_name(&n)?;
-            n
+            Ok(n)
         }
         None => {
             let input: String = Input::with_theme(&ColorfulTheme::default())
@@ -234,12 +246,13 @@ fn gather_project_info(
                     validate_project_name(input).map_err(|e| e.to_string())
                 })
                 .interact_text()?;
-            input
+            Ok(input)
         }
-    };
+    }
+}
 
-    // 2. Project Type
-    let project_type = match project_type.and_then(|t| ProjectType::from_str(&t)) {
+fn gather_project_type(project_type: Option<String>) -> Result<ProjectType> {
+    Ok(match project_type.and_then(|t| ProjectType::from_str(&t)) {
         Some(t) => t,
         None => {
             let types = vec!["Native Host App", "LingXia Lightweight App (LxApp)"];
@@ -255,9 +268,27 @@ fn gather_project_info(
                 _ => unreachable!(),
             }
         }
-    };
+    })
+}
 
-    // 3. Platform
+fn gather_framework() -> Result<Option<String>> {
+    let display = vec!["React", "Vue"];
+    let values = vec!["react", "vue"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("LxApp framework")
+        .items(&display)
+        .default(0)
+        .interact()?;
+
+    Ok(Some(values[selection].to_string()))
+}
+
+fn gather_native_project_info(
+    name: String,
+    project_type: ProjectType,
+    platform: Option<String>,
+    package_id: Option<String>,
+) -> Result<ProjectConfig> {
     let platform = match platform.and_then(|p| Platform::from_str(&p)) {
         Some(p) => p,
         None => {
@@ -275,7 +306,6 @@ fn gather_project_info(
         }
     };
 
-    // 4. Package ID
     let default_package_id = format!("{}.{}", DEFAULT_PACKAGE_PREFIX, name.to_lowercase());
     let package_id = match package_id {
         Some(p) => {

@@ -1,0 +1,52 @@
+import { Command } from 'commander';
+import { createRequire } from 'module';
+import { buildCommand } from './builder/index.js';
+import { createCommand } from './commands/create.js';
+import { fileURLToPath, pathToFileURL } from 'url';
+import path from 'path';
+
+const { version } = createRequire(import.meta.url)('../package.json');
+
+export async function runCLI(argv = process.argv): Promise<void> {
+  const program = new Command();
+  program
+    .name('lingxia')
+    .description('LingXia LxApp build tools')
+    .version(version ?? '0.0.0');
+
+  program
+    .command('build')
+    .description('Build LingXia project or plugin')
+    .option('-d, --dev', 'Development build')
+    .option('-p, --prod', 'Production build')
+    .option('--plugin', 'Build as plugin package')
+    .option('--target <target>', 'JS target (es5, es2015, es2020, esnext). Note: es5 requires @vitejs/plugin-legacy')
+    .action(buildCommand);
+
+  program
+    .command('create')
+    .argument('[projectName]', 'Directory name for the new project')
+    .description('Create a new LingXia project from a template')
+    .option('-f, --framework <framework>', 'Pick a framework (react|vue)')
+    .action((projectName: string | undefined, cmdOptions: { framework?: string }) =>
+      createCommand(projectName, {
+        framework: cmdOptions.framework as any
+      })
+    );
+
+  await program.parseAsync(argv);
+}
+
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  const mainPath = path.resolve(process.argv[1]);
+  const modulePath = fileURLToPath(import.meta.url);
+  return mainPath === modulePath || pathToFileURL(mainPath).href === import.meta.url;
+})();
+
+if (isMain) {
+  runCLI().catch((err) => {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
+}

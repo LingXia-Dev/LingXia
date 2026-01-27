@@ -1,0 +1,48 @@
+{
+  "name": "@lingxia/cli",
+  "version": "0.0.5",
+  "private": false,
+  "description": "LingXia CLI for scaffolding, building, and packaging mini-apps with LingXia templates and builders.",
+  "type": "module",
+  "bin": {
+    "lingxia": "bin/lingxia.js"
+  },
+  "files": [
+    "bin/",
+    "dist/",
+    "scripts/",
+    "templates/",
+    "vendor/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "postinstall": "node scripts/install.cjs",
+    "prepack": "node scripts/sync-templates.cjs && node scripts/ensure-deps.cjs && npm run build"
+  },
+  "dependencies": {
+    "@babel/generator": "^7.28.5",
+    "@babel/parser": "^7.28.5",
+    "@vitejs/plugin-react": "^4.6.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "cheerio": "^1.1.2",
+    "commander": "^14.0.1",
+    "fast-glob": "^3.3.2",
+    "typescript": "^5.0.0",
+    "vite": "^6.0.7"
+  },
+  "optionalDependencies": {
+    "@lingxia/cli-darwin-arm64": "0.0.5",
+    "@lingxia/cli-darwin-x64": "0.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.7",
+    "vitest": "^4.0.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

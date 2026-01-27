@@ -1,4 +1,5 @@
-use crate::config::LingXiaConfig;
+use crate::config::{LingXiaConfig, HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE};
+use crate::lxapp;
 use crate::platform::{self, BuildConfig, BuildProfile};
 use anyhow::{anyhow, Result};
 use colored::Colorize;
@@ -10,6 +11,9 @@ use std::env;
 /// Supports debug and release profiles, custom features, and multi-target builds.
 pub fn execute(
     profile: Option<String>,
+    prod: bool,
+    dev: bool,
+    plugin: bool,
     features: Vec<String>,
     build_native: bool,
     targets: Vec<String>,
@@ -17,15 +21,62 @@ pub fn execute(
 ) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
+    let lxapp_json_exists = project_root.join("lxapp.json").exists();
+    let lxapp_config_exists = project_root.join(LXAPP_BUILD_CONFIG_FILE).exists();
 
     println!("{}", "🚀 LingXia Build".bold().cyan());
     println!();
 
-    // Config is required for all project commands.
+    let host_config_exists = project_root.join(HOST_CONFIG_FILE).exists();
+
+    if lxapp_json_exists && lxapp_config_exists && !host_config_exists {
+        let mut args = vec!["build".to_string()];
+        if prod {
+            args.push("--prod".to_string());
+        }
+        if dev {
+            args.push("--dev".to_string());
+        }
+        if plugin {
+            args.push("--plugin".to_string());
+        }
+
+        println!("  Using LxApp JS builder");
+        println!();
+        return lxapp::run(&args);
+    }
+
+    if lxapp_json_exists && !lxapp_config_exists {
+        return Err(anyhow!(
+            "{} not found. LxApp projects must include both lxapp.json and {}.",
+            LXAPP_BUILD_CONFIG_FILE,
+            LXAPP_BUILD_CONFIG_FILE
+        ));
+    }
+
+    if lxapp_config_exists && !lxapp_json_exists {
+        return Err(anyhow!(
+            "lxapp.json not found. LxApp projects must include both lxapp.json and {}.",
+            LXAPP_BUILD_CONFIG_FILE
+        ));
+    }
+
+    if !host_config_exists {
+        return Err(anyhow!(
+            "No config file found in {}.\n\
+             Expected one of:\n\
+             - {} (native host project)\n\
+             - lxapp.json + {} (LxApp project)",
+            project_root.display(),
+            HOST_CONFIG_FILE,
+            LXAPP_BUILD_CONFIG_FILE
+        ));
+    }
+
+    // Host/native build
     let config = LingXiaConfig::load(&project_root)?;
 
-    // Log config status
-    println!("  Using lingxia.config.json");
+    println!("  Using {}", HOST_CONFIG_FILE);
     println!("  Project: {}", config.project.name.cyan());
     println!("  Type: {}", config.project.project_type.cyan());
 

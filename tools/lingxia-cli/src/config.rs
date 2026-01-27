@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 
-/// LingXia project configuration
+pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
+pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.json";
+
+/// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LingXiaConfig {
@@ -112,31 +115,33 @@ pub struct ResourcesConfig {
 impl LingXiaConfig {
     /// Load config from lingxia.config.json in the given directory
     pub fn load(project_root: &Path) -> Result<Self> {
-        let config_path = project_root.join("lingxia.config.json");
+        let config_path = project_root.join(HOST_CONFIG_FILE);
 
         if !config_path.exists() {
             anyhow::bail!(
-                "lingxia.config.json not found in {}. Run 'lingxia new' to create a new project.",
+                "{} not found in {}. Run 'lingxia new' to create a new project.",
+                HOST_CONFIG_FILE,
                 project_root.display()
             );
         }
 
-        let content =
-            fs::read_to_string(&config_path).context("Failed to read lingxia.config.json")?;
+        let content = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read {}", HOST_CONFIG_FILE))?;
 
-        let config: LingXiaConfig =
-            serde_json::from_str(&content).context("Failed to parse lingxia.config.json")?;
+        let config: LingXiaConfig = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", HOST_CONFIG_FILE))?;
 
         Ok(config)
     }
 
     /// Save config to lingxia.config.json in the given directory
     pub fn save(&self, project_root: &Path) -> Result<()> {
-        let config_path = project_root.join("lingxia.config.json");
+        let config_path = project_root.join(HOST_CONFIG_FILE);
 
         let content = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
 
-        fs::write(&config_path, content).context("Failed to write lingxia.config.json")?;
+        fs::write(&config_path, content)
+            .with_context(|| format!("Failed to write {}", HOST_CONFIG_FILE))?;
 
         Ok(())
     }

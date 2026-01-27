@@ -1,0 +1,23 @@
+{
+  "name": "__APP_PACKAGE_NAME__",
+  "version": "0.1.0",
+  "description": "A LingXia mini app powered by React",
+  "type": "module",
+  "scripts": {
+    "dev": "lingxia build --dev",
+    "build": "lingxia build --prod"
+  },
+  "keywords": ["lingxia", "miniapp", "react"],
+  "author": "",
+  "license": "MIT",
+  "lingxia": {
+    "framework": "react"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@lingxia/cli": "latest"
+  }
+}

@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 mod appicon;
 mod commands;
 mod config;
+mod lxapp;
 mod path_completion;
 mod platform;
 
@@ -23,6 +24,18 @@ struct BuildOptions {
     #[arg(short = 'p', long, default_value = "debug")]
     profile: Option<String>,
 
+    /// LxApp build: production mode (kept for compatibility with legacy JS CLI)
+    #[arg(long, conflicts_with = "dev")]
+    prod: bool,
+
+    /// LxApp build: development mode (kept for compatibility with legacy JS CLI)
+    #[arg(long, conflicts_with = "prod")]
+    dev: bool,
+
+    /// LxApp build: plugin mode (lxplugin) (kept for compatibility with legacy JS CLI)
+    #[arg(long)]
+    plugin: bool,
+
     /// Rust features to enable (comma-separated)
     #[arg(short = 'f', long, value_delimiter = ',')]
     features: Vec<String>,
@@ -31,7 +44,7 @@ struct BuildOptions {
     #[arg(long)]
     skip_native: bool,
 
-    /// Target architectures
+    /// Target architectures (native host builds only)
     #[arg(short = 't', long, value_delimiter = ',')]
     targets: Vec<String>,
 }
@@ -140,6 +153,9 @@ fn main() -> Result<()> {
         } => {
             commands::build::execute(
                 build_options.profile,
+                build_options.prod,
+                build_options.dev,
+                build_options.plugin,
                 build_options.features,
                 !build_options.skip_native,
                 build_options.targets,
