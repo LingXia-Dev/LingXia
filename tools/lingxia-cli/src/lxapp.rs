@@ -1,15 +1,21 @@
 use anyhow::{anyhow, Result};
 use std::env;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
 const JS_CLI_ENV: &str = "LINGXIA_JS_CLI";
 
 pub fn run(args: &[String]) -> Result<()> {
+    run_in_dir(args, &env::current_dir()?)
+}
+
+pub fn run_in_dir(args: &[String], cwd: &Path) -> Result<()> {
     let js_cli = locate_js_cli()?;
     let status = Command::new("node")
         .arg(&js_cli)
         .args(args)
+        .current_dir(cwd)
         .status()
         .map_err(|e| anyhow!("Failed to execute node: {}", e))?;
 

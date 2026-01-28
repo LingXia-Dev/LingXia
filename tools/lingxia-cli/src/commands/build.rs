@@ -4,6 +4,8 @@ use crate::platform::{self, BuildConfig, BuildProfile};
 use anyhow::{anyhow, Result};
 use colored::Colorize;
 use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 /// Execute the build command
 ///
@@ -116,14 +118,25 @@ pub fn execute(
         available_platforms
     };
 
-    println!();
-
     // Parse build profile
     let build_profile = match profile.as_deref() {
         Some("debug") | None => BuildProfile::Debug,
         Some("release") => BuildProfile::Release,
         Some(p) => return Err(anyhow!("Invalid profile: {}. Use 'debug' or 'release'", p)),
     };
+
+    // Prepare LxApp assets if configured
+    prepare_lxapp_assets(
+        &project_root,
+        &config,
+        build_profile,
+        prod,
+        dev,
+        &platforms_to_build,
+        explicit_platforms,
+    )?;
+
+    println!();
 
     // Default targets if none specified
     let build_targets = if targets.is_empty() {
@@ -189,5 +202,128 @@ pub fn execute(
     }
     println!();
 
+    Ok(())
+}
+
+fn prepare_lxapp_assets(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    build_profile: BuildProfile,
+    prod: bool,
+    dev: bool,
+    platforms: &[platform::detector::PlatformType],
+    explicit_platforms: bool,
+) -> Result<()> {
+    let Some(lxapp_config) = &config.lxapp else {
+        return Ok(());
+    };
+
+    let lxapp_dir = project_root.join(&lxapp_config.source);
+    if !lxapp_dir.exists() {
+        return Err(anyhow!(
+            "LxApp directory not found: {}",
+            lxapp_dir.display()
+        ));
+    }
+
+    let lxapp_json = lxapp_dir.join("lxapp.json");
+    let lxapp_build_config = lxapp_dir.join(LXAPP_BUILD_CONFIG_FILE);
+    if !lxapp_json.exists() || !lxapp_build_config.exists() {
+        return Err(anyhow!(
+            "LxApp project must include lxapp.json and {} in {}",
+            LXAPP_BUILD_CONFIG_FILE,
+            lxapp_dir.display()
+        ));
+    }
+
+    println!("{}", "🧩 Building LxApp...".bold());
+
+    let mut args = vec!["build".to_string()];
+    if prod {
+        args.push("--prod".to_string());
+    } else if dev {
+        args.push("--dev".to_string());
+    } else {
+        match build_profile {
+            BuildProfile::Release => args.push("--prod".to_string()),
+            BuildProfile::Debug => args.push("--dev".to_string()),
+        }
+    }
+    lxapp::run_in_dir(&args, &lxapp_dir)?;
+
+    let dist_dir = lxapp_dir.join("dist");
+    if !dist_dir.exists() {
+        return Err(anyhow!(
+            "LxApp build output not found: {}",
+            dist_dir.display()
+        ));
+    }
+
+    let asset_name = lxapp_config
+        .asset_name
+        .clone()
+        .unwrap_or_else(|| resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string()));
+
+    let app_json = project_root.join("app.json");
+
+    for platform in platforms {
+        match platform {
+            platform::detector::PlatformType::Android => {
+                let android_root = platform::detector::resolve_android_dir(project_root);
+                let assets_root = android_root.join("app/src/main/assets");
+                fs::create_dir_all(&assets_root)?;
+
+                if app_json.exists() {
+                    fs::copy(&app_json, assets_root.join("app.json"))?;
+                }
+
+                let target_dir = assets_root.join(&asset_name);
+                if target_dir.exists() {
+                    fs::remove_dir_all(&target_dir)?;
+                }
+                copy_dir_recursive(&dist_dir, &target_dir)?;
+
+                println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
+            }
+            platform::detector::PlatformType::Ios | platform::detector::PlatformType::Harmony => {
+                if explicit_platforms {
+                    println!(
+                        "  {} LxApp embedding for {} not yet supported.",
+                        "⚠️".yellow(),
+                        platform.as_str()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn resolve_lxapp_id(path: &PathBuf) -> Result<String> {
+    let content = fs::read_to_string(path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+    let app_id = value
+        .get("lxAppId")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
+    Ok(app_id.to_string())
+}
+
+fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    if !dest.exists() {
+        fs::create_dir_all(dest)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dest.join(entry.file_name());
+        if path.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            fs::copy(&path, &target)?;
+        }
+    }
     Ok(())
 }

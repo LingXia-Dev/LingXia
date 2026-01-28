@@ -1,12 +1,14 @@
 mod template;
 mod validation;
 
-use crate::config::{AndroidConfig, LingXiaConfig, ProjectConfig as ConfigProjectConfig};
+use crate::config::{
+    AndroidConfig, HarmonyConfig, IosConfig, LingXiaConfig, ProjectConfig as ConfigProjectConfig,
+};
 use crate::lxapp;
 use crate::path_completion::FilePathCompleter;
 use anyhow::{anyhow, Result};
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -69,7 +71,7 @@ fn locate_templates_dir() -> Result<PathBuf> {
 struct ProjectConfig {
     name: String,
     project_type: ProjectType,
-    platform: Platform,
+    platforms: Vec<Platform>,
     package_id: String,
     target_dir: PathBuf,
 }
@@ -123,11 +125,28 @@ impl Platform {
     }
 }
 
+fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {
+    if input.iter().any(|p| p.eq_ignore_ascii_case("all")) {
+        return Ok(vec![Platform::Android, Platform::Ios, Platform::Harmony]);
+    }
+
+    let mut platforms = Vec::new();
+    for raw in input {
+        let Some(platform) = Platform::from_str(&raw) else {
+            return Err(anyhow!("Unknown platform: {}", raw));
+        };
+        if !platforms.contains(&platform) {
+            platforms.push(platform);
+        }
+    }
+    Ok(platforms)
+}
+
 /// Execute the new project command
 pub fn execute(
     name: Option<String>,
     project_type: Option<String>,
-    platform: Option<String>,
+    platforms: Vec<String>,
     package_id: Option<String>,
     icon: Option<String>,
     yes: bool,
@@ -138,25 +157,26 @@ pub fn execute(
     let name = gather_project_name(name)?;
     let project_type = gather_project_type(project_type)?;
     if matches!(project_type, ProjectType::LxApp) {
-        let framework = gather_framework()?;
-        let mut args = vec!["create".to_string(), name];
-        if let Some(framework) = framework {
-            args.push("--framework".to_string());
-            args.push(framework);
-        }
+        let args = vec!["create".to_string(), name];
         println!("  Using LxApp template creator");
         println!();
         return lxapp::run(&args);
     }
 
-    let config = gather_native_project_info(name, project_type, platform, package_id)?;
+    let config = gather_native_project_info(name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();
 
     println!();
     println!("{}", "Project Configuration:".bold());
     println!("  Name:        {}", config.name.cyan());
     println!("  Type:        {}", config.project_type.as_str().cyan());
-    println!("  Platform:    {}", config.platform.as_str().cyan());
+    let platform_list = config
+        .platforms
+        .iter()
+        .map(|p| p.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!("  Platforms:   {}", platform_list.cyan());
     println!("  Package ID:  {}", config.package_id.cyan());
     println!(
         "  Directory:   {}",
@@ -178,7 +198,6 @@ pub fn execute(
 
     create_project(&config)?;
     create_rust_library(&config)?;
-    generate_config_file(&config)?;
 
     // Ask user if they want to configure app icon (if not provided via CLI)
     let icon_config = match (icon, yes) {
@@ -220,6 +239,10 @@ pub fn execute(
     if let Some((icon_path, background_color)) = icon_config {
         generate_app_icons(&config, &icon_path, &background_color)?;
     }
+
+    let lxapp_info = create_lxapp_project(&config, yes)?;
+    generate_app_config(&config, &lxapp_info)?;
+    generate_config_file(&config, &lxapp_info)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
@@ -271,38 +294,56 @@ fn gather_project_type(project_type: Option<String>) -> Result<ProjectType> {
     })
 }
 
-fn gather_framework() -> Result<Option<String>> {
-    let display = vec!["React", "Vue"];
-    let values = vec!["react", "vue"];
-    let selection = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt("LxApp framework")
-        .items(&display)
-        .default(0)
-        .interact()?;
-
-    Ok(Some(values[selection].to_string()))
-}
-
 fn gather_native_project_info(
     name: String,
     project_type: ProjectType,
-    platform: Option<String>,
+    platforms: Vec<String>,
     package_id: Option<String>,
+    yes: bool,
 ) -> Result<ProjectConfig> {
-    let platform = match platform.and_then(|p| Platform::from_str(&p)) {
-        Some(p) => p,
-        None => {
-            let platforms = vec!["Android"];
-            let selection = Select::with_theme(&ColorfulTheme::default())
-                .with_prompt("Target platform")
-                .items(&platforms)
-                .default(0)
-                .interact()?;
+    let platforms = if !platforms.is_empty() {
+        normalize_platforms(platforms)?
+    } else if yes {
+        vec![Platform::Android, Platform::Ios, Platform::Harmony]
+    } else {
+        println!("Use ↑/↓ to move, Space to select, Enter to confirm.");
 
-            match selection {
-                0 => Platform::Android,
-                _ => unreachable!(),
+        let items = vec!["Android", "iOS", "Harmony", "All (Android + iOS + Harmony)"];
+        let defaults = vec![false, false, false, false];
+        let selections = MultiSelect::with_theme(&ColorfulTheme::default())
+            .with_prompt("Target platforms")
+            .items(&items)
+            .defaults(&defaults)
+            .interact()?;
+
+        if selections.is_empty() {
+            return Err(anyhow!(
+                "At least one platform must be selected (press Space to toggle)"
+            ));
+        }
+
+        let has_all = selections.contains(&3);
+        let has_specific = selections.iter().any(|idx| *idx != 3);
+
+        if has_all && !has_specific {
+            vec![Platform::Android, Platform::Ios, Platform::Harmony]
+        } else {
+            let mut selected = Vec::new();
+            for idx in selections {
+                if idx == 3 {
+                    continue;
+                }
+                let platform = match idx {
+                    0 => Platform::Android,
+                    1 => Platform::Ios,
+                    2 => Platform::Harmony,
+                    _ => unreachable!(),
+                };
+                if !selected.contains(&platform) {
+                    selected.push(platform);
+                }
             }
+            selected
         }
     };
 
@@ -329,7 +370,7 @@ fn gather_native_project_info(
     Ok(ProjectConfig {
         name,
         project_type,
-        platform,
+        platforms,
         package_id,
         target_dir,
     })
@@ -346,14 +387,28 @@ fn create_project(config: &ProjectConfig) -> Result<()> {
     println!();
     println!("{}", "Creating project structure...".bold());
 
-    match config.platform {
-        Platform::Android => create_android_project(config)?,
-        Platform::Ios => {
-            return Err(anyhow!("iOS support is not yet implemented"));
+    fs::create_dir_all(&config.target_dir)?;
+
+    let mut created_any = false;
+    for platform in &config.platforms {
+        match platform {
+            Platform::Android => {
+                create_android_project(config)?;
+                created_any = true;
+            }
+            Platform::Ios => {
+                create_ios_placeholder(config)?;
+                created_any = true;
+            }
+            Platform::Harmony => {
+                create_harmony_placeholder(config)?;
+                created_any = true;
+            }
         }
-        Platform::Harmony => {
-            return Err(anyhow!("HarmonyOS support is not yet implemented"));
-        }
+    }
+
+    if !created_any {
+        return Err(anyhow!("No platforms selected"));
     }
 
     Ok(())
@@ -410,6 +465,34 @@ fn create_android_project(config: &ProjectConfig) -> Result<()> {
     Ok(())
 }
 
+fn create_ios_placeholder(config: &ProjectConfig) -> Result<()> {
+    let ios_dir = config.target_dir.join("ios");
+    fs::create_dir_all(&ios_dir)?;
+    let readme = ios_dir.join("README.md");
+    if !readme.exists() {
+        fs::write(
+            &readme,
+            "iOS template is not yet available. This directory is reserved for future use.\n",
+        )?;
+    }
+    println!("  Created iOS placeholder directory");
+    Ok(())
+}
+
+fn create_harmony_placeholder(config: &ProjectConfig) -> Result<()> {
+    let harmony_dir = config.target_dir.join("harmony");
+    fs::create_dir_all(&harmony_dir)?;
+    let readme = harmony_dir.join("README.md");
+    if !readme.exists() {
+        fs::write(
+            &readme,
+            "HarmonyOS template is not yet available. This directory is reserved for future use.\n",
+        )?;
+    }
+    println!("  Created HarmonyOS placeholder directory");
+    Ok(())
+}
+
 fn create_rust_library(config: &ProjectConfig) -> Result<()> {
     let project_root = &config.target_dir;
     let lib_name = format!("{}-lib", config.name);
@@ -447,38 +530,87 @@ fn create_rust_library(config: &ProjectConfig) -> Result<()> {
     Ok(())
 }
 
-fn generate_config_file(config: &ProjectConfig) -> Result<()> {
-    let lingxia_config = match config.platform {
-        Platform::Android => {
-            // Use default Android SDK values
-            let android_config = AndroidConfig {
-                package_id: config.package_id.clone(),
-                min_sdk: Some(29),
-                target_sdk: Some(35),
-                compile_sdk: Some(35),
-                ndk_version: None, // Auto-detect
-                api_level: None,   // Derive from target_sdk
-            };
+#[derive(Debug, Clone)]
+struct LxAppInfo {
+    dir_name: String,
+    app_id: String,
+}
 
-            LingXiaConfig {
-                project: ConfigProjectConfig {
-                    name: config.name.clone(),
-                    project_type: config.project_type.as_str().to_string(),
-                    platforms: vec!["android".to_string()],
-                },
-                android: Some(android_config),
-                ios: None,
-                harmony: None,
-                lxapp: None,
-                resources: None,
-            }
-        }
-        Platform::Ios => {
-            return Err(anyhow!("iOS platform is not yet supported"));
-        }
-        Platform::Harmony => {
-            return Err(anyhow!("HarmonyOS platform is not yet supported"));
-        }
+fn generate_app_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
+    let app_json = config.target_dir.join("app.json");
+    if app_json.exists() {
+        return Ok(());
+    }
+
+    let content = serde_json::json!({
+        "productName": format!("{} App", config.name),
+        "productVersion": "1.0.0",
+        "apiServer": "https://api.example.com",
+        "apiKey": "",
+        "apiSecret": "",
+        "homeLxAppID": lxapp.app_id,
+        "homeLxAppVersion": "1.0.0"
+    });
+
+    fs::write(app_json, serde_json::to_string_pretty(&content)?)?;
+    println!("  Created app.json");
+    Ok(())
+}
+
+fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
+    let platforms = config
+        .platforms
+        .iter()
+        .map(|p| p.as_str().to_string())
+        .collect::<Vec<_>>();
+
+    let android = if config.platforms.contains(&Platform::Android) {
+        Some(AndroidConfig {
+            package_id: config.package_id.clone(),
+            min_sdk: Some(29),
+            target_sdk: Some(35),
+            compile_sdk: Some(35),
+            ndk_version: None,
+            api_level: None,
+        })
+    } else {
+        None
+    };
+
+    let ios = if config.platforms.contains(&Platform::Ios) {
+        Some(IosConfig {
+            bundle_id: config.package_id.clone(),
+            deployment_target: None,
+            swift_version: None,
+        })
+    } else {
+        None
+    };
+
+    let harmony = if config.platforms.contains(&Platform::Harmony) {
+        Some(HarmonyConfig {
+            bundle_name: config.package_id.clone(),
+            compile_sdk_version: None,
+            compatible_sdk_version: None,
+        })
+    } else {
+        None
+    };
+
+    let lingxia_config = LingXiaConfig {
+        project: ConfigProjectConfig {
+            name: config.name.clone(),
+            project_type: config.project_type.as_str().to_string(),
+            platforms,
+        },
+        android,
+        ios,
+        harmony,
+        lxapp: Some(crate::config::LxAppConfig {
+            source: lxapp.dir_name.clone(),
+            asset_name: Some(lxapp.app_id.clone()),
+        }),
+        resources: None,
     };
 
     // Save config file
@@ -487,6 +619,45 @@ fn generate_config_file(config: &ProjectConfig) -> Result<()> {
     println!("  Created lingxia.config.json");
 
     Ok(())
+}
+
+fn create_lxapp_project(config: &ProjectConfig, _yes: bool) -> Result<LxAppInfo> {
+    let lxapp_dir_name = "lxapp".to_string();
+    let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
+    if lxapp_dir.exists() {
+        return Err(anyhow!(
+            "LxApp directory '{}' already exists",
+            lxapp_dir.display()
+        ));
+    }
+
+    let args = vec!["create".to_string(), lxapp_dir_name.clone()];
+
+    println!("  Creating LxApp project...");
+    let current_dir = env::current_dir()?;
+    env::set_current_dir(&config.target_dir)?;
+    let result = lxapp::run(&args);
+    env::set_current_dir(current_dir)?;
+    result?;
+
+    let lxapp_json = lxapp_dir.join("lxapp.json");
+    let app_id = read_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string());
+
+    Ok(LxAppInfo {
+        dir_name: lxapp_dir_name,
+        app_id,
+    })
+}
+
+fn read_lxapp_id(path: &PathBuf) -> Result<String> {
+    let content = fs::read_to_string(path)?;
+    let value: serde_json::Value = serde_json::from_str(&content)?;
+    let app_id = value
+        .get("lxAppId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
+    Ok(app_id)
 }
 
 fn generate_app_icons(
@@ -506,21 +677,23 @@ fn generate_app_icons(
 
     println!("  Generating app icons...");
 
-    match config.platform {
-        Platform::Android => {
-            let res_dir = config.target_dir.join("android/app/src/main/res");
-            if !res_dir.exists() {
-                eprintln!("Warning: Android res directory not found: {:?}", res_dir);
-                eprintln!("Skipping Android icon generation.");
-                return Ok(());
+    for platform in &config.platforms {
+        match platform {
+            Platform::Android => {
+                let res_dir = config.target_dir.join("android/app/src/main/res");
+                if !res_dir.exists() {
+                    eprintln!("Warning: Android res directory not found: {:?}", res_dir);
+                    eprintln!("Skipping Android icon generation.");
+                    continue;
+                }
+                appicon::generate_android_icons(&icon_path, &res_dir, background_color)?;
             }
-            appicon::generate_android_icons(&icon_path, &res_dir, background_color)?;
-        }
-        Platform::Ios => {
-            eprintln!("Warning: iOS icon generation not yet implemented");
-        }
-        Platform::Harmony => {
-            eprintln!("Warning: HarmonyOS icon generation not yet implemented");
+            Platform::Ios => {
+                eprintln!("Warning: iOS icon generation not yet implemented");
+            }
+            Platform::Harmony => {
+                eprintln!("Warning: HarmonyOS icon generation not yet implemented");
+            }
         }
     }
 

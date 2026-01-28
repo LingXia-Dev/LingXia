@@ -91,7 +91,7 @@ pub struct HarmonyConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LxAppConfig {
-    /// Path to LxApp distribution directory (relative to project root)
+    /// Path to LxApp project directory (relative to project root)
     pub source: String,
     /// Name to use in assets directory
     #[serde(skip_serializing_if = "Option::is_none")]

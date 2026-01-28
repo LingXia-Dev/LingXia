@@ -60,9 +60,9 @@ enum Commands {
         #[arg(short = 't', long)]
         project_type: Option<String>,
 
-        /// Target platform: android, ios, harmony
-        #[arg(short = 'p', long)]
-        platform: Option<String>,
+        /// Target platforms (comma-separated): android, ios, harmony, all
+        #[arg(short = 'p', long, value_delimiter = ',')]
+        platform: Vec<String>,
 
         /// Package ID (e.g., com.example.app)
         #[arg(long)]
