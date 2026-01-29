@@ -22,18 +22,93 @@ env:
   NODE_VERSION: "20"
 
 jobs:
-  build:
+  # Linux cross-compile for Linux + macOS (saves macOS runner minutes - 10x cost!)
+  build-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            platform: darwin-arm64
-          - os: macos-13
-            platform: darwin-x64
-          - os: windows-latest
-            platform: win32-x64
-    runs-on: ${{ matrix.os }}
+          - platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+            cross: false
+          - platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            cross: true
+          - platform: darwin-x64
+            target: x86_64-apple-darwin
+            cross: true
+          - platform: darwin-arm64
+            target: aarch64-apple-darwin
+            cross: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: cli-${{ matrix.platform }}
+
+      - name: Install cargo-zigbuild
+        if: matrix.cross
+        run: pip install cargo-zigbuild
+
+      - name: Install cross-compile dependencies (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Verify tag matches CLI version
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          expected="${tag#lingxia-cli-v}"
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
+            /^\[/ {in_section=0}
+            in_section && $1 == "version" {
+              gsub(/"/, "", $3);
+              print $3;
+              exit
+            }' tools/lingxia-cli/Cargo.toml)"
+          if [ -z "$cli_version" ]; then
+            echo "Failed to read CLI version from Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$expected" != "$cli_version" ]; then
+            echo "Tag version ($expected) does not match CLI version ($cli_version)" >&2
+            exit 1
+          fi
+          echo "Version verified: $cli_version"
+
+      - name: Run tests
+        if: matrix.platform == 'linux-x64'
+        run: cargo test -p lingxia-cli
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build -p lingxia-cli --release --target ${{ matrix.target }}
+
+      - name: Build (cross-compile with zigbuild)
+        if: matrix.cross
+        run: cargo zigbuild -p lingxia-cli --release --target ${{ matrix.target }}
+
+      - name: Collect binary
+        run: |
+          mkdir -p out
+          cp target/${{ matrix.target }}/release/lingxia out/lingxia
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingxia-${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  # Windows native build (cross-compile from Linux is complex)
+  build-windows:
+    runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +117,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: cli-${{ matrix.platform }}
+          prefix-key: cli-win32-x64
 
       - name: Verify tag matches CLI version
         shell: bash
@@ -67,30 +142,23 @@ jobs:
           fi
           echo "Version verified: $cli_version"
 
-      - name: Run tests
-        run: cargo test -p lingxia-cli --locked
-
       - name: Build lingxia (release)
-        run: cargo build -p lingxia-cli --release --locked
+        run: cargo build -p lingxia-cli --release
 
       - name: Collect binary
         shell: bash
         run: |
           mkdir -p out
-          if [[ "${{ matrix.platform }}" == "win32-x64" ]]; then
-            cp target/release/lingxia.exe out/lingxia.exe
-          else
-            cp target/release/lingxia out/lingxia
-          fi
+          cp target/release/lingxia.exe out/lingxia.exe
 
       - uses: actions/upload-artifact@v4
         with:
-          name: lingxia-${{ matrix.platform }}
+          name: lingxia-win32-x64
           path: out/*
           if-no-files-found: error
 
   publish:
-    needs: build
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -105,67 +173,33 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare package version
-        shell: bash
+      - name: Prepare GitHub Release assets
         run: |
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           version="${tag#lingxia-cli-v}"
 
-          node tools/lingxia-cli/npm/scripts/set-version.cjs "$version"
+          node tools/lingxia-cli/npm/scripts/set-version.js "$version"
+          mkdir -p release-assets
+          cp artifacts/lingxia-darwin-arm64/lingxia release-assets/lingxia-darwin-arm64
+          cp artifacts/lingxia-darwin-x64/lingxia release-assets/lingxia-darwin-x64
+          cp artifacts/lingxia-linux-x64/lingxia release-assets/lingxia-linux-x64
+          cp artifacts/lingxia-linux-arm64/lingxia release-assets/lingxia-linux-arm64
+          cp artifacts/lingxia-win32-x64/lingxia.exe release-assets/lingxia-win32-x64.exe
 
-      - name: Prepare platform packages
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="$(node -p "require('tools/lingxia-cli/npm/package.json').version")"
-          mkdir -p platform-pkgs
-
-          make_pkg() {
-            local name="$1"
-            local os="$2"
-            local cpu="$3"
-            local bin_src="$4"
-            local bin_ext="$5"
-
-            local pkg_dir="platform-pkgs/$name"
-            mkdir -p "$pkg_dir/bin"
-            cp "$bin_src" "$pkg_dir/bin/lingxia$bin_ext"
-            chmod +x "$pkg_dir/bin/lingxia$bin_ext"
-
-            cat > "$pkg_dir/package.json" <<EOF
-          {
-            "name": "@lingxia/cli-$name",
-            "version": "$VERSION",
-            "private": false,
-            "os": ["$os"],
-            "cpu": ["$cpu"],
-            "bin": {
-              "lingxia": "bin/lingxia$bin_ext"
-            },
-            "files": ["bin/lingxia$bin_ext"],
-            "license": "MIT"
-          }
-          EOF
-          }
-
-          make_pkg "darwin-arm64" "darwin" "arm64" "artifacts/lingxia-darwin-arm64/lingxia" ""
-          make_pkg "darwin-x64" "darwin" "x64" "artifacts/lingxia-darwin-x64/lingxia" ""
-          make_pkg "win32-x64" "win32" "x64" "artifacts/lingxia-win32-x64/lingxia.exe" ".exe"
-
-      - name: Publish platform packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          for pkg in platform-pkgs/*; do
-            (cd "$pkg" && npm publish --access public)
-          done
+      - name: Upload binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            release-assets/lingxia-darwin-arm64
+            release-assets/lingxia-darwin-x64
+            release-assets/lingxia-linux-x64
+            release-assets/lingxia-linux-arm64
+            release-assets/lingxia-win32-x64.exe
 
       - name: Publish wrapper package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        shell: bash
         run: |
           set -euo pipefail
-          (cd tools/lingxia-cli/npm && npm publish --access public)
+          (cd tools/lingxia-cli/npm/cli && npm publish --access public)
