@@ -61,6 +61,8 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       }
     }
 
+    await ensureDependencies(projectPath);
+
     const buildConfig = !isPluginMode
       ? loadLxappBuildConfig(projectPath)
       : undefined;
@@ -220,6 +222,117 @@ function readPackageInfo(projectPath: string): PackageInfo {
     );
     return {};
   }
+}
+
+type PackageManager = 'npm' | 'pnpm' | 'yarn';
+
+async function ensureDependencies(projectPath: string): Promise<void> {
+  if (isSkipInstall()) return;
+
+  const packageJson = path.join(projectPath, 'package.json');
+  if (!fs.existsSync(packageJson)) return;
+
+  const nodeModules = path.join(projectPath, 'node_modules');
+  const nodeModulesMtime = getMtime(nodeModules);
+  const packageMtime = getMtime(packageJson);
+
+  const pnpmLock = path.join(projectPath, 'pnpm-lock.yaml');
+  const yarnLock = path.join(projectPath, 'yarn.lock');
+  const npmLock = path.join(projectPath, 'package-lock.json');
+
+  const hasPnpmLock = fs.existsSync(pnpmLock);
+  const hasYarnLock = fs.existsSync(yarnLock);
+  const hasNpmLock = fs.existsSync(npmLock);
+
+  const newestLockMtime = Math.max(
+    getMtime(pnpmLock),
+    getMtime(yarnLock),
+    getMtime(npmLock)
+  );
+
+  const shouldInstall =
+    !fs.existsSync(nodeModules) ||
+    newestLockMtime > nodeModulesMtime ||
+    packageMtime > nodeModulesMtime;
+
+  if (!shouldInstall) return;
+
+  const packageManager = detectPackageManager(hasPnpmLock, hasYarnLock);
+  const args = resolveInstallArgs(
+    packageManager,
+    hasLockfileFor(packageManager, hasPnpmLock, hasYarnLock, hasNpmLock)
+  );
+
+  console.log(`  ⏳ Installing LxApp dependencies (${packageManager})...`);
+
+  try {
+    await runCommand(packageManager, args, projectPath);
+  } catch (error: any) {
+    if (error?.code === 'ENOENT' && packageManager !== 'npm') {
+      console.warn(`⚠️ ${packageManager} not found, falling back to npm install.`);
+      await runCommand('npm', resolveInstallArgs('npm', hasNpmLock), projectPath);
+      return;
+    }
+    throw error;
+  }
+}
+
+function isSkipInstall(): boolean {
+  const value = process.env.LINGXIA_SKIP_NPM_INSTALL;
+  if (!value) return false;
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
+function getMtime(targetPath: string): number {
+  try {
+    return fs.statSync(targetPath).mtimeMs || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function detectPackageManager(hasPnpmLock: boolean, hasYarnLock: boolean): PackageManager {
+  if (hasPnpmLock) return 'pnpm';
+  if (hasYarnLock) return 'yarn';
+  return 'npm';
+}
+
+function hasLockfileFor(
+  manager: PackageManager,
+  hasPnpmLock: boolean,
+  hasYarnLock: boolean,
+  hasNpmLock: boolean
+): boolean {
+  if (manager === 'pnpm') return hasPnpmLock;
+  if (manager === 'yarn') return hasYarnLock;
+  return hasNpmLock;
+}
+
+function resolveInstallArgs(manager: PackageManager, hasLock: boolean): string[] {
+  const isCi = Boolean(process.env.CI);
+  if (manager === 'npm') {
+    return isCi && hasLock ? ['ci'] : ['install'];
+  }
+  if (manager === 'pnpm') {
+    return isCi && hasLock ? ['install', '--frozen-lockfile'] : ['install'];
+  }
+  return isCi && hasLock ? ['install', '--frozen-lockfile'] : ['install'];
+}
+
+function runCommand(command: string, args: string[], cwd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd, stdio: 'inherit' });
+    child.on('error', err => reject(err));
+    child.on('exit', code => {
+      if (code === 0) {
+        resolve();
+      } else {
+        const error = new Error(`${command} exited with code ${code ?? 'unknown'}`);
+        (error as any).code = code;
+        reject(error);
+      }
+    });
+  });
 }
 
 async function packageDist(

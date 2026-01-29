@@ -1,6 +1,5 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
-import './styles.css';
 
 const { data, greet } = useLingXia();
 const state = computed(() => data ?? { greeting: '', greetCount: 0 });

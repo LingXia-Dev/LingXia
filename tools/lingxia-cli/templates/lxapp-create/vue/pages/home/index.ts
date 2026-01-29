@@ -4,7 +4,7 @@ Page({
     greetCount: 0
   },
 
-  greet({ name }) {
+  greet({ name }: { name: string }) {
     const count = this.data.greetCount + 1;
     this.setData({
       greetCount: count,
