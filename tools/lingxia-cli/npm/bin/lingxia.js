@@ -5,12 +5,16 @@ import { existsSync } from "fs";
 import { createRequire } from "module";
 import { dirname, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
+import updateNotifier from "update-notifier";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const binName = process.platform === "win32" ? "lingxia.exe" : "lingxia";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
+
+// Check for updates (runs in background, cached for 1 day)
+updateNotifier({ pkg }).notify();
 const jsCli = resolve(__dirname, "../dist/index.js");
 
 function findSubcommand(argv) {
