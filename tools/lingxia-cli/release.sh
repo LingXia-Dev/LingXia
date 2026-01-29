@@ -61,9 +61,7 @@ Options:
   --target <platform>  Build specific platform(s):
                        darwin-x64, darwin-arm64, win32-x64, win32-arm64, all
                        Default: current platform
-  --publish            Publish after building
-                       Single target: publishes that platform package only
-                       --target all: publishes all platforms + main @lingxia/cli
+  --publish            Publish platform package(s) + main @lingxia/cli
   --out <dir>          Output directory (default: ./dist)
   --skip-build         Skip cargo build, use existing binaries
 
@@ -161,8 +159,12 @@ EOF
   echo "✓ Package ready: $pkg_dir"
 
   if [[ "$PUBLISH" -eq 1 ]]; then
-    (cd "$pkg_dir" && npm publish --access public)
-    echo "✓ Published @lingxia/cli-$platform@$VERSION"
+    if npm view "@lingxia/cli-$platform@$VERSION" version &>/dev/null; then
+      echo "⚠ @lingxia/cli-$platform@$VERSION already published, skipping"
+    else
+      (cd "$pkg_dir" && npm publish --access public)
+      echo "✓ Published @lingxia/cli-$platform@$VERSION"
+    fi
   fi
 }
 
@@ -182,14 +184,18 @@ for t in "${targets[@]}"; do
   build_target "$t"
 done
 
-# Publish main package if all platforms were built
-if [[ "$PUBLISH" -eq 1 && "$TARGET" == "all" ]]; then
+# Publish main package
+if [[ "$PUBLISH" -eq 1 ]]; then
   echo ""
   echo "========================================"
   echo "Publishing @lingxia/cli@$VERSION"
   echo "========================================"
-  (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm publish --access public)
-  echo "✓ Published @lingxia/cli@$VERSION"
+  if npm view "@lingxia/cli@$VERSION" version &>/dev/null; then
+    echo "⚠ @lingxia/cli@$VERSION already published, skipping"
+  else
+    (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm publish --access public)
+    echo "✓ Published @lingxia/cli@$VERSION"
+  fi
 fi
 
 echo ""
