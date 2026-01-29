@@ -41,11 +41,17 @@ detect_platform() {
   esac
 }
 
+# Show help if no arguments
+if [[ $# -eq 0 ]]; then
+  set -- -h
+fi
+
 # Parse arguments
 PUBLISH=0
 OUT_DIR=""
 SKIP_BUILD=0
 TARGET=""
+BUMP_VERSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -53,28 +59,74 @@ while [[ $# -gt 0 ]]; do
     --out) OUT_DIR="$2"; shift ;;
     --skip-build) SKIP_BUILD=1 ;;
     --target) TARGET="$2"; shift ;;
+    --bump) BUMP_VERSION="$2"; shift ;;
     -h|--help)
       cat <<EOF
 Usage: release.sh [OPTIONS]
 
 Options:
-  --target <platform>  Build specific platform(s):
-                       darwin-x64, darwin-arm64, win32-x64, win32-arm64, all
-                       Default: current platform
+  --bump <version>     Bump all version files to specified version (e.g., 0.0.8)
+                       Updates: package.json, Cargo.toml, optionalDependencies, package-lock.json
+  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, win32-x64, win32-arm64, all
   --publish            Publish platform package(s) + main @lingxia/cli
   --out <dir>          Output directory (default: ./dist)
   --skip-build         Skip cargo build, use existing binaries
 
 Examples:
-  ./release.sh                              # Build current platform
-  ./release.sh --target darwin-x64 --publish  # Build & publish Intel Mac
-  ./release.sh --target all --publish       # Full release
+  ./release.sh --bump 0.0.8                   # Bump version only
+  ./release.sh --target darwin-x64            # Build Intel Mac
+  ./release.sh --bump 0.0.8 --target darwin-x64 --publish  # Bump + build + publish
+  ./release.sh --target all --publish         # Full release (all platforms)
 EOF
       exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
   shift
 done
+
+# Handle --bump: update all version files
+if [[ -n "$BUMP_VERSION" ]]; then
+  echo "Bumping version to $BUMP_VERSION..."
+  
+  # Validate version format
+  if ! [[ "$BUMP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "ERROR: Invalid version format. Use semver (e.g., 0.0.8)"
+    exit 1
+  fi
+  
+  # 1. Update package.json version
+  node -e "
+    const fs = require('fs');
+    const pkg = JSON.parse(fs.readFileSync('$MAIN_PKG'));
+    pkg.version = '$BUMP_VERSION';
+    // Also update optionalDependencies
+    for (const k of Object.keys(pkg.optionalDependencies || {})) {
+      if (k.startsWith('@lingxia/cli-')) pkg.optionalDependencies[k] = '$BUMP_VERSION';
+    }
+    fs.writeFileSync('$MAIN_PKG', JSON.stringify(pkg, null, 2) + '\n');
+  "
+  echo "  ✓ Updated npm/package.json"
+  
+  # 2. Update Cargo.toml version
+  sed -i.bak "s/^version = \"[^\"]*\"/version = \"$BUMP_VERSION\"/" "$CLI_CARGO_TOML" && rm -f "$CLI_CARGO_TOML.bak"
+  echo "  ✓ Updated Cargo.toml"
+  
+  # 3. Update package-lock.json
+  (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm install --package-lock-only --ignore-scripts 2>/dev/null)
+  echo "  ✓ Updated npm/package-lock.json"
+  
+  echo ""
+  echo "✅ Version bumped to $BUMP_VERSION"
+  echo "   Files updated:"
+  echo "   - tools/lingxia-cli/npm/package.json"
+  echo "   - tools/lingxia-cli/npm/package-lock.json"
+  echo "   - tools/lingxia-cli/Cargo.toml"
+  
+  # If no target specified, exit after bump
+  if [[ -z "$TARGET" && "$PUBLISH" -eq 0 ]]; then
+    exit 0
+  fi
+fi
 
 # Read and validate versions
 VERSION="$(node -p "require('$MAIN_PKG').version" 2>/dev/null)" || {
@@ -89,6 +141,13 @@ if [[ "$cargo_version" != "$VERSION" ]]; then
   fi
   echo "Syncing Cargo.toml version: $cargo_version -> $VERSION"
   sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$CLI_CARGO_TOML" && rm -f "$CLI_CARGO_TOML.bak"
+fi
+
+# Sync package-lock.json version
+lock_version="$(node -p "require('$ROOT_DIR/tools/lingxia-cli/npm/package-lock.json').version" 2>/dev/null || echo "")"
+if [[ -n "$lock_version" && "$lock_version" != "$VERSION" ]]; then
+  echo "Syncing package-lock.json version: $lock_version -> $VERSION"
+  (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm install --package-lock-only --ignore-scripts)
 fi
 
 # Validate optionalDependencies versions
@@ -168,14 +227,18 @@ EOF
 }
 
 # Determine which targets to build
-if [[ "$TARGET" == "all" ]]; then
+if [[ -z "$TARGET" ]]; then
+  # No target specified, nothing to build (--bump only mode is ok)
+  if [[ -z "$BUMP_VERSION" ]]; then
+    echo "ERROR: No action specified. Use --bump, --target, or --help"
+    exit 1
+  fi
+  targets=()
+elif [[ "$TARGET" == "all" ]]; then
   targets=($ALL_TARGETS)
-elif [[ -n "$TARGET" ]]; then
+else
   get_target_info "$TARGET" >/dev/null || { echo "Unknown target: $TARGET"; exit 1; }
   targets=("$TARGET")
-else
-  detected="$(detect_platform)" || { echo "Unsupported platform"; exit 1; }
-  targets=("$detected")
 fi
 
 # Build all targets

@@ -4,7 +4,9 @@ import type { BuildConfig } from './build-config.js';
 import { loadLingxiaConfig } from './lingxia-config.js';
 
 export type AliasMap = Record<string, string>;
-const DEFAULT_ROOT_ALIAS = '@lingxia';
+
+// Use @/ instead of @lingxia to avoid conflict with npm @lingxia/* packages
+const DEFAULT_ROOT_ALIAS = '@';
 
 function normalizeAliases(
   projectPath: string,
