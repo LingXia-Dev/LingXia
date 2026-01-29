@@ -1,7 +1,7 @@
 [package]
 name = "lingxia-logic"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "JavaScript runtime for LingXia lxapps(MiniApp)"
 repository = "https://github.com/LingXia/LingXia"
 keywords = ["javascript", "runtime", "miniapp", "webview"]
@@ -12,12 +12,12 @@ rong = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = "0.4.28"
-lxapp = { path = "../lingxia-lxapp", package = "lingxia-lxapp" }
-lingxia-platform = { path = "../lingxia-platform" }
-lingxia-messaging = { path = "../lingxia-messaging" }
+lxapp = { workspace = true }
+lingxia-platform = { workspace = true }
+lingxia-messaging = { workspace = true }
 futures = { workspace = true }
 rong_modules = { workspace = true }
 rong_storage = { workspace = true }
 
 [build-dependencies]
-lingxia-gen = { path = "../tools/lingxia-gen" }
+lingxia-gen = { workspace = true }

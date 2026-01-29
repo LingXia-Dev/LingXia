@@ -28,18 +28,28 @@ dashmap = "6.1.0"
 urlencoding = "2.1.3"
 base64 = "0.22.1"
 
+# Workspace-local crates
+lingxia-lxapp = { path = "lingxia-lxapp", version = "0.1.0" }
+lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.1.0" }
+lingxia-webview = { path = "lingxia-webview", version = "0.1.0" }
+lingxia-platform = { path = "lingxia-platform", version = "0.1.0" }
+lingxia-messaging = { path = "lingxia-messaging", version = "0.1.0" }
+lingxia-logic = { path = "lingxia-logic", version = "0.1.0" }
+lingxia = { path = "lingxia", version = "0.1.0" }
+lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.0" }
+
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
-# Local dependencies
-rong = { path = "../starfire" }
-rong_modules = { path = "../starfire/rong_modules", features=["default", "storage"]}
-rong_http = { path = "../starfire/modules/rong_http" }
-rong_fs = { path = "../starfire/modules/rong_fs" }
-rong_console = { path = "../starfire/modules/rong_console" }
-rong_event = { path = "../starfire/modules/rong_event" }
-rong_storage = { path = "../starfire/modules/rong_storage" }
+# Rong runtime (published on crates.io)
+rong = "0.1.1"
+rong_modules = { version = "0.1.1", features = ["default", "storage"] }
+rong_http = "0.1.1"
+rong_fs = "0.1.1"
+rong_console = "0.1.1"
+rong_event = "0.1.1"
+rong_storage = "0.1.1"
 
 [profile.release]
 opt-level = 'z'

@@ -1,13 +1,13 @@
 [package]
 name = "lingxia-platform"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
 log = "0.4.27"
 serde = { workspace = true }
-lingxia-messaging = { path = "../lingxia-messaging" }
+lingxia-messaging = { workspace = true }
 
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
@@ -15,7 +15,7 @@ jni = "0.21.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"
-lingxia-webview = { path = "../lingxia-webview" }
+lingxia-webview = { workspace = true }
 
 # Apple-specific dependencies (iOS and macOS)
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
@@ -42,7 +42,7 @@ napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 ohos-raw-sys = "0.1.0"
 serde_json = { workspace = true }
-lingxia-webview = { path = "../lingxia-webview" }
+lingxia-webview = { workspace = true }
 libc = "0.2"
 
 [build-dependencies]

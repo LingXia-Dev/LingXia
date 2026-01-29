@@ -1,7 +1,7 @@
 [package]
 name = "lingxia"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "LingXia framework"
 
 [lib]
@@ -9,11 +9,11 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 rong = { workspace = true }
-lxapp = { package = "lingxia-lxapp", path = "../lingxia-lxapp" }
-lingxia-logic = { path = "../lingxia-logic" }
-lingxia-platform = { path = "../lingxia-platform" }
-lingxia-webview = { path = "../lingxia-webview" }
-lingxia-messaging = { path = "../lingxia-messaging" }
+lxapp = { workspace = true }
+lingxia-logic = { workspace = true }
+lingxia-platform = { workspace = true }
+lingxia-webview = { workspace = true }
+lingxia-messaging = { workspace = true }
 log = "0.4"
 
 [target.'cfg(target_os = "android")'.dependencies]

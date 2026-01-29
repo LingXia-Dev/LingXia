@@ -1,7 +1,7 @@
 [package]
 name = "lingxia-lxapp"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 # Use workspace dependencies
@@ -26,9 +26,9 @@ rong_http = { workspace = true }
 rong_fs = { workspace = true }
 rong_console = { workspace = true }
 rong_event = { workspace = true }
-lingxia-platform = { path = "../lingxia-platform" }
-lingxia-webview = { path = "../lingxia-webview" }
-lingxia-messaging = { path = "../lingxia-messaging" }
+lingxia-platform = { workspace = true }
+lingxia-webview = { workspace = true }
+lingxia-messaging = { workspace = true }
 
 # Target-specific JavaScript engine selection
 # iOS/macOS automatically use JavaScriptCore
