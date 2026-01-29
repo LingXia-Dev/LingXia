@@ -5,7 +5,7 @@ edition.workspace = true
 description = "LxApp (lightweight application) container and runtime for LingXia framework"
 license = "MIT"
 repository = "https://github.com/LingXia-Dev/LingXia"
-keywords = ["lingxia", "lxapp", "lightweight-application", "webview"]
+keywords = ["lingxia", "lxapp", "lightweight-app", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [dependencies]
