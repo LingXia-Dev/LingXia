@@ -5,7 +5,6 @@ mod device;
 mod display;
 mod env;
 mod fs;
-include!(concat!(env!("OUT_DIR"), "/i18n_generated.rs"));
 pub mod i18n;
 mod location;
 mod media;
@@ -16,6 +15,11 @@ mod ui;
 mod update;
 
 pub struct LxLogicRuntime;
+
+// Auto-generated module, do not modify manually
+// Regenerate with: cargo run -p lingxia-gen -- i18n
+mod i18n_generated;
+pub use i18n_generated::*;
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {

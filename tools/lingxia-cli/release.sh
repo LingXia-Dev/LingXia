@@ -150,7 +150,6 @@ build_target() {
   "version": "$VERSION",
   "os": ["$os"],
   "cpu": ["$cpu"],
-  "bin": { "lingxia": "bin/lingxia$ext" },
   "files": ["bin/lingxia$ext"],
   "license": "MIT"
 }
