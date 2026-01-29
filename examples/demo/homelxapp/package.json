@@ -4,8 +4,8 @@
   "description": "LingXia LxApp demo",
   "type": "module",
   "scripts": {
-    "build": "lingxia build --prod",
-    "dev": "lingxia build --dev"
+    "build": "node ../../../tools/lingxia-cli/npm/bin/lingxia.js build --prod",
+    "dev": "node ../../../tools/lingxia-cli/npm/bin/lingxia.js build --dev"
   },
   "keywords": [
     "lingxia",
@@ -27,7 +27,6 @@
     "vue": "^3.5.13"
   },
   "devDependencies": {
-    "@lingxia/cli": "file:../../../lingxia-cli",
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.2",
