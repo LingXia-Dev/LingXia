@@ -240,7 +240,8 @@ pub fn execute(
         generate_app_icons(&config, &icon_path, &background_color)?;
     }
 
-    let lxapp_info = create_lxapp_project(&config, yes)?;
+    let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
+    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name)?;
     generate_app_config(&config, &lxapp_info)?;
     generate_config_file(&config, &lxapp_info)?;
 
@@ -374,6 +375,30 @@ fn gather_native_project_info(
         package_id,
         target_dir,
     })
+}
+
+fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
+    let default_name = "lxapp".to_string();
+    if yes {
+        return Ok(default_name);
+    }
+
+    let name: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("LxApp (lightweight application) name")
+        .default(default_name)
+        .validate_with(|input: &String| -> Result<(), String> {
+            let trimmed = input.trim();
+            if trimmed.is_empty() {
+                return Err("LxApp directory name cannot be empty".to_string());
+            }
+            if trimmed.contains('/') || trimmed.contains('\\') {
+                return Err("LxApp directory name cannot contain path separators".to_string());
+            }
+            Ok(())
+        })
+        .interact_text()?;
+
+    Ok(name.trim().to_string())
 }
 
 fn create_project(config: &ProjectConfig) -> Result<()> {
@@ -621,8 +646,8 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
     Ok(())
 }
 
-fn create_lxapp_project(config: &ProjectConfig, _yes: bool) -> Result<LxAppInfo> {
-    let lxapp_dir_name = "lxapp".to_string();
+fn create_lxapp_project(config: &ProjectConfig, lxapp_dir_name: &str) -> Result<LxAppInfo> {
+    let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
     if lxapp_dir.exists() {
         return Err(anyhow!(
@@ -631,7 +656,7 @@ fn create_lxapp_project(config: &ProjectConfig, _yes: bool) -> Result<LxAppInfo>
         ));
     }
 
-    let args = vec!["create".to_string(), lxapp_dir_name.clone()];
+    let args = vec!["create".to_string(), lxapp_dir_name.to_string()];
 
     println!("  Creating LxApp project...");
     let current_dir = env::current_dir()?;
@@ -644,7 +669,7 @@ fn create_lxapp_project(config: &ProjectConfig, _yes: bool) -> Result<LxAppInfo>
     let app_id = read_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string());
 
     Ok(LxAppInfo {
-        dir_name: lxapp_dir_name,
+        dir_name: lxapp_dir_name.to_string(),
         app_id,
     })
 }
