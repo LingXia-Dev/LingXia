@@ -38,9 +38,56 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-VERSION="${LINGXIA_CLI_VERSION:-}"
+VERSION="$(node -p "require('$MAIN_PKG').version")"
 if [[ -z "$VERSION" ]]; then
-  VERSION="$(node -p "require('$MAIN_PKG').version")"
+  echo "ERROR: Failed to read version from $MAIN_PKG"
+  exit 1
+fi
+
+CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
+current_cargo_version="$(awk -F\" '/^version =/ {print $2; exit}' "$CLI_CARGO_TOML")"
+if [[ -z "$current_cargo_version" ]]; then
+  echo "ERROR: Failed to read version from $CLI_CARGO_TOML"
+  exit 1
+fi
+if [[ "$current_cargo_version" != "$VERSION" ]]; then
+  if [[ "$PUBLISH" -eq 1 ]]; then
+    echo "ERROR: Rust CLI version ($current_cargo_version) does not match npm version ($VERSION)."
+    echo "Please update tools/lingxia-cli/Cargo.toml to $VERSION before publishing."
+    exit 1
+  fi
+  echo "Syncing Rust CLI version $current_cargo_version -> $VERSION"
+  perl -0pi -e "s/^version\\s*=\\s*\\\"[^\\\"]+\\\"/version = \\\"$VERSION\\\"/m" "$CLI_CARGO_TOML"
+fi
+
+optional_mismatches="$(node -e "
+const pkg = require('${MAIN_PKG}');
+const v = pkg.version;
+const opt = pkg.optionalDependencies || {};
+const bad = Object.entries(opt).filter(([k,val]) => k.startsWith('@lingxia/cli-') && val !== v);
+console.log(bad.map(([k,val]) => k + ':' + val).join(','));
+")"
+if [[ -n "$optional_mismatches" ]]; then
+  if [[ "$PUBLISH" -eq 1 ]]; then
+    echo "ERROR: optionalDependencies versions do not match npm version ($VERSION):"
+    echo "  $optional_mismatches"
+    echo "Please update tools/lingxia-cli/npm/package.json before publishing."
+    exit 1
+  fi
+  echo "Syncing optionalDependencies to version $VERSION"
+  node -e "
+const fs = require('fs');
+const pkgPath = '${MAIN_PKG}';
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+const v = pkg.version;
+pkg.optionalDependencies = pkg.optionalDependencies || {};
+for (const name of Object.keys(pkg.optionalDependencies)) {
+  if (name.startsWith('@lingxia/cli-')) {
+    pkg.optionalDependencies[name] = v;
+  }
+}
+fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\\n');
+"
 fi
 
 # Function to build and package a single target

@@ -83,8 +83,7 @@ rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
 # 0) Generate resources + build SDK HAR (no obsolete build.sh)
 echo "[0/4] Preparing HarmonyOS SDK resources + HAR..."
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
-  --platforms harmony \
-  --version dev \
+  --platform harmony \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
 
@@ -160,4 +159,3 @@ grep -E "(${PATTERN})" < "$PIPE" || true
 cleanup_logs
 
 echo "✅ Done."
-

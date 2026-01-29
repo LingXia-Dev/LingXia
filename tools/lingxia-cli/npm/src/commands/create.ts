@@ -14,8 +14,10 @@ const TEMPLATE_ROOT = resolveTemplateRoot();
 
 function resolveTemplateRoot(): string {
   // From npm/dist/commands/create.js → ../../templates/lxapp-create
+  // Dev fallback → ../../../templates/lxapp-create (repo root templates)
   const candidates = [
     new URL('../../templates/lxapp-create', import.meta.url),
+    new URL('../../../templates/lxapp-create', import.meta.url),
   ];
 
   for (const candidate of candidates) {

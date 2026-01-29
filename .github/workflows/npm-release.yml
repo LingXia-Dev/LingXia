@@ -1,0 +1,153 @@
+name: NPM Package Release
+
+on:
+  push:
+    tags:
+      - "lingxia-types-v*"
+      - "lingxia-components-v*"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Package to publish"
+        required: true
+        type: choice
+        options:
+          - lingxia-types
+          - lingxia-components
+      version:
+        description: "Version to publish (e.g. 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip actual publish)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write  # For npm provenance
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  determine-package:
+    name: Determine Package
+    runs-on: ubuntu-latest
+    outputs:
+      package: ${{ steps.resolve.outputs.package }}
+      version: ${{ steps.resolve.outputs.version }}
+      directory: ${{ steps.resolve.outputs.directory }}
+    steps:
+      - name: Resolve package and version
+        id: resolve
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            package="${{ inputs.package }}"
+            version="${{ inputs.version }}"
+          else
+            tag="${{ github.ref_name }}"
+            if [[ "$tag" == lingxia-types-v* ]]; then
+              package="lingxia-types"
+              version="${tag#lingxia-types-v}"
+            elif [[ "$tag" == lingxia-components-v* ]]; then
+              package="lingxia-components"
+              version="${tag#lingxia-components-v}"
+            else
+              echo "Unknown tag format: $tag" >&2
+              exit 1
+            fi
+          fi
+
+          # Map package to directory
+          case "$package" in
+            lingxia-types) directory="lingxia-types" ;;
+            lingxia-components) directory="lingxia-components" ;;
+            *) echo "Unknown package: $package" >&2; exit 1 ;;
+          esac
+
+          echo "package=$package" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+          echo "Publishing $package@$version from $directory"
+
+  publish:
+    name: Publish ${{ needs.determine-package.outputs.package }}
+    needs: determine-package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ needs.determine-package.outputs.package }}-${{ hashFiles(format('{0}/package.json', needs.determine-package.outputs.directory)) }}
+          restore-keys: npm-${{ needs.determine-package.outputs.package }}-
+
+      - name: Verify version matches package.json
+        working-directory: ${{ needs.determine-package.outputs.directory }}
+        run: |
+          expected="${{ needs.determine-package.outputs.version }}"
+          actual="$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$actual" ]; then
+            echo "Version mismatch: expected $expected, got $actual in package.json" >&2
+            exit 1
+          fi
+          echo "Version verified: $actual"
+
+      - name: Install dependencies
+        working-directory: ${{ needs.determine-package.outputs.directory }}
+        shell: bash
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Build
+        working-directory: ${{ needs.determine-package.outputs.directory }}
+        run: npm run build
+
+      - name: Publish (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        working-directory: ${{ needs.determine-package.outputs.directory }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "DRY RUN - would publish:"
+          npm pack --dry-run
+
+      - name: Publish
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        working-directory: ${{ needs.determine-package.outputs.directory }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public --provenance
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
+          body: |
+            ## ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
+
+            ```bash
+            npm install ${{ needs.determine-package.outputs.package }}@${{ needs.determine-package.outputs.version }}
+            ```
+          generate_release_notes: true

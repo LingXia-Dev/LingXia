@@ -56,6 +56,18 @@ function runRust(argv) {
   if (!process.env.LINGXIA_JS_CLI && existsSync(jsCli)) {
     process.env.LINGXIA_JS_CLI = jsCli;
   }
+  if (!process.env.LINGXIA_TEMPLATES_DIR) {
+    const candidates = [
+      resolve(__dirname, "../templates"),
+      resolve(__dirname, "../../templates"),
+    ];
+    for (const dir of candidates) {
+      if (existsSync(dir)) {
+        process.env.LINGXIA_TEMPLATES_DIR = dir;
+        break;
+      }
+    }
+  }
 
   const result = spawnSync(resolvedRustBin, argv, {
     stdio: "inherit",

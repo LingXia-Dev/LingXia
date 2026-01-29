@@ -21,6 +21,13 @@ function main() {
   const cliPackageJson = path.resolve(__dirname, "..", "package.json");
   const cliPkg = readJson(cliPackageJson);
   cliPkg.version = version;
+  if (cliPkg.optionalDependencies) {
+    for (const [name] of Object.entries(cliPkg.optionalDependencies)) {
+      if (name.startsWith("@lingxia/cli-")) {
+        cliPkg.optionalDependencies[name] = version;
+      }
+    }
+  }
   writeJson(cliPackageJson, cliPkg);
 }
 

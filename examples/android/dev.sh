@@ -53,7 +53,18 @@ LINGXIA_ROOT="$SCRIPT_DIR/../.."
 WORKSPACE_ROOT="$LINGXIA_ROOT"
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
 LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
-BASE_SDK_VERSION="dev"
+BASE_SDK_VERSION="$(awk '
+  /^\[workspace\.package\]/ {in_section=1; next}
+  /^\[/ {in_section=0}
+  in_section && $1 == "version" {
+    gsub(/"/, "", $3);
+    print $3;
+    exit
+  }' "$LINGXIA_ROOT/Cargo.toml")"
+if [ -z "$BASE_SDK_VERSION" ]; then
+    echo "Failed to read workspace version from Cargo.toml" >&2
+    exit 1
+fi
 LINGXIA_SDK_VERSION="$BASE_SDK_VERSION"
 ANDROID_ES5_FLAG=""
 if $USE_ES5_RUNTIME; then
@@ -140,8 +151,7 @@ build_rust_android() {
 
 echo "[0/4] Preparing Android SDK (resources + local Maven)..."
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
-  --platforms android \
-  --version "$BASE_SDK_VERSION" \
+  --platform android \
   $ANDROID_ES5_FLAG \
   --android-maven-dir "$LOCAL_MAVEN_DIR" \
   --android-no-zip \

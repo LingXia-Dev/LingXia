@@ -1,0 +1,171 @@
+name: CLI NPM Release
+
+on:
+  push:
+    tags:
+      - "lingxia-cli-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. lingxia-cli-v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            platform: darwin-arm64
+          - os: macos-13
+            platform: darwin-x64
+          - os: windows-latest
+            platform: win32-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: cli-${{ matrix.platform }}
+
+      - name: Verify tag matches CLI version
+        shell: bash
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          expected="${tag#lingxia-cli-v}"
+          cli_version="$(awk '
+            /^\[package\]/ {in_section=1; next}
+            /^\[/ {in_section=0}
+            in_section && $1 == "version" {
+              gsub(/"/, "", $3);
+              print $3;
+              exit
+            }' tools/lingxia-cli/Cargo.toml)"
+          if [ -z "$cli_version" ]; then
+            echo "Failed to read CLI version from Cargo.toml" >&2
+            exit 1
+          fi
+          if [ "$expected" != "$cli_version" ]; then
+            echo "Tag version ($expected) does not match CLI version ($cli_version)" >&2
+            exit 1
+          fi
+          echo "Version verified: $cli_version"
+
+      - name: Run tests
+        run: cargo test -p lingxia-cli --locked
+
+      - name: Build lingxia (release)
+        run: cargo build -p lingxia-cli --release --locked
+
+      - name: Collect binary
+        shell: bash
+        run: |
+          mkdir -p out
+          if [[ "${{ matrix.platform }}" == "win32-x64" ]]; then
+            cp target/release/lingxia.exe out/lingxia.exe
+          else
+            cp target/release/lingxia out/lingxia
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingxia-${{ matrix.platform }}
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare package version
+        shell: bash
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#lingxia-cli-v}"
+
+          node tools/lingxia-cli/npm/scripts/set-version.cjs "$version"
+
+      - name: Prepare platform packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('tools/lingxia-cli/npm/package.json').version")"
+          mkdir -p platform-pkgs
+
+          make_pkg() {
+            local name="$1"
+            local os="$2"
+            local cpu="$3"
+            local bin_src="$4"
+            local bin_ext="$5"
+
+            local pkg_dir="platform-pkgs/$name"
+            mkdir -p "$pkg_dir/bin"
+            cp "$bin_src" "$pkg_dir/bin/lingxia$bin_ext"
+            chmod +x "$pkg_dir/bin/lingxia$bin_ext"
+
+            cat > "$pkg_dir/package.json" <<EOF
+          {
+            "name": "@lingxia/cli-$name",
+            "version": "$VERSION",
+            "private": false,
+            "os": ["$os"],
+            "cpu": ["$cpu"],
+            "bin": {
+              "lingxia": "bin/lingxia$bin_ext"
+            },
+            "files": ["bin/lingxia$bin_ext"],
+            "license": "MIT"
+          }
+          EOF
+          }
+
+          make_pkg "darwin-arm64" "darwin" "arm64" "artifacts/lingxia-darwin-arm64/lingxia" ""
+          make_pkg "darwin-x64" "darwin" "x64" "artifacts/lingxia-darwin-x64/lingxia" ""
+          make_pkg "win32-x64" "win32" "x64" "artifacts/lingxia-win32-x64/lingxia.exe" ".exe"
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for pkg in platform-pkgs/*; do
+            (cd "$pkg" && npm publish --access public)
+          done
+
+      - name: Publish wrapper package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd tools/lingxia-cli/npm && npm publish --access public)

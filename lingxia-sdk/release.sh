@@ -9,11 +9,10 @@ Generates SDK-required resources (i18n/assets/icons) and produces release artifa
 ready to be uploaded as GitHub Release assets by CI.
 
 Usage:
-  lingxia-sdk/release.sh --version <semver> [--platforms android,ios,harmony] [--out <dir>]
+  lingxia-sdk/release.sh [--platform ios|android|harmony|all] [--out <dir>]
 
 Options:
-  --version <v>                 Version string used in artifact names (required)
-  --platforms <csv>             android,ios,harmony (default: android,ios,harmony)
+  --platform <name>             iOS, Android, Harmony, or all (default: all)
   --out <dir>                   Output directory (default: dist/sdk-release)
   --no-shasums                  Skip SHASUMS file generation (useful for local dev)
   --android-es5                 Android: build ES5 web runtime and publish version as <version>-es5
@@ -37,7 +36,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 VERSION=""
-PLATFORMS="android,ios,harmony"
+PLATFORM="all"
 OUT_DIR="$ROOT_DIR/dist/sdk-release"
 NO_SHASUMS=false
 ANDROID_ES5=false
@@ -48,8 +47,7 @@ ANDROID_VERSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --version) VERSION="${2:-}"; shift 2 ;;
-    --platforms) PLATFORMS="${2:-}"; shift 2 ;;
+    --platform) PLATFORM="${2:-}"; shift 2 ;;
     --out) OUT_DIR="${2:-}"; shift 2 ;;
     --no-shasums) NO_SHASUMS=true; shift 1 ;;
     --android-es5) ANDROID_ES5=true; shift 1 ;;
@@ -61,29 +59,48 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -n "$VERSION" ]] || die "--version is required"
+workspace_version="$(awk '
+  /^\[workspace\.package\]/ {in_section=1; next}
+  /^\[/ {in_section=0}
+  in_section && $1 == "version" {
+    gsub(/"/, "", $3);
+    print $3;
+    exit
+  }' "$ROOT_DIR/Cargo.toml")"
+[[ -n "$workspace_version" ]] || die "Failed to read workspace version from Cargo.toml"
+VERSION="$workspace_version"
 
 mkdir -p "$OUT_DIR"
 
-IFS=',' read -r -a PLATFORM_ARR <<< "$PLATFORMS"
 WANT_ANDROID=false
 WANT_IOS=false
 WANT_HARMONY=false
 
-platforms_slug=""
-for p in "${PLATFORM_ARR[@]}"; do
-  p="$(echo "$p" | tr '[:upper:]' '[:lower:]' | xargs)"
-  [[ -n "$p" ]] || continue
-  platforms_slug+="${platforms_slug:+-}${p}"
-  case "$p" in
-    android) WANT_ANDROID=true ;;
-    ios) WANT_IOS=true ;;
-    harmony) WANT_HARMONY=true ;;
-    *) die "Unknown platform: $p (expected android,ios,harmony)" ;;
-  esac
-done
+PLATFORM="$(echo "$PLATFORM" | tr '[:upper:]' '[:lower:]' | xargs)"
 
-[[ -n "$platforms_slug" ]] || die "--platforms is empty"
+case "$PLATFORM" in
+  all)
+    WANT_IOS=true
+    WANT_ANDROID=true
+    WANT_HARMONY=true
+    platforms_slug="ios-android-harmony"
+    ;;
+  ios)
+    WANT_IOS=true
+    platforms_slug="ios"
+    ;;
+  android)
+    WANT_ANDROID=true
+    platforms_slug="android"
+    ;;
+  harmony)
+    WANT_HARMONY=true
+    platforms_slug="harmony"
+    ;;
+  *)
+    die "Unknown platform: $PLATFORM (expected iOS, Android, Harmony, or all)"
+    ;;
+esac
 
 I18N_DIR="$ROOT_DIR/i18n"
 ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
@@ -367,7 +384,7 @@ build_ios_source() {
 
 main() {
   if $ANDROID_ES5 && ( $WANT_IOS || $WANT_HARMONY ); then
-    die "--android-es5 can only be used with --platforms android (no directory split for web runtime dist/)"
+    die "--android-es5 can only be used with --platform android (no directory split for web runtime dist/)"
   fi
 
   ANDROID_VERSION="$VERSION"

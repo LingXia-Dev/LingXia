@@ -7,9 +7,14 @@ members = [
     "lingxia-messaging",
     "lingxia",
     "examples/lingxia-lib",
+    "tools/lingxia-cli",
     "tools/lingxia-gen",
 ]
 resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
 
 [workspace.dependencies]
 # Common dependencies that can be shared across workspace members

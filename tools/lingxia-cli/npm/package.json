@@ -36,7 +36,8 @@
   },
   "optionalDependencies": {
     "@lingxia/cli-darwin-arm64": "0.0.5",
-    "@lingxia/cli-darwin-x64": "0.0.5"
+    "@lingxia/cli-darwin-x64": "0.0.5",
+    "@lingxia/cli-win32-x64": "0.0.5"
   },
   "devDependencies": {
     "@types/node": "^20.19.7",

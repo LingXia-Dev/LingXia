@@ -45,8 +45,7 @@ fi
 echo "[1/4] Preparing iOS SDK resources..."
 # For dev: generate Resources/icons/runtime assets via the unified SDK script.
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
-  --platforms ios \
-  --version dev \
+  --platform ios \
   --ios-no-zip \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
