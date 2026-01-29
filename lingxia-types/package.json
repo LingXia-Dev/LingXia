@@ -1,7 +1,12 @@
 {
-  "name": "lingxia-types",
+  "name": "@lingxia/types",
   "version": "0.1.0",
   "description": "TypeScript type definitions for the LingXia JS API",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "lingxia-types"
+  },
   "main": "dist/index.js",
   "module": "dist/index.js",
   "types": "dist/index.d.ts",

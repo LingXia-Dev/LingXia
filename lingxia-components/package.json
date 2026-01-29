@@ -1,6 +1,14 @@
 {
-  "name": "lingxia-components",
+  "name": "@lingxia/components",
   "version": "0.0.1",
+  "description": "UI components for LingXia applications",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "lingxia-components"
+  },
+  "license": "MIT",
+  "author": "LingXia Team",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -15,6 +23,16 @@
       "types": "./src/react/index.ts"
     }
   },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "lingxia",
+    "lxapp",
+    "components",
+    "react"
+  ],
   "peerDependencies": {
     "react": "^19.0.0"
   },
