@@ -20,5 +20,3 @@ futures = { workspace = true }
 rong_modules = { workspace = true }
 rong_storage = { workspace = true }
 
-[build-dependencies]
-lingxia-gen = { workspace = true }
