@@ -2,6 +2,11 @@
 name = "lingxia-platform"
 version.workspace = true
 edition.workspace = true
+description = "Platform abstraction layer for LingXia framework (Android, iOS, HarmonyOS)"
+license = "MIT"
+repository = "https://github.com/LingXia-Dev/LingXia"
+keywords = ["lingxia", "platform", "lxapp", "cross-platform"]
+categories = ["api-bindings"]
 
 [dependencies]
 thiserror = { workspace = true }
