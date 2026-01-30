@@ -30,11 +30,17 @@ pub fn execute(
     let platforms: Vec<String> = if let Some(p) = platform {
         vec![p.to_lowercase()]
     } else {
-        config.project.platforms.clone()
+        config
+            .app
+            .as_ref()
+            .map(|a| a.platforms.clone())
+            .ok_or_else(|| anyhow!("Missing app section in lingxia.config.json"))?
     };
 
     if platforms.is_empty() {
-        return Err(anyhow!("No platforms specified. Please specify a platform using --platform or configure platforms in lingxia.config.json"));
+        return Err(anyhow!(
+            "No platforms specified. Please specify a platform using --platform or configure app.platforms in lingxia.config.json"
+        ));
     }
 
     let bg_color = appicon::normalize_android_color(

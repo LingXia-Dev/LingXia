@@ -1,7 +1,6 @@
 import { Command } from 'commander';
 import { createRequire } from 'module';
 import { buildCommand } from './builder/index.js';
-import { createCommand } from './commands/create.js';
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
 
@@ -22,17 +21,6 @@ export async function runCLI(argv = process.argv): Promise<void> {
     .option('--plugin', 'Build as plugin package')
     .option('--target <target>', 'JS target (es5, es2015, es2020, esnext). Note: es5 requires @vitejs/plugin-legacy')
     .action(buildCommand);
-
-  program
-    .command('create')
-    .argument('[projectName]', 'Directory name for the new project')
-    .description('Create a new LingXia project from a template')
-    .option('-f, --framework <framework>', 'Pick a framework (react|vue)')
-    .action((projectName: string | undefined, cmdOptions: { framework?: string }) =>
-      createCommand(projectName, {
-        framework: cmdOptions.framework as any
-      })
-    );
 
   await program.parseAsync(argv);
 }

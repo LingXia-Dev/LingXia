@@ -14,7 +14,6 @@ pub struct LingXiaConfig {
     /// Host app settings used to generate `app.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app: Option<HostAppConfig>,
-    pub project: ProjectConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub android: Option<AndroidConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,19 +38,15 @@ pub struct HostAppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_server: Option<String>,
 
+    /// Platforms to build for this app (e.g. ["android"]).
+    pub platforms: Vec<String>,
+
     // Keep explicit spelling for "ID" (not "Id") to match runtime `app.json` schema.
     #[serde(rename = "homeLxAppID")]
     pub home_lxapp_id: String,
+    // Keep explicit spelling for "App" (not "app") to match runtime `app.json` schema.
+    #[serde(rename = "homeLxAppVersion")]
     pub home_lxapp_version: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProjectConfig {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub project_type: String, // "native-app" or "lxapp"
-    pub platforms: Vec<String>, // ["android", "ios", "harmony"]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -199,12 +194,14 @@ impl LingXiaConfig {
     #[allow(dead_code)] // Used in tests
     pub fn new_android(project_name: &str, package_id: &str) -> Self {
         Self {
-            app: None,
-            project: ProjectConfig {
-                name: project_name.to_string(),
-                project_type: "native-app".to_string(),
+            app: Some(HostAppConfig {
+                product_name: project_name.to_string(),
+                product_version: "1.0.0".to_string(),
+                api_server: None,
                 platforms: vec!["android".to_string()],
-            },
+                home_lxapp_id: "homelxapp".to_string(),
+                home_lxapp_version: "1.0.0".to_string(),
+            }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),
                 min_sdk: Some(28),
@@ -255,7 +252,7 @@ mod tests {
         println!("{}", json);
 
         let parsed: LingXiaConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.project.name, "my-app");
+        assert_eq!(parsed.app.unwrap().product_name, "my-app");
         assert_eq!(parsed.android.unwrap().package_id, "com.example.myapp");
     }
 }

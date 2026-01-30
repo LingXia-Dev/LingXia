@@ -3,9 +3,8 @@ mod validation;
 
 use crate::config::{
     AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, LingXiaSecrets,
-    ProjectConfig as ConfigProjectConfig, HOST_SECRETS_FILE,
+    HOST_SECRETS_FILE,
 };
-use crate::lxapp;
 use crate::path_completion::FilePathCompleter;
 use anyhow::{anyhow, Result};
 use colored::Colorize;
@@ -14,9 +13,9 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use template::process_template_dir;
-use validation::{validate_package_id, validate_project_name};
+use validation::{validate_package_id, validate_product_name, validate_project_name};
 
 const DEFAULT_PACKAGE_PREFIX: &str = "com.example";
 const DEFAULT_ICON_BACKGROUND_COLOR: &str = "#FFFFFF";
@@ -72,6 +71,7 @@ fn locate_templates_dir() -> Result<PathBuf> {
 #[derive(Debug)]
 struct ProjectConfig {
     name: String,
+    product_name: String,
     project_type: ProjectType,
     platforms: Vec<Platform>,
     package_id: String,
@@ -156,21 +156,35 @@ pub fn execute(
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
-    let name = gather_project_name(name)?;
     let project_type = gather_project_type(project_type)?;
+    let name = gather_project_name(name)?;
+    let product_name = gather_product_name(&name, yes)?;
+
     if matches!(project_type, ProjectType::LxApp) {
-        let args = vec!["create".to_string(), name];
-        println!("  Using LxApp template creator");
+        let framework = gather_lxapp_framework(yes)?;
+        let target_dir = std::env::current_dir()?.join(&name);
+        create_lxapp_from_template(&target_dir, &name, &product_name, &framework)?;
+
         println!();
-        return lxapp::run(&args);
+        println!("{}", "Project created successfully!".green().bold());
+        println!();
+        println!("{}", "Next steps:".bold());
+        println!("  cd {}", name);
+        println!("  lingxia build");
+        println!();
+        return Ok(());
     }
 
-    let config = gather_native_project_info(name, project_type, platforms, package_id, yes)?;
+    let config =
+        gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();
 
     println!();
     println!("{}", "Project Configuration:".bold());
     println!("  Name:        {}", config.name.cyan());
+    if config.product_name != config.name {
+        println!("  Product:     {}", config.product_name.cyan());
+    }
     println!("  Type:        {}", config.project_type.as_str().cyan());
     let platform_list = config
         .platforms
@@ -243,7 +257,8 @@ pub fn execute(
     }
 
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
-    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name)?;
+    let lxapp_framework = gather_lxapp_framework(yes)?;
+    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework)?;
     generate_config_file(&config, &lxapp_info)?;
     generate_secrets_file(&config)?;
     ensure_root_gitignore(&config)?;
@@ -253,8 +268,7 @@ pub fn execute(
     println!();
     println!("{}", "Next steps:".bold());
     println!("  cd {}", config.name);
-    println!("  # Start developing with:");
-    println!("  lingxia dev");
+    println!("  lingxia build");
     println!();
 
     Ok(())
@@ -276,6 +290,21 @@ fn gather_project_name(name: Option<String>) -> Result<String> {
             Ok(input)
         }
     }
+}
+
+fn gather_product_name(project_name: &str, yes: bool) -> Result<String> {
+    if yes {
+        return Ok(project_name.to_string());
+    }
+
+    let input: String = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("Product name")
+        .with_initial_text(project_name.to_string())
+        .validate_with(|input: &String| -> Result<(), String> {
+            validate_product_name(input).map_err(|e| e.to_string())
+        })
+        .interact_text()?;
+    Ok(input.trim().to_string())
 }
 
 fn gather_project_type(project_type: Option<String>) -> Result<ProjectType> {
@@ -300,6 +329,7 @@ fn gather_project_type(project_type: Option<String>) -> Result<ProjectType> {
 
 fn gather_native_project_info(
     name: String,
+    product_name: String,
     project_type: ProjectType,
     platforms: Vec<String>,
     package_id: Option<String>,
@@ -360,7 +390,7 @@ fn gather_native_project_info(
         None => {
             let input: String = Input::with_theme(&ColorfulTheme::default())
                 .with_prompt("Package ID")
-                .default(default_package_id.clone())
+                .with_initial_text(default_package_id.clone())
                 .validate_with(|input: &String| -> Result<(), String> {
                     validate_package_id(input).map_err(|e| e.to_string())
                 })
@@ -373,6 +403,7 @@ fn gather_native_project_info(
 
     Ok(ProjectConfig {
         name,
+        product_name,
         project_type,
         platforms,
         package_id,
@@ -388,7 +419,7 @@ fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
 
     let name: String = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("LxApp (lightweight application) name")
-        .default(default_name)
+        .with_initial_text(default_name)
         .validate_with(|input: &String| -> Result<(), String> {
             let trimmed = input.trim();
             if trimmed.is_empty() {
@@ -397,11 +428,31 @@ fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
             if trimmed.contains('/') || trimmed.contains('\\') {
                 return Err("LxApp directory name cannot contain path separators".to_string());
             }
+            if slugify(trimmed) != trimmed {
+                return Err(
+                    "Use lowercase letters, numbers, and dashes only (e.g. 'home-lxapp')"
+                        .to_string(),
+                );
+            }
             Ok(())
         })
         .interact_text()?;
 
     Ok(name.trim().to_string())
+}
+
+fn gather_lxapp_framework(yes: bool) -> Result<String> {
+    if yes {
+        return Ok("react".to_string());
+    }
+
+    let choices = vec!["React", "Vue"];
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Choose framework")
+        .items(&choices)
+        .default(0)
+        .interact()?;
+    Ok(choices[selection].to_lowercase())
 }
 
 fn create_project(config: &ProjectConfig) -> Result<()> {
@@ -560,7 +611,6 @@ fn create_rust_library(config: &ProjectConfig) -> Result<()> {
 
 #[derive(Debug, Clone)]
 struct LxAppInfo {
-    dir_name: String,
     app_id: String,
 }
 
@@ -606,31 +656,25 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
 
     let lingxia_config = LingXiaConfig {
         app: Some(HostAppConfig {
-            product_name: format!("{} App", config.name),
+            product_name: config.product_name.clone(),
             product_version: "1.0.0".to_string(),
             api_server: Some("https://api.example.com".to_string()),
+            platforms: platforms.clone(),
             home_lxapp_id: lxapp.app_id.clone(),
             home_lxapp_version: "1.0.0".to_string(),
         }),
-        project: ConfigProjectConfig {
-            name: config.name.clone(),
-            project_type: config.project_type.as_str().to_string(),
-            platforms,
-        },
         android,
         ios,
         harmony,
         lxapp: Some(crate::config::LxAppConfig {
-            source: lxapp.dir_name.clone(),
-            asset_name: Some(lxapp.app_id.clone()),
+            source: lxapp.app_id.clone(),
+            asset_name: None,
         }),
         resources: None,
     };
 
     // Save config file
     lingxia_config.save(&config.target_dir)?;
-
-    println!("  Created lingxia.config.json");
 
     Ok(())
 }
@@ -643,60 +687,100 @@ fn generate_secrets_file(config: &ProjectConfig) -> Result<()> {
 
     let secrets = LingXiaSecrets::default();
     fs::write(secrets_path, serde_json::to_string_pretty(&secrets)?)?;
-    println!("  Created {}", HOST_SECRETS_FILE);
     Ok(())
 }
 
 fn ensure_root_gitignore(config: &ProjectConfig) -> Result<()> {
     let gitignore_path = config.target_dir.join(".gitignore");
-    let existed = gitignore_path.exists();
-
-    let block = format!(
-        "{}# LingXia (generated / local-only)\n{}\nandroid/{}/\n{}/\n",
-        if existed { "\n" } else { "" },
-        HOST_SECRETS_FILE,
-        crate::platform::detector::ANDROID_ASSETS_REL_PATH,
+    let android_assets = format!(
+        "android/{}/",
         crate::platform::detector::ANDROID_ASSETS_REL_PATH
     );
+    let standalone_assets = format!("{}/", crate::platform::detector::ANDROID_ASSETS_REL_PATH);
+    let required = [
+        HOST_SECRETS_FILE,
+        android_assets.as_str(),
+        standalone_assets.as_str(),
+    ];
 
-    std::fs::OpenOptions::new()
+    let existing = if gitignore_path.exists() {
+        fs::read_to_string(&gitignore_path)?
+    } else {
+        String::new()
+    };
+
+    let mut append = String::new();
+    for line in required {
+        if !existing.lines().any(|l| l.trim() == line) {
+            append.push_str(line);
+            append.push('\n');
+        }
+    }
+    if append.is_empty() {
+        return Ok(());
+    }
+
+    let mut f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&gitignore_path)?
-        .write_all(block.as_bytes())?;
-
-    if !existed {
-        println!("  Created .gitignore");
+        .open(&gitignore_path)?;
+    if !existing.is_empty() && !existing.ends_with('\n') {
+        f.write_all(b"\n")?;
     }
+    f.write_all(append.as_bytes())?;
     Ok(())
 }
 
-fn create_lxapp_project(config: &ProjectConfig, lxapp_dir_name: &str) -> Result<LxAppInfo> {
-    let lxapp_dir_name = lxapp_dir_name.trim();
-    let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
-    if lxapp_dir.exists() {
+fn create_lxapp_from_template(
+    target_dir: &Path,
+    project_name: &str,
+    product_name: &str,
+    framework: &str,
+) -> Result<()> {
+    if target_dir.exists() {
         return Err(anyhow!(
-            "LxApp directory '{}' already exists",
-            lxapp_dir.display()
+            "Directory '{}' already exists",
+            target_dir.display()
         ));
     }
 
-    let args = vec!["create".to_string(), lxapp_dir_name.to_string()];
+    fs::create_dir_all(target_dir)?;
 
+    let templates_base = locate_templates_dir()?;
+    let template_dir = templates_base
+        .join("lxapp-create")
+        .join(framework.to_lowercase());
+    if !template_dir.exists() {
+        return Err(anyhow!(
+            "LxApp template not found at: {}",
+            template_dir.display()
+        ));
+    }
+
+    let slug = slugify(project_name);
+    let mut vars = HashMap::new();
+    vars.insert("APP_PACKAGE_NAME".to_string(), slug.clone());
+    vars.insert("APP_ID".to_string(), slug);
+    vars.insert("APP_DISPLAY_NAME".to_string(), product_name.to_string());
+
+    process_template_dir(&template_dir, target_dir, &vars)?;
+    Ok(())
+}
+
+fn create_lxapp_project(
+    config: &ProjectConfig,
+    lxapp_dir_name: &str,
+    framework: &str,
+) -> Result<LxAppInfo> {
+    let lxapp_dir_name = lxapp_dir_name.trim();
+    let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
     println!("  Creating LxApp project...");
-    let current_dir = env::current_dir()?;
-    env::set_current_dir(&config.target_dir)?;
-    let result = lxapp::run(&args);
-    env::set_current_dir(current_dir)?;
-    result?;
+    create_lxapp_from_template(&lxapp_dir, lxapp_dir_name, &config.product_name, framework)?;
 
     let lxapp_json = lxapp_dir.join("lxapp.json");
     let app_id = read_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string());
 
-    Ok(LxAppInfo {
-        dir_name: lxapp_dir_name.to_string(),
-        app_id,
-    })
+    Ok(LxAppInfo { app_id })
 }
 
 fn read_lxapp_id(path: &PathBuf) -> Result<String> {
@@ -708,6 +792,29 @@ fn read_lxapp_id(path: &PathBuf) -> Result<String> {
         .map(|s| s.to_string())
         .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
     Ok(app_id)
+}
+
+fn slugify(value: &str) -> String {
+    let mut out = String::new();
+    let mut last_was_dash = false;
+
+    for ch in value.trim().chars() {
+        let ch = ch.to_ascii_lowercase();
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch);
+            last_was_dash = false;
+        } else if !last_was_dash {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+
+    let out = out.trim_matches('-').to_string();
+    if out.is_empty() {
+        "lingxia-app".to_string()
+    } else {
+        out
+    }
 }
 
 fn generate_app_icons(

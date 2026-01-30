@@ -59,14 +59,19 @@ pub fn execute(
     };
 
     // Determine platform from config (no auto-detection/fallback).
-    if !config
-        .project
+    let app = config.app.as_ref().ok_or_else(|| {
+        anyhow!(
+            "Missing app section in lingxia.config.json.\n\
+             Please configure app.platforms to include android."
+        )
+    })?;
+    if !app
         .platforms
         .iter()
         .any(|p| p.eq_ignore_ascii_case("android"))
     {
         return Err(anyhow!(
-            "This command currently supports Android projects only. Add 'android' to project.platforms in lingxia.config.json."
+            "This command currently supports Android projects only. Add 'android' to app.platforms in lingxia.config.json."
         ));
     }
     let platform = platform::android::AndroidPlatform::new();

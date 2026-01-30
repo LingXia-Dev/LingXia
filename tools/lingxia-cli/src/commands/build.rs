@@ -79,12 +79,18 @@ pub fn execute(
     let config = LingXiaConfig::load(&project_root)?;
 
     println!("  Using {}", HOST_CONFIG_FILE);
-    println!("  Project: {}", config.project.name.cyan());
-    println!("  Type: {}", config.project.project_type.cyan());
+
+    let app = config.app.as_ref().ok_or_else(|| {
+        anyhow!(
+            "Missing app section in {}.\n\
+             Please configure app.productName/app.productVersion/app.platforms/app.homeLxAppID/app.homeLxAppVersion.",
+            HOST_CONFIG_FILE
+        )
+    })?;
+    println!("  App: {}", app.product_name.cyan());
 
     // Determine platforms from config (no auto-detection/fallback).
-    let available_platforms: Vec<platform::detector::PlatformType> = config
-        .project
+    let available_platforms: Vec<platform::detector::PlatformType> = app
         .platforms
         .iter()
         .map(|p| p.parse())
@@ -93,7 +99,7 @@ pub fn execute(
     if available_platforms.is_empty() {
         return Err(anyhow!(
             "No platform configured in lingxia.config.json.\n\
-             Set project.platforms to include at least one of: android, ios, harmony"
+             Set app.platforms to include at least one of: android, ios, harmony"
         ));
     }
 
@@ -328,29 +334,7 @@ fn ensure_host_app_json(
     config: &LingXiaConfig,
     assets_root: &Path,
 ) -> Result<()> {
-    if config.app.is_some() {
-        return write_app_json_from_config(project_root, config, assets_root);
-    }
-
-    // Backward compatible migration path:
-    // If `app.json` exists in the project root, embed it as-is.
-    let legacy_app_json = project_root.join("app.json");
-    if legacy_app_json.exists() {
-        fs::copy(&legacy_app_json, assets_root.join("app.json"))?;
-        println!(
-            "  {} Using legacy app.json from project root (consider migrating to {}: app.*).",
-            "⚠️".yellow(),
-            HOST_CONFIG_FILE
-        );
-        return Ok(());
-    }
-
-    Err(anyhow!(
-        "Missing host app settings in {}.\n\
-         Add an 'app' section (productName/productVersion/apiServer/homeLxAppID/homeLxAppVersion),\n\
-         or provide a legacy app.json in the project root for migration.",
-        HOST_CONFIG_FILE
-    ))
+    write_app_json_from_config(project_root, config, assets_root)
 }
 
 fn write_app_json_from_config(

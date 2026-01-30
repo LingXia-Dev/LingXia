@@ -111,8 +111,9 @@ fn substitute_variables(content: &str, vars: &HashMap<String, String>) -> String
     let mut result = content.to_string();
 
     for (key, value) in vars {
-        let placeholder = format!("{{{{{}}}}}", key);
-        result = result.replace(&placeholder, value);
+        // Support both `{{KEY}}` and `__KEY__` placeholder styles.
+        result = result.replace(&format!("{{{{{}}}}}", key), value);
+        result = result.replace(&format!("__{}__", key), value);
     }
 
     result

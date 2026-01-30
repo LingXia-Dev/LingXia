@@ -103,11 +103,15 @@ impl AndroidPlatform {
     ) -> Result<()> {
         println!("  → Building for {}...", target.cyan());
 
-        let lingxia_config = config
+        config
             .lingxia_config
             .as_ref()
             .ok_or_else(|| anyhow!("lingxia.config.json is required to build native libraries"))?;
-        let rust_lib_dir = project_root.join(format!("{}-lib", lingxia_config.project.name));
+        let rust_lib_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("app");
+        let rust_lib_dir = project_root.join(format!("{}-lib", rust_lib_name));
         let rust_manifest = rust_lib_dir.join("Cargo.toml");
         if !rust_manifest.exists() {
             return Err(anyhow!(

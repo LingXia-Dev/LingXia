@@ -11,10 +11,22 @@ pub fn validate_project_name(name: &str) -> Result<()> {
         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
     {
         return Err(anyhow!(
-            "Project name can only contain alphanumeric characters, underscores, and hyphens"
+            "Project name must be one word (no spaces) and can only contain alphanumeric characters, underscores, and hyphens"
         ));
     }
 
+    Ok(())
+}
+
+/// Validate product name (single line; spaces allowed).
+pub fn validate_product_name(name: &str) -> Result<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("Product name cannot be empty"));
+    }
+    if trimmed.contains('\n') || trimmed.contains('\r') {
+        return Err(anyhow!("Product name must be a single line"));
+    }
     Ok(())
 }
 
