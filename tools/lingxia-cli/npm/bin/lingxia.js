@@ -1,21 +1,159 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "child_process";
-import { existsSync } from "fs";
+import { spawn, spawnSync } from "child_process";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { createRequire } from "module";
 import { dirname, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
-import updateNotifier from "update-notifier";
+import { homedir } from "os";
+import { createInterface } from "readline";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const binName = process.platform === "win32" ? "lingxia.exe" : "lingxia";
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json");
-
-// Check for updates (runs in background, cached for 1 day)
-updateNotifier({ pkg }).notify();
 const jsCli = resolve(__dirname, "../dist/index.js");
+
+// Cross-platform config directory
+function getConfigDir() {
+  if (process.platform === "win32") {
+    // Windows: use APPDATA
+    return resolve(
+      process.env.APPDATA || resolve(homedir(), "AppData", "Roaming"),
+      "lingxia",
+    );
+  }
+  // Linux/macOS: prefer XDG_CONFIG_HOME, fallback to ~/.config
+  const xdgConfig =
+    process.env.XDG_CONFIG_HOME || resolve(homedir(), ".config");
+  return resolve(xdgConfig, "lingxia");
+}
+
+// Simple version check with cache
+const CACHE_FILE = resolve(getConfigDir(), "update-check.json");
+const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+let updateCheckPromise = null;
+
+// Normalize version string: remove 'v' prefix and pre-release suffixes
+function normalizeVersion(version) {
+  if (!version) return "0.0.0";
+  return version
+    .replace(/^v/i, "") // remove 'v' prefix
+    .replace(/[-+].*$/, "") // remove -beta.1, +build, etc.
+    .trim();
+}
+
+function isNewerVersion(current, latest) {
+  const cur = normalizeVersion(current)
+    .split(".")
+    .map((n) => parseInt(n, 10) || 0);
+  const lat = normalizeVersion(latest)
+    .split(".")
+    .map((n) => parseInt(n, 10) || 0);
+
+  for (let i = 0; i < 3; i++) {
+    const c = cur[i] || 0;
+    const l = lat[i] || 0;
+    if (l > c) return true;
+    if (l < c) return false;
+  }
+  return false;
+}
+
+function promptUser(question) {
+  return new Promise((resolve) => {
+    const rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
+
+function performUpdate() {
+  console.log("\x1b[36m  Updating @lingxia/cli...\x1b[0m\n");
+  const result = spawnSync("npm", ["install", "-g", "@lingxia/cli"], {
+    stdio: "inherit",
+    shell: true,
+  });
+  if (result.status === 0) {
+    console.log(
+      "\n\x1b[32m  Updated successfully! Please re-run your command.\x1b[0m\n",
+    );
+    process.exit(0);
+  } else {
+    console.log(
+      "\n\x1b[31m  Update failed. Try manually: npm install -g @lingxia/cli\x1b[0m\n",
+    );
+    process.exit(1);
+  }
+}
+
+async function checkForUpdates() {
+  try {
+    // Read cache
+    let cache = { lastCheck: 0, latestVersion: null };
+    try {
+      cache = JSON.parse(readFileSync(CACHE_FILE, "utf-8"));
+    } catch {}
+
+    const now = Date.now();
+    const shouldCheck = now - cache.lastCheck > CHECK_INTERVAL;
+
+    // Prompt for update if cached version is newer
+    if (
+      cache.latestVersion &&
+      isNewerVersion(pkg.version, cache.latestVersion)
+    ) {
+      // Only prompt if running in interactive terminal
+      if (process.stdin.isTTY && process.stdout.isTTY) {
+        console.log();
+        console.log(
+          `\x1b[33m  Update available: ${pkg.version} → ${cache.latestVersion}\x1b[0m`,
+        );
+        const answer = await promptUser("  Update now? [Y/n] ");
+        if (answer === "" || answer === "y" || answer === "yes") {
+          performUpdate();
+          return; // Exit after update
+        }
+        console.log();
+      } else {
+        // Non-interactive: just show message
+        console.log();
+        console.log(
+          `\x1b[33m  Update available: ${pkg.version} → ${cache.latestVersion}\x1b[0m`,
+        );
+        console.log(`\x1b[33m  Run: npm install -g @lingxia/cli\x1b[0m`);
+        console.log();
+      }
+    }
+
+    // Background check - store promise so we can wait for it before exit
+    if (shouldCheck) {
+      // Use encodeURIComponent for package name (handles @ and /)
+      const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/latest`;
+      updateCheckPromise = fetch(registryUrl, {
+        signal: AbortSignal.timeout(3000), // 3 second timeout
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          // Validate response before writing cache
+          if (data?.version && typeof data.version === "string") {
+            mkdirSync(dirname(CACHE_FILE), { recursive: true });
+            writeFileSync(
+              CACHE_FILE,
+              JSON.stringify({ lastCheck: now, latestVersion: data.version }),
+            );
+          }
+        })
+        .catch(() => {}); // Silently ignore errors
+    }
+  } catch {}
+}
 
 function findSubcommand(argv) {
   for (const arg of argv) {
@@ -37,10 +175,25 @@ async function runJsCli(argv) {
     console.error(
       "@lingxia/cli: LxApp JS CLI not found. Run npm install in @lingxia/cli.",
     );
-    process.exit(1);
+    await exitAfterUpdateCheck(1);
+    return;
   }
   const { runCLI } = await import(pathToFileURL(jsCliPath).href);
   await runCLI(argv);
+  // Wait for update check to complete before exiting
+  await waitForUpdateCheck();
+}
+
+// Helper to wait for background update check
+async function waitForUpdateCheck() {
+  if (updateCheckPromise) {
+    await updateCheckPromise.catch(() => {});
+  }
+}
+
+async function exitAfterUpdateCheck(code) {
+  await waitForUpdateCheck();
+  process.exit(code);
 }
 
 function runRust(argv) {
@@ -54,7 +207,8 @@ function runRust(argv) {
     console.error(
       `@lingxia/cli@${pkg.version}: Rust binary not found. Please reinstall the package.`,
     );
-    process.exit(1);
+    void exitAfterUpdateCheck(1);
+    return;
   }
 
   if (!process.env.LINGXIA_JS_CLI && existsSync(jsCli)) {
@@ -73,23 +227,43 @@ function runRust(argv) {
     }
   }
 
-  const result = spawnSync(resolvedRustBin, argv, {
+  // Use spawn instead of spawnSync to allow background update check to complete
+  const child = spawn(resolvedRustBin, argv, {
     stdio: "inherit",
   });
-  process.exit(result.status ?? 1);
-}
 
-const argv = process.argv.slice(2);
-const subcommand = findSubcommand(argv);
-const lxappProject = isLxappProject(process.cwd());
-
-const useJs = subcommand === "build" && lxappProject;
-
-if (useJs) {
-  runJsCli(process.argv).catch((err) => {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+  // Handle spawn errors (binary not executable, permission denied, etc.)
+  child.on("error", (err) => {
+    console.error(`@lingxia/cli: Failed to start Rust binary: ${err.message}`);
+    void exitAfterUpdateCheck(1);
   });
-} else {
-  runRust(argv);
+
+  child.on("close", async (code) => {
+    // Wait for update check to complete before exiting
+    await waitForUpdateCheck();
+    process.exit(code ?? 1);
+  });
 }
+
+async function main() {
+  await checkForUpdates();
+
+  const argv = process.argv.slice(2);
+  const subcommand = findSubcommand(argv);
+  const lxappProject = isLxappProject(process.cwd());
+
+  const useJs = subcommand === "build" && lxappProject;
+
+  if (useJs) {
+    try {
+      await runJsCli(process.argv);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      await exitAfterUpdateCheck(1);
+    }
+  } else {
+    runRust(argv);
+  }
+}
+
+main();

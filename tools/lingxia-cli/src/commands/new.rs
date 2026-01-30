@@ -10,15 +10,16 @@ use crate::versions::{LingXiaVersions, fetch_latest_versions};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use template::process_template_dir;
 use validation::{validate_package_id, validate_product_name, validate_project_name};
 
-const DEFAULT_PACKAGE_PREFIX: &str = "com.example";
+const DEFAULT_PACKAGE_PREFIX: &str = "app.lingxia";
 const DEFAULT_ICON_BACKGROUND_COLOR: &str = "#FFFFFF";
 
 /// Locate the templates directory
@@ -158,11 +159,40 @@ pub fn execute(
     println!();
 
     // Fetch LingXia versions from GitHub
-    let versions = fetch_latest_versions()?;
+    // Use spinner only in TTY (interactive terminal), skip in CI/non-TTY to avoid log pollution
+    let is_tty = std::io::stdout().is_terminal();
+    let spinner: Option<ProgressBar> = if is_tty {
+        let sp = ProgressBar::new_spinner();
+        sp.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.cyan} {msg}")
+                .expect("Invalid spinner template"),
+        );
+        sp.set_message("Fetching SDK information...");
+        sp.enable_steady_tick(std::time::Duration::from_millis(80));
+        Some(sp)
+    } else {
+        print!("  Fetching SDK information...");
+        std::io::stdout().flush().ok();
+        None
+    };
+
+    let fetch_result = fetch_latest_versions();
+    if let Some(sp) = spinner {
+        sp.finish_and_clear();
+    } else if fetch_result.is_ok() {
+        println!(" done");
+    } else {
+        println!(" failed");
+    }
+
+    let versions = fetch_result?;
     println!(
-        "  rong={}, sdk={}, rustCrate={}",
-        versions.rong.cyan(),
+        "  {} SDK: {}, Rong: {}, Crate: {}",
+        "✓".green(),
         versions.sdk.cyan(),
+        versions.rong.cyan(),
         versions.rust_crate.cyan()
     );
     println!();

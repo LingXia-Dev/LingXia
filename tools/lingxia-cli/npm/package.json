@@ -32,7 +32,6 @@
     "commander": "^14.0.1",
     "fast-glob": "^3.3.2",
     "typescript": "^5.0.0",
-    "update-notifier": "^7.0.0",
     "vite": "^6.0.7"
   },
   "optionalDependencies": {
