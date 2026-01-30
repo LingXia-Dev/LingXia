@@ -1,0 +1,9 @@
+{
+  "latest": "0.1.1",
+  "Android": "0.1.1",
+  "iOS": "0.1.1",
+  "HarmonyOS": "0.1.1",
+  "rustCrate": "0.1.1",
+  "rong": "0.1.1",
+  "minCliVersion": "0.0.8"
+}

@@ -1,6 +1,6 @@
 use crate::appicon;
 use crate::config::LingXiaConfig;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::PathBuf;
 

@@ -1,7 +1,7 @@
-use crate::config::{LingXiaConfig, LingXiaSecrets, HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE};
+use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, LingXiaSecrets};
 use crate::lxapp;
 use crate::platform::{self, BuildConfig, BuildProfile};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::env;
 use std::fs;
@@ -273,16 +273,13 @@ fn prepare_embedded_lxapp_assets(
     prod: bool,
     dev: bool,
 ) -> Result<Option<PreparedLxAppAssets>> {
-    let Some(lxapp_config) = &config.lxapp else {
+    let Some(app) = &config.app else {
         return Ok(None);
     };
 
-    let lxapp_dir = project_root.join(&lxapp_config.source);
+    let lxapp_dir = project_root.join(&app.home_lxapp_id);
     if !lxapp_dir.exists() {
-        return Err(anyhow!(
-            "LxApp directory not found: {}",
-            lxapp_dir.display()
-        ));
+        return Ok(None);
     }
 
     let lxapp_json = lxapp_dir.join("lxapp.json");
@@ -318,10 +315,7 @@ fn prepare_embedded_lxapp_assets(
         ));
     }
 
-    let asset_name = lxapp_config
-        .asset_name
-        .clone()
-        .unwrap_or_else(|| resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string()));
+    let asset_name = resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| app.home_lxapp_id.clone());
 
     Ok(Some(PreparedLxAppAssets {
         dist_dir,

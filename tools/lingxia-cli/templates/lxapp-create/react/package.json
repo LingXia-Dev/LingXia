@@ -14,13 +14,13 @@
     "framework": "react"
   },
   "dependencies": {
-    "@lingxia/rong": "^0.0.1",
+    "@lingxia/rong": "^{{RONG_VERSION}}",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@types/react": "^19.0.6",
-    "@types/react-dom": "^19.0.2",
-    "typescript": "^5.7.2"
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
   }
 }

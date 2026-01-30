@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.json";
-pub const HOST_SECRETS_FILE: &str = "lingxia.secrets.json";
+pub const HOST_SECRETS_FILE: &str = ".lingxia.secrets.json";
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,8 +20,6 @@ pub struct LingXiaConfig {
     pub ios: Option<IosConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harmony: Option<HarmonyConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lxapp: Option<LxAppConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
 }
@@ -107,16 +105,6 @@ pub struct HarmonyConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LxAppConfig {
-    /// Path to LxApp project directory (relative to project root)
-    pub source: String,
-    /// Name to use in assets directory
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub asset_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ResourcesConfig {
     /// Path to i18n resources (relative to project root)
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -142,7 +130,7 @@ pub struct LingXiaSecrets {
 }
 
 impl LingXiaSecrets {
-    /// Load secrets from `lingxia.secrets.json` if present; returns empty defaults if missing.
+    /// Load secrets from `.lingxia.secrets.json` if present; returns empty defaults if missing.
     pub fn load_optional(project_root: &Path) -> Result<Self> {
         let path = project_root.join(HOST_SECRETS_FILE);
         if !path.exists() {
@@ -212,7 +200,6 @@ impl LingXiaConfig {
             }),
             ios: None,
             harmony: None,
-            lxapp: None,
             resources: None,
         }
     }

@@ -73,7 +73,9 @@ fn check_android_sdk() -> bool {
                 if std::path::Path::new(&adb_path).exists() {
                     println!("   - platform-tools: ✅");
                 } else {
-                    println!("   - platform-tools: ⚠️  Not found (install via Android Studio SDK Manager)");
+                    println!(
+                        "   - platform-tools: ⚠️  Not found (install via Android Studio SDK Manager)"
+                    );
                 }
 
                 true

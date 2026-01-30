@@ -1,6 +1,6 @@
-use super::android::AndroidPlatform;
 use super::Platform;
-use anyhow::{anyhow, Result};
+use super::android::AndroidPlatform;
+use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 

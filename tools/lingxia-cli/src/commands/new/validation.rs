@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Validate project name
 pub fn validate_project_name(name: &str) -> Result<()> {

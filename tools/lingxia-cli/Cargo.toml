@@ -1,7 +1,7 @@
 [package]
 name = "lingxia-cli"
 version = "0.0.8"
-edition = "2021"
+edition = "2024"
 
 [[bin]]
 name = "lingxia"
@@ -11,18 +11,19 @@ path = "src/main.rs"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 
-dialoguer = { version = "0.11", features = ["completion"] }
-console = "0.15"
-colored = "2.1"
+dialoguer = { version = "0.12", features = ["completion"] }
+console = "0.16"
+colored = "3.1"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+ureq = "3.1"
 
-which = "6.0"
+which = "8.0"
 adb_client = "3.0.1"
 
 # Image processing for app icon generation
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 
 [dev-dependencies]
-tempfile = "3.8"
+tempfile = "3.24"

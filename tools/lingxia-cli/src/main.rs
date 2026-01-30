@@ -7,6 +7,7 @@ mod config;
 mod lxapp;
 mod path_completion;
 mod platform;
+mod versions;
 
 #[derive(Parser)]
 #[command(name = "lingxia")]
@@ -24,15 +25,15 @@ struct BuildOptions {
     #[arg(short = 'p', long, default_value = "debug")]
     profile: Option<String>,
 
-    /// LxApp build: production mode (kept for compatibility with legacy JS CLI)
+    /// LxApp build: production mode
     #[arg(long, conflicts_with = "dev")]
     prod: bool,
 
-    /// LxApp build: development mode (kept for compatibility with legacy JS CLI)
+    /// LxApp build: development mode
     #[arg(long, conflicts_with = "prod")]
     dev: bool,
 
-    /// LxApp build: plugin mode (lxplugin) (kept for compatibility with legacy JS CLI)
+    /// LxApp build: plugin mode (lxplugin)
     #[arg(long)]
     plugin: bool,
 

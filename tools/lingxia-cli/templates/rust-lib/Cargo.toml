@@ -10,4 +10,4 @@ name = "lingxia"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lingxia = "0.1.1"
+lingxia = "{{CRATE_VERSION}}"

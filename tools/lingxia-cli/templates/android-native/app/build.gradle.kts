@@ -39,7 +39,7 @@ android {
 
 dependencies {
     // LingXia SDK
-    implementation("com.lingxia:lingxia:0.0.1")
+    implementation("com.lingxia:lingxia:{{SDK_VERSION}}")
 
     // Android dependencies
     implementation(libs.androidx.core.ktx)

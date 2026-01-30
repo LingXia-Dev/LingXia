@@ -1,7 +1,7 @@
 use super::build::prepare_host_assets;
 use crate::config::LingXiaConfig;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::env;
 

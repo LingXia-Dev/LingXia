@@ -1,6 +1,6 @@
 use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
-use adb_client::{server::ADBServer, ADBDeviceExt};
-use anyhow::{anyhow, Context, Result};
+use adb_client::{ADBDeviceExt, server::ADBServer};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
 use std::path::{Path, PathBuf};

@@ -2,13 +2,14 @@ mod template;
 mod validation;
 
 use crate::config::{
-    AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, LingXiaSecrets,
-    HOST_SECRETS_FILE,
+    AndroidConfig, HOST_SECRETS_FILE, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig,
+    LingXiaSecrets,
 };
 use crate::path_completion::FilePathCompleter;
-use anyhow::{anyhow, Result};
+use crate::versions::{LingXiaVersions, fetch_latest_versions};
+use anyhow::{Result, anyhow};
 use colored::Colorize;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
+use dialoguer::{Confirm, Input, MultiSelect, Select, theme::ColorfulTheme};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -156,6 +157,16 @@ pub fn execute(
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
+    // Fetch LingXia versions from GitHub
+    let versions = fetch_latest_versions()?;
+    println!(
+        "  rong={}, sdk={}, rustCrate={}",
+        versions.rong.cyan(),
+        versions.sdk.cyan(),
+        versions.rust_crate.cyan()
+    );
+    println!();
+
     let project_type = gather_project_type(project_type)?;
     let name = gather_project_name(name)?;
     let product_name = gather_product_name(&name, yes)?;
@@ -163,7 +174,7 @@ pub fn execute(
     if matches!(project_type, ProjectType::LxApp) {
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
-        create_lxapp_from_template(&target_dir, &name, &product_name, &framework)?;
+        create_lxapp_from_template(&target_dir, &name, &product_name, &framework, &versions)?;
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
@@ -212,8 +223,8 @@ pub fn execute(
         }
     }
 
-    create_project(&config)?;
-    create_rust_library(&config)?;
+    create_project(&config, &versions)?;
+    create_rust_library(&config, &versions)?;
 
     // Ask user if they want to configure app icon (if not provided via CLI)
     let icon_config = match (icon, yes) {
@@ -258,7 +269,7 @@ pub fn execute(
 
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
-    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework)?;
+    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework, &versions)?;
     generate_config_file(&config, &lxapp_info)?;
     generate_secrets_file(&config)?;
     ensure_root_gitignore(&config)?;
@@ -455,7 +466,7 @@ fn gather_lxapp_framework(yes: bool) -> Result<String> {
     Ok(choices[selection].to_lowercase())
 }
 
-fn create_project(config: &ProjectConfig) -> Result<()> {
+fn create_project(config: &ProjectConfig, versions: &LingXiaVersions) -> Result<()> {
     if config.target_dir.exists() {
         return Err(anyhow!(
             "Directory '{}' already exists",
@@ -472,7 +483,7 @@ fn create_project(config: &ProjectConfig) -> Result<()> {
     for platform in &config.platforms {
         match platform {
             Platform::Android => {
-                create_android_project(config)?;
+                create_android_project(config, versions)?;
                 created_any = true;
             }
             Platform::Ios => {
@@ -493,7 +504,7 @@ fn create_project(config: &ProjectConfig) -> Result<()> {
     Ok(())
 }
 
-fn create_android_project(config: &ProjectConfig) -> Result<()> {
+fn create_android_project(config: &ProjectConfig, versions: &LingXiaVersions) -> Result<()> {
     let project_root = &config.target_dir;
 
     // Create root directory
@@ -523,6 +534,8 @@ fn create_android_project(config: &ProjectConfig) -> Result<()> {
     vars.insert("MIN_SDK".to_string(), "29".to_string());
     vars.insert("TARGET_SDK".to_string(), "35".to_string());
     vars.insert("COMPILE_SDK".to_string(), "35".to_string());
+
+    vars.insert("SDK_VERSION".to_string(), versions.sdk.clone());
 
     // Process all template files into android/ subdirectory
     process_template_dir(&template_dir, &android_dir, &vars)?;
@@ -572,7 +585,7 @@ fn create_harmony_placeholder(config: &ProjectConfig) -> Result<()> {
     Ok(())
 }
 
-fn create_rust_library(config: &ProjectConfig) -> Result<()> {
+fn create_rust_library(config: &ProjectConfig, versions: &LingXiaVersions) -> Result<()> {
     let project_root = &config.target_dir;
     let lib_name = format!("{}-lib", config.name);
     let lib_dir = project_root.join(&lib_name);
@@ -600,6 +613,8 @@ fn create_rust_library(config: &ProjectConfig) -> Result<()> {
     // e.g., com.example.mouke -> com_example_mouke
     let package_id_underscore = config.package_id.replace('.', "_");
     vars.insert("PACKAGE_ID_UNDERSCORE".to_string(), package_id_underscore);
+
+    vars.insert("CRATE_VERSION".to_string(), versions.rust_crate.clone());
 
     // Process all template files into {project}-lib/ directory
     process_template_dir(&template_dir, &lib_dir, &vars)?;
@@ -658,7 +673,7 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
         app: Some(HostAppConfig {
             product_name: config.product_name.clone(),
             product_version: "1.0.0".to_string(),
-            api_server: Some("https://api.example.com".to_string()),
+            api_server: None,
             platforms: platforms.clone(),
             home_lxapp_id: lxapp.app_id.clone(),
             home_lxapp_version: "1.0.0".to_string(),
@@ -666,10 +681,6 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
         android,
         ios,
         harmony,
-        lxapp: Some(crate::config::LxAppConfig {
-            source: lxapp.app_id.clone(),
-            asset_name: None,
-        }),
         resources: None,
     };
 
@@ -736,6 +747,7 @@ fn create_lxapp_from_template(
     project_name: &str,
     product_name: &str,
     framework: &str,
+    versions: &LingXiaVersions,
 ) -> Result<()> {
     if target_dir.exists() {
         return Err(anyhow!(
@@ -763,6 +775,8 @@ fn create_lxapp_from_template(
     vars.insert("APP_ID".to_string(), slug);
     vars.insert("APP_DISPLAY_NAME".to_string(), product_name.to_string());
 
+    vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
+
     process_template_dir(&template_dir, target_dir, &vars)?;
     Ok(())
 }
@@ -771,27 +785,21 @@ fn create_lxapp_project(
     config: &ProjectConfig,
     lxapp_dir_name: &str,
     framework: &str,
+    versions: &LingXiaVersions,
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
     println!("  Creating LxApp project...");
-    create_lxapp_from_template(&lxapp_dir, lxapp_dir_name, &config.product_name, framework)?;
-
-    let lxapp_json = lxapp_dir.join("lxapp.json");
-    let app_id = read_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string());
-
-    Ok(LxAppInfo { app_id })
-}
-
-fn read_lxapp_id(path: &PathBuf) -> Result<String> {
-    let content = fs::read_to_string(path)?;
-    let value: serde_json::Value = serde_json::from_str(&content)?;
-    let app_id = value
-        .get("lxAppId")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
-    Ok(app_id)
+    create_lxapp_from_template(
+        &lxapp_dir,
+        lxapp_dir_name,
+        &config.product_name,
+        framework,
+        versions,
+    )?;
+    Ok(LxAppInfo {
+        app_id: lxapp_dir_name.to_string(),
+    })
 }
 
 fn slugify(value: &str) -> String {
