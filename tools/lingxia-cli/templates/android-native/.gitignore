@@ -15,6 +15,9 @@ gen/
 out/
 build/
 
+# LingXia generated assets (app.json + embedded LxApps)
+app/src/main/assets/
+
 # Gradle files
 .gradle/
 build/

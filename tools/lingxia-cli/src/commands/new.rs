@@ -2,7 +2,8 @@ mod template;
 mod validation;
 
 use crate::config::{
-    AndroidConfig, HarmonyConfig, IosConfig, LingXiaConfig, ProjectConfig as ConfigProjectConfig,
+    AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, LingXiaSecrets,
+    ProjectConfig as ConfigProjectConfig, HOST_SECRETS_FILE,
 };
 use crate::lxapp;
 use crate::path_completion::FilePathCompleter;
@@ -12,6 +13,7 @@ use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Select};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use template::process_template_dir;
 use validation::{validate_package_id, validate_project_name};
@@ -242,8 +244,9 @@ pub fn execute(
 
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name)?;
-    generate_app_config(&config, &lxapp_info)?;
     generate_config_file(&config, &lxapp_info)?;
+    generate_secrets_file(&config)?;
+    ensure_root_gitignore(&config)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
@@ -561,27 +564,6 @@ struct LxAppInfo {
     app_id: String,
 }
 
-fn generate_app_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
-    let app_json = config.target_dir.join("app.json");
-    if app_json.exists() {
-        return Ok(());
-    }
-
-    let content = serde_json::json!({
-        "productName": format!("{} App", config.name),
-        "productVersion": "1.0.0",
-        "apiServer": "https://api.example.com",
-        "apiKey": "",
-        "apiSecret": "",
-        "homeLxAppID": lxapp.app_id,
-        "homeLxAppVersion": "1.0.0"
-    });
-
-    fs::write(app_json, serde_json::to_string_pretty(&content)?)?;
-    println!("  Created app.json");
-    Ok(())
-}
-
 fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
     let platforms = config
         .platforms
@@ -623,6 +605,13 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
     };
 
     let lingxia_config = LingXiaConfig {
+        app: Some(HostAppConfig {
+            product_name: format!("{} App", config.name),
+            product_version: "1.0.0".to_string(),
+            api_server: Some("https://api.example.com".to_string()),
+            home_lxapp_id: lxapp.app_id.clone(),
+            home_lxapp_version: "1.0.0".to_string(),
+        }),
         project: ConfigProjectConfig {
             name: config.name.clone(),
             project_type: config.project_type.as_str().to_string(),
@@ -643,6 +632,42 @@ fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()>
 
     println!("  Created lingxia.config.json");
 
+    Ok(())
+}
+
+fn generate_secrets_file(config: &ProjectConfig) -> Result<()> {
+    let secrets_path = config.target_dir.join(HOST_SECRETS_FILE);
+    if secrets_path.exists() {
+        return Ok(());
+    }
+
+    let secrets = LingXiaSecrets::default();
+    fs::write(secrets_path, serde_json::to_string_pretty(&secrets)?)?;
+    println!("  Created {}", HOST_SECRETS_FILE);
+    Ok(())
+}
+
+fn ensure_root_gitignore(config: &ProjectConfig) -> Result<()> {
+    let gitignore_path = config.target_dir.join(".gitignore");
+    let existed = gitignore_path.exists();
+
+    let block = format!(
+        "{}# LingXia (generated / local-only)\n{}\nandroid/{}/\n{}/\n",
+        if existed { "\n" } else { "" },
+        HOST_SECRETS_FILE,
+        crate::platform::detector::ANDROID_ASSETS_REL_PATH,
+        crate::platform::detector::ANDROID_ASSETS_REL_PATH
+    );
+
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&gitignore_path)?
+        .write_all(block.as_bytes())?;
+
+    if !existed {
+        println!("  Created .gitignore");
+    }
     Ok(())
 }
 

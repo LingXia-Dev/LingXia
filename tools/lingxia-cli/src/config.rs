@@ -5,11 +5,15 @@ use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.json";
+pub const HOST_SECRETS_FILE: &str = "lingxia.secrets.json";
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LingXiaConfig {
+    /// Host app settings used to generate `app.json` at build time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app: Option<HostAppConfig>,
     pub project: ProjectConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub android: Option<AndroidConfig>,
@@ -21,6 +25,24 @@ pub struct LingXiaConfig {
     pub lxapp: Option<LxAppConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+}
+
+/// Non-sensitive host app settings (checked into git via `lingxia.config.json`).
+/// Secrets (apiKey/apiSecret) must NOT be stored here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostAppConfig {
+    pub product_name: String,
+    pub product_version: String,
+
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_server: Option<String>,
+
+    // Keep explicit spelling for "ID" (not "Id") to match runtime `app.json` schema.
+    #[serde(rename = "homeLxAppID")]
+    pub home_lxapp_id: String,
+    pub home_lxapp_version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +134,33 @@ pub struct ResourcesConfig {
     pub runtime: Option<String>,
 }
 
+/// Sensitive host app settings (must NOT be checked into git).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LingXiaSecrets {
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_secret: Option<String>,
+}
+
+impl LingXiaSecrets {
+    /// Load secrets from `lingxia.secrets.json` if present; returns empty defaults if missing.
+    pub fn load_optional(project_root: &Path) -> Result<Self> {
+        let path = project_root.join(HOST_SECRETS_FILE);
+        if !path.exists() {
+            return Ok(Self::default());
+        }
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", HOST_SECRETS_FILE))?;
+        let secrets: LingXiaSecrets = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", HOST_SECRETS_FILE))?;
+        Ok(secrets)
+    }
+}
+
 impl LingXiaConfig {
     /// Load config from lingxia.config.json in the given directory
     pub fn load(project_root: &Path) -> Result<Self> {
@@ -150,6 +199,7 @@ impl LingXiaConfig {
     #[allow(dead_code)] // Used in tests
     pub fn new_android(project_name: &str, package_id: &str) -> Self {
         Self {
+            app: None,
             project: ProjectConfig {
                 name: project_name.to_string(),
                 project_type: "native-app".to_string(),

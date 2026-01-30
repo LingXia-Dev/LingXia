@@ -4,6 +4,8 @@ use anyhow::{anyhow, Result};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+pub const ANDROID_ASSETS_REL_PATH: &str = "app/src/main/assets";
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum PlatformType {
     Android,
@@ -85,6 +87,11 @@ pub fn resolve_android_dir(project_root: &Path) -> PathBuf {
     } else {
         project_root.to_path_buf()
     }
+}
+
+/// Resolve the Android assets directory for the given project.
+pub fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
+    resolve_android_dir(project_root).join(ANDROID_ASSETS_REL_PATH)
 }
 
 /// Detect the platform type based on project structure.

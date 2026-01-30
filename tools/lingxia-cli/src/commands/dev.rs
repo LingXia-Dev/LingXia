@@ -1,3 +1,4 @@
+use super::build::prepare_host_assets;
 use crate::config::LingXiaConfig;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{anyhow, Result};
@@ -69,6 +70,18 @@ pub fn execute(
         ));
     }
     let platform = platform::android::AndroidPlatform::new();
+
+    // Generate app.json and embed LxApp assets (assets are not tracked by git).
+    let platforms_to_build = vec![platform::detector::PlatformType::Android];
+    prepare_host_assets(
+        &project_root,
+        &config,
+        build_profile,
+        false,
+        false,
+        &platforms_to_build,
+        true,
+    )?;
 
     // Step 1: Build
     println!("{}", "Step 1/3: Building...".bold());

@@ -1,4 +1,4 @@
-use crate::config::{LingXiaConfig, HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE};
+use crate::config::{LingXiaConfig, LingXiaSecrets, HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE};
 use crate::lxapp;
 use crate::platform::{self, BuildConfig, BuildProfile};
 use anyhow::{anyhow, Result};
@@ -126,7 +126,7 @@ pub fn execute(
     };
 
     // Prepare LxApp assets if configured
-    prepare_lxapp_assets(
+    prepare_host_assets(
         &project_root,
         &config,
         build_profile,
@@ -205,7 +205,7 @@ pub fn execute(
     Ok(())
 }
 
-fn prepare_lxapp_assets(
+pub(crate) fn prepare_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
@@ -214,8 +214,61 @@ fn prepare_lxapp_assets(
     platforms: &[platform::detector::PlatformType],
     explicit_platforms: bool,
 ) -> Result<()> {
+    let prepared_lxapp_assets = if platforms
+        .iter()
+        .any(|p| matches!(p, platform::detector::PlatformType::Android))
+    {
+        prepare_embedded_lxapp_assets(project_root, config, build_profile, prod, dev)?
+    } else {
+        None
+    };
+
+    for platform in platforms {
+        match platform {
+            platform::detector::PlatformType::Android => {
+                let assets_root = platform::detector::resolve_android_assets_dir(project_root);
+                fs::create_dir_all(&assets_root)?;
+
+                ensure_host_app_json(project_root, config, &assets_root)?;
+
+                if let Some(ref lxapp_assets) = prepared_lxapp_assets {
+                    let target_dir = assets_root.join(&lxapp_assets.asset_name);
+                    if target_dir.exists() {
+                        fs::remove_dir_all(&target_dir)?;
+                    }
+                    copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
+                    println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
+                }
+            }
+            platform::detector::PlatformType::Ios | platform::detector::PlatformType::Harmony => {
+                if explicit_platforms && prepared_lxapp_assets.is_some() {
+                    println!(
+                        "  {} LxApp embedding for {} not yet supported.",
+                        "⚠️".yellow(),
+                        platform.as_str()
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+struct PreparedLxAppAssets {
+    dist_dir: PathBuf,
+    asset_name: String,
+}
+
+fn prepare_embedded_lxapp_assets(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    build_profile: BuildProfile,
+    prod: bool,
+    dev: bool,
+) -> Result<Option<PreparedLxAppAssets>> {
     let Some(lxapp_config) = &config.lxapp else {
-        return Ok(());
+        return Ok(None);
     };
 
     let lxapp_dir = project_root.join(&lxapp_config.source);
@@ -264,39 +317,96 @@ fn prepare_lxapp_assets(
         .clone()
         .unwrap_or_else(|| resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| "lxapp".to_string()));
 
-    let app_json = project_root.join("app.json");
+    Ok(Some(PreparedLxAppAssets {
+        dist_dir,
+        asset_name,
+    }))
+}
 
-    for platform in platforms {
-        match platform {
-            platform::detector::PlatformType::Android => {
-                let android_root = platform::detector::resolve_android_dir(project_root);
-                let assets_root = android_root.join("app/src/main/assets");
-                fs::create_dir_all(&assets_root)?;
-
-                if app_json.exists() {
-                    fs::copy(&app_json, assets_root.join("app.json"))?;
-                }
-
-                let target_dir = assets_root.join(&asset_name);
-                if target_dir.exists() {
-                    fs::remove_dir_all(&target_dir)?;
-                }
-                copy_dir_recursive(&dist_dir, &target_dir)?;
-
-                println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
-            }
-            platform::detector::PlatformType::Ios | platform::detector::PlatformType::Harmony => {
-                if explicit_platforms {
-                    println!(
-                        "  {} LxApp embedding for {} not yet supported.",
-                        "⚠️".yellow(),
-                        platform.as_str()
-                    );
-                }
-            }
-        }
+fn ensure_host_app_json(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    assets_root: &Path,
+) -> Result<()> {
+    if config.app.is_some() {
+        return write_app_json_from_config(project_root, config, assets_root);
     }
 
+    // Backward compatible migration path:
+    // If `app.json` exists in the project root, embed it as-is.
+    let legacy_app_json = project_root.join("app.json");
+    if legacy_app_json.exists() {
+        fs::copy(&legacy_app_json, assets_root.join("app.json"))?;
+        println!(
+            "  {} Using legacy app.json from project root (consider migrating to {}: app.*).",
+            "⚠️".yellow(),
+            HOST_CONFIG_FILE
+        );
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "Missing host app settings in {}.\n\
+         Add an 'app' section (productName/productVersion/apiServer/homeLxAppID/homeLxAppVersion),\n\
+         or provide a legacy app.json in the project root for migration.",
+        HOST_CONFIG_FILE
+    ))
+}
+
+fn write_app_json_from_config(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    assets_root: &Path,
+) -> Result<()> {
+    let app = config
+        .app
+        .as_ref()
+        .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
+
+    let secrets = LingXiaSecrets::load_optional(project_root)?;
+    let api_key = env::var("LINGXIA_API_KEY")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| secrets.api_key.clone().filter(|s| !s.trim().is_empty()));
+    let api_secret = env::var("LINGXIA_API_SECRET")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| secrets.api_secret.clone().filter(|s| !s.trim().is_empty()));
+
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "productName".to_string(),
+        serde_json::json!(app.product_name),
+    );
+    obj.insert(
+        "productVersion".to_string(),
+        serde_json::json!(app.product_version),
+    );
+
+    if let Some(api_server) = app.api_server.as_ref().filter(|s| !s.trim().is_empty()) {
+        obj.insert("apiServer".to_string(), serde_json::json!(api_server));
+    }
+    if let Some(api_key) = api_key {
+        obj.insert("apiKey".to_string(), serde_json::json!(api_key));
+    }
+    if let Some(api_secret) = api_secret {
+        obj.insert("apiSecret".to_string(), serde_json::json!(api_secret));
+    }
+
+    obj.insert(
+        "homeLxAppID".to_string(),
+        serde_json::json!(app.home_lxapp_id),
+    );
+    obj.insert(
+        "homeLxAppVersion".to_string(),
+        serde_json::json!(app.home_lxapp_version),
+    );
+
+    let app_json_path = assets_root.join("app.json");
+    fs::write(
+        app_json_path,
+        serde_json::to_string_pretty(&serde_json::Value::Object(obj))?,
+    )?;
     Ok(())
 }
 
