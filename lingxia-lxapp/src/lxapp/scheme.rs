@@ -273,14 +273,18 @@ impl LxApp {
             }
         }
         let raw_path = decoded_path.trim_start_matches('/');
-        let (appid, rest) = raw_path
-            .split_once('/')
-            .ok_or_else(|| LxAppError::ResourceNotFound(uri.to_string()))?;
-        if appid != self.appid.as_str() {
-            return Err(LxAppError::ResourceNotFound(uri.to_string()));
-        }
-
-        let normalized = rest.trim_matches('/');
+        // Support both:
+        // - lx://lxapp/<appid>/<path> (explicit)
+        // - lx://lxapp/<path>         (implicit appid = current page's appid)
+        //
+        // The implicit form enables common web patterns like <img src="/public/logo.png">,
+        // which resolve (via URL rules) to lx://lxapp/public/logo.png (appid omitted).
+        let (first, rest) = raw_path.split_once('/').unwrap_or(("", raw_path));
+        let normalized = if first == self.appid.as_str() {
+            rest.trim_matches('/')
+        } else {
+            raw_path.trim_matches('/')
+        };
         if normalized.is_empty() {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
@@ -292,7 +296,8 @@ impl LxApp {
             return Ok(local_path);
         }
 
-        if let Some(stripped) = lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_LXAPP, appid)
+        if let Some(stripped) =
+            lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_LXAPP, &self.appid)
         {
             if let Ok(local_path) = self.resolve_accessible_path(&stripped) {
                 return Ok(local_path);
