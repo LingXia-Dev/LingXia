@@ -69,10 +69,7 @@ lingxia build [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--prod` | Production build (minified, optimized) | false |
-| `--dev` | Development build | false |
-| `--plugin` | Build as LxPlugin instead of LxApp | false |
-| `-p, --profile <profile>` | Build profile: `debug` or `release` | debug |
+| `--release` | Release build (optimized) | false (debug) |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `-t, --targets <targets>` | Target architectures (comma-separated) | auto |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
@@ -84,11 +81,8 @@ lingxia build [options]
 # Development build (default)
 lingxia build
 
-# Production build
-lingxia build --prod
-
-# Release profile for native code
-lingxia build -p release
+# Release build
+lingxia build --release
 
 # Build for specific platform
 lingxia build --platform android
@@ -112,7 +106,7 @@ lingxia dev [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
-| `-p, --profile <profile>` | Build profile: `debug` or `release` | debug |
+| `--release` | Release build (optimized) | false (debug) |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `-t, --targets <targets>` | Target architectures (comma-separated) | auto |
 | `--skip-native` | Skip native Rust library compilation | false |
@@ -126,8 +120,8 @@ lingxia dev
 # Target specific device
 lingxia dev -d emulator-5554
 
-# Use release profile
-lingxia dev -p release
+# Use release build
+lingxia dev --release
 ```
 
 ---
@@ -264,7 +258,8 @@ API credentials can be provided in two ways (priority from high to low):
     "apiServer": "https://api.example.com",
     "platforms": ["android"],
     "homeLxAppID": "homelxapp",
-    "homeLxAppVersion": "1.0.0"
+    "homeLxAppVersion": "1.0.0",
+    "sdkVersion": "0.1.0"
   },
   "android": {
     "packageId": "com.example.myapp",
@@ -286,16 +281,18 @@ API credentials can be provided in two ways (priority from high to low):
 }
 ```
 
-### `lxapp.config.json` (LxApp Build Config)
+### `lxapp.config.ts` (LxApp Build Config)
 
-```json
-{
-  "alias": {
+```typescript
+import { defineConfig } from "@lingxia/cli";
+
+export default defineConfig({
+  alias: {
     "@": "src",
-    "@shared": "shared"
+    "@shared": "shared",
   },
-  "sourceDirs": ["pages", "shared"]
-}
+  sourceDirs: ["pages", "shared"],
+});
 ```
 
 ---

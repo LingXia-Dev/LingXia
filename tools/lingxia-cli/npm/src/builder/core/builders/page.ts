@@ -330,12 +330,7 @@ export class PageProcessor {
   }
 
   private createProjectRequire(projectPath: string): NodeJS.Require {
-    const candidateFiles = [
-      "package.json",
-      "lxapp.config.json",
-      "lingxia.config.ts",
-      "lingxia.config.js",
-    ];
+    const candidateFiles = ["package.json", "lxapp.config.ts"];
     for (const file of candidateFiles) {
       const fullPath = path.join(projectPath, file);
       if (fs.existsSync(fullPath)) {

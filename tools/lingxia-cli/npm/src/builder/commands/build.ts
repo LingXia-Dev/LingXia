@@ -66,11 +66,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     ].filter((f) => fs.existsSync(f));
 
     if (!isPluginMode) {
-      const lxappConfigPath = path.join(projectPath, "lxapp.config.json");
+      const lxappConfigPath = path.join(projectPath, "lxapp.config.ts");
       if (!fs.existsSync(lxappConfigPath)) {
-        throw new Error("lxapp.config.json not found in project root");
+        throw new Error("lxapp.config.ts not found in project root");
       }
-      jsonFiles.push(lxappConfigPath);
     }
 
     for (const file of jsonFiles) {

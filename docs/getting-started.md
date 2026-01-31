@@ -86,7 +86,7 @@ my-app/
 ```
 my-lxapp/
 ├── lxapp.json           # App metadata (lxAppId, lxAppName, version)
-├── lxapp.config.json    # Build configuration
+├── lxapp.config.ts      # Build configuration
 ├── package.json         # NPM dependencies
 ├── pages/               # Page components
 │   └── home/
@@ -122,13 +122,13 @@ lingxia build
 Host App:
 
 ```bash
-lingxia build --prod
+lingxia build --release
 ```
 
 LxApp only:
 
 ```bash
-lingxia build --prod
+lingxia build --release
 ```
 
 ---
