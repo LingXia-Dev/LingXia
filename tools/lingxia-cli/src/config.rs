@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
-pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.json";
+pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 pub const HOST_SECRETS_FILE: &str = ".lingxia.secrets.json";
 
 /// Host project configuration (native app project)

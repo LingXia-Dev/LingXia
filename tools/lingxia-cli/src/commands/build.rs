@@ -21,7 +21,6 @@ pub fn execute(
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
     let lxapp_json_exists = project_root.join("lxapp.json").exists();
-    let lxapp_config_exists = project_root.join(LXAPP_BUILD_CONFIG_FILE).exists();
     let lxplugin_json_exists = project_root.join("lxplugin.json").exists();
 
     println!("{}", "🚀 LingXia Build".bold().cyan());
@@ -29,31 +28,14 @@ pub fn execute(
 
     let host_config_exists = project_root.join(HOST_CONFIG_FILE).exists();
 
-    if (lxapp_json_exists && lxapp_config_exists && !host_config_exists)
-        || (lxplugin_json_exists && !host_config_exists)
-    {
+    // LxApp or LxPlugin project (no host config)
+    if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
         let mut args = vec!["build".to_string()];
         if release {
             args.push("--release".to_string());
         }
 
         return lxapp::run(&args);
-    }
-
-    // Validate LxApp structure (plugin projects don't require lxapp.config.json).
-    if lxapp_json_exists && !lxapp_config_exists && !lxplugin_json_exists {
-        return Err(anyhow!(
-            "{} not found. LxApp projects must include both lxapp.json and {}.",
-            LXAPP_BUILD_CONFIG_FILE,
-            LXAPP_BUILD_CONFIG_FILE
-        ));
-    }
-
-    if lxapp_config_exists && !lxapp_json_exists && !lxplugin_json_exists {
-        return Err(anyhow!(
-            "lxapp.json not found. LxApp projects must include both lxapp.json and {}.",
-            LXAPP_BUILD_CONFIG_FILE
-        ));
     }
 
     if !host_config_exists {
