@@ -104,9 +104,10 @@ fi
 echo "Preparing example app assets (app.json + homelxapp) ..."
 RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
-cp "$LINGXIA_ROOT/examples/demo/app.json" "$RAWFILE_DIR/"
-if [ -d "$LINGXIA_ROOT/examples/demo/homelxapp/dist" ]; then
-  mkdir -p "$RAWFILE_DIR/homelxapp" && cp -R "$LINGXIA_ROOT/examples/demo/homelxapp/dist/"* "$RAWFILE_DIR/homelxapp/"
+source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
+generate_app_json "$RAWFILE_DIR"
+if [ -d "$LINGXIA_ROOT/examples/homelxapp/dist" ]; then
+  mkdir -p "$RAWFILE_DIR/homelxapp" && cp -R "$LINGXIA_ROOT/examples/homelxapp/dist/"* "$RAWFILE_DIR/homelxapp/"
 fi
 
 # 4) Build & install example HAP

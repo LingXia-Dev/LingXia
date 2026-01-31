@@ -1,0 +1,19 @@
+{
+  "app": {
+    "productName": "LingXia App Demo",
+    "productVersion": "0.1.0",
+    "apiServer": "http://192.168.37.77:8080",
+    "platforms": [
+      "android"
+    ],
+    "homeLxAppID": "homelxapp",
+    "homeLxAppVersion": "0.1.0",
+    "sdkVersion": "0.1.0"
+  },
+  "android": {
+    "packageId": "com.lingxia.example",
+    "minSdk": 29,
+    "targetSdk": 35,
+    "compileSdk": 35
+  }
+}

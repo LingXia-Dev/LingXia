@@ -200,12 +200,13 @@ mkdir -p "$ASSETS_DIR"
 echo "Cleaning assets directory..."
 rm -rf "$ASSETS_DIR"/*
 
-echo "Copying host app configuration..."
-cp "$LINGXIA_ROOT/examples/demo/app.json" "$ASSETS_DIR/"
+echo "Generating host app configuration..."
+source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
+generate_app_json "$ASSETS_DIR"
 
 echo "Building and copying demo LxApp..."
 # Build homelxapp using LingXia Builder
-cd "$LINGXIA_ROOT/examples/demo/homelxapp"
+cd "$LINGXIA_ROOT/examples/homelxapp"
 # Copy built LxApp to assets with proper directory structure
 if [ -d "dist" ]; then
     echo "Copying built LxApp to assets..."

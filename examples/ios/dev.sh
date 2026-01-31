@@ -80,11 +80,12 @@ mkdir -p "$RESOURCES_DIR"
 echo "Cleaning resources directory..."
 rm -rf "$RESOURCES_DIR"/*
 
-echo "Copying host app configuration..."
-cp "$LINGXIA_ROOT/examples/demo/app.json" "$RESOURCES_DIR/"
+echo "Generating host app configuration..."
+source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
+generate_app_json "$RESOURCES_DIR"
 
 echo "Building and copying demo LxApp..."
-cd "$LINGXIA_ROOT/examples/demo/homelxapp"
+cd "$LINGXIA_ROOT/examples/homelxapp"
 if [ -f "package.json" ] ; then
     # Copy built LxApp to resources with proper directory structure
     if [ -d "dist" ]; then

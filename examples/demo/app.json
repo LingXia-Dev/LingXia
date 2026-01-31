@@ -1,8 +1,0 @@
-{
-  "productName": "LingXia Mini App Demo",
-  "productVersion": "1.0.0",
-  "apiServer": "https://api.lingxia.app",
-  "apiKey": "demo_api_key_12345",
-  "homeLxAppID": "homelxapp",
-  "homeLxAppVersion": "1.0.0"
-}
