@@ -62,11 +62,7 @@ export default function HomePage() {
         {/* Main Card - Apple Style Frosted Glass */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
           <div className="text-center mb-6">
-            <div className="w-14 h-14 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-[16px] flex items-center justify-center shadow-lg">
-              <svg viewBox="0 0 24 24" fill="white" className="w-7 h-7">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-              </svg>
-            </div>
+            <img src="/public/AppIcon.png" alt="Logo" className="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
             <div className="text-[17px] font-semibold text-gray-900">LingXia</div>
             <div className="text-[13px] text-gray-500 mt-0.5">Lightweight Application Framework</div>
           </div>

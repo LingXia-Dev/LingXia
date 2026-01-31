@@ -4,8 +4,8 @@
   "description": "LingXia LxApp demo",
   "type": "module",
   "scripts": {
-    "build": "node ../../../tools/lingxia-cli/npm/bin/lingxia.js build --prod",
-    "dev": "node ../../../tools/lingxia-cli/npm/bin/lingxia.js build --dev"
+    "build": "node ../../tools/lingxia-cli/npm/bin/lingxia.js build --release",
+    "dev": "node ../../tools/lingxia-cli/npm/bin/lingxia.js build"
   },
   "keywords": [
     "lingxia",
@@ -14,8 +14,8 @@
   "author": "LingXia Team",
   "license": "MIT",
   "dependencies": {
-    "lingxia-components": "file:../../../lingxia-components",
-    "lingxia-types": "file:../../../lingxia-types",
+    "lingxia-components": "file:../../lingxia-components",
+    "lingxia-types": "file:../../lingxia-types",
     "@lingxia/rong": "^0.0.1",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
