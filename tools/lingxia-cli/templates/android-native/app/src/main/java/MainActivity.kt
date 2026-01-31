@@ -2,8 +2,8 @@ package {{PACKAGE_ID}}
 
 import android.os.Bundle
 import android.util.Log
-import com.lingxia.LxApp
-import com.lingxia.LxAppLaunchActivity
+import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.LxAppLaunchActivity
 
 class MainActivity : LxAppLaunchActivity() {
     private val TAG = "MainActivity"

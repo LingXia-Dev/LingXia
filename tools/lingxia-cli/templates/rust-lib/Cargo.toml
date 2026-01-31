@@ -11,3 +11,18 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 lingxia = "{{CRATE_VERSION}}"
+
+# Platform-specific dependencies for FFI
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+napi-ohos = "1.1"
+napi-derive-ohos = "1.1"
+
+# Release profile: optimize for size
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true

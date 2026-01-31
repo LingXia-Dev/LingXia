@@ -1,60 +1,131 @@
 import React from 'react';
+import { LxNavigator } from '@lingxia/components/react';
+import '../../app.css';
 
-type PageState = {
-  greeting: string;
-  greetCount: number;
-};
-
-type PageActions = {
-  data: PageState;
-  greet(payload: { name: string }): void;
-};
-
+type PageState = { greeting: string; greetCount: number };
+type PageActions = { data: PageState; greet(payload: { name: string }): void };
 declare function useLingXia(): PageActions;
 
 export default function HomePage() {
   const { data, greet } = useLingXia();
   const [name, setName] = React.useState('');
-  const [pending, setPending] = React.useState(false);
-
-  React.useEffect(() => {
-    if (pending) {
-      const timer = setTimeout(() => setPending(false), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [data.greetCount, pending]);
-
-  const submit = () => {
-    const value = name.trim();
-    if (!value) return;
-    setPending(true);
-    greet({ name: value });
-  };
+  const submit = () => name.trim() && greet({ name: name.trim() });
 
   return (
-    <div className="home-screen">
-      <div className="card">
-        <p className="eyebrow">LingXia + React</p>
-        <h1>Hello there 👋</h1>
-        <p className="description">
-          This starter demonstrates how logic data flows into a React view via the <code>useLingXia</code> hook.
-        </p>
-        <div className="form-row">
+    <div style={S.page}>
+      <div style={S.card}>
+        <img src="/public/AppIcon.png" style={S.logo} />
+        <h1 style={S.title}>Hello, LingXia</h1>
+        <p style={S.subtitle}>Build once, run everywhere</p>
+
+        <div style={S.form}>
           <input
             value={name}
-            placeholder="Enter a name"
-            onChange={event => setName(event.target.value)}
-            onKeyDown={event => {
-              if (event.key === 'Enter') submit();
-            }}
+            placeholder="Enter your name"
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && submit()}
+            style={S.input}
           />
-          <button type="button" onClick={submit} disabled={pending}>
-            {pending ? 'Sending...' : 'Greet'}
+          <button onClick={submit} disabled={!name.trim()} style={S.btn}>
+            Say Hello
           </button>
         </div>
-        <div className="greeting">{data.greeting}</div>
-        <div className="meta">Invoked {data.greetCount} times</div>
+
+        {data.greeting && <p style={S.greeting}>{data.greeting}</p>}
+
+        <div style={S.footer}>
+          <LxNavigator url="https://www.lingxia.app" style={S.link}>
+            Documentation →
+          </LxNavigator>
+        </div>
       </div>
     </div>
   );
 }
+
+const S: Record<string, React.CSSProperties> = {
+  page: {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 360,
+    padding: 32,
+    background: '#fff',
+    borderRadius: 20,
+    boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
+    textAlign: 'center',
+  },
+  logo: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    boxShadow: '0 2px 12px rgba(0,0,0,0.1)',
+  },
+  title: {
+    margin: '20px 0 6px',
+    fontSize: 26,
+    fontWeight: 700,
+    color: '#1d1d1f',
+  },
+  subtitle: {
+    margin: 0,
+    fontSize: 15,
+    color: '#86868b',
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 12,
+    marginTop: 28,
+  },
+  input: {
+    width: '100%',
+    height: 48,
+    padding: '0 16px',
+    border: '1px solid #d2d2d7',
+    borderRadius: 12,
+    fontSize: 16,
+    outline: 'none',
+    background: '#fafafa',
+    transition: 'border-color 0.2s',
+  },
+  btn: {
+    width: '100%',
+    height: 48,
+    border: 'none',
+    borderRadius: 12,
+    background: '#007aff',
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+  },
+  greeting: {
+    marginTop: 24,
+    padding: 16,
+    background: '#f0fdf4',
+    border: '1px solid #bbf7d0',
+    borderRadius: 12,
+    color: '#166534',
+    fontSize: 15,
+    whiteSpace: 'pre-line',
+    textAlign: 'left',
+  },
+  footer: {
+    marginTop: 28,
+    paddingTop: 20,
+    borderTop: '1px solid #f0f0f0',
+  },
+  link: {
+    color: '#007aff',
+    fontSize: 14,
+    fontWeight: 500,
+    textDecoration: 'none',
+  },
+};
