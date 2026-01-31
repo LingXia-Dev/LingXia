@@ -86,7 +86,19 @@ window.useLingXia = function () {
     });
   }
 
-  return dataInstance;
+  // Create functions object from page functions (same as React)
+  const functions = {};
+  if (window.__PAGE_FUNCTIONS) {
+    window.__PAGE_FUNCTIONS.forEach((funcName) => {
+      functions[funcName] = window[funcName];
+    });
+  }
+
+  // Return both data and functions
+  return {
+    data: dataInstance,
+    ...functions
+  };
 };
 
 // Page functions injection

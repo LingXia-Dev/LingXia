@@ -120,7 +120,7 @@ export class PageProcessor {
       inputs[entryName] = path.join(subDir, 'index.html');
       entryNameByPagePath[page.path] = entryName;
     }
-    
+
     const frameworkConfig = this.viewConfigManager.getFrameworkConfig(framework);
     const assetDir = frameworkConfig.assetDir ?? DEFAULT_ASSET_DIR;
 
@@ -152,7 +152,7 @@ export class PageProcessor {
     // For each entry, pass explicit file paths to the processor
     for (const { page, pageFiles, pageFunctions } of items) {
       const entryName = entryNameByPagePath[page.path];
-      
+
       // Determine relative paths based on Vite output structure
       const entryHtml = path.join('pages', entryName, 'index.html');
       const entryJs = path.join('pages', entryName, `${entryName}.js`);
@@ -162,8 +162,8 @@ export class PageProcessor {
       await processor.generateOutput(
         page,
         pageFiles,
-        { 
-          distDir, 
+        {
+          distDir,
           assetDir,
           entryHtml,
           entryJs
@@ -190,8 +190,8 @@ export class PageProcessor {
     const { build } = await import('vite');
     const plugins = await this.resolveFrameworkPlugins(framework, config.frameworkConfig);
     const css = await this.createCssConfig(buildDir, config.frameworkConfig);
-    const isDev = Boolean(config.options.dev);
-    const isProd = Boolean(config.options.prod);
+    const isProd = Boolean(config.options.release);
+    const isDev = !isProd;
 
     await build({
       configFile: false,

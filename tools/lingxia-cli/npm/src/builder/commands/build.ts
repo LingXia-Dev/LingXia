@@ -15,10 +15,12 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const projectPath = process.cwd();
   const configManager = new ConfigManager(projectPath);
 
-  const isPluginMode = Boolean(options.plugin);
+  const hasLxappConfig = fs.existsSync(path.join(projectPath, 'lxapp.json'));
+  const hasPluginConfig = fs.existsSync(path.join(projectPath, 'lxplugin.json'));
+  const isPluginMode = !hasLxappConfig && hasPluginConfig;
   const outputDir = path.join(projectPath, isPluginMode ? 'dist-plugin' : 'dist');
 
-  const buildOptions: BuildOptions = { ...options, plugin: isPluginMode };
+  const buildOptions: BuildOptions = { ...options, release: Boolean(options.release) };
 
   console.log(`🚀 Starting LingXia ${isPluginMode ? 'plugin' : 'project'} build...`);
   console.log(` Project: ${projectPath}`);
@@ -140,10 +142,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     const relativePackagePath =
       path.relative(projectPath, packagePath) || packagePath;
 
-    console.log('✅ Build completed successfully!');
-    console.log(` ⏱ Completed in ${buildTime}s`);
-    console.log(` 📁 Output directory: ${outputDir}`);
-    console.log(` 📦 Package: ${relativePackagePath}`);
+    console.log('Build completed successfully!');
+    console.log(` Completed in ${buildTime}s`);
+    console.log(` Output directory: ${outputDir}`);
+    console.log(` Package: ${relativePackagePath}`);
 
   } catch (error) {
     console.error(

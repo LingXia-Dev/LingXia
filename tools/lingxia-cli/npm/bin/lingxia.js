@@ -169,6 +169,12 @@ function isLxappProject(cwd) {
   return hasLxapp && hasLxappConfig && !hasHost;
 }
 
+function isLxpluginProject(cwd) {
+  const hasPlugin = existsSync(resolve(cwd, "lxplugin.json"));
+  const hasHost = existsSync(resolve(cwd, "lingxia.config.json"));
+  return hasPlugin && !hasHost;
+}
+
 async function runJsCli(argv) {
   const jsCliPath = process.env.LINGXIA_JS_CLI || jsCli;
   if (!existsSync(jsCliPath)) {
@@ -215,15 +221,9 @@ function runRust(argv) {
     process.env.LINGXIA_JS_CLI = jsCli;
   }
   if (!process.env.LINGXIA_TEMPLATES_DIR) {
-    const candidates = [
-      resolve(__dirname, "../templates"),
-      resolve(__dirname, "../../templates"),
-    ];
-    for (const dir of candidates) {
-      if (existsSync(dir)) {
-        process.env.LINGXIA_TEMPLATES_DIR = dir;
-        break;
-      }
+    const templates = resolve(__dirname, "../templates");
+    if (existsSync(templates)) {
+      process.env.LINGXIA_TEMPLATES_DIR = templates;
     }
   }
 
@@ -251,8 +251,9 @@ async function main() {
   const argv = process.argv.slice(2);
   const subcommand = findSubcommand(argv);
   const lxappProject = isLxappProject(process.cwd());
+  const lxpluginProject = isLxpluginProject(process.cwd());
 
-  const useJs = subcommand === "build" && lxappProject;
+  const useJs = subcommand === "build" && (lxappProject || lxpluginProject);
 
   if (useJs) {
     try {

@@ -229,8 +229,8 @@ export class LogicBuilder {
 
   private async runViteLogicBuild(buildDir: string, options: BuildOptions = {}): Promise<void> {
     const { build } = await import('vite');
-    const isDev = Boolean(options.dev);
-    const isProd = Boolean(options.prod);
+    const isProd = Boolean(options.release);
+    const isDev = !isProd;
 
     await build({
       configFile: false,

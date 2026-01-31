@@ -16,9 +16,7 @@ export async function runCLI(argv = process.argv): Promise<void> {
   program
     .command('build')
     .description('Build LingXia project or plugin')
-    .option('-d, --dev', 'Development build')
-    .option('-p, --prod', 'Production build')
-    .option('--plugin', 'Build as plugin package')
+    .option('--release', 'Release build (debug is the default)')
     .option('--target <target>', 'JS target (es5, es2015, es2020, esnext). Note: es5 requires @vitejs/plugin-legacy')
     .action(buildCommand);
 
