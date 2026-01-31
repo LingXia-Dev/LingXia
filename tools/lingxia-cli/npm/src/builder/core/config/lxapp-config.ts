@@ -1,10 +1,10 @@
-import fs from 'fs';
-import path from 'path';
-import vm from 'vm';
-import { createRequire } from 'module';
-import type { ViewBuildConfig } from './view-build-schema.js';
+import fs from "fs";
+import path from "path";
+import vm from "vm";
+import { createRequire } from "module";
+import type { ViewBuildConfig } from "./view-build-schema.js";
 
-export type FrameworkName = 'react' | 'vue';
+export type FrameworkName = "react" | "vue";
 
 export type PluginDescriptor =
   | string
@@ -23,14 +23,17 @@ export interface NormalizedPluginDescriptor {
 }
 
 export type NormalizedPluginSpec =
-  | (NormalizedPluginDescriptor & { type?: 'descriptor' })
+  | (NormalizedPluginDescriptor & { type?: "descriptor" })
   | { plugin: any; module?: undefined };
 
 export type PluginConfig =
   | PluginEntry[]
   | Partial<Record<FrameworkName, PluginEntry[]>>;
 
-export interface LingxiaConfig {
+/**
+ * Build configuration for lxapp and lxplugin projects.
+ */
+export interface BuildConfig {
   /**
    * Static asset directories copied during build.
    */
@@ -44,86 +47,106 @@ export interface LingxiaConfig {
    */
   sourceDirs?: string[];
   /**
+   * Asset directory name for the view build.
+   */
+  assetDir?: string;
+  /**
    * Framework-specific view build overrides.
    */
-  view?: LingxiaViewConfigOverrides;
+  view?: ViewConfigOverrides;
   /**
    * Additional Vite plugins per framework.
    */
   plugins?: PluginConfig;
-  /**
-   * Placeholder for future config surface so we don't need breaking changes.
-   */
-  [key: string]: unknown;
 }
 
-export type LingxiaViewConfigOverrides = Partial<
+export type ViewConfigOverrides = Partial<
   Record<FrameworkName, Partial<ViewBuildConfig>>
 >;
 
-export interface LingxiaConfigLoaderOptions {
-  filename?: string;
-}
-
-const DEFAULT_CONFIG_FILENAME = 'lingxia.config.ts';
 const cliRequire = createRequire(import.meta.url);
 
-export function defineLingxiaConfig(config: LingxiaConfig): LingxiaConfig {
+/**
+ * Helper function for type-safe config definition.
+ */
+export function defineConfig(config: BuildConfig): BuildConfig {
   return config;
 }
 
-export function loadLingxiaConfig(
+/**
+ * Load build config from project directory.
+ * Only supports .ts format for consistency.
+ *
+ * @param projectPath - Project root directory
+ * @param configName - Config file name without extension (e.g., 'lxapp.config' or 'lxplugin.config')
+ */
+export function loadBuildConfig(
   projectPath: string,
-  options?: LingxiaConfigLoaderOptions
-): LingxiaConfig | undefined {
-  const configPath = path.join(
-    projectPath,
-    options?.filename ?? DEFAULT_CONFIG_FILENAME
-  );
+  configName: string,
+): BuildConfig | undefined {
+  const configPath = path.join(projectPath, `${configName}.ts`);
 
   if (!fs.existsSync(configPath)) {
     return undefined;
   }
 
-  return readLingxiaTsConfig(configPath);
+  return readTsConfig(configPath);
 }
 
-function readLingxiaTsConfig(filePath: string): LingxiaConfig | undefined {
+/**
+ * Load lxapp build config (lxapp.config.ts)
+ */
+export function loadLxappConfig(projectPath: string): BuildConfig | undefined {
+  return loadBuildConfig(projectPath, "lxapp.config");
+}
+
+/**
+ * Load lxplugin build config (lxplugin.config.ts)
+ */
+export function loadLxpluginConfig(
+  projectPath: string,
+): BuildConfig | undefined {
+  return loadBuildConfig(projectPath, "lxplugin.config");
+}
+
+function readTsConfig(filePath: string): BuildConfig | undefined {
   try {
-    const source = fs.readFileSync(filePath, 'utf-8');
+    const source = fs.readFileSync(filePath, "utf-8");
     const ts = loadTypescriptCompiler();
+
     const result = ts.transpileModule(source, {
       compilerOptions: {
         module: ts.ModuleKind.CommonJS,
         target: ts.ScriptTarget.ES2019,
-        esModuleInterop: true
+        esModuleInterop: true,
       },
       fileName: filePath,
-      reportDiagnostics: true
+      reportDiagnostics: true,
     });
 
     if (result.diagnostics?.length) {
       const message = ts.formatDiagnosticsWithColorAndContext(
         result.diagnostics,
         {
-          getCanonicalFileName: f => f,
+          getCanonicalFileName: (f) => f,
           getCurrentDirectory: () => path.dirname(filePath),
-          getNewLine: () => '\n'
-        }
+          getNewLine: () => "\n",
+        },
       );
       console.warn(`⚠️ Diagnostics while parsing ${filePath}:\n${message}`);
     }
 
     const exports = executeCommonJsModule(result.outputText, filePath);
     const config = exports?.default ?? exports;
-    if (config && typeof config === 'object') {
-      return config as LingxiaConfig;
+
+    if (config && typeof config === "object") {
+      return config as BuildConfig;
     }
     return undefined;
   } catch (error) {
     console.warn(
-      `⚠️ Failed to read Lingxia config from ${filePath}:`,
-      error instanceof Error ? error.message : String(error)
+      `⚠️ Failed to read config from ${filePath}:`,
+      error instanceof Error ? error.message : String(error),
     );
     return undefined;
   }
@@ -146,7 +169,7 @@ function executeCommonJsModule(code: string, filename: string): any {
     setInterval,
     clearInterval,
     setImmediate,
-    clearImmediate
+    clearImmediate,
   };
 
   context.global = context;
@@ -156,50 +179,44 @@ function executeCommonJsModule(code: string, filename: string): any {
   return module.exports;
 }
 
-function loadTypescriptCompiler(): typeof import('typescript') {
+function loadTypescriptCompiler(): typeof import("typescript") {
   try {
-    return cliRequire('typescript');
+    return cliRequire("typescript");
   } catch {
-    throw new Error(
-      "Cannot load 'typescript'. Please add it as a dependency to use lingxia.config.ts files."
-    );
+    throw new Error("Cannot load 'typescript'. Please add it as a dependency.");
   }
 }
 
 export function extractViewOverrides(
-  config: LingxiaConfig | undefined,
-  framework?: FrameworkName
+  config: BuildConfig | undefined,
+  framework?: FrameworkName,
 ): Partial<ViewBuildConfig> | undefined {
   const overrides = config?.view;
-  if (!overrides || typeof overrides !== 'object') {
+  if (!overrides || typeof overrides !== "object") {
     return undefined;
   }
 
-  const frameworks: FrameworkName[] = ['react', 'vue'];
+  const frameworks: FrameworkName[] = ["react", "vue"];
 
-  // Check if it has framework-specific keys (react, vue)
-  const hasFrameworkKeys = frameworks.some(
-    fw => Object.prototype.hasOwnProperty.call(overrides, fw)
+  const hasFrameworkKeys = frameworks.some((fw) =>
+    Object.prototype.hasOwnProperty.call(overrides, fw),
   );
 
-  // If it has framework-specific keys and a framework is requested, return that framework's config
   if (hasFrameworkKeys && framework) {
     const targeted = (overrides as Record<string, unknown>)[framework];
-    if (targeted && typeof targeted === 'object') {
+    if (targeted && typeof targeted === "object") {
       return targeted as Partial<ViewBuildConfig>;
     }
   }
 
-  // If it doesn't have framework keys, treat it as a shared config for all frameworks
   if (!hasFrameworkKeys) {
     return overrides as Partial<ViewBuildConfig>;
   }
 
-  // Fallback: if framework is requested but not found, try to return the first available framework config
   if (framework) {
     for (const fw of frameworks) {
       const block = (overrides as Record<string, unknown>)[fw];
-      if (block && typeof block === 'object') {
+      if (block && typeof block === "object") {
         return block as Partial<ViewBuildConfig>;
       }
     }
@@ -209,22 +226,24 @@ export function extractViewOverrides(
 }
 
 export function extractPluginSpecs(
-  config?: LingxiaConfig
+  config?: BuildConfig,
 ): Partial<Record<FrameworkName, NormalizedPluginSpec[]>> | undefined {
   const pluginsConfig = config?.plugins;
   if (!pluginsConfig) {
     return undefined;
   }
 
-  const frameworks: FrameworkName[] = ['react', 'vue'];
+  const frameworks: FrameworkName[] = ["react", "vue"];
   const normalized: Partial<Record<FrameworkName, NormalizedPluginSpec[]>> = {};
   let hasPlugins = false;
 
-  const collectEntries = (entries: PluginEntry[] | undefined): NormalizedPluginSpec[] => {
+  const collectEntries = (
+    entries: PluginEntry[] | undefined,
+  ): NormalizedPluginSpec[] => {
     if (!entries || entries.length === 0) return [];
     const normalizedEntries: NormalizedPluginSpec[] = [];
     for (const entry of entries) {
-      if (typeof entry === 'string') {
+      if (typeof entry === "string") {
         const trimmed = entry.trim();
         if (trimmed.length > 0) {
           normalizedEntries.push({ module: trimmed });
@@ -233,19 +252,18 @@ export function extractPluginSpecs(
       }
       if (
         entry &&
-        typeof entry === 'object' &&
-        typeof (entry as any).module === 'string'
+        typeof entry === "object" &&
+        typeof (entry as any).module === "string"
       ) {
         const moduleName = (entry as any).module;
-        // Skip empty module names
         if (moduleName.trim().length > 0) {
           normalizedEntries.push({
             module: moduleName,
             namedExport:
-              typeof (entry as any).namedExport === 'string'
+              typeof (entry as any).namedExport === "string"
                 ? (entry as any).namedExport
                 : undefined,
-            options: (entry as any).options
+            options: (entry as any).options,
           });
         }
         continue;
@@ -261,14 +279,19 @@ export function extractPluginSpecs(
     const sharedEntries = collectEntries(pluginsConfig);
     if (sharedEntries.length > 0) {
       for (const framework of frameworks) {
-        normalized[framework] = [...(normalized[framework] ?? []), ...sharedEntries];
+        normalized[framework] = [
+          ...(normalized[framework] ?? []),
+          ...sharedEntries,
+        ];
       }
       hasPlugins = true;
     }
-  } else if (typeof pluginsConfig === 'object') {
+  } else if (typeof pluginsConfig === "object") {
     for (const framework of frameworks) {
       const entries = collectEntries(
-        Array.isArray(pluginsConfig[framework]) ? pluginsConfig[framework] : undefined
+        Array.isArray(pluginsConfig[framework])
+          ? pluginsConfig[framework]
+          : undefined,
       );
       if (entries.length > 0) {
         normalized[framework] = [...(normalized[framework] ?? []), ...entries];
@@ -279,3 +302,6 @@ export function extractPluginSpecs(
 
   return hasPlugins ? normalized : undefined;
 }
+
+// Type aliases for backward compatibility
+export type LxappConfig = BuildConfig;
