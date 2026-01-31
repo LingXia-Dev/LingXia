@@ -4,6 +4,7 @@ import type { Page, PageFiles, BuildOptions } from '../../types/index.js';
 import { FileUtils } from '../utils/file.js';
 import { PageProcessor } from './page.js';
 import { extractPageFunctionsFromSource } from './page-functions.js';
+import { validateViewFile } from './view-validator.js';
 import { DEFAULT_STATIC_DIRS, resolveStaticDirs } from '../constants/static-dirs.js';
 import { readProjectFramework } from '../config/framework.js';
 import type { ProjectFramework } from '../config/framework.js';
@@ -68,6 +69,8 @@ export class ViewBuilder {
       if (subset.length === 0) return;
       const items = subset.map(page => {
         const pageFiles = this.detectPageFiles(page);
+        // Validate that view files don't use lx.* APIs (must use useLingXia() instead)
+        validateViewFile(pageFiles);
         const pageFunctions = this.extractPageFunctions(pageFiles);
         return { page, pageFiles, pageFunctions };
       });

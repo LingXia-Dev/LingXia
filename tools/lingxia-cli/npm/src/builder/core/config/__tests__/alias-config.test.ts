@@ -15,10 +15,10 @@ describe('resolveAliasMap', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it('returns empty object when alias undefined', () => {
+  it('returns default @ alias when alias undefined', () => {
     const aliases = resolveAliasMap(tempDir);
-    expect(Object.keys(aliases)).toContain('@lingxia');
-    expect(aliases['@lingxia']).toBe(tempDir);
+    expect(Object.keys(aliases)).toContain('@');
+    expect(aliases['@']).toBe(tempDir);
   });
 
   it('normalizes project-relative aliases to absolute paths', () => {
@@ -53,6 +53,6 @@ describe('resolveAliasMap', () => {
     );
 
     const aliases = resolveAliasMap(tempDir);
-    expect(Object.keys(aliases)).toEqual(['@lingxia']);
+    expect(Object.keys(aliases)).toEqual(['@']);
   });
 });
