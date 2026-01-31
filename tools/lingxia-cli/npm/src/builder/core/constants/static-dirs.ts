@@ -1,7 +1,7 @@
 import fg from 'fast-glob';
 import path from 'path';
-import type { BuildConfig } from '../config/build-config.js';
-import { loadLingxiaConfig } from '../config/lingxia-config.js';
+import type { BuildConfig } from '../config/lxapp-config.js';
+import { loadLxappConfig } from '../config/lxapp-config.js';
 
 const FALLBACK_STATIC_DIRS = ['public'] as const;
 
@@ -11,7 +11,7 @@ export function resolveStaticDirs(
   projectPath: string,
   config?: BuildConfig
 ): string[] {
-  const resolvedConfig = config ?? loadLingxiaConfig(projectPath);
+  const resolvedConfig = config ?? loadLxappConfig(projectPath);
   const dirs = Array.isArray(resolvedConfig?.staticDirs)
     ? resolvedConfig.staticDirs
     : null;

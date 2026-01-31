@@ -38,9 +38,9 @@ const defaultConfig: Record<'react' | 'vue', ViewBuildConfig> =
 
 import {
   extractViewOverrides,
-  loadLingxiaConfig,
+  loadLxappConfig,
   type FrameworkName
-} from './lingxia-config.js';
+} from './lxapp-config.js';
 
 export class ViewConfigManager {
   private projectPath: string;
@@ -63,7 +63,7 @@ export function resolveUserViewConfig(
   projectPath: string,
   framework: FrameworkName
 ): Partial<ViewBuildConfig> | undefined {
-  const config = loadLingxiaConfig(projectPath);
+  const config = loadLxappConfig(projectPath);
   return extractViewOverrides(config, framework);
 }
 

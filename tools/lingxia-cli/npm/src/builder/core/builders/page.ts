@@ -14,10 +14,10 @@ import {
 import {
   extractViewOverrides,
   extractPluginSpecs,
-  loadLingxiaConfig,
+  loadLxappConfig,
   type NormalizedPluginSpec,
   type NormalizedPluginDescriptor
-} from '../config/lingxia-config.js';
+} from '../config/lxapp-config.js';
 import { readProjectFramework } from '../config/framework.js';
 import type { ProjectFramework } from '../config/framework.js';
 import { DEFAULT_STATIC_DIRS } from '../constants/static-dirs.js';
@@ -26,7 +26,7 @@ import {
   resolveSourceDirs
 } from '../constants/source-dirs.js';
 import { resolveAliasMap } from '../config/alias-config.js';
-import type { BuildConfig } from '../config/build-config.js';
+import type { BuildConfig } from '../config/lxapp-config.js';
 
 export class PageProcessor {
   private projectPath: string;
@@ -52,7 +52,7 @@ export class PageProcessor {
     this.fileUtils = new FileUtils();
     this.templateManager = new TemplateManager();
     this.framework = readProjectFramework(projectPath);
-    const lingxiaConfig = buildConfig ? undefined : loadLingxiaConfig(projectPath);
+    const lingxiaConfig = buildConfig ? undefined : loadLxappConfig(projectPath);
     const viewOverrides = extractViewOverrides(
       lingxiaConfig as any,
       this.framework

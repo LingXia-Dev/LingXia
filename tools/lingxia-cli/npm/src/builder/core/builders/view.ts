@@ -8,7 +8,7 @@ import { validateViewFile } from './view-validator.js';
 import { DEFAULT_STATIC_DIRS, resolveStaticDirs } from '../constants/static-dirs.js';
 import { readProjectFramework } from '../config/framework.js';
 import type { ProjectFramework } from '../config/framework.js';
-import type { BuildConfig } from '../config/build-config.js';
+import type { BuildConfig } from '../config/lxapp-config.js';
 
 export class ViewBuilder {
   private projectPath: string;

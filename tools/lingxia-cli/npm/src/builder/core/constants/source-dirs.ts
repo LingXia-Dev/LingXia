@@ -1,6 +1,6 @@
 import path from 'path';
-import type { BuildConfig } from '../config/build-config.js';
-import { loadLingxiaConfig } from '../config/lingxia-config.js';
+import type { BuildConfig } from '../config/lxapp-config.js';
+import { loadLxappConfig } from '../config/lxapp-config.js';
 
 const FALLBACK_SOURCE_DIRS = ['shared'] as const;
 
@@ -10,7 +10,7 @@ export function resolveSourceDirs(
   projectPath: string,
   config?: BuildConfig
 ): string[] {
-  const resolvedConfig = config ?? loadLingxiaConfig(projectPath);
+  const resolvedConfig = config ?? loadLxappConfig(projectPath);
   const dirs = Array.isArray(resolvedConfig?.sourceDirs)
     ? resolvedConfig.sourceDirs
     : null;

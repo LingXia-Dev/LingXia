@@ -9,7 +9,7 @@ import {
   resolveSourceDirs
 } from '../constants/source-dirs.js';
 import { resolveAliasMap } from '../config/alias-config.js';
-import type { BuildConfig } from '../config/build-config.js';
+import type { BuildConfig } from '../config/lxapp-config.js';
 
 /**
  * Modern LogicBuilder that leverages Vite for dependency resolution and bundling

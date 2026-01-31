@@ -7,7 +7,7 @@ import { LogicBuilder } from '../core/builders/logic.js';
 import { FileUtils } from '../core/utils/file.js';
 import { detectPageType } from '../core/utils/page.js';
 import { ConfigManager } from '../core/config.js';
-import { loadLxappBuildConfig } from '../core/config/build-config.js';
+import { loadLxappConfig } from '../core/config/lxapp-config.js';
 
 const fileUtils = new FileUtils();
 
@@ -66,7 +66,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     await ensureDependencies(projectPath);
 
     const buildConfig = !isPluginMode
-      ? loadLxappBuildConfig(projectPath)
+      ? loadLxappConfig(projectPath)
       : undefined;
 
     // Clean and prepare output directory
