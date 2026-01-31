@@ -164,9 +164,9 @@ function findSubcommand(argv) {
 
 function isLxappProject(cwd) {
   const hasLxapp = existsSync(resolve(cwd, "lxapp.json"));
-  const hasLxappConfig = existsSync(resolve(cwd, "lxapp.config.json"));
+  // lxapp.config is optional now (supports .ts, .js, .json)
   const hasHost = existsSync(resolve(cwd, "lingxia.config.json"));
-  return hasLxapp && hasLxappConfig && !hasHost;
+  return hasLxapp && !hasHost;
 }
 
 function isLxpluginProject(cwd) {

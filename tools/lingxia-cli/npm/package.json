@@ -20,6 +20,8 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "test": "vitest run",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
     "postinstall": "node scripts/install.cjs",
     "prepack": "node scripts/sync-templates.cjs && node scripts/ensure-deps.cjs && npm run build"
   },
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.7",
+    "prettier": "^3.8.1",
     "vitest": "^4.0.7"
   },
   "engines": {
