@@ -19,7 +19,7 @@ use std::env;
 use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
-use self::config_files::{ensure_root_gitignore, generate_config_file, generate_secrets_file};
+use self::config_files::{ensure_root_gitignore, generate_config_file};
 use self::lxapp_scaffold::{create_lxapp_from_template, create_lxapp_project};
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
@@ -156,7 +156,6 @@ pub fn execute(
     let lxapp_framework = gather_lxapp_framework(yes)?;
     let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework, &versions)?;
     generate_config_file(&config, &lxapp_info, &versions)?;
-    generate_secrets_file(&config)?;
     ensure_root_gitignore(&config)?;
 
     println!();

@@ -1,8 +1,5 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
-use crate::config::{
-    AndroidConfig, HOST_SECRETS_FILE, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig,
-    LingXiaSecrets,
-};
+use crate::config::{AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig};
 use crate::versions::LingXiaVersions;
 use anyhow::Result;
 use std::fs;
@@ -74,17 +71,6 @@ pub(super) fn generate_config_file(
     Ok(())
 }
 
-pub(super) fn generate_secrets_file(config: &ProjectConfig) -> Result<()> {
-    let secrets_path = config.target_dir.join(HOST_SECRETS_FILE);
-    if secrets_path.exists() {
-        return Ok(());
-    }
-
-    let secrets = LingXiaSecrets::default();
-    fs::write(secrets_path, serde_json::to_string_pretty(&secrets)?)?;
-    Ok(())
-}
-
 pub(super) fn ensure_root_gitignore(config: &ProjectConfig) -> Result<()> {
     let gitignore_path = config.target_dir.join(".gitignore");
     let android_assets = format!(
@@ -92,11 +78,7 @@ pub(super) fn ensure_root_gitignore(config: &ProjectConfig) -> Result<()> {
         crate::platform::detector::ANDROID_ASSETS_REL_PATH
     );
     let standalone_assets = format!("{}/", crate::platform::detector::ANDROID_ASSETS_REL_PATH);
-    let required = [
-        HOST_SECRETS_FILE,
-        android_assets.as_str(),
-        standalone_assets.as_str(),
-    ];
+    let required = [android_assets.as_str(), standalone_assets.as_str()];
 
     let existing = if gitignore_path.exists() {
         fs::read_to_string(&gitignore_path)?

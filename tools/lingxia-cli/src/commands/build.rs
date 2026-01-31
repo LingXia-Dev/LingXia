@@ -1,4 +1,4 @@
-use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, LingXiaSecrets};
+use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::lxapp;
 use crate::platform::{self, BuildConfig, BuildProfile};
 use anyhow::{Result, anyhow};
@@ -192,7 +192,7 @@ pub(crate) fn prepare_host_assets(
                 let assets_root = platform::detector::resolve_android_assets_dir(project_root);
                 fs::create_dir_all(&assets_root)?;
 
-                ensure_host_app_json(project_root, config, &assets_root)?;
+                ensure_host_app_json(config, &assets_root)?;
 
                 if let Some(ref lxapp_assets) = prepared_lxapp_assets {
                     let target_dir = assets_root.join(&lxapp_assets.asset_name);
@@ -271,33 +271,23 @@ fn prepare_embedded_lxapp_assets(
     }))
 }
 
-fn ensure_host_app_json(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    assets_root: &Path,
-) -> Result<()> {
-    write_app_json_from_config(project_root, config, assets_root)
+fn ensure_host_app_json(config: &LingXiaConfig, assets_root: &Path) -> Result<()> {
+    write_app_json_from_config(config, assets_root)
 }
 
-fn write_app_json_from_config(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    assets_root: &Path,
-) -> Result<()> {
+fn write_app_json_from_config(config: &LingXiaConfig, assets_root: &Path) -> Result<()> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
 
-    let secrets = LingXiaSecrets::load_optional(project_root)?;
+    // Read apiKey/apiSecret from environment variables (CI-friendly)
     let api_key = env::var("LINGXIA_API_KEY")
         .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| secrets.api_key.clone().filter(|s| !s.trim().is_empty()));
+        .filter(|s| !s.trim().is_empty());
     let api_secret = env::var("LINGXIA_API_SECRET")
         .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| secrets.api_secret.clone().filter(|s| !s.trim().is_empty()));
+        .filter(|s| !s.trim().is_empty());
 
     let mut obj = serde_json::Map::new();
     obj.insert(
