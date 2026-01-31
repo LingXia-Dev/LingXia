@@ -1,19 +1,19 @@
-import { parse, type ParserOptions } from '@babel/parser';
-import { generate } from '@babel/generator';
+import { parse, type ParserOptions } from "@babel/parser";
+import { generate } from "@babel/generator";
 
 const AST_PARSE_OPTIONS: ParserOptions = {
-  sourceType: 'module',
+  sourceType: "module",
   plugins: [
-    'typescript',
-    'jsx',
-    'classProperties',
-    'decorators-legacy',
-    'dynamicImport',
-    'objectRestSpread',
-    'optionalChaining',
-    'nullishCoalescingOperator',
-    'topLevelAwait'
-  ]
+    "typescript",
+    "jsx",
+    "classProperties",
+    "decorators-legacy",
+    "dynamicImport",
+    "objectRestSpread",
+    "optionalChaining",
+    "nullishCoalescingOperator",
+    "topLevelAwait",
+  ],
 };
 
 export interface InjectPagePathOptions {
@@ -23,7 +23,7 @@ export interface InjectPagePathOptions {
 export const injectPagePath = (
   logicContent: string,
   pagePath: string,
-  options?: InjectPagePathOptions
+  options?: InjectPagePathOptions,
 ): string => {
   // Add plugin/<pluginId>/ prefix for plugin mode
   const finalPath = options?.pluginId
@@ -32,7 +32,7 @@ export const injectPagePath = (
   const ast = parse(logicContent, AST_PARSE_OPTIONS);
   let modified = false;
 
-  traverseAst(ast.program as BabelNode, node => {
+  traverseAst(ast.program as BabelNode, (node) => {
     if (!isPageCall(node)) {
       return;
     }
@@ -43,7 +43,7 @@ export const injectPagePath = (
     }
 
     const firstArg = unwrapExpression(args[0]);
-    if (!firstArg || firstArg.type !== 'ObjectExpression') {
+    if (!firstArg || firstArg.type !== "ObjectExpression") {
       return;
     }
 
@@ -63,8 +63,11 @@ type BabelNode = {
   [key: string]: any;
 };
 
-const traverseAst = (node: BabelNode | null | undefined, visitor: (node: BabelNode) => void): void => {
-  if (!node || typeof node.type !== 'string') {
+const traverseAst = (
+  node: BabelNode | null | undefined,
+  visitor: (node: BabelNode) => void,
+): void => {
+  if (!node || typeof node.type !== "string") {
     return;
   }
 
@@ -75,25 +78,27 @@ const traverseAst = (node: BabelNode | null | undefined, visitor: (node: BabelNo
 
     if (Array.isArray(value)) {
       for (const child of value) {
-        if (child && typeof child.type === 'string') {
+        if (child && typeof child.type === "string") {
           traverseAst(child, visitor);
         }
       }
       continue;
     }
 
-    if (value && typeof value.type === 'string') {
+    if (value && typeof value.type === "string") {
       traverseAst(value, visitor);
     }
   }
 };
 
 const isPageCall = (node: BabelNode): node is BabelNode => {
-  if (node.type !== 'CallExpression') {
+  if (node.type !== "CallExpression") {
     return false;
   }
   const callee = node.callee as BabelNode | undefined;
-  return Boolean(callee && callee.type === 'Identifier' && callee.name === 'Page');
+  return Boolean(
+    callee && callee.type === "Identifier" && callee.name === "Page",
+  );
 };
 
 const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
@@ -101,16 +106,16 @@ const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
 
   while (current) {
     if (
-      current.type === 'TSAsExpression' ||
-      current.type === 'TSTypeAssertion' ||
-      current.type === 'TSNonNullExpression' ||
-      current.type === 'TypeCastExpression'
+      current.type === "TSAsExpression" ||
+      current.type === "TSTypeAssertion" ||
+      current.type === "TSNonNullExpression" ||
+      current.type === "TypeCastExpression"
     ) {
       current = current.expression as BabelNode;
       continue;
     }
 
-    if (current.type === 'ParenthesizedExpression') {
+    if (current.type === "ParenthesizedExpression") {
       current = current.expression as BabelNode;
       continue;
     }
@@ -122,6 +127,6 @@ const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
 };
 
 const stringLiteral = (value: string): BabelNode => ({
-  type: 'StringLiteral',
-  value
+  type: "StringLiteral",
+  value,
 });

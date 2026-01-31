@@ -1,9 +1,9 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { FrameworkProcessor } from './base.js';
-import type { Page, PageFiles } from '../../types/index.js';
-import { getPageTitle } from '../utils/page.js';
-import { FileUtils } from '../utils/file.js';
+import * as fs from "fs";
+import * as path from "path";
+import { FrameworkProcessor } from "./base.js";
+import type { Page, PageFiles } from "../../types/index.js";
+import { getPageTitle } from "../utils/page.js";
+import { FileUtils } from "../utils/file.js";
 
 /**
  * HTML framework processor
@@ -18,17 +18,17 @@ export class HtmlProcessor extends FrameworkProcessor {
   }
 
   getFrameworkName(): string {
-    return 'HTML';
+    return "HTML";
   }
 
   getExtensions(): string[] {
-    return ['.html'];
+    return [".html"];
   }
 
   getDependencies(): { dependencies: any; devDependencies: any } {
     return {
       dependencies: {},
-      devDependencies: {}
+      devDependencies: {},
     };
   }
 
@@ -41,7 +41,7 @@ export class HtmlProcessor extends FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[]
+    pageFunctions: string[],
   ): Promise<void> {
     // HTML pages don't need build setup
     // They are processed directly
@@ -50,14 +50,19 @@ export class HtmlProcessor extends FrameworkProcessor {
   async generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
-    bridgeScript: string
+    buildResult: {
+      distDir: string;
+      assetDir?: string;
+      entryHtml?: string;
+      entryJs?: string;
+    },
+    bridgeScript: string,
   ): Promise<void> {
     const pageOutputDir = path.join(this.outputDir, path.dirname(page.path));
     const baseName = path.basename(page.path, path.extname(page.path));
 
     // Read and process HTML content
-    let htmlContent = fs.readFileSync(pageFiles.view.path, 'utf-8');
+    let htmlContent = fs.readFileSync(pageFiles.view.path, "utf-8");
 
     // Process page title
     const pageTitle = getPageTitle(page, pageFiles);
@@ -66,8 +71,8 @@ export class HtmlProcessor extends FrameworkProcessor {
 
     // Inject page function bridge
     htmlContent = htmlContent.replace(
-      '</body>',
-      `<script>\n${bridgeScript}\n</script>\n</body>`
+      "</body>",
+      `<script>\n${bridgeScript}\n</script>\n</body>`,
     );
 
     // Ensure output directory exists
@@ -106,18 +111,22 @@ export class HtmlProcessor extends FrameworkProcessor {
       // Add title to head section
       const headRegex = /<head[^>]*>/i;
       if (headRegex.test(htmlContent)) {
-        return htmlContent.replace(headRegex, `$&\n    <title>${pageTitle}</title>`);
+        return htmlContent.replace(
+          headRegex,
+          `$&\n    <title>${pageTitle}</title>`,
+        );
       } else {
         // Fallback: add after opening html tag
         const htmlRegex = /<html[^>]*>/i;
         if (htmlRegex.test(htmlContent)) {
-          return htmlContent.replace(htmlRegex, `$&\n<head>\n    <title>${pageTitle}</title>\n</head>`);
+          return htmlContent.replace(
+            htmlRegex,
+            `$&\n<head>\n    <title>${pageTitle}</title>\n</head>`,
+          );
         }
       }
     }
 
     return htmlContent;
   }
-
-
 }

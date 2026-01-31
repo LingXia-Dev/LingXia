@@ -1,14 +1,17 @@
-import fs from 'fs';
-import path from 'path';
-import type { Page, PageFiles, BuildOptions } from '../../types/index.js';
-import { FileUtils } from '../utils/file.js';
-import { PageProcessor } from './page.js';
-import { extractPageFunctionsFromSource } from './page-functions.js';
-import { validateViewFile } from './view-validator.js';
-import { DEFAULT_STATIC_DIRS, resolveStaticDirs } from '../constants/static-dirs.js';
-import { readProjectFramework } from '../config/framework.js';
-import type { ProjectFramework } from '../config/framework.js';
-import type { BuildConfig } from '../config/lxapp-config.js';
+import fs from "fs";
+import path from "path";
+import type { Page, PageFiles, BuildOptions } from "../../types/index.js";
+import { FileUtils } from "../utils/file.js";
+import { PageProcessor } from "./page.js";
+import { extractPageFunctionsFromSource } from "./page-functions.js";
+import { validateViewFile } from "./view-validator.js";
+import {
+  DEFAULT_STATIC_DIRS,
+  resolveStaticDirs,
+} from "../constants/static-dirs.js";
+import { readProjectFramework } from "../config/framework.js";
+import type { ProjectFramework } from "../config/framework.js";
+import type { BuildConfig } from "../config/lxapp-config.js";
 
 export class ViewBuilder {
   private projectPath: string;
@@ -18,7 +21,11 @@ export class ViewBuilder {
   private staticDirs: string[];
   private framework: ProjectFramework;
 
-  constructor(projectPath: string, outputDir: string, buildConfig?: BuildConfig) {
+  constructor(
+    projectPath: string,
+    outputDir: string,
+    buildConfig?: BuildConfig,
+  ) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
@@ -28,12 +35,11 @@ export class ViewBuilder {
       projectPath,
       outputDir,
       this.staticDirs,
-      buildConfig
+      buildConfig,
     );
   }
 
   async buildPages(pages: Page[], options: BuildOptions = {}): Promise<void> {
-
     await this.copyStaticAssets();
     await this.copyRootFiles();
 
@@ -42,32 +48,32 @@ export class ViewBuilder {
     const vuePages: Page[] = [];
     const unsupported: Page[] = [];
     for (const p of pages) {
-      if (p.type === 'react') reactPages.push(p);
-      else if (p.type === 'vue') vuePages.push(p);
+      if (p.type === "react") reactPages.push(p);
+      else if (p.type === "vue") vuePages.push(p);
       else unsupported.push(p);
     }
     if (unsupported.length > 0) {
-      const paths = unsupported.map(p => p.path).join(', ');
+      const paths = unsupported.map((p) => p.path).join(", ");
       throw new Error(
-        `HTML pages are no longer supported. Please migrate these entries to React/Vue: ${paths}`
+        `HTML pages are no longer supported. Please migrate these entries to React/Vue: ${paths}`,
       );
     }
 
-    if (this.framework === 'react' && vuePages.length > 0) {
+    if (this.framework === "react" && vuePages.length > 0) {
       throw new Error(
-        `Project configured for React, but found Vue pages. Please keep only one framework.`
+        `Project configured for React, but found Vue pages. Please keep only one framework.`,
       );
     }
-    if (this.framework === 'vue' && reactPages.length > 0) {
+    if (this.framework === "vue" && reactPages.length > 0) {
       throw new Error(
-        `Project configured for Vue, but found React pages. Please keep only one framework.`
+        `Project configured for Vue, but found React pages. Please keep only one framework.`,
       );
     }
 
     // Batch build React/Vue using multi-entry
-    const buildBatch = async (framework: 'react' | 'vue', subset: Page[]) => {
+    const buildBatch = async (framework: "react" | "vue", subset: Page[]) => {
       if (subset.length === 0) return;
-      const items = subset.map(page => {
+      const items = subset.map((page) => {
         const pageFiles = this.detectPageFiles(page);
         // Validate that view files don't use lx.* APIs (must use useLingXia() instead)
         validateViewFile(pageFiles);
@@ -80,10 +86,10 @@ export class ViewBuilder {
     };
 
     // Parallel build for better performance
-    if (this.framework === 'react') {
-      await buildBatch('react', reactPages);
+    if (this.framework === "react") {
+      await buildBatch("react", reactPages);
     } else {
-      await buildBatch('vue', vuePages);
+      await buildBatch("vue", vuePages);
     }
   }
 
@@ -97,33 +103,34 @@ export class ViewBuilder {
     const viewExists = fs.existsSync(viewPath);
     const logicPath = this.findLogicFile(sourcePageDir, baseName);
 
-
-
     return {
       view: {
         path: viewPath,
         exists: viewExists,
-        type: page.type
+        type: page.type,
       },
       logic: {
         path: logicPath ?? undefined,
-        exists: logicPath !== null
+        exists: logicPath !== null,
       },
       config: {
         path: path.join(sourcePageDir, `${baseName}.json`),
-        exists: fs.existsSync(path.join(sourcePageDir, `${baseName}.json`))
+        exists: fs.existsSync(path.join(sourcePageDir, `${baseName}.json`)),
       },
       style: {
         path: path.join(sourcePageDir, `${baseName}.css`),
-        exists: fs.existsSync(path.join(sourcePageDir, `${baseName}.css`))
-      }
+        exists: fs.existsSync(path.join(sourcePageDir, `${baseName}.css`)),
+      },
     };
   }
 
   /**
    * Find logic file (.ts or .js) for a page
    */
-  private findLogicFile(sourcePageDir: string, baseName: string): string | null {
+  private findLogicFile(
+    sourcePageDir: string,
+    baseName: string,
+  ): string | null {
     const tsPath = path.join(sourcePageDir, `${baseName}.ts`);
     const jsPath = path.join(sourcePageDir, `${baseName}.js`);
 
@@ -142,10 +149,12 @@ export class ViewBuilder {
     }
 
     try {
-      const logicContent = fs.readFileSync(pageFiles.logic.path, 'utf-8');
+      const logicContent = fs.readFileSync(pageFiles.logic.path, "utf-8");
       return extractPageFunctionsFromSource(logicContent);
     } catch (error) {
-      console.warn(`⚠️ Failed to extract functions from ${pageFiles.logic.path}`);
+      console.warn(
+        `⚠️ Failed to extract functions from ${pageFiles.logic.path}`,
+      );
       return [];
     }
   }
@@ -162,14 +171,14 @@ export class ViewBuilder {
 
   private async copyRootFiles(): Promise<void> {
     // Copy lxapp.json
-    const lxappJson = path.join(this.projectPath, 'lxapp.json');
+    const lxappJson = path.join(this.projectPath, "lxapp.json");
     if (fs.existsSync(lxappJson)) {
-      const destFile = path.join(this.outputDir, 'lxapp.json');
+      const destFile = path.join(this.outputDir, "lxapp.json");
       fs.copyFileSync(lxappJson, destFile);
     }
 
     // Process lxapp.css with import resolution
-    const lxappCss = path.join(this.projectPath, 'lxapp.css');
+    const lxappCss = path.join(this.projectPath, "lxapp.css");
     if (fs.existsSync(lxappCss)) {
       await this.processLxappCss(lxappCss);
     }
@@ -177,28 +186,31 @@ export class ViewBuilder {
 
   private async processLxappCss(cssPath: string): Promise<void> {
     const finalCss = await this.resolveCssImports(cssPath, new Set());
-    const destFile = path.join(this.outputDir, 'lxapp.css');
+    const destFile = path.join(this.outputDir, "lxapp.css");
     fs.writeFileSync(destFile, finalCss);
   }
 
-  private async resolveCssImports(cssPath: string, processedFiles: Set<string>): Promise<string> {
+  private async resolveCssImports(
+    cssPath: string,
+    processedFiles: Set<string>,
+  ): Promise<string> {
     const absolutePath = path.resolve(cssPath);
     if (processedFiles.has(absolutePath)) {
       console.warn(`⚠️ Circular import detected: ${cssPath}`);
-      return '';
+      return "";
     }
     processedFiles.add(absolutePath);
 
     if (!fs.existsSync(cssPath)) {
       console.warn(`⚠️ CSS file not found: ${cssPath}`);
-      return '';
+      return "";
     }
 
-    const cssContent = fs.readFileSync(cssPath, 'utf-8');
+    const cssContent = fs.readFileSync(cssPath, "utf-8");
     const cssDir = path.dirname(cssPath);
-    let resolvedCss = '';
+    let resolvedCss = "";
 
-    const lines = cssContent.split('\n');
+    const lines = cssContent.split("\n");
     for (const line of lines) {
       const trimmedLine = line.trim();
 
@@ -207,22 +219,28 @@ export class ViewBuilder {
         const importPath = importMatch[1];
         let resolvedPath;
 
-        if (importPath.startsWith('./') || importPath.startsWith('../')) {
+        if (importPath.startsWith("./") || importPath.startsWith("../")) {
           resolvedPath = path.resolve(cssDir, importPath);
-        } else if (!importPath.startsWith('http') && !importPath.startsWith('//')) {
+        } else if (
+          !importPath.startsWith("http") &&
+          !importPath.startsWith("//")
+        ) {
           resolvedPath = path.resolve(this.projectPath, importPath);
         } else {
-          resolvedCss += line + '\n';
+          resolvedCss += line + "\n";
           continue;
         }
 
-        const importedCss = await this.resolveCssImports(resolvedPath, processedFiles);
+        const importedCss = await this.resolveCssImports(
+          resolvedPath,
+          processedFiles,
+        );
         if (importedCss) {
           resolvedCss += `/* Imported from: ${importPath} */\n`;
-          resolvedCss += importedCss + '\n';
+          resolvedCss += importedCss + "\n";
         }
       } else {
-        resolvedCss += line + '\n';
+        resolvedCss += line + "\n";
       }
     }
 

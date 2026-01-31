@@ -1,5 +1,5 @@
-import type { Page, PageFiles } from '../../types/index.js';
-import { FileUtils } from './file.js';
+import type { Page, PageFiles } from "../../types/index.js";
+import { FileUtils } from "./file.js";
 
 const fileUtils = new FileUtils();
 
@@ -22,25 +22,28 @@ export function getPageTitle(page: Page, pageFiles: PageFiles): string {
 /**
  * Detect page type from file extension
  */
-export function detectPageType(filePath: string): 'html' | 'react' | 'vue' {
+export function detectPageType(filePath: string): "html" | "react" | "vue" {
   const ext = fileUtils.getExtension(filePath);
 
   switch (ext) {
-    case 'tsx':
-    case 'jsx':
-      return 'react';
-    case 'vue':
-      return 'vue';
-    case 'html':
+    case "tsx":
+    case "jsx":
+      return "react";
+    case "vue":
+      return "vue";
+    case "html":
     default:
-      return 'html';
+      return "html";
   }
 }
 
 /**
  * Validate page structure
  */
-export function validatePageStructure(page: Page, pageFiles: PageFiles): string[] {
+export function validatePageStructure(
+  page: Page,
+  pageFiles: PageFiles,
+): string[] {
   const errors: string[] = [];
 
   if (!pageFiles.view.exists) {

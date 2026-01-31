@@ -1,17 +1,20 @@
-import { FrameworkProcessor } from './base.js';
-import { ReactProcessor } from './react.js';
-import { VueProcessor } from './vue.js';
-import { HtmlProcessor } from './html.js';
+import { FrameworkProcessor } from "./base.js";
+import { ReactProcessor } from "./react.js";
+import { VueProcessor } from "./vue.js";
+import { HtmlProcessor } from "./html.js";
 
 /**
  * Framework Factory - Creates appropriate framework processor
  * Adding new frameworks only requires adding them here
  */
 export class FrameworkFactory {
-  private static processors = new Map<string, new (projectPath: string, outputDir: string) => FrameworkProcessor>([
-    ['react', ReactProcessor],
-    ['vue', VueProcessor],
-    ['html', HtmlProcessor]
+  private static processors = new Map<
+    string,
+    new (projectPath: string, outputDir: string) => FrameworkProcessor
+  >([
+    ["react", ReactProcessor],
+    ["vue", VueProcessor],
+    ["html", HtmlProcessor],
   ]);
 
   /**
@@ -20,7 +23,7 @@ export class FrameworkFactory {
   static createProcessor(
     framework: string,
     projectPath: string,
-    outputDir: string
+    outputDir: string,
   ): FrameworkProcessor {
     const ProcessorClass = this.processors.get(framework.toLowerCase());
 
@@ -39,13 +42,13 @@ export class FrameworkFactory {
 
     // Create temporary processors to check extensions
     for (const [frameworkName, ProcessorClass] of this.processors) {
-      const tempProcessor = new ProcessorClass('', '');
+      const tempProcessor = new ProcessorClass("", "");
       if (tempProcessor.getExtensions().includes(ext)) {
         return frameworkName;
       }
     }
 
-    return 'html'; // Default fallback
+    return "html"; // Default fallback
   }
 
   /**
@@ -60,7 +63,10 @@ export class FrameworkFactory {
    */
   static registerFramework(
     name: string,
-    processorClass: new (projectPath: string, outputDir: string) => FrameworkProcessor
+    processorClass: new (
+      projectPath: string,
+      outputDir: string,
+    ) => FrameworkProcessor,
   ): void {
     this.processors.set(name.toLowerCase(), processorClass);
   }
@@ -74,4 +80,4 @@ export class FrameworkFactory {
 }
 
 // Import path for detectFramework method
-import * as path from 'path';
+import * as path from "path";

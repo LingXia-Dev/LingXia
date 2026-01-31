@@ -6,11 +6,11 @@ export interface ViewBuildConfig {
   cssCodeSplitMulti: boolean;
   target?: string;
   esbuild?: Record<string, unknown>;
-  minifyStrategy?: 'esbuild' | 'terser' | boolean;
-  resolvePlugins?: (framework: 'react' | 'vue') => Promise<any[]>;
+  minifyStrategy?: "esbuild" | "terser" | boolean;
+  resolvePlugins?: (framework: "react" | "vue") => Promise<any[]>;
   cssConfig?:
     | false
     | ((
-        buildDir: string
+        buildDir: string,
       ) => Promise<{ postcss?: { plugins?: any[] } } | undefined | null>);
 }

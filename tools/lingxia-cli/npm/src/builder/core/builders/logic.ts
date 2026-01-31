@@ -1,15 +1,15 @@
-import fs from 'fs';
-import path from 'path';
-import { FileUtils } from '../utils/file.js';
-import { ConfigManager } from '../config.js';
-import type { BuildOptions } from '../../types/index.js';
-import { injectPagePath } from './page-path-injector.js';
+import fs from "fs";
+import path from "path";
+import { FileUtils } from "../utils/file.js";
+import { ConfigManager } from "../config.js";
+import type { BuildOptions } from "../../types/index.js";
+import { injectPagePath } from "./page-path-injector.js";
 import {
   DEFAULT_SOURCE_DIRS,
-  resolveSourceDirs
-} from '../constants/source-dirs.js';
-import { resolveAliasMap } from '../config/alias-config.js';
-import type { BuildConfig } from '../config/lxapp-config.js';
+  resolveSourceDirs,
+} from "../constants/source-dirs.js";
+import { resolveAliasMap } from "../config/alias-config.js";
+import type { BuildConfig } from "../config/lxapp-config.js";
 
 /**
  * Modern LogicBuilder that leverages Vite for dependency resolution and bundling
@@ -28,7 +28,7 @@ export class LogicBuilder {
     projectPath: string,
     outputDir: string,
     pluginId?: string,
-    buildConfig?: BuildConfig
+    buildConfig?: BuildConfig,
   ) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
@@ -61,8 +61,8 @@ export class LogicBuilder {
     const logicFiles: string[] = [];
 
     // Add lxapp.js or lxapp.ts if it exists
-    const lxappJsPath = path.join(this.projectPath, 'lxapp.js');
-    const lxappTsPath = path.join(this.projectPath, 'lxapp.ts');
+    const lxappJsPath = path.join(this.projectPath, "lxapp.js");
+    const lxappTsPath = path.join(this.projectPath, "lxapp.ts");
 
     if (fs.existsSync(lxappTsPath)) {
       logicFiles.push(lxappTsPath);
@@ -73,7 +73,10 @@ export class LogicBuilder {
     // Process each page path
     for (const pagePath of pages) {
       // Remove extension and try .js and .ts
-      const basePath = path.join(this.projectPath, pagePath.replace(/\.[^.]+$/, ''));
+      const basePath = path.join(
+        this.projectPath,
+        pagePath.replace(/\.[^.]+$/, ""),
+      );
 
       // Check which logic file exists
       const jsPath = `${basePath}.js`;
@@ -92,8 +95,12 @@ export class LogicBuilder {
   /**
    * Build logic layer using Vite for proper dependency resolution
    */
-  private async buildLogicWithVite(logicFiles: string[], pages: string[], options: BuildOptions = {}): Promise<void> {
-    const buildDir = path.join(this.projectPath, '.lingxia-build', 'logic');
+  private async buildLogicWithVite(
+    logicFiles: string[],
+    pages: string[],
+    options: BuildOptions = {},
+  ): Promise<void> {
+    const buildDir = path.join(this.projectPath, ".lingxia-build", "logic");
 
     // Always clean build directory
     this.fileUtils.cleanDirectory(buildDir);
@@ -101,7 +108,7 @@ export class LogicBuilder {
 
     // Create entry file that imports all logic files
     const entryContent = this.createLogicEntry(logicFiles, pages);
-    fs.writeFileSync(path.join(buildDir, 'main.js'), entryContent);
+    fs.writeFileSync(path.join(buildDir, "main.js"), entryContent);
 
     // Copy lxapp file so entry import resolves correctly
     this.copyLxappFile(logicFiles, buildDir);
@@ -110,8 +117,8 @@ export class LogicBuilder {
     await this.runViteLogicBuild(buildDir, options);
 
     // Copy built logic.js to output
-    const builtLogicPath = path.join(buildDir, 'dist', 'main.iife.js');
-    const outputPath = path.join(this.outputDir, 'logic.js');
+    const builtLogicPath = path.join(buildDir, "dist", "main.iife.js");
+    const outputPath = path.join(this.outputDir, "logic.js");
     fs.copyFileSync(builtLogicPath, outputPath);
   }
 
@@ -126,7 +133,7 @@ export class LogicBuilder {
       const fileName = path.basename(logicFile);
 
       // Process the logic file to add path parameter to Page calls
-      if (fileName !== 'lxapp.js' && fileName !== 'lxapp.ts') {
+      if (fileName !== "lxapp.js" && fileName !== "lxapp.ts") {
         const pagePath = this.getPagePathFromConfig(logicFile, pages);
         const importPath = this.processLogicFileForPath(logicFile, pagePath);
         imports.push(`import './${importPath}';`);
@@ -137,17 +144,22 @@ export class LogicBuilder {
       }
     }
 
-    return imports.join('\n');
+    return imports.join("\n");
   }
 
   /**
    * Process logic file to add path parameter to Page calls
    */
-  private processLogicFileForPath(sourceFile: string, pagePath: string): string {
-    const buildDir = path.join(this.projectPath, '.lingxia-build', 'logic');
-    const relativeDir = path.dirname(path.relative(this.projectPath, sourceFile));
+  private processLogicFileForPath(
+    sourceFile: string,
+    pagePath: string,
+  ): string {
+    const buildDir = path.join(this.projectPath, ".lingxia-build", "logic");
+    const relativeDir = path.dirname(
+      path.relative(this.projectPath, sourceFile),
+    );
     const destDir =
-      relativeDir && relativeDir !== '.'
+      relativeDir && relativeDir !== "."
         ? path.join(buildDir, relativeDir)
         : buildDir;
     this.fileUtils.ensureDirectory(destDir);
@@ -156,26 +168,32 @@ export class LogicBuilder {
     const targetBase = `${path.basename(sourceFile, ext)}_processed${ext}`;
     const targetPath = path.join(destDir, targetBase);
 
-    const content = fs.readFileSync(sourceFile, 'utf-8');
+    const content = fs.readFileSync(sourceFile, "utf-8");
     const transformedContent = injectPagePath(content, pagePath, {
-      pluginId: this.pluginId
+      pluginId: this.pluginId,
     });
     fs.writeFileSync(targetPath, transformedContent);
     const posixDir =
-      relativeDir && relativeDir !== '.'
-        ? relativeDir.split(path.sep).join('/')
-        : '';
+      relativeDir && relativeDir !== "."
+        ? relativeDir.split(path.sep).join("/")
+        : "";
     return posixDir ? `${posixDir}/${targetBase}` : targetBase;
   }
 
   /**
    * Get page path from pages configuration
    */
-  private getPagePathFromConfig(logicFilePath: string, pages: string[]): string {
+  private getPagePathFromConfig(
+    logicFilePath: string,
+    pages: string[],
+  ): string {
     // Extract the directory and filename from the logic file path
     const relativePath = path.relative(this.projectPath, logicFilePath);
     const logicDir = path.dirname(relativePath);
-    const logicBaseName = path.basename(logicFilePath, path.extname(logicFilePath));
+    const logicBaseName = path.basename(
+      logicFilePath,
+      path.extname(logicFilePath),
+    );
 
     // Find the page path that corresponds to this logic file
     for (const pagePath of pages) {
@@ -193,8 +211,6 @@ export class LogicBuilder {
     return `${logicBaseName}.html`;
   }
 
-
-
   /**
    * Create Vite config for logic build using TemplateManager
    */
@@ -203,9 +219,9 @@ export class LogicBuilder {
    * Other page files are referenced through their processed copies.
    */
   private copyLxappFile(logicFiles: string[], buildDir: string): void {
-    const lxappFile = logicFiles.find(file => {
+    const lxappFile = logicFiles.find((file) => {
       const base = path.basename(file).toLowerCase();
-      return base === 'lxapp.js' || base === 'lxapp.ts';
+      return base === "lxapp.js" || base === "lxapp.ts";
     });
 
     if (!lxappFile) {
@@ -227,32 +243,34 @@ export class LogicBuilder {
     }
   }
 
-  private async runViteLogicBuild(buildDir: string, options: BuildOptions = {}): Promise<void> {
-    const { build } = await import('vite');
+  private async runViteLogicBuild(
+    buildDir: string,
+    options: BuildOptions = {},
+  ): Promise<void> {
+    const { build } = await import("vite");
     const isProd = Boolean(options.release);
     const isDev = !isProd;
 
     await build({
       configFile: false,
       root: buildDir,
-      logLevel: 'warn',
-      mode: isDev ? 'development' : isProd ? 'production' : undefined,
+      logLevel: "warn",
+      mode: isDev ? "development" : isProd ? "production" : undefined,
       resolve: {
-        alias: this.alias
+        alias: this.alias,
       },
       build: {
         lib: {
-          entry: path.join(buildDir, 'main.js'),
-          name: 'LingXiaLogic',
-          fileName: 'main',
-          formats: ['iife']
+          entry: path.join(buildDir, "main.js"),
+          name: "LingXiaLogic",
+          fileName: "main",
+          formats: ["iife"],
         },
-        outDir: path.join(buildDir, 'dist'),
+        outDir: path.join(buildDir, "dist"),
         emptyOutDir: true,
-        minify: isProd ? 'esbuild' : false,
-        sourcemap: isDev
-      }
+        minify: isProd ? "esbuild" : false,
+        sourcemap: isDev,
+      },
     });
   }
-
 }

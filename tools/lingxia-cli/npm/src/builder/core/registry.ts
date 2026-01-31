@@ -17,29 +17,38 @@ export interface FrameworkConfig {
  */
 export class FrameworkRegistry {
   private static frameworks: Map<string, FrameworkConfig> = new Map([
-    ['react', {
-      name: 'React',
-      extensions: ['.tsx', '.jsx'],
-      mainTemplate: 'main.jsx',
-      indexTemplate: 'index.html',
-      vitePlugin: '@vitejs/plugin-react',
-      hasComponents: true
-    }],
-    ['vue', {
-      name: 'Vue',
-      extensions: ['.vue'],
-      mainTemplate: 'main.js',
-      indexTemplate: 'index.html',
-      vitePlugin: '@vitejs/plugin-vue',
-      hasComponents: true
-    }],
-    ['html', {
-      name: 'HTML',
-      extensions: ['.html'],
-      mainTemplate: '',
-      indexTemplate: '',
-      hasComponents: false
-    }]
+    [
+      "react",
+      {
+        name: "React",
+        extensions: [".tsx", ".jsx"],
+        mainTemplate: "main.jsx",
+        indexTemplate: "index.html",
+        vitePlugin: "@vitejs/plugin-react",
+        hasComponents: true,
+      },
+    ],
+    [
+      "vue",
+      {
+        name: "Vue",
+        extensions: [".vue"],
+        mainTemplate: "main.js",
+        indexTemplate: "index.html",
+        vitePlugin: "@vitejs/plugin-vue",
+        hasComponents: true,
+      },
+    ],
+    [
+      "html",
+      {
+        name: "HTML",
+        extensions: [".html"],
+        mainTemplate: "",
+        indexTemplate: "",
+        hasComponents: false,
+      },
+    ],
   ]);
 
   /**
@@ -60,7 +69,7 @@ export class FrameworkRegistry {
    * Detect framework from file extension
    */
   static detectFramework(filePath: string): string {
-    const ext = filePath.substring(filePath.lastIndexOf('.'));
+    const ext = filePath.substring(filePath.lastIndexOf("."));
 
     for (const [frameworkName, config] of this.frameworks) {
       if (config.extensions.includes(ext)) {
@@ -68,7 +77,7 @@ export class FrameworkRegistry {
       }
     }
 
-    return 'html'; // Default fallback
+    return "html"; // Default fallback
   }
 
   /**

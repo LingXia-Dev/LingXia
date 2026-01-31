@@ -1,7 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import type { Page, PageFiles } from '../../types/index.js';
-import { getFrameworkTemplates } from './templates.js';
+import * as fs from "fs";
+import * as path from "path";
+import type { Page, PageFiles } from "../../types/index.js";
+import { getFrameworkTemplates } from "./templates.js";
 
 /**
  * Abstract base class for framework processors
@@ -33,7 +33,7 @@ export abstract class FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[]
+    pageFunctions: string[],
   ): Promise<void>;
 
   /**
@@ -42,8 +42,13 @@ export abstract class FrameworkProcessor {
   abstract generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
-    bridgeScript: string
+    buildResult: {
+      distDir: string;
+      assetDir?: string;
+      entryHtml?: string;
+      entryJs?: string;
+    },
+    bridgeScript: string,
   ): Promise<void>;
 
   /**
@@ -56,7 +61,10 @@ export abstract class FrameworkProcessor {
    */
   protected processPageTitle(content: string, pageTitle: string): string {
     // Default implementation - can be overridden
-    const titlePattern = new RegExp(`<title>LingXia ${this.getFrameworkName()} Page</title>`, 'i');
+    const titlePattern = new RegExp(
+      `<title>LingXia ${this.getFrameworkName()} Page</title>`,
+      "i",
+    );
     return content.replace(titlePattern, `<title>${pageTitle}</title>`);
   }
 
@@ -68,34 +76,41 @@ export abstract class FrameworkProcessor {
     const templates = getFrameworkTemplates(frameworkName);
 
     if (!templates) {
-      throw new Error(`Framework templates not found: ${this.getFrameworkName()}`);
+      throw new Error(
+        `Framework templates not found: ${this.getFrameworkName()}`,
+      );
     }
 
-    fs.writeFileSync(path.join(buildDir, 'index.html'), templates.indexHtml);
-    fs.writeFileSync(path.join(buildDir, templates.mainEntryFilename), templates.mainEntry);
+    fs.writeFileSync(path.join(buildDir, "index.html"), templates.indexHtml);
+    fs.writeFileSync(
+      path.join(buildDir, templates.mainEntryFilename),
+      templates.mainEntry,
+    );
   }
 
   protected normalizeAssetDir(dir?: string): string {
-    const normalized = (dir ?? 'assets').replace(/^\/+/, '').replace(/\/+$/, '');
-    return normalized.length > 0 ? normalized : 'assets';
+    const normalized = (dir ?? "assets")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "");
+    return normalized.length > 0 ? normalized : "assets";
   }
 
   protected injectRuntimeScript(htmlContent: string): string {
-    const runtimeSrc = 'lx://assets/runtime.js';
+    const runtimeSrc = "lx://assets/runtime.js";
     if (htmlContent.toLowerCase().includes(runtimeSrc)) {
       return htmlContent;
     }
 
     const scriptTag = `<script src="${runtimeSrc}"></script>`;
     const lower = htmlContent.toLowerCase();
-    const headIndex = lower.indexOf('</head>');
+    const headIndex = lower.indexOf("</head>");
     if (headIndex !== -1) {
       return `${htmlContent.slice(0, headIndex)}${scriptTag}\n${htmlContent.slice(headIndex)}`;
     }
 
-    const bodyIndex = lower.indexOf('<body');
+    const bodyIndex = lower.indexOf("<body");
     if (bodyIndex !== -1) {
-      const bodyEnd = htmlContent.indexOf('>', bodyIndex);
+      const bodyEnd = htmlContent.indexOf(">", bodyIndex);
       if (bodyEnd !== -1) {
         const insertPos = bodyEnd + 1;
         return `${htmlContent.slice(0, insertPos)}${scriptTag}\n${htmlContent.slice(insertPos)}`;

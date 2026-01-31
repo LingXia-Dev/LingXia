@@ -1,7 +1,7 @@
 export interface PageConfig {
   navigationBarTitleText?: string;
   navigationBarBackgroundColor?: string;
-  navigationBarTextStyle?: 'black' | 'white';
+  navigationBarTextStyle?: "black" | "white";
   backgroundColor?: string;
   enablePullDownRefresh?: boolean;
   onReachBottomDistance?: number;
@@ -11,7 +11,7 @@ export interface PageFiles {
   view: {
     path: string;
     exists: boolean;
-    type: 'html' | 'react' | 'vue';
+    type: "html" | "react" | "vue";
   };
   logic: {
     path: string;
@@ -31,7 +31,7 @@ export interface PageFiles {
 export interface Page {
   path: string;
   name: string;
-  type: 'html' | 'react' | 'vue';
+  type: "html" | "react" | "vue";
 }
 
 export interface BuildOptions {

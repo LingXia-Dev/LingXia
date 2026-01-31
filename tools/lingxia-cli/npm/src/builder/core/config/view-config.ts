@@ -1,46 +1,46 @@
-import type { ViewBuildConfig } from './view-build-schema.js';
+import type { ViewBuildConfig } from "./view-build-schema.js";
 
-export const DEFAULT_ASSET_DIR = 'assets';
+export const DEFAULT_ASSET_DIR = "assets";
 
-function createDefaultConfig(): Record<'react' | 'vue', ViewBuildConfig> {
+function createDefaultConfig(): Record<"react" | "vue", ViewBuildConfig> {
   const baseMultiOutput = (assetDir: string) => ({
-    entryFileNames: 'pages/[name]/[name].js',
+    entryFileNames: "pages/[name]/[name].js",
     chunkFileNames: `${assetDir}/vendor-[hash].js`,
     assetFileNames: `${assetDir}/[name].[ext]`,
-    manualChunks: null
+    manualChunks: null,
   });
 
   return {
     react: {
       output: {
-        multi: baseMultiOutput(DEFAULT_ASSET_DIR)
+        multi: baseMultiOutput(DEFAULT_ASSET_DIR),
       },
       assetDir: DEFAULT_ASSET_DIR,
       cssCodeSplitMulti: true,
-      target: 'es2020',
-      esbuild: { jsx: 'automatic' },
-      minifyStrategy: 'esbuild'
+      target: "es2020",
+      esbuild: { jsx: "automatic" },
+      minifyStrategy: "esbuild",
     },
     vue: {
       output: {
-        multi: baseMultiOutput(DEFAULT_ASSET_DIR)
+        multi: baseMultiOutput(DEFAULT_ASSET_DIR),
       },
       assetDir: DEFAULT_ASSET_DIR,
       cssCodeSplitMulti: true,
-      target: 'es2020',
-      minifyStrategy: 'esbuild'
-    }
+      target: "es2020",
+      minifyStrategy: "esbuild",
+    },
   };
 }
 
-const defaultConfig: Record<'react' | 'vue', ViewBuildConfig> =
+const defaultConfig: Record<"react" | "vue", ViewBuildConfig> =
   createDefaultConfig();
 
 import {
   extractViewOverrides,
   loadLxappConfig,
-  type FrameworkName
-} from './lxapp-config.js';
+  type FrameworkName,
+} from "./lxapp-config.js";
 
 export class ViewConfigManager {
   private projectPath: string;
@@ -51,7 +51,7 @@ export class ViewConfigManager {
     this.overrides = overrides;
   }
 
-  getFrameworkConfig(framework: 'react' | 'vue'): ViewBuildConfig {
+  getFrameworkConfig(framework: "react" | "vue"): ViewBuildConfig {
     const base = defaultConfig[framework];
     const extra = this.overrides;
     if (!extra) return base;
@@ -61,7 +61,7 @@ export class ViewConfigManager {
 
 export function resolveUserViewConfig(
   projectPath: string,
-  framework: FrameworkName
+  framework: FrameworkName,
 ): Partial<ViewBuildConfig> | undefined {
   const config = loadLxappConfig(projectPath);
   return extractViewOverrides(config, framework);
@@ -69,12 +69,12 @@ export function resolveUserViewConfig(
 
 function mergeViewConfig(
   base: ViewBuildConfig,
-  extra: Partial<ViewBuildConfig>
+  extra: Partial<ViewBuildConfig>,
 ): ViewBuildConfig {
   const assetDir = extra.assetDir ?? base.assetDir ?? DEFAULT_ASSET_DIR;
   const multiOutput = {
     ...base.output.multi,
-    ...(extra.output?.multi ?? {})
+    ...(extra.output?.multi ?? {}),
   };
 
   if (!extra.output?.multi?.assetFileNames) {
@@ -89,7 +89,7 @@ function mergeViewConfig(
     ...base,
     ...extra,
     output: {
-      multi: multiOutput
+      multi: multiOutput,
     },
     assetDir,
     cssCodeSplitMulti: extra.cssCodeSplitMulti ?? base.cssCodeSplitMulti,
@@ -97,6 +97,6 @@ function mergeViewConfig(
     esbuild: { ...base.esbuild, ...(extra.esbuild ?? {}) },
     minifyStrategy: extra.minifyStrategy ?? base.minifyStrategy,
     resolvePlugins: extra.resolvePlugins ?? base.resolvePlugins,
-    cssConfig: extra.cssConfig ?? base.cssConfig
+    cssConfig: extra.cssConfig ?? base.cssConfig,
   };
 }

@@ -1,1 +1,1 @@
-export { buildCommand } from './commands/build.js';
+export { buildCommand } from "./commands/build.js";

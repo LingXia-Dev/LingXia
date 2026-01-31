@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
 export class FileUtils {
   /**
@@ -89,7 +89,7 @@ export class FileUtils {
    */
   readJsonFile<T = any>(filePath: string): T | null {
     try {
-      const content = fs.readFileSync(filePath, 'utf-8');
+      const content = fs.readFileSync(filePath, "utf-8");
       return JSON.parse(content) as T;
     } catch {
       return null;
@@ -101,6 +101,6 @@ export class FileUtils {
    */
   writeJsonFile(filePath: string, data: any): void {
     const content = JSON.stringify(data, null, 2);
-    fs.writeFileSync(filePath, content, 'utf-8');
+    fs.writeFileSync(filePath, content, "utf-8");
   }
 }

@@ -1,11 +1,11 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { load } from 'cheerio';
-import { FrameworkProcessor } from './base.js';
-import type { Page, PageFiles } from '../../types/index.js';
-import { getPageTitle } from '../utils/page.js';
-import { FileUtils } from '../utils/file.js';
-import { TemplateManager } from '../template.js';
+import * as fs from "fs";
+import * as path from "path";
+import { load } from "cheerio";
+import { FrameworkProcessor } from "./base.js";
+import type { Page, PageFiles } from "../../types/index.js";
+import { getPageTitle } from "../utils/page.js";
+import { FileUtils } from "../utils/file.js";
+import { TemplateManager } from "../template.js";
 
 /**
  * React framework processor
@@ -22,11 +22,11 @@ export class ReactProcessor extends FrameworkProcessor {
   }
 
   getFrameworkName(): string {
-    return 'React';
+    return "React";
   }
 
   getExtensions(): string[] {
-    return ['.tsx', '.jsx'];
+    return [".tsx", ".jsx"];
   }
 
   getDependencies(): { dependencies: any; devDependencies: any } {
@@ -37,7 +37,7 @@ export class ReactProcessor extends FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[]
+    pageFunctions: string[],
   ): Promise<void> {
     // Copy framework templates
     this.copyTemplates(buildDir);
@@ -49,8 +49,13 @@ export class ReactProcessor extends FrameworkProcessor {
   async generateOutput(
     page: Page,
     pageFiles: PageFiles,
-    buildResult: { distDir: string; assetDir?: string; entryHtml?: string; entryJs?: string },
-    bridgeScript: string
+    buildResult: {
+      distDir: string;
+      assetDir?: string;
+      entryHtml?: string;
+      entryJs?: string;
+    },
+    bridgeScript: string,
   ): Promise<void> {
     const pageOutputDir = path.join(this.outputDir, path.dirname(page.path));
     const baseName = path.basename(page.path, path.extname(page.path));
@@ -58,22 +63,22 @@ export class ReactProcessor extends FrameworkProcessor {
     const assetDir = this.normalizeAssetDir(buildResult.assetDir);
 
     // Copy built assets
-    const builtIndexHtml = buildResult.entryHtml 
+    const builtIndexHtml = buildResult.entryHtml
       ? path.join(buildResult.distDir, buildResult.entryHtml)
-      : path.join(buildResult.distDir, 'index.html');
-      
-    const builtMainJs = buildResult.entryJs 
-      ? path.join(buildResult.distDir, buildResult.entryJs)
-      : path.join(buildResult.distDir, 'main.js');
+      : path.join(buildResult.distDir, "index.html");
 
-    let htmlContent = fs.readFileSync(builtIndexHtml, 'utf-8');
+    const builtMainJs = buildResult.entryJs
+      ? path.join(buildResult.distDir, buildResult.entryJs)
+      : path.join(buildResult.distDir, "main.js");
+
+    let htmlContent = fs.readFileSync(builtIndexHtml, "utf-8");
 
     // Ensure output directory exists
     this.fileUtils.ensureDirectory(pageOutputDir);
 
     // Process JS
     if (fs.existsSync(builtMainJs)) {
-      fs.copyFileSync(builtMainJs, path.join(pageOutputDir, 'view.js'));
+      fs.copyFileSync(builtMainJs, path.join(pageOutputDir, "view.js"));
     }
 
     // Copy page config
@@ -86,12 +91,17 @@ export class ReactProcessor extends FrameworkProcessor {
     const assetRelativePath = path
       .relative(pageOutputDir, path.join(this.outputDir, assetDir))
       .split(path.sep)
-      .join('/');
-    htmlContent = this.fixHtmlPaths(htmlContent, baseName, assetDir, assetRelativePath);
+      .join("/");
+    htmlContent = this.fixHtmlPaths(
+      htmlContent,
+      baseName,
+      assetDir,
+      assetRelativePath,
+    );
     htmlContent = this.injectRuntimeScript(htmlContent);
     htmlContent = htmlContent.replace(
-      '</body>',
-      `<script>\n${bridgeScript}\n</script>\n</body>`
+      "</body>",
+      `<script>\n${bridgeScript}\n</script>\n</body>`,
     );
 
     // Write final component file
@@ -99,36 +109,35 @@ export class ReactProcessor extends FrameworkProcessor {
     fs.writeFileSync(componentOutputPath, htmlContent);
   }
 
-
-
   private async processTemplates(
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[]
+    pageFunctions: string[],
   ): Promise<void> {
     const pageTitle = getPageTitle(page, pageFiles);
 
     // Process index.html
-    const indexHtmlPath = path.join(buildDir, 'index.html');
+    const indexHtmlPath = path.join(buildDir, "index.html");
     if (fs.existsSync(indexHtmlPath)) {
-      let indexHtml = fs.readFileSync(indexHtmlPath, 'utf-8');
+      let indexHtml = fs.readFileSync(indexHtmlPath, "utf-8");
       indexHtml = this.processPageTitle(indexHtml, pageTitle);
       fs.writeFileSync(indexHtmlPath, indexHtml);
     }
 
     // Process main.jsx
-    const mainJsxPath = path.join(buildDir, 'main.jsx');
+    const mainJsxPath = path.join(buildDir, "main.jsx");
     if (fs.existsSync(mainJsxPath)) {
-      let mainJsx = fs.readFileSync(mainJsxPath, 'utf-8');
+      let mainJsx = fs.readFileSync(mainJsxPath, "utf-8");
 
       // Inject page functions
-      const bridgeScript = this.templateManager.generateFunctionBridge(pageFunctions);
-      mainJsx = mainJsx.replace('/* {{PAGE_FUNCTIONS}} */', bridgeScript);
+      const bridgeScript =
+        this.templateManager.generateFunctionBridge(pageFunctions);
+      mainJsx = mainJsx.replace("/* {{PAGE_FUNCTIONS}} */", bridgeScript);
 
       const appImport = `import App from '${this.resolveSourceImportPath(buildDir, pageFiles.view.path)}';`;
-      if (mainJsx.includes('/* {{APP_IMPORT}} */')) {
-        mainJsx = mainJsx.replace('/* {{APP_IMPORT}} */', appImport);
+      if (mainJsx.includes("/* {{APP_IMPORT}} */")) {
+        mainJsx = mainJsx.replace("/* {{APP_IMPORT}} */", appImport);
       }
 
       fs.writeFileSync(mainJsxPath, mainJsx);
@@ -142,69 +151,76 @@ export class ReactProcessor extends FrameworkProcessor {
     htmlContent: string,
     baseName: string,
     assetDir: string,
-    assetRelativePath: string
+    assetRelativePath: string,
   ): string {
     const normalizedAssetRelativePath =
-      assetRelativePath.length === 0 ? '.' : assetRelativePath.replace(/\/+$/, '');
-    const escapedDir = assetDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assetRelativePath.length === 0
+        ? "."
+        : assetRelativePath.replace(/\/+$/, "");
+    const escapedDir = assetDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const $ = load(htmlContent);
 
-    $('script[src]').each((_, element) => {
+    $("script[src]").each((_, element) => {
       const $element = $(element);
-      const src = $element.attr('src');
+      const src = $element.attr("src");
       if (!src) return;
       if (/^\/pages\/[^/]+\/[^/]+\.js(?:[?#].*)?$/i.test(src)) {
-        $element.attr('src', './view.js');
+        $element.attr("src", "./view.js");
       }
     });
 
     const buildAssetHref = (file: string, suffix: string) => {
       const basePath =
-        normalizedAssetRelativePath === '.' ? `./${file}` : `${normalizedAssetRelativePath}/${file}`;
+        normalizedAssetRelativePath === "."
+          ? `./${file}`
+          : `${normalizedAssetRelativePath}/${file}`;
       return `${basePath}${suffix}`;
     };
 
     const rewriteAssetHref = (href: string): string | null => {
       if (!href) return null;
       let normalized = href.trim();
-      if (normalized.startsWith('./')) {
+      if (normalized.startsWith("./")) {
         normalized = normalized.slice(2);
       }
-      const assetPattern = new RegExp(`^/?${escapedDir}/([^?#]+)([?#].*)?$`, 'i');
+      const assetPattern = new RegExp(
+        `^/?${escapedDir}/([^?#]+)([?#].*)?$`,
+        "i",
+      );
       const match = normalized.match(assetPattern);
       if (!match) {
         return null;
       }
       const file = match[1];
-      const suffix = match[2] ?? '';
+      const suffix = match[2] ?? "";
       return buildAssetHref(file, suffix);
     };
 
-    this.rewriteLinkHrefs($, 'stylesheet', rewriteAssetHref);
-    this.rewriteLinkHrefs($, 'modulepreload', rewriteAssetHref);
+    this.rewriteLinkHrefs($, "stylesheet", rewriteAssetHref);
+    this.rewriteLinkHrefs($, "modulepreload", rewriteAssetHref);
 
     return $.html();
   }
 
   private rewriteLinkHrefs(
     $: ReturnType<typeof load>,
-    rel: 'stylesheet' | 'modulepreload',
-    transform: (href: string) => string | null
+    rel: "stylesheet" | "modulepreload",
+    transform: (href: string) => string | null,
   ): void {
-    $('link[rel][href]').each((_, element) => {
+    $("link[rel][href]").each((_, element) => {
       const $element = $(element);
-      if (!this.linkHasRel($element.attr('rel'), rel)) {
+      if (!this.linkHasRel($element.attr("rel"), rel)) {
         return;
       }
 
-      const currentHref = $element.attr('href');
-      const nextHref = transform(currentHref ?? '');
+      const currentHref = $element.attr("href");
+      const nextHref = transform(currentHref ?? "");
       if (!nextHref || nextHref === currentHref) {
         return;
       }
 
-      $element.attr('href', nextHref);
+      $element.attr("href", nextHref);
     });
   }
 
@@ -212,13 +228,19 @@ export class ReactProcessor extends FrameworkProcessor {
     if (!relAttr) return false;
     const relValue = relAttr
       .split(/\s+/)
-      .map(value => value.toLowerCase())
+      .map((value) => value.toLowerCase())
       .filter(Boolean);
     return relValue.includes(target.toLowerCase());
   }
 
-  private resolveSourceImportPath(buildDir: string, sourcePath: string): string {
-    const relativePath = path.relative(buildDir, sourcePath).split(path.sep).join('/');
-    return relativePath.startsWith('.') ? relativePath : `./${relativePath}`;
+  private resolveSourceImportPath(
+    buildDir: string,
+    sourcePath: string,
+  ): string {
+    const relativePath = path
+      .relative(buildDir, sourcePath)
+      .split(path.sep)
+      .join("/");
+    return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
   }
 }

@@ -1,7 +1,10 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { FrameworkRegistry } from './registry.js';
-import { hasFrameworkTemplates, getFrameworkTemplates } from './templates/embedded.js';
+import * as fs from "fs";
+import * as path from "path";
+import { FrameworkRegistry } from "./registry.js";
+import {
+  hasFrameworkTemplates,
+  getFrameworkTemplates,
+} from "./templates/embedded.js";
 
 export class TemplateManager {
   copyFrameworkTemplates(framework: string, buildDir: string): void {
@@ -14,29 +17,40 @@ export class TemplateManager {
       throw new Error(`Framework templates not found: ${framework}`);
     }
 
-    fs.writeFileSync(path.join(buildDir, 'index.html'), templates.indexHtml);
-    fs.writeFileSync(path.join(buildDir, templates.mainEntryFilename), templates.mainEntry);
+    fs.writeFileSync(path.join(buildDir, "index.html"), templates.indexHtml);
+    fs.writeFileSync(
+      path.join(buildDir, templates.mainEntryFilename),
+      templates.mainEntry,
+    );
   }
 
-  generatePageTemplate(framework: 'react' | 'vue', pageFunctions: string[]): string {
+  generatePageTemplate(
+    framework: "react" | "vue",
+    pageFunctions: string[],
+  ): string {
     const templates = getFrameworkTemplates(framework);
     if (!templates) {
       throw new Error(`Framework templates not found: ${framework}`);
     }
 
     const functionBridge = this.generateFunctionBridge(pageFunctions);
-    return templates.mainEntry.replace('/* {{PAGE_FUNCTIONS}} */', functionBridge);
+    return templates.mainEntry.replace(
+      "/* {{PAGE_FUNCTIONS}} */",
+      functionBridge,
+    );
   }
 
   generateFunctionBridge(functions: string[]): string {
     if (functions.length === 0) {
-      return 'window.__PAGE_FUNCTIONS = [];';
+      return "window.__PAGE_FUNCTIONS = [];";
     }
 
     const functionList = JSON.stringify(functions);
 
     // Generate explicit function wrappers for better debugging and runtime safety
-    const wrappers = functions.map(funcName => `
+    const wrappers = functions
+      .map(
+        (funcName) => `
 window['${funcName}'] = function(...args) {
   // Filter out React/DOM event objects to prevent circular reference errors
   const cleanArgs = args.filter(arg => {
@@ -52,7 +66,9 @@ window['${funcName}'] = function(...args) {
       console.warn('[PageFunc] ${funcName} failed:', e.message || e);
       throw e;
     });
-};`).join('\n');
+};`,
+      )
+      .join("\n");
 
     return `window.__PAGE_FUNCTIONS = ${functionList};
 

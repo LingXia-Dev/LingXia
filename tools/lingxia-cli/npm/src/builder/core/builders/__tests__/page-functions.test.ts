@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
-import { extractPageFunctionsFromSource } from '../page-functions.js';
+import { describe, it, expect } from "vitest";
+import { extractPageFunctionsFromSource } from "../page-functions.js";
 
 const normalize = (input: string[]): string[] => input.slice().sort();
 
-describe('extractPageFunctionsFromSource', () => {
-  it('captures user-defined functions across syntaxes while skipping lifecycle hooks', () => {
+describe("extractPageFunctionsFromSource", () => {
+  it("captures user-defined functions across syntaxes while skipping lifecycle hooks", () => {
     const source = `
       Page({
         data: {},
@@ -19,11 +19,11 @@ describe('extractPageFunctionsFromSource', () => {
     `;
 
     expect(normalize(extractPageFunctionsFromSource(source))).toEqual(
-      normalize(['foo', 'bar', 'baz', 'qux', 'nested'])
+      normalize(["foo", "bar", "baz", "qux", "nested"]),
     );
   });
 
-  it('ignores spread props and private helpers while keeping remaining entries', () => {
+  it("ignores spread props and private helpers while keeping remaining entries", () => {
     const source = `
       const shared = {
         sharedFn() {}
@@ -43,11 +43,11 @@ describe('extractPageFunctionsFromSource', () => {
     `;
 
     expect(normalize(extractPageFunctionsFromSource(source))).toEqual(
-      normalize(['keepMe', 'anotherOne', 'stringKey', '42'])
+      normalize(["keepMe", "anotherOne", "stringKey", "42"]),
     );
   });
 
-  it('handles TS assertions and nested parentheses around the Page config object', () => {
+  it("handles TS assertions and nested parentheses around the Page config object", () => {
     const source = `
       type Foo = { submit(): void };
 
@@ -56,10 +56,10 @@ describe('extractPageFunctionsFromSource', () => {
       } as Foo));
     `;
 
-    expect(extractPageFunctionsFromSource(source)).toEqual(['submit']);
+    expect(extractPageFunctionsFromSource(source)).toEqual(["submit"]);
   });
 
-  it('returns empty array when no Page call is present', () => {
+  it("returns empty array when no Page call is present", () => {
     const source = `
       const opts = { foo() {} };
       createPage(opts);

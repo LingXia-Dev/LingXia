@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import type { LxPluginConfig } from '../types/index.js';
+import * as fs from "fs";
+import * as path from "path";
+import type { LxPluginConfig } from "../types/index.js";
 
 /**
  * Centralized configuration manager for LingXia projects
@@ -20,11 +20,11 @@ export class ConfigManager {
    */
   getLxappConfig(): any {
     if (this.lxappConfig === null) {
-      const lxappPath = path.join(this.projectPath, 'lxapp.json');
+      const lxappPath = path.join(this.projectPath, "lxapp.json");
       if (!fs.existsSync(lxappPath)) {
-        throw new Error('lxapp.json not found in project root');
+        throw new Error("lxapp.json not found in project root");
       }
-      this.lxappConfig = JSON.parse(fs.readFileSync(lxappPath, 'utf-8'));
+      this.lxappConfig = JSON.parse(fs.readFileSync(lxappPath, "utf-8"));
     }
     return this.lxappConfig;
   }
@@ -34,12 +34,12 @@ export class ConfigManager {
    */
   getLxpluginConfig(): LxPluginConfig | null {
     if (this.lxpluginConfig === undefined) {
-      const lxpluginPath = path.join(this.projectPath, 'lxplugin.json');
+      const lxpluginPath = path.join(this.projectPath, "lxplugin.json");
       if (!fs.existsSync(lxpluginPath)) {
         this.lxpluginConfig = null;
       } else {
         this.lxpluginConfig = JSON.parse(
-          fs.readFileSync(lxpluginPath, 'utf-8')
+          fs.readFileSync(lxpluginPath, "utf-8"),
         ) as LxPluginConfig;
       }
     }
@@ -53,7 +53,7 @@ export class ConfigManager {
     if (options.plugin) {
       const pluginConfig = this.getLxpluginConfig();
       if (!pluginConfig) {
-        throw new Error('lxplugin.json not found in project root');
+        throw new Error("lxplugin.json not found in project root");
       }
       return Object.values(pluginConfig.pages);
     }
@@ -66,16 +66,16 @@ export class ConfigManager {
    * Check if project has package.json
    */
   hasPackageJson(): boolean {
-    return fs.existsSync(path.join(this.projectPath, 'package.json'));
+    return fs.existsSync(path.join(this.projectPath, "package.json"));
   }
 
   /**
    * Read package.json if exists
    */
   getPackageJson(): any | null {
-    const packagePath = path.join(this.projectPath, 'package.json');
+    const packagePath = path.join(this.projectPath, "package.json");
     if (fs.existsSync(packagePath)) {
-      return JSON.parse(fs.readFileSync(packagePath, 'utf-8'));
+      return JSON.parse(fs.readFileSync(packagePath, "utf-8"));
     }
     return null;
   }

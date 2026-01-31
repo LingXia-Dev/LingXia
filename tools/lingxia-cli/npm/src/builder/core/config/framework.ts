@@ -1,15 +1,15 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-export type ProjectFramework = 'react' | 'vue';
+export type ProjectFramework = "react" | "vue";
 
 export function readProjectFramework(projectPath: string): ProjectFramework {
-  const pkgPath = path.join(projectPath, 'package.json');
+  const pkgPath = path.join(projectPath, "package.json");
   if (fs.existsSync(pkgPath)) {
     try {
-      const packageJson = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      const packageJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
       const framework = packageJson?.lingxia?.framework;
-      if (framework === 'react' || framework === 'vue') {
+      if (framework === "react" || framework === "vue") {
         return framework;
       }
     } catch {
@@ -22,12 +22,14 @@ export function readProjectFramework(projectPath: string): ProjectFramework {
 
   throw new Error(
     `Cannot determine Lingxia project framework. Please rerun ` +
-      `'lingxia create' or add {"lingxia":{"framework":"react|vue"}} to package.json.`
+      `'lingxia create' or add {"lingxia":{"framework":"react|vue"}} to package.json.`,
   );
 }
 
-function detectFrameworkFromPages(projectPath: string): ProjectFramework | undefined {
-  const pagesDir = path.join(projectPath, 'pages');
+function detectFrameworkFromPages(
+  projectPath: string,
+): ProjectFramework | undefined {
+  const pagesDir = path.join(projectPath, "pages");
   if (!fs.existsSync(pagesDir)) {
     return undefined;
   }
@@ -35,15 +37,18 @@ function detectFrameworkFromPages(projectPath: string): ProjectFramework | undef
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const dir = path.join(pagesDir, entry.name);
-    const reactEntry = findFirstFileWithExt(dir, ['.tsx', '.jsx']);
-    if (reactEntry) return 'react';
-    const vueEntry = findFirstFileWithExt(dir, ['.vue']);
-    if (vueEntry) return 'vue';
+    const reactEntry = findFirstFileWithExt(dir, [".tsx", ".jsx"]);
+    if (reactEntry) return "react";
+    const vueEntry = findFirstFileWithExt(dir, [".vue"]);
+    if (vueEntry) return "vue";
   }
   return undefined;
 }
 
-function findFirstFileWithExt(dir: string, extensions: string[]): string | undefined {
+function findFirstFileWithExt(
+  dir: string,
+  extensions: string[],
+): string | undefined {
   for (const ext of extensions) {
     const candidate = path.join(dir, `index${ext}`);
     if (fs.existsSync(candidate)) {

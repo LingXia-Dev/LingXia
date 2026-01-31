@@ -1,27 +1,26 @@
-import path from 'path';
-import type { BuildConfig } from './lxapp-config.js';
-import type { BuildConfig } from './lxapp-config.js';
-import { loadLxappConfig } from './lxapp-config.js';
+import path from "path";
+import type { BuildConfig } from "./lxapp-config.js";
+import { loadLxappConfig } from "./lxapp-config.js";
 
 export type AliasMap = Record<string, string>;
 
 // Use @/ instead of @lingxia to avoid conflict with npm @lingxia/* packages
-const DEFAULT_ROOT_ALIAS = '@';
+const DEFAULT_ROOT_ALIAS = "@";
 
 function normalizeAliases(
   projectPath: string,
-  config?: BuildConfig | BuildConfig | undefined
+  config?: BuildConfig | undefined,
 ): AliasMap {
-  if (!config?.alias || typeof config.alias !== 'object') {
+  if (!config?.alias || typeof config.alias !== "object") {
     return {};
   }
 
-  const entries = Object.entries(config.alias).filter(entry => {
+  const entries = Object.entries(config.alias).filter((entry) => {
     const [key, value] = entry;
     return (
-      typeof key === 'string' &&
+      typeof key === "string" &&
       key.trim().length > 0 &&
-      typeof value === 'string' &&
+      typeof value === "string" &&
       value.trim().length > 0
     );
   });
@@ -36,7 +35,7 @@ function normalizeAliases(
 
 export function resolveAliasMap(
   projectPath: string,
-  config?: BuildConfig
+  config?: BuildConfig,
 ): AliasMap {
   const resolvedConfig = config ?? loadLxappConfig(projectPath);
   const alias = normalizeAliases(projectPath, resolvedConfig);

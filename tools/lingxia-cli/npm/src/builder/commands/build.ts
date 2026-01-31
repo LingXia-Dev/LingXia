@@ -1,13 +1,13 @@
-import fs from 'fs';
-import path from 'path';
-import { spawn } from 'child_process';
-import type { BuildOptions, Page } from '../types/index.js';
-import { ViewBuilder } from '../core/builders/view.js';
-import { LogicBuilder } from '../core/builders/logic.js';
-import { FileUtils } from '../core/utils/file.js';
-import { detectPageType } from '../core/utils/page.js';
-import { ConfigManager } from '../core/config.js';
-import { loadLxappConfig } from '../core/config/lxapp-config.js';
+import fs from "fs";
+import path from "path";
+import { spawn } from "child_process";
+import type { BuildOptions, Page } from "../types/index.js";
+import { ViewBuilder } from "../core/builders/view.js";
+import { LogicBuilder } from "../core/builders/logic.js";
+import { FileUtils } from "../core/utils/file.js";
+import { detectPageType } from "../core/utils/page.js";
+import { ConfigManager } from "../core/config.js";
+import { loadLxappConfig } from "../core/config/lxapp-config.js";
 
 const fileUtils = new FileUtils();
 
@@ -15,23 +15,35 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const projectPath = process.cwd();
   const configManager = new ConfigManager(projectPath);
 
-  const hasLxappConfig = fs.existsSync(path.join(projectPath, 'lxapp.json'));
-  const hasPluginConfig = fs.existsSync(path.join(projectPath, 'lxplugin.json'));
+  const hasLxappConfig = fs.existsSync(path.join(projectPath, "lxapp.json"));
+  const hasPluginConfig = fs.existsSync(
+    path.join(projectPath, "lxplugin.json"),
+  );
   const isPluginMode = !hasLxappConfig && hasPluginConfig;
-  const outputDir = path.join(projectPath, isPluginMode ? 'dist-plugin' : 'dist');
+  const outputDir = path.join(
+    projectPath,
+    isPluginMode ? "dist-plugin" : "dist",
+  );
 
-  const buildOptions: BuildOptions = { ...options, release: Boolean(options.release) };
+  const buildOptions: BuildOptions = {
+    ...options,
+    release: Boolean(options.release),
+  };
 
-  console.log(`🚀 Starting LingXia ${isPluginMode ? 'plugin' : 'project'} build...`);
+  console.log(
+    `🚀 Starting LingXia ${isPluginMode ? "plugin" : "project"} build...`,
+  );
   console.log(` Project: ${projectPath}`);
   console.log(` Output: ${outputDir}`);
   console.log(` View bundler: Vite`);
 
   try {
-    const pluginConfig = isPluginMode ? configManager.getLxpluginConfig() : null;
+    const pluginConfig = isPluginMode
+      ? configManager.getLxpluginConfig()
+      : null;
     if (isPluginMode && !pluginConfig) {
       throw new Error(
-        'lxplugin.json not found (required for plugin build). Create a lxplugin.json file in the project root.'
+        "lxplugin.json not found (required for plugin build). Create a lxplugin.json file in the project root.",
       );
     }
     if (isPluginMode && !pluginConfig?.lxPluginId?.trim()) {
@@ -41,25 +53,33 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
     // Validate JSON configuration files
     const jsonFiles = [
-      path.join(projectPath, isPluginMode ? 'lxplugin.json' : 'lxapp.json'),
-      ...configManager.getPages({ plugin: isPluginMode }).map(p =>
-        path.join(projectPath, path.dirname(p), `${path.basename(p, path.extname(p))}.json`)
-      )
-    ].filter(f => fs.existsSync(f));
+      path.join(projectPath, isPluginMode ? "lxplugin.json" : "lxapp.json"),
+      ...configManager
+        .getPages({ plugin: isPluginMode })
+        .map((p) =>
+          path.join(
+            projectPath,
+            path.dirname(p),
+            `${path.basename(p, path.extname(p))}.json`,
+          ),
+        ),
+    ].filter((f) => fs.existsSync(f));
 
     if (!isPluginMode) {
-      const lxappConfigPath = path.join(projectPath, 'lxapp.config.json');
+      const lxappConfigPath = path.join(projectPath, "lxapp.config.json");
       if (!fs.existsSync(lxappConfigPath)) {
-        throw new Error('lxapp.config.json not found in project root');
+        throw new Error("lxapp.config.json not found in project root");
       }
       jsonFiles.push(lxappConfigPath);
     }
 
     for (const file of jsonFiles) {
       try {
-        JSON.parse(fs.readFileSync(file, 'utf-8'));
+        JSON.parse(fs.readFileSync(file, "utf-8"));
       } catch (e) {
-        throw new Error(`Invalid JSON: ${path.relative(projectPath, file)}\n${e instanceof Error ? e.message : e}`);
+        throw new Error(
+          `Invalid JSON: ${path.relative(projectPath, file)}\n${e instanceof Error ? e.message : e}`,
+        );
       }
     }
 
@@ -74,11 +94,11 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
     // Discover pages
     const pages = discoverPages(projectPath, configManager, isPluginMode);
-    const pageNames = pages.map(p => p.name).join(', ');
+    const pageNames = pages.map((p) => p.name).join(", ");
     console.log(` Found ${pages.length} pages: ${pageNames}`);
 
     if (pages.length === 0) {
-      console.warn('⚠️ No pages found in the project');
+      console.warn("⚠️ No pages found in the project");
       return;
     }
 
@@ -86,36 +106,36 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
     const only = process.env.LINGXIA_ONLY?.toLowerCase();
 
-    if (only === 'logic') {
-      console.log('▶ Building logic layer only...');
+    if (only === "logic") {
+      console.log("▶ Building logic layer only...");
       const logicBuilder = new LogicBuilder(
         projectPath,
         outputDir,
         pluginId,
-        buildConfig
+        buildConfig,
       );
       await logicBuilder.buildLogic(buildOptions);
-    } else if (only === 'view') {
-      console.log('▶ Building view layer only...');
+    } else if (only === "view") {
+      console.log("▶ Building view layer only...");
       const viewBuilder = new ViewBuilder(projectPath, outputDir, buildConfig);
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
-      console.log('▶ Building logic and view layers in parallel...');
+      console.log("▶ Building logic and view layers in parallel...");
       const logicBuilder = new LogicBuilder(
         projectPath,
         outputDir,
         pluginId,
-        buildConfig
+        buildConfig,
       );
       const viewBuilder = new ViewBuilder(projectPath, outputDir, buildConfig);
 
       await Promise.all([
         logicBuilder
           .buildLogic(buildOptions)
-          .then(() => console.log('  ✔ Logic layer built')),
+          .then(() => console.log("  ✔ Logic layer built")),
         viewBuilder
           .buildPages(pages, buildOptions)
-          .then(() => console.log('  ✔ View layer built')),
+          .then(() => console.log("  ✔ View layer built")),
       ]);
     }
 
@@ -126,10 +146,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
     // Copy configuration file to output
     if (pluginConfig) {
-      const pluginConfigSrc = path.join(projectPath, 'lxplugin.json');
-      const pluginConfigDest = path.join(outputDir, 'lxplugin.json');
+      const pluginConfigSrc = path.join(projectPath, "lxplugin.json");
+      const pluginConfigDest = path.join(outputDir, "lxplugin.json");
       fs.copyFileSync(pluginConfigSrc, pluginConfigDest);
-      console.log('  ✔ Copied lxplugin.json to output');
+      console.log("  ✔ Copied lxplugin.json to output");
     }
 
     const packageInfo = readPackageInfo(projectPath);
@@ -137,20 +157,19 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       outputDir,
       projectPath,
       packageInfo,
-      isPluginMode
+      isPluginMode,
     );
     const relativePackagePath =
       path.relative(projectPath, packagePath) || packagePath;
 
-    console.log('Build completed successfully!');
+    console.log("Build completed successfully!");
     console.log(` Completed in ${buildTime}s`);
     console.log(` Output directory: ${outputDir}`);
     console.log(` Package: ${relativePackagePath}`);
-
   } catch (error) {
     console.error(
-      '❌ Build failed:',
-      error instanceof Error ? error.message : String(error)
+      "❌ Build failed:",
+      error instanceof Error ? error.message : String(error),
     );
     process.exit(1);
   }
@@ -159,7 +178,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 function discoverPages(
   projectPath: string,
   configManager: ConfigManager,
-  isPluginMode: boolean
+  isPluginMode: boolean,
 ): Page[] {
   const pagesPaths = configManager.getPages({ plugin: isPluginMode });
 
@@ -180,7 +199,7 @@ function discoverPages(
 
     // Create page name from directory structure
     let pageName = pageDir;
-    if (pageDir.startsWith('pages/')) {
+    if (pageDir.startsWith("pages/")) {
       pageName = pageDir.substring(6); // Remove 'pages/' prefix
     }
     if (!pageName) {
@@ -190,7 +209,7 @@ function discoverPages(
     pages.push({
       path: pagePath, // Full path from lxapp.json
       name: pageName,
-      type: pageType
+      type: pageType,
     });
   }
 
@@ -198,7 +217,7 @@ function discoverPages(
 }
 
 function cleanupLingxiaBuild(projectPath: string): void {
-  const tempDir = path.join(projectPath, '.lingxia-build');
+  const tempDir = path.join(projectPath, ".lingxia-build");
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -210,37 +229,37 @@ type PackageInfo = {
 };
 
 function readPackageInfo(projectPath: string): PackageInfo {
-  const pkgPath = path.join(projectPath, 'package.json');
+  const pkgPath = path.join(projectPath, "package.json");
   if (!fs.existsSync(pkgPath)) {
     return {};
   }
   try {
-    const raw = fs.readFileSync(pkgPath, 'utf-8');
+    const raw = fs.readFileSync(pkgPath, "utf-8");
     return JSON.parse(raw) as PackageInfo;
   } catch (error) {
     console.warn(
-      '⚠️ Failed to read package.json:',
-      error instanceof Error ? error.message : String(error)
+      "⚠️ Failed to read package.json:",
+      error instanceof Error ? error.message : String(error),
     );
     return {};
   }
 }
 
-type PackageManager = 'npm' | 'pnpm' | 'yarn';
+type PackageManager = "npm" | "pnpm" | "yarn";
 
 async function ensureDependencies(projectPath: string): Promise<void> {
   if (isSkipInstall()) return;
 
-  const packageJson = path.join(projectPath, 'package.json');
+  const packageJson = path.join(projectPath, "package.json");
   if (!fs.existsSync(packageJson)) return;
 
-  const nodeModules = path.join(projectPath, 'node_modules');
+  const nodeModules = path.join(projectPath, "node_modules");
   const nodeModulesMtime = getMtime(nodeModules);
   const packageMtime = getMtime(packageJson);
 
-  const pnpmLock = path.join(projectPath, 'pnpm-lock.yaml');
-  const yarnLock = path.join(projectPath, 'yarn.lock');
-  const npmLock = path.join(projectPath, 'package-lock.json');
+  const pnpmLock = path.join(projectPath, "pnpm-lock.yaml");
+  const yarnLock = path.join(projectPath, "yarn.lock");
+  const npmLock = path.join(projectPath, "package-lock.json");
 
   const hasPnpmLock = fs.existsSync(pnpmLock);
   const hasYarnLock = fs.existsSync(yarnLock);
@@ -249,7 +268,7 @@ async function ensureDependencies(projectPath: string): Promise<void> {
   const newestLockMtime = Math.max(
     getMtime(pnpmLock),
     getMtime(yarnLock),
-    getMtime(npmLock)
+    getMtime(npmLock),
   );
 
   const shouldInstall =
@@ -262,7 +281,7 @@ async function ensureDependencies(projectPath: string): Promise<void> {
   const packageManager = detectPackageManager(hasPnpmLock, hasYarnLock);
   const args = resolveInstallArgs(
     packageManager,
-    hasLockfileFor(packageManager, hasPnpmLock, hasYarnLock, hasNpmLock)
+    hasLockfileFor(packageManager, hasPnpmLock, hasYarnLock, hasNpmLock),
   );
 
   console.log(`  ⏳ Installing LxApp dependencies (${packageManager})...`);
@@ -270,9 +289,15 @@ async function ensureDependencies(projectPath: string): Promise<void> {
   try {
     await runCommand(packageManager, args, projectPath);
   } catch (error: any) {
-    if (error?.code === 'ENOENT' && packageManager !== 'npm') {
-      console.warn(`⚠️ ${packageManager} not found, falling back to npm install.`);
-      await runCommand('npm', resolveInstallArgs('npm', hasNpmLock), projectPath);
+    if (error?.code === "ENOENT" && packageManager !== "npm") {
+      console.warn(
+        `⚠️ ${packageManager} not found, falling back to npm install.`,
+      );
+      await runCommand(
+        "npm",
+        resolveInstallArgs("npm", hasNpmLock),
+        projectPath,
+      );
       return;
     }
     throw error;
@@ -282,7 +307,7 @@ async function ensureDependencies(projectPath: string): Promise<void> {
 function isSkipInstall(): boolean {
   const value = process.env.LINGXIA_SKIP_NPM_INSTALL;
   if (!value) return false;
-  return value === '1' || value.toLowerCase() === 'true';
+  return value === "1" || value.toLowerCase() === "true";
 }
 
 function getMtime(targetPath: string): number {
@@ -293,43 +318,55 @@ function getMtime(targetPath: string): number {
   }
 }
 
-function detectPackageManager(hasPnpmLock: boolean, hasYarnLock: boolean): PackageManager {
-  if (hasPnpmLock) return 'pnpm';
-  if (hasYarnLock) return 'yarn';
-  return 'npm';
+function detectPackageManager(
+  hasPnpmLock: boolean,
+  hasYarnLock: boolean,
+): PackageManager {
+  if (hasPnpmLock) return "pnpm";
+  if (hasYarnLock) return "yarn";
+  return "npm";
 }
 
 function hasLockfileFor(
   manager: PackageManager,
   hasPnpmLock: boolean,
   hasYarnLock: boolean,
-  hasNpmLock: boolean
+  hasNpmLock: boolean,
 ): boolean {
-  if (manager === 'pnpm') return hasPnpmLock;
-  if (manager === 'yarn') return hasYarnLock;
+  if (manager === "pnpm") return hasPnpmLock;
+  if (manager === "yarn") return hasYarnLock;
   return hasNpmLock;
 }
 
-function resolveInstallArgs(manager: PackageManager, hasLock: boolean): string[] {
+function resolveInstallArgs(
+  manager: PackageManager,
+  hasLock: boolean,
+): string[] {
   const isCi = Boolean(process.env.CI);
-  if (manager === 'npm') {
-    return isCi && hasLock ? ['ci'] : ['install'];
+  if (manager === "npm") {
+    return isCi && hasLock ? ["ci"] : ["install"];
   }
-  if (manager === 'pnpm') {
-    return isCi && hasLock ? ['install', '--frozen-lockfile'] : ['install'];
+  if (manager === "pnpm") {
+    return isCi && hasLock ? ["install", "--frozen-lockfile"] : ["install"];
   }
-  return isCi && hasLock ? ['install', '--frozen-lockfile'] : ['install'];
+  return isCi && hasLock ? ["install", "--frozen-lockfile"] : ["install"];
 }
 
-function runCommand(command: string, args: string[], cwd: string): Promise<void> {
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: 'inherit' });
-    child.on('error', err => reject(err));
-    child.on('exit', code => {
+    const child = spawn(command, args, { cwd, stdio: "inherit" });
+    child.on("error", (err) => reject(err));
+    child.on("exit", (code) => {
       if (code === 0) {
         resolve();
       } else {
-        const error = new Error(`${command} exited with code ${code ?? 'unknown'}`);
+        const error = new Error(
+          `${command} exited with code ${code ?? "unknown"}`,
+        );
         (error as any).code = code;
         reject(error);
       }
@@ -341,13 +378,13 @@ async function packageDist(
   distDir: string,
   projectPath: string,
   pkgInfo: PackageInfo,
-  isPluginMode: boolean = false
+  isPluginMode: boolean = false,
 ): Promise<string> {
   if (!fs.existsSync(distDir)) {
-    throw new Error('Dist directory not found, cannot package build output.');
+    throw new Error("Dist directory not found, cannot package build output.");
   }
 
-  const defaultName = isPluginMode ? 'lingxia-plugin' : 'lingxia-app';
+  const defaultName = isPluginMode ? "lingxia-plugin" : "lingxia-app";
   const baseName = sanitizeName(pkgInfo.name, defaultName);
   const version = sanitizeVersion(pkgInfo.version);
   const archiveName = `${baseName}-${version}.tar.zstd`;
@@ -362,55 +399,55 @@ async function packageDist(
   // Note: --exclude must come before -cf for proper filtering
   await runTar(
     [
-      '--exclude=._*',
-      '--exclude=.DS_Store',
-      '--use-compress-program',
-      'zstd -T1',
-      '-cf',
+      "--exclude=._*",
+      "--exclude=.DS_Store",
+      "--use-compress-program",
+      "zstd -T1",
+      "-cf",
       archivePath,
-      '.'
+      ".",
     ],
-    distDir
+    distDir,
   );
   return archivePath;
 }
 
 function sanitizeName(name: unknown, fallback: string): string {
-  if (!name || typeof name !== 'string') {
+  if (!name || typeof name !== "string") {
     return fallback;
   }
-  const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]/g, '_');
+  const cleaned = name.trim().replace(/[^a-zA-Z0-9._-]/g, "_");
   return cleaned.length > 0 ? cleaned : fallback;
 }
 
 function sanitizeVersion(version: unknown): string {
-  const fallback = '0.0.0';
-  if (!version || typeof version !== 'string') {
+  const fallback = "0.0.0";
+  if (!version || typeof version !== "string") {
     return fallback;
   }
-  const cleaned = version.trim().replace(/[^0-9a-zA-Z._-]/g, '_');
+  const cleaned = version.trim().replace(/[^0-9a-zA-Z._-]/g, "_");
   return cleaned.length > 0 ? cleaned : fallback;
 }
 
 function runTar(args: string[], cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // COPYFILE_DISABLE=1 prevents macOS tar from adding ._* metadata files
-    const child = spawn('tar', args, {
+    const child = spawn("tar", args, {
       cwd,
-      stdio: 'inherit',
+      stdio: "inherit",
       env: {
         ...process.env,
-        COPYFILE_DISABLE: '1',
-        ZSTD_NBTHREADS: '1',
-        ZSTD_DEFAULT_NBTHREADS: '1'
-      }
+        COPYFILE_DISABLE: "1",
+        ZSTD_NBTHREADS: "1",
+        ZSTD_DEFAULT_NBTHREADS: "1",
+      },
     });
-    child.on('error', err => reject(err));
-    child.on('exit', code => {
+    child.on("error", (err) => reject(err));
+    child.on("exit", (code) => {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`tar exited with code ${code ?? 'unknown'}`));
+        reject(new Error(`tar exited with code ${code ?? "unknown"}`));
       }
     });
   });
