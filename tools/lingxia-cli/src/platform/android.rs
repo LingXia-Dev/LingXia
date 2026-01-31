@@ -1,7 +1,9 @@
 use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
+use crate::sdk::{self, SdkPlatform};
 use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -66,11 +68,10 @@ impl AndroidPlatform {
     /// Build Rust library for Android
     fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<()> {
         if !config.build_native {
-            println!("  {} Skipping native compilation", "⏭️".bold());
             return Ok(());
         }
 
-        println!("{}", "📦 Building Rust libraries...".bold());
+        println!("{}", "Compiling native code...".cyan());
 
         let ndk_path = Self::detect_ndk_path()?;
         let host_platform = Self::get_ndk_host_platform()?;
@@ -88,7 +89,6 @@ impl AndroidPlatform {
             self.build_rust_target(project_root, config, &ndk_path, &toolchain_base, target)?;
         }
 
-        println!("  {} Rust build complete", "✓".green());
         Ok(())
     }
 
@@ -101,8 +101,6 @@ impl AndroidPlatform {
         toolchain_base: &Path,
         target: &str,
     ) -> Result<()> {
-        println!("  → Building for {}...", target.cyan());
-
         config
             .lingxia_config
             .as_ref()
@@ -201,12 +199,37 @@ impl AndroidPlatform {
             return Err(anyhow!("Rust build failed for target: {}", target));
         }
 
+        // Copy .so file to jniLibs directory
+        let profile_dir = if matches!(config.profile, super::BuildProfile::Release) {
+            "release"
+        } else {
+            "debug"
+        };
+        let so_path = rust_lib_dir
+            .join("target")
+            .join(target)
+            .join(profile_dir)
+            .join("liblingxia.so");
+
+        if so_path.exists() {
+            let abi = match target {
+                "aarch64-linux-android" => "arm64-v8a",
+                "armv7-linux-androideabi" => "armeabi-v7a",
+                _ => return Err(anyhow!("Unknown ABI for target: {}", target)),
+            };
+            let android_root = super::detector::resolve_android_dir(project_root);
+            let jni_dir = android_root.join(format!("app/src/main/jniLibs/{}", abi));
+            std::fs::create_dir_all(&jni_dir)?;
+            let dest = jni_dir.join("liblingxia.so");
+            std::fs::copy(&so_path, &dest)?;
+        }
+
         Ok(())
     }
 
     /// Build Gradle project
     fn build_gradle(&self, project_root: &Path, config: &BuildConfig) -> Result<PathBuf> {
-        println!("{}", "🔨 Building Gradle project...".bold());
+        println!("{}", "Building APK...".cyan());
 
         let gradlew = if cfg!(windows) {
             project_root.join("gradlew.bat")
@@ -250,7 +273,6 @@ impl AndroidPlatform {
             return Err(anyhow!("APK not found at: {}", apk_path.display()));
         }
 
-        println!("  {} APK: {}", "✓".green(), apk_path.display());
         Ok(apk_path)
     }
 
@@ -273,16 +295,17 @@ impl AndroidPlatform {
 
 impl Platform for AndroidPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
-        println!();
-        println!("{}", "🏗️  Building Android project...".bold().cyan());
-        println!();
-
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
-        println!(
-            "  Android directory: {}",
-            android_root.display().to_string().cyan()
-        );
+
+        // Ensure SDK is downloaded
+        if let Some(ref lingxia_config) = config.lingxia_config {
+            if let Some(ref app) = lingxia_config.app {
+                if let Some(ref sdk_version) = app.sdk_version {
+                    sdk::ensure_sdk(&config.project_root, SdkPlatform::Android, sdk_version)?;
+                }
+            }
+        }
 
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
@@ -290,17 +313,10 @@ impl Platform for AndroidPlatform {
         // Build Gradle project
         let apk_path = self.build_gradle(&android_root, config)?;
 
-        println!();
-        println!("{}", "✅ Build complete!".green().bold());
-
         Ok(BuildArtifacts::Android { apk_path })
     }
 
     fn install(&self, config: &InstallConfig) -> Result<()> {
-        println!();
-        println!("{}", "📲 Installing APK...".bold().cyan());
-        println!();
-
         // Resolve Android project directory
         let android_root = super::detector::resolve_android_dir(&config.project_root);
 
@@ -308,7 +324,6 @@ impl Platform for AndroidPlatform {
         let apk_path = if let Some(ref path) = config.artifact_path {
             path.clone()
         } else {
-            // Auto-detect APK from build output
             self.auto_detect_apk(&android_root)?
         };
 
@@ -316,40 +331,50 @@ impl Platform for AndroidPlatform {
             return Err(anyhow!("APK not found at: {}", apk_path.display()));
         }
 
+        // Get APK file size
+        let file_size = std::fs::metadata(&apk_path).map(|m| m.len()).unwrap_or(0);
+        let size_mb = file_size as f64 / 1024.0 / 1024.0;
+
         // Create ADB server connection
         let mut server = ADBServer::default();
 
         // Get device
         let mut device = if let Some(ref device_id) = config.device_id {
-            // Get specific device by name
             server
                 .get_device_by_name(device_id)
                 .context(format!("Failed to get device: {}", device_id))?
         } else {
-            // Get the only connected device (errors if 0 or >1 devices)
             server.get_device().context(
                 "Failed to get device. Use --device to specify a device if multiple are connected",
             )?
         };
 
-        let device_id = device.identifier.as_deref().unwrap_or("unknown");
-        println!("  Installing on device: {}", device_id.cyan());
+        // Create spinner
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} {msg}")
+                .unwrap()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+        );
+        spinner.set_message(format!("Installing ({:.1} MB)...", size_mb));
+        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
-        // Install APK using adb_client
-        device.install(&apk_path).context("Failed to install APK")?;
+        // Install APK
+        let result = device.install(&apk_path);
 
-        println!("  {} APK installed successfully", "✓".green());
+        spinner.finish_and_clear();
 
-        println!();
-        println!("{}", "✅ Installation complete!".green().bold());
-
-        Ok(())
+        match result {
+            Ok(_) => {
+                println!("{}", "✓ Installed".green());
+                Ok(())
+            }
+            Err(e) => Err(anyhow!("Installation failed: {}", e)),
+        }
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
-        println!();
-        println!("{}", "🚀 Starting app...".bold().cyan());
-
         // Create ADB server connection
         let mut server = ADBServer::default();
 
@@ -370,8 +395,6 @@ impl Platform for AndroidPlatform {
             format!("{}/{}.MainActivity", config.package_id, config.package_id)
         };
 
-        println!("  Starting activity: {}", activity.cyan());
-
         // Start activity using shell_command
         let start_cmd = format!("am start -n {}", activity);
         let mut output = Vec::new();
@@ -379,15 +402,7 @@ impl Platform for AndroidPlatform {
             .shell_command(&start_cmd, &mut output)
             .context("Failed to start activity")?;
 
-        // Print shell output if available
-        if !output.is_empty() {
-            let output_str = String::from_utf8_lossy(&output);
-            for line in output_str.lines() {
-                println!("  {}", line);
-            }
-        }
-
-        println!("{}", "✅ App started!".green().bold());
+        println!("{}", "✓ App launched".green());
 
         Ok(())
     }

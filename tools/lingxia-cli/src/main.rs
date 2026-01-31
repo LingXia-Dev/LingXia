@@ -4,9 +4,11 @@ use clap::{Parser, Subcommand};
 mod appicon;
 mod commands;
 mod config;
+mod github;
 mod lxapp;
 mod path_completion;
 mod platform;
+pub mod sdk;
 mod versions;
 
 #[derive(Parser)]
@@ -21,21 +23,9 @@ struct Cli {
 /// Common build options shared between Build and Dev commands
 #[derive(clap::Args, Clone)]
 struct BuildOptions {
-    /// Build profile: debug or release
-    #[arg(short = 'p', long, default_value = "debug")]
-    profile: Option<String>,
-
-    /// LxApp build: production mode
-    #[arg(long, conflicts_with = "dev")]
-    prod: bool,
-
-    /// LxApp build: development mode
-    #[arg(long, conflicts_with = "prod")]
-    dev: bool,
-
-    /// LxApp build: plugin mode (lxplugin)
+    /// Release build (debug is the default)
     #[arg(long)]
-    plugin: bool,
+    release: bool,
 
     /// Rust features to enable (comma-separated)
     #[arg(short = 'f', long, value_delimiter = ',')]
@@ -153,10 +143,7 @@ fn main() -> Result<()> {
             platform,
         } => {
             commands::build::execute(
-                build_options.profile,
-                build_options.prod,
-                build_options.dev,
-                build_options.plugin,
+                build_options.release,
                 build_options.features,
                 !build_options.skip_native,
                 build_options.targets,
@@ -171,7 +158,7 @@ fn main() -> Result<()> {
             device,
         } => {
             commands::dev::execute(
-                build_options.profile,
+                build_options.release,
                 build_options.features,
                 !build_options.skip_native,
                 build_options.targets,

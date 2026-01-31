@@ -45,6 +45,11 @@ pub struct HostAppConfig {
     // Keep explicit spelling for "App" (not "app") to match runtime `app.json` schema.
     #[serde(rename = "homeLxAppVersion")]
     pub home_lxapp_version: String,
+
+    /// LingXia SDK version (e.g. "0.1.1")
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sdk_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -184,11 +189,12 @@ impl LingXiaConfig {
         Self {
             app: Some(HostAppConfig {
                 product_name: project_name.to_string(),
-                product_version: "1.0.0".to_string(),
+                product_version: "0.0.1".to_string(),
                 api_server: None,
                 platforms: vec!["android".to_string()],
                 home_lxapp_id: "homelxapp".to_string(),
                 home_lxapp_version: "1.0.0".to_string(),
+                sdk_version: None,
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),

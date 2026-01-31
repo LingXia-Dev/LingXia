@@ -12,7 +12,7 @@ use std::env;
 /// 2. Install to device
 /// 3. Launch the application
 pub fn execute(
-    profile: Option<String>,
+    release: bool,
     features: Vec<String>,
     build_native: bool,
     targets: Vec<String>,
@@ -21,9 +21,7 @@ pub fn execute(
     println!();
     println!(
         "{}",
-        "🚀 Development Mode: Build → Install → Launch"
-            .bold()
-            .cyan()
+        "Development Mode: Build -> Install -> Launch".bold().cyan()
     );
     println!();
 
@@ -33,22 +31,11 @@ pub fn execute(
     // Config is required for all project commands.
     let config = LingXiaConfig::load(&project_root)?;
 
-    // Log config status
-    println!("  📄 Using lingxia.config.json");
-    if let Some(ref android) = config.android {
-        println!(
-            "  📱 Android SDK: min={}, target={}, compile={}",
-            android.min_sdk.unwrap_or(28),
-            android.target_sdk.unwrap_or(35),
-            android.compile_sdk.unwrap_or(35)
-        );
-    }
-
-    // Parse build profile
-    let build_profile = match profile.as_deref() {
-        Some("debug") | None => BuildProfile::Debug,
-        Some("release") => BuildProfile::Release,
-        Some(p) => return Err(anyhow!("Invalid profile: {}. Use 'debug' or 'release'", p)),
+    // Parse build profile (cargo-like): debug unless explicitly set to release.
+    let build_profile = if release {
+        BuildProfile::Release
+    } else {
+        BuildProfile::Debug
     };
 
     // Default targets if none specified
@@ -82,8 +69,6 @@ pub fn execute(
         &project_root,
         &config,
         build_profile,
-        false,
-        false,
         &platforms_to_build,
         true,
     )?;
@@ -138,14 +123,14 @@ pub fn execute(
     platform.run(&run_config)?;
 
     println!();
-    println!("{}", "✅ Dev workflow complete!".green().bold());
+    println!("{}", "Dev workflow complete!".green().bold());
     println!();
     println!(
         "  {} Platform: {}",
-        "📦".bold(),
+        "*".bold(),
         artifacts.platform_name().cyan()
     );
-    println!("  {} Artifact: {}", "📦".bold(), artifacts.path().display());
+    println!("  {} Artifact: {}", "*".bold(), artifacts.path().display());
     println!();
 
     Ok(())

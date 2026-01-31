@@ -12,10 +12,7 @@ use std::path::{Path, PathBuf};
 /// Builds the project using the detected platform's build system.
 /// Supports debug and release profiles, custom features, and multi-target builds.
 pub fn execute(
-    profile: Option<String>,
-    prod: bool,
-    dev: bool,
-    plugin: bool,
+    release: bool,
     features: Vec<String>,
     build_native: bool,
     targets: Vec<String>,
@@ -25,30 +22,26 @@ pub fn execute(
     let project_root = env::current_dir()?;
     let lxapp_json_exists = project_root.join("lxapp.json").exists();
     let lxapp_config_exists = project_root.join(LXAPP_BUILD_CONFIG_FILE).exists();
+    let lxplugin_json_exists = project_root.join("lxplugin.json").exists();
 
     println!("{}", "🚀 LingXia Build".bold().cyan());
     println!();
 
     let host_config_exists = project_root.join(HOST_CONFIG_FILE).exists();
 
-    if lxapp_json_exists && lxapp_config_exists && !host_config_exists {
+    if (lxapp_json_exists && lxapp_config_exists && !host_config_exists)
+        || (lxplugin_json_exists && !host_config_exists)
+    {
         let mut args = vec!["build".to_string()];
-        if prod {
-            args.push("--prod".to_string());
-        }
-        if dev {
-            args.push("--dev".to_string());
-        }
-        if plugin {
-            args.push("--plugin".to_string());
+        if release {
+            args.push("--release".to_string());
         }
 
-        println!("  Using LxApp JS builder");
-        println!();
         return lxapp::run(&args);
     }
 
-    if lxapp_json_exists && !lxapp_config_exists {
+    // Validate LxApp structure (plugin projects don't require lxapp.config.json).
+    if lxapp_json_exists && !lxapp_config_exists && !lxplugin_json_exists {
         return Err(anyhow!(
             "{} not found. LxApp projects must include both lxapp.json and {}.",
             LXAPP_BUILD_CONFIG_FILE,
@@ -56,7 +49,7 @@ pub fn execute(
         ));
     }
 
-    if lxapp_config_exists && !lxapp_json_exists {
+    if lxapp_config_exists && !lxapp_json_exists && !lxplugin_json_exists {
         return Err(anyhow!(
             "lxapp.json not found. LxApp projects must include both lxapp.json and {}.",
             LXAPP_BUILD_CONFIG_FILE
@@ -78,8 +71,6 @@ pub fn execute(
     // Host/native build
     let config = LingXiaConfig::load(&project_root)?;
 
-    println!("  Using {}", HOST_CONFIG_FILE);
-
     let app = config.app.as_ref().ok_or_else(|| {
         anyhow!(
             "Missing app section in {}.\n\
@@ -87,7 +78,6 @@ pub fn execute(
             HOST_CONFIG_FILE
         )
     })?;
-    println!("  App: {}", app.product_name.cyan());
 
     // Determine platforms from config (no auto-detection/fallback).
     let available_platforms: Vec<platform::detector::PlatformType> = app
@@ -124,11 +114,11 @@ pub fn execute(
         available_platforms
     };
 
-    // Parse build profile
-    let build_profile = match profile.as_deref() {
-        Some("debug") | None => BuildProfile::Debug,
-        Some("release") => BuildProfile::Release,
-        Some(p) => return Err(anyhow!("Invalid profile: {}. Use 'debug' or 'release'", p)),
+    // Parse build profile (cargo-like): debug unless explicitly set to release.
+    let build_profile = if release {
+        BuildProfile::Release
+    } else {
+        BuildProfile::Debug
     };
 
     // Prepare LxApp assets if configured
@@ -136,13 +126,9 @@ pub fn execute(
         &project_root,
         &config,
         build_profile,
-        prod,
-        dev,
         &platforms_to_build,
         explicit_platforms,
     )?;
-
-    println!();
 
     // Default targets if none specified
     let build_targets = if targets.is_empty() {
@@ -155,12 +141,6 @@ pub fn execute(
     let mut all_artifacts = Vec::new();
 
     for platform_type in platforms_to_build {
-        println!(
-            "{}",
-            format!("📦 Building {} platform...", platform_type.as_str()).bold()
-        );
-        println!();
-
         let platform = match platform::detector::create_platform(&platform_type) {
             Ok(p) => p,
             Err(e) => {
@@ -168,8 +148,8 @@ pub fn execute(
                     return Err(e);
                 }
                 eprintln!(
-                    "  {} Skipping {}: {}",
-                    "Warning:".yellow(),
+                    "{} Skipping {}: {}",
+                    "⚠".yellow(),
                     platform_type.as_str(),
                     e
                 );
@@ -188,8 +168,6 @@ pub fn execute(
 
         let artifacts = platform.build(&build_config)?;
         all_artifacts.push((platform_type, artifacts));
-
-        println!();
     }
 
     if all_artifacts.is_empty() {
@@ -197,16 +175,15 @@ pub fn execute(
     }
 
     // Print build summary
-    println!("{}", "📊 Build Summary:".bold().green());
+    println!();
     for (platform_type, artifacts) in all_artifacts {
         println!(
-            "  {} {} → {}",
+            "{} {} → {}",
             "✓".green(),
-            platform_type.as_str().cyan(),
-            artifacts.path().display().to_string().cyan()
+            platform_type.as_str(),
+            artifacts.path().display()
         );
     }
-    println!();
 
     Ok(())
 }
@@ -215,8 +192,6 @@ pub(crate) fn prepare_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
-    prod: bool,
-    dev: bool,
     platforms: &[platform::detector::PlatformType],
     explicit_platforms: bool,
 ) -> Result<()> {
@@ -224,7 +199,7 @@ pub(crate) fn prepare_host_assets(
         .iter()
         .any(|p| matches!(p, platform::detector::PlatformType::Android))
     {
-        prepare_embedded_lxapp_assets(project_root, config, build_profile, prod, dev)?
+        prepare_embedded_lxapp_assets(project_root, config, build_profile)?
     } else {
         None
     };
@@ -270,8 +245,6 @@ fn prepare_embedded_lxapp_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
-    prod: bool,
-    dev: bool,
 ) -> Result<Option<PreparedLxAppAssets>> {
     let Some(app) = &config.app else {
         return Ok(None);
@@ -292,18 +265,11 @@ fn prepare_embedded_lxapp_assets(
         ));
     }
 
-    println!("{}", "🧩 Building LxApp...".bold());
+    println!("{}", "Building LxApp...".bold());
 
     let mut args = vec!["build".to_string()];
-    if prod {
-        args.push("--prod".to_string());
-    } else if dev {
-        args.push("--dev".to_string());
-    } else {
-        match build_profile {
-            BuildProfile::Release => args.push("--prod".to_string()),
-            BuildProfile::Debug => args.push("--dev".to_string()),
-        }
+    if matches!(build_profile, BuildProfile::Release) {
+        args.push("--release".to_string());
     }
     lxapp::run_in_dir(&args, &lxapp_dir)?;
 
