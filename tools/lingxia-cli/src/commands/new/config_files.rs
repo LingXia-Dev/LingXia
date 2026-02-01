@@ -59,6 +59,7 @@ pub(super) fn generate_config_file(
             home_lxapp_id: lxapp.app_id.clone(),
             home_lxapp_version: "1.0.0".to_string(),
             sdk_version: Some(versions.sdk.clone()),
+            cache_max_age_days: None,
         }),
         android,
         ios,

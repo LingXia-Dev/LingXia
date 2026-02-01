@@ -52,6 +52,12 @@ pub struct HostAppConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sdk_version: Option<String>,
+
+    /// Maximum age in days for cache files before cleanup (default: 7)
+    /// Set to 0 to disable automatic cache cleanup
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_max_age_days: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,6 +187,7 @@ impl LingXiaConfig {
                 home_lxapp_id: "homelxapp".to_string(),
                 home_lxapp_version: "1.0.0".to_string(),
                 sdk_version: None,
+                cache_max_age_days: None,
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),
