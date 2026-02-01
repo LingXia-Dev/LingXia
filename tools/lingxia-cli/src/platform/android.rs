@@ -101,15 +101,15 @@ impl AndroidPlatform {
         toolchain_base: &Path,
         target: &str,
     ) -> Result<()> {
-        config
+        let lingxia_config = config
             .lingxia_config
             .as_ref()
             .ok_or_else(|| anyhow!("lingxia.config.json is required to build native libraries"))?;
-        let rust_lib_name = project_root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("app");
-        let rust_lib_dir = project_root.join(format!("{}-lib", rust_lib_name));
+
+        let rust_lib_name = lingxia_config
+            .get_rust_lib_name()
+            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
+        let rust_lib_dir = project_root.join(&rust_lib_name);
         let rust_manifest = rust_lib_dir.join("Cargo.toml");
         if !rust_manifest.exists() {
             return Err(anyhow!(
@@ -302,7 +302,14 @@ impl Platform for AndroidPlatform {
         if let Some(ref lingxia_config) = config.lingxia_config {
             if let Some(ref app) = lingxia_config.app {
                 if let Some(ref sdk_version) = app.sdk_version {
-                    sdk::ensure_sdk(&config.project_root, SdkPlatform::Android, sdk_version)?;
+                    if let Some(rust_lib_name) = lingxia_config.get_rust_lib_name() {
+                        sdk::ensure_sdk(
+                            &config.project_root,
+                            &rust_lib_name,
+                            SdkPlatform::Android,
+                            sdk_version,
+                        )?;
+                    }
                 }
             }
         }

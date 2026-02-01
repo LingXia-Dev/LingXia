@@ -51,6 +51,7 @@ pub(super) fn generate_config_file(
 
     let lingxia_config = LingXiaConfig {
         app: Some(HostAppConfig {
+            project_name: config.name.clone(),
             product_name: config.product_name.clone(),
             product_version: "0.0.1".to_string(),
             api_server: None,

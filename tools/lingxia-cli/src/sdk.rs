@@ -25,14 +25,17 @@ impl SdkPlatform {
 ///
 /// If the SDK is not found locally, download it from GitHub releases.
 /// Returns the path to the local Maven repository.
-pub fn ensure_sdk(project_root: &Path, platform: SdkPlatform, version: &str) -> Result<PathBuf> {
-    // SDK goes into {project}-lib/target/maven
-    let project_name = project_root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("app");
+///
+/// `rust_lib_name` is the Rust library directory name (e.g., "myproject-lib").
+pub fn ensure_sdk(
+    project_root: &Path,
+    rust_lib_name: &str,
+    platform: SdkPlatform,
+    version: &str,
+) -> Result<PathBuf> {
+    // SDK goes into {rust_lib_name}/target/maven
     let maven_dir = project_root
-        .join(format!("{project_name}-lib"))
+        .join(rust_lib_name)
         .join("target")
         .join("maven");
     let sdk_marker = maven_dir

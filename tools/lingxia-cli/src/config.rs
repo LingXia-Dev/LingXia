@@ -27,6 +27,10 @@ pub struct LingXiaConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostAppConfig {
+    /// Project name (technical identifier, used for Rust lib naming, e.g., "myapp" -> "myapp-lib")
+    pub project_name: String,
+
+    /// Product name (user-facing display name)
     pub product_name: String,
     pub product_version: String,
 
@@ -121,6 +125,16 @@ pub struct ResourcesConfig {
 }
 
 impl LingXiaConfig {
+    /// Get the project name from config
+    pub fn get_project_name(&self) -> Option<&str> {
+        self.app.as_ref().map(|app| app.project_name.as_str())
+    }
+
+    /// Get the Rust library directory name (e.g., "myproject-lib")
+    pub fn get_rust_lib_name(&self) -> Option<String> {
+        self.get_project_name().map(|name| format!("{}-lib", name))
+    }
+
     /// Load config from lingxia.config.json in the given directory
     pub fn load(project_root: &Path) -> Result<Self> {
         let config_path = project_root.join(HOST_CONFIG_FILE);
@@ -159,6 +173,7 @@ impl LingXiaConfig {
     pub fn new_android(project_name: &str, package_id: &str) -> Self {
         Self {
             app: Some(HostAppConfig {
+                project_name: project_name.to_string(),
                 product_name: project_name.to_string(),
                 product_version: "0.0.1".to_string(),
                 api_server: None,
