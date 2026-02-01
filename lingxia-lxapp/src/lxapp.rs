@@ -1057,6 +1057,12 @@ impl LxApp {
         self.config.get_lxapp_info()
     }
 
+    /// Find the actual configured page path that matches the given path.
+    /// Returns the path with proper extension if found.
+    pub fn find_page_path(&self, path: &str) -> Option<String> {
+        find_matching_page_path(&self.config.pages, path).map(|s| s.to_string())
+    }
+
     /// Validate that a page URL resolves to a configured page before navigation.
     pub fn ensure_page_exists(&self, url: &str) -> Result<(), LxAppError> {
         let resolved = crate::route::resolve_route(self, url)?;
@@ -1089,15 +1095,8 @@ impl LxApp {
     }
 
     fn is_configured_page(&self, path: &str) -> bool {
-        let normalized = normalize_page_path(path);
-        if normalized.is_empty() {
-            return false;
-        }
-
-        self.config
-            .pages
-            .iter()
-            .any(|page| normalize_page_path(page) == normalized)
+        !path.trim_start_matches('/').is_empty()
+            && find_matching_page_path(&self.config.pages, path).is_some()
     }
 
     fn is_plugin_page_configured(
@@ -1661,6 +1660,29 @@ pub fn is_lxapp_open(lxappid: &str) -> bool {
 
 fn normalize_page_path(path: &str) -> &str {
     path.trim_start_matches('/')
+}
+
+/// Strip view extensions from path for comparison
+fn strip_extension(path: &str) -> &str {
+    for ext in [".tsx", ".jsx", ".vue"] {
+        if let Some(p) = path.strip_suffix(ext) {
+            return p;
+        }
+    }
+    path
+}
+
+/// Find matching page in config, return with extension
+fn find_matching_page_path<'a>(pages: &'a [String], path: &str) -> Option<&'a str> {
+    let path = normalize_page_path(path);
+    let path_no_ext = strip_extension(path);
+    pages
+        .iter()
+        .find(|p| {
+            let p = normalize_page_path(p);
+            p == path || strip_extension(p) == path_no_ext
+        })
+        .map(|s| s.as_str())
 }
 
 fn extract_plugin_page_path(url: &str) -> Option<String> {

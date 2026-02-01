@@ -40,10 +40,11 @@ pub(crate) fn resolve_route(lxapp: &LxApp, url: &str) -> Result<ResolvedRoute, L
             return Err(LxAppError::ResourceNotFound(path));
         }
 
+        let actual_path = lxapp.find_page_path(&page_path).unwrap_or(page_path);
         return Ok(ResolvedRoute {
             original,
             query,
-            target: RouteTarget::Normal { path: page_path },
+            target: RouteTarget::Normal { path: actual_path },
         });
     }
 
@@ -68,9 +69,12 @@ pub(crate) fn resolve_route(lxapp: &LxApp, url: &str) -> Result<ResolvedRoute, L
         });
     }
 
+    // Try to find the actual page path with extension
+    let actual_path = lxapp.find_page_path(&path).unwrap_or(path);
+
     Ok(ResolvedRoute {
         original,
         query,
-        target: RouteTarget::Normal { path },
+        target: RouteTarget::Normal { path: actual_path },
     })
 }
