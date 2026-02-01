@@ -3,22 +3,22 @@
   "lxAppName": "Home LxApp Demo",
   "version": "1.0.0",
   "pages": [
-    "pages/home/index.tsx",
-    "pages/popup/index.tsx",
-    "pages/API/index.tsx",
-    "pages/video/index.tsx",
-    "pages/media/index.tsx",
-    "pages/ui/index.tsx",
-    "pages/device/index.tsx",
-    "pages/wifi/index.tsx",
-    "pages/system/index.tsx",
-    "pages/location/index.tsx",
-    "pages/document/index.tsx",
-    "pages/components/index.tsx",
-    "pages/pulltorefresh/index.tsx",
-    "pages/todo/index.tsx",
-    "pages/picker/index.tsx",
-    "pages/navigator/index.tsx"
+    "pages/home/index",
+    "pages/popup/index",
+    "pages/API/index",
+    "pages/video/index",
+    "pages/media/index",
+    "pages/ui/index",
+    "pages/device/index",
+    "pages/wifi/index",
+    "pages/system/index",
+    "pages/location/index",
+    "pages/document/index",
+    "pages/components/index",
+    "pages/pulltorefresh/index",
+    "pages/todo/index",
+    "pages/picker/index",
+    "pages/navigator/index"
   ],
   "debug": true,
   "tabBar": {
@@ -30,25 +30,25 @@
     "list": [
       {
         "text": "Home",
-        "pagePath": "pages/home/index.tsx",
+        "pagePath": "pages/home/index",
         "iconPath": "public/home.png",
         "selectedIconPath": "public/home_selected.png",
         "selected": true
       },
       {
         "text": "API",
-        "pagePath": "pages/API/index.tsx",
+        "pagePath": "pages/API/index",
         "iconPath": "public/api.png"
       },
       {
         "text": "Components",
-        "pagePath": "pages/components/index.tsx",
+        "pagePath": "pages/components/index",
         "iconPath": "public/component.png",
         "selectedIconPath": "public/component.png"
       },
       {
         "text": "ToDo",
-        "pagePath": "pages/todo/index.tsx",
+        "pagePath": "pages/todo/index",
         "iconPath": "public/todo.png",
         "selectedIconPath": "public/todo_selected.png"
       }

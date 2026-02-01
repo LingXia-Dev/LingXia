@@ -40,7 +40,7 @@ Page({
   navigateToUIPage: async function (params) {
     const { type = "navigation" } = params || {};
     await lx.navigateTo({
-      url: `pages/ui/index.tsx?type=${type}`,
+      url: `pages/ui/index?type=${type}`,
     });
   },
 
@@ -48,14 +48,14 @@ Page({
   navigateToDevicePage: async function (params) {
     const { type = "device" } = params || {};
     await lx.navigateTo({
-      url: `pages/device/index.tsx?type=${type}`,
+      url: `pages/device/index?type=${type}`,
     });
   },
 
   // Navigate to WiFi API page
   navigateToWifiPage: async function () {
     await lx.navigateTo({
-      url: `pages/wifi/index.tsx`,
+      url: `pages/wifi/index`,
     });
   },
 
@@ -63,14 +63,14 @@ Page({
   navigateToSystemPage: async function (params) {
     const { type = "appBaseInfo" } = params || {};
     await lx.navigateTo({
-      url: `pages/system/index.tsx?type=${type}`,
+      url: `pages/system/index?type=${type}`,
     });
   },
 
   // Navigate to Location API page
   navigateToLocationPage: async function () {
     await lx.navigateTo({
-      url: `pages/location/index.tsx`,
+      url: `pages/location/index`,
     });
   },
 
@@ -78,14 +78,14 @@ Page({
   navigateToMediaPage: async function (params) {
     const { type = "Pictures" } = params || {};
     await lx.navigateTo({
-      url: `pages/media/index.tsx?type=${type}`,
+      url: `pages/media/index?type=${type}`,
     });
   },
 
   // Navigate to Document API page
   navigateToDocumentPage: async function () {
     await lx.navigateTo({
-      url: `pages/document/index.tsx`,
+      url: `pages/document/index`,
     });
   },
 
@@ -102,7 +102,7 @@ Page({
   // Navigate to PullDownRefresh API page
   navigateToPullDownRefreshPage: async function () {
     await lx.navigateTo({
-      url: `pages/pulltorefresh/index.tsx`,
+      url: `pages/pulltorefresh/index`,
     });
   },
 });

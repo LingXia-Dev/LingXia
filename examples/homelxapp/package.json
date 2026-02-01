@@ -4,8 +4,10 @@
   "description": "LingXia LxApp demo",
   "type": "module",
   "scripts": {
-    "build": "node ../../tools/lingxia-cli/npm/bin/lingxia.js build --release",
-    "dev": "node ../../tools/lingxia-cli/npm/bin/lingxia.js build"
+    "build": "node ../../tools/lingxia-cli/npm/dist/index.js build --release",
+    "build:react": "npm run build -- --framework react",
+    "build:vue": "npm run build -- --framework vue",
+    "dev": "node ../../tools/lingxia-cli/npm/dist/index.js build"
   },
   "keywords": [
     "lingxia",
@@ -14,17 +16,17 @@
   "author": "LingXia Team",
   "license": "MIT",
   "dependencies": {
-    "lingxia-components": "file:../../lingxia-components",
-    "lingxia-types": "file:../../lingxia-types",
     "@lingxia/rong": "^0.0.1",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
+    "lingxia-components": "file:../../lingxia-components",
+    "lingxia-types": "file:../../lingxia-types",
     "lodash-es": "^4.17.21",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "tailwindcss": "^3.4.13",
-    "vue": "^3.5.13"
+    "vue": "^3.6.0-beta.5"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",
