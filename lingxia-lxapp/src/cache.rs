@@ -2,7 +2,9 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime};
 
+use filetime::FileTime;
 use rong_http::{self as net, BodySink};
 use thiserror::Error;
 
@@ -376,5 +378,85 @@ impl Hasher for Fnv64Hasher {
             hash = hash.wrapping_mul(FNV_PRIME);
         }
         self.0 = hash;
+    }
+}
+
+pub fn touch_access_time(path: &Path) {
+    let now = FileTime::now();
+    let _ = filetime::set_file_atime(path, now);
+}
+
+// Falls back to mtime if atime unavailable
+fn get_file_age_and_size(path: &Path) -> Option<(Duration, u64)> {
+    let metadata = path.metadata().ok()?;
+    let now = SystemTime::now();
+    let last_access = metadata.accessed().or_else(|_| metadata.modified()).ok()?;
+
+    let age = now.duration_since(last_access).ok()?;
+    Some((age, metadata.len()))
+}
+
+fn should_skip_cleanup(filename: &str) -> bool {
+    filename.ends_with(".lock") || filename.ends_with(".part")
+}
+
+/// Clean up stale files in a cache directory.
+/// Removes files that haven't been accessed for longer than `max_age_days`.
+///
+/// This function:
+/// - Skips `.lock` and `.part` files (in-progress downloads)
+/// - Removes both data files and their corresponding `.ok` marker files
+/// - Silently ignores errors for individual files
+pub fn cleanup_stale_files(cache_dir: &Path, max_age_days: u64) {
+    if max_age_days == 0 {
+        return;
+    }
+
+    let max_age = Duration::from_secs(max_age_days * 24 * 60 * 60);
+
+    let Ok(entries) = fs::read_dir(cache_dir) else {
+        return;
+    };
+
+    let mut files_removed = 0u32;
+    let mut bytes_freed = 0u64;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        if path.is_dir() {
+            continue;
+        }
+
+        let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        // Skip in-progress files and marker files (we'll clean markers with their data files)
+        if should_skip_cleanup(filename) || filename.ends_with(".ok") {
+            continue;
+        }
+
+        if let Some((age, file_size)) = get_file_age_and_size(&path) {
+            if age > max_age && fs::remove_file(&path).is_ok() {
+                files_removed += 1;
+                bytes_freed += file_size;
+
+                // Also remove the corresponding .ok marker file
+                // Hash is the filename stem (e.g., "a1b2c3" from "a1b2c3.png")
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    let ok_file = cache_dir.join(format!("{}.ok", stem));
+                    let _ = fs::remove_file(&ok_file);
+                }
+            }
+        }
+    }
+
+    if files_removed > 0 {
+        crate::info!(
+            "Cache cleanup: removed {} files, freed {} bytes",
+            files_removed,
+            bytes_freed
+        );
     }
 }

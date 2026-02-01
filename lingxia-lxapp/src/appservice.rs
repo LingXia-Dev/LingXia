@@ -558,13 +558,23 @@ impl fs::FileAccessGuard for LxAppCtx {
     /// - The app's own user cache directory
     ///
     /// Relative paths are also resolved relative to the allowed roots.
+    ///
+    /// For files in the user cache directory, this also updates the access time
+    /// to support LRU-based cache cleanup.
     fn resolve_access(&self, path: &str) -> JSResult<std::path::PathBuf> {
-        self.lxapp
+        let resolved = self
+            .lxapp
             .resolve_accessible_path(path)
             // Mask absolute path details for security
             .map_err(|_| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, "Access denied"))
-            })
+            })?;
+
+        if resolved.starts_with(&self.lxapp.user_cache_dir) && resolved.exists() {
+            crate::cache::touch_access_time(&resolved);
+        }
+
+        Ok(resolved)
     }
 }
 

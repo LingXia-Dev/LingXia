@@ -33,6 +33,13 @@ pub struct AppConfig {
 
     #[serde(rename = "homeLxAppVersion")]
     pub home_lxapp_version: String, // Version of the home lx application
+
+    #[serde(rename = "cacheMaxAgeDays", default = "default_cache_max_age_days")]
+    pub cache_max_age_days: u64,
+}
+
+fn default_cache_max_age_days() -> u64 {
+    7
 }
 
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
@@ -47,6 +54,13 @@ pub fn product_name() -> Option<&'static str> {
 
 pub fn product_version() -> Option<&'static str> {
     APP_CONFIG.get().map(|c| c.product_version.as_str())
+}
+
+pub fn cache_max_age_days() -> u64 {
+    APP_CONFIG
+        .get()
+        .map(|c| c.cache_max_age_days)
+        .unwrap_or_else(default_cache_max_age_days)
 }
 
 impl AppConfig {

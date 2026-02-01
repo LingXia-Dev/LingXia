@@ -1427,6 +1427,35 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     metadata::init(metadata_path)
 }
 
+fn spawn_cache_cleanup(runtime: Arc<Platform>) {
+    let max_age_days = crate::app::cache_max_age_days();
+    if max_age_days == 0 {
+        info!("Cache cleanup disabled (cacheMaxAgeDays = 0)");
+        return;
+    }
+
+    let _ = rong::bg::spawn(async move {
+        info!("Starting cache cleanup (max age: {} days)", max_age_days);
+
+        let cache_base_dir = runtime
+            .app_cache_dir()
+            .join(LINGXIA_DIR)
+            .join(LXAPPS_DIR)
+            .join(USER_CACHE_DIR);
+
+        if let Ok(entries) = fs::read_dir(&cache_base_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    crate::cache::cleanup_stale_files(&path, max_age_days);
+                }
+            }
+        }
+
+        info!("Cache cleanup completed");
+    });
+}
+
 // Global instance of LxApps manager
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 
@@ -1558,6 +1587,8 @@ pub fn init(runtime: Platform) -> Option<String> {
             );
 
             info!("LxApps initialized successfully");
+
+            spawn_cache_cleanup(runtime_arc.clone());
 
             UpdateManager::spawn_app_update_flow(runtime_arc.clone(), Some(app_version.clone()));
             Some(home_lxapp_appid)
