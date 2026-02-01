@@ -20,34 +20,59 @@ export const REACT_MAIN_JSX = `import React from 'react'
 import ReactDOM from 'react-dom/client'
 /* {{APP_IMPORT}} */
 
+// Singleton data store + listeners
+let __lxData = {};
+let __lxSubscribed = false;
+const __lxListeners = new Set();
+
+// Deep merge for nested objects
+function __deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return target;
+  const result = { ...target };
+  for (const key in source) {
+    const sv = source[key], tv = target[key];
+    if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+      result[key] = __deepMerge(tv || {}, sv);
+    } else {
+      result[key] = sv;
+    }
+  }
+  return result;
+}
+
+// Register bridge subscription with retry
+(function registerBridge() {
+  if (__lxSubscribed) return;
+  if (!window.LingXiaBridge?.subscribe) {
+    setTimeout(registerBridge, 10);
+    return;
+  }
+  __lxSubscribed = true;
+  window.LingXiaBridge.subscribe((d) => {
+    if (d) {
+      __lxData = __deepMerge(__lxData, d);
+      __lxListeners.forEach(fn => fn(__lxData));
+    }
+  });
+})();
+
 window.useLingXia = function () {
-  const [data, setData] = React.useState({});
+  const [data, setData] = React.useState(__lxData);
 
   React.useEffect(() => {
-    if (window.LingXiaBridge && window.LingXiaBridge.subscribe) {
-      window.LingXiaBridge.subscribe((newData) => {
-        if (newData) {
-          setData(prevData => ({ ...prevData, ...newData }));
-        }
-      });
-    }
+    const listener = (newData) => setData(newData);
+    __lxListeners.add(listener);
+    setData(__lxData); // Sync initial data
+    return () => __lxListeners.delete(listener); // Cleanup
   }, []);
 
-  // Create functions object from page functions
-  const functions = React.useMemo(() => {
-    if (!window.__PAGE_FUNCTIONS) return {};
-
-    return window.__PAGE_FUNCTIONS.reduce((acc, funcName) => {
-      acc[funcName] = window[funcName];
-      return acc;
-    }, {});
+  const fns = React.useMemo(() => {
+    const obj = {};
+    window.__PAGE_FUNCTIONS?.forEach(n => { obj[n] = window[n]; });
+    return obj;
   }, []);
 
-  // Return both data and functions
-  return {
-    data,
-    ...functions
-  };
+  return { data, ...fns };
 };
 
 // Page functions injection
