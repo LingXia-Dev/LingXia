@@ -1,32 +1,30 @@
 #!/bin/bash
 
 # Dev build & run LingXia Example macOS App
-#
-# Usage: ./dev.sh [skip-rust]
 
 set -euo pipefail
 
-# Parse command line arguments
-SKIP_RUST=false
-for arg in "$@"; do
-    case $arg in
-        skip-rust|--skip-rust)
-            SKIP_RUST=true
-            echo "🚀 Skipping Rust compilation"
-            ;;
-        *)
-            echo "Unknown argument: $arg"
-            echo "Usage: $0 [skip-rust]"
-            exit 1
-            ;;
-    esac
-done
-
-# Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
+source "$SCRIPT_DIR/../scripts/common.sh"
+init_common_vars
 WORKSPACE_ROOT="$LINGXIA_ROOT"
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
+
+# Parse command line arguments
+for arg in "$@"; do
+    if ! parse_common_arg "$arg"; then
+        case "$arg" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Unknown argument: $arg"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    fi
+done
 
 # Define the resources directory for macOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/Resources"
@@ -73,23 +71,10 @@ fi
 
 echo "[2/4] Preparing app resources..."
 mkdir -p "$RESOURCES_DIR"
+rm -rf "$RESOURCES_DIR/homelxapp" 2>/dev/null || true
 
-echo "Generating host app configuration..."
-source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
-generate_app_json "$RESOURCES_DIR"
-
-echo "Copying demo LxApp..."
-cd "$LINGXIA_ROOT/examples/homelxapp"
-if [ -d "dist" ]; then
-    mkdir -p "$RESOURCES_DIR/homelxapp"
-    rm -rf "$RESOURCES_DIR/homelxapp"/*
-    cp -r dist/* "$RESOURCES_DIR/homelxapp/"
-    echo "✅ Successfully copied dist contents to Resources/homelxapp"
-else
-    echo "❌ Error: dist directory not found in homelxapp"
-    echo "📁 Please run 'npm run build' in examples/homelxapp first"
-    exit 1
-fi
+generate_app_config "$RESOURCES_DIR"
+build_and_copy_homelxapp "$RESOURCES_DIR"
 
 echo "[3/4] Building Swift project..."
 cd "$SCRIPT_DIR"

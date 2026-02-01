@@ -1,29 +1,29 @@
 #!/bin/bash
 
 # Dev build & deploy LingXia Example HarmonyOS App
-# Usage: ./dev.sh [skip-rust]
 
 set -euo pipefail
 
-# Parse command line arguments
-SKIP_RUST=false
-for arg in "$@"; do
-  case "$arg" in
-    skip-rust)
-      SKIP_RUST=true
-      echo "🚀 Skipping Rust compilation"
-      ;;
-    *)
-      echo "Unknown argument: $arg"
-      echo "Usage: $0 [skip-rust]"
-      exit 1
-      ;;
-  esac
-done
-
-# Paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
+source "$SCRIPT_DIR/../scripts/common.sh"
+init_common_vars
+
+# Parse command line arguments
+for arg in "$@"; do
+  if ! parse_common_arg "$arg"; then
+    case "$arg" in
+      --help|-h)
+        show_help
+        exit 0
+        ;;
+      *)
+        echo "Unknown argument: $arg"
+        echo "Use --help for usage information"
+        exit 1
+        ;;
+    esac
+  fi
+done
 SDK_DIR="$LINGXIA_ROOT/lingxia-sdk/harmony"
 
 # Native library paths
@@ -104,11 +104,9 @@ fi
 echo "Preparing example app assets (app.json + homelxapp) ..."
 RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
-source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
-generate_app_json "$RAWFILE_DIR"
-if [ -d "$LINGXIA_ROOT/examples/homelxapp/dist" ]; then
-  mkdir -p "$RAWFILE_DIR/homelxapp" && cp -R "$LINGXIA_ROOT/examples/homelxapp/dist/"* "$RAWFILE_DIR/homelxapp/"
-fi
+
+generate_app_config "$RAWFILE_DIR"
+build_and_copy_homelxapp "$RAWFILE_DIR"
 
 # 4) Build & install example HAP
 echo "Installing ohpm dependencies (local har) ..."
@@ -123,6 +121,10 @@ if ! command -v hdc >/dev/null 2>&1; then
 fi
 if ! hdc list targets | grep -q ".*"; then
   echo "❌ No HarmonyOS device connected (hdc list targets empty)" >&2; exit 1
+fi
+if [ "$CLEAN_INSTALL" = true ]; then
+  echo "Uninstalling existing app..."
+  hdc uninstall "$APP_PACKAGE" 2>/dev/null || true
 fi
 hdc install -r "$HAP_PATH" >/dev/null
 

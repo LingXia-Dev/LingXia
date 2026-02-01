@@ -10,49 +10,53 @@
 #   App (examples/android/):
 #     - lingxia-lib crate: native library + user extensions
 #     - Output: liblingxia.so (final linked library)
-#
-# Usage: ./dev.sh [skip-rust] [arm32]
 
 set -euo pipefail
 
-# Parse command line arguments
-SKIP_RUST=false
-BUILD_ARMV7=false
-USE_ES5_RUNTIME=false
-for arg in "$@"; do
-    case $arg in
-        skip-rust)
-            SKIP_RUST=true
-            echo "🚀 Skipping Rust compilation"
-            ;;
-        arm32|with-arm32|with-armv7)
-            BUILD_ARMV7=true
-            echo "✅ Enabling 32-bit (armeabi-v7a) build"
-            USE_ES5_RUNTIME=true
-            echo "✅ Enabling ES5 web runtime (recommended for older Android WebView)"
-            ;;
-        es5|legacy|with-es5)
-            USE_ES5_RUNTIME=true
-            echo "✅ Enabling ES5 web runtime"
-            ;;
-        es2020|modern)
-            USE_ES5_RUNTIME=false
-            echo "✅ Using modern web runtime"
-            ;;
-        *)
-            echo "Unknown argument: $arg"
-            echo "Usage: $0 [skip-rust] [arm32] [es5|es2020]"
-            exit 1
-            ;;
-    esac
-done
-
-# Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
+source "$SCRIPT_DIR/../scripts/common.sh"
+init_common_vars
 WORKSPACE_ROOT="$LINGXIA_ROOT"
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
+
+# Android-specific options
+BUILD_ARMV7=false
+USE_ES5_RUNTIME=false
+
+# Parse command line arguments
+for arg in "$@"; do
+    if ! parse_common_arg "$arg"; then
+        case $arg in
+            --arm32|arm32|with-arm32|with-armv7)
+                BUILD_ARMV7=true
+                echo "✅ Enabling 32-bit (armeabi-v7a) build"
+                USE_ES5_RUNTIME=true
+                echo "✅ Enabling ES5 web runtime (recommended for older Android WebView)"
+                ;;
+            --es5|es5|legacy|with-es5)
+                USE_ES5_RUNTIME=true
+                echo "✅ Enabling ES5 web runtime"
+                ;;
+            --es2020|es2020|modern)
+                USE_ES5_RUNTIME=false
+                echo "✅ Using modern web runtime"
+                ;;
+            --help|-h)
+                show_help "  --arm32                 Enable 32-bit build
+  --es5                   Enable ES5 web runtime"
+                exit 0
+                ;;
+            --framework)
+                # Handle --framework vue (next arg) - skip
+                ;;
+            *)
+                echo "Unknown argument: $arg"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    fi
+done
 BASE_SDK_VERSION="$(awk '
   /^\[workspace\.package\]/ {in_section=1; next}
   /^\[/ {in_section=0}
@@ -200,27 +204,8 @@ mkdir -p "$ASSETS_DIR"
 echo "Cleaning assets directory..."
 rm -rf "$ASSETS_DIR"/*
 
-echo "Generating host app configuration..."
-source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
-generate_app_json "$ASSETS_DIR"
-
-echo "Building and copying demo LxApp..."
-# Build homelxapp using LingXia Builder
-cd "$LINGXIA_ROOT/examples/homelxapp"
-# Copy built LxApp to assets with proper directory structure
-if [ -d "dist" ]; then
-    echo "Copying built LxApp to assets..."
-    mkdir -p "$ASSETS_DIR/homelxapp"
-    cp -R dist/* "$ASSETS_DIR/homelxapp/"
-    echo "✅ Successfully copied dist contents to assets/homelxapp"
-    echo "📁 Contents copied:"
-    ls -la "$ASSETS_DIR/homelxapp"
-else
-    echo "❌ Error: dist directory not found"
-    echo "📁 Current directory contents:"
-    ls -la .
-    exit 1
-fi
+generate_app_config "$ASSETS_DIR"
+build_and_copy_homelxapp "$ASSETS_DIR"
 
 echo "[4/4] Building and installing Android example app (release)..."
 cd "$SCRIPT_DIR"
@@ -229,6 +214,10 @@ cd "$SCRIPT_DIR"
 
 echo "Installing APK on all connected devices..."
 for device in $(adb devices | awk 'NR>1 && NF>0 {print $1}'); do
+    if [ "$CLEAN_INSTALL" = true ]; then
+        echo "Uninstalling from $device..."
+        adb -s "$device" uninstall "$APP_PACKAGE" 2>/dev/null || true
+    fi
     echo "Installing on $device..."
     adb -s "$device" install -r ./app/build/outputs/apk/release/app-release.apk
 done

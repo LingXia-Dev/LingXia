@@ -1,32 +1,30 @@
 #!/bin/bash
 
 # Dev build & deploy LingXia Example iOS App
-#
-# Usage: ./dev.sh [skip-rust]
 
 set -euo pipefail
 
-# Parse command line arguments
-SKIP_RUST=false
-for arg in "$@"; do
-    case $arg in
-        skip-rust|--skip-rust)
-            SKIP_RUST=true
-            echo "🚀 Skipping Rust compilation"
-            ;;
-        *)
-            echo "Unknown argument: $arg"
-            echo "Usage: $0 [skip-rust]"
-            exit 1
-            ;;
-    esac
-done
-
-# Get the absolute path of the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
+source "$SCRIPT_DIR/../scripts/common.sh"
+init_common_vars
 WORKSPACE_ROOT="$LINGXIA_ROOT"
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
+
+# Parse command line arguments
+for arg in "$@"; do
+    if ! parse_common_arg "$arg"; then
+        case "$arg" in
+            --help|-h)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Unknown argument: $arg"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    fi
+done
 
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
@@ -75,31 +73,10 @@ else
 fi
 
 mkdir -p "$RESOURCES_DIR"
-
-# Clean resources directory before copying new files
-echo "Cleaning resources directory..."
 rm -rf "$RESOURCES_DIR"/*
 
-echo "Generating host app configuration..."
-source "$LINGXIA_ROOT/examples/scripts/generate-app-json.sh"
-generate_app_json "$RESOURCES_DIR"
-
-echo "Building and copying demo LxApp..."
-cd "$LINGXIA_ROOT/examples/homelxapp"
-if [ -f "package.json" ] ; then
-    # Copy built LxApp to resources with proper directory structure
-    if [ -d "dist" ]; then
-        echo "Copying built LxApp to resources..."
-        mkdir -p "$RESOURCES_DIR/homelxapp"
-        cp -R dist/* "$RESOURCES_DIR/homelxapp/"
-    else
-        echo "Error: dist directory not found, copying source files..."
-        exit 1
-    fi
-else
-    echo "Error: package.json not found"
-    exit 1
-fi
+generate_app_config "$RESOURCES_DIR"
+build_and_copy_homelxapp "$RESOURCES_DIR"
 
 echo "Building and deploying iOS app..."
 cd "$SCRIPT_DIR/lxapp"
