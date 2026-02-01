@@ -45,22 +45,23 @@ export class PageProcessor {
     outputDir: string,
     staticDirs: string[] = DEFAULT_STATIC_DIRS,
     buildConfig?: BuildConfig,
+    framework?: ProjectFramework,
   ) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
     this.templateManager = new TemplateManager();
-    this.framework = readProjectFramework(projectPath);
-    const lingxiaConfig = buildConfig
-      ? undefined
-      : loadLxappConfig(projectPath);
+    // Use provided framework or auto-detect
+    this.framework = framework ?? readProjectFramework(projectPath);
+    // Use buildConfig if provided, otherwise load from lxapp.config.ts
+    const lingxiaConfig = buildConfig ?? loadLxappConfig(projectPath);
     const viewOverrides = extractViewOverrides(
       lingxiaConfig as any,
       this.framework,
     );
     const combinedOverrides =
-      buildConfig?.assetDir && !viewOverrides?.assetDir
-        ? { ...viewOverrides, assetDir: buildConfig.assetDir }
+      lingxiaConfig?.assetDir && !viewOverrides?.assetDir
+        ? { ...viewOverrides, assetDir: lingxiaConfig.assetDir }
         : viewOverrides;
     this.pluginSpecs = extractPluginSpecs(lingxiaConfig as any);
     this.viewConfigManager = new ViewConfigManager(

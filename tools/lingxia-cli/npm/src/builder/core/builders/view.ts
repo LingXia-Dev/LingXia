@@ -25,23 +25,25 @@ export class ViewBuilder {
     projectPath: string,
     outputDir: string,
     buildConfig?: BuildConfig,
+    framework?: ProjectFramework,
   ) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
     this.staticDirs = resolveStaticDirs(projectPath, buildConfig);
-    this.framework = readProjectFramework(projectPath);
+    // Use provided framework or auto-detect
+    this.framework = framework ?? readProjectFramework(projectPath);
     this.pageProcessor = new PageProcessor(
       projectPath,
       outputDir,
       this.staticDirs,
       buildConfig,
+      this.framework,
     );
   }
 
   async buildPages(pages: Page[], options: BuildOptions = {}): Promise<void> {
     await this.copyStaticAssets();
-    await this.copyRootFiles();
 
     // Group pages by framework and validate supported types
     const reactPages: Page[] = [];
@@ -59,18 +61,25 @@ export class ViewBuilder {
       );
     }
 
-    if (this.framework === "react" && vuePages.length > 0) {
-      throw new Error(
-        `Project configured for React, but found Vue pages. Please keep only one framework.`,
-      );
-    }
-    if (this.framework === "vue" && reactPages.length > 0) {
-      throw new Error(
-        `Project configured for Vue, but found React pages. Please keep only one framework.`,
-      );
+    // Filter pages by framework - only build pages matching the configured framework
+    const pagesToBuild = this.framework === "react" ? reactPages : vuePages;
+
+    if (pagesToBuild.length === 0) {
+      const otherFramework = this.framework === "react" ? "vue" : "react";
+      const otherCount = this.framework === "react" ? vuePages.length : reactPages.length;
+      if (otherCount > 0) {
+        throw new Error(
+          `No ${this.framework} pages found. Found ${otherCount} ${otherFramework} pages instead. ` +
+          `Use --framework ${otherFramework} to build them.`,
+        );
+      }
+      throw new Error(`No pages found for framework: ${this.framework}`);
     }
 
-    // Batch build React/Vue using multi-entry
+    // Copy root files with actual page paths (with extensions)
+    await this.copyRootFiles(pagesToBuild);
+
+    // Batch build pages using multi-entry
     const buildBatch = async (framework: "react" | "vue", subset: Page[]) => {
       if (subset.length === 0) return;
       const items = subset.map((page) => {
@@ -85,12 +94,7 @@ export class ViewBuilder {
       await this.pageProcessor.buildPagesBatch(framework, items, options);
     };
 
-    // Parallel build for better performance
-    if (this.framework === "react") {
-      await buildBatch("react", reactPages);
-    } else {
-      await buildBatch("vue", vuePages);
-    }
+    await buildBatch(this.framework, pagesToBuild);
   }
 
   private detectPageFiles(page: Page): PageFiles {
@@ -169,12 +173,42 @@ export class ViewBuilder {
     }
   }
 
-  private async copyRootFiles(): Promise<void> {
-    // Copy lxapp.json
+  private async copyRootFiles(pages: Page[]): Promise<void> {
+    // Copy and update lxapp.json with actual page paths (with extensions)
     const lxappJson = path.join(this.projectPath, "lxapp.json");
     if (fs.existsSync(lxappJson)) {
+      const content = JSON.parse(fs.readFileSync(lxappJson, "utf-8"));
+
+      // Helper to strip extension from path
+      const stripExt = (p: string) => {
+        const ext = path.extname(p);
+        return ext ? p.slice(0, -ext.length) : p;
+      };
+
+      // Build a map from page name (without extension) to actual path (with extension)
+      const pagePathMap = new Map<string, string>();
+      for (const page of pages) {
+        pagePathMap.set(stripExt(page.path), page.path);
+      }
+
+      // Update pages array
+      if (Array.isArray(content.pages)) {
+        content.pages = content.pages.map((p: string) => pagePathMap.get(stripExt(p)) ?? p);
+      }
+
+      // Update tabBar.list[].pagePath
+      if (content.tabBar?.list && Array.isArray(content.tabBar.list)) {
+        content.tabBar.list = content.tabBar.list.map((item: { pagePath?: string; [key: string]: unknown }) => {
+          if (item.pagePath) {
+            const actualPath = pagePathMap.get(stripExt(item.pagePath));
+            if (actualPath) return { ...item, pagePath: actualPath };
+          }
+          return item;
+        });
+      }
+
       const destFile = path.join(this.outputDir, "lxapp.json");
-      fs.copyFileSync(lxappJson, destFile);
+      fs.writeFileSync(destFile, JSON.stringify(content, null, 2));
     }
 
     // Process lxapp.css with import resolution

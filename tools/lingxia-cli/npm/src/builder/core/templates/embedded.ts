@@ -68,37 +68,53 @@ export const VUE_INDEX_HTML = `<!DOCTYPE html>
 </head>
 <body>
   <div id="app"></div>
+  <script>
+    // Initialize globals before module loads
+    window.__lxData = {};
+    window.__lxSubscribed = false;
+    window.__PAGE_FUNCTIONS = [];
+  </script>
   <script type="module" src="./main.js"></script>
 </body>
 </html>`;
 
-export const VUE_MAIN_JS = `import { createApp, ref } from "vue";
+export const VUE_MAIN_JS = `import { createApp, reactive } from "vue";
 /* {{APP_IMPORT}} */
 
+// Vue reactive data store
+const __lxReactiveData = reactive(window.__lxData || {});
+window.__lxData = __lxReactiveData;
+
+// Deep merge for Vue reactivity
+function __deepMerge(target, source) {
+  if (!source || typeof source !== 'object') return;
+  for (const key in source) {
+    const sv = source[key], tv = target[key];
+    if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+      if (!tv || typeof tv !== 'object') target[key] = {};
+      __deepMerge(target[key], sv);
+    } else {
+      target[key] = sv;
+    }
+  }
+}
+
+// Register bridge subscription with retry
+(function registerBridge() {
+  if (window.__lxSubscribed) return;
+  if (!window.LingXiaBridge?.subscribe) {
+    setTimeout(registerBridge, 10);
+    return;
+  }
+  window.__lxSubscribed = true;
+  window.LingXiaBridge.subscribe((d) => d && __deepMerge(__lxReactiveData, d));
+})();
+
+// useLingXia hook
 window.useLingXia = function () {
-  const dataInstance = ref({});
-
-  if (window.LingXiaBridge && window.LingXiaBridge.subscribe) {
-    window.LingXiaBridge.subscribe((newData) => {
-      if (newData && dataInstance.value) {
-        Object.assign(dataInstance.value, newData);
-      }
-    });
-  }
-
-  // Create functions object from page functions (same as React)
-  const functions = {};
-  if (window.__PAGE_FUNCTIONS) {
-    window.__PAGE_FUNCTIONS.forEach((funcName) => {
-      functions[funcName] = window[funcName];
-    });
-  }
-
-  // Return both data and functions
-  return {
-    data: dataInstance,
-    ...functions
-  };
+  const fns = {};
+  window.__PAGE_FUNCTIONS?.forEach((n) => { fns[n] = window[n]; });
+  return { data: __lxReactiveData, ...fns };
 };
 
 // Page functions injection

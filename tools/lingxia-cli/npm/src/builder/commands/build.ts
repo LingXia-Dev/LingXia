@@ -1,13 +1,14 @@
 import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
-import type { BuildOptions, Page } from "../types/index.js";
+import type { BuildOptions, FrameworkType, Page } from "../types/index.js";
 import { ViewBuilder } from "../core/builders/view.js";
 import { LogicBuilder } from "../core/builders/logic.js";
 import { FileUtils } from "../core/utils/file.js";
-import { detectPageType } from "../core/utils/page.js";
+import { detectPageType, resolvePagePath } from "../core/utils/page.js";
 import { ConfigManager } from "../core/config.js";
 import { loadLxappConfig } from "../core/config/lxapp-config.js";
+import { readProjectFramework } from "../core/config/framework.js";
 
 const fileUtils = new FileUtils();
 
@@ -25,9 +26,18 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     isPluginMode ? "dist-plugin" : "dist",
   );
 
+  // Validate framework option
+  const framework = options.framework as FrameworkType | undefined;
+  if (framework && framework !== "react" && framework !== "vue") {
+    throw new Error(
+      `Invalid framework "${framework}". Must be "react" or "vue".`,
+    );
+  }
+
   const buildOptions: BuildOptions = {
     ...options,
     release: Boolean(options.release),
+    framework,
   };
 
   console.log(
@@ -92,9 +102,24 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     fileUtils.cleanDirectory(outputDir);
 
     // Discover pages
-    const pages = discoverPages(projectPath, configManager, isPluginMode);
+    const frameworkForPages = resolveFrameworkPreference(
+      projectPath,
+      framework,
+    );
+    const pages = discoverPages(
+      projectPath,
+      configManager,
+      isPluginMode,
+      frameworkForPages,
+    );
     const pageNames = pages.map((p) => p.name).join(", ");
+    const detectedFramework = pages[0]?.type ?? "unknown";
     console.log(` Found ${pages.length} pages: ${pageNames}`);
+    if (framework) {
+      console.log(` Framework: ${framework} (specified)`);
+    } else {
+      console.log(` Framework: ${detectedFramework} (auto-detected)`);
+    }
 
     if (pages.length === 0) {
       console.warn("⚠️ No pages found in the project");
@@ -105,6 +130,9 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
     const only = process.env.LINGXIA_ONLY?.toLowerCase();
 
+    // Extract resolved page paths for logic builder
+    const resolvedPagePaths = pages.map((p) => p.path);
+
     if (only === "logic") {
       console.log("▶ Building logic layer only...");
       const logicBuilder = new LogicBuilder(
@@ -113,10 +141,15 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         pluginId,
         buildConfig,
       );
-      await logicBuilder.buildLogic(buildOptions);
+      await logicBuilder.buildLogic(buildOptions, resolvedPagePaths);
     } else if (only === "view") {
       console.log("▶ Building view layer only...");
-      const viewBuilder = new ViewBuilder(projectPath, outputDir, buildConfig);
+      const viewBuilder = new ViewBuilder(
+        projectPath,
+        outputDir,
+        buildConfig,
+        framework,
+      );
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
       console.log("▶ Building logic and view layers in parallel...");
@@ -126,11 +159,16 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         pluginId,
         buildConfig,
       );
-      const viewBuilder = new ViewBuilder(projectPath, outputDir, buildConfig);
+      const viewBuilder = new ViewBuilder(
+        projectPath,
+        outputDir,
+        buildConfig,
+        framework,
+      );
 
       await Promise.all([
         logicBuilder
-          .buildLogic(buildOptions)
+          .buildLogic(buildOptions, resolvedPagePaths)
           .then(() => console.log("  ✔ Logic layer built")),
         viewBuilder
           .buildPages(pages, buildOptions)
@@ -178,23 +216,25 @@ function discoverPages(
   projectPath: string,
   configManager: ConfigManager,
   isPluginMode: boolean,
+  framework?: FrameworkType,
 ): Page[] {
   const pagesPaths = configManager.getPages({ plugin: isPluginMode });
 
   const pages: Page[] = [];
 
   for (const pagePath of pagesPaths) {
-    // Check if page file exists
-    const fullPath = path.join(projectPath, pagePath);
-    if (!fs.existsSync(fullPath)) {
+    // Resolve page path (handles both with and without extension)
+    const resolvedPath = resolvePagePath(projectPath, pagePath, framework);
+
+    if (!resolvedPath) {
       console.warn(`⚠️ Page file not found: ${pagePath}`);
       continue;
     }
 
     // Extract page info
-    const pageType = detectPageType(pagePath);
-    const pageDir = path.dirname(pagePath);
-    const baseName = path.basename(pagePath, path.extname(pagePath));
+    const pageType = detectPageType(resolvedPath);
+    const pageDir = path.dirname(resolvedPath);
+    const baseName = path.basename(resolvedPath, path.extname(resolvedPath));
 
     // Create page name from directory structure
     let pageName = pageDir;
@@ -206,13 +246,25 @@ function discoverPages(
     }
 
     pages.push({
-      path: pagePath, // Full path from lxapp.json
+      path: resolvedPath, // Resolved path with extension
       name: pageName,
       type: pageType,
     });
   }
 
   return pages;
+}
+
+function resolveFrameworkPreference(
+  projectPath: string,
+  framework?: FrameworkType,
+): FrameworkType | undefined {
+  if (framework) return framework;
+  try {
+    return readProjectFramework(projectPath);
+  } catch {
+    return undefined;
+  }
 }
 
 function cleanupLingxiaBuild(projectPath: string): void {

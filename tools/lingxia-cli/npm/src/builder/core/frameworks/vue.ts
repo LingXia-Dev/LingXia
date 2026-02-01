@@ -99,9 +99,13 @@ export class VueProcessor extends FrameworkProcessor {
       assetRelativePath,
     );
     htmlContent = this.injectRuntimeScript(htmlContent);
+
+    // Inject bridge script BEFORE the module script, not after
+    // This ensures window.__PAGE_FUNCTIONS and window[funcName] are defined
+    // when Vue component setup() calls useLingXia()
     htmlContent = htmlContent.replace(
-      "</body>",
-      `<script>\n${bridgeScript}\n</script>\n</body>`,
+      '<script type="module"',
+      `<script>\n${bridgeScript}\n</script>\n<script type="module"`,
     );
 
     // Write final component file

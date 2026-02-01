@@ -41,9 +41,13 @@ export class LogicBuilder {
     this.pluginId = pluginId;
   }
 
-  async buildLogic(options: BuildOptions = {}): Promise<void> {
-    // Get page configurations from ConfigManager
-    const pages = this.configManager.getPages({ plugin: this.isPlugin });
+  async buildLogic(
+    options: BuildOptions = {},
+    resolvedPages?: string[],
+  ): Promise<void> {
+    // Use resolved pages (with extensions) if provided, otherwise get from config
+    const pages =
+      resolvedPages ?? this.configManager.getPages({ plugin: this.isPlugin });
     const logicFiles = this.discoverLogicFiles(pages);
 
     if (logicFiles.length === 0) {

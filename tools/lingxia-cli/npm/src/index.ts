@@ -21,6 +21,10 @@ export async function runCLI(argv = process.argv): Promise<void> {
       "--target <target>",
       "JS target (es5, es2015, es2020, esnext). Note: es5 requires @vitejs/plugin-legacy",
     )
+    .option(
+      "--framework <framework>",
+      "Framework to use for pages without extension (react or vue). Auto-detected if not specified.",
+    )
     .action(buildCommand);
 
   await program.parseAsync(argv);

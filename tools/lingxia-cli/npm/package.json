@@ -29,7 +29,7 @@
     "@babel/generator": "^7.28.5",
     "@babel/parser": "^7.28.5",
     "@vitejs/plugin-react": "^4.6.0",
-    "@vitejs/plugin-vue": "^5.2.1",
+    "@vitejs/plugin-vue": "^6.0.3",
     "cheerio": "^1.1.2",
     "commander": "^14.0.1",
     "fast-glob": "^3.3.2",
