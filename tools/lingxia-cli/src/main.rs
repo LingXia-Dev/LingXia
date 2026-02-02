@@ -80,6 +80,10 @@ enum Commands {
         /// Background color for adaptive icons (hex, e.g., "#FFFFFF")
         #[arg(short = 'b', long)]
         background_color: Option<String>,
+
+        /// Generate legacy icons for Android minSdk < 26
+        #[arg(long)]
+        legacy: bool,
     },
 
     /// Build the project
@@ -135,8 +139,9 @@ fn main() -> Result<()> {
             icon_path,
             platform,
             background_color,
+            legacy,
         } => {
-            commands::icon::execute(icon_path, platform, background_color)?;
+            commands::icon::execute(icon_path, platform, background_color, legacy)?;
         }
         Commands::Build {
             build_options,

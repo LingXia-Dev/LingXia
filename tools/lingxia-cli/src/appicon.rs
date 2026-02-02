@@ -45,10 +45,12 @@ pub fn normalize_android_color(color: &str) -> Result<String> {
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
 /// * `res_dir` - Path to Android app/src/main/res directory
 /// * `background_color` - Background color for adaptive icons (hex, e.g., "#FFFFFF")
+/// * `include_legacy` - If true, generate legacy icons for minSdk < 26
 pub fn generate_android_icons(
     source_icon: &Path,
     res_dir: &Path,
     background_color: &str,
+    include_legacy: bool,
 ) -> Result<()> {
     let background_color = normalize_android_color(background_color)?;
 
@@ -71,8 +73,14 @@ pub fn generate_android_icons(
     }
 
     println!(
-        "Generating Android icons from {}x{} source...",
-        width, height
+        "Generating Android icons from {}x{} source{}...",
+        width,
+        height,
+        if include_legacy {
+            " (with legacy support)"
+        } else {
+            ""
+        }
     );
 
     let mut count = 0;
@@ -82,16 +90,18 @@ pub fn generate_android_icons(
         let mipmap_dir = res_dir.join(format!("mipmap-{}", density));
         fs::create_dir_all(&mipmap_dir)?;
 
-        // Regular launcher icon
-        let resized = img.resize_exact(icon_size, icon_size, FilterType::Lanczos3);
-        resized.save_with_format(mipmap_dir.join("ic_launcher.webp"), ImageFormat::WebP)?;
-        count += 1;
+        // Legacy icons (only if --legacy flag is set)
+        if include_legacy {
+            let resized = img.resize_exact(icon_size, icon_size, FilterType::Lanczos3);
+            resized.save_with_format(mipmap_dir.join("ic_launcher.webp"), ImageFormat::WebP)?;
+            count += 1;
 
-        // Round launcher icon (same as regular for now, Android will mask it)
-        resized.save_with_format(mipmap_dir.join("ic_launcher_round.webp"), ImageFormat::WebP)?;
-        count += 1;
+            resized
+                .save_with_format(mipmap_dir.join("ic_launcher_round.webp"), ImageFormat::WebP)?;
+            count += 1;
+        }
 
-        // Foreground for adaptive icon (centered in larger canvas)
+        // Foreground for adaptive icon (always generated)
         let foreground = create_adaptive_foreground(&img, adaptive_size);
         foreground.save_with_format(
             mipmap_dir.join("ic_launcher_foreground.webp"),

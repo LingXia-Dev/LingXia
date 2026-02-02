@@ -246,10 +246,24 @@ build_android() {
 
   [[ -x "$ANDROID_SDK_DIR/gradlew" ]] || die "Missing gradlew: $ANDROID_SDK_DIR/gradlew"
 
-  log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ...)"
+  # Build Gradle properties
+  local gradle_props=()
+  gradle_props+=("-PLOCAL_MAVEN_REPO_DIR=$maven_dir")
+  gradle_props+=("-Pversion=$ANDROID_VERSION")
+  
+  # Android 5 (ES5) mode: EXPERIMENTAL, NOT officially supported, no contributions accepted.
+  # Use at your own risk. Some features may not work on older devices.
+  if $ANDROID_ES5; then
+    log "   (Android 5 mode: minSdk=21, targetSdk=28, compileSdk=30)"
+    gradle_props+=("-PminSdk=21")
+    gradle_props+=("-PtargetSdk=28")
+    gradle_props+=("-PcompileSdk=30")
+  fi
+
+  log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ${gradle_props[*]})"
   (cd "$ANDROID_SDK_DIR" && \
     LINGXIA_JAR_OUTPUT_DIR="$ANDROID_WEBVIEW_JAR_DIR" \
-    ./gradlew :lingxia:publish -PLOCAL_MAVEN_REPO_DIR="$maven_dir" -Pversion="$ANDROID_VERSION" 1>&2)
+    ./gradlew :lingxia:publish "${gradle_props[@]}" 1>&2)
 
   local aar="$maven_dir/com/lingxia/lingxia/$ANDROID_VERSION/lingxia-$ANDROID_VERSION.aar"
   [[ -f "$aar" ]] || die "AAR not found after publish: $aar"

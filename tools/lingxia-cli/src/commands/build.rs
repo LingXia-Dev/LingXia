@@ -318,10 +318,7 @@ fn write_app_json_from_config(config: &LingXiaConfig, assets_root: &Path) -> Res
         serde_json::json!(app.home_lxapp_version),
     );
     if let Some(max_age) = app.cache_max_age_days {
-        obj.insert(
-            "cacheMaxAgeDays".to_string(),
-            serde_json::json!(max_age),
-        );
+        obj.insert("cacheMaxAgeDays".to_string(), serde_json::json!(max_age));
     }
 
     let app_json_path = assets_root.join("app.json");

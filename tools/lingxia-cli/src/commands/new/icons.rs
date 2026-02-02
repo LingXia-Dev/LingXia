@@ -142,7 +142,8 @@ fn generate_app_icons(
                     eprintln!("Skipping Android icon generation.");
                     continue;
                 }
-                appicon::generate_android_icons(&icon_path, &res_dir, background_color)?;
+                // Default: no legacy icons (minSdk 29+)
+                appicon::generate_android_icons(&icon_path, &res_dir, background_color, false)?;
             }
             Platform::Ios => {
                 eprintln!(

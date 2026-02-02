@@ -53,10 +53,16 @@ object LxAppWifi {
     // Active network connection callback (Android 10+)
     private var activeNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
+    @Suppress("DEPRECATION")
     private fun isWifiConnected(connMgr: ConnectivityManager?): Boolean {
-        val network = connMgr?.activeNetwork ?: return false
-        val capabilities = connMgr.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connMgr?.activeNetwork ?: return false
+            val capabilities = connMgr.getNetworkCapabilities(network) ?: return false
+            return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        } else {
+            val networkInfo = connMgr?.activeNetworkInfo ?: return false
+            return networkInfo.isConnected && networkInfo.type == ConnectivityManager.TYPE_WIFI
+        }
     }
 
     /**

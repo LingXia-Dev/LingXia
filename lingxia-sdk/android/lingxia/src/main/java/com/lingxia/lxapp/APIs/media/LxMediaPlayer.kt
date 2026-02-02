@@ -726,8 +726,10 @@ class LxMediaPlayer(
                 if (android.os.Build.VERSION.SDK_INT >= 29) {
                     isNavigationBarContrastEnforced = false
                 }
-                attributes = attributes?.apply {
-                    layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+                    attributes = attributes?.apply {
+                        layoutInDisplayCutoutMode = android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
                 }
                 @Suppress("DEPRECATION")
                 addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
@@ -1023,7 +1025,7 @@ class LxMediaPlayer(
         if (originalNavBarContrastEnforced == null && android.os.Build.VERSION.SDK_INT >= 29) {
             originalNavBarContrastEnforced = window.isNavigationBarContrastEnforced
         }
-        if (originalCutoutMode == null) {
+        if (originalCutoutMode == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
             originalCutoutMode = window.attributes.layoutInDisplayCutoutMode
         }
 
@@ -1051,9 +1053,11 @@ class LxMediaPlayer(
             android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
-        window.attributes = window.attributes.apply {
-            layoutInDisplayCutoutMode =
-                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            window.attributes = window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -1092,8 +1096,10 @@ class LxMediaPlayer(
         }
         originalNavBarContrastEnforced = null
 
-        originalCutoutMode?.let { mode ->
-            window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = mode }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            originalCutoutMode?.let { mode ->
+                window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = mode }
+            }
         }
         originalCutoutMode = null
 

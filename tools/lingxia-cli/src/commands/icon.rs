@@ -11,6 +11,7 @@ pub fn execute(
     icon_path: String,
     platform: Option<String>,
     background_color: Option<String>,
+    legacy: bool,
 ) -> Result<()> {
     println!("{}", "Generate/Update App Icons".bold());
     println!();
@@ -55,6 +56,9 @@ pub fn execute(
     );
     println!("  Target platform:  {}", platforms.join(", ").cyan());
     println!("  Background color: {}", bg_color.cyan());
+    if legacy {
+        println!("  Legacy support:   {}", "enabled (minSdk < 26)".cyan());
+    }
     println!();
 
     let mut generated_count = 0;
@@ -75,7 +79,7 @@ pub fn execute(
                     continue;
                 }
 
-                appicon::generate_android_icons(&icon_path, &android_res, &bg_color)?;
+                appicon::generate_android_icons(&icon_path, &android_res, &bg_color, legacy)?;
                 generated_count += 1;
             }
             "ios" => {

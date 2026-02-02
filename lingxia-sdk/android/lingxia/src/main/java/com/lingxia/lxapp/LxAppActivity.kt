@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -224,8 +225,12 @@ class LxAppActivity : AppCompatActivity() {
                     // TabBar is transparent, make navigation bar transparent for overlay effect
                     addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
                     navigationBarColor = Color.TRANSPARENT
-                    isNavigationBarContrastEnforced = false
-                    navigationBarDividerColor = Color.TRANSPARENT
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        isNavigationBarContrastEnforced = false
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        navigationBarDividerColor = Color.TRANSPARENT
+                    }
                 } else {
                     // TabBar is not transparent, use TabBar's background color for navigation bar
                     clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
@@ -236,10 +241,14 @@ class LxAppActivity : AppCompatActivity() {
 
                     // Set contrast enforcement based on color brightness
                     val brightness = (Color.red(navBarColor) * 0.299 + Color.green(navBarColor) * 0.587 + Color.blue(navBarColor) * 0.114)
-                    isNavigationBarContrastEnforced = brightness > 128 // Light background
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        isNavigationBarContrastEnforced = brightness > 128 // Light background
+                    }
 
                     // Remove divider completely for seamless appearance
-                    navigationBarDividerColor = Color.TRANSPARENT
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        navigationBarDividerColor = Color.TRANSPARENT
+                    }
                 }
             }
         }
