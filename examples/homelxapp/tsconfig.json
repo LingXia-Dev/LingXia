@@ -20,9 +20,10 @@
       "lingxia-types": ["../../../lingxia-types/src"],
       "lingxia-types/*": ["../../../lingxia-types/src/*"],
       "rong-types": ["/Users/michael/github/starfire/rong_types/src"],
-      "rong-types/*": ["/Users/michael/github/starfire/rong_types/src/*"]
+      "rong-types/*": ["/Users/michael/github/starfire/rong_types/src/*"],
+      "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "global.d.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "global.d.ts", ".lingxia/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
