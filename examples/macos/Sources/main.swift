@@ -9,13 +9,6 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         LxApp.enableWebViewDebugging()
 
         LxApp.initialize()
-
-        // Opiton for Desktop
-        //macOSLxApp.setWindowStyle(.tabStyle)
-
-        macOSLxApp.setWindowSize(.iPhoneSE)
-        macOSLxApp.setWindowStyle(.capsuleStyle)
-
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

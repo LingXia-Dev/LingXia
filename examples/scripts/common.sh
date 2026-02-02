@@ -12,6 +12,7 @@ init_common_vars() {
     LXAPP_FEATURES="${LXAPP_FEATURES:-}"
     SKIP_RUST=false
     FRAMEWORK=""
+    EXPECT_FRAMEWORK=false
     CLEAN_INSTALL=false
 }
 
@@ -19,10 +20,24 @@ init_common_vars() {
 # Returns 0 if handled, 1 if not recognized (let caller handle)
 parse_common_arg() {
     local arg="$1"
+    if [ "$EXPECT_FRAMEWORK" = true ]; then
+        if [[ "$arg" == -* ]]; then
+            echo "❌ Error: --framework requires a value (react|vue)"
+            exit 1
+        fi
+        FRAMEWORK="$arg"
+        EXPECT_FRAMEWORK=false
+        echo "🎯 Framework: $FRAMEWORK"
+        return 0
+    fi
     case "$arg" in
         --framework=*)
             FRAMEWORK="${arg#*=}"
             echo "🎯 Framework: $FRAMEWORK"
+            return 0
+            ;;
+        --framework)
+            EXPECT_FRAMEWORK=true
             return 0
             ;;
         react|vue)
