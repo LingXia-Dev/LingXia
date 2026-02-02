@@ -15,6 +15,7 @@ export default {
     typescript({
       tsconfig: "./tsconfig.json",
       target: isES5 ? "ES5" : "ES2020",
+      downlevelIteration: isES5,
       noEmitHelpers: false,
       declaration: false,
       declarationDir: undefined,

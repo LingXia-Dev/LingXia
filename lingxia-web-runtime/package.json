@@ -6,8 +6,8 @@
   "main": "dist/runtime.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "rollup -c",
-    "build:es5": "TARGET=es5 rollup -c",
+    "build": "rollup -c && tsc -p tsconfig.json --emitDeclarationOnly",
+    "build:es5": "TARGET=es5 rollup -c && tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "rollup -c -w",
     "clean": "rm -rf dist"
   },
