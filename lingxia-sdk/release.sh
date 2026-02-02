@@ -21,6 +21,9 @@ Options:
   --ios-no-zip                  iOS: do not create the source zip (useful for local dev)
   -h, --help                    Show help
 
+Environment:
+  SKIP_RUST=true                Skip swift-bridge refresh for iOS
+
 Artifacts (under --out):
   lingxia-sdk-android-maven-<version>.zip
   lingxia-sdk-harmony-<version>.har
@@ -253,11 +256,11 @@ build_android() {
   
   # Android 5 (ES5) mode: EXPERIMENTAL, NOT officially supported, no contributions accepted.
   # Use at your own risk. Some features may not work on older devices.
+  # Note: compileSdk stays high for AndroidX dependency compatibility; only minSdk/targetSdk are lowered.
   if $ANDROID_ES5; then
-    log "   (Android 5 mode: minSdk=21, targetSdk=28, compileSdk=30)"
+    log "   (Android 5 mode: minSdk=21, targetSdk=28)"
     gradle_props+=("-PminSdk=21")
     gradle_props+=("-PtargetSdk=28")
-    gradle_props+=("-PcompileSdk=30")
   fi
 
   log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ${gradle_props[*]})"
@@ -318,6 +321,11 @@ build_harmony() {
 }
 
 refresh_ios_generated() {
+  if [[ "${SKIP_RUST:-}" == "true" ]]; then
+    log "==> Skipping iOS Sources/generated refresh (SKIP_RUST=true)"
+    return
+  fi
+
   local gen_dir="$APPLE_SDK_DIR/Sources/generated"
   local sentinel="$gen_dir/SwiftBridgeCore.h"
 
