@@ -145,7 +145,7 @@ export class ReactProcessor extends FrameworkProcessor {
   }
 
   /**
-   * Fix HTML paths to use relative paths for React
+   * Fix HTML paths to use absolute paths for React
    */
   private fixHtmlPaths(
     htmlContent: string,
@@ -153,10 +153,6 @@ export class ReactProcessor extends FrameworkProcessor {
     assetDir: string,
     assetRelativePath: string,
   ): string {
-    const normalizedAssetRelativePath =
-      assetRelativePath.length === 0
-        ? "."
-        : assetRelativePath.replace(/\/+$/, "");
     const escapedDir = assetDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const $ = load(htmlContent);
@@ -170,12 +166,9 @@ export class ReactProcessor extends FrameworkProcessor {
       }
     });
 
+    // Use absolute paths: /assets/xxx
     const buildAssetHref = (file: string, suffix: string) => {
-      const basePath =
-        normalizedAssetRelativePath === "."
-          ? `./${file}`
-          : `${normalizedAssetRelativePath}/${file}`;
-      return `${basePath}${suffix}`;
+      return `/${assetDir}/${file}${suffix}`;
     };
 
     const rewriteAssetHref = (href: string): string | null => {

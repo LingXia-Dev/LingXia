@@ -34,12 +34,13 @@ export interface Page {
   type: "html" | "react" | "vue";
 }
 
-export type FrameworkType = "react" | "vue";
+export type FrameworkType = "react" | "vue" | "html";
 
 export interface BuildOptions {
   release?: boolean;
   target?: string; // JS target (es5, es2015, es2020, esnext). es5 requires @vitejs/plugin-legacy
   framework?: FrameworkType; // Framework to use when page path has no extension
+  minify?: boolean; // Whether to minify output (default: true for release)
 }
 
 export interface LxPluginConfig {

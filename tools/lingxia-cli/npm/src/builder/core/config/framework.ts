@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-export type ProjectFramework = "react" | "vue";
+export type ProjectFramework = "react" | "vue" | "html";
 
 export function readProjectFramework(projectPath: string): ProjectFramework {
   const pkgPath = path.join(projectPath, "package.json");
@@ -9,7 +9,7 @@ export function readProjectFramework(projectPath: string): ProjectFramework {
     try {
       const packageJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
       const framework = packageJson?.lingxia?.framework;
-      if (framework === "react" || framework === "vue") {
+      if (framework === "react" || framework === "vue" || framework === "html") {
         return framework;
       }
     } catch {
@@ -22,7 +22,7 @@ export function readProjectFramework(projectPath: string): ProjectFramework {
 
   throw new Error(
     `Cannot determine Lingxia project framework. Please rerun ` +
-      `'lingxia create' or add {"lingxia":{"framework":"react|vue"}} to package.json.`,
+      `'lingxia create' or add {"lingxia":{"framework":"react|vue|html"}} to package.json.`,
   );
 }
 
@@ -41,6 +41,8 @@ function detectFrameworkFromPages(
     if (reactEntry) return "react";
     const vueEntry = findFirstFileWithExt(dir, [".vue"]);
     if (vueEntry) return "vue";
+    const htmlEntry = findFirstFileWithExt(dir, [".html"]);
+    if (htmlEntry) return "html";
   }
   return undefined;
 }

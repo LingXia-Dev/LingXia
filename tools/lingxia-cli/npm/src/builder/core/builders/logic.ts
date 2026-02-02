@@ -83,13 +83,14 @@ export class LogicBuilder {
       );
 
       // Check which logic file exists
-      const jsPath = `${basePath}.js`;
+      // Prioritize .ts over .js (for HTML projects, .js is View layer code)
       const tsPath = `${basePath}.ts`;
+      const jsPath = `${basePath}.js`;
 
-      if (fs.existsSync(jsPath)) {
-        logicFiles.push(jsPath);
-      } else if (fs.existsSync(tsPath)) {
+      if (fs.existsSync(tsPath)) {
         logicFiles.push(tsPath);
+      } else if (fs.existsSync(jsPath)) {
+        logicFiles.push(jsPath);
       }
     }
 

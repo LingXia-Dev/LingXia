@@ -207,6 +207,7 @@ export class PageProcessor {
     await build({
       configFile: false,
       root: buildDir,
+      base: "/", // Use absolute paths in HTML output
       logLevel: "warn",
       mode: isDev ? "development" : isProd ? "production" : undefined,
       plugins,

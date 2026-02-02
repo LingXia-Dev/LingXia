@@ -4,7 +4,7 @@ import vm from "vm";
 import { createRequire } from "module";
 import type { ViewBuildConfig } from "./view-build-schema.js";
 
-export type FrameworkName = "react" | "vue";
+export type FrameworkName = "react" | "vue" | "html";
 
 export type PluginDescriptor =
   | string

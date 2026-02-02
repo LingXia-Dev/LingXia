@@ -45,6 +45,7 @@ export function detectPageType(filePath: string): "html" | "react" | "vue" {
 const VIEW_EXTENSIONS: Record<FrameworkType, string[]> = {
   react: ["tsx", "jsx"],
   vue: ["vue"],
+  html: ["html"],
 };
 
 /**

@@ -47,20 +47,28 @@ export class ViewBuilder {
   async buildPages(pages: Page[], options: BuildOptions = {}): Promise<void> {
     await this.copyStaticAssets();
 
-    // Group pages by framework and validate supported types
+    // Group pages by framework
     const reactPages: Page[] = [];
     const vuePages: Page[] = [];
-    const unsupported: Page[] = [];
+    const htmlPages: Page[] = [];
     for (const p of pages) {
       if (p.type === "react") reactPages.push(p);
       else if (p.type === "vue") vuePages.push(p);
-      else unsupported.push(p);
+      else if (p.type === "html") htmlPages.push(p);
     }
-    if (unsupported.length > 0) {
-      const paths = unsupported.map((p) => p.path).join(", ");
-      throw new Error(
-        `HTML pages are no longer supported. Please migrate these entries to React/Vue: ${paths}`,
-      );
+
+    // Pure HTML project mode: all pages must be HTML
+    if (htmlPages.length > 0) {
+      if (reactPages.length > 0 || vuePages.length > 0) {
+        throw new Error(
+          `Mixed HTML and React/Vue pages not supported. ` +
+          `Project must be either all HTML or all React/Vue.`
+        );
+      }
+      // Build HTML pages
+      await this.copyRootFiles(htmlPages);
+      await this.buildHtmlPages(htmlPages, options);
+      return;
     }
 
     // Filter pages by framework - only build pages matching the configured framework
@@ -99,7 +107,137 @@ export class ViewBuilder {
       await this.pageProcessor.buildPagesBatch(framework, items, options);
     };
 
+    // At this point, framework must be "react" or "vue" (HTML pages were handled above)
+    if (this.framework !== "react" && this.framework !== "vue") {
+      throw new Error(`Unexpected framework: ${this.framework}`);
+    }
     await buildBatch(this.framework, pagesToBuild);
+  }
+
+  /**
+   * Build pure HTML pages by copying HTML files and processing JS files with esbuild.
+   */
+  private async buildHtmlPages(pages: Page[], options: BuildOptions): Promise<void> {
+    // Output directly to dist/ (same as React/Vue projects, no view/ subdirectory)
+    const outputBase = path.join(this.projectPath, "dist");
+    const libDir = path.join(this.projectPath, "lib");
+    const target = options.target || "es2020";
+
+    console.log(`📦 Building ${pages.length} HTML page(s) (target: ${target})`);
+
+    // Copy lib/ directory if exists
+    if (fs.existsSync(libDir)) {
+      const libOutputDir = path.join(outputBase, "lib");
+      await fs.promises.mkdir(libOutputDir, { recursive: true });
+      const libFiles = fs.readdirSync(libDir);
+      for (const file of libFiles) {
+        const srcPath = path.join(libDir, file);
+        const destPath = path.join(libOutputDir, file);
+        if (fs.statSync(srcPath).isFile()) {
+          // Process JS files with esbuild for target transpilation
+          if (file.endsWith(".js")) {
+            const esbuild = await import("esbuild");
+            const result = await esbuild.build({
+              entryPoints: [srcPath],
+              outfile: destPath,
+              bundle: false,
+              minify: options.minify ?? true,
+              target: target,
+              format: "iife",
+              write: true,
+            });
+            if (result.errors.length > 0) {
+              throw new Error(`Failed to process ${file}: ${result.errors[0].text}`);
+            }
+          } else {
+            await fs.promises.copyFile(srcPath, destPath);
+          }
+        }
+      }
+      console.log(`  ✓ Copied lib/ directory`);
+    }
+
+    // Process each HTML page
+    for (const page of pages) {
+      const pageDir = path.dirname(page.path);
+      const baseName = path.basename(page.path, path.extname(page.path));
+      const sourceDir = path.join(this.projectPath, pageDir);
+      const outputDir = path.join(outputBase, pageDir);
+
+      await fs.promises.mkdir(outputDir, { recursive: true });
+
+      // Copy HTML file and inject runtime.js
+      const htmlSrc = path.join(this.projectPath, page.path);
+      const htmlDest = path.join(outputDir, `${baseName}.html`);
+      let htmlContent = await fs.promises.readFile(htmlSrc, "utf-8");
+      htmlContent = this.injectRuntimeScript(htmlContent);
+      await fs.promises.writeFile(htmlDest, htmlContent, "utf-8");
+
+      // Process accompanying JS file if exists
+      const jsFileName = `${baseName}.js`;
+      const jsSrc = path.join(sourceDir, jsFileName);
+      if (fs.existsSync(jsSrc)) {
+        const jsDest = path.join(outputDir, jsFileName);
+        const esbuild = await import("esbuild");
+        await esbuild.build({
+          entryPoints: [jsSrc],
+          outfile: jsDest,
+          bundle: false,
+          minify: options.minify ?? true,
+          target: target,
+          format: "iife",
+          write: true,
+        });
+      }
+
+      // Copy CSS file if exists
+      const cssFileName = `${baseName}.css`;
+      const cssSrc = path.join(sourceDir, cssFileName);
+      if (fs.existsSync(cssSrc)) {
+        const cssDest = path.join(outputDir, cssFileName);
+        await fs.promises.copyFile(cssSrc, cssDest);
+      }
+
+      // Copy page config (index.json) if exists
+      const jsonFileName = `${baseName}.json`;
+      const jsonSrc = path.join(sourceDir, jsonFileName);
+      if (fs.existsSync(jsonSrc)) {
+        const jsonDest = path.join(outputDir, jsonFileName);
+        await fs.promises.copyFile(jsonSrc, jsonDest);
+      }
+
+      console.log(`  ✓ ${page.path}`);
+    }
+
+    console.log(`✅ HTML view build complete`);
+  }
+
+  /**
+   * Inject runtime.js script into HTML content for LingXiaBridge support.
+   */
+  private injectRuntimeScript(htmlContent: string): string {
+    const runtimeSrc = "lx://assets/runtime.js";
+    if (htmlContent.toLowerCase().includes(runtimeSrc)) {
+      return htmlContent;
+    }
+
+    const scriptTag = `<script src="${runtimeSrc}"></script>`;
+    const lower = htmlContent.toLowerCase();
+    const headIndex = lower.indexOf("</head>");
+    if (headIndex !== -1) {
+      return `${htmlContent.slice(0, headIndex)}  ${scriptTag}\n${htmlContent.slice(headIndex)}`;
+    }
+
+    const bodyIndex = lower.indexOf("<body");
+    if (bodyIndex !== -1) {
+      const bodyEnd = htmlContent.indexOf(">", bodyIndex);
+      if (bodyEnd !== -1) {
+        const insertPos = bodyEnd + 1;
+        return `${htmlContent.slice(0, insertPos)}\n  ${scriptTag}${htmlContent.slice(insertPos)}`;
+      }
+    }
+
+    return `${scriptTag}\n${htmlContent}`;
   }
 
   /**
