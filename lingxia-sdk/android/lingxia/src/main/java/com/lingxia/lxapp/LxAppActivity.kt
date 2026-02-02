@@ -173,15 +173,19 @@ class LxAppActivity : AppCompatActivity() {
 
         // Helper function to get status bar height
         fun getStatusBarHeight(context: Context): Int {
-            val activity = context as? Activity
-            val insetTop = activity?.window?.decorView?.rootWindowInsets
-                ?.let { WindowInsetsCompat.toWindowInsetsCompat(it) }
-                ?.getInsets(WindowInsetsCompat.Type.statusBars())
-                ?.top ?: 0
-            if (insetTop > 0) {
-                return insetTop
+            // Try WindowInsets API (API 23+)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                val activity = context as? Activity
+                val insetTop = activity?.window?.decorView?.rootWindowInsets
+                    ?.let { WindowInsetsCompat.toWindowInsetsCompat(it) }
+                    ?.getInsets(WindowInsetsCompat.Type.statusBars())
+                    ?.top ?: 0
+                if (insetTop > 0) {
+                    return insetTop
+                }
             }
 
+            // Fallback: use system resource
             var result = 0
             val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
             if (resourceId > 0) {

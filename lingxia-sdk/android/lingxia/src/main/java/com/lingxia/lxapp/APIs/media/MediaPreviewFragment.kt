@@ -179,12 +179,8 @@ class MediaPreviewFragment : Fragment() {
 
     private fun readPreviewItems(): List<PreviewItem> {
         val args = arguments ?: return emptyList()
-        val raw = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            args.getSerializable(ARG_PAYLOADS, java.util.ArrayList::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            args.getSerializable(ARG_PAYLOADS)
-        }
+        @Suppress("DEPRECATION")
+        val raw = args.getSerializable(ARG_PAYLOADS)
         val payloads: List<PreviewMediaPayload> = when (raw) {
             is Array<*> -> raw.filterIsInstance<PreviewMediaPayload>()
             is List<*> -> raw.filterIsInstance<PreviewMediaPayload>()

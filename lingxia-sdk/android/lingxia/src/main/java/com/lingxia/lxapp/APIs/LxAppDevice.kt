@@ -96,10 +96,15 @@ object LxAppDevice {
 
     fun vibrate(activity: Activity, longVibration: Boolean) {
         try {
-            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                val vibratorManager = activity.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as android.os.VibratorManager
-                vibratorManager.defaultVibrator
-            } else {
+            // API 31+ uses VibratorManager, but we use reflection to avoid compile-time dependency
+            val vibrator: android.os.Vibrator = (if (android.os.Build.VERSION.SDK_INT >= 31) {
+                try {
+                    val vibratorManager = activity.getSystemService("vibrator_manager")
+                    vibratorManager?.javaClass?.getMethod("getDefaultVibrator")?.invoke(vibratorManager) as? android.os.Vibrator
+                } catch (e: Exception) {
+                    null
+                }
+            } else null) ?: run {
                 @Suppress("DEPRECATION")
                 activity.getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
             }

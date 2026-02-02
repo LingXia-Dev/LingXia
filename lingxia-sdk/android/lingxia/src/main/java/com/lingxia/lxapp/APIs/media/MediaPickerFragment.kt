@@ -58,6 +58,9 @@ class MediaPickerFragment : Fragment() {
         private val CAMERA_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-camera://capture")
         private val PLUS_PLACEHOLDER_URI: Uri = Uri.parse("lxapp-plus://limited")
         private const val PERM_READ_MEDIA_VISUAL_USER_SELECTED = "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+        // Permissions for API 33+ (use string literals for compileSdk < 33 compatibility)
+        private const val PERM_READ_MEDIA_IMAGES = "android.permission.READ_MEDIA_IMAGES"
+        private const val PERM_READ_MEDIA_VIDEO = "android.permission.READ_MEDIA_VIDEO"
         // Sentinel album IDs for pseudo entries
         private const val ALBUM_ALL_VIDEOS_ID: Long = -10001L
         private const val ALBUM_ALL_IMAGES_ID: Long = -10002L
@@ -601,17 +604,17 @@ class MediaPickerFragment : Fragment() {
                     arrayOf(PERM_READ_MEDIA_VISUAL_USER_SELECTED)
                 } else {
                     val perms = mutableListOf<String>()
-                    if (needImages) perms += Manifest.permission.READ_MEDIA_IMAGES
-                    if (needVideos) perms += Manifest.permission.READ_MEDIA_VIDEO
-                    if (perms.isEmpty()) perms += Manifest.permission.READ_MEDIA_IMAGES
+                    if (needImages) perms += PERM_READ_MEDIA_IMAGES
+                    if (needVideos) perms += PERM_READ_MEDIA_VIDEO
+                    if (perms.isEmpty()) perms += PERM_READ_MEDIA_IMAGES
                     perms.distinct().toTypedArray()
                 }
             }
             Build.VERSION.SDK_INT >= 33 -> {
                 val perms = mutableListOf<String>()
-                if (needImages) perms += Manifest.permission.READ_MEDIA_IMAGES
-                if (needVideos) perms += Manifest.permission.READ_MEDIA_VIDEO
-                if (perms.isEmpty()) perms += Manifest.permission.READ_MEDIA_IMAGES
+                if (needImages) perms += PERM_READ_MEDIA_IMAGES
+                if (needVideos) perms += PERM_READ_MEDIA_VIDEO
+                if (perms.isEmpty()) perms += PERM_READ_MEDIA_IMAGES
                 perms.distinct().toTypedArray()
             }
             else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -647,8 +650,8 @@ class MediaPickerFragment : Fragment() {
         }
         val needImages = needsImageAccess()
         val needVideos = needsVideoAccess()
-        val hasImages = !needImages || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
-        val hasVideos = !needVideos || ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
+        val hasImages = !needImages || ContextCompat.checkSelfPermission(context, PERM_READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED
+        val hasVideos = !needVideos || ContextCompat.checkSelfPermission(context, PERM_READ_MEDIA_VIDEO) == PackageManager.PERMISSION_GRANTED
         if (hasImages && hasVideos) {
             return PermissionState.FULL
         }
@@ -720,9 +723,9 @@ class MediaPickerFragment : Fragment() {
     private fun requestLimitedAccessExpansion() {
         if (Build.VERSION.SDK_INT >= 33 && limitedModeActive) {
             pendingLimitedReload = true
-            val perms = arrayOf(
-                Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_VIDEO
+            val perms: Array<String> = arrayOf(
+                PERM_READ_MEDIA_IMAGES,
+                PERM_READ_MEDIA_VIDEO
             )
             permissionLauncher.launch(perms)
         }
