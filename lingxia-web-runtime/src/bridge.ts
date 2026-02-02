@@ -415,6 +415,21 @@ function applySnapshotFromResult(result: unknown): boolean {
 }
 
 function handleIncomingMessage(msg: unknown): void {
+  // Handle native component events (from Android NativeBridge.sendEventToView)
+  if (msg && typeof msg === 'object') {
+    const obj = msg as { type?: string; name?: string; payload?: NativeComponentMessage };
+    if (obj.type === 'event' && obj.name === 'nativecomponent' && obj.payload) {
+      const payload = obj.payload;
+      const componentId = (payload as { id?: string; componentId?: string }).id || (payload as { componentId?: string }).componentId;
+      if (typeof componentId === 'string') {
+        const handler = nativeComponentHandlers.get(componentId);
+        if (handler) {
+          try { handler(payload); } catch (e) { error('NC handler error:', e); }
+        }
+      }
+      return;
+    }
+  }
 
   const message = parseIncoming(msg);
   if (!message) { warn('Invalid V2 message:', msg); return; }
