@@ -162,6 +162,7 @@ impl AndroidPlatform {
         cmd.env("ANDROID_NDK_HOME", ndk_path);
         cmd.env("ANDROID_NDK_ROOT", ndk_path);
         cmd.env("ANDROID_NDK", ndk_path);
+        cmd.env("ANDROID_API_LEVEL", api_level.to_string());
 
         // CMake configuration
         cmd.env(
