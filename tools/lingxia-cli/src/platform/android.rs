@@ -369,7 +369,7 @@ impl Platform for AndroidPlatform {
         spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
         // Install APK
-        let result = device.install(&apk_path);
+        let result = device.install(&apk_path, None);
 
         spinner.finish_and_clear();
 
@@ -407,7 +407,7 @@ impl Platform for AndroidPlatform {
         let start_cmd = format!("am start -n {}", activity);
         let mut output = Vec::new();
         device
-            .shell_command(&start_cmd, &mut output)
+            .shell_command(&start_cmd, Some(&mut output), None)
             .context("Failed to start activity")?;
 
         println!("{}", "✓ App launched".green());

@@ -4,6 +4,7 @@ import type { Page, PageFiles, BuildOptions } from "../../types/index.js";
 import { FileUtils } from "../utils/file.js";
 import { PageProcessor } from "./page.js";
 import { extractPageFunctionsFromSource } from "./page-functions.js";
+import { extractPageTypes } from "./page-types.js";
 import { validateViewFile } from "./view-validator.js";
 import {
   DEFAULT_STATIC_DIRS,
@@ -12,6 +13,7 @@ import {
 import { readProjectFramework } from "../config/framework.js";
 import type { ProjectFramework } from "../config/framework.js";
 import type { BuildConfig } from "../config/lxapp-config.js";
+import { TypeGenerator } from "../type-generator.js";
 
 export class ViewBuilder {
   private projectPath: string;
@@ -79,6 +81,9 @@ export class ViewBuilder {
     // Copy root files with actual page paths (with extensions)
     await this.copyRootFiles(pagesToBuild);
 
+    // Generate TypeScript type definitions for useLingXia
+    await this.generatePageTypes(pagesToBuild);
+
     // Batch build pages using multi-entry
     const buildBatch = async (framework: "react" | "vue", subset: Page[]) => {
       if (subset.length === 0) return;
@@ -95,6 +100,42 @@ export class ViewBuilder {
     };
 
     await buildBatch(this.framework, pagesToBuild);
+  }
+
+  /**
+   * Generate TypeScript type definitions for each page's useLingXia hook.
+   * Types are extracted from the Logic layer (index.ts) and written to .lingxia/types/
+   */
+  private async generatePageTypes(pages: Page[]): Promise<void> {
+    const typeGenerator = new TypeGenerator(this.projectPath);
+    const generatedPaths: string[] = [];
+
+    for (const page of pages) {
+      const pageFiles = this.detectPageFiles(page);
+      if (!pageFiles.logic.exists || !pageFiles.logic.path) {
+        continue;
+      }
+
+      try {
+        const logicContent = fs.readFileSync(pageFiles.logic.path, "utf-8");
+        const typeInfo = extractPageTypes(logicContent);
+
+        // Only generate if we found data or methods
+        if (Object.keys(typeInfo.data).length > 0 || Object.keys(typeInfo.methods).length > 0) {
+          const typeContent = typeGenerator.generatePageTypes(page.path, typeInfo);
+          typeGenerator.writeTypesForPage(page.path, typeContent);
+          generatedPaths.push(page.path.replace(/\.(tsx?|vue)$/, ".d.ts"));
+        }
+      } catch (error) {
+        console.warn(`⚠️ Failed to generate types for ${page.path}:`, error);
+      }
+    }
+
+    if (generatedPaths.length > 0) {
+      typeGenerator.writeTypesConfig();
+      typeGenerator.generateIndexFile(generatedPaths);
+      console.log(`📝 Generated types for ${generatedPaths.length} page(s) in .lingxia/types/`);
+    }
   }
 
   private detectPageFiles(page: Page): PageFiles {

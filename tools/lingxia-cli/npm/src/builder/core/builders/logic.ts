@@ -104,7 +104,7 @@ export class LogicBuilder {
     pages: string[],
     options: BuildOptions = {},
   ): Promise<void> {
-    const buildDir = path.join(this.projectPath, ".lingxia-build", "logic");
+    const buildDir = path.join(this.projectPath, ".lingxia", "build", "logic");
 
     // Always clean build directory
     this.fileUtils.cleanDirectory(buildDir);
@@ -158,7 +158,7 @@ export class LogicBuilder {
     sourceFile: string,
     pagePath: string,
   ): string {
-    const buildDir = path.join(this.projectPath, ".lingxia-build", "logic");
+    const buildDir = path.join(this.projectPath, ".lingxia", "build", "logic");
     const relativeDir = path.dirname(
       path.relative(this.projectPath, sourceFile),
     );

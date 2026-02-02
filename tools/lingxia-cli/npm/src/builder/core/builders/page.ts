@@ -100,7 +100,8 @@ export class PageProcessor {
 
     const buildDir = path.join(
       this.projectPath,
-      ".lingxia-build",
+      ".lingxia",
+      "build",
       `view-${framework}`,
     );
     this.fileUtils.cleanDirectory(buildDir);

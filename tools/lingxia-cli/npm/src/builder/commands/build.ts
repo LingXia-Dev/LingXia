@@ -268,7 +268,7 @@ function resolveFrameworkPreference(
 }
 
 function cleanupLingxiaBuild(projectPath: string): void {
-  const tempDir = path.join(projectPath, ".lingxia-build");
+  const tempDir = path.join(projectPath, ".lingxia", "build");
   if (fs.existsSync(tempDir)) {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

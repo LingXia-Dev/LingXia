@@ -13,8 +13,11 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@lingxia/page-types/*": ["./.lingxia/types/*"]
+    }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
+  "include": ["**/*.ts", "**/*.tsx", ".lingxia/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
