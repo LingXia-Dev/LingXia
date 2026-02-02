@@ -161,6 +161,27 @@ public class LxAppCapsuleButtons {
     #endif
 
     #if os(macOS)
+    /// Get capsule rect with async callback pattern (macOS stub implementation)
+    nonisolated public static func getCapsuleRect(callback_id: UInt64) {
+        Task { @MainActor in
+            // Return a minimal rect for macOS
+            let rect: [String: Double] = [
+                "width": 0,
+                "height": 0,
+                "top": 0,
+                "right": 0,
+                "bottom": 0,
+                "left": 0
+            ]
+            if let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                let _ = onCallback(callback_id, true, jsonString)
+            } else {
+                let _ = onCallback(callback_id, false, "2001")
+            }
+        }
+    }
+
     public static func removeCapsuleButton(from viewController: NSViewController) {
         let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(CAPSULE_BUTTON_TAG)")
         viewController.view.subviews.first { $0.identifier == identifier }?.removeFromSuperview()

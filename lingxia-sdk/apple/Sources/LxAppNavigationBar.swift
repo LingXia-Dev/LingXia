@@ -70,20 +70,32 @@ public protocol NavigationBarProtocol: AnyObject {
     func getCalculatedContentHeight() -> CGFloat
 }
 
-#if os(iOS)
 /// Embedded navigation button for navbar
 public struct NavigationButton: View {
     let isBackButton: Bool
     let tintColor: Color
     let action: () -> Void
 
+    public init(isBackButton: Bool, tintColor: Color = .primary, action: @escaping () -> Void) {
+        self.isBackButton = isBackButton
+        self.tintColor = tintColor
+        self.action = action
+    }
+
     public var body: some View {
         Button(action: action) {
+            #if os(iOS)
             if let uiImage = LxIcon.image(named: isBackButton ? "icon_back" : "icon_home", size: CGSize(width: 20, height: 20)) {
                 Image(uiImage: uiImage)
                     .renderingMode(.template)
                     .foregroundColor(tintColor)
             }
+            #else
+            // macOS: Use SF Symbols as fallback since LxIcon returns NSImage
+            Image(systemName: isBackButton ? "chevron.left" : "house")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(tintColor)
+            #endif
         }
         .frame(width: 44, height: 44)
         .buttonStyle(.plain)
@@ -96,7 +108,6 @@ public struct NavigationButton: View {
 
     @State private var isPressed = false
 }
-#endif
 
 /// Pure declarative SwiftUI Navigation Bar
 /// Automatically renders based on NavigationBarState - no manual updates needed

@@ -1,3 +1,6 @@
+import Foundation
+
+#if os(iOS)
 import UIKit
 
 /// Icon loader for LingXia SDK - loads icons from generated assets (PDF from SVG)
@@ -66,3 +69,16 @@ public enum LxIcon {
 }
 
 private class MediaBundleToken {}
+
+#elseif os(macOS)
+import AppKit
+
+/// Icon loader for LingXia SDK - macOS placeholder
+public enum LxIcon {
+    /// Load control icon by name (macOS placeholder - returns nil)
+    public static func image(named name: String, size: CGSize? = nil) -> NSImage? {
+        // TODO: Implement macOS icon loading
+        return nil
+    }
+}
+#endif

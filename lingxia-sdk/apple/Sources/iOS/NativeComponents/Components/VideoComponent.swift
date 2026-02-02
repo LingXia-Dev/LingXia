@@ -1,9 +1,9 @@
 import Foundation
-import UIKit
 import OSLog
 import CLingXiaRustAPI
 
 #if os(iOS)
+import UIKit
 
 @MainActor
 final class VideoComponentFactory: LxNativeComponentFactory {

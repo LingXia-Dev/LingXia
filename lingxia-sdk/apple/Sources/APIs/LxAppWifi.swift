@@ -210,11 +210,7 @@ public class LxAppWifi {
             )
         }
         #elseif os(macOS)
-        guard let client = CWWiFiClient.shared() else {
-            os_log("Failed to get WiFi client", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // System error
-            return
-        }
+        let client = CWWiFiClient.shared()
 
         guard let interface = client.interface() else {
             os_log("No WiFi interface available", log: log, type: .error)
@@ -248,7 +244,7 @@ public class LxAppWifi {
                 connected: true,
                 ssid: ssidString,
                 bssid: interface.bssid(),
-                secure: interface.security() != .none,
+                secure: !targetNetwork.supportsSecurity(.none),
                 signalStrength: rssiToStrength(interface.rssiValue())
             )
         } catch {
@@ -268,11 +264,7 @@ public class LxAppWifi {
         os_log("WiFi scanning not supported on iOS (platform limitation)", log: log, type: .error)
         let _ = onCallback(callback_id, false, "12005") // Not supported
         #elseif os(macOS)
-        guard let client = CWWiFiClient.shared() else {
-            os_log("Failed to get WiFi client", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // System error
-            return
-        }
+        let client = CWWiFiClient.shared()
 
         guard let interface = client.interface() else {
             os_log("No WiFi interface available", log: log, type: .error)
@@ -295,7 +287,7 @@ public class LxAppWifi {
 
                 var wifiInfo: [String: Any] = [
                     "ssid": ssid,
-                    "secure": network.security() != .none,
+                    "secure": !network.supportsSecurity(.none),
                     "signalStrength": max(0, min(100, signalStrength))
                 ]
 
@@ -333,9 +325,7 @@ public class LxAppWifi {
         // Assume WiFi is available if we can access network interfaces
         return true
         #elseif os(macOS)
-        guard let client = CWWiFiClient.shared() else {
-            return false
-        }
+        let client = CWWiFiClient.shared()
         guard let interface = client.interface() else {
             return false
         }
@@ -413,11 +403,7 @@ public class LxAppWifi {
             }
         }
         #elseif os(macOS)
-        guard let client = CWWiFiClient.shared() else {
-            os_log("Failed to get WiFi client", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // System error
-            return
-        }
+        let client = CWWiFiClient.shared()
 
         guard let interface = client.interface() else {
             os_log("No WiFi interface available", log: log, type: .error)
@@ -677,9 +663,7 @@ public class LxAppWifi {
         }
         return nil
         #elseif os(macOS)
-        guard let client = CWWiFiClient.shared() else {
-            return nil
-        }
+        let client = CWWiFiClient.shared()
         guard let interface = client.interface() else {
             return nil
         }

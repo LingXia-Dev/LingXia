@@ -1,7 +1,7 @@
 import Foundation
-import UIKit
 
 #if os(iOS)
+import UIKit
 
 // MARK: - Calendar Picker View
 

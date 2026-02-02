@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 import WebKit
 import OSLog
@@ -335,3 +336,58 @@ extension PopupPositionBridge {
         }
     }
 }
+#endif
+
+#if os(macOS)
+import Foundation
+import OSLog
+import CLingXiaSwiftAPI
+
+// MARK: - macOS Stub Implementations
+
+@MainActor
+public enum PopupDisplayPosition {
+    case center
+    case bottom
+    case left
+    case right
+}
+
+@MainActor
+public final class LxAppPopup {
+    private static let log = OSLog(subsystem: "LingXia", category: "Popup")
+
+    public static func showPopup(
+        appId: String,
+        path: String,
+        widthRatio: Double,
+        heightRatio: Double,
+        position: PopupDisplayPosition
+    ) -> Bool {
+        os_log("showPopup not implemented on macOS", log: log, type: .error)
+        return false
+    }
+
+    public static func hidePopup(appId: String) -> Bool {
+        os_log("hidePopup not implemented on macOS", log: log, type: .error)
+        return true
+    }
+}
+
+extension PopupPositionBridge {
+    func toDisplayPosition() -> PopupDisplayPosition {
+        switch self {
+        case .Center:
+            return .center
+        case .Bottom:
+            return .bottom
+        case .Left:
+            return .left
+        case .Right:
+            return .right
+        @unknown default:
+            return .bottom
+        }
+    }
+}
+#endif

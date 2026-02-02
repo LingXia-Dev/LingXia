@@ -128,3 +128,76 @@ enum LxAppVideo {
     }
 }
 #endif
+
+#if os(macOS)
+import Foundation
+import CLingXiaRustAPI
+
+// MARK: - macOS Stub Implementations
+
+enum LxAppVideo {
+    nonisolated static func setVideoPlayerCallback(
+        component_id: RustStr,
+        callback_id: UInt64
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func dispatchVideoCommand(
+        component_id: RustStr,
+        name: RustStr,
+        params_json: RustStr
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func createStreamDecoder(component_id: RustStr) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func configureStreamVideo(
+        component_id: RustStr,
+        config_json: RustStr
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func configureStreamAudio(
+        component_id: RustStr,
+        config_json: RustStr
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func pushStreamVideo(
+        component_id: RustStr,
+        data: RustVec<UInt8>,
+        dts_ms: UInt32,
+        pts_ms: UInt32,
+        keyframe: Bool
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func pushStreamAudio(
+        component_id: RustStr,
+        data: RustVec<UInt8>,
+        dts_ms: UInt32,
+        pts_ms: UInt32
+    ) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+
+    nonisolated static func stopStreamDecoder(component_id: RustStr) -> Bool {
+        // Not implemented on macOS
+        return false
+    }
+}
+#endif

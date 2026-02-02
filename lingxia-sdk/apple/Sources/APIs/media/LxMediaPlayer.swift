@@ -1,8 +1,9 @@
 import Foundation
-import UIKit
 import AVFoundation
 import OSLog
+
 #if os(iOS)
+import UIKit
 
 public enum LxMediaSource {
     case url(URL)

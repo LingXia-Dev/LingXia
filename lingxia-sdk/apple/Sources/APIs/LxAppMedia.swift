@@ -332,3 +332,68 @@ extension LxAppMedia {
     }
 }
 #endif
+
+#if os(macOS)
+// MARK: - macOS Stub Implementations
+
+extension LxAppMedia {
+    nonisolated static func getImageInfo(uri: RustStr) -> SwiftImageInfoResult {
+        return SwiftImageInfoResult(
+            success: false,
+            error: RustString("Not implemented on macOS"),
+            width: 0,
+            height: 0,
+            mime_type: RustString("")
+        )
+    }
+
+    nonisolated static func compressImage(
+        source_uri: RustStr,
+        quality: Int32,
+        target_width: Int32,
+        target_height: Int32,
+        output_path: RustStr
+    ) -> SwiftCompressImageResult {
+        return SwiftCompressImageResult(
+            success: false,
+            error: RustString("Not implemented on macOS"),
+            path: RustString("")
+        )
+    }
+
+    nonisolated static func previewMedia(items_json: RustStr) -> Bool {
+        os_log("previewMedia not implemented on macOS", log: log, type: .error)
+        return false
+    }
+
+    nonisolated static func chooseMedia(
+        max_count: UInt32,
+        mode: RustStr,
+        source_types_json: RustStr,
+        camera_facing: RustStr,
+        max_duration: RustStr,
+        callback_id: UInt64
+    ) -> Bool {
+        os_log("chooseMedia not implemented on macOS", log: log, type: .error)
+        return false
+    }
+
+    nonisolated static func scanCode(
+        scan_types_json: RustStr,
+        only_from_camera: Bool,
+        callback_id: UInt64
+    ) -> Bool {
+        os_log("scanCode not implemented on macOS", log: log, type: .error)
+        return false
+    }
+
+    nonisolated static func copyAlbumMediaToFile(
+        uri: RustStr,
+        destination_path: RustStr,
+        media_type: Int32
+    ) -> Bool {
+        os_log("copyAlbumMediaToFile not implemented on macOS", log: log, type: .error)
+        return false
+    }
+}
+#endif

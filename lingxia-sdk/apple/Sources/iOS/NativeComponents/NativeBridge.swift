@@ -1,10 +1,10 @@
 import Foundation
-import UIKit
 import WebKit
 import OSLog
 @preconcurrency import ObjectiveC
 
 #if os(iOS)
+import UIKit
 
 private let nativeComponentLog = OSLog(subsystem: "LingXia", category: "NativeComponent")
 

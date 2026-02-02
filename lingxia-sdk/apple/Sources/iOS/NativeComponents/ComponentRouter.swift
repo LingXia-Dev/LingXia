@@ -1,8 +1,8 @@
 import Foundation
 import OSLog
-import UIKit
 
 #if os(iOS)
+import UIKit
 
 /// Global router for dispatching commands from Rust FFI to native components.
 ///

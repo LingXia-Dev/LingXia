@@ -1,11 +1,11 @@
 import Foundation
-import UIKit
 import WebKit
 import OSLog
 
 private let nativeComponentLog = OSLog(subsystem: "LingXia", category: "NativeComponent")
 
 #if os(iOS)
+import UIKit
 
 // MARK: - Protocols
 

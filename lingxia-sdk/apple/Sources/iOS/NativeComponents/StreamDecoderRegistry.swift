@@ -3,9 +3,9 @@ import OSLog
 import AVFoundation
 import AudioToolbox
 import CoreImage
-import UIKit
 
 #if os(iOS)
+import UIKit
 
 @MainActor
 final class StreamDecoderRegistry {

@@ -272,8 +272,6 @@ extension iOSLxApp {
     }
 }
 
-#endif
-
 // MARK: - Pull-to-Refresh Bridge Functions
 
 extension LxApp {
@@ -311,3 +309,5 @@ extension LxApp {
         return true
     }
 }
+
+#endif

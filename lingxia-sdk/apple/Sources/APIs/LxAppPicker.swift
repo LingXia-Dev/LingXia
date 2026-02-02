@@ -1,7 +1,10 @@
 import Foundation
 import os.log
-import UIKit
 import CLingXiaRustAPI
+
+#if os(iOS)
+import UIKit
+#endif
 
 public class LxAppPicker {
 
@@ -12,7 +15,8 @@ public class LxAppPicker {
     @MainActor
     public static var localCallbacks: [UInt64: (Bool, String) -> Void] = [:]
 
-    // Static variables to track picker state
+    #if os(iOS)
+    // Static variables to track picker state (iOS only)
     @MainActor
     internal static var backgroundView: UIView?
 
@@ -34,6 +38,7 @@ public class LxAppPicker {
     // Retain scroll delegates (UIScrollView keeps a weak delegate)
     @MainActor
     internal static var scrollDelegates: [ColumnScrollDelegate] = []
+    #endif
 
     @MainActor
     public static func showPicker(
@@ -570,6 +575,7 @@ internal struct PickerConfiguration {
     }
 }
 
+#if os(iOS)
 extension LxAppPicker {
     /// Create custom scroll picker container (like Android implementation)
     @MainActor
@@ -891,6 +897,7 @@ internal class ColumnScrollDelegate: NSObject, UIScrollViewDelegate {
         snap(scrollView)
     }
 }
+#endif
 
 private extension Array {
     subscript(safe index: Int) -> Element? {
