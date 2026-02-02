@@ -4,58 +4,20 @@ import Foundation
 import os.log
 import CLingXiaRustAPI
 
-/// SwiftUI-based window for LxApp
-@available(macOS 13.0, *)
-@MainActor
-public struct LxAppSwiftUIWindow: Scene {
-    @StateObject private var windowManager = LxAppWindowManager.shared
-
-    public init() {}
-
-    public var body: some Scene {
-        WindowGroup {
-            LxAppWindowContentView()
-                .environmentObject(windowManager)
-        }
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentSize)
-        .defaultSize(width: 1200, height: 800)
-    }
-}
-
-/// Legacy NSWindow class for backward compatibility
+/// NSWindow class for LxApp Tab mode
 public class LxAppWindow: NSWindow {
-    private var windowStyle: LxAppWindowStyle
 
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
-        // Initialize with a default value, will be set properly by configureForStyle()
-        self.windowStyle = .tabStyle
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
     }
 
-    func configureForStyle(_ style: LxAppWindowStyle) {
-        self.windowStyle = style
-        LxAppWindowManager.shared.setWindowStyle(style)
-        configureAppKitWindow(style)
-    }
-
-    private func configureAppKitWindow(_ style: LxAppWindowStyle) {
-        switch style {
-        case .capsuleStyle:
-            // Custom capsule style with full-size content view
-            styleMask.insert(.fullSizeContentView)
-            titlebarAppearsTransparent = true
-            titleVisibility = .hidden
-            isMovableByWindowBackground = true
-        case .tabStyle:
-            // Tab-style with native window controls and custom tab bar
-            styleMask.insert(.fullSizeContentView)
-            titlebarAppearsTransparent = true
-            titleVisibility = .hidden
-            isMovableByWindowBackground = false // Tabs handle dragging
-            backgroundColor = NSColor.windowBackgroundColor
-            // Keep native window controls visible
-        }
+    func configureForTabStyle() {
+        // Tab-style with native window controls and custom tab bar
+        styleMask.insert(.fullSizeContentView)
+        titlebarAppearsTransparent = true
+        titleVisibility = .hidden
+        isMovableByWindowBackground = false // Tabs handle dragging
+        backgroundColor = NSColor.windowBackgroundColor
     }
 
     public override var canBecomeKey: Bool {
@@ -67,155 +29,7 @@ public class LxAppWindow: NSWindow {
     }
 }
 
-/// Main content view for SwiftUI window
-public struct LxAppWindowContentView: View {
-    @EnvironmentObject private var windowManager: LxAppWindowManager
-    @StateObject private var tabManager = LxAppTabManager.shared
-
-    public var body: some View {
-        VStack(spacing: 0) {
-            // Custom title bar with window controls
-            LxAppSwiftUITitleBar(
-                style: windowManager.windowStyle,
-                onMore: { windowManager.handleMoreAction() },
-                onMinimize: { windowManager.handleMinimizeAction() },
-                onClose: { windowManager.handleCloseAction() }
-            )
-            .frame(height: LxAppWindowLayout.titleBarHeight)
-
-            // Tab bar (only for tab style)
-            if windowManager.windowStyle == .tabStyle {
-                LxAppSwiftUITabBar(tabManager: tabManager)
-                    .frame(height: LxAppWindowLayout.macOSTabViewHeight)
-            }
-
-            // Main content area
-            LxAppMainContentView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .background(Color(NSColor.windowBackgroundColor))
-        .lxAppWindowStyle(windowManager.windowStyle)
-    }
-}
-
-/// SwiftUI window manager - replaces macOSWindowSupport
-@MainActor
-public class LxAppWindowManager: ObservableObject {
-    public static let shared = LxAppWindowManager()
-
-    @Published public var windowStyle: LxAppWindowStyle = .tabStyle
-    @Published public var isMinimized: Bool = false
-    @Published public var windowTitle: String = "LingXia"
-
-    private init() {}
-
-    /// Handle more button action
-    public func handleMoreAction() {
-        if let appId = NavigationBarStateManager.shared.currentAppId {
-            let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
-        }
-    }
-
-    /// Handle minimize button action
-    public func handleMinimizeAction() {
-        isMinimized = true
-        // SwiftUI will handle the actual minimization
-        if let window = NSApp.keyWindow {
-            window.miniaturize(nil)
-        }
-    }
-
-    /// Handle close button action
-    public func handleCloseAction() {
-        if let appId = NavigationBarStateManager.shared.currentAppId {
-            let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
-        } else {
-            NSApplication.shared.terminate(nil)
-        }
-    }
-
-    /// Set window style
-    public func setWindowStyle(_ style: LxAppWindowStyle) {
-        windowStyle = style
-    }
-
-    /// Get top margin for content based on window style
-    public func getTopMarginForStyle() -> CGFloat {
-        switch windowStyle {
-        case .capsuleStyle:
-            return LxAppWindowLayout.titleBarHeight  // Custom capsule style needs space for title bar
-        case .tabStyle:
-            return LxAppWindowLayout.titleBarHeight + LxAppWindowLayout.macOSTabViewHeight  // Title bar + macOS tab view
-        }
-    }
-}
-
-/// SwiftUI title bar - replaces NSWindow titlebar
-public struct LxAppSwiftUITitleBar: View {
-    let style: LxAppWindowStyle
-    let onMore: () -> Void
-    let onMinimize: () -> Void
-    let onClose: () -> Void
-    @StateObject private var stateManager = NavigationBarStateManager.shared
-
-    public var body: some View {
-        ZStack {
-            HStack(spacing: 0) {
-                // Left side - window controls for tab style
-                if style == .tabStyle {
-                    // Standard macOS window controls area (70pt)
-                    Rectangle()
-                        .fill(Color.clear)
-                        .frame(width: 70)
-                }
-
-                // Center - title or content
-                Spacer()
-
-                if style == .capsuleStyle {
-                    Text("LingXia")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
-                }
-
-                Spacer()
-
-                // Right side - custom controls for capsule style
-                if style == .capsuleStyle {
-                    LxAppSwiftUICapsuleButtons(
-                        onMoreTapped: onMore,
-                        onMinimizeTapped: onMinimize,
-                        onCloseTapped: onClose
-                    )
-                    .padding(.trailing, 7)
-                }
-            }
-            .frame(height: LxAppWindowLayout.titleBarHeight)
-            .background(titleBarBackground)
-            .overlay(
-                // Drag area for capsule style
-                style == .capsuleStyle ?
-                Color.clear.contentShape(Rectangle()) : nil
-            )
-        }
-        .frame(height: 32)
-    }
-
-    private var titleBarBackground: some View {
-        Group {
-            if style == .capsuleStyle {
-                Color(NSColor.windowBackgroundColor)
-            } else {
-                Color.clear
-            }
-        }
-    }
-}
-
-/// SwiftUI capsule buttons - reuse unified implementation
-public typealias LxAppSwiftUICapsuleButtons = LxAppUnifiedCapsuleViewMacOS
-
-/// SwiftUI tab bar component
+/// SwiftUI tab bar component for Tab mode
 public struct LxAppSwiftUITabBar: View {
     @ObservedObject var tabManager: LxAppTabManager
 
@@ -349,44 +163,5 @@ public struct LxAppSwiftUITabBar: View {
         .frame(width: 16, height: 16)
     }
 }
-
-/// Main content view placeholder
-public struct LxAppMainContentView: View {
-    public var body: some View {
-        VStack {
-            Text("LingXia Content Area")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Text("SwiftUI-based window content")
-                .font(.body)
-                .foregroundColor(.secondary)
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(NSColor.windowBackgroundColor))
-    }
-}
-
-/// SwiftUI window style modifier
-public extension View {
-    func lxAppWindowStyle(_ style: LxAppWindowStyle) -> some View {
-        self
-            .background(
-                Group {
-                    if style == .capsuleStyle {
-                        Color(NSColor.windowBackgroundColor)
-                            .cornerRadius(12)
-                            .shadow(radius: 10)
-                    } else {
-                        Color(NSColor.windowBackgroundColor)
-                    }
-                }
-            )
-    }
-}
-
-
 
 #endif

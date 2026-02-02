@@ -60,18 +60,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func calculateInitialTopMargin() -> CGFloat {
-        if LxAppWindowManager.shared.windowStyle == .capsuleStyle {
-            // Get config from window controller's cache to avoid duplicate calls
-            if let windowController = view.window?.windowController as? LxAppWindowController {
-                return windowController.getTopMarginForCurrentPage() - LxAppWindowController.Layout.systemStatusBarHeight
-            } else {
-                // Fallback: assume navbar is shown
-                return LxAppTheme.Metrics.navigationBarHeight
-            }
-        } else {
-            // Tab style: 0pt - SwiftUI handles tab layout
-            return 0
-        }
+        // Tab style: 0pt - tab bar handles layout
+        return 0
     }
 
     required init?(coder: NSCoder) {
@@ -318,11 +308,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         // Update app state
         LxAppCore.setCurrentPath(path)
-
-        // macOS-specific: Update window title
-        if let windowController = view.window?.windowController as? LxAppWindowController {
-            windowController.updateWindowTitle(for: path)
-        }
     }
 
     public func setSelectedTabIndex(_ index: Int) {
@@ -341,39 +326,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    /// Update capsule button visibility
-    @MainActor
-    public func updateCapsuleButtonVisibility(appId: String) {
-        let isHomeApp = LxAppCore.isHomeLxApp(appId)
-
-        if !isHomeApp {
-            if findCapsuleButtonView() == nil {
-                LxAppCapsuleButtons.addCapsuleButton(to: self, appId: appId)
-            }
-            findCapsuleButtonView()?.isHidden = false
-        } else {
-            findCapsuleButtonView()?.removeFromSuperview()
-        }
-    }
-
-    /// Find capsule button view using identifier
-    @MainActor
-    public func findCapsuleButtonView() -> NSView? {
-        let identifier = NSUserInterfaceItemIdentifier("CapsuleButton_\(LxAppCapsuleButtons.CAPSULE_BUTTON_TAG)")
-        return view.subviews.first { $0.identifier == identifier }
-    }
-
-    /// Update navigation bar
+    /// Update navigation bar state
     @MainActor
     public func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-
-        if LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty,
-           let windowController = view.window?.windowController as? LxAppWindowController {
-            let navState = lingxia.getNavigationBarState(appId, path)
-            windowController.updateNavigationBarWithState(navState)
-        }
+        // Tab mode: navigation bar state is managed by NavigationBarStateManager
     }
 }
+
 
 #endif

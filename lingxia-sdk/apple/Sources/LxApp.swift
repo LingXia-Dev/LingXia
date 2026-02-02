@@ -172,6 +172,11 @@ public class LxAppCore {
         let resolvedPath = onLxappOpened(appId, path)
         let finalPath = resolvedPath.toString()
 
+        // Check for custom handler first (e.g., Runner's Capsule mode)
+        if let handler = openLxAppHandler, handler(appId, finalPath) {
+            return
+        }
+
         // Direct platform calls instead of using renderer protocol
         #if os(iOS)
         iOSLxApp.openLxAppDirect(appId: appId, path: finalPath)
@@ -189,6 +194,11 @@ public class LxAppCore {
             return
         }
 
+        // Check for custom handler first (e.g., Runner's Capsule mode)
+        if let handler = navigationHandler, handler(appId, path, animationType) {
+            return
+        }
+
         // Direct platform calls - no need for complex preparation logic
         #if os(iOS)
         iOSLxApp.handleNavigationDirect(appId: appId, path: path, animationType: animationType)
@@ -201,6 +211,17 @@ public class LxAppCore {
     nonisolated(unsafe) internal static var registerExtensions: (() -> Void)?
 
     nonisolated(unsafe) private static var extensionsRegistered = false
+
+    /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows)
+    nonisolated(unsafe) internal static var skipAutoOpenWindow = false
+
+    /// Custom handler for openLxApp - for tools like Runner that manage their own windows
+    /// Return true to indicate the call was handled, false to use default behavior
+    nonisolated(unsafe) internal static var openLxAppHandler: ((String, String) -> Bool)?
+
+    /// Custom handler for navigation - for tools like Runner that manage their own windows
+    /// Return true to indicate the call was handled, false to use default behavior
+    nonisolated(unsafe) internal static var navigationHandler: ((String, String, AnimationType) -> Bool)?
 
     /// Initialize the LxApp system (internal core initialization)
     internal static func initializeCore() {
@@ -238,9 +259,11 @@ public class LxAppCore {
             homeLxAppId = homeAppId
             os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
 
-            // Auto-open home lxapp after initialization
-            DispatchQueue.main.async {
-                LxAppPlatform.openHomeLxApp()
+            // Auto-open home lxapp after initialization (unless skipped by external tools)
+            if !skipAutoOpenWindow {
+                DispatchQueue.main.async {
+                    LxAppPlatform.openHomeLxApp()
+                }
             }
         } else {
             os_log("Failed to get home LxApp ID from native init", log: log, type: .error)
@@ -320,6 +343,27 @@ public class LxApp {
         set { LxAppCore.registerExtensions = newValue }
     }
 
+    /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows)
+    /// Set this to true before calling initialize() if you want to control window creation yourself.
+    nonisolated(unsafe) public static var skipAutoOpenWindow: Bool {
+        get { LxAppCore.skipAutoOpenWindow }
+        set { LxAppCore.skipAutoOpenWindow = newValue }
+    }
+
+    /// Custom handler for openLxApp - for tools like Runner that manage their own windows
+    /// Set this before calling initialize(). Return true to indicate the call was handled.
+    nonisolated(unsafe) public static var openLxAppHandler: ((String, String) -> Bool)? {
+        get { LxAppCore.openLxAppHandler }
+        set { LxAppCore.openLxAppHandler = newValue }
+    }
+
+    /// Custom handler for navigation - for tools like Runner that manage their own windows
+    /// Set this before calling initialize(). Return true to indicate the call was handled.
+    nonisolated(unsafe) public static var navigationHandler: ((String, String, AnimationType) -> Bool)? {
+        get { LxAppCore.navigationHandler }
+        set { LxAppCore.navigationHandler = newValue }
+    }
+
     /// Initialize the LxApp system and automatically open Home LxApp
     public static func initialize() {
         // Initialize core first
@@ -381,7 +425,10 @@ extension LxApp {
         let appIdString = appid.toString()
 
         return executeOnMain {
-            LxAppPlatform.closeLxApp(appId: appIdString)
+            #if os(iOS)
+            iOSLxApp.closeLxApp(appId: appIdString)
+            #endif
+            // macOS: Tab mode handles closing via tab manager
             return true
         }
     }
@@ -425,18 +472,7 @@ extension LxApp {
     nonisolated public static func updateNavBarUI(appid: RustStr) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {
-            #if os(macOS)
-            let activeControllers = macOSLxApp.getActiveWindowControllers()
-            for windowController in activeControllers {
-                if windowController.appId == appIdString, let path = windowController.path {
-                    let navState = lingxia.getNavigationBarState(appIdString, path)
-                    windowController.updateNavigationBarWithState(navState)
-                    break
-                }
-            }
-            #elseif os(iOS)
             NavigationBarStateManager.shared.refreshState(for: appIdString)
-            #endif
             return true
         }
     }
