@@ -118,13 +118,18 @@ impl AndroidPlatform {
             ));
         }
 
-        // Get API level from config or default to 33
+        // Get API level from config or default to 33 for arm64, 21 for armv7
+        let default_api_level = if target == "armv7-linux-androideabi" {
+            21
+        } else {
+            33
+        };
         let api_level = config
             .lingxia_config
             .as_ref()
             .and_then(|c| c.android.as_ref())
             .map(|a| a.get_api_level())
-            .unwrap_or(33);
+            .unwrap_or(default_api_level);
 
         let (cmake_proc, cc_bin, cxx_bin) = match target {
             "aarch64-linux-android" => (
@@ -193,6 +198,14 @@ impl AndroidPlatform {
         cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &cc_path);
         cmd.env(format!("CC_{}", target_env), &cc_path);
         cmd.env(format!("CXX_{}", target_env), &cxx_path);
+
+        // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
+        if target == "armv7-linux-androideabi" {
+            cmd.env(
+                format!("CARGO_TARGET_{}_RUSTFLAGS", target_upper),
+                "-C link-arg=-Wl,--hash-style=both",
+            );
+        }
 
         let status = cmd.status().context("Failed to execute cargo build")?;
 
