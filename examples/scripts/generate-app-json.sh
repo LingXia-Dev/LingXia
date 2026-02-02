@@ -43,7 +43,8 @@ generate_app_json() {
             productVersion: .app.productVersion,
             homeLxAppID: .app.homeLxAppID,
             homeLxAppVersion: .app.homeLxAppVersion
-        } + (if .app.apiServer then {apiServer: .app.apiServer} else {} end)' "$config_file")
+        } + (if .app.apiServer then {apiServer: .app.apiServer} else {} end)
+          + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")
 
         # Add apiKey/apiSecret from environment variables if set
         if [ -n "${LINGXIA_API_KEY:-}" ]; then
@@ -62,6 +63,7 @@ generate_app_json() {
         local home_lxapp_id=$(grep -o '"homeLxAppID"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
         local home_lxapp_version=$(grep -o '"homeLxAppVersion"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
         local api_server=$(grep -o '"apiServer"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
+        local cache_max_age_days=$(grep -o '"cacheMaxAgeDays"[[:space:]]*:[[:space:]]*[0-9]*' "$config_file" | head -1 | sed 's/.*: *\([0-9]*\)/\1/')
 
         # Generate app.json
         {
@@ -77,6 +79,9 @@ generate_app_json() {
             fi
             if [ -n "${LINGXIA_API_SECRET:-}" ]; then
                 echo "  \"apiSecret\": \"$LINGXIA_API_SECRET\","
+            fi
+            if [ -n "$cache_max_age_days" ]; then
+                echo "  \"cacheMaxAgeDays\": $cache_max_age_days,"
             fi
             echo "  \"homeLxAppVersion\": \"$home_lxapp_version\""
             echo "}"
