@@ -125,36 +125,43 @@ export class ViewBuilder {
 
     console.log(`📦 Building ${pages.length} HTML page(s) (target: ${target})`);
 
-    // Copy lib/ directory if exists
-    if (fs.existsSync(libDir)) {
-      const libOutputDir = path.join(outputBase, "lib");
-      await fs.promises.mkdir(libOutputDir, { recursive: true });
-      const libFiles = fs.readdirSync(libDir);
-      for (const file of libFiles) {
-        const srcPath = path.join(libDir, file);
-        const destPath = path.join(libOutputDir, file);
-        if (fs.statSync(srcPath).isFile()) {
-          // Process JS files with esbuild for target transpilation
-          if (file.endsWith(".js")) {
-            const esbuild = await import("esbuild");
-            const result = await esbuild.build({
-              entryPoints: [srcPath],
-              outfile: destPath,
-              bundle: false,
-              minify: options.minify ?? true,
-              target: target,
-              format: "iife",
-              write: true,
-            });
-            if (result.errors.length > 0) {
-              throw new Error(`Failed to process ${file}: ${result.errors[0].text}`);
-            }
-          } else {
-            await fs.promises.copyFile(srcPath, destPath);
+    // Process view/ and lib/ directories with TS/JS compilation
+    const scriptDirs = ["view", "lib"];
+    for (const dirName of scriptDirs) {
+      const srcDir = path.join(this.projectPath, dirName);
+      if (!fs.existsSync(srcDir)) continue;
+      
+      const outDir = path.join(outputBase, dirName);
+      await fs.promises.mkdir(outDir, { recursive: true });
+      const files = fs.readdirSync(srcDir);
+      
+      for (const file of files) {
+        const srcPath = path.join(srcDir, file);
+        if (!fs.statSync(srcPath).isFile()) continue;
+        
+        // Compile TS/JS files with esbuild
+        if (file.endsWith(".ts") || file.endsWith(".js")) {
+          const outFile = file.replace(/\.ts$/, ".js");
+          const destPath = path.join(outDir, outFile);
+          const esbuild = await import("esbuild");
+          const result = await esbuild.build({
+            entryPoints: [srcPath],
+            outfile: destPath,
+            bundle: false,
+            minify: options.minify ?? true,
+            target: target,
+            format: "iife",
+            write: true,
+          });
+          if (result.errors.length > 0) {
+            throw new Error(`Failed to process ${file}: ${result.errors[0].text}`);
           }
+        } else {
+          // Copy other files as-is
+          await fs.promises.copyFile(srcPath, path.join(outDir, file));
         }
       }
-      console.log(`  ✓ Copied lib/ directory`);
+      console.log(`  ✓ Processed ${dirName}/ directory`);
     }
 
     // Process each HTML page
@@ -171,23 +178,38 @@ export class ViewBuilder {
       const htmlDest = path.join(outputDir, `${baseName}.html`);
       let htmlContent = await fs.promises.readFile(htmlSrc, "utf-8");
       htmlContent = this.injectRuntimeScript(htmlContent);
+
+      // Validate HTML script references before writing
+      this.validateHtmlScriptReferences(htmlContent, page.path, pageDir, outputBase);
+
       await fs.promises.writeFile(htmlDest, htmlContent, "utf-8");
 
-      // Process accompanying JS file if exists
-      const jsFileName = `${baseName}.js`;
-      const jsSrc = path.join(sourceDir, jsFileName);
-      if (fs.existsSync(jsSrc)) {
-        const jsDest = path.join(outputDir, jsFileName);
-        const esbuild = await import("esbuild");
-        await esbuild.build({
-          entryPoints: [jsSrc],
-          outfile: jsDest,
-          bundle: false,
-          minify: options.minify ?? true,
-          target: target,
-          format: "iife",
-          write: true,
-        });
+      // Process all TS/JS files in page directory (except Logic layer)
+      const pageFiles = fs.readdirSync(sourceDir);
+      for (const file of pageFiles) {
+        const filePath = path.join(sourceDir, file);
+        if (!fs.statSync(filePath).isFile()) continue;
+
+        // Skip Logic layer files (index.ts/index.js)
+        if (file === "index.ts" || file === "index.js") {
+          continue;
+        }
+
+        // Compile TS/JS files with esbuild
+        if (file.endsWith(".ts") || file.endsWith(".js")) {
+          const outFile = file.replace(/\.ts$/, ".js");
+          const destPath = path.join(outputDir, outFile);
+          const esbuild = await import("esbuild");
+          await esbuild.build({
+            entryPoints: [filePath],
+            outfile: destPath,
+            bundle: false,
+            minify: options.minify ?? true,
+            target: target,
+            format: "iife",
+            write: true,
+          });
+        }
       }
 
       // Copy CSS file if exists
@@ -238,6 +260,122 @@ export class ViewBuilder {
     }
 
     return `${scriptTag}\n${htmlContent}`;
+  }
+
+  /**
+   * Validate script references in HTML files to enforce constraints.
+   *
+   * Allowed references:
+   * - /view/*.js (shared components)
+   * - /lib/*.js (libraries)
+   * - <filename>.js in same directory (page-local scripts, but NOT index.js)
+   *
+   * Forbidden:
+   * - index.js (Logic layer, not for client-side)
+   * - Relative paths like ../
+   * - Cross-page references like /pages/other/file.js
+   */
+  private validateHtmlScriptReferences(
+    htmlContent: string,
+    pagePath: string,
+    pageDir: string,
+    outputBase: string
+  ): void {
+    const scriptSrcRegex = /<script[^>]+src=["']([^"']+)["']/gi;
+    const matches = [...htmlContent.matchAll(scriptSrcRegex)];
+
+    for (const match of matches) {
+      const src = match[1];
+
+      // Skip runtime.js (auto-injected) and external URLs
+      if (src === "lx://assets/runtime.js" || src.startsWith("http://") || src.startsWith("https://")) {
+        continue;
+      }
+
+      // Check forbidden patterns
+      if (src === "index.js") {
+        throw new Error(
+          `Invalid script reference in ${pagePath}:\n` +
+          `  <script src="index.js">\n\n` +
+          `index.js is reserved for the Logic layer (Rust-side).\n` +
+          `For client-side scripts, use a different name:\n` +
+          `  - view.js, client.js, home.js, etc.\n` +
+          `  - /view/components.js (shared components)\n` +
+          `  - /lib/utils.js (libraries)`
+        );
+      }
+
+      if (src.includes("..")) {
+        throw new Error(
+          `Invalid script reference in ${pagePath}:\n` +
+          `  <script src="${src}">\n\n` +
+          `Relative paths with ".." are not allowed.\n` +
+          `Use absolute paths: /view/*.js or /lib/*.js`
+        );
+      }
+
+      if (src.startsWith("/pages/")) {
+        throw new Error(
+          `Invalid script reference in ${pagePath}:\n` +
+          `  <script src="${src}">\n\n` +
+          `Cross-page references are not allowed.\n` +
+          `Move shared code to /view/ or /lib/ directories.`
+        );
+      }
+
+      // Validate allowed patterns
+      const isViewScript = /^\/view\/.+\.js$/.test(src);
+      const isLibScript = /^\/lib\/.+\.js$/.test(src);
+      const isLocalScript = /^[^/]+\.js$/.test(src); // Same directory, no path separator
+
+      if (!isViewScript && !isLibScript && !isLocalScript) {
+        throw new Error(
+          `Invalid script reference in ${pagePath}:\n` +
+          `  <script src="${src}">\n\n` +
+          `HTML pages can only reference:\n` +
+          `  - /view/*.js (shared components)\n` +
+          `  - /lib/*.js (libraries)\n` +
+          `  - <name>.js (page-local scripts in same directory)\n\n` +
+          `Example:\n` +
+          `  <script src="/view/components.js"></script>\n` +
+          `  <script src="/lib/utils.js"></script>\n` +
+          `  <script src="view.js"></script>`
+        );
+      }
+
+      // Check source file exists (will be compiled to .js)
+      if (isViewScript || isLibScript) {
+        // /view/xxx.js or /lib/xxx.js -> check view/xxx.ts or view/xxx.js
+        const relativePath = src.slice(1); // Remove leading /
+        const tsSource = path.join(this.projectPath, relativePath.replace(/\.js$/, ".ts"));
+        const jsSource = path.join(this.projectPath, relativePath);
+
+        if (!fs.existsSync(tsSource) && !fs.existsSync(jsSource)) {
+          throw new Error(
+            `Missing script source in ${pagePath}:\n` +
+            `  <script src="${src}">\n\n` +
+            `Expected source file:\n` +
+            `  ${tsSource} (or ${jsSource})\n\n` +
+            `Create the file or remove the script tag.`
+          );
+        }
+      } else if (isLocalScript) {
+        // Page-local script -> check pages/xxx/yyy.ts or pages/xxx/yyy.js
+        const sourceDir = path.join(this.projectPath, pageDir);
+        const tsSource = path.join(sourceDir, src.replace(/\.js$/, ".ts"));
+        const jsSource = path.join(sourceDir, src);
+
+        if (!fs.existsSync(tsSource) && !fs.existsSync(jsSource)) {
+          throw new Error(
+            `Missing script source in ${pagePath}:\n` +
+            `  <script src="${src}">\n\n` +
+            `Expected source file:\n` +
+            `  ${tsSource} (or ${jsSource})\n\n` +
+            `Create the file or remove the script tag.`
+          );
+        }
+      }
+    }
   }
 
   /**

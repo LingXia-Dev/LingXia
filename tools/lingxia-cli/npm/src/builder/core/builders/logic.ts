@@ -77,19 +77,30 @@ export class LogicBuilder {
     // Process each page path
     for (const pagePath of pages) {
       // Remove extension and try .js and .ts
+      const pageDir = path.dirname(pagePath);
       const basePath = path.join(
         this.projectPath,
         pagePath.replace(/\.[^.]+$/, ""),
       );
 
       // Check which logic file exists
-      // Prioritize .ts over .js (for HTML projects, .js is View layer code)
       const tsPath = `${basePath}.ts`;
       const jsPath = `${basePath}.js`;
+      const hasTsLogic = fs.existsSync(tsPath);
+      const hasJsLogic = fs.existsSync(jsPath);
 
-      if (fs.existsSync(tsPath)) {
+      // Error: both index.ts and index.js exist (Logic layer conflict)
+      if (hasTsLogic && hasJsLogic) {
+        throw new Error(
+          `Logic layer conflict in ${pageDir}: found both index.ts and index.js.\n` +
+          `Only one is allowed. Choose TypeScript (index.ts) or JavaScript (index.js).`
+        );
+      }
+
+      // Prioritize .ts over .js (for HTML projects, other .js files are View layer code)
+      if (hasTsLogic) {
         logicFiles.push(tsPath);
-      } else if (fs.existsSync(jsPath)) {
+      } else if (hasJsLogic) {
         logicFiles.push(jsPath);
       }
     }
