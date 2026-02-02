@@ -10,10 +10,11 @@ impl LxApp {
     ///
     /// # Arguments
     /// * `path` - The page path (e.g., "pages/home/index.html")
+    /// * `bridge_nonce` - Optional per-page nonce used for bridge wiring validation
     ///
     /// # Returns
     /// * `Vec<u8>` - Processed HTML content or 404 page
-    pub(crate) fn generate_page_html(&self, path: &str) -> Vec<u8> {
+    pub(crate) fn generate_page_html(&self, path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
         // Try to read the file
         let data = match self.read_bytes(path) {
             Ok(data) => data,
@@ -25,11 +26,11 @@ impl LxApp {
                     e
                 )
                 .with_appid(self.appid.clone());
-                return self.get_404_page(path);
+                return self.get_404_page(path, bridge_nonce);
             }
         };
 
-        let mut injected_data = self.inject_bridge_config(&data);
+        let mut injected_data = self.inject_bridge_config(&data, bridge_nonce);
 
         // Inject global app.css if it exists (optional)
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
@@ -47,9 +48,9 @@ impl LxApp {
     }
 
     /// Get 404 page content with path injection
-    fn get_404_page(&self, failed_path: &str) -> Vec<u8> {
+    fn get_404_page(&self, failed_path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
         let escaped_path = escape_js_string(failed_path);
-        let bridge_script = build_bridge_config_script();
+        let bridge_script = build_bridge_config_script(bridge_nonce);
         let html = format!(
             r#"<!DOCTYPE html>
 <html>
@@ -72,13 +73,9 @@ impl LxApp {
         html.into_bytes()
     }
 
-    fn inject_bridge_config(&self, html_data: &[u8]) -> Vec<u8> {
+    fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
         let html_str = String::from_utf8_lossy(html_data);
-        if html_str.contains("__LX_BRIDGE_CFG") {
-            return html_data.to_vec();
-        }
-
-        let script_tag = build_bridge_config_script();
+        let script_tag = build_bridge_config_script(bridge_nonce);
 
         let lower = html_str.to_lowercase();
         if let Some(src_pos) = lower.find("lx://assets/runtime.js") {
@@ -145,7 +142,7 @@ impl LxApp {
     }
 }
 
-fn build_bridge_config_script() -> String {
+fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let bridge_os = if cfg!(target_os = "macos") {
         "macOS"
@@ -164,9 +161,16 @@ fn build_bridge_config_script() -> String {
     )))]
     let bridge_os = "unknown";
 
+    let nonce_json = bridge_nonce.map(escape_js_string);
+    let nonce_kv = match nonce_json {
+        Some(nonce) if !nonce.is_empty() => format!(r#",nonce:"{}""#, nonce),
+        _ => String::new(),
+    };
+
+    // Merge rather than overwrite so developer-provided config can coexist.
     format!(
-        r#"<script>window.__LX_BRIDGE_CFG={{os:"{}"}};</script>"#,
-        bridge_os
+        r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}}});}})();</script>"#,
+        bridge_os, nonce_kv
     )
 }
 

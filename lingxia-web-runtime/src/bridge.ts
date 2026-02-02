@@ -1,68 +1,63 @@
 import type {
   BridgeConfig,
-  BridgeMessage,
+  CallOptions,
   DataSubscriber,
   LingXiaBridgeInterface,
-  PendingCall,
-  ReplyPayload,
+  LxBridgeError,
+  LxMethod,
+  LxMethodParams,
+  LxMethodResult,
   NativeComponentMessage,
+  NotifyOptions,
 } from './types';
+import { BRIDGE_ERROR } from './types';
 import { installNativeComponentCoverageMonitor } from './nativecomponents/coverage-monitor';
 
 const NATIVE_HANDLER_NAME = 'LingXia';
 const GLOBAL_RECEIVER_NAME = '__LingXiaRecvMessage';
-const CALL_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 5000;
+const HANDSHAKE_TIMEOUT_MS = 10000;
+const HANDSHAKE_MAX_RETRIES = 3;
 const LOG_PREFIX = '[LX.Bridge]';
 const MESSAGE_PORT_TYPE = 'messageport';
 const JS_INTERFACE_TYPE = 'jsinterface';
+const OUTBOX_LIMIT = 256;
 
-const debugFlags = {
-  data: false,
-  proto: false,
-  all: false,
-};
+const debugFlags = { data: false, proto: false, all: false };
 
 function isDebugEnabled(flag: keyof typeof debugFlags): boolean {
   return debugFlags.all || debugFlags[flag];
 }
 
+function log(...args: unknown[]): void { console.log(LOG_PREFIX, ...args); }
+function warn(...args: unknown[]): void { console.warn(LOG_PREFIX, ...args); }
+function error(...args: unknown[]): void { console.error(LOG_PREFIX, ...args); }
+
 function safeStringify(obj: unknown, space?: number): string {
   const seen = new WeakSet();
-  return JSON.stringify(
-    obj,
-    (_key, value) => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) {
-          return '[Circular Reference]';
-        }
-        seen.add(value);
-      }
-      return value;
-    },
-    space
-  );
+  return JSON.stringify(obj, (_key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) return '[Circular]';
+      seen.add(value);
+    }
+    return value;
+  }, space);
 }
 
-let messageCounter = 0;
-const pendingCalls = new Map<string, PendingCall>();
-let pageData: Record<string, unknown> = {};
-const dataSubscribers = new Set<DataSubscriber>();
-const subscriberInitStatus = new WeakMap<DataSubscriber, boolean>();
-let messagePort: MessagePort | null = null;
-const portInitState = {
-  listenerInstalled: false,
-  promise: null as Promise<MessagePort> | null,
-  resolve: null as ((port: MessagePort) => void) | null,
-  reject: null as ((err: unknown) => void) | null,
-  timer: null as number | null,
-};
+function deepCopy<T>(data: T): T {
+  try {
+    if (typeof structuredClone === 'function') return structuredClone(data);
+    return JSON.parse(JSON.stringify(data));
+  } catch {
+    return {} as T;
+  }
+}
 
 const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
 
 const communicationMethod = ((): string => {
   const config = (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
-
   if (config.os === 'iOS' || config.os === 'macOS') return 'webkit';
   if (config.os === 'Harmony') return MESSAGE_PORT_TYPE;
   if (config.os === 'Android') {
@@ -72,154 +67,68 @@ const communicationMethod = ((): string => {
   return 'unknown';
 })();
 
-if (typeof window !== 'undefined' && communicationMethod === MESSAGE_PORT_TYPE) {
+function isHarmony(): boolean { return BRIDGE_CONFIG.os === 'Harmony'; }
+function isIOS(): boolean { return BRIDGE_CONFIG.os === 'iOS'; }
+function isAndroid(): boolean { return BRIDGE_CONFIG.os === 'Android'; }
+function getPlatformOS(): string { return BRIDGE_CONFIG.os || 'unknown'; }
+
+// Transport
+let messagePort: MessagePort | null = null;
+const portInitState = {
+  listenerInstalled: false,
+  promise: null as Promise<MessagePort> | null,
+  resolve: null as ((port: MessagePort) => void) | null,
+  reject: null as ((err: unknown) => void) | null,
+  timer: null as number | null,
+};
+
+function installMessagePortInitListener(): void {
+  if (portInitState.listenerInstalled) return;
+  portInitState.listenerInstalled = true;
+  window.addEventListener('message', (event: MessageEvent) => {
+    if (event.data !== 'LingXia-port-init') return;
+    const port = event.ports?.[0];
+    if (!port) return;
+    LingXiaBridge._connectWebMessagePort(port);
+    portInitState.resolve?.(port);
+  });
+}
+
+function cleanupPortInit(): void {
+  if (portInitState.timer !== null) {
+    window.clearTimeout(portInitState.timer);
+    portInitState.timer = null;
+  }
+  portInitState.resolve = null;
+  portInitState.reject = null;
+  portInitState.promise = null;
+}
+
+function getMessagePort(): Promise<MessagePort> {
+  if (messagePort) return Promise.resolve(messagePort);
+  if (portInitState.promise) return portInitState.promise;
+
+  const timeoutMs = 5000;
   installMessagePortInitListener();
+
+  portInitState.promise = new Promise<MessagePort>((resolve, reject) => {
+    portInitState.resolve = (port: MessagePort): void => { cleanupPortInit(); resolve(port); };
+    portInitState.reject = (err: unknown): void => { cleanupPortInit(); reject(err); };
+    portInitState.timer = window.setTimeout(() => {
+      portInitState.reject?.(new Error(`MessagePort init timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+
+  try { window.LingXiaProxy?.getPort('LingXiaPort'); }
+  catch (e) { portInitState.reject?.(e); }
+
+  return portInitState.promise;
 }
 
-function isHarmony(): boolean {
-  return BRIDGE_CONFIG.os === 'Harmony';
-}
-function isIOS(): boolean {
-  return BRIDGE_CONFIG.os === 'iOS';
-}
-function isAndroid(): boolean {
-  return BRIDGE_CONFIG.os === 'Android';
-}
-function getPlatformOS(): string {
-  return BRIDGE_CONFIG.os || 'unknown';
-}
-
-function log(...args: unknown[]): void {
-  console.log(LOG_PREFIX, ...args);
-}
-function warn(...args: unknown[]): void {
-  console.warn(LOG_PREFIX, ...args);
-}
-function error(...args: unknown[]): void {
-  console.error(LOG_PREFIX, ...args);
-}
-
-function deepCopy<T>(data: T): T {
-  try {
-    if (typeof structuredClone === 'function') {
-      return structuredClone(data);
-    } else {
-      return JSON.parse(JSON.stringify(data));
-    }
-  } catch (e) {
-    error('Failed to deep copy data:', e);
-    return {} as T;
-  }
-}
-
-function setValueByPath(
-  obj: Record<string, unknown>,
-  path: string,
-  value: unknown
-): boolean {
-  if (
-    typeof path !== 'string' ||
-    path === '' ||
-    typeof obj !== 'object' ||
-    obj === null
-  ) {
-    return false;
-  }
-
-  const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
-  let current: Record<string, unknown> = obj;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    const nextKey = parts[i + 1];
-    const isNextKeyArrayIndex = /^\d+$/.test(nextKey);
-
-    if (current[key] === undefined || current[key] === null) {
-      current[key] = isNextKeyArrayIndex ? [] : {};
-    } else if (typeof current[key] !== 'object') {
-      current[key] = isNextKeyArrayIndex ? [] : {};
-    } else if (isNextKeyArrayIndex && !Array.isArray(current[key])) {
-      current[key] = [];
-    }
-    current = current[key] as Record<string, unknown>;
-    if (typeof current !== 'object' || current === null) {
-      return false;
-    }
-  }
-
-  const finalKey = parts[parts.length - 1];
-  current[finalKey] = value;
-  return true;
-}
-
-function deleteValueByPath(
-  obj: Record<string, unknown>,
-  path: string
-): boolean {
-  if (
-    typeof path !== 'string' ||
-    path === '' ||
-    typeof obj !== 'object' ||
-    obj === null
-  ) {
-    return false;
-  }
-
-  const parts = path.replace(/\[(\d+)\]/g, '.$1').split('.');
-  let current: Record<string, unknown> = obj;
-
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    if (typeof current[key] !== 'object' || current[key] === null) {
-      return false;
-    }
-    current = current[key] as Record<string, unknown>;
-  }
-
-  const finalKey = parts[parts.length - 1];
-  if (Array.isArray(current)) {
-    const index = parseInt(finalKey, 10);
-    if (!isNaN(index) && index >= 0 && index < current.length) {
-      current.splice(index, 1);
-      return true;
-    }
-  } else if (typeof current === 'object') {
-    delete current[finalKey];
-    return true;
-  }
-  return false;
-}
-
-function applyPatch(
-  target: Record<string, unknown>,
-  patch: Record<string, unknown>
-): Record<string, unknown> {
-  if (
-    typeof target !== 'object' ||
-    target === null ||
-    typeof patch !== 'object' ||
-    patch === null
-  ) {
-    return patch;
-  }
-
-  let changesApplied = false;
-  for (const path in patch) {
-    if (Object.prototype.hasOwnProperty.call(patch, path)) {
-      const value = patch[path];
-      if (value === undefined) {
-        if (deleteValueByPath(target, path)) changesApplied = true;
-      } else {
-        if (setValueByPath(target, path, value)) changesApplied = true;
-      }
-    }
-  }
-  return changesApplied ? patch : {};
-}
-
-function postNativeMessage(message: BridgeMessage): void {
+function postToNative(message: unknown): void {
+  const kind = (message as { kind?: string }).kind;
+  if (kind === 'req' || kind === 'notify') log(`postToNative: ${kind} ${(message as { method?: string }).method}`);
   if (isDebugEnabled('proto')) console.log('→', JSON.stringify(message, null, 2));
-
   try {
     if (communicationMethod === 'webkit') {
       window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(message);
@@ -234,141 +143,357 @@ function postNativeMessage(message: BridgeMessage): void {
       window.LingXiaProxy.postMessage(messageString);
       return;
     }
-    warn('Bridge not ready');
+    warn('Transport not ready');
   } catch (e) {
-    error('Send message error:', e);
+    error('Send error:', e);
   }
 }
 
-function installMessagePortInitListener(): void {
-  if (portInitState.listenerInstalled) return;
-  portInitState.listenerInstalled = true;
+// V2 Protocol Types
+type Trace = { traceId?: string; spanId?: string };
+type Hello = { v: 2; kind: 'hello'; nonce: string; role: 'view'; protocolsSupported: number[]; trace?: Trace };
+type HelloAck = { v: 2; kind: 'helloAck'; nonce: string; protocol: number; sessionId: string };
+type Ready = { v: 2; kind: 'ready'; sessionId: string };
+type Req = { v: 2; kind: 'req'; id: string; method: string; params?: unknown; cap: string; trace?: Trace };
+type Res = { v: 2; kind: 'res'; id: string; ok: boolean; result?: unknown; error?: LxBridgeError; trace?: Trace };
+type Notify = { v: 2; kind: 'notify'; method: string; params?: unknown; cap: string; trace?: Trace };
+type Cancel = { v: 2; kind: 'cancel'; id: string };
+type StateSnapshot = { v: 2; kind: 'state.snapshot'; scope?: string; rev: number; state: Record<string, unknown> };
+type JsonPatchOp = { op: 'add'; path: string; value: unknown } | { op: 'replace'; path: string; value: unknown } | { op: 'remove'; path: string };
+type StatePatch = { v: 2; kind: 'state.patch'; scope?: string; baseRev: number; rev: number; ops: JsonPatchOp[]; ack?: boolean };
+type StateAck = { v: 2; kind: 'state.ack'; scope?: string; rev: number };
+type Incoming = HelloAck | Ready | Res | StateSnapshot | StatePatch;
 
-  window.addEventListener('message', (event: MessageEvent) => {
-    if (event.data !== 'LingXia-port-init') return;
-    const port = event.ports?.[0];
-    if (!port) return;
-    LingXiaBridge._connectWebMessagePort(port);
-    portInitState.resolve?.(port);
-  });
+// Handshake state
+let handshakeSessionId: string | null = null;
+let handshakeDone = false;
+let helloSent = false;
+let handshakeRetryCount = 0;
+let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Request tracking
+let requestCounter = 0;
+interface PendingRequest {
+  method: string;
+  resolve: (v: unknown) => void;
+  reject: (e: LxBridgeError) => void;
+  timeoutMs: number;
+  timerId: ReturnType<typeof setTimeout> | null;
+}
+const pendingReq = new Map<string, PendingRequest>();
+
+// Outbox
+interface OutboxItem { msg: unknown; reqId?: string; }
+const outbox: OutboxItem[] = [];
+
+// State sync
+let stateRev = -1;
+let pageData: Record<string, unknown> = {};
+const dataSubscribers = new Set<DataSubscriber>();
+const subscriberInitStatus = new WeakMap<DataSubscriber, boolean>();
+
+function inferCap(method: string): string {
+  if (method.startsWith('host.')) return 'host';
+  const i = method.indexOf('.');
+  return i > 0 ? method.slice(0, i) : 'page';
 }
 
-function getMessagePort(): Promise<MessagePort> {
-  if (messagePort) return Promise.resolve(messagePort);
-  if (portInitState.promise) return portInitState.promise;
+function normalizeParams(params: unknown): unknown | undefined {
+  if (params === null || params === undefined) return undefined;
+  if (typeof params === 'object' && !Array.isArray(params)) return params;
+  return { value: params };
+}
 
-  const timeoutMs = 5000;
-  installMessagePortInitListener();
+function isTransportReady(): boolean {
+  if (communicationMethod === MESSAGE_PORT_TYPE) return !!messagePort;
+  return communicationMethod === 'webkit' || communicationMethod === JS_INTERFACE_TYPE;
+}
 
-  portInitState.promise = new Promise<MessagePort>((resolve, reject) => {
-    portInitState.resolve = (port: MessagePort): void => {
-      cleanupPortInit();
-      resolve(port);
-    };
-    portInitState.reject = (err: unknown): void => {
-      cleanupPortInit();
-      reject(err);
-    };
-    portInitState.timer = window.setTimeout(() => {
-      portInitState.reject?.(
-        new Error(`MessagePort init timed out after ${timeoutMs}ms`)
-      );
-    }, timeoutMs);
-  });
+function canSendAppMessages(): boolean {
+  return isTransportReady() && handshakeDone;
+}
 
-  try {
-    window.LingXiaProxy?.getPort('LingXiaPort');
-  } catch (e) {
-    portInitState.reject?.(e);
+function rejectPendingRequest(reqId: string, err: LxBridgeError): void {
+  const info = pendingReq.get(reqId);
+  if (info) {
+    pendingReq.delete(reqId);
+    if (info.timerId !== null) clearTimeout(info.timerId);
+    info.reject(err);
   }
-
-  return portInitState.promise;
 }
 
-function cleanupPortInit(): void {
-  if (portInitState.timer !== null) {
-    window.clearTimeout(portInitState.timer);
-    portInitState.timer = null;
+function startRequestTimer(reqId: string): void {
+  const info = pendingReq.get(reqId);
+  if (!info || info.timerId !== null) return;
+  info.timerId = setTimeout(() => {
+    if (!pendingReq.has(reqId)) return;
+    pendingReq.delete(reqId);
+    info.reject({ code: BRIDGE_ERROR.TIMEOUT, message: `'${info.method}' timed out` });
+  }, info.timeoutMs);
+}
+
+function removeOutboxByReqId(reqId: string): boolean {
+  for (let i = outbox.length - 1; i >= 0; i--) {
+    if (outbox[i]?.reqId === reqId) {
+      outbox.splice(i, 1);
+      return true;
+    }
   }
-  portInitState.resolve = null;
-  portInitState.reject = null;
-  portInitState.promise = null;
+  return false;
 }
 
-function handleReply(replyMessage: BridgeMessage): void {
-  const msgId = replyMessage.msgId;
-  if (!msgId || !pendingCalls.has(msgId)) {
-    warn('Reply for unknown msgId:', replyMessage);
+function send(msg: unknown, reqId?: string): void {
+  const kind = (msg as { kind?: string }).kind;
+  const isHandshake = kind === 'hello' || kind === 'helloAck' || kind === 'ready';
+
+  if (!canSendAppMessages() && !isHandshake) {
+    if (outbox.length >= OUTBOX_LIMIT) {
+      error('Outbox full');
+      if (reqId) rejectPendingRequest(reqId, { code: BRIDGE_ERROR.OUTBOX_FULL });
+      return;
+    }
+    outbox.push({ msg, reqId });
     return;
   }
+  if (reqId) startRequestTimer(reqId);
+  postToNative(msg);
+}
 
-  const callInfo = pendingCalls.get(msgId)!;
-  pendingCalls.delete(msgId);
-  clearTimeout(callInfo.timerId);
-
-  try {
-    const payload = replyMessage.payload as ReplyPayload;
-    if (payload?.success === true) {
-      if (payload.hasOwnProperty('result')) {
-        callInfo.resolve(payload.result);
-      } else {
-        callInfo.resolve();
-      }
-    } else if (payload?.success === false) {
-      callInfo.reject(payload.error || { message: 'Unknown error' });
-    } else {
-      callInfo.reject({ message: 'Invalid reply payload' });
-    }
-  } catch (e) {
-    error('Reply processing error:', e);
+function flushOutbox(): void {
+  if (!canSendAppMessages()) return;
+  while (outbox.length) {
+    const item = outbox.shift();
+    if (!item) continue;
+    if (item.reqId) startRequestTimer(item.reqId);
+    postToNative(item.msg);
   }
 }
 
-function sendCallback(callbackId: string): void {
-  postNativeMessage({
-    msgId: null,
-    type: 'callback',
-    callbackId: callbackId,
+function clearHandshakeTimer(): void {
+  if (handshakeTimer !== null) {
+    clearTimeout(handshakeTimer);
+    handshakeTimer = null;
+  }
+}
+
+function startHandshake(): void {
+  if (handshakeDone) return;
+  if (!isTransportReady()) return;
+  clearHandshakeTimer();
+
+  const hello: Hello = {
+    v: 2,
+    kind: 'hello',
+    nonce: BRIDGE_CONFIG.nonce || '',
+    role: 'view',
+    protocolsSupported: [2],
+  };
+
+  helloSent = true;
+  postToNative(hello);
+
+  handshakeTimer = setTimeout(() => {
+    if (handshakeDone) return;
+    handshakeRetryCount++;
+    if (handshakeRetryCount < HANDSHAKE_MAX_RETRIES) {
+      warn(`Handshake timeout (${handshakeRetryCount}/${HANDSHAKE_MAX_RETRIES}), retrying...`);
+      helloSent = false;
+      startHandshake();
+    } else {
+      error('Handshake failed');
+      clearHandshakeTimer();
+      helloSent = false;
+      handshakeRetryCount = 0;
+      while (outbox.length) {
+        const item = outbox.shift();
+        if (item?.reqId) rejectPendingRequest(item.reqId, { code: BRIDGE_ERROR.HANDSHAKE_FAILED });
+      }
+    }
+  }, HANDSHAKE_TIMEOUT_MS);
+}
+
+function parseIncoming(msg: unknown): Incoming | null {
+  if (!msg || typeof msg !== 'object') return null;
+  const v = (msg as { v?: unknown }).v;
+  const kind = (msg as { kind?: unknown }).kind;
+  if (v !== 2 || typeof kind !== 'string') return null;
+  return msg as Incoming;
+}
+
+// JSON Patch
+function jsonPointerUnescape(seg: string): string {
+  return seg.replace(/~1/g, '/').replace(/~0/g, '~');
+}
+
+function parseJsonPointer(path: string): string[] {
+  if (path === '') return [];
+  if (!path.startsWith('/')) throw new Error(`Invalid JSON pointer: ${path}`);
+  return path.split('/').slice(1).map(jsonPointerUnescape);
+}
+
+function getContainerAndKey(root: Record<string, unknown>, pointer: string, autoCreate = false): { container: unknown; key: string } {
+  const segments = parseJsonPointer(pointer);
+  if (segments.length === 0) return { container: { $root: root }, key: '$root' };
+
+  let current: unknown = root;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const seg = segments[i]!;
+    if (Array.isArray(current)) {
+      current = current[Number(seg)];
+    } else if (current && typeof current === 'object') {
+      const obj = current as Record<string, unknown>;
+      if (autoCreate && obj[seg] === undefined) {
+        const nextSeg = segments[i + 1];
+        obj[seg] = nextSeg && /^\d+$/.test(nextSeg) ? [] : {};
+      }
+      current = obj[seg];
+    } else {
+      throw new Error(`Invalid container at ${seg}`);
+    }
+  }
+  return { container: current, key: segments[segments.length - 1]! };
+}
+
+function applyJsonPatch(target: Record<string, unknown>, ops: JsonPatchOp[]): void {
+  for (const op of ops) {
+    const autoCreate = op.op === 'add' || op.op === 'replace';
+    const { container, key } = getContainerAndKey(target, op.path, autoCreate);
+    if (key === '$root') {
+      for (const k of Object.keys(target)) delete target[k];
+      if (op.op !== 'remove') {
+        const v = (op as { value: unknown }).value;
+        if (v && typeof v === 'object') Object.assign(target, v as Record<string, unknown>);
+      }
+      continue;
+    }
+
+    if (Array.isArray(container)) {
+      const idx = key === '-' ? container.length : Number(key);
+      if (!Number.isFinite(idx) || idx < 0) throw new Error(`Invalid index`);
+      if (op.op === 'remove') container.splice(idx, 1);
+      else if (op.op === 'add') container.splice(idx, 0, op.value);
+      else if (op.op === 'replace') container[idx] = op.value;
+      continue;
+    }
+
+    if (!container || typeof container !== 'object') throw new Error(`Invalid container`);
+    const obj = container as Record<string, unknown>;
+    if (op.op === 'remove') delete obj[key];
+    else obj[key] = op.value;
+  }
+}
+
+function notifyStateSubscribers(initial: boolean): void {
+  dataSubscribers.forEach((listener) => {
+    try {
+      if (!subscriberInitStatus.has(listener)) {
+        subscriberInitStatus.set(listener, true);
+        listener(deepCopy(pageData), { rev: stateRev, initial: true });
+        return;
+      }
+      listener(deepCopy(pageData), { rev: stateRev, initial });
+    } catch (e) {
+      warn('Subscriber error:', e);
+    }
   });
 }
 
-const nativeComponentHandlers = new Map<
-  string,
-  (message: NativeComponentMessage) => void
->();
+function requestStateRecovery(scope?: string): void {
+  LingXiaBridge.call('state.getSnapshot', { scope }, { cap: 'state', timeoutMs: 10000 }).catch(() => {});
+}
+
+function applySnapshotFromResult(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const obj = result as { rev?: unknown; state?: unknown };
+  if (typeof obj.rev !== 'number' || !Number.isFinite(obj.rev)) return false;
+  if (!obj.state || typeof obj.state !== 'object') return false;
+  pageData = obj.state as Record<string, unknown>;
+  stateRev = obj.rev;
+  if (isDebugEnabled('data')) { console.group('[LX] snapshot(res)'); console.log('rev:', stateRev, 'state:', deepCopy(pageData)); console.groupEnd(); }
+  notifyStateSubscribers(true);
+  return true;
+}
+
+function handleIncomingMessage(msg: unknown): void {
+
+  const message = parseIncoming(msg);
+  if (!message) { warn('Invalid V2 message:', msg); return; }
+
+  switch (message.kind) {
+    case 'helloAck':
+      handshakeSessionId = message.sessionId;
+      return;
+
+    case 'ready':
+      if (handshakeSessionId && message.sessionId !== handshakeSessionId) { warn('sessionId mismatch'); return; }
+      clearHandshakeTimer();
+      handshakeDone = true;
+      handshakeRetryCount = 0;
+      if (isDebugEnabled('proto')) log('Handshake complete');
+      flushOutbox();
+      return;
+
+    case 'res': {
+      const info = pendingReq.get(message.id);
+      if (!info) return;
+      pendingReq.delete(message.id);
+      if (info.timerId !== null) clearTimeout(info.timerId);
+      if (message.ok) {
+        if (info.method === 'state.getSnapshot') {
+          if (!applySnapshotFromResult(message.result)) {
+            warn('Invalid state.getSnapshot result');
+          }
+        }
+        info.resolve(message.result);
+      } else {
+        info.reject(message.error || { code: BRIDGE_ERROR.INTERNAL_ERROR });
+      }
+      return;
+    }
+
+    case 'state.snapshot':
+      pageData = message.state || {};
+      stateRev = message.rev;
+      if (isDebugEnabled('data')) { console.group('[LX] snapshot'); console.log('rev:', stateRev, 'state:', deepCopy(pageData)); console.groupEnd(); }
+      notifyStateSubscribers(true);
+      return;
+
+    case 'state.patch':
+      if (message.baseRev !== stateRev) {
+        warn('baseRev mismatch', { have: stateRev, want: message.baseRev });
+        requestStateRecovery(message.scope);
+        return;
+      }
+      try {
+        applyJsonPatch(pageData, message.ops || []);
+        stateRev = message.rev;
+      } catch (e) {
+        error('Patch failed:', e);
+        requestStateRecovery(message.scope);
+        return;
+      }
+      if (isDebugEnabled('data')) { console.group('[LX] patch'); console.log('rev:', stateRev, 'ops:', message.ops); console.groupEnd(); }
+      notifyStateSubscribers(false);
+      if (message.ack) send({ v: 2, kind: 'state.ack', scope: message.scope, rev: message.rev } as StateAck);
+      return;
+  }
+}
+
+// Native components
+const nativeComponentHandlers = new Map<string, (message: NativeComponentMessage) => void>();
 const nativeComponentQueue: NativeComponentMessage[] = [];
 let nativeComponentReady = false;
 
 function hasNativeComponentHandler(): boolean {
   if (typeof window === 'undefined') return false;
-
-  if (window.webkit?.messageHandlers?.NativeComponent) {
-    return true;
-  }
-
-  if (
-    window.NativeComponentBridge &&
-    typeof window.NativeComponentBridge.postMessage === 'function'
-  ) {
-    return true;
-  }
-
-  return false;
+  return !!(window.webkit?.messageHandlers?.NativeComponent || window.NativeComponentBridge?.postMessage);
 }
 
 function postNativeComponentMessage(message: NativeComponentMessage): void {
   try {
-    if (window.webkit?.messageHandlers?.NativeComponent) {
-      window.webkit.messageHandlers.NativeComponent.postMessage(message);
-      return;
-    }
-    if (window.NativeComponentBridge?.postMessage) {
-      window.NativeComponentBridge.postMessage(safeStringify(message));
-      return;
-    }
-  } catch (e) {
-    error('NativeComponent send error:', e);
-  }
+    if (window.webkit?.messageHandlers?.NativeComponent) { window.webkit.messageHandlers.NativeComponent.postMessage(message); return; }
+    if (window.NativeComponentBridge?.postMessage) { window.NativeComponentBridge.postMessage(safeStringify(message)); return; }
+  } catch (e) { error('NativeComponent send error:', e); }
 }
 
 function flushNativeComponentQueue(): void {
@@ -376,282 +501,112 @@ function flushNativeComponentQueue(): void {
   nativeComponentReady = true;
   while (nativeComponentQueue.length) {
     const msg = nativeComponentQueue.shift()!;
-    try {
-      if (isDebugEnabled('proto')) {
-        console.log('[NativeComponent] flush → native:', msg);
-      }
-      postNativeComponentMessage(msg);
-    } catch (e) {
-      error('Failed to flush NativeComponent message:', e);
-      break;
-    }
+    try { postNativeComponentMessage(msg); }
+    catch { break; }
   }
 }
 
 function sendNativeComponentMessage(message: NativeComponentMessage): void {
   try {
-    const hasHandler = hasNativeComponentHandler();
-    if (!hasHandler) {
-      nativeComponentQueue.push(message);
-      return;
-    }
-    if (!nativeComponentReady) {
-      flushNativeComponentQueue();
-    }
-    if (isDebugEnabled('proto')) {
-      console.log('[NativeComponent] → native:', message);
-    }
+    if (!hasNativeComponentHandler()) { nativeComponentQueue.push(message); return; }
+    if (!nativeComponentReady) flushNativeComponentQueue();
     postNativeComponentMessage(message);
-  } catch (e) {
-    error('Failed to send NativeComponent message:', e);
-  }
+  } catch (e) { error('NC send failed:', e); }
 }
 
-function handleNativeComponentEvent(msg: unknown): void {
-  try {
-    const message: NativeComponentMessage | null =
-      typeof msg === 'string'
-        ? JSON.parse(msg)
-        : msg && typeof msg === 'object'
-          ? (msg as NativeComponentMessage)
-          : null;
-
-    if (!message || !message.id) {
-      warn('NativeComponent receive: invalid message', msg);
-      return;
-    }
-    if (message.action !== 'component.event') return;
-
-    const handler = nativeComponentHandlers.get(message.id);
-    if (typeof handler !== 'function') return;
-    if (isDebugEnabled('proto')) {
-      console.log('[NativeComponent] ← native:', message);
-    }
-    handler(message);
-  } catch (e) {
-    error('NativeComponent receive error:', e);
-  }
-}
-
-function handleEvent(eventMessage: BridgeMessage): void {
-  const { name, payload } = eventMessage;
-
-  if (name === 'setData') {
-    let dataToApply: Record<string, unknown>;
-    let callbackId: string | null = null;
-
-    const p = payload as { data?: Record<string, unknown>; callbackId?: string };
-    if (p && typeof p.data !== 'undefined') {
-      dataToApply = p.data;
-      callbackId = p.callbackId || null;
-    } else {
-      dataToApply = payload as Record<string, unknown>;
-    }
-
-    if (isDebugEnabled('data')) {
-      console.group('[LingXia Debug] setData Update');
-      console.log('Previous data:', JSON.parse(safeStringify(pageData)));
-      console.log('Applying patch:', dataToApply);
-    }
-
-    applyPatch(pageData, dataToApply);
-
-    if (isDebugEnabled('data')) {
-      console.log('Updated data:', JSON.parse(safeStringify(pageData)));
-      console.log('Active subscribers:', dataSubscribers.size);
-      console.groupEnd();
-    }
-
-    dataSubscribers.forEach((listener) => {
-      try {
-        if (!subscriberInitStatus.has(listener)) {
-          subscriberInitStatus.set(listener, true);
-          listener(pageData, null, true);
-        } else {
-          listener(pageData, callbackId, false);
-        }
-      } catch (e) {
-        warn('Data subscriber error:', e);
-      }
-    });
-
-    if (callbackId) {
-      sendCallback(callbackId);
-    }
-  } else if (name === 'nativecomponent') {
-    handleNativeComponentEvent(payload);
-  } else {
-    warn('Unknown event:', name);
-  }
-}
-
-function handleIncomingMessage(message: BridgeMessage): void {
-  if (isDebugEnabled('proto')) {
-    console.log('←', JSON.stringify(message, null, 2));
-  }
-  if (!message || typeof message !== 'object' || !message.type) {
-    warn('Invalid message format:', message);
-    return;
-  }
-
-  switch (message.type) {
-    case 'reply':
-      handleReply(message);
-      break;
-    case 'event':
-      handleEvent(message);
-      break;
-    default:
-      warn('Unknown message type:', message.type);
-  }
-}
-
+// Public interface
 export const LingXiaBridge: LingXiaBridgeInterface = {
-  call(name: string, payload: unknown = null): Promise<unknown> {
+  call<M extends LxMethod>(method: M | string, params?: LxMethodParams<M> | unknown, options?: CallOptions): Promise<LxMethodResult<M> | unknown> {
     return new Promise((resolve, reject) => {
-      const msgId = `view-${Date.now()}-${messageCounter++}`;
-      const timerId = setTimeout(() => {
-        if (pendingCalls.has(msgId)) {
-          pendingCalls.get(msgId)!.reject({ message: `Call '${name}' timed out` });
-          pendingCalls.delete(msgId);
-        }
-      }, CALL_TIMEOUT_MS);
+      if (!method || typeof method !== 'string') { reject({ code: BRIDGE_ERROR.MALFORMED_MESSAGE }); return; }
+      if (!helloSent) startHandshake();
 
-      pendingCalls.set(msgId, { resolve, reject, timerId });
-      postNativeMessage({
-        msgId: msgId,
-        type: 'call',
-        name: name,
-        payload: payload,
-      });
+      const id = `c_${Date.now()}_${requestCounter++}`;
+      const cap = options?.cap || inferCap(method);
+      const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+      pendingReq.set(id, { method, resolve, reject: (e) => reject(e), timeoutMs, timerId: null });
+
+      const req: Req = { v: 2, kind: 'req', id, method, params: normalizeParams(params), cap };
+      send(req, id);
+
+      const signal = options?.signal;
+      if (signal) {
+        if (signal.aborted) {
+          removeOutboxByReqId(id);
+          rejectPendingRequest(id, { code: BRIDGE_ERROR.CANCELED });
+          if (handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
+          return;
+        }
+        const onAbort = (): void => {
+          signal.removeEventListener('abort', onAbort);
+          const removed = removeOutboxByReqId(id);
+          rejectPendingRequest(id, { code: BRIDGE_ERROR.CANCELED });
+          if (!removed && handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
+        };
+        signal.addEventListener('abort', onAbort);
+      }
     });
   },
 
-  event(name: string, payload: unknown = null): void {
-    postNativeMessage({
-      msgId: null,
-      type: 'event',
-      name: name,
-      payload: payload,
-    });
+  notify(method: string, params?: unknown, options?: NotifyOptions): void {
+    if (!method || typeof method !== 'string') return;
+    if (!helloSent) startHandshake();
+    send({ v: 2, kind: 'notify', method, params: normalizeParams(params), cap: options?.cap || inferCap(method) } as Notify);
   },
 
   subscribe(callback: DataSubscriber): () => void {
-    if (typeof callback !== 'function') {
-      error('Subscriber must be a function');
-      return () => {};
-    }
-
+    if (typeof callback !== 'function') return () => {};
     dataSubscribers.add(callback);
-
-    if (Object.keys(pageData).length > 0) {
-      if (dataSubscribers.has(callback)) {
-        subscriberInitStatus.set(callback, true);
-        try {
-          callback(deepCopy(pageData), null, true);
-        } catch (e) {
-          error('Initial data callback error:', e);
-        }
-      }
+    if (stateRev >= 0) {
+      subscriberInitStatus.set(callback, true);
+      try { callback(deepCopy(pageData), { rev: stateRev, initial: true }); }
+      catch (e) { error('Callback error:', e); }
     }
-
-    return () => {
-      dataSubscribers.delete(callback);
-      subscriberInitStatus.delete(callback);
-    };
+    return () => { dataSubscribers.delete(callback); subscriberInitStatus.delete(callback); };
   },
 
   _connectWebMessagePort(port: MessagePort): void {
     if (communicationMethod !== MESSAGE_PORT_TYPE) return;
-
-    log('Connecting WebMessage port...');
-    if (messagePort && messagePort !== port) {
-      try {
-        messagePort.onmessage = null;
-        messagePort.close();
-      } catch {
-        // ignore
-      }
-    }
+    if (messagePort && messagePort !== port) { try { messagePort.onmessage = null; messagePort.close(); } catch {} }
     messagePort = port;
-
     port.onmessage = (event: MessageEvent) => {
-      let messageData = event.data;
-      if (typeof messageData === 'string') {
-        try {
-          messageData = JSON.parse(messageData);
-        } catch (e) {
-          error('Invalid JSON from MessagePort. Error:', e);
-          error('Raw message data:', messageData);
-          return;
-        }
-      }
-      handleIncomingMessage(messageData);
+      let data = event.data;
+      if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
+      handleIncomingMessage(data);
     };
-
-    log('MessagePort connected and ready');
-    this.event('LXPortRdy');
+    // Some WebView MessagePort implementations (notably Android WebMessagePort)
+    // require an explicit start() to begin dispatching onmessage events.
+    try { port.start(); } catch {}
+    log('Port connected');
+    startHandshake();
   },
 
   _receiveEvaluateMessage(messageString: string): void {
-    try {
-      if (!messageString) return;
-      const message = JSON.parse(messageString);
-      handleIncomingMessage(message);
-    } catch (e) {
-      error('Invalid JSON from evaluate_javascript:', e);
-    }
+    try { if (messageString) handleIncomingMessage(JSON.parse(messageString)); }
+    catch (e) { error('Parse error:', e); }
   },
 
   debug: new Proxy(debugFlags, {
-    get(target, prop: keyof typeof debugFlags) {
-      return target[prop];
-    },
+    get(target, prop: keyof typeof debugFlags) { return target[prop]; },
     set(target, prop: keyof typeof debugFlags, value: boolean) {
-      if (prop in target) {
-        target[prop] = !!value;
-        console.log(
-          `[LingXia Debug] ${prop} debugging ${value ? 'enabled' : 'disabled'}`
-        );
-        return true;
-      }
+      if (prop in target) { target[prop] = !!value; console.log(`[LX] ${prop}: ${value}`); return true; }
       return false;
     },
   }),
 
-  platform: {
-    isHarmony,
-    isIOS,
-    isAndroid,
-    getOS: getPlatformOS,
-  },
+  platform: { isHarmony, isIOS, isAndroid, getOS: getPlatformOS },
 
   dom: {
     measureById(id: string): [number, number, number, number, number] | null {
       try {
-        if (!id || typeof id !== 'string') return null;
+        if (!id) return null;
         const el = document.getElementById(id);
         if (!el) return null;
         const r = el.getBoundingClientRect();
-
-        let cornerRadius = 0;
-        try {
-          const radiusStr = getComputedStyle(el).borderRadius;
-          const parsed = parseFloat(radiusStr);
-          if (!Number.isNaN(parsed)) cornerRadius = parsed;
-        } catch (_e) {
-        }
-
-        return [
-          r.left + window.scrollX,
-          r.top + window.scrollY,
-          r.width,
-          r.height,
-          cornerRadius,
-        ];
-      } catch (_e) {
-        return null;
-      }
+        let radius = 0;
+        try { radius = parseFloat(getComputedStyle(el).borderRadius) || 0; } catch {}
+        return [r.left + window.scrollX, r.top + window.scrollY, r.width, r.height, radius];
+      } catch { return null; }
     },
   },
 
@@ -659,69 +614,41 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     send: sendNativeComponentMessage,
     hasHandler: hasNativeComponentHandler,
     flush: flushNativeComponentQueue,
-    register(
-      id: string,
-      handler: (message: NativeComponentMessage) => void
-    ): () => void {
+    register(id: string, handler: (message: NativeComponentMessage) => void): () => void {
       if (!id || typeof handler !== 'function') return () => {};
       nativeComponentHandlers.set(id, handler);
-      return () => {
-        nativeComponentHandlers.delete(id);
-      };
+      return () => nativeComponentHandlers.delete(id);
     },
-    unregister(id: string): void {
-      nativeComponentHandlers.delete(id);
-    },
+    unregister(id: string): void { nativeComponentHandlers.delete(id); },
   },
+
+  isReady(): boolean { return handshakeDone; },
 };
 
-// Host API proxy for page layer to call host app capabilities directly
-export const host: Record<string, (...args: unknown[]) => Promise<unknown>> =
-  new Proxy(
-    {},
-    {
-      get(_target, prop: string) {
-        return function (...args: unknown[]): Promise<unknown> {
-          let payload: unknown = null;
-          if (
-            args.length === 1 &&
-            typeof args[0] === 'object' &&
-            args[0] !== null
-          ) {
-            payload = args[0];
-          } else if (args.length > 1) {
-            warn(
-              `host.${prop} called with multiple arguments, only the first object argument will be used`
-            );
-            if (typeof args[0] === 'object' && args[0] !== null) {
-              payload = args[0];
-            }
-          }
-
-          return LingXiaBridge.call(`host.${prop}`, payload);
-        };
-      },
-    }
-  );
+export const host: Record<string, (...args: unknown[]) => Promise<unknown>> = new Proxy({}, {
+  get(_target, prop: string) {
+    return (...args: unknown[]): Promise<unknown> => {
+      const payload = args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
+      return LingXiaBridge.call(`host.${prop}`, payload, { cap: 'host' });
+    };
+  },
+});
 
 export function initBridge(): void {
-  log(`Detected communication method: ${communicationMethod}`);
-
+  log(`Method: ${communicationMethod}`);
   window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
 
-  if (communicationMethod === 'webkit') {
-    LingXiaBridge.event('LXPortRdy');
-  } else if (communicationMethod === MESSAGE_PORT_TYPE) {
-    getMessagePort().catch((e) => warn('MessagePort init failed:', e));
-  } else if (communicationMethod === JS_INTERFACE_TYPE) {
-    LingXiaBridge.event('LXPortRdy');
+  if (communicationMethod === MESSAGE_PORT_TYPE) {
+    installMessagePortInitListener();
+    getMessagePort().catch((e) => warn('Port init failed:', e));
+  } else if (communicationMethod === 'webkit' || communicationMethod === JS_INTERFACE_TYPE) {
+    startHandshake();
   } else {
-    warn('Unknown communication method, bridge may not work properly');
+    warn('Unknown method');
   }
 
   window.LingXiaBridge = LingXiaBridge;
   window.host = host;
   installNativeComponentCoverageMonitor({ os: getPlatformOS(), send: sendNativeComponentMessage });
-
-  log('LingXia Bridge initialization completed');
+  log('Init complete');
 }

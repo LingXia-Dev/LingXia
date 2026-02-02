@@ -241,6 +241,8 @@ impl LxAppExecutor {
                 let _ = worker.post_message(WorkerMessage::Custom(Box::new(WorkerService {
                     svc: message,
                 })));
+            } else {
+                error!("Worker {} not found in map for appid {}", worker_id, appid);
             }
         } else {
             // No instance mapping found; drop message to avoid misrouting.

@@ -61,11 +61,14 @@ window['${funcName}'] = function(...args) {
     return true;
   });
 
-  return window.LingXiaBridge.call('${funcName}', cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs)
-    .catch(function(e) {
-      console.warn('[PageFunc] ${funcName} failed:', e.message || e);
-      throw e;
-    });
+  try {
+    // Page functions are fire-and-forget. Business results should be expressed via state updates
+    // (LXS / setData), not via req/res return values.
+    window.LingXiaBridge.notify('${funcName}', cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs);
+  } catch (e) {
+    console.warn('[PageFunc] ${funcName} failed:', e && e.message ? e.message : e);
+    throw e;
+  }
 };`,
       )
       .join("\n");

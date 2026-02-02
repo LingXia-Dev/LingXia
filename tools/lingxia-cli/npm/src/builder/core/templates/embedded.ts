@@ -25,21 +25,6 @@ let __lxData = {};
 let __lxSubscribed = false;
 const __lxListeners = new Set();
 
-// Deep merge for nested objects
-function __deepMerge(target, source) {
-  if (!source || typeof source !== 'object') return target;
-  const result = { ...target };
-  for (const key in source) {
-    const sv = source[key], tv = target[key];
-    if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
-      result[key] = __deepMerge(tv || {}, sv);
-    } else {
-      result[key] = sv;
-    }
-  }
-  return result;
-}
-
 // Register bridge subscription with retry
 (function registerBridge() {
   if (__lxSubscribed) return;
@@ -50,7 +35,9 @@ function __deepMerge(target, source) {
   __lxSubscribed = true;
   window.LingXiaBridge.subscribe((d) => {
     if (d) {
-      __lxData = __deepMerge(__lxData, d);
+      // V2 subscriber receives a full state snapshot each time (after patch apply).
+      // Replace instead of merge so deletions are reflected correctly.
+      __lxData = d;
       __lxListeners.forEach(fn => fn(__lxData));
     }
   });
@@ -110,20 +97,6 @@ export const VUE_MAIN_JS = `import { createApp, reactive } from "vue";
 const __lxReactiveData = reactive(window.__lxData || {});
 window.__lxData = __lxReactiveData;
 
-// Deep merge for Vue reactivity
-function __deepMerge(target, source) {
-  if (!source || typeof source !== 'object') return;
-  for (const key in source) {
-    const sv = source[key], tv = target[key];
-    if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
-      if (!tv || typeof tv !== 'object') target[key] = {};
-      __deepMerge(target[key], sv);
-    } else {
-      target[key] = sv;
-    }
-  }
-}
-
 // Register bridge subscription with retry
 (function registerBridge() {
   if (window.__lxSubscribed) return;
@@ -132,7 +105,12 @@ function __deepMerge(target, source) {
     return;
   }
   window.__lxSubscribed = true;
-  window.LingXiaBridge.subscribe((d) => d && __deepMerge(__lxReactiveData, d));
+  window.LingXiaBridge.subscribe((d) => {
+    if (!d) return;
+    // Replace snapshot (including deletions) while keeping the same reactive root reference.
+    Object.keys(__lxReactiveData).forEach((k) => { if (!Object.hasOwn(d, k)) delete __lxReactiveData[k]; });
+    Object.assign(__lxReactiveData, d);
+  });
 })();
 
 // useLingXia hook

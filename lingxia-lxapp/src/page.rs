@@ -8,12 +8,14 @@ use crate::lxapp::{
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
+use base64::Engine;
 use http::StatusCode;
 use lingxia_platform::traits::app_runtime::{AnimationType, AppRuntime};
 use lingxia_webview::{
     LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
     create_webview, destroy_webview,
 };
+use ring::rand::{SecureRandom, SystemRandom};
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -35,6 +37,9 @@ pub(crate) struct PageInner {
 
     // state of Page
     state: Arc<Mutex<PageState>>,
+
+    // Per-page bridge nonce (used to validate the View<->Logic wiring)
+    bridge_nonce: Arc<Mutex<Option<String>>>,
 
     // notify when WebView wiring is ready (delegate set & setup ran)
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
@@ -107,6 +112,21 @@ pub struct Page {
 }
 
 impl Page {
+    fn generate_bridge_nonce() -> String {
+        let rng = SystemRandom::new();
+        let mut bytes = [0u8; 16];
+        // If entropy fails (unlikely), fall back to a time-based token.
+        if rng.fill(&mut bytes).is_err() {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+                .to_le_bytes();
+            bytes.copy_from_slice(&nanos[..16]);
+        }
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+    }
+
     /// Build PageState from JSON config
     /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
@@ -133,6 +153,7 @@ impl Page {
     {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
+        let bridge_nonce = Self::generate_bridge_nonce();
         let (ready_tx, ready_rx) = watch::channel(None);
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
@@ -140,6 +161,7 @@ impl Page {
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
+            bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
         });
@@ -194,6 +216,10 @@ impl Page {
         }
 
         page
+    }
+
+    pub(crate) fn bridge_nonce(&self) -> Option<String> {
+        self.inner.bridge_nonce.lock().ok().and_then(|v| v.clone())
     }
 
     /// Attach WebView to this page (called when WebView is ready)
@@ -428,7 +454,7 @@ impl Page {
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
         let lxapp = lxapp::get(self.appid());
         let path = self.path();
-        let html_data = lxapp.generate_page_html(&path);
+        let html_data = lxapp.generate_page_html(&path, self.bridge_nonce().as_deref());
         let base_url = self.base_url();
 
         if let Some(controller) = self.webview_controller() {

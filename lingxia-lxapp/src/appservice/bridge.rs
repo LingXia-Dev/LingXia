@@ -1,432 +1,436 @@
 use crate::error::LxAppError;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
-
-use std::time::Duration;
+use std::sync::{Arc, Mutex, atomic::AtomicUsize};
 use tokio::sync::oneshot;
-use tokio::time::timeout;
 
-/// Indicates the type of service and how it should be handled
+// Error codes (must match lingxia-web-runtime/src/types.ts)
+pub const BRIDGE_NOT_READY: &str = "BRIDGE_NOT_READY";
+#[allow(dead_code)]
+pub const BRIDGE_TIMEOUT: &str = "BRIDGE_TIMEOUT";
+pub const BRIDGE_CANCELED: &str = "BRIDGE_CANCELED";
+#[allow(dead_code)]
+pub const BRIDGE_PROTOCOL_MISMATCH: &str = "BRIDGE_PROTOCOL_MISMATCH";
+#[allow(dead_code)]
+pub const BRIDGE_HANDSHAKE_FAILED: &str = "BRIDGE_HANDSHAKE_FAILED";
+#[allow(dead_code)]
+pub const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
+pub const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
+pub const BRIDGE_CAPABILITY_DENIED: &str = "BRIDGE_CAPABILITY_DENIED";
+pub const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
+
 #[derive(Clone)]
 pub(crate) enum ServiceType {
-    /// Service not found or not supported
     None,
-    /// JavaScript function (needs immediate reply, data returned via setData)
     JSFunc(rong::JSFunc),
-    /// Host API implemented by Rust (returns result directly)
     HostAPI(Arc<dyn crate::HostHandler>),
 }
 
-/// Trait for message transport - handles message sending only
 pub(crate) trait MessageTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
 }
 
-/// Trait for message handling - processes incoming messages and service discovery
 pub(crate) trait MessageHandler {
-    /// Check what type of service this is
     fn get_service_type(&self, service_name: &str) -> ServiceType;
-
-    /// Handle a dispatch message with service type information
-    async fn handle_message(&self, dispatch_msg: DispatchMessage, service_type: ServiceType);
-
-    /// Handle bridge ready event (LXPortRdy)
+    async fn get_state_snapshot(&self, scope: Option<&str>) -> Result<Value, LxAppError>;
+    async fn handle_req(
+        &self,
+        method: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+        cancel_rx: oneshot::Receiver<()>,
+    ) -> Result<Value, RpcError>;
+    async fn handle_notify(
+        &self,
+        method: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+    );
     async fn handle_bridge_ready(&self);
+    fn expected_bridge_nonce(&self) -> Option<String> {
+        None
+    }
+    fn is_cap_allowed(&self, cap: &str) -> bool;
+    async fn handle_state_ack(&self, scope: Option<String>, rev: u64);
 }
 
-/// Bridge for communicating between Logic Layer and View Layer
-///
-/// This bridge handles the communication protocol between Logic and View layers
-/// as defined in the LingXia Bridge Communication Specification. It processes
-/// JSON messages, manages call/reply sequences, and routes events.
 #[derive(Clone)]
 pub(crate) struct Bridge {
     msg_counter: Rc<AtomicUsize>,
-    pending_calls: Rc<Mutex<PendingCallsMap>>,
-    bridge_ready: Rc<Mutex<bool>>,
+    handshake: Rc<Mutex<HandshakeState>>,
+    pending_req_cancel: Rc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 
-/// Type alias for the pending calls map to simplify the complex type.
-type PendingCallsMap = HashMap<String, oneshot::Sender<Result<Value, LxAppError>>>;
-
-// Set a more reasonable default timeout for message calls (5 seconds)
-#[allow(dead_code)]
-const DEFAULT_TIMEOUT_MS: u64 = 5000;
-
-#[derive(Serialize, Deserialize, Debug)]
-struct ReplyPayload {
-    success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<ErrorPayload>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
+#[derive(Debug, Default, Clone)]
+struct HandshakeState {
+    session_id: Option<String>,
+    ready: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ErrorPayload {
-    pub message: String,
+#[derive(Debug, Clone)]
+pub struct RpcError {
+    pub code: String,
+    pub message: Option<String>,
 }
 
-/// Represents different types of incoming messages for dispatch
-#[derive(Clone)]
-pub(crate) struct DispatchMessage {
-    bridge: Bridge,
-    message_type: DispatchMessageType,
-    // Internal msg_id for Call messages, used for replies
-    msg_id: Option<String>,
-}
-
-#[derive(Clone)]
-pub(crate) enum DispatchMessageType {
-    /// A function call from the view layer
-    Call {
-        name: String,
-        payload: Option<String>,
-    },
-    /// An event notification from the view layer
-    Event {
-        name: String,
-        payload: Option<String>,
-    },
-    /// A callback completion notification
-    Callback { callback_id: String },
-}
-
-impl DispatchMessage {
-    /// Create a new DispatchMessage
-    pub(crate) fn new(
-        bridge: Bridge,
-        message_type: DispatchMessageType,
-        msg_id: Option<String>,
-    ) -> Self {
-        Self {
-            bridge,
-            message_type,
-            msg_id,
-        }
-    }
-
-    /// Reply with success to a Call message
-    /// Only works for Call messages, ignored for Event and Callback
-    ///
-    /// # Arguments
-    /// * `transport` - The message transport implementation
-    /// * `result` - Optional JSON string to include in the reply. Use Some(json_string) for fast operations
-    ///   that need to return data immediately, or None for operations that don't return data.
-    pub fn reply_success<T: MessageTransport>(
-        &self,
-        transport: &T,
-        result: Option<&str>,
-    ) -> Result<(), LxAppError> {
-        match &self.message_type {
-            DispatchMessageType::Call { .. } => {
-                if let Some(result_json) = result {
-                    let result_value = serde_json::from_str::<Value>(result_json).map_err(|e| {
-                        LxAppError::Bridge(format!("Failed to parse result JSON: {}", e))
-                    })?;
-                    self.bridge.reply_with_result_internal(
-                        transport,
-                        self.msg_id.clone(),
-                        result_value,
-                    )
-                } else {
-                    self.bridge
-                        .reply_success_internal(transport, self.msg_id.clone())
-                }
-            }
-            _ => Ok(()), // Events and callbacks don't need replies
-        }
-    }
-
-    /// Reply with failure to a Call message
-    /// Only works for Call messages, ignored for Event and Callback
-    pub fn reply_failure<T: MessageTransport>(
-        &self,
-        transport: &T,
-        error_message: &str,
-    ) -> Result<(), LxAppError> {
-        match &self.message_type {
-            DispatchMessageType::Call { .. } => {
-                self.bridge
-                    .reply_failure_internal(transport, self.msg_id.clone(), error_message)
-            }
-            _ => Ok(()), // Events and callbacks don't need replies
-        }
-    }
-
-    /// Get the message type
-    pub fn message_type(&self) -> &DispatchMessageType {
-        &self.message_type
-    }
+// V2 Incoming message types
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct HelloMsg {
+    pub v: u8,
+    pub nonce: String,
+    pub role: String,
+    #[serde(default, rename = "protocolsSupported")]
+    pub protocols_supported: Vec<u32>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct IncomingMessage {
-    #[serde(rename = "msgId")]
-    msg_id: Option<String>,
-    #[serde(rename = "type")]
-    type_: String,
-    name: Option<String>,
-    payload: Option<Value>,
-    #[serde(rename = "callbackId")]
-    callback_id: Option<String>,
+pub(crate) struct ReqMsg {
+    pub v: u8,
+    pub id: String,
+    pub method: String,
+    pub params: Option<Value>,
+    #[serde(default)]
+    pub cap: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct NotifyMsg {
+    pub v: u8,
+    pub method: String,
+    pub params: Option<Value>,
+    #[serde(default)]
+    pub cap: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct CancelMsg {
+    pub v: u8,
+    pub id: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct StateAckMsg {
+    pub v: u8,
+    pub scope: Option<String>,
+    pub rev: u64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct UnknownMsg {
+    pub v: Option<u8>,
+    pub kind: Option<String>,
+    pub id: Option<String>,
+    pub parse_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum IncomingMessage {
+    Hello(HelloMsg),
+    Req(ReqMsg),
+    Notify(NotifyMsg),
+    Cancel(CancelMsg),
+    StateAck(StateAckMsg),
+    Unknown(UnknownMsg),
 }
 
 impl IncomingMessage {
     pub fn from_json_str(json_str: &str) -> Result<Self, LxAppError> {
-        let message: Self = serde_json::from_str(json_str)?;
+        let raw: Value = serde_json::from_str(json_str)?;
+        let obj = raw
+            .as_object()
+            .ok_or_else(|| LxAppError::Bridge("Message must be JSON object".to_string()))?;
 
-        match message.type_.as_str() {
-            "reply" => {
-                if message.msg_id.is_none() {
-                    return Err(LxAppError::Bridge("Reply missing msgId".to_string()));
-                }
+        let v = obj
+            .get("v")
+            .and_then(|v| v.as_u64())
+            .and_then(|v| u8::try_from(v).ok());
+        let kind = obj
+            .get("kind")
+            .and_then(|k| k.as_str())
+            .map(|s| s.to_string());
+        let id = obj
+            .get("id")
+            .and_then(|i| i.as_str())
+            .map(|s| s.to_string());
+
+        let Some(kind_str) = kind.as_deref() else {
+            return Ok(IncomingMessage::Unknown(UnknownMsg {
+                v,
+                kind,
+                id,
+                parse_error: Some("Missing 'kind'".to_string()),
+            }));
+        };
+
+        match kind_str {
+            "hello" => serde_json::from_value::<HelloMsg>(raw.clone()).map(IncomingMessage::Hello),
+            "req" => serde_json::from_value::<ReqMsg>(raw.clone()).map(IncomingMessage::Req),
+            "notify" => {
+                serde_json::from_value::<NotifyMsg>(raw.clone()).map(IncomingMessage::Notify)
             }
-            "call" | "event" => {
-                if message.name.is_none() {
-                    return Err(LxAppError::Bridge(format!(
-                        "Message type '{}' missing 'name' field",
-                        message.type_
-                    )));
-                }
+            "cancel" => {
+                serde_json::from_value::<CancelMsg>(raw.clone()).map(IncomingMessage::Cancel)
             }
-            "callback" => {
-                if message.callback_id.is_none() {
-                    return Err(LxAppError::Bridge(
-                        "Callback missing callbackId".to_string(),
-                    ));
-                }
+            "state.ack" => {
+                serde_json::from_value::<StateAckMsg>(raw.clone()).map(IncomingMessage::StateAck)
             }
-            unknown_type => {
-                return Err(LxAppError::Bridge(format!(
-                    "Unknown message type: {}",
-                    unknown_type
-                )));
+            _ => {
+                return Ok(IncomingMessage::Unknown(UnknownMsg {
+                    v,
+                    kind,
+                    id,
+                    parse_error: None,
+                }));
             }
         }
-        Ok(message)
-    }
-
-    fn payload_as_opt_string(&self) -> Result<Option<String>, LxAppError> {
-        self.payload
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|e| LxAppError::Bridge(format!("Payload serialization failed: {}", e)))
-    }
-
-    fn msg_id(&self) -> Option<&str> {
-        self.msg_id.as_deref()
-    }
-
-    /// Convert to a dispatch message for cleaner handling
-    pub fn to_dispatch_message(
-        &self,
-        bridge: Bridge,
-    ) -> Result<Option<DispatchMessage>, LxAppError> {
-        match self.type_.as_str() {
-            "call" => {
-                let name = self.name.as_ref().unwrap().clone();
-                let msg_id = self.msg_id.as_ref().unwrap().clone();
-                let payload = self.payload_as_opt_string()?;
-                Ok(Some(DispatchMessage::new(
-                    bridge,
-                    DispatchMessageType::Call { name, payload },
-                    Some(msg_id),
-                )))
-            }
-            "event" => {
-                let name = self.name.as_ref().unwrap().clone();
-                let payload = self.payload_as_opt_string()?;
-                Ok(Some(DispatchMessage::new(
-                    bridge,
-                    DispatchMessageType::Event { name, payload },
-                    None,
-                )))
-            }
-            "callback" => {
-                let callback_id = self.callback_id.as_ref().unwrap().clone();
-                Ok(Some(DispatchMessage::new(
-                    bridge,
-                    DispatchMessageType::Callback { callback_id },
-                    None,
-                )))
-            }
-            "reply" => {
-                // Reply messages are handled internally, not dispatched
-                Ok(None)
-            }
-            _ => Err(LxAppError::Bridge(format!(
-                "Unknown message type: {}",
-                self.type_
-            ))),
-        }
+        .or_else(|e| {
+            Ok(IncomingMessage::Unknown(UnknownMsg {
+                v,
+                kind,
+                id,
+                parse_error: Some(e.to_string()),
+            }))
+        })
     }
 }
 
-impl std::fmt::Display for ErrorPayload {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
+// V2 Outgoing message types
+#[derive(Serialize)]
+struct HelloAck {
+    v: u8,
+    kind: &'static str,
+    nonce: String,
+    protocol: u8,
+    #[serde(rename = "sessionId")]
+    session_id: String,
 }
-impl std::error::Error for ErrorPayload {}
+
+#[derive(Serialize)]
+struct Ready {
+    v: u8,
+    kind: &'static str,
+    #[serde(rename = "sessionId")]
+    session_id: String,
+}
+
+#[derive(Serialize)]
+struct BridgeError {
+    code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    retryable: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct Res {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<BridgeError>,
+}
+
+#[derive(Serialize)]
+pub struct StateSnapshot {
+    v: u8,
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope: Option<String>,
+    rev: u64,
+    state: Value,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct JsonPatchOp {
+    pub op: String,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<Value>,
+}
+
+#[derive(Serialize)]
+pub struct StatePatch {
+    v: u8,
+    kind: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    scope: Option<String>,
+    #[serde(rename = "baseRev")]
+    base_rev: u64,
+    rev: u64,
+    ops: Vec<JsonPatchOp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ack: Option<bool>,
+}
 
 impl Bridge {
     pub(crate) fn new() -> Self {
         Self {
             msg_counter: Rc::new(AtomicUsize::new(0)),
-            pending_calls: Rc::new(Mutex::new(HashMap::new())),
-            bridge_ready: Rc::new(Mutex::new(false)),
+            handshake: Rc::new(Mutex::new(HandshakeState::default())),
+            pending_req_cancel: Rc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    /// Check if the bridge is ready for communication
+    // NOTE: Caller-provided `cap` MUST NOT be trusted for security. We infer the required
+    // capability from `method` and only use `cap` for consistency validation.
+    fn required_cap_for_method(method: &str) -> String {
+        if method.starts_with("host.") {
+            return "host".to_string();
+        }
+        if let Some((prefix, _)) = method.split_once('.') {
+            return prefix.to_string();
+        }
+        "page".to_string()
+    }
+
     pub(crate) fn is_ready(&self) -> bool {
-        *self.bridge_ready.lock().unwrap()
+        self.handshake.lock().unwrap().ready
     }
 
-    fn set_ready(&self, ready: bool) {
-        *self.bridge_ready.lock().unwrap() = ready;
+    fn set_ready(&self, session_id: String) {
+        let mut hs = self.handshake.lock().unwrap();
+        hs.session_id = Some(session_id);
+        hs.ready = true;
     }
 
-    #[allow(dead_code)]
-    fn generate_msg_id(&self) -> String {
-        let count = self.msg_counter.fetch_add(1, Ordering::Relaxed);
-        let timestamp = std::time::SystemTime::now()
+    fn new_session_id(&self) -> String {
+        let count = self
+            .msg_counter
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis();
-        format!("logic-{}-{}", timestamp, count)
+        let data = format!("{}-{}", ts, count);
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data.as_bytes())
     }
 
-    /// Sends an event to the View Layer
-    ///
-    /// Events are fire-and-forget messages that don't expect a reply.
-    ///
-    /// # Arguments
-    /// * `transport` - The message transport implementation
-    /// * `name` - The event name
-    /// * `payload` - Optional data associated with the event
-    pub fn send_event<T: MessageTransport>(
+    fn send_json<T: MessageTransport, S: Serialize>(
         &self,
         transport: &T,
-        name: &str,
-        payload: Option<Value>,
+        msg: &S,
     ) -> Result<(), LxAppError> {
-        let event_message = json!({
-            "msgId": Value::Null,
-            "type": "event",
-            "name": name,
-            "payload": payload
-        });
-
-        let serialized = serde_json::to_string(&event_message)?;
+        let serialized = serde_json::to_string(msg)?;
         transport.post_message_to_view(serialized)?;
         Ok(())
     }
 
-    /// Call a method on the View Layer and wait for a reply with timeout.
-    ///
-    /// This function sends a message to the View Layer and waits for a response.
-    /// If the View Layer doesn't respond within the timeout period, an error is returned
-    /// and the pending call is cleaned up.
-    #[allow(dead_code)]
-    async fn call<T: MessageTransport>(
+    fn send_res_ok<T: MessageTransport>(
         &self,
         transport: &T,
-        name: &str,
-        payload: Option<Value>,
-    ) -> Result<Value, LxAppError> {
-        let msg_id = self.generate_msg_id();
-        let call_message = json!({
-            "msgId": msg_id.clone(),
-            "type": "call",
-            "name": name,
-            "payload": payload
-        });
-        let serialized = serde_json::to_string(&call_message)?;
-
-        let (tx, rx) = oneshot::channel();
-        {
-            let mut pending = self.pending_calls.lock().unwrap();
-            pending.insert(msg_id.clone(), tx);
-        }
-
-        transport
-            .post_message_to_view(serialized)
-            .inspect_err(|_e| {
-                let mut pending_on_err = self.pending_calls.lock().unwrap();
-                pending_on_err.remove(&msg_id);
-            })?;
-
-        match timeout(Duration::from_millis(DEFAULT_TIMEOUT_MS), rx).await {
-            Ok(Ok(bridge_result)) => bridge_result,
-            Ok(Err(_)) => {
-                self.pending_calls.lock().unwrap().remove(&msg_id);
-                Err(LxAppError::Bridge(format!(
-                    "Reply channel closed for call '{}' (id: {}) before reply",
-                    name, msg_id
-                )))
-            }
-            Err(_) => {
-                self.pending_calls.lock().unwrap().remove(&msg_id);
-                Err(LxAppError::Bridge(format!(
-                    "Call '{}' (id: {}) to view timed out",
-                    name, msg_id
-                )))
-            }
-        }
-    }
-
-    /// Send data, optionally with a callback ID.
-    /// If a callback ID is provided, the View Layer can use it to notify when it has processed the data.
-    ///
-    /// # Arguments
-    /// * `transport` - The message transport implementation
-    /// * `data_patch_json` - JSON string containing the data patch to send to the View Layer
-    /// * `callback_id` - Optional callback ID that will be included in the payload
-    pub async fn set_data<T: MessageTransport>(
-        &self,
-        transport: &T,
-        data_patch_json: &str,
-        callback_id: Option<String>,
+        id: String,
+        result: Value,
     ) -> Result<(), LxAppError> {
-        let mut data_patch_value = serde_json::from_str::<Value>(data_patch_json)?;
-
-        // If we have a callback ID, we need to structure the payload according to the bridge spec
-        if let Some(cb_id) = callback_id {
-            // Create a new payload with the data and callbackId
-            data_patch_value = json!({
-                "data": data_patch_value,
-                "callbackId": cb_id
-            });
-        }
-
-        // setData is fire-and-forget, we don't need to wait for View layer confirmation
-        self.send_event(transport, "setData", Some(data_patch_value))?;
-        Ok(())
+        let msg = Res {
+            v: 2,
+            kind: "res",
+            id,
+            ok: true,
+            result: Some(result),
+            error: None,
+        };
+        self.send_json(transport, &msg)
     }
 
-    /// Process a raw message string received from the View Layer
-    ///
-    /// This function parses an incoming JSON message and dispatches it appropriately.
-    /// For `reply` messages, it resolves the corresponding pending call.
-    /// For `call`, `event`, and `callback` messages, it delegates to the provided handlers.
-    ///
-    /// # Arguments
-    /// * `transport` - The message transport implementation for service discovery
-    /// * `handler` - The message handler implementation for processing messages
-    /// * `message` - The incoming message
-    ///
-    /// # Returns
-    /// * `Ok(())` if the message was processed successfully
-    /// * `Err(LxAppError)` if there was an error processing the message
+    fn send_res_err<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: String,
+        code: &str,
+        message: Option<String>,
+    ) -> Result<(), LxAppError> {
+        let msg = Res {
+            v: 2,
+            kind: "res",
+            id,
+            ok: false,
+            result: None,
+            error: Some(BridgeError {
+                code: code.to_string(),
+                message,
+                data: None,
+                retryable: None,
+            }),
+        };
+        self.send_json(transport, &msg)
+    }
+
+    async fn send_hello_ack<T: MessageTransport>(
+        &self,
+        transport: &T,
+        nonce: String,
+        session_id: String,
+    ) -> Result<(), LxAppError> {
+        let msg = HelloAck {
+            v: 2,
+            kind: "helloAck",
+            nonce,
+            protocol: 2,
+            session_id,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    async fn send_ready<T: MessageTransport>(
+        &self,
+        transport: &T,
+        session_id: String,
+    ) -> Result<(), LxAppError> {
+        let msg = Ready {
+            v: 2,
+            kind: "ready",
+            session_id,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_state_snapshot<T: MessageTransport>(
+        &self,
+        transport: &T,
+        scope: Option<String>,
+        rev: u64,
+        state: Value,
+    ) -> Result<(), LxAppError> {
+        let msg = StateSnapshot {
+            v: 2,
+            kind: "state.snapshot",
+            scope,
+            rev,
+            state,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_state_patch<T: MessageTransport>(
+        &self,
+        transport: &T,
+        scope: Option<String>,
+        base_rev: u64,
+        rev: u64,
+        ops: Vec<JsonPatchOp>,
+        ack: Option<bool>,
+    ) -> Result<(), LxAppError> {
+        let msg = StatePatch {
+            v: 2,
+            kind: "state.patch",
+            scope,
+            base_rev,
+            rev,
+            ops,
+            ack,
+        };
+        self.send_json(transport, &msg)
+    }
+
     pub async fn process_incoming_message<T, H>(
         &self,
         transport: &T,
@@ -434,172 +438,237 @@ impl Bridge {
         message: Arc<IncomingMessage>,
     ) -> Result<(), LxAppError>
     where
-        T: MessageTransport,
-        H: MessageHandler,
+        T: MessageTransport + Clone + 'static,
+        H: MessageHandler + Clone + 'static,
     {
-        // Check bridge ready state first - only allow LXPortRdy event when not ready
-        if !self.is_ready() {
-            if message.type_ == "event" && message.name.as_deref() == Some("LXPortRdy") {
-                self.set_ready(true);
+        match &*message {
+            IncomingMessage::Hello(msg) => {
+                if msg.v != 2 {
+                    return Err(LxAppError::Bridge(format!(
+                        "Unsupported protocol: {}",
+                        msg.v
+                    )));
+                }
+                if !msg.protocols_supported.contains(&2) {
+                    return Err(LxAppError::Bridge(format!(
+                        "Protocol 2 not in supported list"
+                    )));
+                }
+                if msg.role != "view" {
+                    return Err(LxAppError::Bridge(format!("Unexpected role: {}", msg.role)));
+                }
+
+                if let Some(expected) = handler.expected_bridge_nonce() {
+                    if &expected != &msg.nonce {
+                        return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
+                    }
+                }
+
+                let session_id = self.new_session_id();
+                self.send_hello_ack(transport, msg.nonce.clone(), session_id.clone())
+                    .await?;
+
+                // Send initial state BEFORE ready so View has data when it starts
+                self.set_ready(session_id.clone());
                 handler.handle_bridge_ready().await;
+                self.send_ready(transport, session_id).await?;
+                crate::info!("Bridge ready");
                 return Ok(());
-            } else {
-                return Err(LxAppError::Bridge(
-                    "Bridge is not ready for communication".to_string(),
-                ));
             }
-        }
-
-        // Handle reply messages internally
-        if message.type_ == "reply" {
-            let msg_id = message.msg_id().unwrap();
-            let sender = {
-                let mut pending = self.pending_calls.lock().unwrap();
-                pending.remove(msg_id)
-            };
-
-            if let Some(tx) = sender {
-                let reply_payload_value =
-                    message.payload.as_ref().map_or(Value::Null, |v| v.clone());
-                let payload_struct_result: Result<ReplyPayload, serde_json::Error> =
-                    serde_json::from_value(reply_payload_value);
-
-                match payload_struct_result {
-                    Ok(payload_struct) => {
-                        let result = if payload_struct.success {
-                            Ok(payload_struct.result.unwrap_or(Value::Null))
-                        } else {
-                            Err(LxAppError::Bridge(
-                                payload_struct
-                                    .error
-                                    .unwrap_or_else(|| ErrorPayload {
-                                        message: "Unknown view error".to_string(),
-                                    })
-                                    .to_string(),
-                            ))
-                        };
-                        let _ = tx.send(result).map_err(|_e| {
-                            LxAppError::Bridge("Failed to send reply to waiting task".to_string())
-                        });
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(LxAppError::from(e))).map_err(|_send_error| {
-                            LxAppError::Bridge(
-                                "Failed to send reply deserialization error to waiting task"
-                                    .to_string(),
-                            )
-                        });
-                    }
+            IncomingMessage::Req(msg) => {
+                if msg.v != 2 {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_PROTOCOL_MISMATCH,
+                        Some(format!("Unsupported protocol: {}", msg.v)),
+                    );
+                    return Ok(());
                 }
-            }
-            return Ok(());
-        }
 
-        // Convert to dispatch message and handle
-        if let Some(dispatch_msg) = message.to_dispatch_message(self.clone())? {
-            // For Call and Event messages, check service type and handle accordingly
-            match &dispatch_msg.message_type {
-                DispatchMessageType::Call { name, .. }
-                | DispatchMessageType::Event { name, .. } => {
-                    let service_type = handler.get_service_type(name);
-                    match service_type {
-                        ServiceType::None => {
-                            let _ = dispatch_msg
-                                .reply_failure(transport, &format!("service {} not found", name));
-                            return Ok(());
+                let ReqMsg {
+                    id,
+                    method,
+                    params,
+                    cap,
+                    ..
+                } = msg;
+                if !self.is_ready() {
+                    let _ = self.send_res_err(
+                        transport,
+                        id.clone(),
+                        BRIDGE_NOT_READY,
+                        Some("Bridge not ready".to_string()),
+                    );
+                    return Ok(());
+                }
+                let required_cap = Self::required_cap_for_method(method);
+                if cap.is_empty() {
+                    let _ = self.send_res_err(
+                        transport,
+                        id.clone(),
+                        BRIDGE_MALFORMED_MESSAGE,
+                        Some("Missing cap".to_string()),
+                    );
+                    return Ok(());
+                }
+                if cap != &required_cap {
+                    let _ = self.send_res_err(
+                        transport,
+                        id.clone(),
+                        BRIDGE_MALFORMED_MESSAGE,
+                        Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                    );
+                    return Ok(());
+                }
+                if !handler.is_cap_allowed(&required_cap) {
+                    let _ =
+                        self.send_res_err(transport, id.clone(), BRIDGE_CAPABILITY_DENIED, None);
+                    return Ok(());
+                }
+
+                // Handle state.getSnapshot specially
+                if method == "state.getSnapshot" {
+                    let scope = params
+                        .as_ref()
+                        .and_then(|v| v.get("scope"))
+                        .and_then(|v| v.as_str());
+                    match handler.get_state_snapshot(scope).await {
+                        Ok(snapshot) => {
+                            let _ = self.send_res_ok(transport, id.clone(), snapshot);
                         }
-                        ServiceType::JSFunc(_) => {
-                            // For Call messages, reply success first
-                            if matches!(dispatch_msg.message_type, DispatchMessageType::Call { .. })
-                            {
-                                let _ = dispatch_msg.reply_success(transport, None);
-                            }
-                            handler.handle_message(dispatch_msg, service_type).await;
-                        }
-                        ServiceType::HostAPI(ref _host_handler) => {
-                            // Host API handlers don't need the MessageHandler interface
-                            // They are called directly in PageSvc
-                            handler.handle_message(dispatch_msg, service_type).await;
+                        Err(e) => {
+                            let _ = self.send_res_err(
+                                transport,
+                                id.clone(),
+                                BRIDGE_INTERNAL_ERROR,
+                                Some(e.to_string()),
+                            );
                         }
                     }
+                    return Ok(());
                 }
-                DispatchMessageType::Callback { .. } => {
-                    // Callbacks don't need service type checking
-                    handler
-                        .handle_message(dispatch_msg, ServiceType::None)
+
+                // Setup cancel channel
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                self.pending_req_cancel
+                    .lock()
+                    .unwrap()
+                    .insert(id.clone(), cancel_tx);
+
+                let params_json = params
+                    .as_ref()
+                    .map(|v| serde_json::to_string(v))
+                    .transpose()?;
+                let service_type = handler.get_service_type(method);
+
+                if matches!(service_type, ServiceType::None) {
+                    self.pending_req_cancel.lock().unwrap().remove(id);
+                    let _ = self.send_res_err(
+                        transport,
+                        id.clone(),
+                        BRIDGE_METHOD_NOT_FOUND,
+                        Some(format!("Method not found: {}", method)),
+                    );
+                    return Ok(());
+                }
+
+                // IMPORTANT:
+                // Do not await handler.handle_req() here, otherwise we can deadlock the single-thread
+                // worker message pump when the handler itself triggers nested ServiceMessages.
+                let bridge = <Bridge as Clone>::clone(self);
+                let transport = <T as Clone>::clone(transport);
+                let handler = <H as Clone>::clone(handler);
+                let id = id.clone();
+                let method = method.to_string();
+                rong::spawn(async move {
+                    let result = handler
+                        .handle_req(&method, params_json.as_deref(), service_type, cancel_rx)
                         .await;
+
+                    bridge.pending_req_cancel.lock().unwrap().remove(&id);
+
+                    match result {
+                        Ok(value) => {
+                            let _ = bridge.send_res_ok(&transport, id.clone(), value);
+                        }
+                        Err(e) => {
+                            let _ = bridge.send_res_err(&transport, id.clone(), &e.code, e.message);
+                        }
+                    }
+                });
+                return Ok(());
+            }
+            IncomingMessage::Notify(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
                 }
+                if !self.is_ready() {
+                    return Ok(());
+                }
+                let required_cap = Self::required_cap_for_method(&msg.method);
+                if msg.cap.is_empty() || msg.cap != required_cap {
+                    return Ok(());
+                }
+                if !handler.is_cap_allowed(&required_cap) {
+                    return Ok(());
+                }
+
+                let params_json = msg
+                    .params
+                    .as_ref()
+                    .map(|v| serde_json::to_string(v))
+                    .transpose()?;
+                let service_type = handler.get_service_type(&msg.method);
+                handler
+                    .handle_notify(&msg.method, params_json.as_deref(), service_type)
+                    .await;
+                return Ok(());
+            }
+            IncomingMessage::Cancel(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                if let Some(tx) = self.pending_req_cancel.lock().unwrap().remove(&msg.id) {
+                    let _ = tx.send(());
+                }
+                return Ok(());
+            }
+            IncomingMessage::StateAck(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                handler.handle_state_ack(msg.scope.clone(), msg.rev).await;
+                return Ok(());
+            }
+            IncomingMessage::Unknown(unknown) => {
+                if let Some(id) = &unknown.id {
+                    let (code, message) = if unknown.v != Some(2) {
+                        (
+                            BRIDGE_PROTOCOL_MISMATCH,
+                            Some(format!(
+                                "Unsupported protocol: {}",
+                                unknown
+                                    .v
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "missing".to_string())
+                            )),
+                        )
+                    } else {
+                        (
+                            BRIDGE_MALFORMED_MESSAGE,
+                            unknown
+                                .kind
+                                .as_deref()
+                                .map(|k| format!("Unknown kind: {}", k))
+                                .or_else(|| unknown.parse_error.clone())
+                                .or_else(|| Some("Unknown message".to_string())),
+                        )
+                    };
+                    let _ = self.send_res_err(transport, id.clone(), code, message);
+                }
+                return Ok(());
             }
         }
-
-        Ok(())
-    }
-
-    // Internal method for sending success replies
-    fn reply_success_internal<T: MessageTransport>(
-        &self,
-        transport: &T,
-        msg_id: Option<String>,
-    ) -> Result<(), LxAppError> {
-        self.reply_internal(transport, msg_id, true, None, None)
-    }
-
-    // Internal method for sending failure replies
-    fn reply_failure_internal<T: MessageTransport>(
-        &self,
-        transport: &T,
-        msg_id: Option<String>,
-        error_message: &str,
-    ) -> Result<(), LxAppError> {
-        let error_payload = ErrorPayload {
-            message: error_message.to_string(),
-        };
-        self.reply_internal(transport, msg_id, false, None, Some(error_payload))
-    }
-
-    // Internal method for sending result replies
-    fn reply_with_result_internal<T: MessageTransport>(
-        &self,
-        transport: &T,
-        msg_id: Option<String>,
-        result: Value,
-    ) -> Result<(), LxAppError> {
-        self.reply_internal(transport, msg_id, true, Some(result), None)
-    }
-
-    // Common internal method for all reply types
-    fn reply_internal<T: MessageTransport>(
-        &self,
-        transport: &T,
-        msg_id: Option<String>,
-        success: bool,
-        result: Option<Value>,
-        error: Option<ErrorPayload>,
-    ) -> Result<(), LxAppError> {
-        let mut reply_payload = json!({
-            "success": success
-        });
-
-        if let Some(result_value) = result {
-            reply_payload["result"] = result_value;
-        }
-
-        if let Some(error_payload) = error {
-            reply_payload["error"] = json!({
-                "message": error_payload.message
-            });
-        }
-
-        let reply_message = json!({
-            "msgId": msg_id,
-            "type": "reply",
-            "payload": reply_payload
-        });
-
-        let serialized_reply = serde_json::to_string(&reply_message)?;
-
-        transport
-            .post_message_to_view(serialized_reply)
-            .map_err(|e| LxAppError::Bridge(format!("Failed to post reply: {}", e)))
     }
 }

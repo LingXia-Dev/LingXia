@@ -77,8 +77,8 @@
           }
 
           // Generate and send patch if needed
-          const patch = diff(self._lastData, self.data);
-          if (Object.keys(patch).length > 0) {
+          const ops = diffToJsonPatchOps(self._lastData, self.data);
+          if (ops.length > 0) {
             const combinedCallback =
               callbacks.length === 0
                 ? undefined
@@ -87,8 +87,8 @@
                   : () => callbacks.forEach((cb) => cb());
 
             const maybePromise = combinedCallback
-              ? self._setData(JSON.stringify(patch), combinedCallback)
-              : self._setData(JSON.stringify(patch));
+              ? self._setData(JSON.stringify({ ops }), combinedCallback)
+              : self._setData(JSON.stringify({ ops }));
 
             if (maybePromise && typeof maybePromise.then === "function") {
               maybePromise.catch((err) => {
@@ -171,7 +171,7 @@ function setValueByPath(obj, path, value) {
     if (Array.isArray(current)) {
       const index = parseInt(finalKey, 10);
       if (index >= 0 && index < current.length) {
-        delete current[finalKey];
+        current.splice(index, 1);
       } else {
         throw new Error(
           `setData: Invalid array index "${finalKey}" for deletion`,
@@ -187,49 +187,74 @@ function setValueByPath(obj, path, value) {
   }
 }
 
-// Generates minimal diff between old and new values
-function diff(oldValue, newValue, currentPath = "", patch = {}) {
-  if (oldValue === newValue) return patch;
+function jsonPointerEscape(seg) {
+  return String(seg).replace(/~/g, "~0").replace(/\//g, "~1");
+}
 
-  if (
-    !newValue ||
-    typeof newValue !== "object" ||
-    !oldValue ||
-    typeof oldValue !== "object" ||
-    Array.isArray(newValue) !== Array.isArray(oldValue)
-  ) {
-    patch[currentPath] = newValue;
-    return patch;
+function joinJsonPointer(base, seg) {
+  const escaped = jsonPointerEscape(seg);
+  if (!base) return `/${escaped}`;
+  return `${base}/${escaped}`;
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+// Generates JSON Patch ops (RFC 6902 subset: add/replace/remove).
+// Arrays are treated as atomic values (replaced as a whole) for simplicity and correctness.
+function diffToJsonPatchOps(oldValue, newValue, basePath = "") {
+  const ops = [];
+  diffToJsonPatchOpsInto(oldValue, newValue, basePath, ops);
+  return ops;
+}
+
+function diffToJsonPatchOpsInto(oldValue, newValue, path, ops) {
+  if (oldValue === newValue) return;
+
+  const oldIsArr = Array.isArray(oldValue);
+  const newIsArr = Array.isArray(newValue);
+  const oldIsObj = isPlainObject(oldValue);
+  const newIsObj = isPlainObject(newValue);
+
+  // Different kinds => replace at this path (including root '').
+  if (oldIsArr !== newIsArr || oldIsObj !== newIsObj) {
+    ops.push({ op: "replace", path, value: newValue });
+    return;
   }
 
-  if (Array.isArray(newValue)) {
-    if (
-      oldValue.length !== newValue.length ||
-      JSON.stringify(oldValue) !== JSON.stringify(newValue)
-    ) {
-      patch[currentPath] = newValue;
+  // Arrays are atomic: replace when changed.
+  if (newIsArr) {
+    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+      ops.push({ op: "replace", path, value: newValue });
     }
-    return patch;
+    return;
   }
 
-  const oldKeys = new Set(Object.keys(oldValue));
-  const newKeys = new Set(Object.keys(newValue));
-
-  for (const key of newKeys) {
-    const newPath = currentPath ? `${currentPath}.${key}` : key;
-    if (!oldKeys.has(key)) {
-      patch[newPath] = newValue[key];
-    } else {
-      diff(oldValue[key], newValue[key], newPath, patch);
-    }
+  // Primitives (including null): replace when changed.
+  if (!newIsObj) {
+    ops.push({ op: "replace", path, value: newValue });
+    return;
   }
+
+  // Both plain objects: recurse.
+  const oldKeys = Object.keys(oldValue || {});
+  const newKeys = Object.keys(newValue || {});
+  const oldSet = new Set(oldKeys);
+  const newSet = new Set(newKeys);
 
   for (const key of oldKeys) {
-    if (!newKeys.has(key)) {
-      const deletedPath = currentPath ? `${currentPath}.${key}` : key;
-      patch[deletedPath] = undefined;
+    if (!newSet.has(key)) {
+      ops.push({ op: "remove", path: joinJsonPointer(path, key) });
     }
   }
 
-  return patch;
+  for (const key of newKeys) {
+    const childPath = joinJsonPointer(path, key);
+    if (!oldSet.has(key)) {
+      ops.push({ op: "add", path: childPath, value: newValue[key] });
+    } else {
+      diffToJsonPatchOpsInto(oldValue[key], newValue[key], childPath, ops);
+    }
+  }
 }

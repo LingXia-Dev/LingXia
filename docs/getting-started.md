@@ -167,5 +167,5 @@ Shows status of:
 ## Next Steps
 
 - [CLI Command Reference](./cli.md) - All available commands
-- [Bridge API Spec](./lingxia_bridge_spec.md) - Bridge API reference
+- [Bridge API Spec](./internal/lingxia_bridge_spec.md) - Bridge API reference
 - [App Links](./applinks.md) - Deep linking configuration
