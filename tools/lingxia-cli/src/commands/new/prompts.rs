@@ -176,7 +176,7 @@ pub(super) fn gather_lxapp_framework(yes: bool) -> Result<String> {
         return Ok("react".to_string());
     }
 
-    let choices = vec!["React", "Vue"];
+    let choices = vec!["React", "Vue", "HTML"];
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Choose framework")
         .items(&choices)

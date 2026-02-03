@@ -1,0 +1,20 @@
+{
+  "name": "__APP_PACKAGE_NAME__",
+  "version": "0.1.0",
+  "description": "A LingXia mini app powered by HTML",
+  "type": "module",
+  "scripts": {
+    "dev": "lingxia build --dev",
+    "build": "lingxia build --prod"
+  },
+  "keywords": ["lingxia", "miniapp", "html"],
+  "author": "",
+  "license": "MIT",
+  "lingxia": {
+    "framework": "html"
+  },
+  "devDependencies": {
+    "@lingxia/types": "^0.1.0",
+    "typescript": "^5.9.3"
+  }
+}

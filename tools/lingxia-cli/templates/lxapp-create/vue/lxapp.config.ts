@@ -1,10 +1,8 @@
-import { defineConfig } from '@lingxia/cli';
-
-export default defineConfig({
+export default {
   staticDirs: ['public'],
   alias: {
     '@shared': 'shared'
   },
   sourceDirs: ['shared'],
   assetDir: 'assets'
-});
+};

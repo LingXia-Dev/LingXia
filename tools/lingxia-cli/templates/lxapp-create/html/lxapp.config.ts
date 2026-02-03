@@ -1,8 +1,5 @@
 export default {
   staticDirs: ['public'],
-  alias: {
-    '@shared': 'shared'
-  },
-  sourceDirs: ['shared'],
+  sourceDirs: ['view'],
   assetDir: 'assets'
 };
