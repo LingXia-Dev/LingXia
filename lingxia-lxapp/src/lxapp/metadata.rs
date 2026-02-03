@@ -5,7 +5,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
-use super::page_config::OrientationConfig;
 use super::version::Version;
 use crate::LxAppError;
 
@@ -13,7 +12,6 @@ const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("inst
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
 const APP_META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("app_meta");
 const APP_VERSION_KEY: &str = "app_version";
-const APP_ORIENTATION_PREFIX: &str = "app_orientation::";
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -256,49 +254,6 @@ pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
         table
             .insert(APP_VERSION_KEY, version.as_bytes())
             .map_err(|e| metadata_error("write app version", e))?;
-    }
-    txn.commit()
-        .map_err(|e| metadata_error("commit app meta write", e))?;
-    Ok(())
-}
-
-pub(crate) fn app_orientation_get(appid: &str) -> Result<Option<OrientationConfig>, LxAppError> {
-    let key = format!("{}{}", APP_ORIENTATION_PREFIX, appid);
-    let db = database()?;
-    let txn = db
-        .begin_read()
-        .map_err(|e| metadata_error("begin read transaction", e))?;
-    let table = txn
-        .open_table(APP_META_TABLE)
-        .map_err(|e| metadata_error("open app meta table", e))?;
-    if let Some(value) = table
-        .get(key.as_str())
-        .map_err(|e| metadata_error("read app orientation", e))?
-    {
-        let orientation: OrientationConfig = serde_json::from_slice(value.value())?;
-        Ok(Some(orientation))
-    } else {
-        Ok(None)
-    }
-}
-
-pub(crate) fn app_orientation_set(
-    appid: &str,
-    orientation: &OrientationConfig,
-) -> Result<(), LxAppError> {
-    let key = format!("{}{}", APP_ORIENTATION_PREFIX, appid);
-    let db = database()?;
-    let txn = db
-        .begin_write()
-        .map_err(|e| metadata_error("begin write transaction", e))?;
-    {
-        let mut table = txn
-            .open_table(APP_META_TABLE)
-            .map_err(|e| metadata_error("open app meta table", e))?;
-        let serialized = serde_json::to_vec(orientation)?;
-        table
-            .insert(key.as_str(), serialized.as_slice())
-            .map_err(|e| metadata_error("write app orientation", e))?;
     }
     txn.commit()
         .map_err(|e| metadata_error("commit app meta write", e))?;

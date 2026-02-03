@@ -653,11 +653,6 @@ impl LxApp {
                     state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
                 }
 
-                if let Ok(override_config) = metadata::app_orientation_get(&self.appid) {
-                    let mut state = self.state.lock().unwrap();
-                    state.orientation_override = override_config;
-                }
-
                 Ok(())
             })
             .inspect_err(|_| {
@@ -699,14 +694,10 @@ impl LxApp {
         state.orientation_override.unwrap_or_default()
     }
 
-    pub fn set_app_orientation(&self, orientation: OrientationConfig) -> Result<(), LxAppError> {
+    pub fn set_app_orientation(&self, orientation: OrientationConfig) {
         let orientation = OrientationConfig::normalize(orientation.mode, orientation.rotation);
-        {
-            let mut state = self.state.lock().unwrap();
-            state.orientation_override = Some(orientation);
-        }
-        metadata::app_orientation_set(&self.appid, &orientation)?;
-        Ok(())
+        let mut state = self.state.lock().unwrap();
+        state.orientation_override = Some(orientation);
     }
 
     /// Get resolved orientation for a page; falls back to app-level config.

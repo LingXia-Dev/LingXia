@@ -37,12 +37,7 @@ fn set_app_orientation(ctx: JSContext, options: SetAppOrientationOptions) -> JSR
             format!("Invalid orientation value: {}", options.orientation),
         )
     })?;
-    lxapp.set_app_orientation(config).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to set app orientation: {}", e),
-        )
-    })?;
+    lxapp.set_app_orientation(config);
 
     if let Err(e) = lxapp.runtime.update_orientation_ui(lxapp.appid.clone()) {
         eprintln!("Failed to update orientation UI: {}", e);
