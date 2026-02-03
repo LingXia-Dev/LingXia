@@ -211,10 +211,20 @@ impl LxAppCache {
     /// - Exists(path): a cached file already exists.
     /// - NonExists(path): caller may write the file to this path.
     pub fn resolve_path_with_ext<K: Hash + ?Sized>(&self, key: &K, ext: &str) -> ResolveResult {
+        // Fast path: if the caller knows the expected extension (common for https resources),
+        // avoid scanning the whole cache directory.
+        let hash_id = hash_key(key);
+        let candidate = self.target_path_for_ext(key, ext);
+
+        if self.ok_marker_exists(&hash_id) && candidate.exists() {
+            return ResolveResult::Exists(candidate);
+        }
+
+        // Fallback to legacy resolution (supports extension mismatch / media copies).
         if let Some(p) = self.try_resolve(key) {
             ResolveResult::Exists(p)
         } else {
-            ResolveResult::NonExists(self.target_path_for_ext(key, ext))
+            ResolveResult::NonExists(candidate)
         }
     }
 
