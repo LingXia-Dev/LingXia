@@ -10,6 +10,7 @@ import {
   DEFAULT_STATIC_DIRS,
   resolveStaticDirs,
 } from "../constants/static-dirs.js";
+import { TemplateManager } from "../template.js";
 import { readProjectFramework } from "../config/framework.js";
 import type { ProjectFramework } from "../config/framework.js";
 import type { BuildConfig } from "../config/lxapp-config.js";
@@ -22,6 +23,7 @@ export class ViewBuilder {
   private pageProcessor: PageProcessor;
   private staticDirs: string[];
   private framework: ProjectFramework;
+  private templateManager: TemplateManager;
 
   constructor(
     projectPath: string,
@@ -32,6 +34,7 @@ export class ViewBuilder {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
     this.fileUtils = new FileUtils();
+    this.templateManager = new TemplateManager();
     this.staticDirs = resolveStaticDirs(projectPath, buildConfig);
     // Use provided framework or auto-detect
     this.framework = framework ?? readProjectFramework(projectPath);
@@ -173,11 +176,15 @@ export class ViewBuilder {
 
       await fs.promises.mkdir(outputDir, { recursive: true });
 
-      // Copy HTML file and inject runtime.js
+      // Extract page functions from Logic layer
+      const pageFunctions = this.extractHtmlPageFunctions(sourceDir, baseName);
+
+      // Copy HTML file and inject runtime.js + page function bridge
       const htmlSrc = path.join(this.projectPath, page.path);
       const htmlDest = path.join(outputDir, `${baseName}.html`);
       let htmlContent = await fs.promises.readFile(htmlSrc, "utf-8");
       htmlContent = this.injectRuntimeScript(htmlContent);
+      htmlContent = this.injectPageFunctionBridge(htmlContent, pageFunctions);
 
       // Validate HTML script references before writing
       this.validateHtmlScriptReferences(htmlContent, page.path, pageDir, outputBase);
@@ -228,10 +235,64 @@ export class ViewBuilder {
         await fs.promises.copyFile(jsonSrc, jsonDest);
       }
 
-      console.log(`  ✓ ${page.path}`);
+      if (pageFunctions.length > 0) {
+        console.log(`  ✓ ${page.path} (${pageFunctions.length} functions)`);
+      } else {
+        console.log(`  ✓ ${page.path}`);
+      }
     }
 
     console.log(`✅ HTML view build complete`);
+  }
+
+  /**
+   * Extract page functions from the Logic layer for HTML pages.
+   */
+  private extractHtmlPageFunctions(sourceDir: string, baseName: string): string[] {
+    const tsPath = path.join(sourceDir, `${baseName}.ts`);
+    const jsPath = path.join(sourceDir, `${baseName}.js`);
+    const logicPath = fs.existsSync(tsPath) ? tsPath : fs.existsSync(jsPath) ? jsPath : null;
+
+    if (!logicPath) {
+      return [];
+    }
+
+    try {
+      const logicContent = fs.readFileSync(logicPath, "utf-8");
+      return extractPageFunctionsFromSource(logicContent);
+    } catch (error) {
+      console.warn(`⚠️ Failed to extract functions from ${logicPath}`);
+      return [];
+    }
+  }
+
+  /**
+   * Inject page function bridge script into HTML content.
+   */
+  private injectPageFunctionBridge(htmlContent: string, functions: string[]): string {
+    if (functions.length === 0) {
+      return htmlContent;
+    }
+
+    const bridgeCode = this.templateManager.generateFunctionBridge(functions);
+    const bridgeScript = `<script>${bridgeCode}</script>`;
+
+    // Insert after runtime.js script
+    const runtimePattern = /<script[^>]+src=["']lx:\/\/assets\/runtime\.js["'][^>]*><\/script>/i;
+    const match = htmlContent.match(runtimePattern);
+    if (match) {
+      const insertPos = match.index! + match[0].length;
+      return `${htmlContent.slice(0, insertPos)}\n  ${bridgeScript}${htmlContent.slice(insertPos)}`;
+    }
+
+    // Fallback: insert before </head>
+    const headIndex = htmlContent.toLowerCase().indexOf("</head>");
+    if (headIndex !== -1) {
+      return `${htmlContent.slice(0, headIndex)}  ${bridgeScript}\n${htmlContent.slice(headIndex)}`;
+    }
+
+    // Last resort: prepend
+    return `${bridgeScript}\n${htmlContent}`;
   }
 
   /**
