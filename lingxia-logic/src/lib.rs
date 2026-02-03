@@ -6,6 +6,7 @@ mod display;
 mod env;
 mod fs;
 pub mod i18n;
+mod input;
 mod location;
 mod media;
 mod navigator;
@@ -14,12 +15,12 @@ mod system;
 mod ui;
 mod update;
 
-pub struct LxLogicRuntime;
-
 // Auto-generated module, do not modify manually
 // Regenerate with: cargo run -p lingxia-gen -- i18n
 mod i18n_generated;
 pub use i18n_generated::*;
+
+pub struct LxLogicRuntime;
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
@@ -29,6 +30,7 @@ impl LxLogicExtension for LxLogicRuntime {
         location::init(ctx)?;
         navigator::init(ctx)?;
         update::init(ctx)?;
+        input::init(ctx)?;
         ui::init(ctx)?;
         system::init(ctx)?;
         media::init(ctx)?;

@@ -7,6 +7,7 @@ mod error;
 pub mod event;
 mod executor;
 pub mod host;
+pub mod key_event;
 pub mod log;
 pub mod lx;
 mod lxapp;

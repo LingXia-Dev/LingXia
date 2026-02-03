@@ -42,6 +42,10 @@ object NativeApi {
     const val UI_EVENT_BACK_PRESS = 3
     const val UI_EVENT_PULL_DOWN_REFRESH = 4
 
+    // Key Event Type Constants
+    const val KEY_EVENT_DOWN = 0
+    const val KEY_EVENT_UP = 1
+
     // UI Event Data Constants
     const val CAPSULE_ACTION_MORE = "more"
     const val CAPSULE_ACTION_CLOSE = "close"
@@ -90,6 +94,16 @@ object NativeApi {
      */
     @JvmStatic
     external fun onUiEvent(appId: String, eventType: Int, data: String): Int
+
+    /**
+     * Dispatch key event to native layer
+     * @param appId The ID of the app
+     * @param eventType 0=down, 1=up
+     * @param payloadJson JSON payload of key event data
+     * @return true if event was dispatched, false otherwise
+     */
+    @JvmStatic
+    external fun onKeyEvent(appId: String, eventType: Int, payloadJson: String): Boolean
 
     /**
      * Get LxApp information using typed API

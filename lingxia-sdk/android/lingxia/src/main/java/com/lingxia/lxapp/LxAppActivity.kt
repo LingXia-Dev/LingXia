@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -853,11 +854,11 @@ class LxAppActivity : AppCompatActivity() {
         val statusBarHeight = getStatusBarHeight(this)
 
         val capsuleTopDp = LxAppTheme.Metrics.calculateCapsuleTopDp(statusBarHeight, density)
-        
+
         // Web layout uses items-center with height+16, causing an 8px centering offset
         // Compensate by returning capsule_position - 8 (same strategy as iOS)
         val top = (capsuleTopDp - 8).toDouble()
-        
+
         val width = widthPx / density
         val height = LxAppTheme.Metrics.CAPSULE_HEIGHT_DP.toDouble()
 
@@ -890,6 +891,69 @@ class LxAppActivity : AppCompatActivity() {
         }
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (::appId.isInitialized && appId.isNotBlank()) {
+            val action = event.action
+            if (action == KeyEvent.ACTION_DOWN || action == KeyEvent.ACTION_UP) {
+                val payload = buildKeyEventPayload(event)
+                if (payload != null) {
+                    val eventType = if (action == KeyEvent.ACTION_DOWN) {
+                        NativeApi.KEY_EVENT_DOWN
+                    } else {
+                        NativeApi.KEY_EVENT_UP
+                    }
+                    runCatching {
+                        NativeApi.onKeyEvent(appId, eventType, payload)
+                    }.onFailure { error ->
+                        Log.w(TAG, "onKeyEvent failed: ${error.message}")
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun buildKeyEventPayload(event: KeyEvent): String? {
+        val code = KeyEvent.keyCodeToString(event.keyCode)
+        val key = resolveKey(event, code)
+        if (key.isEmpty() && code.isEmpty()) return null
+
+        return JSONObject().apply {
+            put("key", key)
+            put("code", code)
+            if (event.isAltPressed) put("altKey", true)
+            if (event.isCtrlPressed) put("ctrlKey", true)
+            if (event.isShiftPressed) put("shiftKey", true)
+            if (event.isMetaPressed) put("metaKey", true)
+            if (event.repeatCount > 0) put("repeat", true)
+        }.toString()
+    }
+
+    private fun resolveKey(event: KeyEvent, code: String): String {
+        val unicode = event.getUnicodeChar(event.metaState)
+        if (unicode != 0) {
+            return String(Character.toChars(unicode))
+        }
+
+        return when (event.keyCode) {
+            KeyEvent.KEYCODE_ENTER -> "Enter"
+            KeyEvent.KEYCODE_DEL -> "Backspace"
+            KeyEvent.KEYCODE_TAB -> "Tab"
+            KeyEvent.KEYCODE_ESCAPE -> "Escape"
+            KeyEvent.KEYCODE_BACK -> "Back"
+            KeyEvent.KEYCODE_DPAD_LEFT -> "ArrowLeft"
+            KeyEvent.KEYCODE_DPAD_RIGHT -> "ArrowRight"
+            KeyEvent.KEYCODE_DPAD_UP -> "ArrowUp"
+            KeyEvent.KEYCODE_DPAD_DOWN -> "ArrowDown"
+            KeyEvent.KEYCODE_SPACE -> " "
+            KeyEvent.KEYCODE_MOVE_HOME -> "Home"
+            KeyEvent.KEYCODE_MOVE_END -> "End"
+            KeyEvent.KEYCODE_PAGE_UP -> "PageUp"
+            KeyEvent.KEYCODE_PAGE_DOWN -> "PageDown"
+            else -> code.removePrefix("KEYCODE_")
+        }
     }
 
     override fun onPause() {
@@ -1255,7 +1319,7 @@ class LxAppActivity : AppCompatActivity() {
 
     /**
      * Trigger onPageShow for WebView container
-     * 
+     *
      * IMPORTANT: Post to next frame to ensure all UI components (including pullToRefreshHelper)
      * are fully initialized before JS onShow is triggered
      */

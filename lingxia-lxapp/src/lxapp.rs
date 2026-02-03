@@ -455,6 +455,10 @@ impl LxApp {
         self.session.status()
     }
 
+    pub fn session_id(&self) -> LxAppSessionId {
+        self.session.id
+    }
+
     pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
         self.session.set_status(s);
     }
@@ -475,6 +479,7 @@ impl LxApp {
     pub fn shutdown(&self) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
         self.set_status(LxAppSessionStatus::Closing);
+        crate::key_event::clear(&self.appid, self.session.id);
 
         // Close UI window
         let _ = self

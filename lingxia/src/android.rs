@@ -350,6 +350,43 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
     }
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
+    mut env: JNIEnv,
+    _class: JClass,
+    appid: JString,
+    event_type: jint,
+    payload_json: JString,
+) -> jboolean {
+    let appid: String = env.get_string(&appid).unwrap().into();
+    let payload: String = env.get_string(&payload_json).unwrap().into();
+
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return 0;
+    };
+    let session_id = lxapp.session_id();
+
+    const KEY_EVENT_DOWN: jint = 0;
+    const KEY_EVENT_UP: jint = 1;
+
+    let should_dispatch = match event_type {
+        KEY_EVENT_DOWN => lxapp::key_event::has_key_down(&appid, session_id),
+        KEY_EVENT_UP => lxapp::key_event::has_key_up(&appid, session_id),
+        _ => false,
+    };
+
+    if !should_dispatch {
+        return 0;
+    }
+
+    let event_name = if event_type == KEY_EVENT_DOWN { "KeyDown" } else { "KeyUp" };
+    if lxapp::emit_app_event(&appid, event_name, Some(payload)) {
+        1
+    } else {
+        0
+    }
+}
+
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
