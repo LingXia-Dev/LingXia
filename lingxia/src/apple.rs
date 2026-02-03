@@ -154,6 +154,11 @@ mod bridge {
 
         #[swift_bridge(swift_name = "onUserCaptureScreen")]
         fn on_user_capture_screen(lxappid: &str);
+
+        // Set development path for home lxapp (macOS only)
+        // Must be called before lxappInit. Returns true if successful.
+        #[swift_bridge(swift_name = "setHomeLxAppDevPath")]
+        fn set_home_lxapp_dev_path(path: &str) -> bool;
     }
 }
 
@@ -487,4 +492,10 @@ pub fn on_user_capture_screen(lxappid: &str) {
         .to_json_string();
         let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnUserCaptureScreen, Some(args));
     }
+}
+
+/// Set development path for home lxapp
+/// Only effective on macOS; returns false on iOS.
+pub fn set_home_lxapp_dev_path(path: &str) -> bool {
+    lxapp::set_home_lxapp_dev_path(path)
 }

@@ -56,6 +56,62 @@ const DEFAULT_VERSION: &str = "0.0.1";
 const LXAPP_STACK_MAX: usize = 5;
 const PAGE_STACK_MAX: usize = 10;
 
+/// Development path override for home lxapp (macOS only)
+#[cfg(target_os = "macos")]
+static HOME_LXAPP_DEV_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// Set the development path for home lxapp
+///
+/// This must be called before the home lxapp is initialized.
+/// The path must exist and contain a valid lxapp.json file.
+/// Only effective on macOS; returns false on other platforms.
+#[cfg(target_os = "macos")]
+pub fn set_home_lxapp_dev_path(path: &str) -> bool {
+    let path = PathBuf::from(path);
+
+    if !path.exists() {
+        warn!(
+            "set_home_lxapp_dev_path: path does not exist: {}",
+            path.display()
+        );
+        return false;
+    }
+
+    if !path.join("lxapp.json").exists() {
+        warn!(
+            "set_home_lxapp_dev_path: lxapp.json not found in: {}",
+            path.display()
+        );
+        return false;
+    }
+
+    match HOME_LXAPP_DEV_PATH.set(path.clone()) {
+        Ok(()) => {
+            info!("Home lxapp dev path set to: {}", path.display());
+            true
+        }
+        Err(_) => {
+            warn!("set_home_lxapp_dev_path: path already set");
+            false
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_home_lxapp_dev_path(_path: &str) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn get_home_lxapp_dev_path() -> Option<&'static PathBuf> {
+    HOME_LXAPP_DEV_PATH.get()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_home_lxapp_dev_path() -> Option<&'static PathBuf> {
+    None
+}
+
 /// Manages a collection of lxapp applications
 pub struct LxApps {
     /// Collection of lxapps, keyed by app ID
@@ -519,14 +575,21 @@ impl LxApp {
         // Determine directory name from fingerprint
         let dir_name = self.fingermark.clone();
 
-        // Set up app directory
+        // Set up app directory (default path)
         let base_dir = self
             .runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR);
-
         self.lxapp_dir = base_dir.join(&dir_name);
+
+        // For home lxapp, override with dev path if explicitly set via API
+        if self.is_home_lxapp {
+            if let Some(dev_path) = get_home_lxapp_dev_path() {
+                info!("Using dev path for home lxapp: {}", dev_path.display());
+                self.lxapp_dir = dev_path.clone();
+            }
+        }
 
         // Compute storage file path: <data>/lingxia/storage/<fingermark>.redb
         self.storage_file_path = self
