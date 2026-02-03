@@ -45,44 +45,64 @@ fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
     })
 }
 
-/// Detect app bundle based on bundle identifier
+/// Detect app bundle based on bundle identifier, name, or executable
 fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<Retained<NSBundle>> {
     unsafe {
+        // Try 1: Bundle identifier based (e.g., app.lingxia.example.lxapp → lxapp_lxapp)
         let bundle_identifier: Option<Retained<NSString>> =
             msg_send![main_bundle, bundleIdentifier];
         if let Some(identifier) = bundle_identifier {
             let identifier_str = identifier.to_string();
             if let Some(last_component) = identifier_str.split('.').next_back() {
-                let spm_bundle_name = format!("{}_{}", last_component, last_component);
-                let bundle_name_ns = NSString::from_str(&spm_bundle_name);
-                let bundle_path: Option<Retained<NSString>> = msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
-
-                if let Some(path) = bundle_path {
-                    let resource_bundle: Option<Retained<NSBundle>> =
-                        msg_send![NSBundle::class(), bundleWithPath: &*path];
-                    return resource_bundle;
+                if let Some(bundle) = try_find_spm_bundle(main_bundle, last_component, bundle_type)
+                {
+                    return Some(bundle);
                 }
             }
         }
 
-        // Fallback: CFBundleName-based SPM naming (keeps older behavior working)
+        // Try 2: CFBundleName based (e.g., LingXia → LingXia_LingXia)
         let cf_bundle_name_key = NSString::from_str("CFBundleName");
         let bundle_name: Option<Retained<NSString>> =
             msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_bundle_name_key];
         if let Some(name) = bundle_name {
-            let name_str = name.to_string();
-            let spm_bundle_name = format!("{}_{}", name_str, name_str);
-            let bundle_name_ns = NSString::from_str(&spm_bundle_name);
-            let bundle_path: Option<Retained<NSString>> =
-                msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
-
-            if let Some(path) = bundle_path {
-                let resource_bundle: Option<Retained<NSBundle>> =
-                    msg_send![NSBundle::class(), bundleWithPath: &*path];
-                return resource_bundle;
+            if let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type) {
+                return Some(bundle);
             }
         }
 
+        // Try 3: CFBundleExecutable based (e.g., LingXiaDemo → LingXiaDemo_LingXiaDemo)
+        // This handles macOS dev builds where executable name matches SPM target
+        let cf_executable_key = NSString::from_str("CFBundleExecutable");
+        let executable_name: Option<Retained<NSString>> =
+            msg_send![main_bundle, objectForInfoDictionaryKey: &*cf_executable_key];
+        if let Some(name) = executable_name {
+            if let Some(bundle) = try_find_spm_bundle(main_bundle, &name.to_string(), bundle_type) {
+                return Some(bundle);
+            }
+        }
+
+        None
+    }
+}
+
+/// Try to find SPM bundle with format Name_Name.bundle
+fn try_find_spm_bundle(
+    main_bundle: &NSBundle,
+    name: &str,
+    bundle_type: &NSString,
+) -> Option<Retained<NSBundle>> {
+    unsafe {
+        let spm_bundle_name = format!("{}_{}", name, name);
+        let bundle_name_ns = NSString::from_str(&spm_bundle_name);
+        let bundle_path: Option<Retained<NSString>> =
+            msg_send![main_bundle, pathForResource: &*bundle_name_ns, ofType: &*bundle_type];
+
+        if let Some(path) = bundle_path {
+            let resource_bundle: Option<Retained<NSBundle>> =
+                msg_send![NSBundle::class(), bundleWithPath: &*path];
+            return resource_bundle;
+        }
         None
     }
 }
