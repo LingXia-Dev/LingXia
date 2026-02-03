@@ -26,6 +26,11 @@
       "import": "./dist/device/index.js",
       "require": "./dist/device/index.js"
     },
+    "./input": {
+      "types": "./dist/input/index.d.ts",
+      "import": "./dist/input/index.js",
+      "require": "./dist/input/index.js"
+    },
     "./storage": {
       "types": "./dist/storage/index.d.ts",
       "import": "./dist/storage/index.js",

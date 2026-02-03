@@ -6,6 +6,7 @@
 
 export * from './app';
 export * from './device';
+export * from './input';
 export * from './storage';
 export * from './location';
 export * from './system';
@@ -28,8 +29,9 @@ import type {
   WifiConnectedCallback,
   AppOrientationInfo,
   SetAppOrientationOptions,
-  KeyEventCallback,
 } from './device';
+
+import type { KeyEventCallback } from './input';
 
 import type {
   LxEnv,

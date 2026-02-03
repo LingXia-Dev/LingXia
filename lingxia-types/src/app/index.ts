@@ -27,10 +27,10 @@ export interface AppLaunchOptions {
 
 export interface AppConfig {
   globalData?: Record<string, unknown>;
-  onLaunch?: (options?: AppLaunchOptions) => void;
-  onShow?: (args?: AppLifecycleEventArgs) => void;
-  onHide?: (args?: AppLifecycleEventArgs) => void;
-  onUserCaptureScreen?: () => void;
+  onLaunch?: (options?: AppLaunchOptions) => void | Promise<void>;
+  onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
+  onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
+  onUserCaptureScreen?: () => void | Promise<void>;
   [key: string]: unknown;
 }
 
@@ -44,12 +44,12 @@ export interface PageLoadOptions {
 
 export interface PageConfig<TData extends Record<string, unknown> = Record<string, unknown>> {
   data?: TData;
-  onLoad?: (options?: PageLoadOptions) => void;
-  onShow?: () => void;
-  onReady?: () => void;
-  onHide?: () => void;
-  onUnload?: () => void;
-  onPullDownRefresh?: () => void;
+  onLoad?: (options?: PageLoadOptions) => void | Promise<void>;
+  onShow?: () => void | Promise<void>;
+  onReady?: () => void | Promise<void>;
+  onHide?: () => void | Promise<void>;
+  onUnload?: () => void | Promise<void>;
+  onPullDownRefresh?: () => void | Promise<void>;
   [key: string]: unknown;
 }
 

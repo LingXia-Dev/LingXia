@@ -43,13 +43,4 @@ export interface SetAppOrientationOptions {
   orientation: string;
 }
 
-export interface KeyEvent {
-  key: string;
-  code: string;
-  altKey?: boolean;
-  ctrlKey?: boolean;
-  shiftKey?: boolean;
-  metaKey?: boolean;
-}
-
-export type KeyEventCallback = (event: KeyEvent) => void;
+export type { KeyEvent, KeyEventCallback } from '../input';
