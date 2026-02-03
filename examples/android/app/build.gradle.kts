@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.lingxia.example.lxapp"
-    compileSdk = 35
+    compileSdk = (project.findProperty("COMPILE_SDK") as String?)?.toIntOrNull() ?: 35
 
     defaultConfig {
         applicationId = "com.lingxia.example.lxapp"
-        minSdk = 29
-        targetSdk = 35
+        minSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
+        targetSdk = (project.findProperty("TARGET_SDK") as String?)?.toIntOrNull() ?: 35
         versionCode = 1
         versionName = "1.0"
 

@@ -20,34 +20,29 @@ WORKSPACE_ROOT="$LINGXIA_ROOT"
 LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
 
 # Android-specific options
-BUILD_ARMV7=false
+BUILD_ARM32=false
 USE_ES5_RUNTIME=false
+
+# SDK version defaults (can be overridden for older device support)
+MIN_SDK=29
+TARGET_SDK=35
+COMPILE_SDK=35
 
 # Parse command line arguments
 for arg in "$@"; do
     if ! parse_common_arg "$arg"; then
         case $arg in
-            --arm32|arm32|with-arm32|with-armv7)
-                BUILD_ARMV7=true
-                echo "✅ Enabling 32-bit (armeabi-v7a) build"
-                USE_ES5_RUNTIME=true
-                echo "✅ Enabling ES5 web runtime (recommended for older Android WebView)"
-                ;;
-            --es5|es5|legacy|with-es5)
-                USE_ES5_RUNTIME=true
-                echo "✅ Enabling ES5 web runtime"
-                ;;
-            --es2020|es2020|modern)
-                USE_ES5_RUNTIME=false
-                echo "✅ Using modern web runtime"
+            --arm32)
+                BUILD_ARM32=true
+                USE_ES5_RUNTIME=true  # ES5 runtime is always enabled for arm32
+                # Use lower min/target SDK for older 32-bit devices
+                # Note: compileSdk stays high for dependency compatibility
+                MIN_SDK=21
+                TARGET_SDK=28
                 ;;
             --help|-h)
-                show_help "  --arm32                 Enable 32-bit build
-  --es5                   Enable ES5 web runtime"
+                show_help "  --arm32       Build 32-bit (armeabi-v7a) with ES5 runtime"
                 exit 0
-                ;;
-            --framework)
-                # Handle --framework vue (next arg) - skip
                 ;;
             *)
                 echo "Unknown argument: $arg"
@@ -57,6 +52,15 @@ for arg in "$@"; do
         esac
     fi
 done
+
+# Show build config
+if [ "$BUILD_ARM32" = true ]; then
+    echo "✅ 32-bit (armeabi-v7a) + ES5 runtime"
+else
+    echo "✅ 64-bit (arm64-v8a)"
+fi
+echo "✅ SDK: min=$MIN_SDK, target=$TARGET_SDK, compile=$COMPILE_SDK"
+
 BASE_SDK_VERSION="$(awk '
   /^\[workspace\.package\]/ {in_section=1; next}
   /^\[/ {in_section=0}
@@ -131,6 +135,8 @@ build_rust_android() {
             export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
             export CC_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
             export CXX_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cxx_bin"
+            # Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
+            export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS="-C link-arg=-Wl,--hash-style=both"
             ;;
         *)
             echo "Unsupported target: $target" >&2
@@ -164,33 +170,21 @@ bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"
-    # Build lingxia-lib for 64-bit Android
-    build_rust_android "aarch64-linux-android" "aarch64" "aarch64-linux-android33-clang" "aarch64-linux-android33-clang++"
 
-    # Optionally build 32-bit Android when requested
-    if [ "$BUILD_ARMV7" = true ]; then
-        build_rust_android "armv7-linux-androideabi" "armv7-a" "armv7a-linux-androideabi33-clang" "armv7a-linux-androideabi33-clang++"
-    fi
-
-    # Copy .so to App's jniLibs
-    echo "  → Copying liblingxia_lib.so to App jniLibs (arm64-v8a)..."
-    mkdir -p "$APP_JNILIBS_DIR_ARM64"
-    cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia_lib.so" "$APP_JNILIBS_DIR_ARM64/liblingxia.so"
-
-    if [ "$BUILD_ARMV7" = true ]; then
+    if [ "$BUILD_ARM32" = true ]; then
+        # Use API 21 for arm32 to support older devices (API 22+)
+        build_rust_android "armv7-linux-androideabi" "armv7-a" "armv7a-linux-androideabi21-clang" "armv7a-linux-androideabi21-clang++"
         echo "  → Copying liblingxia_lib.so to App jniLibs (armeabi-v7a)..."
         mkdir -p "$APP_JNILIBS_DIR_ARMV7"
         cp "$WORKSPACE_ROOT/target/armv7-linux-androideabi/release/liblingxia_lib.so" "$APP_JNILIBS_DIR_ARMV7/liblingxia.so"
+    else
+        build_rust_android "aarch64-linux-android" "aarch64" "aarch64-linux-android33-clang" "aarch64-linux-android33-clang++"
+        echo "  → Copying liblingxia_lib.so to App jniLibs (arm64-v8a)..."
+        mkdir -p "$APP_JNILIBS_DIR_ARM64"
+        cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia_lib.so" "$APP_JNILIBS_DIR_ARM64/liblingxia.so"
     fi
 
     echo "✅ Rust build complete"
-    if [ "$BUILD_ARMV7" = true ]; then
-        echo "   .so locations:"
-        echo "     - $APP_JNILIBS_DIR_ARM64/liblingxia.so"
-        echo "     - $APP_JNILIBS_DIR_ARMV7/liblingxia.so"
-    else
-        echo "   .so location: $APP_JNILIBS_DIR_ARM64/liblingxia.so"
-    fi
 else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi
@@ -210,7 +204,11 @@ build_and_copy_homelxapp "$ASSETS_DIR"
 echo "[4/4] Building and installing Android example app (release)..."
 cd "$SCRIPT_DIR"
 # ./gradlew clean
-./gradlew assembleRelease -PLINGXIA_SDK_VERSION="$LINGXIA_SDK_VERSION"
+./gradlew assembleRelease \
+    -PLINGXIA_SDK_VERSION="$LINGXIA_SDK_VERSION" \
+    -PMIN_SDK="$MIN_SDK" \
+    -PTARGET_SDK="$TARGET_SDK" \
+    -PCOMPILE_SDK="$COMPILE_SDK"
 
 echo "Installing APK on all connected devices..."
 for device in $(adb devices | awk 'NR>1 && NF>0 {print $1}'); do

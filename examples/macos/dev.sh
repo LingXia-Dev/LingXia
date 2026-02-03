@@ -109,9 +109,14 @@ if [ -f "Sources/Resources/AppIcon.png" ]; then
     cp "Sources/Resources/AppIcon.png" "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# Copy other resources
-if [ -d "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle/Resources" ]; then
-    cp -r "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle/Resources"/* "$APP_BUNDLE/Contents/Resources/"
+# Copy app bundle (homelxapp, app.json, etc.) - keep as bundle for detect_app_bundle
+if [ -d "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" ]; then
+    cp -r "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" "$APP_BUNDLE/Contents/Resources/"
+fi
+
+# Copy SDK bundle (runtime.js, icons, localization)
+if [ -d "$BUILD_DIR/lingxia_lingxia.bundle" ]; then
+    cp -r "$BUILD_DIR/lingxia_lingxia.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
 
 echo "✅ App bundle created at $APP_BUNDLE"
