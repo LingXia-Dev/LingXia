@@ -316,8 +316,14 @@ pub(crate) async fn lxapp_service_handler(
                     .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if same_app {
-                    handle_app_service_event(worker_id, ctx, lxapp.appid.clone(), event, args)
-                        .await;
+                    // Don't block the worker message pump on user JS lifecycle handlers.
+                    // If an app handler awaits network/IO, blocking here can starve bridge handshake
+                    // and other view messages, causing "Handshake timeout" even when transport is OK.
+                    let ctx = ctx.clone();
+                    let appid = lxapp.appid.clone();
+                    rong::spawn(async move {
+                        handle_app_service_event(worker_id, &ctx, appid, event, args).await;
+                    });
                 }
             }
         }
@@ -409,10 +415,17 @@ pub(crate) async fn lxapp_service_handler(
                     .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if same_app {
-                    if let Err(e) = bridge_events::dispatch_bridge_event(ctx, &event).await {
-                        error!("[Worker {}] Dispatch bridge event failed: {}", worker_id, e)
-                            .with_appid(lxapp.appid.clone());
-                    }
+                    // Don't block the worker message pump on user JS event handlers. Like app/page
+                    // lifecycle events, bridge event handlers can await network/IO and would
+                    // otherwise starve view messages (including handshake retries).
+                    let ctx = ctx.clone();
+                    let appid = lxapp.appid.clone();
+                    rong::spawn(async move {
+                        if let Err(e) = bridge_events::dispatch_bridge_event(&ctx, &event).await {
+                            error!("[Worker {}] Dispatch bridge event failed: {}", worker_id, e)
+                                .with_appid(appid);
+                        }
+                    });
                 }
             }
         }

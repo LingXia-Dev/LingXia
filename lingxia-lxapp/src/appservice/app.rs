@@ -76,7 +76,9 @@ impl LxAppSvc {
         args: Option<String>,
     ) -> JSResult<()> {
         if let Some(func) = self.event_handlers.get(&event) {
-            // Lifecycle events: schedule with High priority and wait for completion
+            // Lifecycle events should not block the JS invoke queue:
+            // user handlers often `await` network/IO, and waiting here can delay page lifecycle
+            // events and make startup feel "stuck" even when the bridge transport is fine.
             let args_obj = args
                 .as_ref()
                 .and_then(|json| JSObject::from_json_string(ctx, json).ok());
@@ -87,7 +89,7 @@ impl LxAppSvc {
                 args_obj,
                 rong::JsInvokePriority::High,
                 None,
-                true,
+                false,
             )
             .await?;
             return Ok(());

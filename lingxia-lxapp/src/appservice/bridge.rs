@@ -468,11 +468,22 @@ impl Bridge {
                 self.send_hello_ack(transport, msg.nonce.clone(), session_id.clone())
                     .await?;
 
-                // Send initial state BEFORE ready so View has data when it starts
+                // Mark logic-side bridge ready immediately and send `ready` as soon as possible.
+                //
+                // IMPORTANT:
+                // Do not block `ready` behind initial state snapshot generation or lifecycle hooks.
+                // In practice these can be slow (large init data / busy worker) and cause the View's
+                // handshake timer to fire, leading to intermittent "Handshake timeout" on startup.
                 self.set_ready(session_id.clone());
-                handler.handle_bridge_ready().await;
-                self.send_ready(transport, session_id).await?;
+                self.send_ready(transport, session_id.clone()).await?;
                 crate::info!("Bridge ready");
+
+                // Send initial state + lifecycle events after the handshake completes.
+                // This also better matches the bridge spec ("ready" gates application messages).
+                let handler = <H as Clone>::clone(handler);
+                rong::spawn(async move {
+                    handler.handle_bridge_ready().await;
+                });
                 return Ok(());
             }
             IncomingMessage::Req(msg) => {
@@ -533,19 +544,28 @@ impl Bridge {
                         .as_ref()
                         .and_then(|v| v.get("scope"))
                         .and_then(|v| v.as_str());
-                    match handler.get_state_snapshot(scope).await {
-                        Ok(snapshot) => {
-                            let _ = self.send_res_ok(transport, id.clone(), snapshot);
+                    // Snapshot building can be expensive (large state + stringify/parse), so keep
+                    // it off the bridge message pump.
+                    let bridge = <Bridge as Clone>::clone(self);
+                    let transport = <T as Clone>::clone(transport);
+                    let handler = <H as Clone>::clone(handler);
+                    let id = id.clone();
+                    let scope = scope.map(|s| s.to_string());
+                    rong::spawn(async move {
+                        match handler.get_state_snapshot(scope.as_deref()).await {
+                            Ok(snapshot) => {
+                                let _ = bridge.send_res_ok(&transport, id.clone(), snapshot);
+                            }
+                            Err(e) => {
+                                let _ = bridge.send_res_err(
+                                    &transport,
+                                    id.clone(),
+                                    BRIDGE_INTERNAL_ERROR,
+                                    Some(e.to_string()),
+                                );
+                            }
                         }
-                        Err(e) => {
-                            let _ = self.send_res_err(
-                                transport,
-                                id.clone(),
-                                BRIDGE_INTERNAL_ERROR,
-                                Some(e.to_string()),
-                            );
-                        }
-                    }
+                    });
                     return Ok(());
                 }
 
