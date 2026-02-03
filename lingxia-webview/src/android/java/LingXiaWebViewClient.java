@@ -7,6 +7,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.os.ParcelFileDescriptor;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -133,7 +134,8 @@ public class LingXiaWebViewClient extends WebViewClient {
                     inputStream = new ByteArrayInputStream(response.data);
                 } else if (response.filePath != null && !response.filePath.isEmpty()) {
                     File file = new File(response.filePath);
-                    inputStream = new FileInputStream(file);
+                    // Buffered stream helps large cached assets (images) load more smoothly.
+                    inputStream = new BufferedInputStream(new FileInputStream(file));
                 } else {
                     return null;
                 }

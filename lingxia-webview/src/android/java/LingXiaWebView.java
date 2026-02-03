@@ -329,24 +329,31 @@ public class LingXiaWebView extends WebView {
     }
 
     public void postMessageToWebView(String message) {
-        // Prefer MessagePort on API 23+; fall back to evaluateJavascript for Android 5.
-        if (messagePortBridge != null && postMessageMethod != null) {
-            try {
-                Object ok = postMessageMethod.invoke(messagePortBridge, message);
-                if (ok instanceof Boolean && ((Boolean) ok)) {
-                    return;
+        // WebView APIs and WebMessagePort are safest on the main thread.
+        // Bridge calls come from Rust/JS worker threads, so always hop to the UI thread.
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+            // Prefer MessagePort on API 23+; fall back to evaluateJavascript for Android 5.
+            if (messagePortBridge != null && postMessageMethod != null) {
+                try {
+                    Object ok = postMessageMethod.invoke(messagePortBridge, message);
+                    if (ok instanceof Boolean && ((Boolean) ok)) {
+                        return;
+                    }
+                } catch (Throwable t) {
+                    Log.w(TAG, "MessagePort send failed, fallback to evaluateJavascript", t);
                 }
-            } catch (Throwable t) {
-                Log.w(TAG, "MessagePort send failed, fallback to evaluateJavascript", t);
             }
-        }
-        try {
-            final String quoted = JSONObject.quote(message);
-            final String script = "(function(){var fn=window.__LingXiaRecvMessage; if(typeof fn==='function'){fn(" + quoted + ");}})();";
-            evaluateJavascript(script, null);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to post message to WebView: " + e.getMessage(), e);
-        }
+            try {
+                final String quoted = JSONObject.quote(message);
+                final String script = "(function(){var fn=window.__LingXiaRecvMessage; if(typeof fn==='function'){fn(" + quoted + ");}})();";
+                evaluateJavascript(script, null);
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to post message to WebView: " + e.getMessage(), e);
+            }
+            }
+        });
     }
 
     public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
