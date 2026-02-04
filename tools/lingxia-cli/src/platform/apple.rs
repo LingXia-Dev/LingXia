@@ -7,6 +7,7 @@
 pub mod anisette;
 pub mod asc;
 pub mod auth;
+pub mod developer_services;
 pub mod grandslam;
 pub mod srp;
 

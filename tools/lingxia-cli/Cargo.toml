@@ -33,6 +33,7 @@ sha2 = "0.10"
 hmac = "0.12"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 aes = "0.8"
+aes-gcm = "0.10"
 cbc = "0.1"
 num-bigint = "0.4"
 rand = "0.9"

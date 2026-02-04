@@ -4,8 +4,9 @@
 
 use crate::platform::apple::anisette::OmnisetteProvider;
 use crate::platform::apple::auth::{AuthCredentials, CredentialStorage};
+use crate::platform::apple::developer_services;
 use crate::platform::apple::grandslam::{
-    DeviceInfo, GrandSlamClient, TwoFactorMode, TwoFactorRequired,
+    DeviceInfo, GrandSlamClient, GrandSlamLoginData, TwoFactorMode, TwoFactorRequired,
 };
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -177,14 +178,13 @@ fn login_with_password(
         }
     };
 
-    // For now, we don't have team selection - use a placeholder
-    // TODO: Implement team fetching using Developer Services API
-    let team_id = "XXXXXXXXXX".to_string();
+    // Fetch app tokens and teams
+    let team_id = select_team(&client, &login_data, &device_info, &mut anisette_provider)?;
 
     // Save credentials
     let credentials = AuthCredentials::AppleId {
         adsid: login_data.adsid.clone(),
-        token: login_data.token.clone(),
+        token: login_data.idms_token.clone(),
         team_id: team_id.clone(),
         expiry: chrono::Utc::now() + chrono::Duration::hours(24),
     };
@@ -194,13 +194,8 @@ fn login_with_password(
     println!();
     println!("{} Successfully logged in!", "✓".green());
     println!("  Apple ID: {}", username);
-    println!("  ADSID: {}", login_data.adsid);
+    println!("  Team ID:  {}", team_id);
     println!("  Credentials saved to: {}", storage.path().display());
-    println!();
-    println!(
-        "{} Note: Team selection will be available in a future update.",
-        "ℹ".blue()
-    );
 
     Ok(())
 }
@@ -376,6 +371,71 @@ pub fn status() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Fetch developer teams and let the user pick one.
+///
+/// If there is exactly one team, it is selected automatically.
+fn select_team(
+    client: &GrandSlamClient,
+    login_data: &GrandSlamLoginData,
+    device_info: &DeviceInfo,
+    anisette_provider: &mut OmnisetteProvider,
+) -> Result<String> {
+    println!();
+    println!("  {} Fetching app tokens...", "→".dimmed());
+
+    let anisette = anisette_provider
+        .fetch_anisette_data()
+        .context("Failed to get anisette data for app token fetch")?;
+
+    let app_token = client
+        .fetch_app_tokens(login_data, device_info, &anisette)
+        .context("Failed to fetch app tokens")?;
+    println!("  {} App tokens obtained", "✓".green());
+
+    println!("  {} Fetching developer teams...", "→".dimmed());
+
+    let anisette = anisette_provider
+        .fetch_anisette_data()
+        .context("Failed to get anisette data for team listing")?;
+
+    let teams =
+        developer_services::list_teams(&login_data.adsid, &app_token, device_info, &anisette)?;
+
+    if teams.is_empty() {
+        return Err(anyhow!("No developer teams found for this Apple ID."));
+    }
+
+    if teams.len() == 1 {
+        let team = &teams[0];
+        println!(
+            "  {} Team: {} ({}) [{}]",
+            "✓".green(),
+            team.name,
+            team.id,
+            team.account_type()
+        );
+        return Ok(team.id.clone());
+    }
+
+    // Multiple teams — let the user choose
+    println!("  {} Found {} teams", "✓".green(), teams.len());
+    println!();
+
+    let labels: Vec<String> = teams
+        .iter()
+        .map(|t| format!("{} ({}) [{}]", t.name, t.id, t.account_type()))
+        .collect();
+
+    let selection = Select::new()
+        .with_prompt("Select a team")
+        .items(&labels)
+        .default(0)
+        .interact()?;
+
+    let team = &teams[selection];
+    Ok(team.id.clone())
 }
 
 /// Expand ~ in path to home directory

@@ -27,8 +27,9 @@ pub struct GrandSlamEndpoints {
 #[derive(Debug, Clone)]
 pub struct GrandSlamLoginData {
     pub adsid: String,
-    pub token: String,
-    pub sk: Vec<u8>, // Session key for decryption
+    pub idms_token: String,
+    pub sk: Vec<u8>,     // Session key for decryption
+    pub cookie: Vec<u8>, // Service cookie for subsequent requests
 }
 
 /// Two-factor authentication mode
@@ -237,10 +238,23 @@ impl GrandSlamClient {
             return Err(anyhow!("Missing credentials in login response"));
         }
 
+        let sk = dict
+            .get("sk")
+            .and_then(|v| v.as_data())
+            .map(|d| d.to_vec())
+            .ok_or_else(|| anyhow!("Missing session key (sk) in login response"))?;
+
+        let cookie = dict
+            .get("c")
+            .and_then(|v| v.as_data())
+            .map(|d| d.to_vec())
+            .ok_or_else(|| anyhow!("Missing cookie (c) in login response"))?;
+
         Ok(GrandSlamLoginData {
             adsid,
-            token: idms_token,
-            sk: srp_client.session_key().to_vec(),
+            idms_token,
+            sk,
+            cookie,
         })
     }
 
@@ -609,6 +623,153 @@ impl GrandSlamClient {
         );
 
         plist::Value::Dictionary(cpd)
+    }
+
+    /// Fetch app-specific tokens required for Developer Services API.
+    ///
+    /// Returns the Xcode app token string used as `X-Apple-GS-Token`.
+    pub fn fetch_app_tokens(
+        &self,
+        login_data: &GrandSlamLoginData,
+        device_info: &DeviceInfo,
+        anisette: &AnisetteData,
+    ) -> Result<String> {
+        let endpoints = self
+            .endpoints
+            .as_ref()
+            .ok_or_else(|| anyhow!("Endpoints not initialized"))?;
+
+        let app_key = "com.apple.gs.xcode.auth";
+
+        // Compute HMAC-SHA256 checksum: HMAC(sk, "apptokens" + adsid + app)
+        let checksum = {
+            use hmac::{Hmac, Mac};
+            use sha2::Sha256;
+            let mut mac = Hmac::<Sha256>::new_from_slice(&login_data.sk)
+                .expect("HMAC can take key of any size");
+            mac.update(b"apptokens");
+            mac.update(login_data.adsid.as_bytes());
+            mac.update(app_key.as_bytes());
+            mac.finalize().into_bytes().to_vec()
+        };
+
+        let client_data = self.build_client_data(device_info, anisette);
+
+        let request_body: HashMap<String, plist::Value> = [
+            (
+                "Header".to_string(),
+                plist::Value::Dictionary({
+                    let mut h = plist::Dictionary::new();
+                    h.insert("Version".to_string(), "1.0.1".into());
+                    h
+                }),
+            ),
+            (
+                "Request".to_string(),
+                plist::Value::Dictionary({
+                    let mut r = plist::Dictionary::new();
+                    r.insert("o".to_string(), "apptokens".into());
+                    r.insert("u".to_string(), login_data.adsid.clone().into());
+                    r.insert("app".to_string(), plist::Value::Array(vec![app_key.into()]));
+                    r.insert(
+                        "c".to_string(),
+                        plist::Value::Data(login_data.cookie.clone()),
+                    );
+                    r.insert("t".to_string(), login_data.idms_token.clone().into());
+                    r.insert("checksum".to_string(), plist::Value::Data(checksum));
+                    r.insert("cpd".to_string(), client_data);
+                    r
+                }),
+            ),
+        ]
+        .into_iter()
+        .collect();
+
+        let mut body = Vec::new();
+        plist::to_writer_xml(&mut body, &request_body)
+            .context("Failed to encode app tokens request")?;
+
+        let mut response = http_agent()
+            .post(&endpoints.gs_service)
+            .header("Content-Type", "text/x-xml-plist")
+            .header("Accept", "*/*")
+            .header("User-Agent", &device_info.user_agent)
+            .header("X-Mme-Client-Info", &device_info.client_info)
+            .send(&body)
+            .context("Failed to send app tokens request")?;
+
+        let response_body = response
+            .body_mut()
+            .read_to_string()
+            .context("Failed to read app tokens response")?;
+
+        let plist_response: plist::Value = plist::from_bytes(response_body.as_bytes())
+            .context("Failed to parse app tokens response")?;
+
+        self.check_error(&plist_response)?;
+
+        let resp = plist_response
+            .as_dictionary()
+            .and_then(|d| d.get("Response"))
+            .and_then(|v| v.as_dictionary())
+            .ok_or_else(|| anyhow!("Invalid app tokens response format"))?;
+
+        let encrypted = resp
+            .get("et")
+            .and_then(|v| v.as_data())
+            .ok_or_else(|| anyhow!("Missing encrypted token (et) in response"))?;
+
+        // Decrypt with AES-256-GCM
+        // Layout: AAD (3 bytes) | IV (16 bytes) | ciphertext | tag (16 bytes)
+        if encrypted.len() < 3 + 16 + 16 {
+            return Err(anyhow!("Encrypted token too short"));
+        }
+
+        let aad = &encrypted[..3];
+        let iv = &encrypted[3..19];
+        let tag = &encrypted[encrypted.len() - 16..];
+        let ciphertext = &encrypted[19..encrypted.len() - 16];
+
+        let decrypted = {
+            use aes::Aes256;
+            use aes_gcm::aead::generic_array::GenericArray;
+            use aes_gcm::{AesGcm, KeyInit, aead::Aead};
+
+            // Apple uses 16-byte nonce instead of the standard 12
+            type Aes256Gcm16 =
+                AesGcm<Aes256, aes_gcm::aead::consts::U16, aes_gcm::aead::consts::U16>;
+
+            let cipher = Aes256Gcm16::new(GenericArray::from_slice(&login_data.sk));
+
+            let mut combined = ciphertext.to_vec();
+            combined.extend_from_slice(tag);
+
+            cipher
+                .decrypt(
+                    GenericArray::from_slice(iv),
+                    aes_gcm::aead::Payload {
+                        msg: &combined,
+                        aad,
+                    },
+                )
+                .map_err(|_| anyhow!("AES-GCM decryption failed"))?
+        };
+
+        // Parse decrypted plist: {"t": {"com.apple.gs.xcode.auth": {"token": "...", "expiry": N}}}
+        let token_plist: plist::Value =
+            plist::from_bytes(&decrypted).context("Failed to parse decrypted app tokens")?;
+
+        let token_value = token_plist
+            .as_dictionary()
+            .and_then(|d| d.get("t"))
+            .and_then(|v| v.as_dictionary())
+            .and_then(|d| d.get(app_key))
+            .and_then(|v| v.as_dictionary())
+            .and_then(|d| d.get("token"))
+            .and_then(|v| v.as_string())
+            .ok_or_else(|| anyhow!("Failed to extract app token from decrypted response"))?;
+
+        Ok(token_value.to_string())
     }
 
     fn check_error(&self, response: &plist::Value) -> Result<()> {
