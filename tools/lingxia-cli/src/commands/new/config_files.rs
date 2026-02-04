@@ -34,6 +34,7 @@ pub(super) fn generate_config_file(
             bundle_id: config.package_id.clone(),
             deployment_target: None,
             swift_version: None,
+            swift_package_path: None,
         })
     } else {
         None

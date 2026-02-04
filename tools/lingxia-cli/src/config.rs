@@ -101,9 +101,12 @@ impl AndroidConfig {
 pub struct IosConfig {
     pub bundle_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub deployment_target: Option<String>, // e.g., "14.0"
+    pub deployment_target: Option<String>, // e.g., "17.0"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swift_version: Option<String>,
+    /// Path to Swift Package directory (relative to project root, default: "ios/")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swift_package_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

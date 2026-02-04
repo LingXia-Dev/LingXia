@@ -1,5 +1,6 @@
 use super::Platform;
 use super::android::AndroidPlatform;
+use super::ios::IosPlatform;
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -63,7 +64,7 @@ pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
 pub fn create_platform(platform_type: &PlatformType) -> Result<Box<dyn Platform>> {
     match platform_type {
         PlatformType::Android => Ok(Box::new(AndroidPlatform::new())),
-        PlatformType::Ios => Err(anyhow!("iOS support is not yet implemented")),
+        PlatformType::Ios => Ok(Box::new(IosPlatform::new())),
         PlatformType::Harmony => Err(anyhow!("HarmonyOS support is not yet implemented")),
     }
 }
@@ -108,11 +109,9 @@ pub fn detect_platform(project_root: &Path) -> Result<Box<dyn Platform>> {
         return Ok(Box::new(AndroidPlatform::new()));
     }
 
-    // iOS: check for *.xcodeproj or *.xcworkspace
+    // iOS: check for *.xcodeproj, *.xcworkspace, or Package.swift with iOS
     if is_ios_project(project_root) {
-        return Err(anyhow!(
-            "iOS project detected, but iOS support is not yet implemented"
-        ));
+        return Ok(Box::new(IosPlatform::new()));
     }
 
     // HarmonyOS: check for build-profile.json5
@@ -156,7 +155,22 @@ fn is_ios_project(project_root: &Path) -> bool {
     }
 
     // Check for Podfile (CocoaPods)
-    project_root.join("Podfile").exists()
+    if project_root.join("Podfile").exists() {
+        return true;
+    }
+
+    // Check for Swift Package with iOS platform
+    let package_swift = project_root.join("Package.swift");
+    if package_swift.exists() {
+        if let Ok(content) = std::fs::read_to_string(&package_swift) {
+            // Check if package supports iOS platform
+            if content.contains(".iOS") || content.contains(".ios") {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Check if the project is a HarmonyOS project

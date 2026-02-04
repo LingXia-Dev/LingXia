@@ -3,7 +3,9 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub mod android;
+pub mod apple;
 pub mod detector;
+pub mod ios;
 
 /// Platform-specific build configuration
 #[derive(Debug, Clone)]

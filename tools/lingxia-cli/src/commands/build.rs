@@ -203,7 +203,10 @@ pub(crate) fn prepare_host_assets(
                     println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
                 }
             }
-            platform::detector::PlatformType::Ios | platform::detector::PlatformType::Harmony => {
+            platform::detector::PlatformType::Ios => {
+                // iOS assets are prepared by IosPlatform.build() itself
+            }
+            platform::detector::PlatformType::Harmony => {
                 if explicit_platforms && prepared_lxapp_assets.is_some() {
                     println!(
                         "  {} LxApp embedding for {} not yet supported.",
