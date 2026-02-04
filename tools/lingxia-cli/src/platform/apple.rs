@@ -3,10 +3,46 @@
 //! Provides shared functionality for building, signing, and deploying
 //! applications on Apple platforms.
 
+// Submodules
+pub mod anisette;
+pub mod asc;
+pub mod auth;
+pub mod grandslam;
+pub mod srp;
+
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+/// Get a shared HTTP agent with native root certificates
+pub fn http_agent() -> &'static ureq::Agent {
+    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+    AGENT.get_or_init(|| {
+        use ureq::tls::{Certificate, RootCerts, TlsConfig};
+
+        // Load native root certificates from the system
+        let native_certs = rustls_native_certs::load_native_certs();
+        let certs: Vec<Certificate<'static>> = native_certs
+            .certs
+            .into_iter()
+            .map(|c| {
+                let der = c.as_ref();
+                Certificate::from_der(der).to_owned()
+            })
+            .collect();
+
+        ureq::Agent::config_builder()
+            .tls_config(
+                TlsConfig::builder()
+                    .root_certs(RootCerts::from(certs))
+                    .build(),
+            )
+            .build()
+            .new_agent()
+    })
+}
 
 // Rust cross-compilation target for iOS
 pub const IOS_TARGET: &str = "aarch64-apple-ios";

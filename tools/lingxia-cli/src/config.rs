@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
+pub const SECRETS_CONFIG_FILE: &str = ".lingxia.secrets.json";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 
 /// Host project configuration (native app project)
@@ -131,6 +132,164 @@ pub struct ResourcesConfig {
     /// Path to web runtime distribution (relative to project root)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime: Option<String>,
+}
+
+impl IosConfig {
+    /// Get the deployment target, defaulting to "17.0"
+    #[allow(dead_code)]
+    pub fn get_deployment_target(&self) -> &str {
+        self.deployment_target.as_deref().unwrap_or("17.0")
+    }
+
+    /// Get the Swift version, defaulting to "6.0"
+    #[allow(dead_code)]
+    pub fn get_swift_version(&self) -> &str {
+        self.swift_version.as_deref().unwrap_or("6.0")
+    }
+}
+
+// =============================================================================
+// Secrets Configuration (.lingxia.secrets.json)
+// =============================================================================
+
+/// Secrets configuration (not tracked by git)
+///
+/// This file contains sensitive information like API keys and signing credentials.
+/// It should be added to .gitignore.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretsConfig {
+    /// LingXia API key (for cloud services)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_key: Option<String>,
+
+    /// LingXia API secret (for cloud services)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api_secret: Option<String>,
+
+    /// iOS-specific secrets (signing, team ID, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ios: Option<IosSecrets>,
+
+    /// Android-specific secrets (keystore, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub android: Option<AndroidSecrets>,
+}
+
+/// iOS signing secrets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IosSecrets {
+    /// Apple Developer Team ID (e.g., "AG98W7429S")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
+
+    /// Code signing identity (e.g., "Apple Development: xxx")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signing_identity: Option<String>,
+
+    /// Path to provisioning profile (.mobileprovision)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provisioning_profile: Option<String>,
+}
+
+/// Android signing secrets
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AndroidSecrets {
+    /// Path to keystore file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keystore_path: Option<String>,
+
+    /// Keystore password
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keystore_password: Option<String>,
+
+    /// Key alias
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_alias: Option<String>,
+
+    /// Key password
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_password: Option<String>,
+}
+
+impl SecretsConfig {
+    /// Load secrets from .lingxia.secrets.json in the given directory
+    ///
+    /// Returns None if the file doesn't exist (secrets are optional).
+    /// Returns an error if the file exists but is malformed.
+    pub fn load(project_root: &Path) -> Result<Option<Self>> {
+        let secrets_path = project_root.join(SECRETS_CONFIG_FILE);
+
+        if !secrets_path.exists() {
+            return Ok(None);
+        }
+
+        let content = fs::read_to_string(&secrets_path)
+            .with_context(|| format!("Failed to read {}", SECRETS_CONFIG_FILE))?;
+
+        let config: SecretsConfig = serde_json::from_str(&content)
+            .with_context(|| format!("Failed to parse {}", SECRETS_CONFIG_FILE))?;
+
+        Ok(Some(config))
+    }
+
+    /// Get iOS team ID from secrets or environment variable
+    ///
+    /// Priority: LINGXIA_TEAM_ID env var > secrets file
+    pub fn get_ios_team_id(&self) -> Option<String> {
+        // Environment variable takes priority
+        if let Ok(team_id) = std::env::var("LINGXIA_TEAM_ID") {
+            if !team_id.is_empty() {
+                return Some(team_id);
+            }
+        }
+
+        // Fall back to secrets file
+        self.ios.as_ref().and_then(|ios| ios.team_id.clone())
+    }
+
+    /// Get iOS signing identity from secrets or environment variable
+    ///
+    /// Priority: LINGXIA_SIGNING_IDENTITY env var > secrets file
+    pub fn get_ios_signing_identity(&self) -> Option<String> {
+        // Environment variable takes priority
+        if let Ok(identity) = std::env::var("LINGXIA_SIGNING_IDENTITY") {
+            if !identity.is_empty() {
+                return Some(identity);
+            }
+        }
+
+        // Fall back to secrets file
+        self.ios
+            .as_ref()
+            .and_then(|ios| ios.signing_identity.clone())
+    }
+
+    /// Get API key from secrets or environment variable
+    ///
+    /// Priority: LINGXIA_API_KEY env var > secrets file
+    pub fn get_api_key(&self) -> Option<String> {
+        if let Ok(key) = std::env::var("LINGXIA_API_KEY") {
+            if !key.is_empty() {
+                return Some(key);
+            }
+        }
+        self.api_key.clone()
+    }
+
+    /// Get API secret from secrets or environment variable
+    ///
+    /// Priority: LINGXIA_API_SECRET env var > secrets file
+    pub fn get_api_secret(&self) -> Option<String> {
+        if let Ok(secret) = std::env::var("LINGXIA_API_SECRET") {
+            if !secret.is_empty() {
+                return Some(secret);
+            }
+        }
+        self.api_secret.clone()
+    }
 }
 
 impl LingXiaConfig {

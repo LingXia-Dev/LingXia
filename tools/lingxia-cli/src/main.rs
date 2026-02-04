@@ -119,6 +119,34 @@ enum Commands {
 
     /// Check Android development environment setup
     Doctor,
+
+    /// Apple developer account authentication (iOS/macOS)
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuthAction {
+    /// Login with Apple Developer account
+    Login {
+        /// Apple ID (email)
+        #[arg(short, long)]
+        username: Option<String>,
+
+        /// Password (will prompt if not provided)
+        #[arg(short, long)]
+        password: Option<String>,
+
+        /// Authentication mode: password (default) or key (API key)
+        #[arg(short, long, default_value = "password")]
+        mode: String,
+    },
+    /// Logout and clear stored credentials
+    Logout,
+    /// Show current authentication status
+    Status,
 }
 
 fn main() -> Result<()> {
@@ -173,6 +201,21 @@ fn main() -> Result<()> {
         Commands::Doctor => {
             commands::doctor::execute()?;
         }
+        Commands::Auth { action } => match action {
+            AuthAction::Login {
+                username,
+                password,
+                mode,
+            } => {
+                commands::auth::login(username, password, &mode)?;
+            }
+            AuthAction::Logout => {
+                commands::auth::logout()?;
+            }
+            AuthAction::Status => {
+                commands::auth::status()?;
+            }
+        },
     }
 
     Ok(())
