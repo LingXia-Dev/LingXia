@@ -5,3 +5,4 @@ pub mod doctor;
 pub mod icon;
 pub mod install;
 pub mod new;
+pub mod sign;

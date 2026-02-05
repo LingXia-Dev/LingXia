@@ -40,8 +40,10 @@ pub enum AuthCredentials {
     AppleId {
         /// Apple Directory Services ID
         adsid: String,
-        /// Authentication token
+        /// IDMS token (used for re-authentication)
         token: String,
+        /// App token for Developer Services API (com.apple.gs.xcode.auth)
+        app_token: String,
         /// Selected team ID
         team_id: String,
         /// Token expiration time

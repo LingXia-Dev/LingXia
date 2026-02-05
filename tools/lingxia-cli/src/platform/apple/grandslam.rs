@@ -16,10 +16,13 @@ const GSA_LOOKUP_URL: &str = "https://gsa.apple.com/grandslam/GsService2/lookup"
 #[derive(Debug, Clone)]
 pub struct GrandSlamEndpoints {
     pub gs_service: String,
+    #[allow(dead_code)]
     pub secondary_auth: String,
     pub trusted_device_secondary_auth: String,
     pub validate_code: String,
+    #[allow(dead_code)]
     pub mid_start_provisioning: String,
+    #[allow(dead_code)]
     pub mid_finish_provisioning: String,
 }
 
@@ -48,6 +51,7 @@ pub enum TwoFactorMode {
 pub struct TwoFactorRequired {
     pub adsid: String,
     pub idms_token: String,
+    #[allow(dead_code)]
     pub session_key: Vec<u8>,
     pub mode: TwoFactorMode,
 }
@@ -806,6 +810,7 @@ pub struct DeviceInfo {
     pub serial_number: String,
     pub mlb_serial: String,
     pub rom_address: String,
+    #[allow(dead_code)]
     pub model_id: String,
     pub client_info: String,
     pub user_agent: String,

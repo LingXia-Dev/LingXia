@@ -51,7 +51,7 @@ enum Commands {
         #[arg(short = 't', long)]
         project_type: Option<String>,
 
-        /// Target platforms (comma-separated): android, ios, harmony, all
+        /// Target platforms (comma-separated): android, ios, macos, harmony, all
         #[arg(short = 'p', long, value_delimiter = ',')]
         platform: Vec<String>,
 
@@ -112,6 +112,10 @@ enum Commands {
         #[command(flatten)]
         build_options: BuildOptions,
 
+        /// Target platform (android, ios, macos). Auto-detected if not specified.
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
+
         /// Device ID (required if multiple devices connected)
         #[arg(short = 'd', long)]
         device: Option<String>,
@@ -124,6 +128,21 @@ enum Commands {
     Auth {
         #[command(subcommand)]
         action: AuthAction,
+    },
+
+    /// Sign an iOS app bundle with provisioning (iOS only)
+    Sign {
+        /// Path to the .app bundle (auto-detected if not specified)
+        #[arg(short = 'a', long)]
+        app: Option<String>,
+
+        /// Device UDID (auto-detect first available if not specified)
+        #[arg(short = 'd', long)]
+        device: Option<String>,
+
+        /// Output IPA path (optional, creates IPA if specified)
+        #[arg(short = 'o', long)]
+        output: Option<String>,
     },
 }
 
@@ -188,6 +207,7 @@ fn main() -> Result<()> {
         }
         Commands::Dev {
             build_options,
+            platform,
             device,
         } => {
             commands::dev::execute(
@@ -196,6 +216,7 @@ fn main() -> Result<()> {
                 !build_options.skip_native,
                 build_options.targets,
                 device,
+                platform,
             )?;
         }
         Commands::Doctor => {
@@ -216,6 +237,13 @@ fn main() -> Result<()> {
                 commands::auth::status()?;
             }
         },
+        Commands::Sign {
+            app,
+            device,
+            output,
+        } => {
+            commands::sign::execute(app, device, output)?;
+        }
     }
 
     Ok(())

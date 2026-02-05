@@ -71,7 +71,7 @@ pub fn execute(
     if available_platforms.is_empty() {
         return Err(anyhow!(
             "No platform configured in lingxia.config.json.\n\
-             Set app.platforms to include at least one of: android, ios, harmony"
+             Set app.platforms to include at least one of: android, ios, macos, harmony"
         ));
     }
 
@@ -95,6 +95,21 @@ pub fn execute(
     } else {
         available_platforms
     };
+
+    // iOS/macOS builds require macOS host (uses Xcode tooling).
+    if platforms_to_build.iter().any(|p| {
+        matches!(
+            p,
+            platform::detector::PlatformType::Ios | platform::detector::PlatformType::MacOs
+        )
+    }) {
+        crate::platform::apple::ensure_macos().map_err(|e| {
+            anyhow!(
+                "{}\nTip: on non-macOS hosts, pass `--platform android` to build only Android.",
+                e
+            )
+        })?;
+    }
 
     // Parse build profile (cargo-like): debug unless explicitly set to release.
     let build_profile = if release {
@@ -205,6 +220,9 @@ pub(crate) fn prepare_host_assets(
             }
             platform::detector::PlatformType::Ios => {
                 // iOS assets are prepared by IosPlatform.build() itself
+            }
+            platform::detector::PlatformType::MacOs => {
+                // macOS assets are prepared by MacosPlatform.build() itself
             }
             platform::detector::PlatformType::Harmony => {
                 if explicit_platforms && prepared_lxapp_assets.is_some() {

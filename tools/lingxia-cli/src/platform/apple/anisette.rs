@@ -26,30 +26,6 @@ pub struct AnisetteData {
     pub local_user_id: String,
     /// Device ID (X-Mme-Device-Id)
     pub device_id: String,
-    /// Client info string (X-Mme-Client-Info)
-    pub client_info: String,
-}
-
-impl AnisetteData {
-    /// Get headers for Apple requests
-    pub fn headers(&self) -> Vec<(&'static str, String)> {
-        let now = chrono::Utc::now();
-        vec![
-            ("X-Apple-I-MD-M", self.machine_id.clone()),
-            ("X-Apple-I-MD", self.otp.clone()),
-            ("X-Apple-I-MD-RINFO", self.routing_info.to_string()),
-            ("X-Apple-I-MD-LU", self.local_user_id.clone()),
-            ("X-Mme-Device-Id", self.device_id.clone()),
-            ("X-Mme-Client-Info", self.client_info.clone()),
-            ("X-Apple-I-TimeZone", "UTC".to_string()),
-            ("X-Apple-I-Locale", "en_US".to_string()),
-            ("X-Apple-Locale", "en_US".to_string()),
-            (
-                "X-Apple-I-Client-Time",
-                now.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-            ),
-        ]
-    }
 }
 
 /// Omnisette Anisette provider
@@ -131,8 +107,7 @@ impl OmnisetteProvider {
         Ok(home.join(".lingxia").join("anisette_cache.json"))
     }
 
-    /// Get client info string
-    pub fn get_client_info(&mut self) -> Result<String> {
+    fn get_client_info(&mut self) -> Result<String> {
         if let Some(ref info) = self.client_info {
             return Ok(info.clone());
         }
@@ -161,8 +136,8 @@ impl OmnisetteProvider {
 
     /// Fetch anisette data (provision if needed)
     pub fn fetch_anisette_data(&mut self) -> Result<AnisetteData> {
-        // Get client info first
-        let client_info = self.get_client_info()?;
+        // Ensure client info is available (required by Apple GSA provisioning calls).
+        let _ = self.get_client_info()?;
 
         // Compute local user ID (SHA256 hash of UUID)
         let local_user_id = compute_local_user_id(&self.local_user_uid);
@@ -182,7 +157,6 @@ impl OmnisetteProvider {
                         routing_info,
                         local_user_id,
                         device_id: self.local_user_uid.to_string().to_uppercase(),
-                        client_info,
                     });
                 }
                 Err(e) => {
@@ -210,7 +184,6 @@ impl OmnisetteProvider {
             routing_info,
             local_user_id,
             device_id: self.local_user_uid.to_string().to_uppercase(),
-            client_info,
         })
     }
 

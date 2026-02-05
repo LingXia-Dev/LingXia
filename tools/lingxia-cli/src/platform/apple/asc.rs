@@ -18,7 +18,6 @@ pub struct AppStoreConnectClient {
     key_id: String,
     issuer_id: String,
     private_key: String,
-    team_id: String,
 }
 
 impl AppStoreConnectClient {
@@ -27,7 +26,7 @@ impl AppStoreConnectClient {
         key_id: &str,
         issuer_id: &str,
         private_key_path: &str,
-        team_id: &str,
+        _team_id: &str,
     ) -> Result<Self> {
         let private_key = fs::read_to_string(private_key_path)
             .with_context(|| format!("Failed to read private key from {}", private_key_path))?;
@@ -36,13 +35,7 @@ impl AppStoreConnectClient {
             key_id: key_id.to_string(),
             issuer_id: issuer_id.to_string(),
             private_key,
-            team_id: team_id.to_string(),
         })
-    }
-
-    /// Get the team ID
-    pub fn team_id(&self) -> &str {
-        &self.team_id
     }
 
     /// Generate a JWT token for API authentication
@@ -145,19 +138,6 @@ impl AppStoreConnectClient {
         Ok(body)
     }
 
-    /// Make an authenticated DELETE request to the API
-    pub fn delete(&self, endpoint: &str) -> Result<()> {
-        let token = self.generate_token()?;
-        let url = format!("{}{}", ASC_API_BASE, endpoint);
-
-        ureq::delete(&url)
-            .header("Authorization", &format!("Bearer {}", token))
-            .call()
-            .with_context(|| format!("API request failed: DELETE {}", endpoint))?;
-
-        Ok(())
-    }
-
     // =========================================================================
     // Certificates API
     // =========================================================================
@@ -166,12 +146,6 @@ impl AppStoreConnectClient {
     pub fn list_certificates(&self) -> Result<Vec<Certificate>> {
         let response = self.get("/certificates")?;
         parse_data_array(&response)
-    }
-
-    /// Get a specific certificate by ID
-    pub fn get_certificate(&self, id: &str) -> Result<Certificate> {
-        let response = self.get(&format!("/certificates/{}", id))?;
-        parse_data_object(&response)
     }
 
     /// Create a new certificate
@@ -192,11 +166,6 @@ impl AppStoreConnectClient {
 
         let response = self.post("/certificates", &body)?;
         parse_data_object(&response)
-    }
-
-    /// Delete a certificate
-    pub fn delete_certificate(&self, id: &str) -> Result<()> {
-        self.delete(&format!("/certificates/{}", id))
     }
 
     // =========================================================================
@@ -235,12 +204,6 @@ impl AppStoreConnectClient {
     // Bundle IDs API
     // =========================================================================
 
-    /// List all bundle IDs
-    pub fn list_bundle_ids(&self) -> Result<Vec<BundleId>> {
-        let response = self.get("/bundleIds")?;
-        parse_data_array(&response)
-    }
-
     /// Create a new bundle ID
     pub fn create_bundle_id(
         &self,
@@ -273,12 +236,6 @@ impl AppStoreConnectClient {
     // =========================================================================
     // Profiles API
     // =========================================================================
-
-    /// List all provisioning profiles
-    pub fn list_profiles(&self) -> Result<Vec<Profile>> {
-        let response = self.get("/profiles")?;
-        parse_data_array(&response)
-    }
 
     /// Create a new provisioning profile
     pub fn create_profile(
@@ -325,11 +282,6 @@ impl AppStoreConnectClient {
 
         let response = self.post("/profiles", &body)?;
         parse_data_object(&response)
-    }
-
-    /// Delete a provisioning profile
-    pub fn delete_profile(&self, id: &str) -> Result<()> {
-        self.delete(&format!("/profiles/{}", id))
     }
 
     /// Download a provisioning profile content (base64 decoded)
@@ -395,20 +347,12 @@ pub struct CertificateAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum CertificateType {
     IosDevelopment,
-    IosDistribution,
-    MacAppDevelopment,
-    MacAppDistribution,
-    DeveloperIdApplication,
 }
 
 impl CertificateType {
     pub fn as_str(&self) -> &'static str {
         match self {
             CertificateType::IosDevelopment => "IOS_DEVELOPMENT",
-            CertificateType::IosDistribution => "IOS_DISTRIBUTION",
-            CertificateType::MacAppDevelopment => "MAC_APP_DEVELOPMENT",
-            CertificateType::MacAppDistribution => "MAC_APP_DISTRIBUTION",
-            CertificateType::DeveloperIdApplication => "DEVELOPER_ID_APPLICATION",
         }
     }
 }
@@ -434,14 +378,12 @@ pub struct DeviceAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum DevicePlatform {
     Ios,
-    MacOs,
 }
 
 impl DevicePlatform {
     pub fn as_str(&self) -> &'static str {
         match self {
             DevicePlatform::Ios => "IOS",
-            DevicePlatform::MacOs => "MAC_OS",
         }
     }
 }
@@ -464,16 +406,12 @@ pub struct BundleIdAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum BundleIdPlatform {
     Ios,
-    MacOs,
-    Universal,
 }
 
 impl BundleIdPlatform {
     pub fn as_str(&self) -> &'static str {
         match self {
             BundleIdPlatform::Ios => "IOS",
-            BundleIdPlatform::MacOs => "MAC_OS",
-            BundleIdPlatform::Universal => "UNIVERSAL",
         }
     }
 }
@@ -499,22 +437,12 @@ pub struct ProfileAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum ProfileType {
     IosAppDevelopment,
-    IosAppStore,
-    IosAppAdhoc,
-    MacAppDevelopment,
-    MacAppStore,
-    MacAppDirect,
 }
 
 impl ProfileType {
     pub fn as_str(&self) -> &'static str {
         match self {
             ProfileType::IosAppDevelopment => "IOS_APP_DEVELOPMENT",
-            ProfileType::IosAppStore => "IOS_APP_STORE",
-            ProfileType::IosAppAdhoc => "IOS_APP_ADHOC",
-            ProfileType::MacAppDevelopment => "MAC_APP_DEVELOPMENT",
-            ProfileType::MacAppStore => "MAC_APP_STORE",
-            ProfileType::MacAppDirect => "MAC_APP_DIRECT",
         }
     }
 }

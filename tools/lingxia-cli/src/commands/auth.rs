@@ -42,7 +42,7 @@ pub fn login(username: Option<String>, password: Option<String>, mode: &str) -> 
 
     match mode {
         "key" => login_with_api_key(&storage)?,
-        "password" | _ => login_with_password(&storage, username, password)?,
+        _ => login_with_password(&storage, username, password)?,
     }
 
     Ok(())
@@ -81,7 +81,7 @@ fn login_with_password(
     };
 
     println!();
-    println!("{} Authenticating...", "⏳");
+    println!("⏳ Authenticating...");
 
     // Step 1: Get Anisette data
     println!("  {} Getting device fingerprint...", "→".dimmed());
@@ -179,12 +179,14 @@ fn login_with_password(
     };
 
     // Fetch app tokens and teams
-    let team_id = select_team(&client, &login_data, &device_info, &mut anisette_provider)?;
+    let (team_id, app_token) =
+        select_team(&client, &login_data, &device_info, &mut anisette_provider)?;
 
     // Save credentials
     let credentials = AuthCredentials::AppleId {
         adsid: login_data.adsid.clone(),
         token: login_data.idms_token.clone(),
+        app_token,
         team_id: team_id.clone(),
         expiry: chrono::Utc::now() + chrono::Duration::hours(24),
     };
@@ -297,9 +299,34 @@ fn login_with_api_key(storage: &CredentialStorage) -> Result<()> {
 pub fn logout() -> Result<()> {
     let storage = CredentialStorage::new()?;
 
+    let mut deleted_anything = false;
+
+    // Delete credentials
     if storage.delete()? {
+        println!(
+            "{} Credentials removed from: {}",
+            "✓".green(),
+            storage.path().display()
+        );
+        deleted_anything = true;
+    }
+
+    // Also clear anisette cache to ensure fresh device fingerprint on next login
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
+    let anisette_cache = home.join(".lingxia").join("anisette_cache.json");
+    if anisette_cache.exists() {
+        std::fs::remove_file(&anisette_cache)?;
+        println!(
+            "{} Anisette cache cleared: {}",
+            "✓".green(),
+            anisette_cache.display()
+        );
+        deleted_anything = true;
+    }
+
+    if deleted_anything {
+        println!();
         println!("{} Successfully logged out.", "✓".green());
-        println!("  Credentials removed from: {}", storage.path().display());
     } else {
         println!("{} Not currently logged in.", "ℹ".blue());
     }
@@ -376,12 +403,13 @@ pub fn status() -> Result<()> {
 /// Fetch developer teams and let the user pick one.
 ///
 /// If there is exactly one team, it is selected automatically.
+/// Returns (team_id, app_token) tuple.
 fn select_team(
     client: &GrandSlamClient,
     login_data: &GrandSlamLoginData,
     device_info: &DeviceInfo,
     anisette_provider: &mut OmnisetteProvider,
-) -> Result<String> {
+) -> Result<(String, String)> {
     println!();
     println!("  {} Fetching app tokens...", "→".dimmed());
 
@@ -416,7 +444,7 @@ fn select_team(
             team.id,
             team.account_type()
         );
-        return Ok(team.id.clone());
+        return Ok((team.id.clone(), app_token));
     }
 
     // Multiple teams — let the user choose
@@ -435,14 +463,14 @@ fn select_team(
         .interact()?;
 
     let team = &teams[selection];
-    Ok(team.id.clone())
+    Ok((team.id.clone(), app_token))
 }
 
 /// Expand ~ in path to home directory
 fn expand_path(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
+    if let Some(suffix) = path.strip_prefix("~/") {
         if let Some(home) = dirs::home_dir() {
-            return home.join(&path[2..]);
+            return home.join(suffix);
         }
     }
     PathBuf::from(path)

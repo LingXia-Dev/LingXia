@@ -5,10 +5,15 @@
 
 // Submodules
 pub mod anisette;
+pub mod app_bundle;
 pub mod asc;
 pub mod auth;
 pub mod developer_services;
+pub mod devicectl;
 pub mod grandslam;
+pub mod keychain;
+pub mod provisioning;
+pub mod signer;
 pub mod srp;
 
 use anyhow::{Context, Result, anyhow};
@@ -102,12 +107,14 @@ pub fn ensure_tools() -> Result<()> {
 ///
 /// - `workspace_root`: The workspace root (where target/ directory is located)
 /// - `rust_lib_dir`: The crate directory containing Cargo.toml
+/// - `deployment_target`: Optional iOS deployment target (e.g., "17.0")
 pub fn build_rust_staticlib(
     workspace_root: &Path,
     rust_lib_dir: &Path,
     target: &str,
     release: bool,
     features: &[String],
+    deployment_target: Option<&str>,
 ) -> Result<PathBuf> {
     println!("{}", "Compiling Rust static library...".cyan());
 
@@ -129,6 +136,13 @@ pub fn build_rust_staticlib(
         .arg(&rust_manifest)
         .current_dir(rust_lib_dir);
 
+    // Set deployment target for iOS to ensure correct minimum version
+    if target.contains("ios") {
+        let deploy_ver = deployment_target.unwrap_or("17.0");
+        cmd.env("IPHONEOS_DEPLOYMENT_TARGET", deploy_ver);
+        println!("  {} iOS deployment target: {}", "ℹ".blue(), deploy_ver);
+    }
+
     if release {
         cmd.arg("--release");
     }
@@ -148,17 +162,27 @@ pub fn build_rust_staticlib(
     let profile_dir = if release { "release" } else { "debug" };
 
     // The output library name is based on the crate name with underscores
-    // We need to find the .a file and copy it to liblingxia.a
+    // e.g., lingxia-lib crate -> liblingxia_lib.a
     let target_dir = workspace_root.join("target").join(target).join(profile_dir);
 
-    // Find the static library (lib*.a) - look for liblingxia_lib.a or similar
-    let lib_name = find_static_lib(&target_dir)?;
+    // Get the crate name from manifest
+    let crate_name = get_crate_name(&rust_manifest)?;
+    let lib_name = format!("lib{}.a", crate_name.replace('-', "_"));
     let lib_path = target_dir.join(&lib_name);
 
-    // Copy/rename to standard name liblingxia.a if needed
+    if !lib_path.exists() {
+        return Err(anyhow!(
+            "Static library not found: {}. Expected from crate '{}'",
+            lib_path.display(),
+            crate_name
+        ));
+    }
+
+    // Copy/rename to standard name liblingxia.a
     let dest_path = target_dir.join("liblingxia.a");
     if lib_path != dest_path {
         std::fs::copy(&lib_path, &dest_path)?;
+        println!("  {} Copied {} -> liblingxia.a", "ℹ".blue(), lib_name);
     }
 
     println!("  {} Static library → {}", "✓".green(), dest_path.display());
@@ -166,16 +190,47 @@ pub fn build_rust_staticlib(
     Ok(dest_path)
 }
 
-/// Find static library in directory
-fn find_static_lib(dir: &Path) -> Result<String> {
-    for entry in std::fs::read_dir(dir)? {
-        let entry = entry?;
-        let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with("lib") && name.ends_with(".a") {
-            return Ok(name);
+/// Get crate name from Cargo.toml
+fn get_crate_name(manifest_path: &Path) -> Result<String> {
+    let content = std::fs::read_to_string(manifest_path).context("Failed to read Cargo.toml")?;
+
+    // Lightweight parse: only consider the [package] table.
+    let mut in_package = false;
+    for raw_line in content.lines() {
+        // Strip comments for simplistic parsing.
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
         }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[package]";
+            continue;
+        }
+
+        if !in_package {
+            continue;
+        }
+
+        let (key, value) = match line.split_once('=') {
+            Some((k, v)) => (k.trim(), v.trim()),
+            None => continue,
+        };
+        if key != "name" {
+            continue;
+        }
+
+        let name = value.trim_matches('"').trim_matches('\'').trim();
+        if name.is_empty() {
+            break;
+        }
+        return Ok(name.to_string());
     }
-    Err(anyhow!("No static library found in {}", dir.display()))
+
+    Err(anyhow!(
+        "Could not find package name in {}",
+        manifest_path.display()
+    ))
 }
 
 /// Generate Swift bridge bindings by building with LINGXIA_GENERATE_BRIDGE=1
@@ -274,175 +329,26 @@ pub fn find_workspace_root(start: &Path) -> Result<PathBuf> {
     ))
 }
 
-/// Sign an app bundle using codesign
-pub fn sign_app_bundle(app_path: &Path, identity: &str, entitlements: Option<&Path>) -> Result<()> {
-    println!("{}", "Signing app bundle...".cyan());
-
-    let mut cmd = Command::new("codesign");
-    cmd.arg("--force")
-        .arg("--sign")
-        .arg(identity)
-        .arg("--timestamp=none");
-
-    if let Some(ent_path) = entitlements {
-        cmd.arg("--entitlements").arg(ent_path);
-    }
-
-    cmd.arg(app_path);
-
-    let status = cmd.status().context("Failed to execute codesign")?;
-
-    if !status.success() {
-        return Err(anyhow!("Code signing failed"));
-    }
-
-    println!("  {} App signed with identity: {}", "✓".green(), identity);
-    Ok(())
-}
-
-/// Find signing identity from team ID
+/// Recursively copy a directory tree.
 ///
-/// Searches for an Apple Development or iPhone Developer certificate
-/// that matches the given team ID.
-pub fn find_signing_identity(team_id: &str) -> Result<String> {
-    let output = Command::new("security")
-        .args(["find-identity", "-v", "-p", "codesigning"])
-        .output()
-        .context("Failed to list signing identities")?;
+/// Used by `app_bundle` and `signer` modules.
+pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
+    if !dest.exists() {
+        std::fs::create_dir_all(dest)?;
+    }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        let target = dest.join(entry.file_name());
 
-    // Look for a valid identity with the team ID
-    for line in stdout.lines() {
-        if line.contains(team_id)
-            && (line.contains("Apple Development")
-                || line.contains("iPhone Developer")
-                || line.contains("Apple Distribution"))
-        {
-            // Extract the identity hash (40 hex chars)
-            if let Some(start) = line.find(')') {
-                let after_paren = &line[start + 1..].trim();
-                if let Some(quote_start) = after_paren.find('"') {
-                    if let Some(quote_end) = after_paren[quote_start + 1..].find('"') {
-                        return Ok(
-                            after_paren[quote_start + 1..quote_start + 1 + quote_end].to_string()
-                        );
-                    }
-                }
-            }
+        if path.is_dir() {
+            copy_dir_recursive(&path, &target)?;
+        } else {
+            std::fs::copy(&path, &target)?;
         }
     }
 
-    // Fallback: just use the team ID with a generic identity type
-    Ok(format!("Apple Development: {}", team_id))
-}
-
-/// List connected iOS devices using ios-deploy or idevice_id
-pub fn list_ios_devices() -> Result<Vec<super::Device>> {
-    let mut devices = Vec::new();
-
-    // Try ios-deploy first
-    if command_exists("ios-deploy") {
-        let output = Command::new("ios-deploy")
-            .args(["--detect", "--timeout", "1"])
-            .output();
-
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                // ios-deploy output format: [....] Found UDID via USB.
-                if line.contains("Found") && line.contains("via") {
-                    if let Some(udid_start) = line.find("Found ") {
-                        let rest = &line[udid_start + 6..];
-                        if let Some(udid_end) = rest.find(' ') {
-                            let udid = rest[..udid_end].to_string();
-                            devices.push(super::Device {
-                                id: udid,
-                                name: None,
-                                device_type: super::DeviceType::Physical,
-                                online: true,
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback to idevice_id (libimobiledevice)
-    if devices.is_empty() && command_exists("idevice_id") {
-        let output = Command::new("idevice_id").arg("-l").output();
-
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let udid = line.trim();
-                if !udid.is_empty() {
-                    devices.push(super::Device {
-                        id: udid.to_string(),
-                        name: None,
-                        device_type: super::DeviceType::Physical,
-                        online: true,
-                    });
-                }
-            }
-        }
-    }
-
-    Ok(devices)
-}
-
-/// Install app to iOS device using ios-deploy
-pub fn install_with_ios_deploy(app_path: &Path, device_id: Option<&str>) -> Result<()> {
-    if !command_exists("ios-deploy") {
-        return Err(anyhow!(
-            "ios-deploy not found. Install with: brew install ios-deploy"
-        ));
-    }
-
-    println!("{}", "Installing to device...".cyan());
-
-    let mut cmd = Command::new("ios-deploy");
-    cmd.arg("--bundle").arg(app_path);
-
-    if let Some(id) = device_id {
-        cmd.arg("--id").arg(id);
-    }
-
-    let status = cmd.status().context("Failed to execute ios-deploy")?;
-
-    if !status.success() {
-        return Err(anyhow!("Installation failed"));
-    }
-
-    println!("  {} App installed", "✓".green());
-    Ok(())
-}
-
-/// Run app on iOS device using ios-deploy
-pub fn run_with_ios_deploy(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
-    if !command_exists("ios-deploy") {
-        return Err(anyhow!(
-            "ios-deploy not found. Install with: brew install ios-deploy"
-        ));
-    }
-
-    println!("{}", "Launching app...".cyan());
-
-    let mut cmd = Command::new("ios-deploy");
-    cmd.arg("--justlaunch").arg("--bundle_id").arg(bundle_id);
-
-    if let Some(id) = device_id {
-        cmd.arg("--id").arg(id);
-    }
-
-    let status = cmd.status().context("Failed to execute ios-deploy")?;
-
-    if !status.success() {
-        return Err(anyhow!("Failed to launch app"));
-    }
-
-    println!("  {} App launched", "✓".green());
     Ok(())
 }
 

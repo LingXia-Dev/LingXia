@@ -56,7 +56,7 @@ pub(super) fn create_lxapp_project(
     versions: &LingXiaVersions,
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
-    let lxapp_dir = config.target_dir.join(&lxapp_dir_name);
+    let lxapp_dir = config.target_dir.join(lxapp_dir_name);
     println!("  Creating LxApp project...");
     create_lxapp_from_template(
         &lxapp_dir,

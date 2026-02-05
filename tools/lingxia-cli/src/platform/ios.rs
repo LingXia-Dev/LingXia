@@ -79,15 +79,19 @@ impl IosPlatform {
     ///
     /// - `project_root`: Where to find the Rust library (e.g., examples/)
     /// - `workspace_root`: Where to output the built library (e.g., workspace target/)
+    /// - `ios_config`: iOS configuration for deployment target
     fn build_rust_library(
         &self,
         project_root: &Path,
         workspace_root: &Path,
         config: &BuildConfig,
+        ios_config: Option<&IosConfig>,
     ) -> Result<PathBuf> {
+        let is_release = matches!(config.profile, BuildProfile::Release);
+        let profile_dir = config.profile.as_str();
+
         if !config.build_native {
             // Return expected path even if not building
-            let profile_dir = config.profile.as_str();
             return Ok(workspace_root
                 .join("target")
                 .join(IOS_TARGET)
@@ -106,12 +110,16 @@ impl IosPlatform {
 
         let rust_lib_dir = project_root.join(&rust_lib_name);
 
+        // Get deployment target from config
+        let deployment_target = ios_config.and_then(|c| c.deployment_target.as_deref());
+
         apple::build_rust_staticlib(
             workspace_root,
             &rust_lib_dir,
             IOS_TARGET,
-            matches!(config.profile, BuildProfile::Release),
+            is_release,
             &config.features,
+            deployment_target,
         )
     }
 
@@ -254,7 +262,7 @@ impl IosPlatform {
         Ok(())
     }
 
-    /// Build Swift Package
+    /// Build Swift Package (library only, for dependency compilation)
     fn swift_build(
         &self,
         ios_dir: &Path,
@@ -266,16 +274,20 @@ impl IosPlatform {
         // Get the iOS SDK path using xcrun
         let sdk_path = get_ios_sdk_path()?;
 
+        let is_release = matches!(profile, BuildProfile::Release);
+        let build_config = if is_release { "release" } else { "debug" };
+
         // Note: We intentionally don't set SDKROOT as it would affect manifest compilation.
         // The --sdk flag is sufficient for cross-compilation to iOS.
         let mut cmd = Command::new("swift");
         cmd.current_dir(ios_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_BUILD_CONFIG", build_config)
             // Clear any existing SDKROOT to ensure manifest compiles correctly
             .env_remove("SDKROOT")
             .args(["build", "--triple", "arm64-apple-ios", "--sdk", &sdk_path]);
 
-        if matches!(profile, BuildProfile::Release) {
+        if is_release {
             cmd.arg("-c").arg("release");
         }
 
@@ -287,6 +299,55 @@ impl IosPlatform {
 
         println!("  {} Swift build complete", "✓".green());
         Ok(())
+    }
+
+    /// Create .app bundle using the AppBundler
+    fn create_app_bundle(
+        &self,
+        ios_dir: &Path,
+        workspace_root: &Path,
+        config: &BuildConfig,
+        ios_config: Option<&IosConfig>,
+    ) -> Result<PathBuf> {
+        use apple::app_bundle::{AppBundleConfig, AppBundler};
+
+        // Get bundle ID and other config
+        let bundle_id = ios_config
+            .map(|c| c.bundle_id.clone())
+            .unwrap_or_else(|| "com.example.app".to_string());
+
+        // Get product name from Package.swift directory name
+        let product_name = ios_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("lxapp")
+            .to_string();
+
+        let deployment_target = ios_config
+            .and_then(|c| c.deployment_target.clone())
+            .unwrap_or_else(|| "17.0".to_string());
+
+        // Look for Info.plist in the package directory
+        let info_plist_path = ios_dir.join("Info.plist");
+        let info_plist = if info_plist_path.exists() {
+            Some(info_plist_path)
+        } else {
+            None
+        };
+
+        let bundle_config = AppBundleConfig {
+            bundle_id,
+            product_name,
+            deployment_target,
+            info_plist_path: info_plist,
+        };
+
+        AppBundler::create_app_bundle(
+            ios_dir,
+            workspace_root,
+            &bundle_config,
+            matches!(config.profile, BuildProfile::Release),
+        )
     }
 
     /// Find the .app bundle in build output.
@@ -350,36 +411,18 @@ impl Platform for IosPlatform {
         // Build Rust static library
         // Note: Use config.project_root for Rust library location (e.g., examples/lingxia-lib)
         // but workspace_root for output target directory
-        self.build_rust_library(&config.project_root, &workspace_root, config)?;
+        self.build_rust_library(&config.project_root, &workspace_root, config, ios_config)?;
 
         // Prepare app resources (app.json, homelxapp)
         self.prepare_app_resources(&config.project_root, &ios_dir, config)?;
 
-        // Build Swift Package
+        // Build Swift Package (library dependencies first)
         self.swift_build(&ios_dir, &workspace_root, config.profile)?;
 
-        // Find the app bundle
-        let app_path = match self.find_app_bundle(&ios_dir, Some(config.profile)) {
-            Ok(path) => path,
-            Err(_) => {
-                println!();
-                println!(
-                    "{} Swift Package built successfully, but no .app bundle was produced.",
-                    "ℹ".blue()
-                );
-                println!("  This is normal for library packages.");
-                println!(
-                    "  For a full app bundle, ensure your Package.swift defines an executable product."
-                );
-                println!();
+        // Create .app bundle using AppBundler (converts library to executable app)
+        let app_path = self.create_app_bundle(&ios_dir, &workspace_root, config, ios_config)?;
 
-                ios_dir
-                    .join(".build/arm64-apple-ios")
-                    .join(config.profile.as_str())
-            }
-        };
-
-        // TODO: Signing will be implemented separately (requires team_id from local config)
+        // TODO: Auto-signing will be implemented separately (requires team_id from local config)
 
         Ok(BuildArtifacts::Ios { app_path })
     }
@@ -403,17 +446,18 @@ impl Platform for IosPlatform {
             return Err(anyhow!("App bundle not found at: {}", app_path.display()));
         }
 
-        apple::install_with_ios_deploy(&app_path, config.device_id.as_deref())
+        apple::devicectl::install_app(&app_path, config.device_id.as_deref())
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
         apple::ensure_macos()?;
 
-        apple::run_with_ios_deploy(&config.package_id, config.device_id.as_deref())
+        apple::devicectl::launch_app(&config.package_id, config.device_id.as_deref())
     }
 
     fn list_devices(&self) -> Result<Vec<Device>> {
-        apple::list_ios_devices()
+        // Use devicectl (Xcode 15+).
+        apple::devicectl::list_devices()
     }
 
     fn name(&self) -> &str {

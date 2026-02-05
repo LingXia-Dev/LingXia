@@ -23,13 +23,18 @@ rustls-native-certs = "0.8"
 zip = "7.2"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6.0"
+tempfile = "3.24"
 
 # Apple signing and API
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
 base64 = "0.22"
+rcgen = "0.13"
+p12 = "0.6"
+rsa = { version = "0.9", features = ["pem"] }
 
 # Apple ID authentication (SRP, crypto)
 sha2 = "0.10"
+sha1 = "0.10"
 hmac = "0.12"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 aes = "0.8"
@@ -48,4 +53,3 @@ adb_client = "3.0.1"
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 
 [dev-dependencies]
-tempfile = "3.24"

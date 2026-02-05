@@ -11,6 +11,7 @@ pub const ANDROID_ASSETS_REL_PATH: &str = "app/src/main/assets";
 pub enum PlatformType {
     Android,
     Ios,
+    MacOs,
     Harmony,
 }
 
@@ -19,6 +20,7 @@ impl PlatformType {
         match self {
             PlatformType::Android => "android",
             PlatformType::Ios => "ios",
+            PlatformType::MacOs => "macos",
             PlatformType::Harmony => "harmony",
         }
     }
@@ -31,6 +33,7 @@ impl FromStr for PlatformType {
         match s.to_lowercase().as_str() {
             "android" => Ok(PlatformType::Android),
             "ios" => Ok(PlatformType::Ios),
+            "macos" | "macosx" | "osx" | "mac" => Ok(PlatformType::MacOs),
             "harmony" | "harmonyos" => Ok(PlatformType::Harmony),
             _ => Err(anyhow!("Unknown platform: {}", s)),
         }
@@ -50,6 +53,10 @@ pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
         platforms.push(PlatformType::Ios);
     }
 
+    if is_macos_project(project_root) || is_macos_project(&project_root.join("macos")) {
+        platforms.push(PlatformType::MacOs);
+    }
+
     if is_harmony_project(project_root)
         || is_harmony_project(&project_root.join("harmony"))
         || is_harmony_project(&project_root.join("harmonyos"))
@@ -64,7 +71,14 @@ pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
 pub fn create_platform(platform_type: &PlatformType) -> Result<Box<dyn Platform>> {
     match platform_type {
         PlatformType::Android => Ok(Box::new(AndroidPlatform::new())),
-        PlatformType::Ios => Ok(Box::new(IosPlatform::new())),
+        PlatformType::Ios => {
+            super::apple::ensure_macos()?;
+            Ok(Box::new(IosPlatform::new()))
+        }
+        PlatformType::MacOs => {
+            super::apple::ensure_macos()?;
+            Ok(Box::new(super::macos::MacosPlatform::new()))
+        }
         PlatformType::Harmony => Err(anyhow!("HarmonyOS support is not yet implemented")),
     }
 }
@@ -102,16 +116,20 @@ pub fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
 /// - iOS: *.xcodeproj, *.xcworkspace, or Podfile
 /// - HarmonyOS: build-profile.json5, hvigorfile.ts, or oh-package.json5
 ///
-/// Returns a boxed Platform implementation for the detected platform.
-pub fn detect_platform(project_root: &Path) -> Result<Box<dyn Platform>> {
+pub fn detect_platform_type(project_root: &Path) -> Result<PlatformType> {
     // Android: check for build.gradle or build.gradle.kts
     if is_android_project(project_root) {
-        return Ok(Box::new(AndroidPlatform::new()));
+        return Ok(PlatformType::Android);
     }
 
     // iOS: check for *.xcodeproj, *.xcworkspace, or Package.swift with iOS
     if is_ios_project(project_root) {
-        return Ok(Box::new(IosPlatform::new()));
+        return Ok(PlatformType::Ios);
+    }
+
+    // macOS: check for Package.swift with macOS or macOS project dir
+    if is_macos_project(project_root) {
+        return Ok(PlatformType::MacOs);
     }
 
     // HarmonyOS: check for build-profile.json5
@@ -165,6 +183,21 @@ fn is_ios_project(project_root: &Path) -> bool {
         if let Ok(content) = std::fs::read_to_string(&package_swift) {
             // Check if package supports iOS platform
             if content.contains(".iOS") || content.contains(".ios") {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Check if the project is a macOS project
+fn is_macos_project(project_root: &Path) -> bool {
+    // Swift Package with macOS platform
+    let package_swift = project_root.join("Package.swift");
+    if package_swift.exists() {
+        if let Ok(content) = std::fs::read_to_string(&package_swift) {
+            if content.contains(".macOS") || content.contains(".macos") {
                 return true;
             }
         }

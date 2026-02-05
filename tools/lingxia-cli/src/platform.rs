@@ -6,6 +6,7 @@ pub mod android;
 pub mod apple;
 pub mod detector;
 pub mod ios;
+pub mod macos;
 
 /// Platform-specific build configuration
 #[derive(Debug, Clone)]
@@ -74,10 +75,11 @@ pub trait Platform: Send + Sync {
 
 /// Build artifacts produced by a platform build
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // iOS and Harmony variants will be used in the future
+#[allow(dead_code)] // Some variants will be used in the future
 pub enum BuildArtifacts {
     Android { apk_path: PathBuf },
     Ios { app_path: PathBuf },
+    MacOs { executable_path: PathBuf },
     Harmony { hap_path: PathBuf },
 }
 
@@ -87,16 +89,8 @@ impl BuildArtifacts {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
             BuildArtifacts::Ios { app_path } => app_path.as_path(),
+            BuildArtifacts::MacOs { executable_path } => executable_path.as_path(),
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
-        }
-    }
-
-    /// Get platform name
-    pub fn platform_name(&self) -> &str {
-        match self {
-            BuildArtifacts::Android { .. } => "Android",
-            BuildArtifacts::Ios { .. } => "iOS",
-            BuildArtifacts::Harmony { .. } => "HarmonyOS",
         }
     }
 }

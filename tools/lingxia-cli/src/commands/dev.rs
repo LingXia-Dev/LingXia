@@ -1,7 +1,8 @@
 use super::build::prepare_host_assets;
 use crate::config::LingXiaConfig;
+use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
 
@@ -17,6 +18,7 @@ pub fn execute(
     build_native: bool,
     targets: Vec<String>,
     device: Option<String>,
+    platform_arg: Option<String>,
 ) -> Result<()> {
     println!();
     println!(
@@ -38,6 +40,85 @@ pub fn execute(
         BuildProfile::Debug
     };
 
+    // Determine platform from argument or config
+    let app = config.app.as_ref().ok_or_else(|| {
+        anyhow!(
+            "Missing app section in lingxia.config.json.\n\
+             Please configure app.platforms."
+        )
+    })?;
+
+    let platform_type = if let Some(ref p) = platform_arg {
+        p.parse::<PlatformType>()?
+    } else {
+        // Auto-detect: prefer iOS, then macOS, then Android
+        if app.platforms.iter().any(|p| p.eq_ignore_ascii_case("ios")) {
+            PlatformType::Ios
+        } else if app
+            .platforms
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case("macos"))
+        {
+            PlatformType::MacOs
+        } else if app
+            .platforms
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case("android"))
+        {
+            PlatformType::Android
+        } else {
+            return Err(anyhow!(
+                "No supported platform found in config. Add 'ios', 'macos', or 'android' to app.platforms."
+            ));
+        }
+    };
+
+    // iOS/macOS dev workflow requires macOS host (uses Xcode tooling).
+    if matches!(platform_type, PlatformType::Ios | PlatformType::MacOs) {
+        crate::platform::apple::ensure_macos().map_err(|e| {
+            anyhow!(
+                "{}\nTip: on non-macOS hosts, pass `--platform android` to use Android dev.",
+                e
+            )
+        })?;
+    }
+
+    match platform_type {
+        PlatformType::Android => execute_android(
+            project_root,
+            config,
+            build_profile,
+            features,
+            build_native,
+            targets,
+            device,
+        ),
+        PlatformType::Ios => execute_ios(
+            project_root,
+            config,
+            build_profile,
+            features,
+            build_native,
+            device,
+        ),
+        PlatformType::MacOs => {
+            execute_macos(project_root, config, build_profile, features, build_native)
+        }
+        PlatformType::Harmony => Err(anyhow!("HarmonyOS dev mode is not yet supported.")),
+    }
+}
+
+fn execute_android(
+    project_root: std::path::PathBuf,
+    config: LingXiaConfig,
+    build_profile: BuildProfile,
+    features: Vec<String>,
+    build_native: bool,
+    targets: Vec<String>,
+    device: Option<String>,
+) -> Result<()> {
+    let platform = platform::android::AndroidPlatform::new();
+
     // Default targets if none specified
     let build_targets = if targets.is_empty() {
         vec!["aarch64-linux-android".to_string()]
@@ -45,26 +126,8 @@ pub fn execute(
         targets
     };
 
-    // Determine platform from config (no auto-detection/fallback).
-    let app = config.app.as_ref().ok_or_else(|| {
-        anyhow!(
-            "Missing app section in lingxia.config.json.\n\
-             Please configure app.platforms to include android."
-        )
-    })?;
-    if !app
-        .platforms
-        .iter()
-        .any(|p| p.eq_ignore_ascii_case("android"))
-    {
-        return Err(anyhow!(
-            "This command currently supports Android projects only. Add 'android' to app.platforms in lingxia.config.json."
-        ));
-    }
-    let platform = platform::android::AndroidPlatform::new();
-
-    // Generate app.json and embed LxApp assets (assets are not tracked by git).
-    let platforms_to_build = vec![platform::detector::PlatformType::Android];
+    // Generate app.json and embed LxApp assets
+    let platforms_to_build = vec![PlatformType::Android];
     prepare_host_assets(
         &project_root,
         &config,
@@ -108,29 +171,154 @@ pub fn execute(
         .android
         .as_ref()
         .map(|android| android.package_id.clone())
-        .ok_or_else(|| {
-            anyhow!(
-                "Missing android.packageId in lingxia.config.json (required to launch the app)."
-            )
-        })?;
+        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.config.json"))?;
 
     let run_config = RunConfig {
         device_id: device,
-        package_id: package_id.clone(),
-        main_activity: None, // Will use default MainActivity
+        package_id,
+        main_activity: None,
     };
 
     platform.run(&run_config)?;
 
     println!();
     println!("{}", "Dev workflow complete!".green().bold());
-    println!();
-    println!(
-        "  {} Platform: {}",
-        "*".bold(),
-        artifacts.platform_name().cyan()
-    );
+    println!("  {} Platform: {}", "*".bold(), "Android".cyan());
     println!("  {} Artifact: {}", "*".bold(), artifacts.path().display());
+    println!();
+
+    Ok(())
+}
+
+fn execute_ios(
+    project_root: std::path::PathBuf,
+    config: LingXiaConfig,
+    build_profile: BuildProfile,
+    features: Vec<String>,
+    build_native: bool,
+    device: Option<String>,
+) -> Result<()> {
+    use crate::platform::apple;
+
+    apple::ensure_macos()?;
+
+    // Swift can use debug/release, but Rust library always uses release
+    // (SDK Package.swift hardcodes release path for performance)
+    let platform = platform::ios::IosPlatform::new();
+
+    // Generate app.json and embed LxApp assets
+    let platforms_to_build = vec![PlatformType::Ios];
+    prepare_host_assets(
+        &project_root,
+        &config,
+        build_profile,
+        &platforms_to_build,
+        true,
+    )?;
+
+    // Step 1: Build
+    println!("{}", "Step 1/4: Building...".bold());
+    let build_config = BuildConfig {
+        project_root: project_root.clone(),
+        profile: build_profile,
+        features,
+        build_native,
+        targets: vec![],
+        lingxia_config: Some(config.clone()),
+    };
+
+    let artifacts = platform.build(&build_config)?;
+    let app_path = artifacts.path();
+
+    println!();
+
+    // Step 2: Sign
+    println!("{}", "Step 2/4: Signing...".bold());
+    crate::commands::sign::execute(
+        Some(app_path.to_string_lossy().to_string()),
+        device.clone(),
+        None,
+    )?;
+
+    println!();
+
+    // Step 3: Install
+    println!("{}", "Step 3/4: Installing...".bold());
+    apple::devicectl::install_app(app_path, device.as_deref())?;
+
+    println!();
+
+    // Step 4: Launch app
+    println!("{}", "Step 4/4: Launching app...".bold());
+
+    // Read bundle ID from the signed app's Info.plist
+    let bundle_id = apple::provisioning::read_bundle_id(&app_path.join("Info.plist"))?;
+
+    apple::devicectl::launch_app(&bundle_id, device.as_deref())?;
+
+    println!();
+    println!("{}", "Dev workflow complete!".green().bold());
+    println!("  {} Platform: {}", "*".bold(), "iOS".cyan());
+    println!("  {} Bundle ID: {}", "*".bold(), bundle_id);
+    println!("  {} Artifact: {}", "*".bold(), app_path.display());
+    println!();
+
+    Ok(())
+}
+
+fn execute_macos(
+    project_root: std::path::PathBuf,
+    config: LingXiaConfig,
+    build_profile: BuildProfile,
+    features: Vec<String>,
+    build_native: bool,
+) -> Result<()> {
+    use crate::platform::apple;
+    use std::process::Command;
+
+    apple::ensure_macos()?;
+
+    let platform = platform::macos::MacosPlatform::new();
+
+    // Generate app.json and embed LxApp assets (macOS build prepares resources itself)
+    let platforms_to_build = vec![PlatformType::MacOs];
+    prepare_host_assets(
+        &project_root,
+        &config,
+        build_profile,
+        &platforms_to_build,
+        true,
+    )?;
+
+    // Step 1: Build
+    println!("{}", "Step 1/2: Building...".bold());
+    let build_config = BuildConfig {
+        project_root: project_root.clone(),
+        profile: build_profile,
+        features,
+        build_native,
+        targets: vec![],
+        lingxia_config: Some(config.clone()),
+    };
+
+    let artifacts = platform.build(&build_config)?;
+    let exe = artifacts.path().to_path_buf();
+
+    println!();
+
+    // Step 2: Run (run the built executable directly)
+    println!("{}", "Step 2/2: Running...".bold());
+    let status = Command::new(&exe)
+        .status()
+        .with_context(|| format!("Failed to run {}", exe.display()))?;
+    if !status.success() {
+        return Err(anyhow!("macOS app exited with non-zero status"));
+    }
+
+    println!();
+    println!("{}", "Dev workflow complete!".green().bold());
+    println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
+    println!("  {} Artifact: {}", "*".bold(), exe.display());
     println!();
 
     Ok(())

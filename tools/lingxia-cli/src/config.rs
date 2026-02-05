@@ -19,6 +19,8 @@ pub struct LingXiaConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ios: Option<IosConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub macos: Option<MacosConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub harmony: Option<HarmonyConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
@@ -112,6 +114,22 @@ pub struct IosConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct MacosConfig {
+    /// Path to Swift Package directory (relative to project root).
+    ///
+    /// If not set, CLI will try `{projectRoot}/macos/<package>/` then fall back
+    /// to `{projectRoot}/ios/<package>/` (shared codebase), then `{projectRoot}`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swift_package_path: Option<String>,
+
+    /// Executable product name (SwiftPM). If omitted, CLI will try a few
+    /// reasonable defaults and fall back to "the only executable in bin dir".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub executable_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HarmonyConfig {
     pub bundle_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -134,28 +152,13 @@ pub struct ResourcesConfig {
     pub runtime: Option<String>,
 }
 
-impl IosConfig {
-    /// Get the deployment target, defaulting to "17.0"
-    #[allow(dead_code)]
-    pub fn get_deployment_target(&self) -> &str {
-        self.deployment_target.as_deref().unwrap_or("17.0")
-    }
-
-    /// Get the Swift version, defaulting to "6.0"
-    #[allow(dead_code)]
-    pub fn get_swift_version(&self) -> &str {
-        self.swift_version.as_deref().unwrap_or("6.0")
-    }
-}
-
 // =============================================================================
 // Secrets Configuration (.lingxia.secrets.json)
 // =============================================================================
 
-/// Secrets configuration (not tracked by git)
-///
-/// This file contains sensitive information like API keys and signing credentials.
-/// It should be added to .gitignore.
+// These types are intentionally kept even if some binaries don't currently use them.
+// They are part of the CLI's configuration surface area.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SecretsConfig {
@@ -176,7 +179,7 @@ pub struct SecretsConfig {
     pub android: Option<AndroidSecrets>,
 }
 
-/// iOS signing secrets
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IosSecrets {
@@ -193,7 +196,7 @@ pub struct IosSecrets {
     pub provisioning_profile: Option<String>,
 }
 
-/// Android signing secrets
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AndroidSecrets {
@@ -214,14 +217,14 @@ pub struct AndroidSecrets {
     pub key_password: Option<String>,
 }
 
+#[allow(dead_code)]
 impl SecretsConfig {
-    /// Load secrets from .lingxia.secrets.json in the given directory
+    /// Load secrets from .lingxia.secrets.json in the given directory.
     ///
     /// Returns None if the file doesn't exist (secrets are optional).
     /// Returns an error if the file exists but is malformed.
     pub fn load(project_root: &Path) -> Result<Option<Self>> {
         let secrets_path = project_root.join(SECRETS_CONFIG_FILE);
-
         if !secrets_path.exists() {
             return Ok(None);
         }
@@ -235,39 +238,7 @@ impl SecretsConfig {
         Ok(Some(config))
     }
 
-    /// Get iOS team ID from secrets or environment variable
-    ///
-    /// Priority: LINGXIA_TEAM_ID env var > secrets file
-    pub fn get_ios_team_id(&self) -> Option<String> {
-        // Environment variable takes priority
-        if let Ok(team_id) = std::env::var("LINGXIA_TEAM_ID") {
-            if !team_id.is_empty() {
-                return Some(team_id);
-            }
-        }
-
-        // Fall back to secrets file
-        self.ios.as_ref().and_then(|ios| ios.team_id.clone())
-    }
-
-    /// Get iOS signing identity from secrets or environment variable
-    ///
-    /// Priority: LINGXIA_SIGNING_IDENTITY env var > secrets file
-    pub fn get_ios_signing_identity(&self) -> Option<String> {
-        // Environment variable takes priority
-        if let Ok(identity) = std::env::var("LINGXIA_SIGNING_IDENTITY") {
-            if !identity.is_empty() {
-                return Some(identity);
-            }
-        }
-
-        // Fall back to secrets file
-        self.ios
-            .as_ref()
-            .and_then(|ios| ios.signing_identity.clone())
-    }
-
-    /// Get API key from secrets or environment variable
+    /// Get API key from secrets or environment variable.
     ///
     /// Priority: LINGXIA_API_KEY env var > secrets file
     pub fn get_api_key(&self) -> Option<String> {
@@ -279,7 +250,7 @@ impl SecretsConfig {
         self.api_key.clone()
     }
 
-    /// Get API secret from secrets or environment variable
+    /// Get API secret from secrets or environment variable.
     ///
     /// Priority: LINGXIA_API_SECRET env var > secrets file
     pub fn get_api_secret(&self) -> Option<String> {
@@ -289,6 +260,32 @@ impl SecretsConfig {
             }
         }
         self.api_secret.clone()
+    }
+
+    /// Get iOS team ID from secrets or environment variable.
+    ///
+    /// Priority: LINGXIA_TEAM_ID env var > secrets file
+    pub fn get_ios_team_id(&self) -> Option<String> {
+        if let Ok(team_id) = std::env::var("LINGXIA_TEAM_ID") {
+            if !team_id.is_empty() {
+                return Some(team_id);
+            }
+        }
+        self.ios.as_ref().and_then(|ios| ios.team_id.clone())
+    }
+
+    /// Get iOS signing identity from secrets or environment variable.
+    ///
+    /// Priority: LINGXIA_SIGNING_IDENTITY env var > secrets file
+    pub fn get_ios_signing_identity(&self) -> Option<String> {
+        if let Ok(identity) = std::env::var("LINGXIA_SIGNING_IDENTITY") {
+            if !identity.is_empty() {
+                return Some(identity);
+            }
+        }
+        self.ios
+            .as_ref()
+            .and_then(|ios| ios.signing_identity.clone())
     }
 }
 
@@ -360,6 +357,7 @@ impl LingXiaConfig {
                 api_level: None,   // Derive from targetSdk
             }),
             ios: None,
+            macos: None,
             harmony: None,
             resources: None,
         }

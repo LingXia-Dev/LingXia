@@ -64,6 +64,7 @@ pub(super) fn generate_config_file(
         }),
         android,
         ios,
+        macos: None,
         harmony,
         resources: None,
     };
