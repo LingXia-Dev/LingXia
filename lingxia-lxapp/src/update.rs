@@ -777,6 +777,45 @@ impl UpdateManager {
     }
 }
 
+/// Ensure the target app is installed at least once (first-launch preparation).
+///
+/// If the target app is not installed, this checks for an available package and downloads it.
+/// The downloaded archive is recorded in metadata and will be applied on next app creation
+/// (see `LxApps::get_or_init_lxapp`).
+pub(crate) async fn ensure_first_install(
+    current_lxapp: &Arc<lxapp::LxApp>,
+    target_appid: &str,
+    release_type: ReleaseType,
+) -> Result<(), LxAppError> {
+    let manager = UpdateManager::new(current_lxapp.clone());
+
+    if manager.is_installed(target_appid, release_type)? {
+        return Ok(());
+    }
+
+    let pkg = manager
+        .check_update(target_appid, release_type, None)
+        .await?
+        .ok_or_else(|| {
+            LxAppError::ResourceNotFound(format!(
+                "No package available for first install of {}",
+                target_appid
+            ))
+        })?;
+
+    let _archive = manager
+        .download_archive_with_checksum(
+            target_appid,
+            release_type,
+            &pkg.url,
+            &pkg.checksum_sha256,
+            &pkg.version,
+        )
+        .await?;
+
+    Ok(())
+}
+
 // Hashing for app data separation is provided by lxapp::lxapp_fingermark
 
 fn filename_from_url_or_hash(url: &str) -> String {

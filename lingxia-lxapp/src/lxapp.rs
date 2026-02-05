@@ -1541,6 +1541,10 @@ pub fn init(runtime: Platform) -> Option<String> {
     // Initialize WebView manager
     lingxia_webview::init_webview_manager();
 
+    // Register built-in Host API set. This ensures view->host calls work regardless of
+    // which logic extensions are loaded.
+    crate::host::register_all();
+
     let runtime_arc = Arc::new(runtime.clone());
 
     // Prepare directory structure

@@ -1,5 +1,4 @@
 use crate::update;
-use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
 use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
@@ -103,36 +102,6 @@ async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     Ok(())
 }
 
-host_api!(
-    NavigateToLxApp,
-    NavigateToOptions,
-    (),
-    |lxapp: Arc<LxApp>, options: NavigateToOptions| -> Result<(), LxAppError> {
-        if !should_navigate_to_lxapp(&lxapp, &options)? {
-            return Ok(());
-        }
-        let target_appid = options.appid.clone();
-        let lxapp_clone = lxapp.clone();
-
-        // Fire-and-forget to avoid blocking the JS worker.
-        let _ = rong::bg::spawn(async move {
-            if let Err(err) = do_navigate_to_lxapp(lxapp_clone, options).await {
-                lxapp::warn!("navigateToLxApp failed appId={} err={}", target_appid, err);
-            }
-        });
-        Ok(())
-    }
-);
-
-host_api!(
-    NavigateBackLxApp,
-    (),
-    |lxapp: Arc<LxApp>| -> Result<(), LxAppError> {
-        do_navigate_back_lxapp(&lxapp)?;
-        Ok(())
-    }
-);
-
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // Register navigator
     let navigate_to_lxapp = JSFunc::new(ctx, navigate_to_lxapp)?;
@@ -140,9 +109,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let navigate_back_lxapp = JSFunc::new(ctx, navigate_back_lxapp)?;
     lx::register_js_api(ctx, "navigateBackLxApp", navigate_back_lxapp)?;
-
-    lxapp::register_host("navigateToLxApp", Arc::new(NavigateToLxApp));
-    lxapp::register_host("navigateBackLxApp", Arc::new(NavigateBackLxApp));
 
     Ok(())
 }

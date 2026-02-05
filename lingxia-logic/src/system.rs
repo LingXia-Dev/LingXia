@@ -3,12 +3,10 @@
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
-use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError};
 use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
-use std::sync::Arc;
 
 /// AppBase information
 #[derive(Debug, Clone, IntoJSObj)]
@@ -100,15 +98,6 @@ fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
         .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
 }
 
-host_api!(
-    OpenURL,
-    JSOpenURLOptions,
-    (),
-    |lxapp: Arc<LxApp>, options: JSOpenURLOptions| -> Result<(), LxAppError> {
-        open_url_impl(&lxapp, &options)
-    }
-);
-
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let get_app_base_info = JSFunc::new(ctx, get_system_locale)?;
     lx::register_js_api(ctx, "getAppBaseInfo", get_app_base_info)?;
@@ -118,8 +107,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let open_url_func = JSFunc::new(ctx, open_url)?;
     lx::register_js_api(ctx, "openURL", open_url_func)?;
-
-    lxapp::register_host("openURL", Arc::new(OpenURL));
 
     Ok(())
 }

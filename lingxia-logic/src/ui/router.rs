@@ -1,4 +1,3 @@
-use lxapp::host_api;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
 use rong::{FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError};
@@ -228,98 +227,6 @@ async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
         })
 }
 
-host_api!(NavigateToHost, NavigateTo, (), |lxapp: Arc<LxApp>,
-                                           options: NavigateTo|
- -> Result<
-    (),
-    LxAppError,
-> {
-    lxapp.ensure_page_exists(&options.url)?;
-    let url = options.url.clone();
-    let lxapp_clone = lxapp.clone();
-
-    let _ = rong::bg::spawn(async move {
-        if let Err(err) =
-            navigate_with_url(lxapp_clone, options.url, NavigationType::Forward, true).await
-        {
-            lxapp::warn!("navigateTo failed url={} err={}", url, err);
-        }
-    });
-
-    Ok(())
-});
-
-host_api!(RedirectToHost, RedirectTo, (), |lxapp: Arc<LxApp>,
-                                           options: RedirectTo|
- -> Result<
-    (),
-    LxAppError,
-> {
-    lxapp.ensure_page_exists(&options.url)?;
-    if is_tabbar_page_url(&lxapp, &options.url) {
-        return Err(LxAppError::UnsupportedOperation(
-            "redirectTo cannot navigate to a tabBar page".to_string(),
-        ));
-    }
-    let url = options.url.clone();
-    let lxapp_clone = lxapp.clone();
-
-    let _ = rong::bg::spawn(async move {
-        if let Err(err) =
-            navigate_with_url(lxapp_clone, options.url, NavigationType::Replace, true).await
-        {
-            lxapp::warn!("redirectTo failed url={} err={}", url, err);
-        }
-    });
-
-    Ok(())
-});
-
-host_api!(SwitchTabHost, SwitchTab, (), |lxapp: Arc<LxApp>,
-                                         options: SwitchTab|
- -> Result<(), LxAppError> {
-    lxapp.ensure_page_exists(&options.url)?;
-    let url = options.url.clone();
-    let lxapp_clone = lxapp.clone();
-
-    let _ = rong::bg::spawn(async move {
-        if let Err(err) =
-            navigate_with_url(lxapp_clone, options.url, NavigationType::SwitchTab, true).await
-        {
-            lxapp::warn!("switchTab failed url={} err={}", url, err);
-        }
-    });
-
-    Ok(())
-});
-
-host_api!(ReLaunchHost, ReLaunch, (), |lxapp: Arc<LxApp>,
-                                       options: ReLaunch|
- -> Result<(), LxAppError> {
-    lxapp.ensure_page_exists(&options.url)?;
-    let url = options.url.clone();
-    let lxapp_clone = lxapp.clone();
-
-    let _ = rong::bg::spawn(async move {
-        if let Err(err) =
-            navigate_with_url(lxapp_clone, options.url, NavigationType::Launch, true).await
-        {
-            lxapp::warn!("reLaunch failed url={} err={}", url, err);
-        }
-    });
-
-    Ok(())
-});
-
-host_api!(
-    NavigateBackHost,
-    NavigateBack,
-    (),
-    |lxapp: Arc<LxApp>, options: NavigateBack| -> Result<(), LxAppError> {
-        navigate_back_impl(&lxapp, options.delta)
-    }
-);
-
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     // Register navigation functions
     let navigate_to_func = JSFunc::new(ctx, navigate_to)?;
@@ -336,12 +243,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
     let re_launch_func = JSFunc::new(ctx, re_launch)?;
     lx::register_js_api(ctx, "reLaunch", re_launch_func)?;
-
-    lxapp::register_host("navigateTo", Arc::new(NavigateToHost));
-    lxapp::register_host("navigateBack", Arc::new(NavigateBackHost));
-    lxapp::register_host("redirectTo", Arc::new(RedirectToHost));
-    lxapp::register_host("switchTab", Arc::new(SwitchTabHost));
-    lxapp::register_host("reLaunch", Arc::new(ReLaunchHost));
 
     Ok(())
 }

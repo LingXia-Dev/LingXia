@@ -6,7 +6,7 @@ mod delegate;
 mod error;
 pub mod event;
 mod executor;
-pub mod host;
+pub(crate) mod host;
 pub mod key_event;
 pub mod log;
 pub mod lx;
@@ -32,7 +32,6 @@ pub use event::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
     LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent,
 };
-pub use host::{HostHandler, register_host};
 pub use lxapp::set_home_lxapp_dev_path;
 pub use lxapp::{
     LxApp, ReleaseType, config::LxAppInfo, get_current_lxapp, get_locale, get_platform, init,

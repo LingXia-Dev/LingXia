@@ -26,7 +26,7 @@ pub const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
 pub(crate) enum ServiceType {
     None,
     JSFunc(rong::JSFunc),
-    HostAPI(Arc<dyn crate::HostHandler>),
+    HostAPI(Arc<dyn crate::host::HostHandler>),
 }
 
 pub(crate) trait MessageTransport {

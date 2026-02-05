@@ -190,21 +190,54 @@ impl MessageHandler for PageSvc {
                 }
             }
             ServiceType::HostAPI(handler) => {
-                if cancel_rx.try_recv().is_ok() {
-                    return Err(RpcError {
-                        code: BRIDGE_CANCELED.to_string(),
-                        message: None,
-                    });
-                }
                 let lxapp = LxApp::from_ctx(&ctx).map_err(|e| RpcError {
                     code: BRIDGE_INTERNAL_ERROR.to_string(),
                     message: Some(e.to_string()),
                 })?;
-                let result = handler.call(lxapp, params_json).map_err(|e| RpcError {
-                    code: BRIDGE_INTERNAL_ERROR.to_string(),
-                    message: Some(e.to_string()),
-                })?;
-                serde_json::from_str(&result).map_err(|e| RpcError {
+                let input = params_json.map(|s| s.to_string());
+
+                // Allow immediate cancel response while still forwarding cancellation to Host.
+                // NOTE: This runs inside a per-request task (bridge spawns Req handling), so
+                // awaiting here will not block the bridge message pump.
+                let start = std::time::Instant::now();
+                let (host_cancel_tx, host_cancel_rx) = tokio::sync::oneshot::channel();
+                let mut host_fut = handler.call(lxapp, input, host_cancel_rx);
+
+                let json_result: Result<String, RpcError> = tokio::select! {
+                    biased;
+                    res = &mut host_fut => {
+                        match res {
+                            Ok(json) => Ok(json),
+                            Err(e) => {
+                                // Host handlers are expected to return a cancel error when they
+                                // observe `cancel`. Map that to BRIDGE_CANCELED so view callers
+                                // can handle it consistently.
+                                if matches!(&e, LxAppError::Bridge(msg) if msg == "Canceled") {
+                                    Err(RpcError { code: BRIDGE_CANCELED.to_string(), message: None })
+                                } else {
+                                    Err(RpcError { code: BRIDGE_INTERNAL_ERROR.to_string(), message: Some(e.to_string()) })
+                                }
+                            }
+                        }
+                    }
+                    _ = &mut cancel_rx => {
+                        let _ = host_cancel_tx.send(());
+                        Err(RpcError { code: BRIDGE_CANCELED.to_string(), message: None })
+                    }
+                };
+
+                let elapsed = start.elapsed();
+                if elapsed > std::time::Duration::from_secs(3) {
+                    crate::warn!(
+                        "[{}] host req '{}' slow: {:?}",
+                        self.page.path(),
+                        method,
+                        elapsed
+                    );
+                }
+
+                let json = json_result?;
+                serde_json::from_str(&json).map_err(|e| RpcError {
                     code: BRIDGE_INTERNAL_ERROR.to_string(),
                     message: Some(e.to_string()),
                 })
@@ -251,9 +284,17 @@ impl MessageHandler for PageSvc {
                         return;
                     }
                 };
-                if let Err(e) = handler.call(lxapp, params_json) {
-                    error!("notify '{}' failed: {}", method, e);
-                }
+                let input = params_json.map(|s| s.to_string());
+                let method_name = method.to_string();
+
+                // Notify calls are fire-and-forget but must not spuriously "cancel" themselves.
+                let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+                rong::spawn(async move {
+                    let _keep_alive = cancel_tx;
+                    if let Err(e) = handler.call(lxapp, input, cancel_rx).await {
+                        error!("notify '{}' failed: {}", method_name, e);
+                    }
+                });
             }
             ServiceType::None => {}
         }
