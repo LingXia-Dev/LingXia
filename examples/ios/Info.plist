@@ -18,17 +18,8 @@
         <string>remote-notification</string>
     </array>
 
-    <!-- App Transport Security -->
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
-
-    <!-- Location permission description for runtime prompts -->
+    <!-- Location permission description for runtime prompts (required for WiFi info access) -->
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Allow LingXia to access your location to provide location-based features.</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
     <string>Allow LingXia to access your location to read WiFi information.</string>
 
     <!-- Photos library permission descriptions -->

@@ -27,7 +27,7 @@ for arg in "$@"; do
 done
 
 # Define the resources directory for iOS
-RESOURCES_DIR="$SCRIPT_DIR/lxapp/Sources/lxapp/Resources"
+RESOURCES_DIR="$SCRIPT_DIR/Sources/lxapp/Resources"
 echo "RESOURCES_DIR: $RESOURCES_DIR"
 
 # Generate Swift bridge bindings before staging the Apple SDK into target/spm/lingxia.
@@ -79,5 +79,5 @@ generate_app_config "$RESOURCES_DIR"
 build_and_copy_homelxapp "$RESOURCES_DIR"
 
 echo "Building and deploying iOS app..."
-cd "$SCRIPT_DIR/lxapp"
+cd "$SCRIPT_DIR"
 env LINGXIA_PROJECT_ROOT=$LINGXIA_ROOT xtool dev
