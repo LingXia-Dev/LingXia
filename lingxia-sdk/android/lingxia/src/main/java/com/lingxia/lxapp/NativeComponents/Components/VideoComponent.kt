@@ -123,6 +123,8 @@ class VideoComponent(
 
             (props["showControlsOnInit"] as? Boolean)?.let { config.showControlsOnInit = it }
             (props["objectFit"] as? String)?.let { config.objectFit = LxMediaObjectFit.fromString(it) }
+            // Rotate video content (0/90/180/270).
+            (props["rotate"] as? Number)?.let { config.rotateDegrees = it.toInt() }
 
             return config
         }

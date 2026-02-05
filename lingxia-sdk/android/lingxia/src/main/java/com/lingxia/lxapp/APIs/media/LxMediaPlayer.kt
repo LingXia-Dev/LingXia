@@ -41,6 +41,8 @@ import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
 import com.lingxia.lxapp.TabBar
 import java.io.File
+import kotlin.math.max
+import kotlin.math.min
 
 private const val TAG = "LxMediaPlayer"
 
@@ -98,7 +100,9 @@ data class LxMediaPlayerConfig(
     var qualities: List<LxMediaQuality>? = null,
     var speeds: List<Double>? = null,
     var showControlsOnInit: Boolean? = null,
-    var objectFit: LxMediaObjectFit? = null
+    var objectFit: LxMediaObjectFit? = null,
+    // Rotate video content inside the component (0/90/180/270). This does not rotate the overlay controls.
+    var rotateDegrees: Int? = null,
 )
 
 // Commands that can be sent to the player
@@ -212,6 +216,7 @@ class LxMediaPlayer(
     private var currentPlaybackRate = 1.0f
     private var objectFit = LxMediaObjectFit.COVER
     private var cornerRadius = 0.0
+    private var displayRotationDegrees = 0
 
     // Quality and Speed
     private var availableQualities: List<LxMediaQuality> = emptyList()
@@ -274,6 +279,11 @@ class LxMediaPlayer(
     init {
         setupUI()
         setupCore()
+
+        // Keep inline rotation in sync with layout changes (e.g. frame updates from WebView overlay).
+        view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+            applyInlineDisplayRotationTransform()
+        }
 
         // Ensure video output is ready when view is attached
         view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
@@ -406,7 +416,9 @@ class LxMediaPlayer(
         }
         config.autoplay?.let { if (it) play() }
         config.objectFit?.let { setObjectFit(it) }
+        config.rotateDegrees?.let { setDisplayRotationDegrees(it) }
         controlsOverlay?.updateSettingsButton()
+        applyInlineDisplayRotationTransform()
     }
 
     private fun shouldShowPoster(): Boolean {
@@ -1122,6 +1134,12 @@ class LxMediaPlayer(
             )
         }
         resetView(playerView)
+        // PlayerView owns its internal TextureView; don't touch its LayoutParams, only clear transforms.
+        findFirstTextureView(playerView)?.let { tv ->
+            tv.rotation = 0f
+            tv.scaleX = 1f
+            tv.scaleY = 1f
+        }
         resetView(posterImageView)
         loadingIndicator?.let { loader ->
             loader.rotation = 0f
@@ -1216,6 +1234,12 @@ class LxMediaPlayer(
 
         setMatchParent(playerView)
         setMatchParent(streamTextureView)  // CRITICAL: Stream mode uses this, not playerView
+        // PlayerView internal TextureView may still carry inline transforms.
+        findFirstTextureView(playerView)?.let { tv ->
+            tv.rotation = 0f
+            tv.scaleX = 1f
+            tv.scaleY = 1f
+        }
         setMatchParent(posterImageView)
         controlsOverlay?.view?.let { setMatchParent(it) }
         loadingIndicator?.let { loader ->
@@ -1425,6 +1449,57 @@ class LxMediaPlayer(
     private fun setObjectFit(fit: LxMediaObjectFit) {
         objectFit = fit
         playerView?.resizeMode = fit.toResizeMode()
+    }
+
+    private fun setDisplayRotationDegrees(degrees: Int) {
+        val normalized = normalizeRotation(degrees)
+        if (normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270) return
+        displayRotationDegrees = normalized
+    }
+
+    private fun findFirstTextureView(root: View?): TextureView? {
+        root ?: return null
+        if (root is TextureView) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val found = findFirstTextureView(root.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
+    private fun applyInlineDisplayRotationTransform() {
+        if (isFullscreen) return
+
+        val degrees = displayRotationDegrees
+        val containerW = view.width.toFloat()
+        val containerH = view.height.toFloat()
+        if (containerW <= 0f || containerH <= 0f) return
+
+        val rotate90 = degrees == 90 || degrees == 270
+        val scale = if (!rotate90) 1f else {
+            val ratio1 = containerW / containerH
+            val ratio2 = containerH / containerW
+            when (objectFit) {
+                LxMediaObjectFit.COVER -> max(ratio1, ratio2)
+                else -> min(ratio1, ratio2)
+            }
+        }
+
+        fun apply(v: View?) {
+            v ?: return
+            v.pivotX = v.width / 2f
+            v.pivotY = v.height / 2f
+            v.rotation = degrees.toFloat()
+            v.scaleX = scale
+            v.scaleY = scale
+        }
+
+        // URL playback uses PlayerView's internal TextureView. Stream decoder uses streamTextureView.
+        apply(findFirstTextureView(playerView))
+        apply(streamTextureView)
+        apply(posterImageView)
     }
 
     private fun setCornerRadius(radius: Double) {
