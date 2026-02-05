@@ -94,6 +94,17 @@ enum Commands {
         /// Platforms to build (comma-separated). Defaults to all detected platforms.
         #[arg(long, value_delimiter = ',')]
         platform: Vec<String>,
+
+        /// Sign and package iOS build as IPA
+        #[arg(long)]
+        ipa: bool,
+    },
+
+    /// List connected devices
+    Devices {
+        /// Target platform (android, ios). Auto-detected if not specified.
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
     },
 
     /// Install the built app to a device
@@ -105,6 +116,38 @@ enum Commands {
         /// Device ID (required if multiple devices connected)
         #[arg(short = 'd', long)]
         device: Option<String>,
+
+        /// Target platform (android, ios). Auto-detected if not specified.
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
+    },
+
+    /// Uninstall an app from a device
+    Uninstall {
+        /// Bundle ID / Package ID to uninstall
+        bundle_id: String,
+
+        /// Device ID (required if multiple devices connected)
+        #[arg(short = 'd', long)]
+        device: Option<String>,
+
+        /// Target platform (android, ios). Auto-detected if not specified.
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
+    },
+
+    /// Launch an installed app on a device
+    Launch {
+        /// Bundle ID / Package ID to launch
+        bundle_id: String,
+
+        /// Device ID (required if multiple devices connected)
+        #[arg(short = 'd', long)]
+        device: Option<String>,
+
+        /// Target platform (android, ios). Auto-detected if not specified.
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
     },
 
     /// Development mode: build, install, and launch app
@@ -128,21 +171,6 @@ enum Commands {
     Auth {
         #[command(subcommand)]
         action: AuthAction,
-    },
-
-    /// Sign an iOS app bundle with provisioning (iOS only)
-    Sign {
-        /// Path to the .app bundle (auto-detected if not specified)
-        #[arg(short = 'a', long)]
-        app: Option<String>,
-
-        /// Device UDID (auto-detect first available if not specified)
-        #[arg(short = 'd', long)]
-        device: Option<String>,
-
-        /// Output IPA path (optional, creates IPA if specified)
-        #[arg(short = 'o', long)]
-        output: Option<String>,
     },
 }
 
@@ -193,6 +221,7 @@ fn main() -> Result<()> {
         Commands::Build {
             build_options,
             platform,
+            ipa,
         } => {
             commands::build::execute(
                 build_options.release,
@@ -200,10 +229,32 @@ fn main() -> Result<()> {
                 !build_options.skip_native,
                 build_options.targets,
                 platform,
+                ipa,
             )?;
         }
-        Commands::Install { artifact, device } => {
-            commands::install::execute(artifact, device)?;
+        Commands::Devices { platform } => {
+            commands::device::list_devices(platform)?;
+        }
+        Commands::Install {
+            artifact,
+            device,
+            platform,
+        } => {
+            commands::install::execute(artifact, device, platform)?;
+        }
+        Commands::Uninstall {
+            bundle_id,
+            device,
+            platform,
+        } => {
+            commands::device::uninstall(&bundle_id, device, platform)?;
+        }
+        Commands::Launch {
+            bundle_id,
+            device,
+            platform,
+        } => {
+            commands::device::launch(&bundle_id, device, platform)?;
         }
         Commands::Dev {
             build_options,
@@ -237,13 +288,6 @@ fn main() -> Result<()> {
                 commands::auth::status()?;
             }
         },
-        Commands::Sign {
-            app,
-            device,
-            output,
-        } => {
-            commands::sign::execute(app, device, output)?;
-        }
     }
 
     Ok(())

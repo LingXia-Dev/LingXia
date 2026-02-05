@@ -422,7 +422,12 @@ impl Platform for IosPlatform {
         // Create .app bundle using AppBundler (converts library to executable app)
         let app_path = self.create_app_bundle(&ios_dir, &workspace_root, config, ios_config)?;
 
-        // TODO: Auto-signing will be implemented separately (requires team_id from local config)
+        if config.ipa {
+            apple::provisioning::sign_app(&app_path, None)?;
+            let ipa_path = app_path.with_extension("ipa");
+            let ipa_path = apple::signer::create_ipa(&app_path, &ipa_path)?;
+            println!("{} IPA → {}", "✓".green(), ipa_path.display());
+        }
 
         Ok(BuildArtifacts::Ios { app_path })
     }
@@ -445,6 +450,9 @@ impl Platform for IosPlatform {
         if !app_path.exists() {
             return Err(anyhow!("App bundle not found at: {}", app_path.display()));
         }
+
+        // Sign the app before installing
+        apple::provisioning::sign_app(&app_path, config.device_id.as_deref())?;
 
         apple::devicectl::install_app(&app_path, config.device_id.as_deref())
     }

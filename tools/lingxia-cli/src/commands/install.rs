@@ -8,14 +8,22 @@ use std::path::{Path, PathBuf};
 ///
 /// Installs the built application to a connected device.
 /// Auto-detects the artifact if path is not provided.
-pub fn execute(artifact: Option<String>, device: Option<String>) -> Result<()> {
+pub fn execute(
+    artifact: Option<String>,
+    device: Option<String>,
+    platform_arg: Option<String>,
+) -> Result<()> {
     let project_root = env::current_dir()?;
 
     // Convert artifact path string to PathBuf if provided
     let artifact_path = artifact.map(PathBuf::from);
 
-    // Detect platform from artifact extension or project structure
-    let platform_type = detect_platform_from_artifact(artifact_path.as_deref(), &project_root)?;
+    // Detect platform from argument, artifact extension, or project structure
+    let platform_type = if let Some(p) = platform_arg {
+        p.parse::<PlatformType>()?
+    } else {
+        detect_platform_from_artifact(artifact_path.as_deref(), &project_root)?
+    };
     let platform = platform::detector::create_platform(&platform_type)?;
 
     let config = InstallConfig {

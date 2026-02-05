@@ -19,6 +19,8 @@ pub struct BuildConfig {
     pub targets: Vec<String>,
     /// Optional project configuration
     pub lingxia_config: Option<LingXiaConfig>,
+    /// Sign and package as IPA (iOS only)
+    pub ipa: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

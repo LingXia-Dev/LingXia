@@ -17,6 +17,7 @@ pub fn execute(
     build_native: bool,
     targets: Vec<String>,
     platforms: Vec<String>,
+    ipa: bool,
 ) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
@@ -161,6 +162,7 @@ pub fn execute(
             build_native,
             targets: build_targets.clone(),
             lingxia_config: Some(config.clone()),
+            ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -173,7 +175,7 @@ pub fn execute(
 
     // Print build summary
     println!();
-    for (platform_type, artifacts) in all_artifacts {
+    for (platform_type, artifacts) in &all_artifacts {
         println!(
             "{} {} → {}",
             "✓".green(),

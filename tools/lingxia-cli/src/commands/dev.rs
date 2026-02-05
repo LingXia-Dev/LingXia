@@ -145,6 +145,7 @@ fn execute_android(
         build_native,
         targets: build_targets,
         lingxia_config: Some(config.clone()),
+        ipa: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -217,7 +218,7 @@ fn execute_ios(
     )?;
 
     // Step 1: Build
-    println!("{}", "Step 1/4: Building...".bold());
+    println!("{}", "Step 1/3: Building...".bold());
     let build_config = BuildConfig {
         project_root: project_root.clone(),
         profile: build_profile,
@@ -225,6 +226,7 @@ fn execute_ios(
         build_native,
         targets: vec![],
         lingxia_config: Some(config.clone()),
+        ipa: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -232,24 +234,19 @@ fn execute_ios(
 
     println!();
 
-    // Step 2: Sign
-    println!("{}", "Step 2/4: Signing...".bold());
-    crate::commands::sign::execute(
-        Some(app_path.to_string_lossy().to_string()),
-        device.clone(),
-        None,
-    )?;
+    // Step 2: Sign + Install
+    println!("{}", "Step 2/3: Installing...".bold());
+    let install_config = crate::platform::InstallConfig {
+        project_root: project_root.clone(),
+        artifact_path: Some(app_path.to_path_buf()),
+        device_id: device.clone(),
+    };
+    platform.install(&install_config)?;
 
     println!();
 
-    // Step 3: Install
-    println!("{}", "Step 3/4: Installing...".bold());
-    apple::devicectl::install_app(app_path, device.as_deref())?;
-
-    println!();
-
-    // Step 4: Launch app
-    println!("{}", "Step 4/4: Launching app...".bold());
+    // Step 3: Launch app
+    println!("{}", "Step 3/3: Launching...".bold());
 
     // Read bundle ID from the signed app's Info.plist
     let bundle_id = apple::provisioning::read_bundle_id(&app_path.join("Info.plist"))?;
@@ -299,6 +296,7 @@ fn execute_macos(
         build_native,
         targets: vec![],
         lingxia_config: Some(config.clone()),
+        ipa: false,
     };
 
     let artifacts = platform.build(&build_config)?;
