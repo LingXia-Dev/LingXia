@@ -1,9 +1,23 @@
 use objc2::rc::Retained;
 use objc2::runtime::NSObject;
-use objc2::{ClassType, msg_send};
+use objc2::runtime::{AnyObject, Sel};
+use objc2::{ClassType, msg_send, sel};
 use objc2_foundation::{NSBundle, NSData, NSFileManager, NSString, NSURL};
 use std::path::Path;
 use std::sync::OnceLock;
+
+#[inline]
+unsafe fn nsdata_bytes_ptr_unchecked(ns_data: &Retained<NSData>) -> *const u8 {
+    // Avoid objc2's debug-time method signature verification for `-[NSData bytes]`.
+    //
+    // On some Apple OS versions, the runtime type encoding for this method is
+    // not `^v` as expected, which can cause a panic in debug builds.
+    let obj: *const AnyObject = Retained::as_ptr(ns_data).cast();
+    let sel: Sel = sel!(bytes);
+    let func: unsafe extern "C" fn(*const AnyObject, Sel) -> *const core::ffi::c_void =
+        unsafe { core::mem::transmute(objc2::ffi::objc_msgSend as *const ()) };
+    unsafe { func(obj, sel) }.cast()
+}
 
 /// Cached bundles for resource lookup (app bundle, SDK bundle)
 /// Initialized once on first access to avoid repeated bundle detection
@@ -169,8 +183,8 @@ pub fn read_asset_data(path: &str) -> Vec<u8> {
                     if let Some(ns_data) = data {
                         let length: usize = msg_send![&ns_data, length];
                         if length > 0 {
-                            let bytes_ptr: *const u8 = msg_send![&ns_data, bytes];
-                            let slice = std::slice::from_raw_parts(bytes_ptr, length);
+                            let bytes_ptr: *const u8 = nsdata_bytes_ptr_unchecked(&ns_data);
+                            let slice = std::slice::from_raw_parts(bytes_ptr.cast::<u8>(), length);
                             return slice.to_vec();
                         }
                     }
