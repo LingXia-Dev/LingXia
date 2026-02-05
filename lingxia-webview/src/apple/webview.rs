@@ -4,14 +4,17 @@ use block2::{Block, StackBlock};
 use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
-    DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
+    AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send,
+    rc::Retained,
 };
 use objc2_foundation::{
-    NSError, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
+    NSDate, NSError, NSJSONSerialization, NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect,
+    NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKContentRuleList, WKContentRuleListStore, WKNavigation, WKNavigationDelegate,
-    WKUserContentController, WKWebViewConfiguration,
+    WKAudiovisualMediaTypes, WKContentRuleList, WKContentRuleListStore, WKNavigation,
+    WKNavigationDelegate, WKURLSchemeHandler, WKUserContentController, WKWebViewConfiguration,
+    WKWebsiteDataStore,
 };
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -295,35 +298,28 @@ impl WebViewInner {
             let config = WKWebViewConfiguration::new(mtm);
 
             // Use a non-persistent data store to disable DOM Storage (localStorage, etc.)
-            let non_persistent_store: *mut AnyObject =
-                msg_send![class!(WKWebsiteDataStore), nonPersistentDataStore];
-            let _: () = msg_send![&*config, setWebsiteDataStore: non_persistent_store];
+            let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
+            config.setWebsiteDataStore(&non_persistent_store);
 
             // Access preferences to set security settings
-            let prefs: *mut AnyObject = msg_send![&*config, preferences];
-            let _: () = msg_send![prefs, setJavaScriptCanOpenWindowsAutomatically: false];
+            let prefs = config.preferences();
+            prefs.setJavaScriptCanOpenWindowsAutomatically(false);
 
             // Disable local file access for security
             let allow_file_access_key = NSString::from_str("allowFileAccessFromFileURLs");
-            let ns_false: *mut AnyObject = msg_send![class!(NSNumber), numberWithBool: false];
-            let _: () = msg_send![prefs, setValue:ns_false, forKey:&*allow_file_access_key];
+            let ns_false: *mut AnyObject =
+                msg_send![class!(NSNumber), numberWithBool: objc2::runtime::Bool::NO];
+            let prefs_obj: *mut AnyObject = Retained::as_ptr(&prefs).cast_mut().cast();
+            let _: () = msg_send![prefs_obj, setValue:ns_false, forKey:&*allow_file_access_key];
 
             // Configure media playback
-            let media_types: i32 = 0; // WKAudiovisualMediaTypeNone
-            let _: () =
-                msg_send![&*config, setMediaTypesRequiringUserActionForPlayback: media_types];
+            config.setMediaTypesRequiringUserActionForPlayback(WKAudiovisualMediaTypes::None);
 
             // Disable navigation restrictions for better compatibility
-            if objc2::msg_send![&*config, respondsToSelector: objc2::sel!(setLimitsNavigationsToAppBoundDomains:)]
-            {
-                let _: () = msg_send![&*config, setLimitsNavigationsToAppBoundDomains: false];
-            }
+            config.setLimitsNavigationsToAppBoundDomains(false);
 
             // Disable HTTPS upgrade for local development
-            if objc2::msg_send![&*config, respondsToSelector: objc2::sel!(setUpgradeKnownHostsToHTTPS:)]
-            {
-                let _: () = msg_send![&*config, setUpgradeKnownHostsToHTTPS: false];
-            }
+            config.setUpgradeKnownHostsToHTTPS(false);
 
             // Register custom scheme handler for lx:// URLs bound to this WebView
             let webtag = WebTag::new(appid, path, session_id);
@@ -331,7 +327,9 @@ impl WebViewInner {
                 super::schemehandler::LingXiaSchemeHandler::new(webtag.clone())
             {
                 let lx_scheme = NSString::from_str("lx");
-                let _: () = msg_send![&*config, setURLSchemeHandler: &*scheme_handler, forURLScheme: &*lx_scheme];
+                let proto_scheme_handler: &ProtocolObject<dyn WKURLSchemeHandler> =
+                    ProtocolObject::from_ref(&*scheme_handler);
+                config.setURLSchemeHandler_forURLScheme(Some(proto_scheme_handler), &lx_scheme);
 
                 log::info!(
                     "Successfully registered scheme `lx` handler for webtag={}",
@@ -532,9 +530,10 @@ impl WebViewInner {
             let console_js_string = NSString::from_str(console_script);
             let user_script_class = objc2::class!(WKUserScript);
             let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+            let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
             let console_user_script: *mut AnyObject = msg_send![console_user_script,
                 initWithSource: &*console_js_string,
-                injectionTime: 0, // WKUserScriptInjectionTimeAtDocumentStart
+                injectionTime: injection_time,
                 forMainFrameOnly: false];
 
             let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
@@ -567,7 +566,7 @@ impl WebViewInner {
             let ns_url_string = NSString::from_str(&url);
             if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
                 let request = NSURLRequest::requestWithURL(&ns_url);
-                let _: () = msg_send![self.webview, loadRequest: &*request];
+                let _: *mut AnyObject = msg_send![self.webview, loadRequest: &*request];
                 Ok(())
             } else {
                 Err(WebViewError::WebView(format!("Invalid URL: {}", url)))
@@ -586,7 +585,7 @@ impl WebViewInner {
             let data_nsstring = NSString::from_str(&data);
             let base_url_nsstring = NSString::from_str(&base_url);
             if let Some(base_url_obj) = NSURL::URLWithString(&base_url_nsstring) {
-                let _: () = msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url_obj];
+                let _: *mut AnyObject = msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url_obj];
                 log::info!("Loaded HTML data into WebView with base URL: {}", base_url);
                 Ok(())
             } else {
@@ -602,9 +601,15 @@ impl WebViewInner {
     fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), WebViewError> {
         unsafe {
             let js_string = NSString::from_str(&js);
+            let completion =
+                StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
             // Note: evaluateJavaScript is async, but we're treating it as fire-and-forget
             // In a more complete implementation, we might want to handle the completion
-            let _: () = msg_send![self.webview, evaluateJavaScript: &*js_string, completionHandler: std::ptr::null::<*const AnyObject>()];
+            let _: () = msg_send![
+                self.webview,
+                evaluateJavaScript: &*js_string,
+                completionHandler: Some(&*completion)
+            ];
             Ok(())
         }
     }
@@ -612,18 +617,23 @@ impl WebViewInner {
     /// Helper method to clear browsing data on main thread
     fn clear_browsing_data_on_main_thread(&self) -> Result<(), WebViewError> {
         unsafe {
+            let Some(mtm) = MainThreadMarker::new() else {
+                return Err(WebViewError::WebView("Not on main thread".to_string()));
+            };
+
             // Get the website data store from the configuration
             let config: *mut AnyObject = msg_send![self.webview, configuration];
-            let data_store: *mut AnyObject = msg_send![config, websiteDataStore];
+            let config_ref = &*(config as *const WKWebViewConfiguration);
+            let data_store = config_ref.websiteDataStore();
 
-            // Get all website data types
-            let webstore_class = objc2::class!(WKWebsiteDataStore);
-            let all_types: *mut AnyObject = msg_send![webstore_class, allWebsiteDataTypes];
-
-            // Remove all data (this is async but we're treating it as fire-and-forget)
-            let date_class = objc2::class!(NSDate);
-            let distant_past: *mut AnyObject = msg_send![date_class, distantPast];
-            let _: () = msg_send![data_store, removeDataOfTypes: all_types, modifiedSince: distant_past, completionHandler: std::ptr::null::<*const AnyObject>()];
+            let all_types = WKWebsiteDataStore::allWebsiteDataTypes(mtm);
+            let distant_past = NSDate::distantPast();
+            let completion = StackBlock::new(|| {}).copy();
+            data_store.removeDataOfTypes_modifiedSince_completionHandler(
+                &all_types,
+                &distant_past,
+                &completion,
+            );
 
             log::info!("Clearing browsing data");
             Ok(())
@@ -656,7 +666,7 @@ impl WebViewController for WebViewInner {
                 let url = NSURL::URLWithString(&url_nsstring);
                 if let Some(url) = url {
                     let request = NSURLRequest::requestWithURL(&url);
-                    let _: () = msg_send![webview_ptr, loadRequest: &*request];
+                    let _: *mut AnyObject = msg_send![webview_ptr, loadRequest: &*request];
                 }
             });
 
@@ -686,7 +696,8 @@ impl WebViewController for WebViewInner {
                 let base_url = NSURL::URLWithString(&base_url_nsstring);
 
                 if let Some(base_url) = base_url {
-                    let _: () = msg_send![webview_ptr, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
+                    let _: *mut AnyObject =
+                        msg_send![webview_ptr, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
                 }
             });
 
@@ -703,12 +714,16 @@ impl WebViewController for WebViewInner {
             let webview_ptr_addr = self.webview as usize;
             let js_clone = js.clone();
 
-            DispatchQueue::main().exec_async(move || {
-                unsafe {
-                    let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                    let js_nsstring = NSString::from_str(&js_clone);
-                    let _: () = msg_send![webview_ptr, evaluateJavaScript: &*js_nsstring, completionHandler: std::ptr::null::<*const AnyObject>()];
-                }
+            DispatchQueue::main().exec_async(move || unsafe {
+                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let js_nsstring = NSString::from_str(&js_clone);
+                let completion =
+                    StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
+                let _: () = msg_send![
+                    webview_ptr,
+                    evaluateJavaScript: &*js_nsstring,
+                    completionHandler: Some(&*completion)
+                ];
             });
 
             Ok(())
@@ -723,15 +738,24 @@ impl WebViewController for WebViewInner {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
 
-            DispatchQueue::main().exec_async(move || {
-                unsafe {
-                    let webview_ptr = webview_ptr_addr as *mut AnyObject;
-                    // Get WKWebsiteDataStore and clear data
-                    let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
-                    let data_store: *mut AnyObject = msg_send![configuration, websiteDataStore];
-                    let data_types: *mut AnyObject = msg_send![class!(WKWebsiteDataStore), allWebsiteDataTypes];
-                    let _: () = msg_send![data_store, removeDataOfTypes: data_types, modifiedSince: std::ptr::null::<*const AnyObject>(), completionHandler: std::ptr::null::<*const AnyObject>()];
-                }
+            DispatchQueue::main().exec_async(move || unsafe {
+                let webview_ptr = webview_ptr_addr as *mut AnyObject;
+                let Some(mtm) = MainThreadMarker::new() else {
+                    return;
+                };
+
+                let configuration: *mut AnyObject = msg_send![webview_ptr, configuration];
+                let config_ref = &*(configuration as *const WKWebViewConfiguration);
+                let data_store = config_ref.websiteDataStore();
+
+                let data_types = WKWebsiteDataStore::allWebsiteDataTypes(mtm);
+                let distant_past = NSDate::distantPast();
+                let completion = StackBlock::new(|| {}).copy();
+                data_store.removeDataOfTypes_modifiedSince_completionHandler(
+                    &data_types,
+                    &distant_past,
+                    &completion,
+                );
             });
 
             Ok(())
@@ -849,39 +873,45 @@ define_class!(
 
                 let message_string = if !body.is_null() {
                     // Try to get as string first
-                    let is_string: bool = msg_send![body, isKindOfClass: objc2::class!(NSString)];
-                    if is_string {
+                    let is_string: objc2::runtime::Bool =
+                        msg_send![body, isKindOfClass: objc2::class!(NSString)];
+                    if is_string.as_bool() {
                         let ns_string = &*(body as *const NSString);
                         ns_string.to_string()
                     } else {
                         // Try to convert to JSON if it's a dictionary
-                        let is_dict: bool =
+                        let is_dict: objc2::runtime::Bool =
                             msg_send![body, isKindOfClass: objc2::class!(NSDictionary)];
-                        if is_dict {
+                        if is_dict.as_bool() {
                             // Convert NSDictionary to JSON string (like Swift version)
-                            let json_data: *mut AnyObject = msg_send![objc2::class!(NSJSONSerialization),
-                                dataWithJSONObject: body,
-                                options: 0,
-                                error: std::ptr::null_mut::<*mut AnyObject>()];
+                            let body_obj: &AnyObject = &*(body as *const AnyObject);
+                            let json_data =
+                                match NSJSONSerialization::dataWithJSONObject_options_error(
+                                    body_obj,
+                                    NSJSONWritingOptions(0),
+                                ) {
+                                    Ok(data) => data,
+                                    Err(err) => {
+                                        log::error!(
+                                            "Failed to serialize dictionary to JSON: {}",
+                                            err.localizedDescription().to_string()
+                                        );
+                                        return;
+                                    }
+                                };
 
-                            if !json_data.is_null() {
-                                let json_string: *mut AnyObject =
-                                    msg_send![objc2::class!(NSString), alloc];
-                                let json_string: *mut AnyObject = msg_send![json_string,
-                                    initWithData: json_data,
-                                    encoding: 4]; // NSUTF8StringEncoding
-
-                                if !json_string.is_null() {
-                                    let ns_string = &*(json_string as *const NSString);
-                                    ns_string.to_string()
-                                } else {
+                            let json_string = match NSString::initWithData_encoding(
+                                NSString::alloc(),
+                                &json_data,
+                                4, // NSUTF8StringEncoding
+                            ) {
+                                Some(s) => s,
+                                None => {
                                     log::error!("Failed to convert JSON data to string");
                                     return;
                                 }
-                            } else {
-                                log::error!("Failed to serialize dictionary to JSON");
-                                return;
-                            }
+                            };
+                            json_string.to_string()
                         } else {
                             log::error!("Unsupported message body type");
                             return;

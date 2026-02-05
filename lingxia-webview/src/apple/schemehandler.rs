@@ -1,6 +1,6 @@
 use crate::webview::{WebTag, get_webview_delegate};
 use crate::{WebResourceBody, WebResourceResponse};
-use objc2::runtime::{AnyObject, NSObject};
+use objc2::runtime::{AnyObject, NSObject, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
 use objc2_web_kit::WKURLSchemeHandler;
@@ -8,6 +8,18 @@ use std::fs::File;
 use std::io::Read;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
+
+#[inline]
+unsafe fn nsdata_bytes_ptr_unchecked(ns_data: *mut AnyObject) -> *const u8 {
+    // Avoid objc2's debug-time method signature verification for `-[NSData bytes]`.
+    //
+    // On some Apple OS versions, the runtime type encoding for this method can
+    // differ from what headers declare, causing a panic in debug builds.
+    let sel: Sel = objc2::sel!(bytes);
+    let func: unsafe extern "C" fn(*mut AnyObject, Sel) -> *const core::ffi::c_void =
+        unsafe { core::mem::transmute(objc2::ffi::objc_msgSend as *const ()) };
+    unsafe { func(ns_data, sel) }.cast()
+}
 // Define ivars struct first
 #[derive(Debug)]
 pub(super) struct LingXiaSchemeHandlerIvars {
@@ -97,7 +109,7 @@ define_class!(
                 if !body_data.is_null() {
                     let length: usize = msg_send![body_data, length];
                     if length > 0 {
-                        let bytes_ptr: *const u8 = msg_send![body_data, bytes];
+                        let bytes_ptr: *const u8 = nsdata_bytes_ptr_unchecked(body_data);
                         if !bytes_ptr.is_null() {
                             body = std::slice::from_raw_parts(bytes_ptr, length).to_vec();
                         }
