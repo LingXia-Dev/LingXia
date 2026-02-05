@@ -1,5 +1,5 @@
-use super::build::prepare_host_assets;
 use crate::config::LingXiaConfig;
+use crate::host_assets::prepare_host_assets;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{Context, Result, anyhow};
@@ -199,12 +199,6 @@ fn execute_ios(
     build_native: bool,
     device: Option<String>,
 ) -> Result<()> {
-    use crate::platform::apple;
-
-    apple::ensure_macos()?;
-
-    // Swift can use debug/release, but Rust library always uses release
-    // (SDK Package.swift hardcodes release path for performance)
     let platform = platform::ios::IosPlatform::new();
 
     // Generate app.json and embed LxApp assets
@@ -236,7 +230,7 @@ fn execute_ios(
 
     // Step 2: Sign + Install
     println!("{}", "Step 2/3: Installing...".bold());
-    let install_config = crate::platform::InstallConfig {
+    let install_config = InstallConfig {
         project_root: project_root.clone(),
         artifact_path: Some(app_path.to_path_buf()),
         device_id: device.clone(),
@@ -248,10 +242,15 @@ fn execute_ios(
     // Step 3: Launch app
     println!("{}", "Step 3/3: Launching...".bold());
 
-    // Read bundle ID from the signed app's Info.plist
-    let bundle_id = apple::provisioning::read_bundle_id(&app_path.join("Info.plist"))?;
+    // Read bundle ID from the signed app (signing may change it for free accounts)
+    let bundle_id = platform::ios::read_bundle_id(app_path)?;
 
-    apple::devicectl::launch_app(&bundle_id, device.as_deref())?;
+    let run_config = RunConfig {
+        package_id: bundle_id.clone(),
+        main_activity: None,
+        device_id: device,
+    };
+    platform.run(&run_config)?;
 
     println!();
     println!("{}", "Dev workflow complete!".green().bold());
@@ -270,10 +269,7 @@ fn execute_macos(
     features: Vec<String>,
     build_native: bool,
 ) -> Result<()> {
-    use crate::platform::apple;
     use std::process::Command;
-
-    apple::ensure_macos()?;
 
     let platform = platform::macos::MacosPlatform::new();
 

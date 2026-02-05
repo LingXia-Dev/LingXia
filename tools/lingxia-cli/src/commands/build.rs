@@ -1,11 +1,10 @@
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
+use crate::host_assets::prepare_host_assets;
 use crate::lxapp;
 use crate::platform::{self, BuildConfig, BuildProfile};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::env;
-use std::fs;
-use std::path::{Path, PathBuf};
 
 /// Execute the build command
 ///
@@ -97,13 +96,16 @@ pub fn execute(
         available_platforms
     };
 
-    // iOS/macOS builds require macOS host (uses Xcode tooling).
-    if platforms_to_build.iter().any(|p| {
-        matches!(
-            p,
-            platform::detector::PlatformType::Ios | platform::detector::PlatformType::MacOs
-        )
-    }) {
+    // If the user explicitly asked to build iOS/macOS, fail fast on non-macOS hosts
+    // (Apple tooling requires macOS).
+    if explicit_platforms
+        && platforms_to_build.iter().any(|p| {
+            matches!(
+                p,
+                platform::detector::PlatformType::Ios | platform::detector::PlatformType::MacOs
+            )
+        })
+    {
         crate::platform::apple::ensure_macos().map_err(|e| {
             anyhow!(
                 "{}\nTip: on non-macOS hosts, pass `--platform android` to build only Android.",
@@ -187,195 +189,4 @@ pub fn execute(
     Ok(())
 }
 
-pub(crate) fn prepare_host_assets(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    build_profile: BuildProfile,
-    platforms: &[platform::detector::PlatformType],
-    explicit_platforms: bool,
-) -> Result<()> {
-    let prepared_lxapp_assets = if platforms
-        .iter()
-        .any(|p| matches!(p, platform::detector::PlatformType::Android))
-    {
-        prepare_embedded_lxapp_assets(project_root, config, build_profile)?
-    } else {
-        None
-    };
-
-    for platform in platforms {
-        match platform {
-            platform::detector::PlatformType::Android => {
-                let assets_root = platform::detector::resolve_android_assets_dir(project_root);
-                fs::create_dir_all(&assets_root)?;
-
-                ensure_host_app_json(config, &assets_root)?;
-
-                if let Some(ref lxapp_assets) = prepared_lxapp_assets {
-                    let target_dir = assets_root.join(&lxapp_assets.asset_name);
-                    if target_dir.exists() {
-                        fs::remove_dir_all(&target_dir)?;
-                    }
-                    copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
-                    println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
-                }
-            }
-            platform::detector::PlatformType::Ios => {
-                // iOS assets are prepared by IosPlatform.build() itself
-            }
-            platform::detector::PlatformType::MacOs => {
-                // macOS assets are prepared by MacosPlatform.build() itself
-            }
-            platform::detector::PlatformType::Harmony => {
-                if explicit_platforms && prepared_lxapp_assets.is_some() {
-                    println!(
-                        "  {} LxApp embedding for {} not yet supported.",
-                        "⚠️".yellow(),
-                        platform.as_str()
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-struct PreparedLxAppAssets {
-    dist_dir: PathBuf,
-    asset_name: String,
-}
-
-fn prepare_embedded_lxapp_assets(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    build_profile: BuildProfile,
-) -> Result<Option<PreparedLxAppAssets>> {
-    let Some(app) = &config.app else {
-        return Ok(None);
-    };
-
-    let lxapp_dir = project_root.join(&app.home_lxapp_id);
-    if !lxapp_dir.exists() {
-        return Ok(None);
-    }
-
-    let lxapp_json = lxapp_dir.join("lxapp.json");
-    let lxapp_build_config = lxapp_dir.join(LXAPP_BUILD_CONFIG_FILE);
-    if !lxapp_json.exists() || !lxapp_build_config.exists() {
-        return Err(anyhow!(
-            "LxApp project must include lxapp.json and {} in {}",
-            LXAPP_BUILD_CONFIG_FILE,
-            lxapp_dir.display()
-        ));
-    }
-
-    println!("{}", "Building LxApp...".bold());
-
-    let mut args = vec!["build".to_string()];
-    if matches!(build_profile, BuildProfile::Release) {
-        args.push("--release".to_string());
-    }
-    lxapp::run_in_dir(&args, &lxapp_dir)?;
-
-    let dist_dir = lxapp_dir.join("dist");
-    if !dist_dir.exists() {
-        return Err(anyhow!(
-            "LxApp build output not found: {}",
-            dist_dir.display()
-        ));
-    }
-
-    let asset_name = resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| app.home_lxapp_id.clone());
-
-    Ok(Some(PreparedLxAppAssets {
-        dist_dir,
-        asset_name,
-    }))
-}
-
-fn ensure_host_app_json(config: &LingXiaConfig, assets_root: &Path) -> Result<()> {
-    write_app_json_from_config(config, assets_root)
-}
-
-fn write_app_json_from_config(config: &LingXiaConfig, assets_root: &Path) -> Result<()> {
-    let app = config
-        .app
-        .as_ref()
-        .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
-
-    // Read apiKey/apiSecret from environment variables (CI-friendly)
-    let api_key = env::var("LINGXIA_API_KEY")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-    let api_secret = env::var("LINGXIA_API_SECRET")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-
-    let mut obj = serde_json::Map::new();
-    obj.insert(
-        "productName".to_string(),
-        serde_json::json!(app.product_name),
-    );
-    obj.insert(
-        "productVersion".to_string(),
-        serde_json::json!(app.product_version),
-    );
-
-    if let Some(api_server) = app.api_server.as_ref().filter(|s| !s.trim().is_empty()) {
-        obj.insert("apiServer".to_string(), serde_json::json!(api_server));
-    }
-    if let Some(api_key) = api_key {
-        obj.insert("apiKey".to_string(), serde_json::json!(api_key));
-    }
-    if let Some(api_secret) = api_secret {
-        obj.insert("apiSecret".to_string(), serde_json::json!(api_secret));
-    }
-
-    obj.insert(
-        "homeLxAppID".to_string(),
-        serde_json::json!(app.home_lxapp_id),
-    );
-    obj.insert(
-        "homeLxAppVersion".to_string(),
-        serde_json::json!(app.home_lxapp_version),
-    );
-    if let Some(max_age) = app.cache_max_age_days {
-        obj.insert("cacheMaxAgeDays".to_string(), serde_json::json!(max_age));
-    }
-
-    let app_json_path = assets_root.join("app.json");
-    fs::write(
-        app_json_path,
-        serde_json::to_string_pretty(&serde_json::Value::Object(obj))?,
-    )?;
-    Ok(())
-}
-
-fn resolve_lxapp_id(path: &PathBuf) -> Result<String> {
-    let content = fs::read_to_string(path)?;
-    let value: serde_json::Value = serde_json::from_str(&content)?;
-    let app_id = value
-        .get("lxAppId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
-    Ok(app_id.to_string())
-}
-
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    if !dest.exists() {
-        fs::create_dir_all(dest)?;
-    }
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let target = dest.join(entry.file_name());
-        if path.is_dir() {
-            copy_dir_recursive(&path, &target)?;
-        } else {
-            fs::copy(&path, &target)?;
-        }
-    }
-    Ok(())
-}
+// Asset preparation moved to `crate::host_assets` to keep platform builds consistent.

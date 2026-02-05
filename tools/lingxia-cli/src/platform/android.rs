@@ -395,6 +395,26 @@ impl Platform for AndroidPlatform {
         }
     }
 
+    fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
+        let mut server = ADBServer::default();
+
+        let mut device = if let Some(id) = device_id {
+            server
+                .get_device_by_name(id)
+                .context(format!("Failed to get device: {}", id))?
+        } else {
+            server.get_device().context(
+                "Failed to get device. Use --device to specify a device if multiple are connected",
+            )?
+        };
+
+        device
+            .uninstall(&package_id, None)
+            .context(format!("Failed to uninstall {}", package_id))?;
+
+        Ok(())
+    }
+
     fn run(&self, config: &RunConfig) -> Result<()> {
         // Create ADB server connection
         let mut server = ADBServer::default();
@@ -429,33 +449,33 @@ impl Platform for AndroidPlatform {
     }
 
     fn list_devices(&self) -> Result<Vec<Device>> {
-        // Create ADB server connection
         let mut server = ADBServer::default();
 
-        // Get devices from adb server
         let adb_devices = server
-            .devices()
+            .devices_long()
             .context("Failed to get devices from ADB server")?;
 
-        // Convert to our Device type
         let devices = adb_devices
             .into_iter()
-            .map(|d| Device {
-                id: d.identifier.clone(),
-                name: None,
-                device_type: if d.identifier.contains("emulator") {
-                    DeviceType::Emulator
+            .map(|d| {
+                let name = if d.model.is_empty() {
+                    None
                 } else {
-                    DeviceType::Physical
-                },
-                online: true,
+                    Some(d.model.replace('_', " "))
+                };
+                Device {
+                    id: d.identifier.clone(),
+                    name,
+                    device_type: if d.identifier.contains("emulator") {
+                        DeviceType::Emulator
+                    } else {
+                        DeviceType::Physical
+                    },
+                    online: true,
+                }
             })
             .collect();
 
         Ok(devices)
-    }
-
-    fn name(&self) -> &str {
-        "android"
     }
 }

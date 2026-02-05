@@ -6,11 +6,14 @@
 //! 3. Create or update App ID
 //! 4. Generate provisioning profile
 //! 5. Sign the app bundle
+//!
+//! Uses a temporary keychain to avoid password prompts.
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use tempfile::NamedTempFile;
 
 use super::asc::AppStoreConnectClient;
@@ -25,7 +28,7 @@ use super::signer::{Signer, extract_entitlements_from_profile};
 /// Result of the provisioning process
 #[derive(Debug)]
 pub struct ProvisioningResult {
-    /// The signing identity (certificate) to use
+    /// The signing identity (certificate SHA-1 fingerprint)
     pub signing_identity: String,
     /// The provisioning profile data (mobileprovision)
     pub profile_data: Vec<u8>,
@@ -33,8 +36,193 @@ pub struct ProvisioningResult {
     pub bundle_id: String,
     /// Entitlements extracted from the profile
     pub entitlements: Vec<u8>,
-    /// Team ID
-    pub team_id: String,
+    /// Certificate data (DER format) + private key (PEM format).
+    /// Present when a fresh certificate was created; absent when reusing a Keychain identity.
+    pub identity_material: Option<IdentityMaterial>,
+}
+
+/// Fresh certificate + private key for signing.
+#[derive(Debug)]
+pub struct IdentityMaterial {
+    pub cert_data: Vec<u8>,
+    pub private_key: String,
+}
+
+/// Temporary keychain for signing operations
+pub struct TempKeychain {
+    path: PathBuf,
+    password: String,
+}
+
+impl TempKeychain {
+    /// Create a new temporary keychain
+    pub fn new() -> Result<Self> {
+        let name = format!("lingxia-{}", std::process::id());
+        let path = std::env::temp_dir().join(format!("{}.keychain-db", name));
+        let password = "lingxia-signing";
+
+        // Delete existing keychain if it exists
+        if path.exists() {
+            let _ = Command::new("security")
+                .args(["delete-keychain", path.to_str().unwrap()])
+                .output();
+        }
+
+        // Create new keychain
+        let status = Command::new("security")
+            .args(["create-keychain", "-p", password, path.to_str().unwrap()])
+            .status()
+            .context("Failed to create temporary keychain")?;
+
+        if !status.success() {
+            return Err(anyhow!("Failed to create temporary keychain"));
+        }
+
+        // Unlock the keychain
+        let _ = Command::new("security")
+            .args(["unlock-keychain", "-p", password, path.to_str().unwrap()])
+            .status();
+
+        // Set keychain settings (no auto-lock, no timeout)
+        let _ = Command::new("security")
+            .args(["set-keychain-settings", path.to_str().unwrap()])
+            .output();
+
+        // Add to search list so codesign can find it
+        let output = Command::new("security")
+            .args(["list-keychains", "-d", "user"])
+            .output()
+            .context("Failed to list keychains")?;
+
+        let existing = String::from_utf8_lossy(&output.stdout);
+        let mut keychains: Vec<String> = existing
+            .lines()
+            .map(|l| l.trim().trim_matches('"').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        keychains.insert(0, path.to_str().unwrap().to_string());
+
+        let _ = Command::new("security")
+            .arg("list-keychains")
+            .arg("-d")
+            .arg("user")
+            .arg("-s")
+            .args(&keychains)
+            .output();
+
+        Ok(Self {
+            path,
+            password: password.to_string(),
+        })
+    }
+
+    /// Get the keychain path
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Import a P12 file into the keychain
+    pub fn import_p12(&self, p12_path: &Path, p12_password: &str) -> Result<()> {
+        self.security_import(p12_path, Some(p12_password))
+            .context("Failed to import P12 into keychain")?;
+        self.configure_codesign_access();
+        Ok(())
+    }
+
+    /// Import a certificate (DER) + private key (PEM) into the keychain.
+    pub fn import_identity(&self, cert_der: &[u8], key_pem: &str) -> Result<()> {
+        use std::io::Write;
+
+        let mut cert_file = NamedTempFile::new().context("Failed to create cert temp file")?;
+        cert_file
+            .write_all(cert_der)
+            .context("Failed to write certificate")?;
+
+        let mut key_file = NamedTempFile::new().context("Failed to create key temp file")?;
+        key_file
+            .write_all(key_pem.as_bytes())
+            .context("Failed to write private key")?;
+
+        self.security_import(cert_file.path(), None)
+            .context("Failed to import certificate into keychain")?;
+        self.security_import(key_file.path(), None)
+            .context("Failed to import private key into keychain")?;
+
+        self.configure_codesign_access();
+        Ok(())
+    }
+
+    fn security_import(&self, path: &Path, password: Option<&str>) -> Result<()> {
+        let mut cmd = Command::new("security");
+        cmd.arg("import")
+            .arg(path.to_str().unwrap())
+            .arg("-k")
+            .arg(self.path.to_str().unwrap())
+            .args(["-T", "/usr/bin/codesign"])
+            .args(["-T", "/usr/bin/security"]);
+
+        if let Some(pw) = password {
+            cmd.arg("-P").arg(pw);
+        }
+
+        let output = cmd.output().context("Failed to run security import")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("security import failed: {}", stderr));
+        }
+
+        Ok(())
+    }
+
+    fn configure_codesign_access(&self) {
+        // Set partition list to allow codesign without prompts
+        let _ = Command::new("security")
+            .args([
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:,codesign:",
+                "-s",
+                "-k",
+                &self.password,
+                self.path.to_str().unwrap(),
+            ])
+            .output();
+    }
+}
+
+impl Drop for TempKeychain {
+    fn drop(&mut self) {
+        let self_path = self.path.to_str().unwrap_or("");
+
+        // Remove this keychain from the search list
+        let output = Command::new("security")
+            .args(["list-keychains", "-d", "user"])
+            .output();
+
+        if let Ok(output) = output {
+            let existing = String::from_utf8_lossy(&output.stdout);
+            let keychains: Vec<String> = existing
+                .lines()
+                .map(|l| l.trim().trim_matches('"').to_string())
+                .filter(|s| !s.is_empty() && s != self_path)
+                .collect();
+
+            let _ = Command::new("security")
+                .arg("list-keychains")
+                .arg("-d")
+                .arg("user")
+                .arg("-s")
+                .args(&keychains)
+                .output();
+        }
+
+        // Delete the keychain
+        let _ = Command::new("security")
+            .args(["delete-keychain", self_path])
+            .output();
+    }
 }
 
 /// Provisioning context for iOS app signing
@@ -141,7 +329,8 @@ impl ProvisioningContext {
 
         // 2. Ensure certificate
         println!("{}", "Step 2/4: Ensuring certificate...".cyan());
-        let (cert_id, signing_identity) = self.ensure_certificate(&client)?;
+        let (cert_id, signing_identity, identity_material) =
+            self.ensure_certificate(&client, is_free_team)?;
 
         // 3. Ensure App ID
         println!("{}", "Step 3/4: Ensuring App ID...".cyan());
@@ -163,7 +352,7 @@ impl ProvisioningContext {
             profile_data,
             bundle_id: new_bundle_id,
             entitlements,
-            team_id: team_id.to_string(),
+            identity_material,
         })
     }
 
@@ -184,7 +373,8 @@ impl ProvisioningContext {
 
         // 2. Ensure certificate
         println!("{}", "Step 2/4: Ensuring certificate...".cyan());
-        let (cert_id, signing_identity) = self.ensure_certificate_asc(&client)?;
+        let (cert_id, signing_identity, identity_material) =
+            self.ensure_certificate_asc(&client)?;
 
         // 3. Ensure Bundle ID
         println!("{}", "Step 3/4: Ensuring Bundle ID...".cyan());
@@ -204,7 +394,7 @@ impl ProvisioningContext {
             profile_data,
             bundle_id: original_bundle_id.to_string(),
             entitlements,
-            team_id: team_id.to_string(),
+            identity_material,
         })
     }
 
@@ -232,15 +422,82 @@ impl ProvisioningContext {
         Ok(())
     }
 
-    fn ensure_certificate(&self, client: &DeveloperServicesClient) -> Result<(String, String)> {
-        let keychain = KeychainManager::new();
+    /// Returns (cert_id, SHA-1 fingerprint, optional identity material).
+    fn ensure_certificate(
+        &self,
+        client: &DeveloperServicesClient,
+        is_free_team: bool,
+    ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        // For free teams (Personal Team), Apple typically allows only one iOS Development
+        // certificate at a time. Creating a new one often fails with 7460, so try to reuse
+        // an existing Keychain identity first.
+        if is_free_team {
+            if let Some(existing) = Self::try_match_existing_certificate(client)? {
+                println!("  {} Using existing certificate from Keychain", "✓".green());
+                return Ok((existing.0, existing.1, None));
+            }
+        }
 
-        // Check for existing certificates from this team (Apple Developer Services)
-        let certs = client.list_certificates()?;
+        // Otherwise, try to create a fresh certificate (best for non-interactive signing).
+        println!("  Creating new development certificate...");
 
-        let identities = keychain.list_identities().unwrap_or_default();
+        // Generate CSR
+        let (csr_content, private_key) = generate_csr("LingXia Development")?;
 
-        // Build a map of certificate SHA-1 fingerprint -> certificate id (portal)
+        match client.submit_development_csr(&csr_content) {
+            Ok(new_cert) => {
+                // Decode certificate content (DER)
+                let cert_content = new_cert
+                    .certificate_content
+                    .as_ref()
+                    .ok_or_else(|| anyhow!("No certificate content in response"))?;
+
+                let cert_data = base64_decode(cert_content)?;
+                let sha1 = sha1_hex_upper(&cert_data);
+
+                println!("  {} Created new certificate", "✓".green());
+                Ok((
+                    new_cert.id,
+                    sha1,
+                    Some(IdentityMaterial {
+                        cert_data,
+                        private_key,
+                    }),
+                ))
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                if !msg.contains("failed (7460)") {
+                    return Err(e);
+                }
+
+                println!(
+                    "  {} Apple portal refused a new certificate (7460), trying to reuse an existing one from Keychain...",
+                    "!".yellow()
+                );
+
+                if let Some(existing) = Self::try_match_existing_certificate(client)? {
+                    println!("  {} Using existing certificate from Keychain", "✓".green());
+                    return Ok((existing.0, existing.1, None));
+                }
+
+                Err(anyhow!(
+                    "Unable to create a new iOS Development certificate (7460) and could not match an existing portal certificate to a Keychain identity.\n\
+Tip: Open Xcode → Settings/Preferences → Accounts → Manage Certificates and remove/revoke the existing iOS Development certificate or clear any pending request, then retry.\n\
+Tip: Ensure your login keychain contains an \"Apple Development\" identity for team {}.",
+                    client.team_id
+                ))
+            }
+        }
+    }
+
+    fn try_match_existing_certificate(
+        client: &DeveloperServicesClient,
+    ) -> Result<Option<(String, String)>> {
+        let certs = client
+            .list_certificates()
+            .context("Failed to list existing certificates")?;
+
         let mut cert_id_by_sha1: HashMap<String, String> = HashMap::new();
         for cert in &certs {
             let Some(ref cert_content) = cert.certificate_content else {
@@ -253,54 +510,53 @@ impl ProvisioningContext {
             cert_id_by_sha1.insert(sha1_hex_upper(&der), cert.id.clone());
         }
 
-        // Pick a development identity in the local keychain that belongs to this team, and
-        // matches a certificate on the portal.
-        for identity in identities.iter().filter(|id| id.is_development()) {
-            if let Some(team_id) = identity.team_id() {
-                if team_id != client.team_id {
-                    continue;
-                }
-            }
+        let keychain = KeychainManager::new();
+        let identities = keychain
+            .list_identities()
+            .context("Failed to list code signing identities from Keychain")?;
 
-            if let Some(cert_id) = cert_id_by_sha1.get(&identity.sha1.to_ascii_uppercase()) {
-                println!(
-                    "  {} Using existing certificate: {}",
-                    "✓".green(),
-                    identity.common_name
-                );
-                return Ok((cert_id.clone(), identity.sha1.clone()));
+        // Best-effort: match Keychain identity SHA-1 to a portal certificate SHA-1.
+        let mut matched: Option<(String, String)> = None; // (cert_id, identity_sha1)
+
+        for identity in identities.iter().filter(|id| id.is_development()) {
+            let sha1 = identity.sha1.to_ascii_uppercase();
+            if let Some(cert_id) = cert_id_by_sha1.get(&sha1) {
+                let prefer = identity.team_id() == Some(client.team_id);
+                if matched.is_none() || prefer {
+                    matched = Some((cert_id.clone(), sha1));
+                    if prefer {
+                        break;
+                    }
+                }
             }
         }
 
-        // No matching certificate found with private key, create a new one
-        println!("  Creating new development certificate...");
+        if matched.is_some() {
+            return Ok(matched);
+        }
 
-        // Generate CSR
-        let (csr_content, private_key) = generate_csr("LingXia Development")?;
+        // Heuristic fallback: if the portal only shows one dev cert and the keychain has a
+        // single dev identity for this team, assume they correspond.
+        if cert_id_by_sha1.is_empty() && certs.len() == 1 {
+            let mut team_identities = identities
+                .iter()
+                .filter(|id| id.is_development())
+                .filter(|id| id.team_id() == Some(client.team_id));
 
-        // Submit CSR to Apple
-        let new_cert = client.submit_development_csr(&csr_content)?;
+            if let (Some(identity), None) = (team_identities.next(), team_identities.next()) {
+                println!(
+                    "  {} Portal did not include certificate content; assuming the only dev certificate matches the only Keychain identity for team {}",
+                    "!".yellow(),
+                    client.team_id
+                );
+                return Ok(Some((
+                    certs[0].id.clone(),
+                    identity.sha1.to_ascii_uppercase(),
+                )));
+            }
+        }
 
-        // Decode certificate content (DER)
-        let cert_content = new_cert
-            .certificate_content
-            .as_ref()
-            .ok_or_else(|| anyhow!("No certificate content in response"))?;
-
-        let cert_data = base64_decode(cert_content)?;
-
-        // Import into keychain
-        let mut key_file = NamedTempFile::new().context("Failed to create key temp file")?;
-        std::io::Write::write_all(&mut key_file, private_key.as_bytes())
-            .context("Failed to write private key")?;
-        let mut cert_file = NamedTempFile::new().context("Failed to create cert temp file")?;
-        std::io::Write::write_all(&mut cert_file, &cert_data)
-            .context("Failed to write certificate")?;
-
-        let sha1 = keychain.import_identity(cert_file.path(), key_file.path())?;
-
-        println!("  {} Created new certificate", "✓".green());
-        Ok((new_cert.id, sha1))
+        Ok(None)
     }
 
     fn ensure_app_id(
@@ -413,42 +669,12 @@ impl ProvisioningContext {
         Ok(())
     }
 
-    fn ensure_certificate_asc(&self, client: &AppStoreConnectClient) -> Result<(String, String)> {
-        let keychain = KeychainManager::new();
-
-        // Check for existing certificates
-        let certs = client.list_certificates()?;
-
-        let identities = keychain.list_identities().unwrap_or_default();
-
-        let mut cert_id_by_sha1: HashMap<String, String> = HashMap::new();
-        for cert in &certs {
-            if cert
-                .attributes
-                .certificate_type
-                .as_deref()
-                .is_some_and(|t| t == "IOS_DEVELOPMENT")
-            {
-                if let Some(ref content) = cert.attributes.certificate_content {
-                    if let Ok(der) = base64_decode(content) {
-                        cert_id_by_sha1.insert(sha1_hex_upper(&der), cert.id.clone());
-                    }
-                }
-            }
-        }
-
-        for identity in identities.iter().filter(|id| id.is_development()) {
-            if let Some(cert_id) = cert_id_by_sha1.get(&identity.sha1.to_ascii_uppercase()) {
-                println!(
-                    "  {} Using existing certificate: {}",
-                    "✓".green(),
-                    identity.common_name
-                );
-                return Ok((cert_id.clone(), identity.sha1.clone()));
-            }
-        }
-
-        // Create new certificate
+    fn ensure_certificate_asc(
+        &self,
+        client: &AppStoreConnectClient,
+    ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        // Always create a new certificate for signing
+        // This avoids needing to access the user's keychain
         println!("  Creating new development certificate...");
         let (csr_content, private_key) = generate_csr("LingXia Development")?;
 
@@ -462,18 +688,17 @@ impl ProvisioningContext {
             .ok_or_else(|| anyhow!("No certificate content"))?;
 
         let cert_data = base64_decode(cert_content)?;
-
-        let mut key_file = NamedTempFile::new().context("Failed to create key temp file")?;
-        std::io::Write::write_all(&mut key_file, private_key.as_bytes())
-            .context("Failed to write private key")?;
-        let mut cert_file = NamedTempFile::new().context("Failed to create cert temp file")?;
-        std::io::Write::write_all(&mut cert_file, &cert_data)
-            .context("Failed to write certificate")?;
-
-        let sha1 = keychain.import_identity(cert_file.path(), key_file.path())?;
+        let sha1 = sha1_hex_upper(&cert_data);
 
         println!("  {} Created new certificate", "✓".green());
-        Ok((new_cert.id, sha1))
+        Ok((
+            new_cert.id,
+            sha1,
+            Some(IdentityMaterial {
+                cert_data,
+                private_key,
+            }),
+        ))
     }
 
     fn ensure_bundle_id_asc(
@@ -572,15 +797,33 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
     // Run provisioning
     let result = ctx.provision(&bundle_id)?;
 
-    // Sign the app
-    Signer::sign(
-        app_path,
-        &result.signing_identity,
-        &result.profile_data,
-        Some(&result.entitlements),
-        Some(&result.bundle_id),
-    )?;
+    if let Some(ref material) = result.identity_material {
+        // Create temporary keychain for signing (avoids password prompts)
+        let temp_keychain = TempKeychain::new().context("Failed to create temporary keychain")?;
 
+        // Import cert + key into the temp keychain
+        temp_keychain.import_identity(&material.cert_data, &material.private_key)?;
+
+        // Sign the app using temporary keychain
+        Signer::sign_with_keychain(
+            app_path,
+            &result.signing_identity,
+            &result.profile_data,
+            Some(&result.entitlements),
+            Some(&result.bundle_id),
+            Some(temp_keychain.path()),
+        )?;
+        // temp_keychain is automatically cleaned up when dropped
+    } else {
+        // Provisioning reused a Keychain identity; sign using the default keychain.
+        Signer::sign(
+            app_path,
+            &result.signing_identity,
+            &result.profile_data,
+            Some(&result.entitlements),
+            Some(&result.bundle_id),
+        )?;
+    }
     Ok(result)
 }
 

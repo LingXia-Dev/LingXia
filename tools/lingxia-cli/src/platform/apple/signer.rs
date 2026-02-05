@@ -31,6 +31,33 @@ impl Signer {
         entitlements: Option<&[u8]>,
         bundle_id: Option<&str>,
     ) -> Result<()> {
+        Self::sign_with_keychain(
+            app_path,
+            identity,
+            profile_data,
+            entitlements,
+            bundle_id,
+            None,
+        )
+    }
+
+    /// Sign an iOS app bundle using a specific keychain.
+    ///
+    /// # Arguments
+    /// * `app_path` - Path to the .app bundle
+    /// * `identity` - Signing identity (SHA-1 fingerprint or name like "Apple Development: ...")
+    /// * `profile_data` - mobileprovision file content
+    /// * `entitlements` - Optional entitlements plist content
+    /// * `bundle_id` - Optional new bundle ID (will update Info.plist)
+    /// * `keychain_path` - Optional keychain path (uses default if None)
+    pub fn sign_with_keychain(
+        app_path: &Path,
+        identity: &str,
+        profile_data: &[u8],
+        entitlements: Option<&[u8]>,
+        bundle_id: Option<&str>,
+        keychain_path: Option<&Path>,
+    ) -> Result<()> {
         println!("{}", "Signing app bundle...".cyan());
 
         // Validate app bundle exists
@@ -60,13 +87,13 @@ impl Signer {
         let entitlements_path = entitlements_file.as_ref().map(|f: &NamedTempFile| f.path());
 
         // 4. Sign frameworks first (if any)
-        Self::sign_frameworks(app_path, identity)?;
+        Self::sign_frameworks(app_path, identity, keychain_path)?;
 
         // 5. Sign app extensions (if any)
-        Self::sign_extensions(app_path, identity, entitlements_path)?;
+        Self::sign_extensions(app_path, identity, entitlements_path, keychain_path)?;
 
         // 6. Sign the main app bundle
-        Self::codesign(app_path, identity, entitlements_path)?;
+        Self::codesign(app_path, identity, entitlements_path, keychain_path)?;
 
         println!("  {} App signed successfully", "✓".green());
         Ok(())
@@ -107,7 +134,11 @@ impl Signer {
     }
 
     /// Sign embedded frameworks
-    fn sign_frameworks(app_path: &Path, identity: &str) -> Result<()> {
+    fn sign_frameworks(
+        app_path: &Path,
+        identity: &str,
+        keychain_path: Option<&Path>,
+    ) -> Result<()> {
         let frameworks_dir = app_path.join("Frameworks");
         if !frameworks_dir.exists() {
             return Ok(());
@@ -122,7 +153,7 @@ impl Signer {
                 .map(|e| e == "framework" || e == "dylib")
                 .unwrap_or(false)
             {
-                Self::codesign(&path, identity, None)?;
+                Self::codesign(&path, identity, None, keychain_path)?;
             }
         }
 
@@ -130,7 +161,12 @@ impl Signer {
     }
 
     /// Sign app extensions
-    fn sign_extensions(app_path: &Path, identity: &str, entitlements: Option<&Path>) -> Result<()> {
+    fn sign_extensions(
+        app_path: &Path,
+        identity: &str,
+        entitlements: Option<&Path>,
+        keychain_path: Option<&Path>,
+    ) -> Result<()> {
         for dir_name in &["PlugIns", "Extensions"] {
             let ext_dir = app_path.join(dir_name);
             if !ext_dir.exists() {
@@ -143,9 +179,9 @@ impl Signer {
 
                 if path.extension().map(|e| e == "appex").unwrap_or(false) {
                     // Sign frameworks in extension first
-                    Self::sign_frameworks(&path, identity)?;
+                    Self::sign_frameworks(&path, identity, keychain_path)?;
                     // Then sign the extension
-                    Self::codesign(&path, identity, entitlements)?;
+                    Self::codesign(&path, identity, entitlements, keychain_path)?;
                 }
             }
         }
@@ -154,13 +190,22 @@ impl Signer {
     }
 
     /// Execute codesign command
-    fn codesign(path: &Path, identity: &str, entitlements: Option<&Path>) -> Result<()> {
+    fn codesign(
+        path: &Path,
+        identity: &str,
+        entitlements: Option<&Path>,
+        keychain_path: Option<&Path>,
+    ) -> Result<()> {
         let mut cmd = Command::new("codesign");
         cmd.arg("--force")
             .arg("--sign")
             .arg(identity)
             .arg("--timestamp=none")
             .arg("--generate-entitlement-der");
+
+        if let Some(kc_path) = keychain_path {
+            cmd.arg("--keychain").arg(kc_path);
+        }
 
         if let Some(ent_path) = entitlements {
             cmd.arg("--entitlements").arg(ent_path);

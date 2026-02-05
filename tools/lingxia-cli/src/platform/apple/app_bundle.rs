@@ -1,7 +1,6 @@
 //! iOS App Bundle packaging.
 //!
-//! Converts a SwiftPM library package into a runnable .app bundle,
-//! similar to xtool's packing functionality.
+//! Converts a SwiftPM library package into a runnable .app bundle.
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -68,8 +67,8 @@ impl AppBundler {
 
     /// Create a temporary SwiftPM package with an executable target
     fn create_executable_package(package_dir: &Path, config: &AppBundleConfig) -> Result<PathBuf> {
-        let xtool_dir = package_dir.join("xtool");
-        let tmp_package_dir = xtool_dir.join(".lingxia-tmp");
+        let build_dir = package_dir.join(".lingxia");
+        let tmp_package_dir = build_dir.join(".tmp");
 
         // Clean up any existing temp package
         let _ = fs::remove_dir_all(&tmp_package_dir);
@@ -173,11 +172,11 @@ let package = Package(
         let target_name = format!("{}-App", config.product_name);
         let app_name = format!("{}.app", config.product_name);
 
-        // Create app bundle in xtool/ directory (same as xtool does)
-        let xtool_dir = package_dir.join("xtool");
-        fs::create_dir_all(&xtool_dir)?;
+        // Create app bundle in .lingxia/ directory
+        let output_dir = package_dir.join(".lingxia");
+        fs::create_dir_all(&output_dir)?;
 
-        let app_bundle = xtool_dir.join(&app_name);
+        let app_bundle = output_dir.join(&app_name);
 
         // Clean up existing bundle
         let _ = fs::remove_dir_all(&app_bundle);

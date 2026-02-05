@@ -340,10 +340,7 @@ pub fn status() -> Result<()> {
 
     match storage.load()? {
         Some(credentials) => {
-            println!(
-                "{}",
-                "🍎 Apple Developer Authentication Status".cyan().bold()
-            );
+            println!("{}", "Apple Developer Authentication Status".cyan().bold());
             println!();
             println!("{} Logged in", "✓".green());
             println!();
@@ -385,10 +382,7 @@ pub fn status() -> Result<()> {
             println!("  Credentials stored at: {}", storage.path().display());
         }
         None => {
-            println!(
-                "{}",
-                "🍎 Apple Developer Authentication Status".cyan().bold()
-            );
+            println!("{}", "Apple Developer Authentication Status".cyan().bold());
             println!();
             println!("{} Not logged in", "✗".red());
             println!();

@@ -5,6 +5,7 @@ mod appicon;
 mod commands;
 mod config;
 mod github;
+mod host_assets;
 mod lxapp;
 mod path_completion;
 mod platform;

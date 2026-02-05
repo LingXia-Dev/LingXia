@@ -285,6 +285,43 @@ pub fn install_app(app_path: &Path, device_id: Option<&str>) -> Result<()> {
     DeviceCtl::install_app(app_path, &device_identifier)
 }
 
+/// Uninstall an app from a connected iOS device.
+///
+/// Requires Xcode 15+ (uses devicectl).
+pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
+    if !DeviceCtl::is_available() {
+        return Err(anyhow!(
+            "devicectl not found. Please install Xcode 15 or later."
+        ));
+    }
+
+    let device_identifier = if let Some(id) = device_id {
+        DeviceCtl::get_device(id)?.identifier
+    } else {
+        DeviceCtl::wait_for_device(30)?.identifier
+    };
+
+    let output = Command::new("xcrun")
+        .args([
+            "devicectl",
+            "device",
+            "uninstall",
+            "app",
+            "--device",
+            &device_identifier,
+            bundle_id,
+        ])
+        .output()
+        .context("Failed to run devicectl uninstall")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("Failed to uninstall: {}", stderr));
+    }
+
+    Ok(())
+}
+
 /// Launch an app on a connected iOS device.
 ///
 /// Requires Xcode 15+ (uses devicectl).

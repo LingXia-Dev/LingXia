@@ -213,12 +213,20 @@ impl<'a> DeveloperServicesClient<'a> {
             .and_then(|v| v.as_dictionary())
             .ok_or_else(|| anyhow!("Missing certRequest in response"))?;
 
-        parse_certificate(cert)
-    }
+        let cert = parse_certificate(cert)?;
 
-    // =========================================================================
-    // App ID Management
-    // =========================================================================
+        // If the certificate content is not in the response, fetch it separately
+        if cert.certificate_content.is_none() {
+            let certs = self.list_certificates()?;
+            let full_cert = certs
+                .into_iter()
+                .find(|c| c.id == cert.id)
+                .ok_or_else(|| anyhow!("Certificate {} not found after submission", cert.id))?;
+            return Ok(full_cert);
+        }
+
+        Ok(cert)
+    }
 
     /// List all App IDs for the team
     pub fn list_app_ids(&self) -> Result<Vec<AppId>> {
@@ -245,11 +253,6 @@ impl<'a> DeveloperServicesClient<'a> {
 
         parse_app_id(app_id)
     }
-
-    // =========================================================================
-    // Provisioning Profile Management
-    // =========================================================================
-
     /// List all provisioning profiles for the team
     pub fn list_provisioning_profiles(&self) -> Result<Vec<ProvisioningProfile>> {
         let response = self.ios_request("listProvisioningProfiles", &[])?;
@@ -336,10 +339,6 @@ impl<'a> DeveloperServicesClient<'a> {
     }
 }
 
-// =============================================================================
-// Data Types
-// =============================================================================
-
 /// A registered device in the developer portal
 #[derive(Debug, Clone)]
 pub struct RegisteredDevice {
@@ -398,10 +397,6 @@ pub struct Membership {
     pub name: String,
     pub platform: String,
 }
-
-// =============================================================================
-// Standalone Functions (for backwards compatibility)
-// =============================================================================
 
 /// Fetch the list of developer teams for an authenticated Apple ID.
 ///
@@ -476,10 +471,6 @@ pub fn list_teams(
 
     parse_teams_response(&response_body)
 }
-
-// =============================================================================
-// Response Parsers
-// =============================================================================
 
 /// Parse the plist response from listTeams.action
 fn parse_teams_response(body: &str) -> Result<Vec<DeveloperTeam>> {
@@ -635,11 +626,23 @@ fn parse_certificate(dict: &plist::Dictionary) -> Result<DeveloperCertificate> {
         .unwrap_or("")
         .to_string();
 
-    let certificate_content = dict
-        .get("certContent")
-        .or_else(|| dict.get("certificateContent"))
-        .and_then(|v| v.as_string())
-        .map(|s| s.to_string());
+    let certificate_content_value = [
+        "certContent",
+        "certificateContent",
+        "certData",
+        "certificateData",
+    ]
+    .into_iter()
+    .find_map(|k| dict.get(k));
+
+    let certificate_content = match certificate_content_value {
+        Some(plist::Value::String(s)) => Some(s.to_string()),
+        Some(plist::Value::Data(data)) => {
+            use base64::Engine;
+            Some(base64::engine::general_purpose::STANDARD.encode(data))
+        }
+        _ => None,
+    };
 
     Ok(DeveloperCertificate {
         id,

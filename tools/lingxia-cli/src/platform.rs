@@ -63,16 +63,14 @@ pub trait Platform: Send + Sync {
     /// Install the built artifacts to a device
     fn install(&self, config: &InstallConfig) -> Result<()>;
 
+    /// Uninstall an app from a device
+    fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()>;
+
     /// Run the installed app on a device
     fn run(&self, config: &RunConfig) -> Result<()>;
 
     /// List available devices
-    #[allow(dead_code)]
     fn list_devices(&self) -> Result<Vec<Device>>;
-
-    /// Platform name
-    #[allow(dead_code)]
-    fn name(&self) -> &str;
 }
 
 /// Build artifacts produced by a platform build

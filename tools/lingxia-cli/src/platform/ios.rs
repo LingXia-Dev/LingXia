@@ -25,56 +25,6 @@ impl IosPlatform {
         Self
     }
 
-    /// Resolve the iOS Swift Package directory
-    ///
-    /// Supports both layouts:
-    /// - Multi-platform layout: `{projectRoot}/ios/{packageName}/` (contains Package.swift)
-    /// - Configured path: `{projectRoot}/{swiftPackagePath}/`
-    fn resolve_ios_dir(
-        &self,
-        project_root: &Path,
-        ios_config: Option<&IosConfig>,
-    ) -> Result<PathBuf> {
-        // 1. Check configured path first
-        if let Some(config) = ios_config {
-            if let Some(ref pkg_path) = config.swift_package_path {
-                let configured_dir = project_root.join(pkg_path);
-                if configured_dir.join("Package.swift").exists() {
-                    return Ok(configured_dir);
-                }
-            }
-        }
-
-        // 2. Check multi-platform layout: {projectRoot}/ios/*/Package.swift
-        let ios_dir = project_root.join("ios");
-        if ios_dir.exists() && ios_dir.is_dir() {
-            for entry in fs::read_dir(&ios_dir)? {
-                let path = entry?.path();
-                if path.is_dir() && path.join("Package.swift").exists() {
-                    return Ok(path);
-                }
-            }
-        }
-
-        // 3. Check root directory
-        if project_root.join("Package.swift").exists() {
-            return Ok(project_root.to_path_buf());
-        }
-
-        Err(anyhow!(
-            "iOS Swift Package not found.\n\
-             Expected Package.swift in:\n\
-             - {}/ios/<package>/\n\
-             - {} (configured via ios.swiftPackagePath)\n\
-             - {} (root)",
-            project_root.display(),
-            ios_config
-                .and_then(|c| c.swift_package_path.as_deref())
-                .unwrap_or("<not configured>"),
-            project_root.display()
-        ))
-    }
-
     /// Build Rust static library for iOS
     ///
     /// - `project_root`: Where to find the Rust library (e.g., examples/)
@@ -121,145 +71,6 @@ impl IosPlatform {
             &config.features,
             deployment_target,
         )
-    }
-
-    /// Prepare app resources (app.json, homelxapp, etc.)
-    fn prepare_app_resources(
-        &self,
-        project_root: &Path,
-        ios_dir: &Path,
-        config: &BuildConfig,
-    ) -> Result<()> {
-        println!("{}", "Preparing app resources...".cyan());
-
-        // Find the Resources directory
-        let resources_dir = ios_dir.join(IOS_RESOURCES_REL_PATH);
-        fs::create_dir_all(&resources_dir)?;
-
-        // Clear existing resources
-        if resources_dir.exists() {
-            for entry in fs::read_dir(&resources_dir)? {
-                let path = entry?.path();
-                if path.is_dir() {
-                    fs::remove_dir_all(&path)?;
-                } else {
-                    fs::remove_file(&path)?;
-                }
-            }
-        }
-
-        // Generate app.json
-        if let Some(ref lingxia_config) = config.lingxia_config {
-            self.write_app_json(lingxia_config, &resources_dir)?;
-        }
-
-        // Build and copy home LxApp
-        if let Some(ref lingxia_config) = config.lingxia_config {
-            if let Some(ref app) = lingxia_config.app {
-                self.build_and_copy_homelxapp(project_root, &app.home_lxapp_id, &resources_dir)?;
-            }
-        }
-
-        println!(
-            "  {} Resources prepared → {}",
-            "✓".green(),
-            resources_dir.display()
-        );
-        Ok(())
-    }
-
-    /// Write app.json configuration file
-    fn write_app_json(
-        &self,
-        config: &crate::config::LingXiaConfig,
-        resources_dir: &Path,
-    ) -> Result<()> {
-        use serde::Serialize;
-
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct AppJson<'a> {
-            product_name: &'a str,
-            product_version: &'a str,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            api_server: Option<&'a str>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            api_key: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            api_secret: Option<String>,
-            #[serde(rename = "homeLxAppID")]
-            home_lxapp_id: &'a str,
-            #[serde(rename = "homeLxAppVersion")]
-            home_lxapp_version: &'a str,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            cache_max_age_days: Option<u64>,
-        }
-
-        let app = config
-            .app
-            .as_ref()
-            .ok_or_else(|| anyhow!("Missing app settings in lingxia.config.json"))?;
-
-        let app_json = AppJson {
-            product_name: &app.product_name,
-            product_version: &app.product_version,
-            api_server: app.api_server.as_deref().filter(|s| !s.trim().is_empty()),
-            api_key: std::env::var("LINGXIA_API_KEY")
-                .ok()
-                .filter(|s| !s.trim().is_empty()),
-            api_secret: std::env::var("LINGXIA_API_SECRET")
-                .ok()
-                .filter(|s| !s.trim().is_empty()),
-            home_lxapp_id: &app.home_lxapp_id,
-            home_lxapp_version: &app.home_lxapp_version,
-            cache_max_age_days: app.cache_max_age_days,
-        };
-
-        let app_json_path = resources_dir.join("app.json");
-        fs::write(&app_json_path, serde_json::to_string_pretty(&app_json)?)?;
-
-        Ok(())
-    }
-
-    /// Build and copy home LxApp to resources directory
-    fn build_and_copy_homelxapp(
-        &self,
-        project_root: &Path,
-        lxapp_id: &str,
-        resources_dir: &Path,
-    ) -> Result<()> {
-        let lxapp_dir = project_root.join(lxapp_id);
-        if !lxapp_dir.exists() {
-            println!(
-                "  {} Home LxApp '{}' not found, skipping",
-                "⚠".yellow(),
-                lxapp_id
-            );
-            return Ok(());
-        }
-
-        println!("  Building home LxApp '{}'...", lxapp_id);
-
-        let status = Command::new("npm")
-            .args(["run", "build"])
-            .current_dir(&lxapp_dir)
-            .status()
-            .context("Failed to build LxApp")?;
-
-        if !status.success() {
-            return Err(anyhow!("LxApp build failed"));
-        }
-
-        // Copy dist to resources
-        let dist_dir = lxapp_dir.join("dist");
-        if !dist_dir.exists() {
-            return Err(anyhow!("LxApp dist directory not found after build"));
-        }
-
-        let target_dir = resources_dir.join("homelxapp");
-        copy_dir_recursive(&dist_dir, &target_dir)?;
-
-        Ok(())
     }
 
     /// Build Swift Package (library only, for dependency compilation)
@@ -352,21 +163,11 @@ impl IosPlatform {
 
     /// Find the .app bundle in build output.
     ///
-    /// If `profile` is given, looks only in that profile directory.
-    /// Otherwise, checks release first, then debug.
-    fn find_app_bundle(&self, ios_dir: &Path, profile: Option<BuildProfile>) -> Result<PathBuf> {
-        let base = ios_dir.join(".build/arm64-apple-ios");
-
-        let dirs: Vec<PathBuf> = match profile {
-            Some(p) => vec![base.join(p.as_str())],
-            None => vec![base.join("release"), base.join("debug")],
-        };
-
-        for dir in &dirs {
-            if !dir.exists() {
-                continue;
-            }
-            for entry in fs::read_dir(dir)? {
+    /// Searches in `.lingxia/` directory where AppBundler places the .app.
+    fn find_app_bundle(&self, ios_dir: &Path, _profile: Option<BuildProfile>) -> Result<PathBuf> {
+        let output_dir = ios_dir.join(".lingxia");
+        if output_dir.exists() {
+            for entry in fs::read_dir(&output_dir)? {
                 let path = entry?.path();
                 if path.extension().map(|e| e == "app").unwrap_or(false) {
                     return Ok(path);
@@ -389,7 +190,7 @@ impl Platform for IosPlatform {
         let ios_config = config.lingxia_config.as_ref().and_then(|c| c.ios.as_ref());
 
         // Resolve iOS project directory
-        let ios_dir = self.resolve_ios_dir(&config.project_root, ios_config)?;
+        let ios_dir = resolve_ios_dir(&config.project_root, ios_config)?;
 
         // Find the workspace root for SDK and bridge generation
         let workspace_root = find_workspace_root(&config.project_root)?;
@@ -412,9 +213,13 @@ impl Platform for IosPlatform {
         // Note: Use config.project_root for Rust library location (e.g., examples/lingxia-lib)
         // but workspace_root for output target directory
         self.build_rust_library(&config.project_root, &workspace_root, config, ios_config)?;
-
-        // Prepare app resources (app.json, homelxapp)
-        self.prepare_app_resources(&config.project_root, &ios_dir, config)?;
+        if config.build_native {
+            apple::update_spm_rust_link_stamp(
+                &workspace_root,
+                IOS_TARGET,
+                config.profile.as_str(),
+            )?;
+        }
 
         // Build Swift Package (library dependencies first)
         self.swift_build(&ios_dir, &workspace_root, config.profile)?;
@@ -443,7 +248,7 @@ impl Platform for IosPlatform {
         let app_path = if let Some(ref path) = config.artifact_path {
             path.clone()
         } else {
-            let ios_dir = self.resolve_ios_dir(&config.project_root, ios_config.as_ref())?;
+            let ios_dir = resolve_ios_dir(&config.project_root, ios_config.as_ref())?;
             self.find_app_bundle(&ios_dir, None)?
         };
 
@@ -457,9 +262,11 @@ impl Platform for IosPlatform {
         apple::devicectl::install_app(&app_path, config.device_id.as_deref())
     }
 
-    fn run(&self, config: &RunConfig) -> Result<()> {
-        apple::ensure_macos()?;
+    fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
+        apple::devicectl::uninstall_app(package_id, device_id)
+    }
 
+    fn run(&self, config: &RunConfig) -> Result<()> {
         apple::devicectl::launch_app(&config.package_id, config.device_id.as_deref())
     }
 
@@ -467,31 +274,55 @@ impl Platform for IosPlatform {
         // Use devicectl (Xcode 15+).
         apple::devicectl::list_devices()
     }
-
-    fn name(&self) -> &str {
-        "ios"
-    }
 }
 
-/// Recursively copy a directory
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
-    if !dest.exists() {
-        fs::create_dir_all(dest)?;
-    }
-
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let path = entry.path();
-        let target = dest.join(entry.file_name());
-
-        if path.is_dir() {
-            copy_dir_recursive(&path, &target)?;
-        } else {
-            fs::copy(&path, &target)?;
+/// Resolve the iOS Swift Package directory.
+///
+/// Supports both layouts:
+/// - Multi-platform layout: `{projectRoot}/ios/{packageName}/` (contains Package.swift)
+/// - Configured path: `{projectRoot}/{swiftPackagePath}/`
+pub(crate) fn resolve_ios_dir(
+    project_root: &Path,
+    ios_config: Option<&IosConfig>,
+) -> Result<PathBuf> {
+    // 1. Check configured path first
+    if let Some(config) = ios_config {
+        if let Some(ref pkg_path) = config.swift_package_path {
+            let configured_dir = project_root.join(pkg_path);
+            if configured_dir.join("Package.swift").exists() {
+                return Ok(configured_dir);
+            }
         }
     }
 
-    Ok(())
+    // 2. Check multi-platform layout: {projectRoot}/ios/*/Package.swift
+    let ios_dir = project_root.join("ios");
+    if ios_dir.exists() && ios_dir.is_dir() {
+        for entry in fs::read_dir(&ios_dir)? {
+            let path = entry?.path();
+            if path.is_dir() && path.join("Package.swift").exists() {
+                return Ok(path);
+            }
+        }
+    }
+
+    // 3. Check root directory
+    if project_root.join("Package.swift").exists() {
+        return Ok(project_root.to_path_buf());
+    }
+
+    Err(anyhow!(
+        "iOS Swift Package not found.\n\
+         Expected Package.swift in:\n\
+         - {}/ios/<package>/\n\
+         - {} (configured via ios.swiftPackagePath)\n\
+         - {} (root)",
+        project_root.display(),
+        ios_config
+            .and_then(|c| c.swift_package_path.as_deref())
+            .unwrap_or("<not configured>"),
+        project_root.display()
+    ))
 }
 
 /// Get the iOS SDK path using xcrun
@@ -515,4 +346,9 @@ fn get_ios_sdk_path() -> Result<String> {
     }
 
     Ok(path)
+}
+
+/// Read the bundle ID from a built/signed iOS app bundle.
+pub fn read_bundle_id(app_path: &Path) -> Result<String> {
+    apple::provisioning::read_bundle_id(&app_path.join("Info.plist"))
 }

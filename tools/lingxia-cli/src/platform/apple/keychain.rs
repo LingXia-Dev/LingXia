@@ -4,10 +4,10 @@
 //! in the system keychain or a temporary keychain for signing.
 
 use anyhow::{Context, Result, anyhow};
+use colored::Colorize;
 use sha1::Digest;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tempfile::NamedTempFile;
 
 /// Keychain manager for code signing operations.
 ///
@@ -142,21 +142,16 @@ impl KeychainManager {
 
         // Read private key (PEM)
         let key_pem = std::fs::read_to_string(key_path).context("Failed to read private key")?;
-        let rsa_key =
+        let _rsa_key =
             rsa::RsaPrivateKey::from_pkcs8_pem(&key_pem).context("Failed to parse private key")?;
 
-        // Create P12 using p12 crate
-        let p12_password = "lingxia";
+        // Import cert + key directly (avoids requiring `openssl` on PATH).
+        self.import_file(cert_path)
+            .context("Failed to import certificate into keychain")?;
+        self.import_file(key_path)
+            .context("Failed to import private key into keychain")?;
+        self.configure_codesign_access();
 
-        let p12_data = create_p12(&cert_der, &rsa_key, p12_password)?;
-        let mut p12_file = NamedTempFile::new().context("Failed to create P12 temp file")?;
-        use std::io::Write;
-        p12_file
-            .write_all(&p12_data)
-            .context("Failed to write P12 file")?;
-
-        // Import P12 into keychain
-        self.import_p12(p12_file.path(), p12_password)?;
         Ok(expected_sha1)
     }
 
@@ -171,8 +166,9 @@ impl KeychainManager {
             .arg(p12_path)
             .arg("-P")
             .arg(password)
-            // Restrict access to the signing tools we use.
-            .args(["-T", "/usr/bin/codesign"]);
+            // Allow codesign to access the key without prompts
+            .args(["-T", "/usr/bin/codesign"])
+            .args(["-T", "/usr/bin/security"]);
 
         if let Some(ref kc_path) = self.keychain_path {
             cmd.arg("-k").arg(kc_path);
@@ -185,9 +181,38 @@ impl KeychainManager {
             return Err(anyhow!("Failed to import P12: {}", stderr));
         }
 
-        // Set key partition list to allow codesign access
+        self.configure_codesign_access();
+
+        Ok(())
+    }
+
+    fn import_file(&self, path: &Path) -> Result<()> {
+        let mut cmd = Command::new("security");
+        cmd.arg("import")
+            .arg(path)
+            // Allow codesign to access the key without prompts
+            .args(["-T", "/usr/bin/codesign"])
+            .args(["-T", "/usr/bin/security"]);
+
         if let Some(ref kc_path) = self.keychain_path {
-            if let Some(ref password) = self.keychain_password {
+            cmd.arg("-k").arg(kc_path);
+        }
+
+        let output = cmd.output().context("Failed to import file")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(anyhow!("security import failed: {}", stderr));
+        }
+
+        Ok(())
+    }
+
+    fn configure_codesign_access(&self) {
+        // Set key partition list to allow codesign access without prompts
+        // This is required for non-interactive code signing
+        if let Some(ref kc_path) = self.keychain_path {
+            if let Some(ref kc_password) = self.keychain_password {
                 let _ = Command::new("security")
                     .args([
                         "set-key-partition-list",
@@ -195,14 +220,50 @@ impl KeychainManager {
                         "apple-tool:,apple:,codesign:",
                         "-s",
                         "-k",
-                        password,
+                        kc_password,
                         kc_path.to_str().unwrap(),
                     ])
                     .output();
             }
-        }
+        } else {
+            // For default login keychain, try to get its path and update partition list
+            // This requires the keychain to be unlocked
+            let kc_output = Command::new("security")
+                .args(["default-keychain", "-d", "user"])
+                .output();
 
-        Ok(())
+            if let Ok(output) = kc_output {
+                let kc_path = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .trim_matches('"')
+                    .to_string();
+
+                if !kc_path.is_empty() {
+                    // Try with empty password first (works if keychain is unlocked)
+                    let result = Command::new("security")
+                        .args([
+                            "set-key-partition-list",
+                            "-S",
+                            "apple-tool:,apple:,codesign:",
+                            "-s",
+                            "-k",
+                            "",
+                            &kc_path,
+                        ])
+                        .output();
+
+                    // If that fails, the user will need to enter their keychain password
+                    // when codesign runs, or manually unlock the keychain
+                    if result.is_err() || !result.unwrap().status.success() {
+                        eprintln!(
+                            "  {} Could not auto-configure keychain access. \
+                            You may be prompted for your keychain password.",
+                            "⚠".yellow()
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// Import certificate data directly (DER format)
@@ -464,23 +525,6 @@ pub fn generate_csr(common_name: &str) -> Result<(String, String)> {
         .pem()
         .map_err(|e| anyhow!("Failed to encode CSR: {}", e))?;
     Ok((csr_pem, key_pem.to_string()))
-}
-
-/// Create a PKCS#12 file from certificate and private key
-fn create_p12(cert_der: &[u8], rsa_key: &rsa::RsaPrivateKey, password: &str) -> Result<Vec<u8>> {
-    use p12::PFX;
-    use rsa::pkcs8::EncodePrivateKey;
-
-    // Convert RSA key to DER format
-    let key_der = rsa_key
-        .to_pkcs8_der()
-        .context("Failed to encode private key to DER")?;
-
-    // Create P12/PFX
-    let pfx = PFX::new(cert_der, key_der.as_bytes(), None, password, "lingxia")
-        .ok_or_else(|| anyhow!("Failed to create P12 structure"))?;
-
-    Ok(pfx.to_der())
 }
 
 fn sha1_hex_upper(data: &[u8]) -> String {
