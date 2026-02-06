@@ -1,0 +1,274 @@
+use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
+use crate::platform::{BuildArtifacts, BuildConfig, BuildProfile};
+use anyhow::{Context, Result, anyhow};
+use colored::Colorize;
+use std::env;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+impl HarmonyPlatform {
+    fn detect_ohos_ndk() -> Result<PathBuf> {
+        if let Ok(ndk_home) = env::var("OHOS_NDK_HOME") {
+            let path = PathBuf::from(&ndk_home);
+            if path.exists() {
+                return Ok(path);
+            }
+            return Err(anyhow!(
+                "OHOS_NDK_HOME is set to '{}' but path does not exist",
+                ndk_home
+            ));
+        }
+
+        Err(anyhow!(
+            "OHOS_NDK_HOME not set. Please set it to your HarmonyOS SDK native directory.\n\
+             Example: export OHOS_NDK_HOME=/path/to/ohos-sdk"
+        ))
+    }
+
+    pub(super) fn build_impl(
+        &self,
+        config: &BuildConfig,
+        harmony_dir: &Path,
+    ) -> Result<BuildArtifacts> {
+        if config.build_native {
+            let so_path = self.build_rust_library(&config.project_root, config)?;
+            self.stage_native_library(&so_path, harmony_dir)?;
+        } else {
+            println!(
+                "  {} Skipping native compilation (using existing .so)",
+                "⏭️".dimmed()
+            );
+        }
+
+        self.ohpm_install(harmony_dir)?;
+        let hap_path = self.build_hap(harmony_dir)?;
+
+        Ok(BuildArtifacts::Harmony { hap_path })
+    }
+
+    fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<PathBuf> {
+        println!("{}", "Compiling native code (HarmonyOS)...".cyan());
+
+        let ndk_path = Self::detect_ohos_ndk()?;
+        let lingxia_config = config
+            .lingxia_config
+            .as_ref()
+            .ok_or_else(|| anyhow!("lingxia.config.json is required to build native libraries"))?;
+
+        let rust_lib_name = lingxia_config
+            .get_rust_lib_name()
+            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
+        let rust_lib_dir = project_root.join(&rust_lib_name);
+        let rust_manifest = rust_lib_dir.join("Cargo.toml");
+        if !rust_manifest.exists() {
+            return Err(anyhow!(
+                "Rust library manifest not found: {}",
+                rust_manifest.display()
+            ));
+        }
+
+        let (crate_name, lib_name) = parse_crate_and_lib_name(&rust_manifest)?;
+
+        let llvm_bin = ndk_path.join("native/llvm/bin");
+        let sysroot = ndk_path.join("native/sysroot");
+
+        let linker = llvm_bin.join("aarch64-unknown-linux-ohos-clang");
+        let ar = llvm_bin.join("llvm-ar");
+        let cc = llvm_bin.join("aarch64-unknown-linux-ohos-clang");
+        let cxx = llvm_bin.join("aarch64-unknown-linux-ohos-clang++");
+
+        let cpath = format!(
+            "{}:{}",
+            sysroot.join("usr/include").display(),
+            sysroot.join("usr/include/aarch64-linux-ohos").display()
+        );
+        let bindgen_args = format!(
+            "--sysroot={} -I{} -I{}",
+            sysroot.display(),
+            sysroot.join("usr/include").display(),
+            sysroot.join("usr/include/aarch64-linux-ohos").display()
+        );
+
+        let mut cmd = Command::new("cargo");
+        cmd.arg("build")
+            .arg("--target")
+            .arg(OHOS_TARGET)
+            .arg("-p")
+            .arg(&crate_name)
+            .arg("--manifest-path")
+            .arg(&rust_manifest)
+            .current_dir(&rust_lib_dir);
+
+        if matches!(config.profile, BuildProfile::Release) {
+            cmd.arg("--release");
+        }
+
+        if !config.features.is_empty() {
+            cmd.arg("--features").arg(config.features.join(","));
+        }
+
+        let target_env = OHOS_TARGET.replace('-', "_");
+        let target_upper = OHOS_TARGET.to_uppercase().replace('-', "_");
+        cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &linker);
+        cmd.env(format!("AR_{}", target_env), &ar);
+        cmd.env(format!("CC_{}", target_env), &cc);
+        cmd.env(format!("CXX_{}", target_env), &cxx);
+        cmd.env("CPATH", &cpath);
+        cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_args);
+
+        cmd.env_remove("SDKROOT");
+        cmd.env_remove("CMAKE_OSX_SYSROOT");
+        cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
+        cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
+
+        let status = cmd.status().context("Failed to execute cargo build")?;
+        if !status.success() {
+            return Err(anyhow!("Rust build failed for target: {}", OHOS_TARGET));
+        }
+
+        let profile_dir = config.profile.as_str();
+        let so_file_name = format!("lib{lib_name}.so");
+        let so_path = rust_lib_dir
+            .join("target")
+            .join(OHOS_TARGET)
+            .join(profile_dir)
+            .join(&so_file_name);
+
+        if !so_path.exists() {
+            let workspace_so = project_root
+                .join("target")
+                .join(OHOS_TARGET)
+                .join(profile_dir)
+                .join(&so_file_name);
+            if workspace_so.exists() {
+                return Ok(workspace_so);
+            }
+            return Err(anyhow!(
+                "Built .so not found at: {} or {}",
+                so_path.display(),
+                workspace_so.display()
+            ));
+        }
+
+        println!("  {} Rust build complete", "✓".green());
+        Ok(so_path)
+    }
+
+    fn stage_native_library(&self, so_path: &Path, harmony_dir: &Path) -> Result<()> {
+        let dest_dir = harmony_dir.join("entry/libs/arm64-v8a");
+        std::fs::create_dir_all(&dest_dir)
+            .with_context(|| format!("Failed to create {}", dest_dir.display()))?;
+
+        let dest = dest_dir.join("liblingxia.so");
+        std::fs::copy(so_path, &dest)
+            .with_context(|| format!("Failed to copy .so to {}", dest.display()))?;
+
+        println!(
+            "  {} Native library staged: {}",
+            "✓".green(),
+            dest.display()
+        );
+        Ok(())
+    }
+
+    fn ohpm_install(&self, harmony_dir: &Path) -> Result<()> {
+        println!("{}", "Installing ohpm dependencies...".cyan());
+        ensure_command("ohpm")?;
+
+        let status = Command::new("ohpm")
+            .arg("install")
+            .current_dir(harmony_dir.join("entry"))
+            .status()
+            .context("Failed to execute ohpm install")?;
+
+        if !status.success() {
+            return Err(anyhow!("ohpm install failed"));
+        }
+
+        println!("  {} ohpm install complete", "✓".green());
+        Ok(())
+    }
+
+    fn build_hap(&self, harmony_dir: &Path) -> Result<PathBuf> {
+        println!("{}", "Building HAP...".cyan());
+        ensure_command("hvigorw")?;
+
+        let status = Command::new("hvigorw")
+            .arg("assembleHap")
+            .current_dir(harmony_dir)
+            .status()
+            .context("Failed to execute hvigorw assembleHap")?;
+
+        if !status.success() {
+            return Err(anyhow!("hvigorw assembleHap failed"));
+        }
+
+        let signed =
+            harmony_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
+        if signed.exists() {
+            println!("  {} HAP built successfully", "✓".green());
+            return Ok(signed);
+        }
+
+        let unsigned =
+            harmony_dir.join("entry/build/default/outputs/default/entry-default-unsigned.hap");
+        if unsigned.exists() {
+            println!("  {} HAP built (unsigned)", "✓".green());
+            return Ok(unsigned);
+        }
+
+        Err(anyhow!(
+            "HAP not found after build. Expected at: {}",
+            signed.display()
+        ))
+    }
+}
+
+fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
+    let content = std::fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+
+    let mut section = "";
+    let mut package_name: Option<String> = None;
+    let mut lib_name: Option<String> = None;
+
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            section = &line[1..line.len() - 1];
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "name" {
+            continue;
+        }
+
+        let name = value.trim().trim_matches('"').trim_matches('\'').trim();
+        if name.is_empty() {
+            continue;
+        }
+
+        match section {
+            "package" if package_name.is_none() => package_name = Some(name.to_string()),
+            "lib" if lib_name.is_none() => lib_name = Some(name.to_string()),
+            _ => {}
+        }
+    }
+
+    let package_name = package_name.ok_or_else(|| {
+        anyhow!(
+            "Could not find [package].name in {}",
+            manifest_path.display()
+        )
+    })?;
+    let lib_name = lib_name.unwrap_or_else(|| package_name.replace('-', "_"));
+
+    Ok((package_name, lib_name))
+}

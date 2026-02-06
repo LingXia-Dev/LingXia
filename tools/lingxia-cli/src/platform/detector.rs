@@ -148,7 +148,7 @@ pub fn create_platform(platform_type: &PlatformType) -> Result<Box<dyn Platform>
             super::apple::ensure_macos()?;
             Ok(Box::new(super::macos::MacosPlatform::new()))
         }
-        PlatformType::Harmony => Err(anyhow!("HarmonyOS support is not yet implemented")),
+        PlatformType::Harmony => Ok(Box::new(super::harmony::HarmonyPlatform::new())),
     }
 }
 
@@ -203,9 +203,7 @@ pub fn detect_platform_type(project_root: &Path) -> Result<PlatformType> {
 
     // HarmonyOS: check for build-profile.json5
     if is_harmony_project(project_root) {
-        return Err(anyhow!(
-            "HarmonyOS project detected, but HarmonyOS support is not yet implemented"
-        ));
+        return Ok(PlatformType::Harmony);
     }
 
     Err(anyhow!(

@@ -139,10 +139,14 @@ pub struct MacosConfig {
 #[serde(rename_all = "camelCase")]
 pub struct HarmonyConfig {
     pub bundle_name: String,
+    /// Minimum supported SDK version (e.g., "5.0.0(12)")
+    /// Equivalent to iOS deploymentTarget / Android minSdk
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compile_sdk_version: Option<u32>,
+    pub compatible_sdk_version: Option<String>,
+    /// Target SDK version (e.g., "6.0.1(21)")
+    /// Equivalent to Android targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub compatible_sdk_version: Option<u32>,
+    pub target_sdk_version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

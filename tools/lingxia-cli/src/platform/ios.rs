@@ -13,6 +13,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod doctor;
+pub use doctor::doctor_checks;
+
 /// iOS platform implementation
 pub struct IosPlatform;
 

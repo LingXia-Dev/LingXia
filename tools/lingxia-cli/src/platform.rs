@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 pub mod android;
 pub mod apple;
 pub mod detector;
+pub mod doctor;
+pub mod harmony;
 pub mod ios;
 pub mod macos;
 

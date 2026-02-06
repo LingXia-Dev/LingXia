@@ -1,180 +1,199 @@
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::platform::detector::PlatformType;
+use crate::platform::doctor::{CheckResult, CheckStatus, command_version_line};
+use crate::platform::{android, detector, harmony, ios, macos};
 use anyhow::Result;
-use std::process::Command;
+use colored::Colorize;
+use std::env;
 
-/// Execute the doctor command to check Android development environment
-pub fn execute() -> Result<()> {
-    println!("🔍 Checking Android development environment...\n");
+/// Execute environment doctor checks.
+///
+/// If `platforms` is empty:
+/// - Prefer platforms from `lingxia.config.json` when available.
+/// - Otherwise, check all supported platforms.
+pub fn execute(platforms: Vec<String>) -> Result<()> {
+    println!("{}", "🔍 LingXia Doctor".bold().cyan());
+    println!();
 
-    let mut all_checks_passed = true;
+    let mut all_checks = Vec::new();
 
-    // Check Java/JDK
-    all_checks_passed &= check_java();
-
-    // Check Android SDK
-    all_checks_passed &= check_android_sdk();
-
-    // Check Gradle
-    all_checks_passed &= check_gradle();
-
-    // Check Rust
-    all_checks_passed &= check_rust();
-
-    // Check Android NDK
-    all_checks_passed &= check_android_ndk();
-
-    println!("\n{}", "=".repeat(60));
-    if all_checks_passed {
-        println!("✅ All checks passed! Your Android development environment is ready.");
-    } else {
-        println!("⚠️  Some checks failed. Please install the missing tools.");
+    println!("{}", "[common]".bold().cyan());
+    for check in common_checks() {
+        print_check(&check);
+        all_checks.push(check);
     }
-    println!("{}", "=".repeat(60));
+    println!();
+
+    let target_platforms = resolve_target_platforms(platforms)?;
+    for platform in target_platforms {
+        println!("{}", format!("[{}]", platform.as_str()).bold().cyan());
+        let checks = platform_checks(&platform);
+        for check in checks {
+            print_check(&check);
+            all_checks.push(check);
+        }
+        println!();
+    }
+
+    let failed = all_checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Fail)
+        .count();
+    let warned = all_checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Warn)
+        .count();
+    let passed = all_checks
+        .iter()
+        .filter(|c| c.status == CheckStatus::Pass)
+        .count();
+
+    println!(
+        "{} passed, {} warnings, {} failed",
+        passed.to_string().green(),
+        warned.to_string().yellow(),
+        failed.to_string().red()
+    );
+    if failed == 0 {
+        println!("{}", "✅ Doctor finished with no blocking issues.".green());
+    } else {
+        println!(
+            "{}",
+            "⚠️  Doctor found blocking issues. Fix failed checks first.".yellow()
+        );
+    }
 
     Ok(())
 }
 
-/// Check if Java/JDK is installed
-fn check_java() -> bool {
-    print!("Checking Java/JDK... ");
-    match Command::new("java").arg("-version").output() {
-        Ok(output) => {
-            if output.status.success() {
-                let version_output = String::from_utf8_lossy(&output.stderr);
-                let version_line = version_output.lines().next().unwrap_or("unknown");
-                println!("✅ Found: {}", version_line);
-                true
-            } else {
-                println!("❌ Java found but failed to get version");
-                false
-            }
-        }
-        Err(_) => {
-            println!("❌ Not found");
-            println!("   Please install JDK 17 or later:");
-            println!("   - Download from: https://adoptium.net/");
-            false
-        }
+fn common_checks() -> Vec<CheckResult> {
+    vec![check_rust(), check_cargo()]
+}
+
+fn check_rust() -> CheckResult {
+    match command_version_line("rustc", &["--version"], false) {
+        Some(version) => CheckResult::pass("Rust", version),
+        None => CheckResult::fail(
+            "Rust",
+            "rustc not found in PATH".to_string(),
+            Some("Install Rust from https://rustup.rs/"),
+        ),
     }
 }
 
-/// Check if Android SDK is installed
-fn check_android_sdk() -> bool {
-    print!("Checking Android SDK... ");
-
-    let android_home = std::env::var("ANDROID_HOME").or_else(|_| std::env::var("ANDROID_SDK_ROOT"));
-
-    match android_home {
-        Ok(path) => {
-            if std::path::Path::new(&path).exists() {
-                println!("✅ Found at: {}", path);
-
-                // Check for platform-tools
-                let adb_path = format!("{}/platform-tools/adb", path);
-                if std::path::Path::new(&adb_path).exists() {
-                    println!("   - platform-tools: ✅");
-                } else {
-                    println!(
-                        "   - platform-tools: ⚠️  Not found (install via Android Studio SDK Manager)"
-                    );
-                }
-
-                true
-            } else {
-                println!("⚠️  ANDROID_HOME set to '{}' but path doesn't exist", path);
-                false
-            }
-        }
-        Err(_) => {
-            println!("❌ Not found (ANDROID_HOME not set)");
-            println!("   Please install Android SDK:");
-            println!("   - Install Android Studio from: https://developer.android.com/studio");
-            println!("   - Set ANDROID_HOME environment variable to SDK location");
-            false
-        }
+fn check_cargo() -> CheckResult {
+    match command_version_line("cargo", &["--version"], false) {
+        Some(version) => CheckResult::pass("Cargo", version),
+        None => CheckResult::fail(
+            "Cargo",
+            "cargo not found in PATH".to_string(),
+            Some("Install Rust toolchain from https://rustup.rs/"),
+        ),
     }
 }
 
-/// Check if Gradle is installed
-fn check_gradle() -> bool {
-    print!("Checking Gradle... ");
-    match Command::new("gradle").arg("--version").output() {
-        Ok(output) => {
-            if output.status.success() {
-                let version_output = String::from_utf8_lossy(&output.stdout);
-                let version_line = version_output
-                    .lines()
-                    .find(|line| line.starts_with("Gradle"))
-                    .unwrap_or("Gradle (version unknown)");
-                println!("✅ Found: {}", version_line);
-                true
-            } else {
-                println!("⚠️  Gradle found but failed to get version");
-                println!("   (This is OK if your project uses Gradle wrapper)");
-                true // Not critical if using wrapper
-            }
-        }
-        Err(_) => {
-            println!("⚠️  Not found in PATH");
-            println!("   (This is OK if your project uses Gradle wrapper)");
-            true // Not critical if using wrapper
-        }
+fn resolve_target_platforms(requested: Vec<String>) -> Result<Vec<PlatformType>> {
+    if !requested.is_empty() {
+        return parse_requested_platforms(requested);
     }
+
+    if let Some(platforms) = platforms_from_project_config()? {
+        return Ok(platforms);
+    }
+
+    Ok(vec![
+        PlatformType::Android,
+        PlatformType::Ios,
+        PlatformType::MacOs,
+        PlatformType::Harmony,
+    ])
 }
 
-/// Check if Rust is installed
-fn check_rust() -> bool {
-    print!("Checking Rust... ");
-    match Command::new("rustc").arg("--version").output() {
-        Ok(output) => {
-            if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout);
-                println!("✅ {}", version.trim());
-                true
-            } else {
-                println!("❌ rustc found but failed to get version");
-                false
-            }
-        }
-        Err(_) => {
-            println!("❌ Not found");
-            println!("   Please install Rust:");
-            println!("   - Visit: https://rustup.rs/");
-            false
-        }
-    }
-}
-
-/// Check if Android NDK is installed
-fn check_android_ndk() -> bool {
-    print!("Checking Android NDK... ");
-
-    let ndk_home = std::env::var("ANDROID_NDK_HOME").or_else(|_| std::env::var("NDK_HOME"));
-
-    match ndk_home {
-        Ok(path) => {
-            if std::path::Path::new(&path).exists() {
-                println!("✅ Found at: {}", path);
-                true
-            } else {
-                println!("⚠️  NDK_HOME set to '{}' but path doesn't exist", path);
-                false
-            }
-        }
-        Err(_) => {
-            // Try to find NDK in ANDROID_HOME
-            if let Ok(android_home) = std::env::var("ANDROID_HOME") {
-                let ndk_dir = format!("{}/ndk", android_home);
-                if std::path::Path::new(&ndk_dir).exists() {
-                    println!("✅ Found in ANDROID_HOME/ndk");
-                    return true;
+fn parse_requested_platforms(requested: Vec<String>) -> Result<Vec<PlatformType>> {
+    let mut parsed = Vec::new();
+    for item in requested {
+        if item.eq_ignore_ascii_case("all") {
+            for platform in [
+                PlatformType::Android,
+                PlatformType::Ios,
+                PlatformType::MacOs,
+                PlatformType::Harmony,
+            ] {
+                if !parsed.contains(&platform) {
+                    parsed.push(platform);
                 }
             }
-
-            println!("❌ Not found (ANDROID_NDK_HOME not set)");
-            println!("   Please install Android NDK:");
-            println!("   - Install via Android Studio SDK Manager");
-            println!("   - Set ANDROID_NDK_HOME environment variable");
-            false
+            continue;
         }
+
+        let platform: PlatformType = item.parse()?;
+        if !parsed.contains(&platform) {
+            parsed.push(platform);
+        }
+    }
+    Ok(parsed)
+}
+
+fn platforms_from_project_config() -> Result<Option<Vec<PlatformType>>> {
+    let current_dir = env::current_dir()?;
+    let config_root = if current_dir.join(HOST_CONFIG_FILE).exists() {
+        Some(current_dir.clone())
+    } else if let Some(ctx) =
+        detector::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
+    {
+        Some(ctx.host_project_root)
+    } else {
+        detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
+    };
+
+    let Some(config_root) = config_root else {
+        return Ok(None);
+    };
+
+    let config = match LingXiaConfig::load(&config_root) {
+        Ok(cfg) => cfg,
+        Err(_) => return Ok(None),
+    };
+
+    let Some(app) = config.app else {
+        return Ok(None);
+    };
+
+    let mut platforms = Vec::new();
+    for platform_name in app.platforms {
+        let Ok(platform) = platform_name.parse::<PlatformType>() else {
+            continue;
+        };
+        if !platforms.contains(&platform) {
+            platforms.push(platform);
+        }
+    }
+
+    if platforms.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(platforms))
+}
+
+fn platform_checks(platform: &PlatformType) -> Vec<CheckResult> {
+    match platform {
+        PlatformType::Android => android::doctor_checks(),
+        PlatformType::Ios => ios::doctor_checks(),
+        PlatformType::MacOs => macos::doctor_checks(),
+        PlatformType::Harmony => harmony::doctor_checks(),
+    }
+}
+
+fn print_check(check: &CheckResult) {
+    let (symbol, colorized_name) = match check.status {
+        CheckStatus::Pass => ("✓".green(), check.name.green()),
+        CheckStatus::Warn => ("⚠".yellow(), check.name.yellow()),
+        CheckStatus::Fail => ("✗".red(), check.name.red()),
+    };
+    println!("  {} {}: {}", symbol, colorized_name, check.detail);
+
+    if let Some(hint) = &check.hint {
+        println!("    {} {}", "Hint:".dimmed(), hint.dimmed());
     }
 }

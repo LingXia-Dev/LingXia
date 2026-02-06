@@ -66,9 +66,15 @@ pub fn execute(
             .any(|p| p.eq_ignore_ascii_case("android"))
         {
             PlatformType::Android
+        } else if app
+            .platforms
+            .iter()
+            .any(|p| p.eq_ignore_ascii_case("harmony") || p.eq_ignore_ascii_case("harmonyos"))
+        {
+            PlatformType::Harmony
         } else {
             return Err(anyhow!(
-                "No supported platform found in config. Add 'ios', 'macos', or 'android' to app.platforms."
+                "No supported platform found in config. Add 'ios', 'macos', 'android', or 'harmony' to app.platforms."
             ));
         }
     };
@@ -104,7 +110,14 @@ pub fn execute(
         PlatformType::MacOs => {
             execute_macos(project_root, config, build_profile, features, build_native)
         }
-        PlatformType::Harmony => Err(anyhow!("HarmonyOS dev mode is not yet supported.")),
+        PlatformType::Harmony => execute_harmony(
+            project_root,
+            config,
+            build_profile,
+            features,
+            build_native,
+            device,
+        ),
     }
 }
 
@@ -317,6 +330,82 @@ fn execute_macos(
     println!("{}", "Dev workflow complete!".green().bold());
     println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
     println!("  {} Artifact: {}", "*".bold(), app_path.display());
+    println!();
+
+    Ok(())
+}
+
+fn execute_harmony(
+    project_root: std::path::PathBuf,
+    config: LingXiaConfig,
+    build_profile: BuildProfile,
+    features: Vec<String>,
+    build_native: bool,
+    device: Option<String>,
+) -> Result<()> {
+    let harmony_platform = platform::harmony::HarmonyPlatform::new();
+
+    // Generate app.json and embed LxApp assets
+    let platforms_to_build = vec![PlatformType::Harmony];
+    prepare_host_assets(
+        &project_root,
+        &config,
+        build_profile,
+        &platforms_to_build,
+        true,
+    )?;
+
+    // Step 1: Build
+    println!("{}", "Step 1/3: Building...".bold());
+    let build_config = BuildConfig {
+        project_root: project_root.clone(),
+        profile: build_profile,
+        features,
+        build_native,
+        targets: vec![],
+        lingxia_config: Some(config.clone()),
+        ipa: false,
+        dmg: false,
+    };
+
+    let artifacts = harmony_platform.build(&build_config)?;
+    let hap_path = artifacts.path();
+
+    println!();
+
+    // Step 2: Install
+    println!("{}", "Step 2/3: Installing...".bold());
+    let install_config = InstallConfig {
+        project_root: project_root.clone(),
+        artifact_path: Some(hap_path.to_path_buf()),
+        device_id: device.clone(),
+    };
+
+    harmony_platform.install(&install_config)?;
+
+    println!();
+
+    // Step 3: Launch app
+    println!("{}", "Step 3/3: Launching app...".bold());
+
+    // Read bundleName from app.json5 (authoritative source).
+    let harmony_dir =
+        platform::harmony::resolve_harmony_dir(&project_root, config.harmony.as_ref())?;
+    let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
+
+    let run_config = RunConfig {
+        package_id: bundle_name.clone(),
+        main_activity: None, // defaults to "EntryAbility" in harmony platform
+        device_id: device,
+    };
+
+    harmony_platform.run(&run_config)?;
+
+    println!();
+    println!("{}", "Dev workflow complete!".green().bold());
+    println!("  {} Platform: {}", "*".bold(), "HarmonyOS".cyan());
+    println!("  {} Bundle: {}", "*".bold(), bundle_name);
+    println!("  {} Artifact: {}", "*".bold(), hap_path.display());
     println!();
 
     Ok(())

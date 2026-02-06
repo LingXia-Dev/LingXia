@@ -10,11 +10,16 @@ use super::{
 use crate::config::MacosConfig;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use image::imageops::FilterType;
+use image::{DynamicImage, GenericImageView, ImageFormat};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
 use std::time::Duration;
+
+mod doctor;
+pub use doctor::doctor_checks;
 
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
 const MACOS_X86_TARGET: &str = "x86_64-apple-darwin";
@@ -788,7 +793,8 @@ pub fn generate_icons(
 ) -> Result<()> {
     let macos_dir = resolve_macos_dir(project_root, macos_config)?;
     let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
-    crate::appicon::generate_macos_icons(source_icon, &resources_dir)
+    let normalized_icon = build_macos_icon_source(source_icon)?;
+    crate::appicon::generate_macos_icons(normalized_icon.path(), &resources_dir)
 }
 
 /// Get the resources directory path for a macOS Swift Package
@@ -803,4 +809,119 @@ pub fn get_resources_dir(
         app_project_name,
         "macos",
     )
+}
+
+fn build_macos_icon_source(source_icon: &Path) -> Result<tempfile::NamedTempFile> {
+    if !source_icon.exists() {
+        anyhow::bail!("Source icon not found: {:?}", source_icon);
+    }
+
+    let img = image::open(source_icon).context("Failed to open source image")?;
+    let (width, height) = img.dimensions();
+    let canvas_size = width.max(height).max(1);
+
+    let source_visual_ratio = estimate_nontransparent_bounds_ratio(&img);
+    const TARGET_DOCK_VISUAL_RATIO: f32 = 0.73;
+    let content_scale = (TARGET_DOCK_VISUAL_RATIO / source_visual_ratio).clamp(0.60, 0.92);
+
+    let icon_size = (canvas_size as f32 * content_scale).round().max(1.0) as u32;
+    let offset = (canvas_size - icon_size) / 2;
+    let mut resized = img
+        .resize_exact(icon_size, icon_size, FilterType::Lanczos3)
+        .to_rgba8();
+    apply_rounded_corner_mask(&mut resized, icon_size as f32 * 0.22);
+
+    let mut canvas = image::RgbaImage::new(canvas_size, canvas_size);
+    image::imageops::overlay(&mut canvas, &resized, offset as i64, offset as i64);
+    let normalized = DynamicImage::ImageRgba8(canvas);
+
+    let temp = tempfile::Builder::new()
+        .prefix("lingxia-macos-icon-")
+        .suffix(".png")
+        .tempfile()
+        .context("Failed to create temporary file for macOS icon generation")?;
+    normalized
+        .save_with_format(temp.path(), ImageFormat::Png)
+        .context("Failed to write temporary normalized macOS icon")?;
+    Ok(temp)
+}
+
+fn estimate_nontransparent_bounds_ratio(img: &DynamicImage) -> f32 {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0u32;
+    let mut max_y = 0u32;
+    let mut found = false;
+
+    const ALPHA_THRESHOLD: u8 = 12;
+    for y in 0..h {
+        for x in 0..w {
+            let a = rgba.get_pixel(x, y).0[3];
+            if a <= ALPHA_THRESHOLD {
+                continue;
+            }
+            found = true;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+    }
+
+    if !found {
+        return 1.0;
+    }
+
+    let bw = (max_x - min_x + 1) as f32 / w as f32;
+    let bh = (max_y - min_y + 1) as f32 / h as f32;
+    bw.max(bh).clamp(0.01, 1.0)
+}
+
+fn apply_rounded_corner_mask(img: &mut image::RgbaImage, radius: f32) {
+    let (w, h) = img.dimensions();
+    let r = radius.clamp(1.0, (w.min(h) as f32) * 0.5);
+    let left = r;
+    let top = r;
+    let right = (w as f32) - r;
+    let bottom = (h as f32) - r;
+
+    for y in 0..h {
+        for x in 0..w {
+            let xf = x as f32 + 0.5;
+            let yf = y as f32 + 0.5;
+            let cx = if xf < left {
+                left
+            } else if xf > right {
+                right
+            } else {
+                xf
+            };
+            let cy = if yf < top {
+                top
+            } else if yf > bottom {
+                bottom
+            } else {
+                yf
+            };
+
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist <= r - 1.0 {
+                continue;
+            }
+
+            let px = img.get_pixel_mut(x, y);
+            if dist >= r {
+                px.0[3] = 0;
+                continue;
+            }
+
+            let edge_alpha = ((r - dist) * 255.0).clamp(0.0, 255.0) as u8;
+            let current_alpha = px.0[3];
+            px.0[3] = ((current_alpha as u16 * edge_alpha as u16) / 255) as u8;
+        }
+    }
 }

@@ -16,7 +16,7 @@ pub(crate) fn prepare_host_assets(
     config: &LingXiaConfig,
     build_profile: BuildProfile,
     platforms: &[platform::detector::PlatformType],
-    explicit_platforms: bool,
+    _explicit_platforms: bool,
 ) -> Result<()> {
     let mut cache = HostAssetsCache::load(project_root);
     let app_json = build_app_json_from_config(config)?;
@@ -29,6 +29,7 @@ pub(crate) fn prepare_host_assets(
             platform::detector::PlatformType::Android
                 | platform::detector::PlatformType::Ios
                 | platform::detector::PlatformType::MacOs
+                | platform::detector::PlatformType::Harmony
         )
     });
 
@@ -96,13 +97,15 @@ pub(crate) fn prepare_host_assets(
                 )?;
             }
             platform::detector::PlatformType::Harmony => {
-                if explicit_platforms && prepared_lxapp_assets.is_some() {
-                    println!(
-                        "  {} LxApp embedding for {} not yet supported.",
-                        "⚠️".yellow(),
-                        platform.as_str()
-                    );
-                }
+                let rawfile_root =
+                    crate::platform::harmony::resolve_harmony_rawfile_dir(project_root)?;
+                prepare_harmony_rawfile_root(
+                    &rawfile_root,
+                    &app_json,
+                    &app_json_hash,
+                    prepared_lxapp_assets.as_ref(),
+                    &mut cache,
+                )?;
             }
         }
     }
@@ -236,6 +239,84 @@ fn prepare_apple_resources_root(
         if stale.exists() {
             fs::remove_dir_all(&stale)?;
             changed = true;
+        }
+    }
+
+    if changed {
+        cache.destinations.insert(dest_key, desired);
+    }
+
+    Ok(())
+}
+
+fn prepare_harmony_rawfile_root(
+    rawfile_root: &Path,
+    app_json: &str,
+    app_json_hash: &str,
+    lxapp_assets: Option<&PreparedLxAppAssets>,
+    cache: &mut HostAssetsCache,
+) -> Result<()> {
+    println!(
+        "{}",
+        format!("Preparing HarmonyOS rawfile → {}", rawfile_root.display()).cyan()
+    );
+
+    fs::create_dir_all(rawfile_root)?;
+
+    let dest_key = path_key(rawfile_root);
+    let prev = cache.destinations.get(&dest_key).cloned();
+
+    // Clean up old LxApp directory if asset name changed
+    if let Some(prev) = &prev
+        && let (Some(prev_name), Some(next)) = (
+            prev.asset_name.as_deref(),
+            lxapp_assets.map(|a| a.asset_name.as_str()),
+        )
+        && prev_name != next
+    {
+        let old_dir = rawfile_root.join(prev_name);
+        if old_dir.exists() {
+            fs::remove_dir_all(&old_dir)
+                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
+        }
+    }
+
+    let desired = DestinationStamp {
+        app_json_hash: app_json_hash.to_string(),
+        dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
+        asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+    };
+
+    let mut changed = false;
+
+    // app.json
+    let app_json_path = rawfile_root.join("app.json");
+    if write_if_changed(&app_json_path, app_json.as_bytes())? {
+        changed = true;
+        println!("  {} app.json → {}", "✓".green(), app_json_path.display());
+    }
+
+    // LxApp dist
+    if let Some(lxapp_assets) = lxapp_assets {
+        let target_dir = rawfile_root.join(&lxapp_assets.asset_name);
+        if prev.as_ref() != Some(&desired) || !target_dir.exists() {
+            if target_dir.exists() {
+                fs::remove_dir_all(&target_dir)
+                    .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
+            }
+            copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
+            println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
+            changed = true;
+        }
+    } else if let Some(prev) = &prev {
+        // LxApp was previously embedded but is now unavailable; remove stale directory.
+        if let Some(prev_name) = &prev.asset_name {
+            let stale = rawfile_root.join(prev_name);
+            if stale.exists() {
+                fs::remove_dir_all(&stale)
+                    .with_context(|| format!("Failed to remove {}", stale.display()))?;
+                changed = true;
+            }
         }
     }
 

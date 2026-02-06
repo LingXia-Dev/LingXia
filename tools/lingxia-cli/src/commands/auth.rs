@@ -14,7 +14,7 @@ use dialoguer::{Input, Password, Select};
 use std::path::PathBuf;
 
 /// Execute the login command
-pub fn login(username: Option<String>, password: Option<String>, mode: &str) -> Result<()> {
+pub fn login(username: Option<String>, password: Option<String>) -> Result<()> {
     println!("\n{}\n", "Apple Developer Authentication".cyan().bold());
 
     // Check for existing credentials
@@ -40,12 +40,34 @@ pub fn login(username: Option<String>, password: Option<String>, mode: &str) -> 
         }
     }
 
-    match mode {
+    // Determine login mode interactively
+    let mode = select_login_mode()?;
+
+    match mode.as_str() {
         "key" => login_with_api_key(&storage)?,
         _ => login_with_password(&storage, username, password)?,
     }
 
     Ok(())
+}
+
+/// Interactively select login mode
+fn select_login_mode() -> Result<String> {
+    let modes = vec![
+        "API Key     (requires paid Apple Developer Program membership)",
+        "Password    (works with any Apple ID but uses private APIs)",
+    ];
+
+    let selection = Select::new()
+        .with_prompt("Select login mode")
+        .items(&modes)
+        .default(1)
+        .interact()?;
+
+    match selection {
+        0 => Ok("key".to_string()),
+        _ => Ok("password".to_string()),
+    }
 }
 
 /// Login with Apple ID (password mode)
@@ -386,8 +408,7 @@ pub fn status() -> Result<()> {
             println!();
             println!("{} Not logged in", "✗".red());
             println!();
-            println!("Run 'lingxia auth login' to authenticate with Apple ID,");
-            println!("or 'lingxia auth login --mode key' for API Key authentication.");
+            println!("Run 'lingxia auth login' and select Apple ID or API Key mode.");
         }
     }
 

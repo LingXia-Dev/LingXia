@@ -169,8 +169,12 @@ enum Commands {
         device: Option<String>,
     },
 
-    /// Check Android development environment setup
-    Doctor,
+    /// Check development environment setup
+    Doctor {
+        /// Platforms to check (comma-separated). Defaults to configured platforms or all.
+        #[arg(short = 'p', long, value_delimiter = ',')]
+        platform: Vec<String>,
+    },
 
     /// Apple developer account authentication (iOS/macOS)
     Auth {
@@ -196,10 +200,6 @@ enum AuthAction {
         /// Password (will prompt if not provided)
         #[arg(short, long)]
         password: Option<String>,
-
-        /// Authentication mode: password (default) or key (API key)
-        #[arg(short, long, default_value = "password")]
-        mode: String,
     },
     /// Logout and clear stored credentials
     Logout,
@@ -283,16 +283,12 @@ fn main() -> Result<()> {
                 platform,
             )?;
         }
-        Commands::Doctor => {
-            commands::doctor::execute()?;
+        Commands::Doctor { platform } => {
+            commands::doctor::execute(platform)?;
         }
         Commands::Auth { action } => match action {
-            AuthAction::Login {
-                username,
-                password,
-                mode,
-            } => {
-                commands::auth::login(username, password, &mode)?;
+            AuthAction::Login { username, password } => {
+                commands::auth::login(username, password)?;
             }
             AuthAction::Logout => {
                 commands::auth::logout()?;

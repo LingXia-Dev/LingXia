@@ -110,10 +110,18 @@ pub fn execute(
             }
             "harmony" | "harmonyos" => {
                 println!("{}", "Generating HarmonyOS icons...".bold());
-                eprintln!(
-                    "  {} HarmonyOS icon generation not yet implemented",
-                    "Warning:".yellow()
-                );
+                match platform::harmony::generate_icons(
+                    &current_dir,
+                    &icon_path,
+                    &bg_color,
+                    config.harmony.as_ref(),
+                ) {
+                    Ok(()) => generated_count += 1,
+                    Err(e) => {
+                        eprintln!("  {} {}", "Warning:".yellow(), e);
+                        eprintln!("  Skipping HarmonyOS icon generation.");
+                    }
+                }
             }
             _ => {
                 eprintln!(

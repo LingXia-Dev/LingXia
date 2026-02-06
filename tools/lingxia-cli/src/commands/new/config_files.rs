@@ -56,8 +56,8 @@ pub(super) fn generate_config_file(
     let harmony = if config.platforms.contains(&Platform::Harmony) {
         Some(HarmonyConfig {
             bundle_name: config.package_id.clone(),
-            compile_sdk_version: None,
             compatible_sdk_version: None,
+            target_sdk_version: None,
         })
     } else {
         None
