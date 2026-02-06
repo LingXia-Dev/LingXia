@@ -5,7 +5,9 @@
     "productVersion": "0.1.0",
     "apiServer": "http://192.168.37.77:8080",
     "platforms": [
-      "android"
+      "android",
+      "ios",
+      "macos"
     ],
     "homeLxAppID": "homelxapp",
     "homeLxAppVersion": "0.1.0",
@@ -17,5 +19,16 @@
     "minSdk": 29,
     "targetSdk": 35,
     "compileSdk": 35
+  },
+  "ios": {
+    "bundleId": "com.lingxia.example",
+    "deploymentTarget": "17.0",
+    "targetName": "lxapp"
+  },
+  "macos": {
+    "bundleId": "com.lingxia.example",
+    "deploymentTarget": "12.0",
+    "targetName": "LingXiaDemo",
+    "executableName": "LingXiaDemo"
   }
 }
