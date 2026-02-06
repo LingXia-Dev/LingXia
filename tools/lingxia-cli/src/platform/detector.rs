@@ -1,7 +1,7 @@
 use super::Platform;
 use super::android::AndroidPlatform;
 use super::ios::IosPlatform;
-use anyhow::{Result, anyhow};
+use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -15,6 +15,12 @@ pub enum PlatformType {
     Harmony,
 }
 
+#[derive(Debug, Clone)]
+pub struct AppleSwiftPackageContext {
+    pub host_project_root: PathBuf,
+    pub inferred_platform: PlatformType,
+}
+
 impl PlatformType {
     pub fn as_str(&self) -> &str {
         match self {
@@ -24,6 +30,69 @@ impl PlatformType {
             PlatformType::Harmony => "harmony",
         }
     }
+}
+
+fn infer_apple_swift_package_platform(package_dir: &Path) -> Result<Option<PlatformType>> {
+    let package_swift = package_dir.join("Package.swift");
+    if !package_swift.exists() {
+        return Ok(None);
+    }
+
+    // Prefer directory convention when present (`.../ios` or `.../macos`).
+    if let Some(dir_name) = package_dir.file_name().and_then(|n| n.to_str()) {
+        match dir_name.to_ascii_lowercase().as_str() {
+            "ios" => return Ok(Some(PlatformType::Ios)),
+            "macos" => return Ok(Some(PlatformType::MacOs)),
+            _ => {}
+        }
+    }
+
+    let content = std::fs::read_to_string(&package_swift)
+        .with_context(|| format!("Failed to read {}", package_swift.display()))?;
+    let has_ios = content.contains(".iOS") || content.contains(".ios");
+    let has_macos = content.contains(".macOS") || content.contains(".macos");
+
+    match (has_ios, has_macos) {
+        (true, false) => Ok(Some(PlatformType::Ios)),
+        (false, true) => Ok(Some(PlatformType::MacOs)),
+        _ => Ok(None),
+    }
+}
+
+/// When invoked inside an Apple Swift Package subdirectory, resolve the nearest
+/// host project root (directory containing `host_config_file`) and infer platform.
+pub fn find_apple_swift_package_context(
+    start: &Path,
+    host_config_file: &str,
+) -> Result<Option<AppleSwiftPackageContext>> {
+    let Some(inferred_platform) = infer_apple_swift_package_platform(start)? else {
+        return Ok(None);
+    };
+
+    let mut current = start.parent();
+    while let Some(dir) = current {
+        if dir.join(host_config_file).exists() {
+            return Ok(Some(AppleSwiftPackageContext {
+                host_project_root: dir.to_path_buf(),
+                inferred_platform,
+            }));
+        }
+        current = dir.parent();
+    }
+
+    Ok(None)
+}
+
+/// Find nearest ancestor host project root containing `host_config_file`.
+pub fn find_host_project_root(start: &Path, host_config_file: &str) -> Option<PathBuf> {
+    let mut current = start.parent();
+    while let Some(dir) = current {
+        if dir.join(host_config_file).exists() {
+            return Some(dir.to_path_buf());
+        }
+        current = dir.parent();
+    }
+    None
 }
 
 impl FromStr for PlatformType {

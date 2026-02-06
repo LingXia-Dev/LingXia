@@ -20,14 +20,17 @@ pub fn execute(
     dmg: bool,
 ) -> Result<()> {
     // Detect project root (current directory)
-    let project_root = env::current_dir()?;
-    let lxapp_json_exists = project_root.join("lxapp.json").exists();
-    let lxplugin_json_exists = project_root.join("lxplugin.json").exists();
+    let current_dir = env::current_dir()?;
+    let mut project_root = current_dir.clone();
+    let mut inferred_platform_from_subdir = None;
+    let mut skip_host_assets = false;
+    let lxapp_json_exists = current_dir.join("lxapp.json").exists();
+    let lxplugin_json_exists = current_dir.join("lxplugin.json").exists();
 
     println!("{}", "🚀 LingXia Build".bold().cyan());
     println!();
 
-    let host_config_exists = project_root.join(HOST_CONFIG_FILE).exists();
+    let host_config_exists = current_dir.join(HOST_CONFIG_FILE).exists();
 
     // LxApp or LxPlugin project (no host config)
     if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
@@ -40,15 +43,68 @@ pub fn execute(
     }
 
     if !host_config_exists {
-        return Err(anyhow!(
-            "No config file found in {}.\n\
-             Expected one of:\n\
-             - {} (native host project)\n\
-             - lxapp.json + {} (LxApp project)",
-            project_root.display(),
-            HOST_CONFIG_FILE,
-            LXAPP_BUILD_CONFIG_FILE
-        ));
+        if let Some(ctx) =
+            platform::detector::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
+        {
+            println!(
+                "{} Detected Apple Swift Package in {}",
+                "ℹ".blue(),
+                current_dir.display()
+            );
+            println!(
+                "  {} Host project: {}",
+                "•".cyan(),
+                ctx.host_project_root.display()
+            );
+            println!(
+                "  {} Default platform: {}",
+                "•".cyan(),
+                ctx.inferred_platform.as_str()
+            );
+            println!();
+
+            project_root = ctx.host_project_root;
+            inferred_platform_from_subdir = Some(ctx.inferred_platform);
+            skip_host_assets = true;
+        } else if let Some(host_root) =
+            platform::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
+        {
+            if let Ok(inferred_platform) = platform::detector::detect_platform_type(&current_dir) {
+                println!(
+                    "{} Detected {} project in {}",
+                    "ℹ".blue(),
+                    inferred_platform.as_str(),
+                    current_dir.display()
+                );
+                println!("  {} Host project: {}", "•".cyan(), host_root.display());
+                println!();
+
+                project_root = host_root;
+                inferred_platform_from_subdir = Some(inferred_platform);
+                skip_host_assets = true;
+            } else {
+                return Err(anyhow!(
+                    "No config file found in {}.\n\
+                     Expected one of:\n\
+                     - {} (native host project)\n\
+                     - lxapp.json + {} (LxApp project)",
+                    current_dir.display(),
+                    HOST_CONFIG_FILE,
+                    LXAPP_BUILD_CONFIG_FILE
+                ));
+            }
+        } else {
+            return Err(anyhow!(
+                "No config file found in {}.\n\
+                 Expected one of:\n\
+                 - {} (native host project)\n\
+                 - lxapp.json + {} (LxApp project)\n\
+                 Tip: run from a host project or one of its platform subdirectories.",
+                current_dir.display(),
+                HOST_CONFIG_FILE,
+                LXAPP_BUILD_CONFIG_FILE
+            ));
+        }
     }
 
     // Host/native build
@@ -76,11 +132,17 @@ pub fn execute(
         ));
     }
 
-    // Determine which platforms to build
-    let explicit_platforms = !platforms.is_empty();
-    let platforms_to_build: Vec<platform::detector::PlatformType> = if explicit_platforms {
+    // Determine which platforms to build.
+    let mut requested_platforms = platforms;
+    if requested_platforms.is_empty()
+        && let Some(inferred_platform) = inferred_platform_from_subdir.as_ref()
+    {
+        requested_platforms.push(inferred_platform.as_str().to_string());
+    }
+    let constrained_platforms = !requested_platforms.is_empty();
+    let platforms_to_build: Vec<platform::detector::PlatformType> = if constrained_platforms {
         let mut selected = Vec::new();
-        for p in platforms {
+        for p in requested_platforms {
             let platform_type: platform::detector::PlatformType = p.parse()?;
             if !available_platforms.contains(&platform_type) {
                 return Err(anyhow!(
@@ -99,7 +161,7 @@ pub fn execute(
 
     // If the user explicitly asked to build iOS/macOS, fail fast on non-macOS hosts
     // (Apple tooling requires macOS).
-    if explicit_platforms
+    if constrained_platforms
         && platforms_to_build.iter().any(|p| {
             matches!(
                 p,
@@ -122,14 +184,21 @@ pub fn execute(
         BuildProfile::Debug
     };
 
-    // Prepare LxApp assets if configured
-    prepare_host_assets(
-        &project_root,
-        &config,
-        build_profile,
-        &platforms_to_build,
-        explicit_platforms,
-    )?;
+    // Prepare host assets unless we're building from a platform subdirectory.
+    if skip_host_assets {
+        println!(
+            "{} Skipping host assets (building from platform subdirectory)",
+            "ℹ".blue()
+        );
+    } else {
+        prepare_host_assets(
+            &project_root,
+            &config,
+            build_profile,
+            &platforms_to_build,
+            constrained_platforms,
+        )?;
+    }
 
     // Default targets if none specified
     let build_targets = if targets.is_empty() {
@@ -145,7 +214,7 @@ pub fn execute(
         let platform = match platform::detector::create_platform(&platform_type) {
             Ok(p) => p,
             Err(e) => {
-                if explicit_platforms {
+                if constrained_platforms {
                     return Err(e);
                 }
                 eprintln!(
