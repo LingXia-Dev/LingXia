@@ -84,6 +84,7 @@ pub enum BuildArtifacts {
     },
     Ios {
         app_path: PathBuf,
+        ipa_path: Option<PathBuf>,
     },
     MacOs {
         app_path: PathBuf,
@@ -99,7 +100,9 @@ impl BuildArtifacts {
     pub fn path(&self) -> &Path {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
-            BuildArtifacts::Ios { app_path } => app_path.as_path(),
+            BuildArtifacts::Ios { app_path, ipa_path } => {
+                ipa_path.as_deref().unwrap_or(app_path.as_path())
+            }
             BuildArtifacts::MacOs { app_path, dmg_path } => {
                 dmg_path.as_deref().unwrap_or(app_path.as_path())
             }

@@ -271,14 +271,28 @@ impl Platform for IosPlatform {
             );
         }
 
-        if config.ipa {
+        let ipa_path = if config.ipa {
             apple::provisioning::sign_app(&app_path, None)?;
-            let ipa_path = app_path.with_extension("ipa");
+            let app_name = app_path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| anyhow!("Invalid app bundle name: {}", app_path.display()))?;
+            let ipa_output_dir = config.project_root.join("dist").join("ios");
+            fs::create_dir_all(&ipa_output_dir).with_context(|| {
+                format!(
+                    "Failed to create iOS distribution directory: {}",
+                    ipa_output_dir.display()
+                )
+            })?;
+            let ipa_path = ipa_output_dir.join(format!("{app_name}.ipa"));
             let ipa_path = apple::signer::create_ipa(&app_path, &ipa_path)?;
             println!("{} IPA → {}", "✓".green(), ipa_path.display());
-        }
+            Some(ipa_path)
+        } else {
+            None
+        };
 
-        Ok(BuildArtifacts::Ios { app_path })
+        Ok(BuildArtifacts::Ios { app_path, ipa_path })
     }
 
     fn install(&self, config: &InstallConfig) -> Result<()> {
