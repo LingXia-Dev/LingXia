@@ -44,6 +44,7 @@ rand = "0.9"
 uuid = { version = "1.20", features = ["v4"] }
 plist = "1"
 tungstenite = { version = "0.28", features = ["native-tls"] }
+x509-parser = "0.16"
 
 which = "8.0"
 adb_client = "3.0.1"

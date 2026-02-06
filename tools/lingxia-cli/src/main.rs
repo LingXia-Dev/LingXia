@@ -177,6 +177,12 @@ enum Commands {
         #[command(subcommand)]
         action: AuthAction,
     },
+
+    /// Interact with developer services (Apple, Harmony, etc.)
+    Ds {
+        #[command(subcommand)]
+        platform: commands::ds::DsPlatform,
+    },
 }
 
 #[derive(Subcommand)]
@@ -295,6 +301,9 @@ fn main() -> Result<()> {
                 commands::auth::status()?;
             }
         },
+        Commands::Ds { platform } => {
+            commands::ds::execute(platform)?;
+        }
     }
 
     Ok(())

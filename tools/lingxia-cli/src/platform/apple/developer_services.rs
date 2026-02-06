@@ -343,13 +343,26 @@ impl<'a> DeveloperServicesClient<'a> {
 #[derive(Debug, Clone)]
 pub struct RegisteredDevice {
     pub id: String,
+    pub name: Option<String>,
     pub udid: String,
+    pub platform: Option<String>,
+    pub status: Option<String>,
+    pub device_class: Option<String>,
+    pub model: Option<String>,
+    pub added_date: Option<String>,
 }
 
 /// A developer certificate
 #[derive(Debug, Clone)]
 pub struct DeveloperCertificate {
     pub id: String,
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub status: Option<String>,
+    pub type_string: Option<String>,
+    pub serial_number: Option<String>,
+    pub date_created: Option<String>,
+    pub expiration_date: Option<String>,
     /// Base64-encoded certificate content
     pub certificate_content: Option<String>,
 }
@@ -358,7 +371,9 @@ pub struct DeveloperCertificate {
 #[derive(Debug, Clone)]
 pub struct AppId {
     pub id: String,
+    pub name: Option<String>,
     pub identifier: String,
+    pub platform: Option<String>,
 }
 
 /// A provisioning profile
@@ -366,6 +381,17 @@ pub struct AppId {
 pub struct ProvisioningProfile {
     pub id: String,
     pub name: String,
+    pub platform: Option<String>,
+    pub status: Option<String>,
+    pub profile_type: Option<String>,
+    pub uuid: Option<String>,
+    pub expiration_date: Option<String>,
+    /// Team identifier from appId.prefix
+    pub team_identifier: Option<String>,
+    /// Application identifier from appId
+    pub application_identifier: Option<String>,
+    /// Entitlements (constructed from appId features)
+    pub entitlements: Option<String>,
 }
 
 /// A developer team returned by listTeams
@@ -583,13 +609,54 @@ fn parse_device(dict: &plist::Dictionary) -> Result<RegisteredDevice> {
         .unwrap_or("")
         .to_string();
 
+    let name = dict
+        .get("name")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
     let udid = dict
         .get("deviceNumber")
         .and_then(|v| v.as_string())
         .unwrap_or("")
         .to_string();
 
-    Ok(RegisteredDevice { id, udid })
+    let platform = dict
+        .get("devicePlatform")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let status = dict
+        .get("status")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let device_class = dict
+        .get("deviceClass")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let model = dict
+        .get("model")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let added_date = dict
+        .get("dateCreated")
+        .or_else(|| dict.get("addedDate"))
+        .or_else(|| dict.get("registrationDate"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    Ok(RegisteredDevice {
+        id,
+        name,
+        udid,
+        platform,
+        status,
+        device_class,
+        model,
+        added_date,
+    })
 }
 
 /// Parse certificates from a listAllDevelopmentCerts response
@@ -626,6 +693,44 @@ fn parse_certificate(dict: &plist::Dictionary) -> Result<DeveloperCertificate> {
         .unwrap_or("")
         .to_string();
 
+    let name = dict
+        .get("name")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let display_name = dict
+        .get("ownerName")
+        .or_else(|| dict.get("displayName"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let status = dict
+        .get("status")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let type_string = dict
+        .get("typeString")
+        .or_else(|| dict.get("certificateType"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let serial_number = dict
+        .get("serialNumber")
+        .or_else(|| dict.get("serialNum"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let date_created = dict
+        .get("dateCreated")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let expiration_date = dict
+        .get("expirationDate")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
     let certificate_content_value = [
         "certContent",
         "certificateContent",
@@ -646,6 +751,13 @@ fn parse_certificate(dict: &plist::Dictionary) -> Result<DeveloperCertificate> {
 
     Ok(DeveloperCertificate {
         id,
+        name,
+        display_name,
+        status,
+        type_string,
+        serial_number,
+        date_created,
+        expiration_date,
         certificate_content,
     })
 }
@@ -682,13 +794,29 @@ fn parse_app_id(dict: &plist::Dictionary) -> Result<AppId> {
         .unwrap_or("")
         .to_string();
 
+    let name = dict
+        .get("name")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
     let identifier = dict
         .get("identifier")
         .and_then(|v| v.as_string())
         .unwrap_or("")
         .to_string();
 
-    Ok(AppId { id, identifier })
+    let platform = dict
+        .get("appIdPlatform")
+        .or_else(|| dict.get("platform"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    Ok(AppId {
+        id,
+        name,
+        identifier,
+        platform,
+    })
 }
 
 /// Parse provisioning profiles from a listProvisioningProfiles response
@@ -729,5 +857,124 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
         .unwrap_or("")
         .to_string();
 
-    Ok(ProvisioningProfile { id, name })
+    let platform = dict
+        .get("devicePlatform")
+        .or_else(|| dict.get("platform"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let status = dict
+        .get("status")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let profile_type = dict
+        .get("type")
+        .or_else(|| dict.get("profileType"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let uuid = dict
+        .get("UUID")
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    let expiration_date = dict
+        .get("dateExpire")
+        .or_else(|| dict.get("expirationDate"))
+        .and_then(|v| v.as_string())
+        .map(|s| s.to_string());
+
+    // Extract team identifier and entitlements from appId dictionary
+    let (team_identifier, application_identifier, entitlements) =
+        if let Some(plist::Value::Dictionary(app_id)) = dict.get("appId") {
+            let team_id = app_id
+                .get("prefix")
+                .and_then(|v| v.as_string())
+                .map(|s| s.to_string());
+
+            let identifier = app_id
+                .get("identifier")
+                .and_then(|v| v.as_string())
+                .map(|s| s.to_string());
+
+            let app_identifier = if let (Some(prefix), Some(id)) = (&team_id, &identifier) {
+                Some(format!("{}.{}", prefix, id))
+            } else {
+                None
+            };
+
+            // Construct entitlements from features
+            let ents = if let Some(plist::Value::Dictionary(features)) = app_id.get("features") {
+                let mut ents_map = serde_json::Map::new();
+
+                // Standard entitlements
+                if let Some(ref team) = team_id {
+                    ents_map.insert(
+                        "com.apple.developer.team-identifier".to_string(),
+                        serde_json::Value::String(team.clone()),
+                    );
+                }
+
+                if let Some(ref app_id) = app_identifier {
+                    ents_map.insert(
+                        "application-identifier".to_string(),
+                        serde_json::Value::String(app_id.clone()),
+                    );
+                }
+
+                if let Some(ref team) = team_id {
+                    let keychain_groups = vec![
+                        serde_json::Value::String(format!("{}.*", team)),
+                        serde_json::Value::String("com.apple.token".to_string()),
+                    ];
+                    ents_map.insert(
+                        "keychain-access-groups".to_string(),
+                        serde_json::Value::Array(keychain_groups),
+                    );
+                }
+
+                // Add aps-environment if push is enabled
+                if let Some(plist::Value::Boolean(true)) = features.get("push") {
+                    ents_map.insert(
+                        "aps-environment".to_string(),
+                        serde_json::Value::String("development".to_string()),
+                    );
+                }
+
+                // Add get-task-allow for development profiles
+                if profile_type.as_deref() == Some("iOS Development") {
+                    ents_map.insert("get-task-allow".to_string(), serde_json::Value::Bool(true));
+                }
+
+                // Add associated domains if enabled (SKC3T5S89Y is associated domains capability)
+                if let Some(plist::Value::Boolean(true)) = features.get("SKC3T5S89Y") {
+                    ents_map.insert(
+                        "com.apple.developer.associated-domains".to_string(),
+                        serde_json::Value::String("*".to_string()),
+                    );
+                }
+
+                Some(serde_json::to_string(&ents_map).unwrap_or_default())
+            } else {
+                None
+            };
+
+            (team_id, app_identifier, ents)
+        } else {
+            (None, None, None)
+        };
+
+    Ok(ProvisioningProfile {
+        id,
+        name,
+        platform,
+        status,
+        profile_type,
+        uuid,
+        expiration_date,
+        team_identifier,
+        application_identifier,
+        entitlements,
+    })
 }

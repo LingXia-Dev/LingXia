@@ -274,7 +274,7 @@ impl GrandSlamClient {
             .as_ref()
             .ok_or_else(|| anyhow!("Endpoints not initialized"))?;
 
-        // Build request matching xtool's GrandSlamTwoFactorRequest exactly
+        // Build request matching GrandSlamTwoFactorRequest format
         let now = chrono::Utc::now();
         let response = http_agent()
             .get(&endpoints.trusted_device_secondary_auth)
@@ -287,7 +287,7 @@ impl GrandSlamClient {
             // From GrandSlamClient.send() - X-Mme-Client-Info
             // Must match the client_info used in initial authentication
             .header("X-Mme-Client-Info", &device_info.client_info)
-            // Anisette data headers (matching xtool's AnisetteData.dictionary)
+            // Anisette data headers
             .header("X-Apple-Locale", "en_US")
             .header("X-Apple-I-TimeZone", "UTC")
             .header(
@@ -351,8 +351,8 @@ impl GrandSlamClient {
 
         let now = chrono::Utc::now();
 
-        // Build GET request matching xtool's GrandSlamValidateRequest exactly
-        // Note: xtool uses GET with security-code header, not POST with body
+        // Build GET request matching GrandSlamValidateRequest format
+        // Note: Uses GET with security-code header, not POST with body
         let response = http_agent()
             .get(&endpoints.validate_code)
             // From GrandSlamTwoFactorRequest.configure()
@@ -363,7 +363,7 @@ impl GrandSlamClient {
             .header("X-Apple-Identity-Token", partial_login.identity_token())
             // From GrandSlamClient.send() - X-Mme-Client-Info
             .header("X-Mme-Client-Info", &device_info.client_info)
-            // Anisette data headers (matching xtool's AnisetteData.dictionary)
+            // Anisette data headers
             .header("X-Apple-Locale", "en_US")
             .header("X-Apple-I-TimeZone", "UTC")
             .header(
