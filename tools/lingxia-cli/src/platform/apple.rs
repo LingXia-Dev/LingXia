@@ -60,27 +60,200 @@ pub fn is_macos() -> bool {
     cfg!(target_os = "macos")
 }
 
-/// Resolve SwiftPM target name for Apple resource locations.
-///
-/// Resolution order:
-/// 1. Explicit config (targetName)
-/// 2. App project name if it matches a Sources/<name> directory
-/// 3. Single directory under Sources/
-pub fn resolve_swiftpm_target_name(
+#[derive(Debug, Clone)]
+struct SwiftPmTargetDecl {
+    name: String,
+    path: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SwiftPmTargetSelection {
+    name: String,
+    path: Option<String>,
+}
+
+fn parse_swiftpm_targets(package_dir: &Path) -> Result<Vec<SwiftPmTargetDecl>> {
+    const TARGET_PREFIXES: [&str; 2] = [".target(", ".executableTarget("];
+
+    let manifest_path = package_dir.join("Package.swift");
+    if !manifest_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let manifest = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+
+    let mut out = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < manifest.len() {
+        let mut next_start: Option<usize> = None;
+        let mut matched_prefix = "";
+
+        for prefix in TARGET_PREFIXES {
+            if let Some(rel) = manifest[cursor..].find(prefix) {
+                let abs = cursor + rel;
+                if next_start.is_none_or(|best| abs < best) {
+                    next_start = Some(abs);
+                    matched_prefix = prefix;
+                }
+            }
+        }
+
+        let Some(start) = next_start else {
+            break;
+        };
+        let open_paren = start + matched_prefix.len() - 1;
+        let Some(end) = find_matching_paren(&manifest, open_paren) else {
+            break;
+        };
+        let block = &manifest[start..=end];
+
+        if let Some(name) = find_swift_named_string(block, "name") {
+            let path = find_swift_named_string(block, "path");
+            out.push(SwiftPmTargetDecl { name, path });
+        }
+
+        cursor = end + 1;
+    }
+
+    Ok(out)
+}
+
+fn find_matching_paren(text: &str, open_paren: usize) -> Option<usize> {
+    let bytes = text.as_bytes();
+    let mut i = open_paren;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut in_line_comment = false;
+    let mut block_comment_depth = 0usize;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        let next = bytes.get(i + 1).copied();
+
+        if in_line_comment {
+            if b == b'\n' {
+                in_line_comment = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if block_comment_depth > 0 {
+            if b == b'/' && next == Some(b'*') {
+                block_comment_depth += 1;
+                i += 2;
+                continue;
+            }
+            if b == b'*' && next == Some(b'/') {
+                block_comment_depth -= 1;
+                i += 2;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if b == b'\\' {
+                escaped = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        if b == b'/' && next == Some(b'/') {
+            in_line_comment = true;
+            i += 2;
+            continue;
+        }
+        if b == b'/' && next == Some(b'*') {
+            block_comment_depth = 1;
+            i += 2;
+            continue;
+        }
+        if b == b'"' {
+            in_string = true;
+            i += 1;
+            continue;
+        }
+
+        if b == b'(' {
+            depth += 1;
+        } else if b == b')' {
+            if depth == 0 {
+                return None;
+            }
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+
+        i += 1;
+    }
+
+    None
+}
+
+fn find_swift_named_string(block: &str, label: &str) -> Option<String> {
+    let needle = format!("{label}:");
+    let rel = block.find(&needle)?;
+    let value_start = rel + needle.len();
+    let rest = &block[value_start..];
+    let first_quote = rest.find('"')?;
+    let after_quote = &rest[first_quote + 1..];
+    let end_quote = after_quote.find('"')?;
+    Some(after_quote[..end_quote].to_string())
+}
+
+fn resolve_swiftpm_target(
     package_dir: &Path,
     configured: Option<&str>,
     app_project_name: Option<&str>,
-    platform_label: &str,
-) -> Result<String> {
+) -> Result<SwiftPmTargetSelection> {
+    let parsed_targets = parse_swiftpm_targets(package_dir)?;
+
     if let Some(name) = configured {
-        return Ok(name.to_string());
+        if let Some(found) = parsed_targets.iter().find(|t| t.name == name) {
+            return Ok(SwiftPmTargetSelection {
+                name: found.name.clone(),
+                path: found.path.clone(),
+            });
+        }
+        return Ok(SwiftPmTargetSelection {
+            name: name.to_string(),
+            path: None,
+        });
     }
 
     if let Some(name) = app_project_name {
+        if let Some(found) = parsed_targets.iter().find(|t| t.name == name) {
+            return Ok(SwiftPmTargetSelection {
+                name: found.name.clone(),
+                path: found.path.clone(),
+            });
+        }
         let candidate = package_dir.join("Sources").join(name);
         if candidate.is_dir() {
-            return Ok(name.to_string());
+            return Ok(SwiftPmTargetSelection {
+                name: name.to_string(),
+                path: None,
+            });
         }
+    }
+
+    if parsed_targets.len() == 1 {
+        let only = &parsed_targets[0];
+        return Ok(SwiftPmTargetSelection {
+            name: only.name.clone(),
+            path: only.path.clone(),
+        });
     }
 
     let sources_dir = package_dir.join("Sources");
@@ -95,16 +268,54 @@ pub fn resolve_swiftpm_target_name(
             }
         }
         if candidates.len() == 1 {
-            return Ok(candidates.remove(0));
+            return Ok(SwiftPmTargetSelection {
+                name: candidates.remove(0),
+                path: None,
+            });
         }
     }
 
     Err(anyhow!(
         "Cannot determine SwiftPM target name from directory: {:?}. \
-         Please set '{}.targetName' in lingxia.config.json",
-        package_dir,
-        platform_label
+         Please set 'targetName' in lingxia.config.json for this Apple platform.",
+        package_dir
     ))
+}
+
+/// Resolve SwiftPM target name for Apple resource locations.
+///
+/// Resolution order:
+/// 1. Explicit config (targetName)
+/// 2. App project name if it matches a SwiftPM target name
+/// 3. Single SwiftPM target in Package.swift
+/// 4. Single directory under Sources/
+pub fn resolve_swiftpm_target_name(
+    package_dir: &Path,
+    configured: Option<&str>,
+    app_project_name: Option<&str>,
+    _platform_label: &str,
+) -> Result<String> {
+    Ok(resolve_swiftpm_target(package_dir, configured, app_project_name)?.name)
+}
+
+/// Resolve the effective SwiftPM resources directory for an Apple target.
+///
+/// For targets with `path: "..."`, resources live under `<path>/Resources`.
+/// Otherwise this falls back to `Sources/<targetName>/Resources`.
+pub fn resolve_swiftpm_resources_dir(
+    package_dir: &Path,
+    configured: Option<&str>,
+    app_project_name: Option<&str>,
+    _platform_label: &str,
+) -> Result<PathBuf> {
+    let target = resolve_swiftpm_target(package_dir, configured, app_project_name)?;
+    if let Some(path) = target.path.as_deref() {
+        return Ok(package_dir.join(path).join("Resources"));
+    }
+    Ok(package_dir
+        .join("Sources")
+        .join(target.name)
+        .join("Resources"))
 }
 
 /// Ensure we're running on macOS (required for Apple platform builds)

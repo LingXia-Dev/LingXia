@@ -15,6 +15,7 @@ struct AssetCatalogPaths {
     info_plist_path: PathBuf,
     generated_plist_path: PathBuf,
     dependencies_path: PathBuf,
+    sdk_arg: &'static str,
     platform_arg: &'static str,
     target_devices: &'static [&'static str],
 }
@@ -26,6 +27,7 @@ fn asset_catalog_paths(app_bundle: &Path, platform: AssetPlatform) -> AssetCatal
             info_plist_path: app_bundle.join("Info.plist"),
             generated_plist_path: app_bundle.join("assetcatalog_generated_info.plist"),
             dependencies_path: app_bundle.join("assetcatalog_dependencies"),
+            sdk_arg: "iphoneos",
             platform_arg: "iphoneos",
             target_devices: &["iphone", "ipad"],
         },
@@ -36,6 +38,7 @@ fn asset_catalog_paths(app_bundle: &Path, platform: AssetPlatform) -> AssetCatal
                 info_plist_path: contents_dir.join("Info.plist"),
                 generated_plist_path: contents_dir.join("assetcatalog_generated_info.plist"),
                 dependencies_path: contents_dir.join("assetcatalog_dependencies"),
+                sdk_arg: "macosx",
                 platform_arg: "macosx",
                 target_devices: &["mac"],
             }
@@ -46,21 +49,16 @@ fn asset_catalog_paths(app_bundle: &Path, platform: AssetPlatform) -> AssetCatal
 /// Compile the asset catalog (Assets.xcassets) into Assets.car and place it in the app bundle.
 ///
 /// # Arguments
-/// * `apple_dir` - Path to the Apple Swift Package directory (ios/ or macos/)
+/// * `resources_dir` - Path to SwiftPM target resources directory
 /// * `app_bundle` - Path to the .app bundle directory
 /// * `deployment_target` - Deployment target (e.g., "17.0")
-/// * `target_name` - SwiftPM target name that contains Resources/
 pub fn compile_asset_catalog(
-    apple_dir: &Path,
+    resources_dir: &Path,
     app_bundle: &Path,
     deployment_target: &str,
-    target_name: &str,
     platform: AssetPlatform,
 ) -> Result<()> {
-    let assets_dir = apple_dir
-        .join("Sources")
-        .join(target_name)
-        .join("Resources/Assets.xcassets");
+    let assets_dir = resources_dir.join("Assets.xcassets");
     if !assets_dir.exists() {
         return Ok(());
     }
@@ -76,6 +74,9 @@ pub fn compile_asset_catalog(
     }
 
     let status = Command::new("xcrun")
+        .args(["--sdk", paths.sdk_arg])
+        // Avoid inheriting a simulator SDKROOT from parent environment.
+        .env_remove("SDKROOT")
         .args([
             "actool",
             "--output-format",
@@ -110,6 +111,9 @@ pub fn compile_asset_catalog(
                 .to_str()
                 .context("Invalid UTF-8 in assets_dir path")?,
         ])
+        // Suppress both outputs to hide simulator runtime warnings
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
         .status()
         .context("Failed to execute xcrun actool")?;
 

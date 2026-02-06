@@ -21,6 +21,8 @@ pub struct BuildConfig {
     pub lingxia_config: Option<LingXiaConfig>,
     /// Sign and package as IPA (iOS only)
     pub ipa: bool,
+    /// Package macOS app bundle as DMG (macOS only)
+    pub dmg: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,10 +79,19 @@ pub trait Platform: Send + Sync {
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // Some variants will be used in the future
 pub enum BuildArtifacts {
-    Android { apk_path: PathBuf },
-    Ios { app_path: PathBuf },
-    MacOs { app_path: PathBuf },
-    Harmony { hap_path: PathBuf },
+    Android {
+        apk_path: PathBuf,
+    },
+    Ios {
+        app_path: PathBuf,
+    },
+    MacOs {
+        app_path: PathBuf,
+        dmg_path: Option<PathBuf>,
+    },
+    Harmony {
+        hap_path: PathBuf,
+    },
 }
 
 impl BuildArtifacts {
@@ -89,7 +100,9 @@ impl BuildArtifacts {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
             BuildArtifacts::Ios { app_path } => app_path.as_path(),
-            BuildArtifacts::MacOs { app_path } => app_path.as_path(),
+            BuildArtifacts::MacOs { app_path, dmg_path } => {
+                dmg_path.as_deref().unwrap_or(app_path.as_path())
+            }
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
         }
     }

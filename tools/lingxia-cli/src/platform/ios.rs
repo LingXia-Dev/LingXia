@@ -247,17 +247,11 @@ impl Platform for IosPlatform {
             .as_ref()
             .and_then(|c| c.app.as_ref())
             .map(|a| a.project_name.as_str());
-        let target_name = apple::resolve_swiftpm_target_name(
-            &ios_dir,
-            ios_config.and_then(|c| c.target_name.as_deref()),
-            app_project_name,
-            "ios",
-        )?;
+        let resources_dir = get_resources_dir(&ios_dir, ios_config, app_project_name)?;
         if let Err(err) = apple::assets::compile_asset_catalog(
-            &ios_dir,
+            &resources_dir,
             &app_path,
             &deployment_target,
-            &target_name,
             apple::assets::AssetPlatform::Ios,
         ) {
             eprintln!(
@@ -387,13 +381,8 @@ pub fn generate_icons(
     app_project_name: Option<&str>,
 ) -> Result<()> {
     let ios_dir = resolve_ios_dir(project_root, ios_config)?;
-    let target_name = apple::resolve_swiftpm_target_name(
-        &ios_dir,
-        ios_config.and_then(|c| c.target_name.as_deref()),
-        app_project_name,
-        "ios",
-    )?;
-    crate::appicon::generate_ios_icons(source_icon, &ios_dir, &target_name)
+    let resources_dir = get_resources_dir(&ios_dir, ios_config, app_project_name)?;
+    crate::appicon::generate_ios_icons(source_icon, &resources_dir)
 }
 
 /// Get the resources directory path for an iOS Swift Package
@@ -402,12 +391,10 @@ pub fn get_resources_dir(
     ios_config: Option<&crate::config::IosConfig>,
     app_project_name: Option<&str>,
 ) -> Result<PathBuf> {
-    let target_name = apple::resolve_swiftpm_target_name(
+    apple::resolve_swiftpm_resources_dir(
         ios_dir,
         ios_config.and_then(|c| c.target_name.as_deref()),
         app_project_name,
         "ios",
-    )?;
-
-    Ok(ios_dir.join("Sources").join(target_name).join("Resources"))
+    )
 }

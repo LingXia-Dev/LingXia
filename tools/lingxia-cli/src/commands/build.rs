@@ -17,6 +17,7 @@ pub fn execute(
     targets: Vec<String>,
     platforms: Vec<String>,
     ipa: bool,
+    dmg: bool,
 ) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
@@ -165,6 +166,7 @@ pub fn execute(
             targets: build_targets.clone(),
             lingxia_config: Some(config.clone()),
             ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
+            dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
         };
 
         let artifacts = platform.build(&build_config)?;

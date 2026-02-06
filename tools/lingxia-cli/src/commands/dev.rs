@@ -146,6 +146,7 @@ fn execute_android(
         targets: build_targets,
         lingxia_config: Some(config.clone()),
         ipa: false,
+        dmg: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -221,6 +222,7 @@ fn execute_ios(
         targets: vec![],
         lingxia_config: Some(config.clone()),
         ipa: false,
+        dmg: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -293,6 +295,7 @@ fn execute_macos(
         targets: vec![],
         lingxia_config: Some(config.clone()),
         ipa: false,
+        dmg: false,
     };
 
     let artifacts = platform.build(&build_config)?;

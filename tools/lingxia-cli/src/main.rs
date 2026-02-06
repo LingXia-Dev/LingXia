@@ -99,6 +99,10 @@ enum Commands {
         /// Sign and package iOS build as IPA
         #[arg(long)]
         ipa: bool,
+
+        /// Package macOS build as DMG
+        #[arg(long)]
+        dmg: bool,
     },
 
     /// List connected devices
@@ -223,6 +227,7 @@ fn main() -> Result<()> {
             build_options,
             platform,
             ipa,
+            dmg,
         } => {
             commands::build::execute(
                 build_options.release,
@@ -231,6 +236,7 @@ fn main() -> Result<()> {
                 build_options.targets,
                 platform,
                 ipa,
+                dmg,
             )?;
         }
         Commands::Devices { platform } => {

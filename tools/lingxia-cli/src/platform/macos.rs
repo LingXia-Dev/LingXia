@@ -13,6 +13,8 @@ use colored::Colorize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::Duration;
 
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
 const MACOS_X86_TARGET: &str = "x86_64-apple-darwin";
@@ -301,12 +303,7 @@ impl Platform for MacosPlatform {
             .as_ref()
             .and_then(|c| c.app.as_ref())
             .map(|a| a.project_name.as_str());
-        let target_name = apple::resolve_swiftpm_target_name(
-            &macos_dir,
-            macos_config.and_then(|c| c.target_name.as_deref()),
-            app_project_name,
-            "macos",
-        )?;
+        let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
 
         let info_plist_path = macos_dir.join("Info.plist");
         let info_plist = if info_plist_path.exists() {
@@ -327,10 +324,9 @@ impl Platform for MacosPlatform {
         )?;
 
         if let Err(err) = apple::assets::compile_asset_catalog(
-            &macos_dir,
+            &resources_dir,
             &app_path,
             &deployment_target,
-            &target_name,
             apple::assets::AssetPlatform::Macos,
         ) {
             eprintln!(
@@ -350,7 +346,13 @@ impl Platform for MacosPlatform {
             );
         }
 
-        Ok(BuildArtifacts::MacOs { app_path })
+        let dmg_path = if config.dmg {
+            Some(create_dmg(&app_path, &config.project_root)?)
+        } else {
+            None
+        };
+
+        Ok(BuildArtifacts::MacOs { app_path, dmg_path })
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {
@@ -453,6 +455,216 @@ fn create_macos_app_bundle(
     )?;
 
     Ok(app_bundle)
+}
+
+fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
+    let app_name = app_path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("Invalid app bundle name: {}", app_path.display()))?;
+    let app_bundle_name = app_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("Invalid app bundle path: {}", app_path.display()))?;
+    let dmg_output_dir = project_root.join("dist").join("macos");
+    fs::create_dir_all(&dmg_output_dir).with_context(|| {
+        format!(
+            "Failed to create macOS distribution directory: {}",
+            dmg_output_dir.display()
+        )
+    })?;
+    let dmg_path = dmg_output_dir.join(format!("{app_name}.dmg"));
+
+    if dmg_path.exists() {
+        fs::remove_file(&dmg_path)
+            .with_context(|| format!("Failed to remove existing {}", dmg_path.display()))?;
+    }
+
+    println!("  Packaging DMG...");
+    let temp_dir = tempfile::tempdir().context("Failed to create temporary directory for DMG")?;
+    let stage_dir = temp_dir.path().join("stage");
+    fs::create_dir_all(&stage_dir)?;
+    let staged_app = stage_dir.join(app_bundle_name);
+    apple::copy_dir_recursive(app_path, &staged_app)?;
+
+    // Create Applications symlink for drag-to-install
+    let apps_link = stage_dir.join("Applications");
+    if apps_link.exists() {
+        fs::remove_file(&apps_link).context("Failed to remove existing Applications link")?;
+    }
+    std::os::unix::fs::symlink("/Applications", &apps_link)
+        .context("Failed to create /Applications symlink in DMG staging directory")?;
+
+    // Verify symlink was created
+    if !apps_link.exists() || !apps_link.read_link().is_ok() {
+        eprintln!(
+            "  {} Applications symlink verification failed",
+            "Warning:".yellow()
+        );
+    } else {
+        println!("  {} Created Applications symlink", "✓".green());
+    }
+    let rw_dmg_path = temp_dir.path().join(format!("{app_name}-rw.dmg"));
+    let status = Command::new("hdiutil")
+        .arg("create")
+        .arg("-quiet")
+        .arg("-volname")
+        .arg(app_name)
+        .arg("-srcfolder")
+        .arg(&stage_dir)
+        .arg("-ov")
+        .arg("-format")
+        .arg("UDRW")
+        .arg(&rw_dmg_path)
+        .status()
+        .context("Failed to execute hdiutil create for temporary DMG")?;
+    if !status.success() {
+        anyhow::bail!("Failed to create temporary writable DMG");
+    }
+
+    let mount_point = temp_dir.path().join("mnt");
+    fs::create_dir_all(&mount_point)?;
+    let attach_status = Command::new("hdiutil")
+        .arg("attach")
+        .arg("-quiet")
+        .arg(&rw_dmg_path)
+        .arg("-readwrite")
+        .arg("-noverify")
+        .arg("-noautoopen")
+        .arg("-mountpoint")
+        .arg(&mount_point)
+        .status()
+        .context("Failed to mount temporary DMG")?;
+    if !attach_status.success() {
+        anyhow::bail!("Failed to mount temporary DMG");
+    }
+
+    // Give the system time to register the disk with Finder before AppleScript
+    thread::sleep(Duration::from_millis(2000));
+
+    if let Err(err) = configure_dmg_layout(app_name, app_bundle_name) {
+        eprintln!(
+            "  {} Failed to configure DMG Finder layout: {}",
+            "Warning:".yellow(),
+            err
+        );
+        eprintln!(
+            "  {} DMG still includes an 'Applications' link for drag-to-install.",
+            "Info:".blue()
+        );
+    }
+
+    // Give Finder a moment to persist the .DS_Store before detach.
+    thread::sleep(Duration::from_millis(500));
+    detach_mount(&mount_point)?;
+
+    let converted_base = temp_dir.path().join("release");
+    let convert_status = Command::new("hdiutil")
+        .arg("convert")
+        .arg("-quiet")
+        .arg(&rw_dmg_path)
+        .arg("-ov")
+        .arg("-format")
+        .arg("UDZO")
+        .arg("-o")
+        .arg(&converted_base)
+        .status()
+        .context("Failed to convert DMG to compressed format")?;
+    if !convert_status.success() {
+        anyhow::bail!("Failed to convert DMG to compressed format");
+    }
+    let converted_dmg = converted_base.with_extension("dmg");
+    if !converted_dmg.exists() {
+        return Err(anyhow!(
+            "Converted DMG not found at expected path: {}",
+            converted_dmg.display()
+        ));
+    }
+    fs::rename(&converted_dmg, &dmg_path)
+        .with_context(|| format!("Failed to move DMG to {}", dmg_path.display()))?;
+
+    println!("  {} DMG → {}", "✓".green(), dmg_path.display());
+    Ok(dmg_path)
+}
+
+fn configure_dmg_layout(volume_name: &str, app_bundle_name: &str) -> Result<()> {
+    let volume_name = escape_applescript_string(volume_name);
+    let app_bundle_name = escape_applescript_string(app_bundle_name);
+    let script = format!(
+        r#"
+tell application "Finder"
+    set dmgDisk to disk "{volume_name}"
+    open dmgDisk
+    delay 0.5
+    set dmgWindow to container window of dmgDisk
+    set current view of dmgWindow to icon view
+    set toolbar visible of dmgWindow to false
+    set statusbar visible of dmgWindow to false
+    set bounds of dmgWindow to {{120, 120, 780, 500}}
+    tell icon view options of dmgWindow
+        set arrangement to not arranged
+        set icon size to 128
+        set text size to 14
+    end tell
+    -- Position app and Applications link (symlink should already exist)
+    set position of item "{app_bundle_name}" of dmgWindow to {{180, 220}}
+    if exists item "Applications" of dmgWindow then
+        set position of item "Applications" of dmgWindow to {{500, 220}}
+    end if
+    update without registering applications
+    delay 0.5
+    close dmgWindow
+end tell
+"#
+    );
+
+    let output = Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .context("Failed to execute osascript for DMG layout")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            anyhow::bail!("osascript returned non-zero status while setting DMG layout");
+        }
+        anyhow::bail!(
+            "osascript returned non-zero status while setting DMG layout: {}",
+            stderr
+        );
+    }
+    Ok(())
+}
+
+fn detach_mount(mount_point: &Path) -> Result<()> {
+    for _ in 0..5 {
+        let status = Command::new("hdiutil")
+            .arg("detach")
+            .arg("-quiet")
+            .arg(mount_point)
+            .status()
+            .context("Failed to execute hdiutil detach")?;
+        if status.success() {
+            return Ok(());
+        }
+        thread::sleep(Duration::from_millis(400));
+    }
+
+    let force_status = Command::new("hdiutil")
+        .arg("detach")
+        .arg("-quiet")
+        .arg("-force")
+        .arg(mount_point)
+        .status()
+        .context("Failed to execute forced hdiutil detach")?;
+    if !force_status.success() {
+        anyhow::bail!("Failed to detach mounted DMG volume");
+    }
+    Ok(())
+}
+
+fn escape_applescript_string(input: &str) -> String {
+    input.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn generate_macos_info_plist(
@@ -573,13 +785,8 @@ pub fn generate_icons(
     app_project_name: Option<&str>,
 ) -> Result<()> {
     let macos_dir = resolve_macos_dir(project_root, macos_config)?;
-    let target_name = apple::resolve_swiftpm_target_name(
-        &macos_dir,
-        macos_config.and_then(|c| c.target_name.as_deref()),
-        app_project_name,
-        "macos",
-    )?;
-    crate::appicon::generate_macos_icons(source_icon, &macos_dir, &target_name)
+    let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
+    crate::appicon::generate_macos_icons(source_icon, &resources_dir)
 }
 
 /// Get the resources directory path for a macOS Swift Package
@@ -588,15 +795,10 @@ pub fn get_resources_dir(
     macos_config: Option<&crate::config::MacosConfig>,
     app_project_name: Option<&str>,
 ) -> Result<PathBuf> {
-    let target_name = apple::resolve_swiftpm_target_name(
+    apple::resolve_swiftpm_resources_dir(
         macos_dir,
         macos_config.and_then(|c| c.target_name.as_deref()),
         app_project_name,
         "macos",
-    )?;
-
-    Ok(macos_dir
-        .join("Sources")
-        .join(target_name)
-        .join("Resources"))
+    )
 }

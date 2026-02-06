@@ -157,9 +157,8 @@ pub fn generate_android_icons(
 ///
 /// # Arguments
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
-/// * `ios_dir` - Path to the iOS Swift Package directory
-/// * `target_name` - SwiftPM target name for resources lookup
-pub fn generate_ios_icons(source_icon: &Path, ios_dir: &Path, target_name: &str) -> Result<()> {
+/// * `resources_dir` - Path to target resources directory
+pub fn generate_ios_icons(source_icon: &Path, resources_dir: &Path) -> Result<()> {
     use std::collections::HashMap;
 
     if !source_icon.exists() {
@@ -183,10 +182,7 @@ pub fn generate_ios_icons(source_icon: &Path, ios_dir: &Path, target_name: &str)
     println!("Generating iOS icons from {}x{} source...", width, height);
 
     // Create Assets.xcassets/AppIcon.appiconset directory
-    let appiconset_dir = ios_dir
-        .join("Sources")
-        .join(target_name)
-        .join("Resources/Assets.xcassets/AppIcon.appiconset");
+    let appiconset_dir = resources_dir.join("Assets.xcassets/AppIcon.appiconset");
     fs::create_dir_all(&appiconset_dir)?;
 
     // Essential iOS icon sizes (size string, scale string, pixel size, idiom, filename)
@@ -248,9 +244,8 @@ pub fn generate_ios_icons(source_icon: &Path, ios_dir: &Path, target_name: &str)
 ///
 /// # Arguments
 /// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
-/// * `macos_dir` - Path to the macOS Swift Package directory
-/// * `target_name` - SwiftPM target name for resources lookup
-pub fn generate_macos_icons(source_icon: &Path, macos_dir: &Path, target_name: &str) -> Result<()> {
+/// * `resources_dir` - Path to target resources directory
+pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<()> {
     use std::collections::HashMap;
 
     if !source_icon.exists() {
@@ -274,10 +269,7 @@ pub fn generate_macos_icons(source_icon: &Path, macos_dir: &Path, target_name: &
     println!("Generating macOS icons from {}x{} source...", width, height);
 
     // Create Assets.xcassets/AppIcon.appiconset directory
-    let appiconset_dir = macos_dir
-        .join("Sources")
-        .join(target_name)
-        .join("Resources/Assets.xcassets/AppIcon.appiconset");
+    let appiconset_dir = resources_dir.join("Assets.xcassets/AppIcon.appiconset");
     fs::create_dir_all(&appiconset_dir)?;
 
     // Essential macOS icon sizes (point size, scale, filename)
