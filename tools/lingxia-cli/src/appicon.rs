@@ -273,7 +273,6 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
     fs::create_dir_all(&appiconset_dir)?;
 
     // Essential macOS icon sizes (point size, scale, filename)
-    // macOS uses square icons without idiom specification
     let icon_specs: &[(u32, u32, &str)] = &[
         (16, 1, "icon_16x16.png"),
         (16, 2, "icon_16x16@2x.png"),
@@ -287,12 +286,20 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
         (512, 2, "icon_512x512@2x.png"),
     ];
 
+    // Normalize visual weight across different source icon styles.
+    // If source artwork already contains transparent padding, we avoid shrinking too much.
+    let source_visual_ratio = estimate_nontransparent_bounds_ratio(&img);
+    const TARGET_DOCK_VISUAL_RATIO: f32 = 0.73;
+    let content_scale = (TARGET_DOCK_VISUAL_RATIO / source_visual_ratio).clamp(0.60, 0.92);
+
     let mut images: Vec<HashMap<String, serde_json::Value>> = Vec::new();
 
     for (size_pt, scale, filename) in icon_specs {
         let pixel_size = size_pt * scale;
-        let resized = img.resize_exact(pixel_size, pixel_size, FilterType::Lanczos3);
-        resized.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
+
+        // Keep extra transparent padding so icon visual size matches other Dock icons.
+        let padded = create_macos_icon_with_padding(&img, pixel_size, content_scale);
+        padded.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
 
         // Build Contents.json entry
         let mut entry: HashMap<String, serde_json::Value> = HashMap::new();
@@ -324,6 +331,109 @@ pub fn generate_macos_icons(source_icon: &Path, resources_dir: &Path) -> Result<
     );
 
     Ok(())
+}
+
+/// Estimate source icon bounds ratio based on non-transparent pixels.
+fn estimate_nontransparent_bounds_ratio(img: &DynamicImage) -> f32 {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0u32;
+    let mut max_y = 0u32;
+    let mut found = false;
+
+    // Ignore near-transparent antialiasing noise when estimating bounds.
+    const ALPHA_THRESHOLD: u8 = 12;
+    for y in 0..h {
+        for x in 0..w {
+            let a = rgba.get_pixel(x, y).0[3];
+            if a <= ALPHA_THRESHOLD {
+                continue;
+            }
+            found = true;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x);
+            max_y = max_y.max(y);
+        }
+    }
+
+    if !found {
+        return 1.0;
+    }
+
+    let bw = (max_x - min_x + 1) as f32 / w as f32;
+    let bh = (max_y - min_y + 1) as f32 / h as f32;
+    bw.max(bh).clamp(0.01, 1.0)
+}
+
+/// Add transparent padding to a macOS icon so it doesn't appear oversized in Dock.
+fn create_macos_icon_with_padding(
+    img: &DynamicImage,
+    size: u32,
+    content_scale: f32,
+) -> DynamicImage {
+    let icon_size = (size as f32 * content_scale).round().max(1.0) as u32;
+    let offset = (size - icon_size) / 2;
+    let mut resized = img
+        .resize_exact(icon_size, icon_size, FilterType::Lanczos3)
+        .to_rgba8();
+    apply_rounded_corner_mask(&mut resized, icon_size as f32 * 0.22);
+
+    let mut canvas = image::RgbaImage::new(size, size);
+    imageops::overlay(&mut canvas, &resized, offset as i64, offset as i64);
+
+    DynamicImage::ImageRgba8(canvas)
+}
+
+/// Apply a rounded-corner alpha mask in place.
+fn apply_rounded_corner_mask(img: &mut image::RgbaImage, radius: f32) {
+    let (w, h) = img.dimensions();
+    let r = radius.clamp(1.0, (w.min(h) as f32) * 0.5);
+    let left = r;
+    let top = r;
+    let right = (w as f32) - r;
+    let bottom = (h as f32) - r;
+
+    for y in 0..h {
+        for x in 0..w {
+            let xf = x as f32 + 0.5;
+            let yf = y as f32 + 0.5;
+
+            let cx = if xf < left {
+                left
+            } else if xf > right {
+                right
+            } else {
+                xf
+            };
+            let cy = if yf < top {
+                top
+            } else if yf > bottom {
+                bottom
+            } else {
+                yf
+            };
+
+            let dx = xf - cx;
+            let dy = yf - cy;
+            let dist = (dx * dx + dy * dy).sqrt();
+            if dist <= r - 1.0 {
+                continue;
+            }
+
+            let px = img.get_pixel_mut(x, y);
+            if dist >= r {
+                px.0[3] = 0;
+                continue;
+            }
+
+            let edge_alpha = ((r - dist) * 255.0).clamp(0.0, 255.0) as u8;
+            let current_alpha = px.0[3];
+            px.0[3] = ((current_alpha as u16 * edge_alpha as u16) / 255) as u8;
+        }
+    }
 }
 
 /// Generate HarmonyOS app icons from a source image (future implementation)
