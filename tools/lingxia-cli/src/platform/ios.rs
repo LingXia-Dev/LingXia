@@ -13,9 +13,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// iOS resources directory relative path within Swift Package
-pub const IOS_RESOURCES_REL_PATH: &str = "Sources/lxapp/Resources";
-
 /// iOS platform implementation
 pub struct IosPlatform;
 
@@ -127,12 +124,24 @@ impl IosPlatform {
             .map(|c| c.bundle_id.clone())
             .unwrap_or_else(|| "com.example.app".to_string());
 
-        // Get product name from Package.swift directory name
-        let product_name = ios_dir
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("lxapp")
-            .to_string();
+        let app_config = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Missing app config in lingxia.config.json. \
+                     iOS bundle build requires app.projectName and app.productName."
+                )
+            })?;
+        let app_name = app_config.product_name.clone();
+        let swift_product_name = apple::resolve_swiftpm_target_name(
+            ios_dir,
+            ios_config.and_then(|c| c.target_name.as_deref()),
+            Some(app_config.project_name.as_str()),
+            "ios",
+        )?;
+        let executable_name = app_config.project_name.clone();
 
         let deployment_target = ios_config
             .and_then(|c| c.deployment_target.clone())
@@ -148,7 +157,9 @@ impl IosPlatform {
 
         let bundle_config = AppBundleConfig {
             bundle_id,
-            product_name,
+            app_name,
+            swift_product_name,
+            executable_name,
             deployment_target,
             info_plist_path: info_plist,
         };
@@ -227,6 +238,45 @@ impl Platform for IosPlatform {
         // Create .app bundle using AppBundler (converts library to executable app)
         let app_path = self.create_app_bundle(&ios_dir, &workspace_root, config, ios_config)?;
 
+        // Compile asset catalog (includes AppIcon) and merge generated plist
+        let deployment_target = ios_config
+            .and_then(|c| c.deployment_target.clone())
+            .unwrap_or_else(|| "17.0".to_string());
+        let app_project_name = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|a| a.project_name.as_str());
+        let target_name = apple::resolve_swiftpm_target_name(
+            &ios_dir,
+            ios_config.and_then(|c| c.target_name.as_deref()),
+            app_project_name,
+            "ios",
+        )?;
+        if let Err(err) = apple::assets::compile_asset_catalog(
+            &ios_dir,
+            &app_path,
+            &deployment_target,
+            &target_name,
+            apple::assets::AssetPlatform::Ios,
+        ) {
+            eprintln!(
+                "  {} Asset catalog compilation failed: {}",
+                "Warning:".yellow(),
+                err
+            );
+        }
+        if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(
+            &app_path,
+            apple::assets::AssetPlatform::Ios,
+        ) {
+            eprintln!(
+                "  {} Failed to merge asset catalog plist: {}",
+                "Warning:".yellow(),
+                err
+            );
+        }
+
         if config.ipa {
             apple::provisioning::sign_app(&app_path, None)?;
             let ipa_path = app_path.with_extension("ipa");
@@ -278,49 +328,19 @@ impl Platform for IosPlatform {
 
 /// Resolve the iOS Swift Package directory.
 ///
-/// Supports both layouts:
-/// - Multi-platform layout: `{projectRoot}/ios/{packageName}/` (contains Package.swift)
-/// - Configured path: `{projectRoot}/{swiftPackagePath}/`
+/// Expects Package.swift in: `{projectRoot}/ios/`
 pub(crate) fn resolve_ios_dir(
     project_root: &Path,
-    ios_config: Option<&IosConfig>,
+    _ios_config: Option<&IosConfig>,
 ) -> Result<PathBuf> {
-    // 1. Check configured path first
-    if let Some(config) = ios_config {
-        if let Some(ref pkg_path) = config.swift_package_path {
-            let configured_dir = project_root.join(pkg_path);
-            if configured_dir.join("Package.swift").exists() {
-                return Ok(configured_dir);
-            }
-        }
-    }
-
-    // 2. Check multi-platform layout: {projectRoot}/ios/*/Package.swift
     let ios_dir = project_root.join("ios");
-    if ios_dir.exists() && ios_dir.is_dir() {
-        for entry in fs::read_dir(&ios_dir)? {
-            let path = entry?.path();
-            if path.is_dir() && path.join("Package.swift").exists() {
-                return Ok(path);
-            }
-        }
-    }
-
-    // 3. Check root directory
-    if project_root.join("Package.swift").exists() {
-        return Ok(project_root.to_path_buf());
+    if ios_dir.join("Package.swift").exists() {
+        return Ok(ios_dir);
     }
 
     Err(anyhow!(
         "iOS Swift Package not found.\n\
-         Expected Package.swift in:\n\
-         - {}/ios/<package>/\n\
-         - {} (configured via ios.swiftPackagePath)\n\
-         - {} (root)",
-        project_root.display(),
-        ios_config
-            .and_then(|c| c.swift_package_path.as_deref())
-            .unwrap_or("<not configured>"),
+         Expected Package.swift in: {}/ios/",
         project_root.display()
     ))
 }
@@ -351,4 +371,43 @@ fn get_ios_sdk_path() -> Result<String> {
 /// Read the bundle ID from a built/signed iOS app bundle.
 pub fn read_bundle_id(app_path: &Path) -> Result<String> {
     apple::provisioning::read_bundle_id(&app_path.join("Info.plist"))
+}
+
+/// Generate iOS app icons
+///
+/// # Arguments
+/// * `project_root` - Project root directory
+/// * `source_icon` - Path to source icon image
+/// * `ios_config` - Optional iOS configuration from lingxia.config.json
+/// * `app_project_name` - Optional app project name (used for SwiftPM target inference)
+pub fn generate_icons(
+    project_root: &Path,
+    source_icon: &Path,
+    ios_config: Option<&crate::config::IosConfig>,
+    app_project_name: Option<&str>,
+) -> Result<()> {
+    let ios_dir = resolve_ios_dir(project_root, ios_config)?;
+    let target_name = apple::resolve_swiftpm_target_name(
+        &ios_dir,
+        ios_config.and_then(|c| c.target_name.as_deref()),
+        app_project_name,
+        "ios",
+    )?;
+    crate::appicon::generate_ios_icons(source_icon, &ios_dir, &target_name)
+}
+
+/// Get the resources directory path for an iOS Swift Package
+pub fn get_resources_dir(
+    ios_dir: &Path,
+    ios_config: Option<&crate::config::IosConfig>,
+    app_project_name: Option<&str>,
+) -> Result<PathBuf> {
+    let target_name = apple::resolve_swiftpm_target_name(
+        ios_dir,
+        ios_config.and_then(|c| c.target_name.as_deref()),
+        app_project_name,
+        "ios",
+    )?;
+
+    Ok(ios_dir.join("Sources").join(target_name).join("Resources"))
 }

@@ -479,3 +479,33 @@ impl Platform for AndroidPlatform {
         Ok(devices)
     }
 }
+
+/// Generate Android app icons
+///
+/// # Arguments
+/// * `project_root` - Project root directory
+/// * `source_icon` - Path to source icon image
+/// * `background_color` - Hex color for adaptive icon background (e.g., "#FFFFFF")
+/// * `legacy` - Whether to generate legacy icons for minSdk < 26
+pub fn generate_icons(
+    project_root: &Path,
+    source_icon: &Path,
+    background_color: &str,
+    legacy: bool,
+) -> Result<()> {
+    let android_res = resolve_android_assets_dir(project_root);
+
+    if !android_res.exists() {
+        anyhow::bail!(
+            "Android res directory not found: {}. Make sure you're in an Android project.",
+            android_res.display()
+        );
+    }
+
+    crate::appicon::generate_android_icons(source_icon, &android_res, background_color, legacy)
+}
+
+/// Resolve Android assets/res directory
+fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
+    project_root.join("android/app/src/main/res")
+}

@@ -21,6 +21,7 @@ pub(crate) fn prepare_host_assets(
     let mut cache = HostAssetsCache::load(project_root);
     let app_json = build_app_json_from_config(config)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
+    let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
 
     let needs_embedded_lxapp = platforms.iter().any(|p| {
         matches!(
@@ -59,7 +60,11 @@ pub(crate) fn prepare_host_assets(
                 }
                 let ios_dir =
                     crate::platform::ios::resolve_ios_dir(project_root, config.ios.as_ref())?;
-                let resources_dir = ios_dir.join(crate::platform::ios::IOS_RESOURCES_REL_PATH);
+                let resources_dir = crate::platform::ios::get_resources_dir(
+                    &ios_dir,
+                    config.ios.as_ref(),
+                    app_project_name,
+                )?;
                 prepare_apple_resources_root(
                     &resources_dir,
                     &app_json,
@@ -76,8 +81,11 @@ pub(crate) fn prepare_host_assets(
                 }
                 let macos_dir =
                     crate::platform::macos::resolve_macos_dir(project_root, config.macos.as_ref())?;
-                let resources_dir =
-                    macos_dir.join(crate::platform::macos::MACOS_RESOURCES_REL_PATH);
+                let resources_dir = crate::platform::macos::get_resources_dir(
+                    &macos_dir,
+                    config.macos.as_ref(),
+                    app_project_name,
+                )?;
                 prepare_apple_resources_root(
                     &resources_dir,
                     &app_json,

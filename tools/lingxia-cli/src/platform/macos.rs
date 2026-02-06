@@ -17,9 +17,6 @@ use std::process::Command;
 const MACOS_ARM_TARGET: &str = "aarch64-apple-darwin";
 const MACOS_X86_TARGET: &str = "x86_64-apple-darwin";
 
-/// macOS resources directory relative path within Swift Package
-pub const MACOS_RESOURCES_REL_PATH: &str = "Sources/lxapp/Resources";
-
 /// macOS platform implementation
 pub struct MacosPlatform;
 
@@ -264,7 +261,96 @@ impl Platform for MacosPlatform {
 
         let executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
 
-        Ok(BuildArtifacts::MacOs { executable_path })
+        let product_name = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|a| a.product_name.clone())
+            .unwrap_or_else(|| {
+                executable_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("app")
+                    .to_string()
+            });
+
+        let product_version = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|a| a.product_version.clone())
+            .unwrap_or_else(|| "1.0.0".to_string());
+
+        let bundle_id = macos_config
+            .and_then(|c| c.bundle_id.clone())
+            .or_else(|| {
+                config
+                    .lingxia_config
+                    .as_ref()
+                    .and_then(|c| c.ios.as_ref())
+                    .map(|c| c.bundle_id.clone())
+            })
+            .unwrap_or_else(|| "com.example.app".to_string());
+
+        let deployment_target = macos_config
+            .and_then(|c| c.deployment_target.clone())
+            .unwrap_or_else(|| "14.0".to_string());
+
+        let app_project_name = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|a| a.project_name.as_str());
+        let target_name = apple::resolve_swiftpm_target_name(
+            &macos_dir,
+            macos_config.and_then(|c| c.target_name.as_deref()),
+            app_project_name,
+            "macos",
+        )?;
+
+        let info_plist_path = macos_dir.join("Info.plist");
+        let info_plist = if info_plist_path.exists() {
+            Some(info_plist_path)
+        } else {
+            None
+        };
+
+        let app_path = create_macos_app_bundle(
+            &macos_dir,
+            &bin_dir,
+            &executable_path,
+            &product_name,
+            &product_version,
+            &bundle_id,
+            &deployment_target,
+            info_plist.as_ref(),
+        )?;
+
+        if let Err(err) = apple::assets::compile_asset_catalog(
+            &macos_dir,
+            &app_path,
+            &deployment_target,
+            &target_name,
+            apple::assets::AssetPlatform::Macos,
+        ) {
+            eprintln!(
+                "  {} Asset catalog compilation failed: {}",
+                "Warning:".yellow(),
+                err
+            );
+        }
+        if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(
+            &app_path,
+            apple::assets::AssetPlatform::Macos,
+        ) {
+            eprintln!(
+                "  {} Failed to merge asset catalog plist: {}",
+                "Warning:".yellow(),
+                err
+            );
+        }
+
+        Ok(BuildArtifacts::MacOs { app_path })
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {
@@ -298,56 +384,219 @@ impl Platform for MacosPlatform {
     }
 }
 
-/// Resolve the macOS Swift Package directory (same structure as iOS).
+fn create_macos_app_bundle(
+    macos_dir: &Path,
+    bin_dir: &Path,
+    executable_path: &Path,
+    product_name: &str,
+    product_version: &str,
+    bundle_id: &str,
+    deployment_target: &str,
+    info_plist_path: Option<&PathBuf>,
+) -> Result<PathBuf> {
+    let app_name = format!("{}.app", product_name);
+    let output_dir = macos_dir.join(".lingxia");
+    fs::create_dir_all(&output_dir)?;
+
+    let app_bundle = output_dir.join(&app_name);
+    let contents_dir = app_bundle.join("Contents");
+    let macos_exec_dir = contents_dir.join("MacOS");
+    let resources_dir = contents_dir.join("Resources");
+    let frameworks_dir = contents_dir.join("Frameworks");
+
+    let _ = fs::remove_dir_all(&app_bundle);
+    fs::create_dir_all(&macos_exec_dir)?;
+    fs::create_dir_all(&resources_dir)?;
+
+    let executable_name = executable_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("Invalid executable name: {}", executable_path.display()))?;
+    let exe_dst = macos_exec_dir.join(executable_name);
+    fs::copy(executable_path, &exe_dst)?;
+
+    // Copy resource bundles (*.bundle) into Contents/Resources
+    for entry in fs::read_dir(bin_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "bundle").unwrap_or(false) {
+            let dest = resources_dir.join(path.file_name().unwrap());
+            apple::copy_dir_recursive(&path, &dest)?;
+        }
+    }
+
+    // Copy frameworks and dylibs into Contents/Frameworks
+    for entry in fs::read_dir(bin_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().map(|e| e == "framework").unwrap_or(false) {
+            fs::create_dir_all(&frameworks_dir)?;
+            let dest = frameworks_dir.join(path.file_name().unwrap());
+            apple::copy_dir_recursive(&path, &dest)?;
+        }
+        if path.extension().map(|e| e == "dylib").unwrap_or(false) {
+            fs::create_dir_all(&frameworks_dir)?;
+            let dest = frameworks_dir.join(path.file_name().unwrap());
+            fs::copy(&path, &dest)?;
+        }
+    }
+
+    generate_macos_info_plist(
+        macos_dir,
+        &contents_dir,
+        product_name,
+        product_version,
+        bundle_id,
+        deployment_target,
+        executable_name,
+        info_plist_path,
+    )?;
+
+    Ok(app_bundle)
+}
+
+fn generate_macos_info_plist(
+    package_dir: &Path,
+    contents_dir: &Path,
+    product_name: &str,
+    product_version: &str,
+    bundle_id: &str,
+    deployment_target: &str,
+    executable_name: &str,
+    info_plist_path: Option<&PathBuf>,
+) -> Result<()> {
+    let mut info: std::collections::HashMap<String, plist::Value> =
+        std::collections::HashMap::new();
+
+    info.insert("CFBundleInfoDictionaryVersion".into(), "6.0".into());
+    info.insert("CFBundleDevelopmentRegion".into(), "en".into());
+    info.insert("CFBundleVersion".into(), "1".into());
+    info.insert(
+        "CFBundleShortVersionString".into(),
+        product_version.to_string().into(),
+    );
+    info.insert("CFBundleIdentifier".into(), bundle_id.to_string().into());
+    info.insert("CFBundleName".into(), product_name.to_string().into());
+    info.insert(
+        "CFBundleDisplayName".into(),
+        product_name.to_string().into(),
+    );
+    info.insert(
+        "CFBundleExecutable".into(),
+        executable_name.to_string().into(),
+    );
+    info.insert("CFBundlePackageType".into(), "APPL".into());
+    info.insert(
+        "CFBundleSupportedPlatforms".into(),
+        plist::Value::Array(vec!["MacOSX".into()]),
+    );
+    info.insert(
+        "LSMinimumSystemVersion".into(),
+        deployment_target.to_string().into(),
+    );
+    info.insert("NSHighResolutionCapable".into(), true.into());
+
+    if let Some(plist_path) = info_plist_path {
+        let full_path = if plist_path.is_absolute() {
+            plist_path.clone()
+        } else {
+            package_dir.join(plist_path)
+        };
+        if full_path.exists() {
+            let custom: plist::Dictionary = plist::from_file(&full_path)
+                .map_err(|e| anyhow!("Failed to parse Info.plist: {}", e))?;
+            for (key, value) in custom {
+                info.insert(key, value);
+            }
+        }
+    }
+
+    let info_plist_path = contents_dir.join("Info.plist");
+    let dict: plist::Dictionary = info.into_iter().collect();
+    plist::to_file_xml(info_plist_path, &dict).context("Failed to write Info.plist")?;
+
+    Ok(())
+}
+
+pub fn app_bundle_executable(app_path: &Path) -> Result<PathBuf> {
+    let info_plist_path = app_path.join("Contents").join("Info.plist");
+    let info: plist::Dictionary =
+        plist::from_file(&info_plist_path).context("Failed to read Info.plist")?;
+    let Some(plist::Value::String(name)) = info.get("CFBundleExecutable") else {
+        return Err(anyhow!("CFBundleExecutable not found in Info.plist"));
+    };
+    Ok(app_path.join("Contents").join("MacOS").join(name))
+}
+
+/// Resolve the macOS Swift Package directory.
+///
+/// Expects Package.swift in:
+/// - `{projectRoot}/macos/`
+/// - `{projectRoot}/ios/` (shared codebase fallback)
 pub(crate) fn resolve_macos_dir(
     project_root: &Path,
-    macos_config: Option<&MacosConfig>,
+    _macos_config: Option<&MacosConfig>,
 ) -> Result<PathBuf> {
-    // 1. Check configured path first
-    if let Some(config) = macos_config {
-        if let Some(ref pkg_path) = config.swift_package_path {
-            let configured_dir = project_root.join(pkg_path);
-            if configured_dir.join("Package.swift").exists() {
-                return Ok(configured_dir);
-            }
-        }
-    }
-
-    // 2. Check multi-platform layout: {projectRoot}/macos/*/Package.swift
+    // 1. Check standard macOS directory
     let macos_dir = project_root.join("macos");
-    if macos_dir.exists() && macos_dir.is_dir() {
-        for entry in fs::read_dir(&macos_dir)? {
-            let path = entry?.path();
-            if path.is_dir() && path.join("Package.swift").exists() {
-                return Ok(path);
-            }
-        }
+    if macos_dir.join("Package.swift").exists() {
+        return Ok(macos_dir);
     }
 
-    // 3. Fallback to iOS directory (shared codebase)
+    // 2. Fallback to iOS directory (shared codebase)
     let ios_dir = project_root.join("ios");
-    if ios_dir.exists() && ios_dir.is_dir() {
-        for entry in fs::read_dir(&ios_dir)? {
-            let path = entry?.path();
-            if path.is_dir() && path.join("Package.swift").exists() {
-                return Ok(path);
-            }
-        }
-    }
-
-    // 4. Check root directory
-    if project_root.join("Package.swift").exists() {
-        return Ok(project_root.to_path_buf());
+    if ios_dir.join("Package.swift").exists() {
+        return Ok(ios_dir);
     }
 
     Err(anyhow!(
         "macOS Swift Package not found.\n\
          Expected Package.swift in:\n\
-         - {}/macos/<package>/\n\
-         - {}/ios/<package>/ (shared)\n\
-         - {} (root)",
-        project_root.display(),
+         - {}/macos/\n\
+         - {}/ios/ (shared)",
         project_root.display(),
         project_root.display()
     ))
+}
+
+/// Generate macOS app icons
+///
+/// # Arguments
+/// * `project_root` - Project root directory
+/// * `source_icon` - Path to source icon image
+/// * `macos_config` - Optional macOS configuration from lingxia.config.json
+/// * `app_project_name` - Optional app project name (used for SwiftPM target inference)
+pub fn generate_icons(
+    project_root: &Path,
+    source_icon: &Path,
+    macos_config: Option<&crate::config::MacosConfig>,
+    app_project_name: Option<&str>,
+) -> Result<()> {
+    let macos_dir = resolve_macos_dir(project_root, macos_config)?;
+    let target_name = apple::resolve_swiftpm_target_name(
+        &macos_dir,
+        macos_config.and_then(|c| c.target_name.as_deref()),
+        app_project_name,
+        "macos",
+    )?;
+    crate::appicon::generate_macos_icons(source_icon, &macos_dir, &target_name)
+}
+
+/// Get the resources directory path for a macOS Swift Package
+pub fn get_resources_dir(
+    macos_dir: &Path,
+    macos_config: Option<&crate::config::MacosConfig>,
+    app_project_name: Option<&str>,
+) -> Result<PathBuf> {
+    let target_name = apple::resolve_swiftpm_target_name(
+        macos_dir,
+        macos_config.and_then(|c| c.target_name.as_deref()),
+        app_project_name,
+        "macos",
+    )?;
+
+    Ok(macos_dir
+        .join("Sources")
+        .join(target_name)
+        .join("Resources"))
 }

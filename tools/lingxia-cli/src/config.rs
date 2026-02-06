@@ -107,25 +107,32 @@ pub struct IosConfig {
     pub deployment_target: Option<String>, // e.g., "17.0"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swift_version: Option<String>,
-    /// Path to Swift Package directory (relative to project root, default: "ios/")
+    /// SwiftPM target name for resources lookup.
+    /// If omitted, CLI will try app.projectName or infer from Sources/ when unambiguous.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub swift_package_path: Option<String>,
+    pub target_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MacosConfig {
-    /// Path to Swift Package directory (relative to project root).
-    ///
-    /// If not set, CLI will try `{projectRoot}/macos/<package>/` then fall back
-    /// to `{projectRoot}/ios/<package>/` (shared codebase), then `{projectRoot}`.
+    /// Bundle identifier (e.g., "app.lingxia.example")
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub swift_package_path: Option<String>,
+    pub bundle_id: Option<String>,
+
+    /// Deployment target (e.g., "14.0")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deployment_target: Option<String>,
 
     /// Executable product name (SwiftPM). If omitted, CLI will try a few
     /// reasonable defaults and fall back to "the only executable in bin dir".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub executable_name: Option<String>,
+
+    /// SwiftPM target name for resources lookup.
+    /// If omitted, CLI will try app.projectName or infer from Sources/ when unambiguous.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

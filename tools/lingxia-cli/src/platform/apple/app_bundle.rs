@@ -13,8 +13,12 @@ use std::process::Command;
 pub struct AppBundleConfig {
     /// Bundle identifier (e.g., "app.lingxia.example")
     pub bundle_id: String,
-    /// Product/App name (e.g., "lxapp")
-    pub product_name: String,
+    /// App display name (user-facing)
+    pub app_name: String,
+    /// Swift package product name from the root package
+    pub swift_product_name: String,
+    /// Final executable filename in the app bundle
+    pub executable_name: String,
     /// Deployment target (e.g., "17.0")
     pub deployment_target: String,
     /// Path to custom Info.plist (merged with generated one)
@@ -23,6 +27,9 @@ pub struct AppBundleConfig {
 
 /// App bundle packager
 pub struct AppBundler;
+
+const APP_RUNNER_TARGET: &str = "LingXiaAppRunner";
+const APP_BUILDER_PACKAGE: &str = "LingXiaAppBundleBuilder";
 
 impl AppBundler {
     /// Create an iOS .app bundle from a SwiftPM library package.
@@ -74,15 +81,22 @@ impl AppBundler {
         let _ = fs::remove_dir_all(&tmp_package_dir);
         fs::create_dir_all(&tmp_package_dir)?;
 
-        // Create Package.swift that wraps the library as an executable
-        let target_name = format!("{}-App", config.product_name);
+        // Create Package.swift that wraps the library as an executable.
+        // Keep package/target identifiers stable and technical.
+        let target_name = APP_RUNNER_TARGET;
         let package_swift = format!(
             r#"// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(
-    name: "{product_name}-Builder",
+    name: "{builder_package}",
     platforms: [
         .iOS("{deployment_target}"),
+    ],
+    products: [
+        .executable(
+            name: "{target_name}",
+            targets: ["{target_name}"]
+        ),
     ],
     dependencies: [
         .package(name: "RootPackage", path: "../.."),
@@ -91,7 +105,7 @@ let package = Package(
         .executableTarget(
             name: "{target_name}",
             dependencies: [
-                .product(name: "{product_name}", package: "RootPackage"),
+                .product(name: "{swift_product_name}", package: "RootPackage"),
             ],
             linkerSettings: [
                 .unsafeFlags([
@@ -102,7 +116,8 @@ let package = Package(
     ]
 )
 "#,
-            product_name = config.product_name,
+            builder_package = APP_BUILDER_PACKAGE,
+            swift_product_name = config.swift_product_name,
             deployment_target = config.deployment_target,
             target_name = target_name,
         );
@@ -129,6 +144,7 @@ let package = Package(
         // Get iOS SDK path
         let sdk_path = get_ios_sdk_path()?;
         let build_config = if release { "release" } else { "debug" };
+        let scratch_path = package_dir.join(".lingxia").join(".tmp-build");
 
         let mut cmd = Command::new("swift");
         cmd.current_dir(package_dir)
@@ -140,7 +156,7 @@ let package = Package(
                 "--package-path",
                 tmp_package_dir.to_str().unwrap(),
                 "--scratch-path",
-                ".build",
+                scratch_path.to_str().unwrap(),
                 "--triple",
                 "arm64-apple-ios",
                 "--sdk",
@@ -158,9 +174,7 @@ let package = Package(
             return Err(anyhow!("Swift build failed"));
         }
 
-        Ok(package_dir
-            .join(".build/arm64-apple-ios")
-            .join(build_config))
+        Ok(scratch_path.join("arm64-apple-ios").join(build_config))
     }
 
     /// Create the .app bundle structure
@@ -169,8 +183,8 @@ let package = Package(
         build_dir: &Path,
         config: &AppBundleConfig,
     ) -> Result<PathBuf> {
-        let target_name = format!("{}-App", config.product_name);
-        let app_name = format!("{}.app", config.product_name);
+        let target_name = APP_RUNNER_TARGET;
+        let app_name = format!("{}.app", config.app_name);
 
         // Create app bundle in .lingxia/ directory
         let output_dir = package_dir.join(".lingxia");
@@ -184,7 +198,7 @@ let package = Package(
 
         // Copy executable
         let exe_src = build_dir.join(&target_name);
-        let exe_dst = app_bundle.join(&config.product_name);
+        let exe_dst = app_bundle.join(&config.executable_name);
         if exe_src.exists() {
             fs::copy(&exe_src, &exe_dst)?;
         } else {
@@ -265,15 +279,12 @@ let package = Package(
             config.deployment_target.clone().into(),
         );
         info.insert("CFBundleIdentifier".into(), config.bundle_id.clone().into());
-        info.insert("CFBundleName".into(), config.product_name.clone().into());
+        info.insert("CFBundleName".into(), config.app_name.clone().into());
         info.insert(
             "CFBundleExecutable".into(),
-            config.product_name.clone().into(),
+            config.executable_name.clone().into(),
         );
-        info.insert(
-            "CFBundleDisplayName".into(),
-            config.product_name.clone().into(),
-        );
+        info.insert("CFBundleDisplayName".into(), config.app_name.clone().into());
         info.insert("CFBundlePackageType".into(), "APPL".into());
 
         // iOS required fields

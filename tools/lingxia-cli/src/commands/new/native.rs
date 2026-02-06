@@ -34,6 +34,12 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
                 ios::create_ios_placeholder(config)?;
                 created_any = true;
             }
+            Platform::Macos => {
+                // For now, re-use the iOS SwiftPM placeholder since the Apple
+                // SDK package supports both iOS and macOS targets.
+                ios::create_ios_placeholder(config)?;
+                created_any = true;
+            }
             Platform::Harmony => {
                 harmony::create_harmony_placeholder(config)?;
                 created_any = true;

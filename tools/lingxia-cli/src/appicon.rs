@@ -149,10 +149,189 @@ pub fn generate_android_icons(
     Ok(())
 }
 
-/// Generate iOS app icons from a source image (future implementation)
-#[allow(dead_code)]
-pub fn generate_ios_icons(_source_icon: &Path, _ios_dir: &Path) -> Result<()> {
-    anyhow::bail!("iOS icon generation not yet implemented");
+/// Generate iOS app icons from a source image.
+///
+/// Creates an Assets.xcassets/AppIcon.appiconset with essential icon sizes
+/// and the Contents.json descriptor. If you need an Assets.car, compile the
+/// asset catalog during the build process.
+///
+/// # Arguments
+/// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
+/// * `ios_dir` - Path to the iOS Swift Package directory
+/// * `target_name` - SwiftPM target name for resources lookup
+pub fn generate_ios_icons(source_icon: &Path, ios_dir: &Path, target_name: &str) -> Result<()> {
+    use std::collections::HashMap;
+
+    if !source_icon.exists() {
+        anyhow::bail!("Source icon not found: {:?}", source_icon);
+    }
+
+    let img = image::open(source_icon).context("Failed to open source image")?;
+    let (width, height) = img.dimensions();
+
+    if width != height {
+        eprintln!(
+            "Warning: Source icon is not square ({}x{}). Icons may be distorted.",
+            width, height
+        );
+    }
+
+    if width < 1024 {
+        eprintln!("Warning: Source icon is smaller than 1024x1024. Quality may be affected.");
+    }
+
+    println!("Generating iOS icons from {}x{} source...", width, height);
+
+    // Create Assets.xcassets/AppIcon.appiconset directory
+    let appiconset_dir = ios_dir
+        .join("Sources")
+        .join(target_name)
+        .join("Resources/Assets.xcassets/AppIcon.appiconset");
+    fs::create_dir_all(&appiconset_dir)?;
+
+    // Essential iOS icon sizes (size string, scale string, pixel size, idiom, filename)
+    // These cover iPhone home screen, iPad, and App Store
+    let icon_specs: &[(&str, &str, u32, &str, &str)] = &[
+        // iPhone home screen (60pt @2x and @3x)
+        ("60x60", "2x", 120, "iphone", "Icon-60@2x.png"),
+        ("60x60", "3x", 180, "iphone", "Icon-60@3x.png"),
+        // iPad home screen (76pt @2x)
+        ("76x76", "2x", 152, "ipad", "Icon-76@2x~ipad.png"),
+        // iPad Pro (83.5pt @2x)
+        ("83.5x83.5", "2x", 167, "ipad", "Icon-83.5@2x~ipad.png"),
+        // App Store (1024pt @1x)
+        ("1024x1024", "1x", 1024, "ios-marketing", "Icon-1024.png"),
+    ];
+
+    let mut images: Vec<HashMap<String, serde_json::Value>> = Vec::new();
+
+    for (size_str, scale_str, pixel_size, idiom, filename) in icon_specs {
+        let resized = img.resize_exact(*pixel_size, *pixel_size, FilterType::Lanczos3);
+        resized.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
+
+        // Build Contents.json entry
+        let mut entry: HashMap<String, serde_json::Value> = HashMap::new();
+        entry.insert("filename".into(), filename.to_string().into());
+        entry.insert("idiom".into(), idiom.to_string().into());
+        entry.insert("size".into(), size_str.to_string().into());
+        entry.insert("scale".into(), scale_str.to_string().into());
+        images.push(entry);
+    }
+
+    // Generate Contents.json
+    let contents = serde_json::json!({
+        "images": images,
+        "info": {
+            "author": "xcode",
+            "version": 1
+        }
+    });
+
+    fs::write(
+        appiconset_dir.join("Contents.json"),
+        serde_json::to_string_pretty(&contents)?,
+    )?;
+
+    println!(
+        "  Generated {} iOS icon files in {}",
+        icon_specs.len(),
+        appiconset_dir.display()
+    );
+
+    Ok(())
+}
+
+/// Generate macOS app icons from a source image.
+///
+/// Creates an Assets.xcassets/AppIcon.appiconset with essential icon sizes
+/// for macOS. Uses the same asset catalog location as iOS.
+///
+/// # Arguments
+/// * `source_icon` - Path to source icon (PNG, recommended 1024x1024)
+/// * `macos_dir` - Path to the macOS Swift Package directory
+/// * `target_name` - SwiftPM target name for resources lookup
+pub fn generate_macos_icons(source_icon: &Path, macos_dir: &Path, target_name: &str) -> Result<()> {
+    use std::collections::HashMap;
+
+    if !source_icon.exists() {
+        anyhow::bail!("Source icon not found: {:?}", source_icon);
+    }
+
+    let img = image::open(source_icon).context("Failed to open source image")?;
+    let (width, height) = img.dimensions();
+
+    if width != height {
+        eprintln!(
+            "Warning: Source icon is not square ({}x{}). Icons may be distorted.",
+            width, height
+        );
+    }
+
+    if width < 1024 {
+        eprintln!("Warning: Source icon is smaller than 1024x1024. Quality may be affected.");
+    }
+
+    println!("Generating macOS icons from {}x{} source...", width, height);
+
+    // Create Assets.xcassets/AppIcon.appiconset directory
+    let appiconset_dir = macos_dir
+        .join("Sources")
+        .join(target_name)
+        .join("Resources/Assets.xcassets/AppIcon.appiconset");
+    fs::create_dir_all(&appiconset_dir)?;
+
+    // Essential macOS icon sizes (point size, scale, filename)
+    // macOS uses square icons without idiom specification
+    let icon_specs: &[(u32, u32, &str)] = &[
+        (16, 1, "icon_16x16.png"),
+        (16, 2, "icon_16x16@2x.png"),
+        (32, 1, "icon_32x32.png"),
+        (32, 2, "icon_32x32@2x.png"),
+        (128, 1, "icon_128x128.png"),
+        (128, 2, "icon_128x128@2x.png"),
+        (256, 1, "icon_256x256.png"),
+        (256, 2, "icon_256x256@2x.png"),
+        (512, 1, "icon_512x512.png"),
+        (512, 2, "icon_512x512@2x.png"),
+    ];
+
+    let mut images: Vec<HashMap<String, serde_json::Value>> = Vec::new();
+
+    for (size_pt, scale, filename) in icon_specs {
+        let pixel_size = size_pt * scale;
+        let resized = img.resize_exact(pixel_size, pixel_size, FilterType::Lanczos3);
+        resized.save_with_format(appiconset_dir.join(filename), ImageFormat::Png)?;
+
+        // Build Contents.json entry
+        let mut entry: HashMap<String, serde_json::Value> = HashMap::new();
+        entry.insert("filename".into(), filename.to_string().into());
+        entry.insert("idiom".into(), "mac".into());
+        entry.insert("size".into(), format!("{}x{}", size_pt, size_pt).into());
+        entry.insert("scale".into(), format!("{}x", scale).into());
+        images.push(entry);
+    }
+
+    // Generate Contents.json
+    let contents = serde_json::json!({
+        "images": images,
+        "info": {
+            "author": "xcode",
+            "version": 1
+        }
+    });
+
+    fs::write(
+        appiconset_dir.join("Contents.json"),
+        serde_json::to_string_pretty(&contents)?,
+    )?;
+
+    println!(
+        "  Generated {} macOS icon files in {}",
+        icon_specs.len(),
+        appiconset_dir.display()
+    );
+
+    Ok(())
 }
 
 /// Generate HarmonyOS app icons from a source image (future implementation)
@@ -164,10 +343,6 @@ pub fn generate_harmony_icons(
 ) -> Result<()> {
     anyhow::bail!("HarmonyOS icon generation not yet implemented");
 }
-
-// =============================================================================
-// Android Icon Generation Helpers
-// =============================================================================
 
 /// Android mipmap densities: (folder_suffix, icon_size, adaptive_size)
 const ANDROID_DENSITIES: &[(&str, u32, u32)] = &[

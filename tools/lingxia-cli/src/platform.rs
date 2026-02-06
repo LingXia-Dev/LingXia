@@ -79,7 +79,7 @@ pub trait Platform: Send + Sync {
 pub enum BuildArtifacts {
     Android { apk_path: PathBuf },
     Ios { app_path: PathBuf },
-    MacOs { executable_path: PathBuf },
+    MacOs { app_path: PathBuf },
     Harmony { hap_path: PathBuf },
 }
 
@@ -89,7 +89,7 @@ impl BuildArtifacts {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
             BuildArtifacts::Ios { app_path } => app_path.as_path(),
-            BuildArtifacts::MacOs { executable_path } => executable_path.as_path(),
+            BuildArtifacts::MacOs { app_path } => app_path.as_path(),
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
         }
     }

@@ -7,6 +7,7 @@
 pub mod anisette;
 pub mod app_bundle;
 pub mod asc;
+pub mod assets;
 pub mod auth;
 pub mod developer_services;
 pub mod devicectl;
@@ -18,6 +19,7 @@ pub mod srp;
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -56,6 +58,53 @@ pub const IOS_TARGET: &str = "aarch64-apple-ios";
 /// Check if running on macOS
 pub fn is_macos() -> bool {
     cfg!(target_os = "macos")
+}
+
+/// Resolve SwiftPM target name for Apple resource locations.
+///
+/// Resolution order:
+/// 1. Explicit config (targetName)
+/// 2. App project name if it matches a Sources/<name> directory
+/// 3. Single directory under Sources/
+pub fn resolve_swiftpm_target_name(
+    package_dir: &Path,
+    configured: Option<&str>,
+    app_project_name: Option<&str>,
+    platform_label: &str,
+) -> Result<String> {
+    if let Some(name) = configured {
+        return Ok(name.to_string());
+    }
+
+    if let Some(name) = app_project_name {
+        let candidate = package_dir.join("Sources").join(name);
+        if candidate.is_dir() {
+            return Ok(name.to_string());
+        }
+    }
+
+    let sources_dir = package_dir.join("Sources");
+    if sources_dir.is_dir() {
+        let mut candidates = Vec::new();
+        for entry in fs::read_dir(&sources_dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    candidates.push(name.to_string());
+                }
+            }
+        }
+        if candidates.len() == 1 {
+            return Ok(candidates.remove(0));
+        }
+    }
+
+    Err(anyhow!(
+        "Cannot determine SwiftPM target name from directory: {:?}. \
+         Please set '{}.targetName' in lingxia.config.json",
+        package_dir,
+        platform_label
+    ))
 }
 
 /// Ensure we're running on macOS (required for Apple platform builds)

@@ -40,6 +40,7 @@ impl ProjectType {
 pub(super) enum Platform {
     Android,
     Ios,
+    Macos,
     Harmony,
 }
 
@@ -48,6 +49,7 @@ impl Platform {
         match self {
             Platform::Android => "android",
             Platform::Ios => "ios",
+            Platform::Macos => "macos",
             Platform::Harmony => "harmony",
         }
     }
@@ -56,6 +58,7 @@ impl Platform {
         match s.to_lowercase().as_str() {
             "android" => Some(Platform::Android),
             "ios" => Some(Platform::Ios),
+            "macos" => Some(Platform::Macos),
             "harmony" | "harmonyos" => Some(Platform::Harmony),
             _ => None,
         }

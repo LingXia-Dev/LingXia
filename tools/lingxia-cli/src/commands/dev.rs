@@ -296,7 +296,8 @@ fn execute_macos(
     };
 
     let artifacts = platform.build(&build_config)?;
-    let exe = artifacts.path().to_path_buf();
+    let app_path = artifacts.path().to_path_buf();
+    let exe = platform::macos::app_bundle_executable(&app_path)?;
 
     println!();
 
@@ -312,7 +313,7 @@ fn execute_macos(
     println!();
     println!("{}", "Dev workflow complete!".green().bold());
     println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
-    println!("  {} Artifact: {}", "*".bold(), exe.display());
+    println!("  {} Artifact: {}", "*".bold(), app_path.display());
     println!();
 
     Ok(())

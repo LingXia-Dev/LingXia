@@ -1,5 +1,6 @@
 use crate::appicon;
 use crate::config::LingXiaConfig;
+use crate::platform;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::PathBuf;
@@ -62,32 +63,50 @@ pub fn execute(
     println!();
 
     let mut generated_count = 0;
+    let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
 
-    for platform in platforms {
-        match platform.as_str() {
+    for platform_name in platforms {
+        match platform_name.as_str() {
             "android" => {
                 println!("{}", "Generating Android icons...".bold());
-                let android_res = current_dir.join("android/app/src/main/res");
-
-                if !android_res.exists() {
-                    eprintln!(
-                        "  {} Android res directory not found: {:?}",
-                        "Warning:".yellow(),
-                        android_res
-                    );
-                    eprintln!("  Skipping Android icon generation.");
-                    continue;
+                match platform::android::generate_icons(&current_dir, &icon_path, &bg_color, legacy)
+                {
+                    Ok(()) => generated_count += 1,
+                    Err(e) => {
+                        eprintln!("  {} {}", "Warning:".yellow(), e);
+                        eprintln!("  Skipping Android icon generation.");
+                    }
                 }
-
-                appicon::generate_android_icons(&icon_path, &android_res, &bg_color, legacy)?;
-                generated_count += 1;
             }
             "ios" => {
                 println!("{}", "Generating iOS icons...".bold());
-                eprintln!(
-                    "  {} iOS icon generation not yet implemented",
-                    "Warning:".yellow()
-                );
+                match platform::ios::generate_icons(
+                    &current_dir,
+                    &icon_path,
+                    config.ios.as_ref(),
+                    app_project_name,
+                ) {
+                    Ok(()) => generated_count += 1,
+                    Err(e) => {
+                        eprintln!("  {} {}", "Warning:".yellow(), e);
+                        eprintln!("  Skipping iOS icon generation.");
+                    }
+                }
+            }
+            "macos" => {
+                println!("{}", "Generating macOS icons...".bold());
+                match platform::macos::generate_icons(
+                    &current_dir,
+                    &icon_path,
+                    config.macos.as_ref(),
+                    app_project_name,
+                ) {
+                    Ok(()) => generated_count += 1,
+                    Err(e) => {
+                        eprintln!("  {} {}", "Warning:".yellow(), e);
+                        eprintln!("  Skipping macOS icon generation.");
+                    }
+                }
             }
             "harmony" | "harmonyos" => {
                 println!("{}", "Generating HarmonyOS icons...".bold());
@@ -97,7 +116,11 @@ pub fn execute(
                 );
             }
             _ => {
-                eprintln!("  {} Unknown platform: {}", "Warning:".yellow(), platform);
+                eprintln!(
+                    "  {} Unknown platform: {}",
+                    "Warning:".yellow(),
+                    platform_name
+                );
             }
         }
     }

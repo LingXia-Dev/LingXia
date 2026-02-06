@@ -1,5 +1,7 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
-use crate::config::{AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig};
+use crate::config::{
+    AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig,
+};
 use crate::versions::LingXiaVersions;
 use anyhow::Result;
 use std::fs;
@@ -34,7 +36,18 @@ pub(super) fn generate_config_file(
             bundle_id: config.package_id.clone(),
             deployment_target: None,
             swift_version: None,
-            swift_package_path: None,
+            target_name: Some(config.name.clone()),
+        })
+    } else {
+        None
+    };
+
+    let macos = if config.platforms.contains(&Platform::Macos) {
+        Some(MacosConfig {
+            bundle_id: Some(config.package_id.clone()),
+            deployment_target: None,
+            executable_name: None,
+            target_name: Some(config.name.clone()),
         })
     } else {
         None
@@ -64,7 +77,7 @@ pub(super) fn generate_config_file(
         }),
         android,
         ios,
-        macos: None,
+        macos,
         harmony,
         resources: None,
     };

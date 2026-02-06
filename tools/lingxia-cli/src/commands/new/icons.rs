@@ -132,24 +132,38 @@ fn generate_app_icons(
     for platform in &config.platforms {
         match platform {
             Platform::Android => {
-                let res_dir = config.target_dir.join("android/app/src/main/res");
-                if !res_dir.exists() {
-                    eprintln!(
-                        "{} Android res directory not found: {}",
-                        "Warning:".yellow(),
-                        res_dir.display()
-                    );
-                    eprintln!("Skipping Android icon generation.");
-                    continue;
-                }
                 // Default: no legacy icons (minSdk 29+)
-                appicon::generate_android_icons(&icon_path, &res_dir, background_color, false)?;
+                if let Err(e) = crate::platform::android::generate_icons(
+                    &config.target_dir,
+                    &icon_path,
+                    background_color,
+                    false,
+                ) {
+                    eprintln!("{} {}", "Warning:".yellow(), e);
+                    eprintln!("Skipping Android icon generation.");
+                }
             }
             Platform::Ios => {
-                eprintln!(
-                    "{} iOS icon generation not yet implemented",
-                    "Warning:".yellow()
-                );
+                if let Err(e) = crate::platform::ios::generate_icons(
+                    &config.target_dir,
+                    &icon_path,
+                    None,
+                    Some(config.name.as_str()),
+                ) {
+                    eprintln!("{} {}", "Warning:".yellow(), e);
+                    eprintln!("Skipping iOS icon generation.");
+                }
+            }
+            Platform::Macos => {
+                if let Err(e) = crate::platform::macos::generate_icons(
+                    &config.target_dir,
+                    &icon_path,
+                    None,
+                    Some(config.name.as_str()),
+                ) {
+                    eprintln!("{} {}", "Warning:".yellow(), e);
+                    eprintln!("Skipping macOS icon generation.");
+                }
             }
             Platform::Harmony => {
                 eprintln!(
