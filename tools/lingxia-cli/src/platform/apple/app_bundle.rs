@@ -125,7 +125,7 @@ let package = Package(
         fs::write(tmp_package_dir.join("Package.swift"), package_swift)?;
 
         // Create stub source file
-        let sources_dir = tmp_package_dir.join("Sources").join(&target_name);
+        let sources_dir = tmp_package_dir.join("Sources").join(target_name);
         fs::create_dir_all(&sources_dir)?;
         fs::write(sources_dir.join("stub.c"), "")?;
 
@@ -197,7 +197,7 @@ let package = Package(
         fs::create_dir_all(&app_bundle)?;
 
         // Copy executable
-        let exe_src = build_dir.join(&target_name);
+        let exe_src = build_dir.join(target_name);
         let exe_dst = app_bundle.join(&config.executable_name);
         if exe_src.exists() {
             fs::copy(&exe_src, &exe_dst)?;

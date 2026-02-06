@@ -462,10 +462,10 @@ fn select_team(
 
 /// Expand ~ in path to home directory
 fn expand_path(path: &str) -> PathBuf {
-    if let Some(suffix) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(suffix);
-        }
+    if let Some(suffix) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(suffix);
     }
     PathBuf::from(path)
 }

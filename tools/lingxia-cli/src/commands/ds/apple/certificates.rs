@@ -50,20 +50,19 @@ pub fn execute() -> Result<()> {
             }
 
             // Parse certificate content if available
-            if let Some(content_b64) = &cert.certificate_content {
-                if let Ok(cert_data) =
+            if let Some(content_b64) = &cert.certificate_content
+                && let Ok(cert_data) =
                     base64::Engine::decode(&base64::engine::general_purpose::STANDARD, content_b64)
-                {
-                    println!("  content:");
+            {
+                println!("  content:");
 
-                    // Try to parse the certificate to extract common name and team ID
-                    if let Ok(parsed) = parse_cert_info(&cert_data) {
-                        if let Some(cn) = parsed.common_name {
-                            println!("    common name: {}", cn);
-                        }
-                        if let Some(team_id) = parsed.team_id {
-                            println!("    team id: {}", team_id);
-                        }
+                // Try to parse the certificate to extract common name and team ID
+                if let Ok(parsed) = parse_cert_info(&cert_data) {
+                    if let Some(cn) = parsed.common_name {
+                        println!("    common name: {}", cn);
+                    }
+                    if let Some(team_id) = parsed.team_id {
+                        println!("    team id: {}", team_id);
                     }
                 }
             }

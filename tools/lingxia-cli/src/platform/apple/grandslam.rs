@@ -308,23 +308,22 @@ impl GrandSlamClient {
         let response_body = response.body_mut().read_to_string()?;
 
         // Check for errors in response
-        if let Ok(plist_response) = plist::from_bytes::<plist::Value>(response_body.as_bytes()) {
-            if let Some(status) = plist_response
+        if let Ok(plist_response) = plist::from_bytes::<plist::Value>(response_body.as_bytes())
+            && let Some(status) = plist_response
                 .as_dictionary()
                 .and_then(|d| d.get("Status"))
                 .and_then(|v| v.as_dictionary())
-            {
-                let ec = status
-                    .get("ec")
-                    .and_then(|v| v.as_signed_integer())
-                    .unwrap_or(0);
-                if ec != 0 {
-                    let em = status
-                        .get("em")
-                        .and_then(|v| v.as_string())
-                        .unwrap_or("Unknown error");
-                    return Err(anyhow!("Trusted device request failed: {} ({})", em, ec));
-                }
+        {
+            let ec = status
+                .get("ec")
+                .and_then(|v| v.as_signed_integer())
+                .unwrap_or(0);
+            if ec != 0 {
+                let em = status
+                    .get("em")
+                    .and_then(|v| v.as_string())
+                    .unwrap_or("Unknown error");
+                return Err(anyhow!("Trusted device request failed: {} ({})", em, ec));
             }
         }
 
@@ -400,7 +399,7 @@ impl GrandSlamClient {
         device_info: &DeviceInfo,
         anisette: &AnisetteData,
     ) -> Result<AuthInitResponse> {
-        let protocols = vec!["s2k", "s2k_fo"];
+        let protocols = ["s2k", "s2k_fo"];
 
         let client_data = self.build_client_data(device_info, anisette);
 

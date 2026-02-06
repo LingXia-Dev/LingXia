@@ -66,12 +66,12 @@ impl OmnisetteProvider {
                 provisioning_data: ProvisioningData,
             }
 
-            if let Ok(cache) = serde_json::from_str::<CacheData>(&data) {
-                if let Ok(uid) = Uuid::parse_str(&cache.local_user_uid) {
-                    self.local_user_uid = uid;
-                    self.provisioning_data = Some(cache.provisioning_data);
-                    return Ok(true);
-                }
+            if let Ok(cache) = serde_json::from_str::<CacheData>(&data)
+                && let Ok(uid) = Uuid::parse_str(&cache.local_user_uid)
+            {
+                self.local_user_uid = uid;
+                self.provisioning_data = Some(cache.provisioning_data);
+                return Ok(true);
             }
         }
         Ok(false)

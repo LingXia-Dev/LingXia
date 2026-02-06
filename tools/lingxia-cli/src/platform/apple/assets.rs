@@ -125,11 +125,6 @@ pub fn compile_asset_catalog(
     Ok(())
 }
 
-/// Merge assetcatalog_generated_info.plist into the main Info.plist.
-pub fn merge_assetcatalog_plist(app_bundle: &Path) -> Result<()> {
-    merge_assetcatalog_plist_with_platform(app_bundle, AssetPlatform::Ios)
-}
-
 pub fn merge_assetcatalog_plist_with_platform(
     app_bundle: &Path,
     platform: AssetPlatform,

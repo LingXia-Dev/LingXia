@@ -122,14 +122,6 @@ impl TempKeychain {
         &self.path
     }
 
-    /// Import a P12 file into the keychain
-    pub fn import_p12(&self, p12_path: &Path, p12_password: &str) -> Result<()> {
-        self.security_import(p12_path, Some(p12_password))
-            .context("Failed to import P12 into keychain")?;
-        self.configure_codesign_access();
-        Ok(())
-    }
-
     /// Import a certificate (DER) + private key (PEM) into the keychain.
     pub fn import_identity(&self, cert_der: &[u8], key_pem: &str) -> Result<()> {
         use std::io::Write;
@@ -431,11 +423,9 @@ impl ProvisioningContext {
         // For free teams (Personal Team), Apple typically allows only one iOS Development
         // certificate at a time. Creating a new one often fails with 7460, so try to reuse
         // an existing Keychain identity first.
-        if is_free_team {
-            if let Some(existing) = Self::try_match_existing_certificate(client)? {
-                println!("  {} Using existing certificate from Keychain", "✓".green());
-                return Ok((existing.0, existing.1, None));
-            }
+        if is_free_team && let Some(existing) = Self::try_match_existing_certificate(client)? {
+            println!("  {} Using existing certificate from Keychain", "✓".green());
+            return Ok((existing.0, existing.1, None));
         }
 
         // Otherwise, try to create a fresh certificate (best for non-interactive signing).
@@ -583,7 +573,7 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         // Create new App ID
         let app_name = format!(
             "LingXia {}",
-            original_bundle_id.split('.').last().unwrap_or("App")
+            original_bundle_id.split('.').next_back().unwrap_or("App")
         );
         let app_id = client.add_app_id(&new_bundle_id, &app_name)?;
         println!("  {} Created App ID: {}", "✓".green(), new_bundle_id);

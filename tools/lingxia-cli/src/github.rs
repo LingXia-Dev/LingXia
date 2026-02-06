@@ -242,10 +242,10 @@ pub fn download_release_asset(tag: &str, asset_name: &str) -> Result<Vec<u8>> {
     let status = response.status().as_u16();
 
     // Handle redirect (GitHub API redirects to the actual download URL)
-    if status == 302 || status == 301 {
-        if let Some(location) = response.headers().get("location") {
-            return download_url_direct(location.to_str().unwrap_or_default());
-        }
+    if (status == 302 || status == 301)
+        && let Some(location) = response.headers().get("location")
+    {
+        return download_url_direct(location.to_str().unwrap_or_default());
     }
 
     if status != 200 {

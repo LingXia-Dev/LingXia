@@ -247,15 +247,15 @@ impl Platform for MacosPlatform {
             self.swift_build_and_get_bin_dir(&macos_dir, &workspace_root, config.profile, arch)?;
 
         let mut preferred = Vec::new();
-        if let Some(ref macos) = macos_config {
-            if let Some(ref name) = macos.executable_name {
-                preferred.push(name.clone());
-            }
+        if let Some(macos) = &macos_config
+            && let Some(ref name) = macos.executable_name
+        {
+            preferred.push(name.clone());
         }
-        if let Some(ref cfg) = config.lingxia_config {
-            if let Some(app) = cfg.app.as_ref() {
-                preferred.push(app.project_name.clone());
-            }
+        if let Some(cfg) = &config.lingxia_config
+            && let Some(app) = cfg.app.as_ref()
+        {
+            preferred.push(app.project_name.clone());
         }
         if let Some(dir_name) = macos_dir.file_name().and_then(|n| n.to_str()) {
             preferred.push(dir_name.to_string());
@@ -386,6 +386,7 @@ impl Platform for MacosPlatform {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_macos_app_bundle(
     macos_dir: &Path,
     bin_dir: &Path,
@@ -496,7 +497,7 @@ fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
         .context("Failed to create /Applications symlink in DMG staging directory")?;
 
     // Verify symlink was created
-    if !apps_link.exists() || !apps_link.read_link().is_ok() {
+    if !apps_link.exists() || apps_link.read_link().is_err() {
         eprintln!(
             "  {} Applications symlink verification failed",
             "Warning:".yellow()
@@ -667,6 +668,7 @@ fn escape_applescript_string(input: &str) -> String {
     input.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn generate_macos_info_plist(
     package_dir: &Path,
     contents_dir: &Path,

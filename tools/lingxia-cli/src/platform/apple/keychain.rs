@@ -4,8 +4,6 @@
 //! in the system keychain or a temporary keychain for signing.
 
 use anyhow::{Context, Result, anyhow};
-use colored::Colorize;
-use sha1::Digest;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -16,8 +14,6 @@ use std::process::Command;
 pub struct KeychainManager {
     /// Path to the keychain file (None = use default/login keychain)
     keychain_path: Option<PathBuf>,
-    /// Password for the keychain (if using a custom keychain)
-    keychain_password: Option<String>,
 }
 
 impl KeychainManager {
@@ -25,7 +21,6 @@ impl KeychainManager {
     pub fn new() -> Self {
         Self {
             keychain_path: None,
-            keychain_password: None,
         }
     }
 
@@ -110,160 +105,7 @@ impl KeychainManager {
 
         Ok(Self {
             keychain_path: Some(keychain_path),
-            keychain_password: Some(password.to_string()),
         })
-    }
-
-    /// Import a certificate and private key into the keychain
-    ///
-    /// The certificate should be in DER or PEM format.
-    /// The private key should be in PEM format.
-    ///
-    /// Returns the SHA-1 fingerprint of the imported certificate.
-    pub fn import_identity(&self, cert_path: &Path, key_path: &Path) -> Result<String> {
-        use rsa::pkcs8::DecodePrivateKey;
-
-        // Read certificate (PEM or DER)
-        let cert_data = std::fs::read(cert_path).context("Failed to read certificate")?;
-        let cert_der = if cert_data.starts_with(b"-----BEGIN") {
-            // PEM format - extract DER
-            let pem_str = String::from_utf8_lossy(&cert_data);
-            let pem = pem_str
-                .lines()
-                .filter(|l| !l.starts_with("-----"))
-                .collect::<String>();
-            base64::Engine::decode(&base64::prelude::BASE64_STANDARD, &pem)
-                .context("Failed to decode PEM certificate")?
-        } else {
-            cert_data
-        };
-
-        let expected_sha1 = sha1_hex_upper(&cert_der);
-
-        // Read private key (PEM)
-        let key_pem = std::fs::read_to_string(key_path).context("Failed to read private key")?;
-        let _rsa_key =
-            rsa::RsaPrivateKey::from_pkcs8_pem(&key_pem).context("Failed to parse private key")?;
-
-        // Import cert + key directly (avoids requiring `openssl` on PATH).
-        self.import_file(cert_path)
-            .context("Failed to import certificate into keychain")?;
-        self.import_file(key_path)
-            .context("Failed to import private key into keychain")?;
-        self.configure_codesign_access();
-
-        Ok(expected_sha1)
-    }
-
-    /// Import a PKCS#12 (.p12) file into the keychain
-    ///
-    /// Note: This does not try to infer which identity was imported, since that can be
-    /// nondeterministic in the presence of multiple identities. Callers that know the
-    /// expected certificate fingerprint should compute/return it themselves.
-    pub fn import_p12(&self, p12_path: &Path, password: &str) -> Result<()> {
-        let mut cmd = Command::new("security");
-        cmd.arg("import")
-            .arg(p12_path)
-            .arg("-P")
-            .arg(password)
-            // Allow codesign to access the key without prompts
-            .args(["-T", "/usr/bin/codesign"])
-            .args(["-T", "/usr/bin/security"]);
-
-        if let Some(ref kc_path) = self.keychain_path {
-            cmd.arg("-k").arg(kc_path);
-        }
-
-        let output = cmd.output().context("Failed to import P12")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Failed to import P12: {}", stderr));
-        }
-
-        self.configure_codesign_access();
-
-        Ok(())
-    }
-
-    fn import_file(&self, path: &Path) -> Result<()> {
-        let mut cmd = Command::new("security");
-        cmd.arg("import")
-            .arg(path)
-            // Allow codesign to access the key without prompts
-            .args(["-T", "/usr/bin/codesign"])
-            .args(["-T", "/usr/bin/security"]);
-
-        if let Some(ref kc_path) = self.keychain_path {
-            cmd.arg("-k").arg(kc_path);
-        }
-
-        let output = cmd.output().context("Failed to import file")?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("security import failed: {}", stderr));
-        }
-
-        Ok(())
-    }
-
-    fn configure_codesign_access(&self) {
-        // Set key partition list to allow codesign access without prompts
-        // This is required for non-interactive code signing
-        if let Some(ref kc_path) = self.keychain_path {
-            if let Some(ref kc_password) = self.keychain_password {
-                let _ = Command::new("security")
-                    .args([
-                        "set-key-partition-list",
-                        "-S",
-                        "apple-tool:,apple:,codesign:",
-                        "-s",
-                        "-k",
-                        kc_password,
-                        kc_path.to_str().unwrap(),
-                    ])
-                    .output();
-            }
-        } else {
-            // For default login keychain, try to get its path and update partition list
-            // This requires the keychain to be unlocked
-            let kc_output = Command::new("security")
-                .args(["default-keychain", "-d", "user"])
-                .output();
-
-            if let Ok(output) = kc_output {
-                let kc_path = String::from_utf8_lossy(&output.stdout)
-                    .trim()
-                    .trim_matches('"')
-                    .to_string();
-
-                if !kc_path.is_empty() {
-                    // Try with empty password first (works if keychain is unlocked)
-                    let result = Command::new("security")
-                        .args([
-                            "set-key-partition-list",
-                            "-S",
-                            "apple-tool:,apple:,codesign:",
-                            "-s",
-                            "-k",
-                            "",
-                            &kc_path,
-                        ])
-                        .output();
-
-                    // If that fails, the user will need to enter their keychain password
-                    // when codesign runs, or manually unlock the keychain
-                    if result.is_err() || !result.unwrap().status.success() {
-                        eprintln!(
-                            "  {} Could not auto-configure keychain access. \
-                            You may be prompted for your keychain password.",
-                            "⚠".yellow()
-                        );
-                    }
-                }
-            }
-        }
     }
 
     /// Import certificate data directly (DER format)
@@ -428,12 +270,11 @@ impl SigningIdentity {
     /// Extract the team ID from the common name
     pub fn team_id(&self) -> Option<&str> {
         // Format: "Apple Development: Name (TEAMID)" or similar
-        if let Some(start) = self.common_name.rfind('(') {
-            if let Some(end) = self.common_name.rfind(')') {
-                if start < end {
-                    return Some(&self.common_name[start + 1..end]);
-                }
-            }
+        if let Some(start) = self.common_name.rfind('(')
+            && let Some(end) = self.common_name.rfind(')')
+            && start < end
+        {
+            return Some(&self.common_name[start + 1..end]);
         }
         None
     }
@@ -525,11 +366,6 @@ pub fn generate_csr(common_name: &str) -> Result<(String, String)> {
         .pem()
         .map_err(|e| anyhow!("Failed to encode CSR: {}", e))?;
     Ok((csr_pem, key_pem.to_string()))
-}
-
-fn sha1_hex_upper(data: &[u8]) -> String {
-    let digest = sha1::Sha1::digest(data);
-    digest.iter().map(|b| format!("{:02X}", b)).collect()
 }
 
 #[cfg(test)]

@@ -142,12 +142,6 @@ impl AppStoreConnectClient {
     // Certificates API
     // =========================================================================
 
-    /// List all certificates
-    pub fn list_certificates(&self) -> Result<Vec<Certificate>> {
-        let response = self.get("/certificates")?;
-        parse_data_array(&response)
-    }
-
     /// Create a new certificate
     pub fn create_certificate(
         &self,

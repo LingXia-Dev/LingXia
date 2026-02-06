@@ -123,18 +123,17 @@ fn prepare_android_assets_root(
     let dest_key = path_key(assets_root);
     let prev = cache.destinations.get(&dest_key).cloned();
 
-    if let Some(prev) = &prev {
-        if let (Some(prev_name), Some(next)) = (
+    if let Some(prev) = &prev
+        && let (Some(prev_name), Some(next)) = (
             prev.asset_name.as_deref(),
             lxapp_assets.map(|a| a.asset_name.as_str()),
-        ) {
-            if prev_name != next {
-                let old_dir = assets_root.join(prev_name);
-                if old_dir.exists() {
-                    fs::remove_dir_all(&old_dir)
-                        .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
-                }
-            }
+        )
+        && prev_name != next
+    {
+        let old_dir = assets_root.join(prev_name);
+        if old_dir.exists() {
+            fs::remove_dir_all(&old_dir)
+                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
         }
     }
 
@@ -230,13 +229,13 @@ fn prepare_apple_resources_root(
             println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
             changed = true;
         }
-    } else if let Some(prev) = &prev {
-        if prev.dist_hash.is_some() {
-            let stale = resources_dir.join("homelxapp");
-            if stale.exists() {
-                fs::remove_dir_all(&stale)?;
-                changed = true;
-            }
+    } else if let Some(prev) = &prev
+        && prev.dist_hash.is_some()
+    {
+        let stale = resources_dir.join("homelxapp");
+        if stale.exists() {
+            fs::remove_dir_all(&stale)?;
+            changed = true;
         }
     }
 
@@ -465,10 +464,10 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 }
 
 fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool> {
-    if let Ok(existing) = fs::read(path) {
-        if existing == bytes {
-            return Ok(false);
-        }
+    if let Ok(existing) = fs::read(path)
+        && existing == bytes
+    {
+        return Ok(false);
     }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -506,7 +505,7 @@ fn hash_tree_inner(
         let file_name = file_name.to_string_lossy();
         let file_name_str: &str = file_name.as_ref();
         if path.is_dir() {
-            if ignore_dir_names.iter().any(|d| *d == file_name_str) {
+            if ignore_dir_names.contains(&file_name_str) {
                 continue;
             }
             hash_tree_inner(root, &path, hasher, ignore_dir_names)?;
@@ -518,14 +517,14 @@ fn hash_tree_inner(
                 .replace('\\', "/");
 
             hasher.update(rel.as_bytes());
-            hasher.update(&[0]);
+            hasher.update([0]);
 
             let data =
                 fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-            hasher.update(&(data.len() as u64).to_le_bytes());
-            hasher.update(&[0]);
+            hasher.update((data.len() as u64).to_le_bytes());
+            hasher.update([0]);
             hasher.update(&data);
-            hasher.update(&[0]);
+            hasher.update([0]);
         }
     }
 

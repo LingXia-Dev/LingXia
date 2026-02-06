@@ -165,7 +165,7 @@ impl SrpClient {
 
     /// Verify server's response (M2/HAMK)
     pub fn verify_server_proof(&self, m2: &[u8]) -> bool {
-        self.expected_hamk.as_ref().map_or(false, |h| h == m2)
+        self.expected_hamk.as_ref().is_some_and(|h| h == m2)
     }
 
     /// Get session key
@@ -200,7 +200,7 @@ impl SrpClient {
 
 /// Pad bytes to N size (256 bytes for 2048-bit)
 fn pad_to_n_size(bytes: &[u8], n: &BigUint) -> Vec<u8> {
-    let n_size = (n.bits() as usize + 7) / 8;
+    let n_size = (n.bits() as usize).div_ceil(8);
     if bytes.len() >= n_size {
         bytes.to_vec()
     } else {

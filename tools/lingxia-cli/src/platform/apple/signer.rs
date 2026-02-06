@@ -370,20 +370,19 @@ pub fn extract_team_id_from_profile(profile_data: &[u8]) -> Result<String> {
         .ok_or_else(|| anyhow!("Invalid provisioning profile format"))?;
 
     // Try TeamIdentifier first (array)
-    if let Some(team_ids) = dict.get("TeamIdentifier").and_then(|v| v.as_array()) {
-        if let Some(first) = team_ids.first().and_then(|v| v.as_string()) {
-            return Ok(first.to_string());
-        }
+    if let Some(team_ids) = dict.get("TeamIdentifier").and_then(|v| v.as_array())
+        && let Some(first) = team_ids.first().and_then(|v| v.as_string())
+    {
+        return Ok(first.to_string());
     }
 
     // Fall back to Entitlements.com.apple.developer.team-identifier
-    if let Some(ents) = dict.get("Entitlements").and_then(|v| v.as_dictionary()) {
-        if let Some(team_id) = ents
+    if let Some(ents) = dict.get("Entitlements").and_then(|v| v.as_dictionary())
+        && let Some(team_id) = ents
             .get("com.apple.developer.team-identifier")
             .and_then(|v| v.as_string())
-        {
-            return Ok(team_id.to_string());
-        }
+    {
+        return Ok(team_id.to_string());
     }
 
     Err(anyhow!("Could not find team ID in provisioning profile"))
@@ -446,10 +445,10 @@ fn create_ipa_zip(temp_dir: &Path, ipa_path: &Path) -> Result<()> {
     use zip::ZipWriter;
     use zip::write::SimpleFileOptions;
 
-    if let Some(parent) = ipa_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).context("Failed to create IPA output directory")?;
-        }
+    if let Some(parent) = ipa_path.parent()
+        && !parent.as_os_str().is_empty()
+    {
+        fs::create_dir_all(parent).context("Failed to create IPA output directory")?;
     }
 
     let file = fs::File::create(ipa_path).context("Failed to create IPA file")?;

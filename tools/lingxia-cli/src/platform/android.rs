@@ -313,19 +313,17 @@ impl Platform for AndroidPlatform {
         let android_root = super::detector::resolve_android_dir(&config.project_root);
 
         // Ensure SDK is downloaded
-        if let Some(ref lingxia_config) = config.lingxia_config {
-            if let Some(ref app) = lingxia_config.app {
-                if let Some(ref sdk_version) = app.sdk_version {
-                    if let Some(rust_lib_name) = lingxia_config.get_rust_lib_name() {
-                        sdk::ensure_sdk(
-                            &config.project_root,
-                            &rust_lib_name,
-                            SdkPlatform::Android,
-                            sdk_version,
-                        )?;
-                    }
-                }
-            }
+        if let Some(ref lingxia_config) = config.lingxia_config
+            && let Some(ref app) = lingxia_config.app
+            && let Some(ref sdk_version) = app.sdk_version
+            && let Some(rust_lib_name) = lingxia_config.get_rust_lib_name()
+        {
+            sdk::ensure_sdk(
+                &config.project_root,
+                &rust_lib_name,
+                SdkPlatform::Android,
+                sdk_version,
+            )?;
         }
 
         // Build Rust libraries
@@ -409,7 +407,7 @@ impl Platform for AndroidPlatform {
         };
 
         device
-            .uninstall(&package_id, None)
+            .uninstall(package_id, None)
             .context(format!("Failed to uninstall {}", package_id))?;
 
         Ok(())

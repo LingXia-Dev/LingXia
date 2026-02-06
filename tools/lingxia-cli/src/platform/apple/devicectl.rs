@@ -61,10 +61,10 @@ impl DeviceCtl {
         );
 
         loop {
-            if let Ok(devices) = Self::list_devices() {
-                if let Some(device) = devices.into_iter().find(|d| d.is_available()) {
-                    return Ok(device);
-                }
+            if let Ok(devices) = Self::list_devices()
+                && let Some(device) = devices.into_iter().find(|d| d.is_available())
+            {
+                return Ok(device);
             }
 
             if start.elapsed() > timeout {

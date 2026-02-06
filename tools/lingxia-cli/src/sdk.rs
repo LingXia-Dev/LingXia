@@ -94,10 +94,10 @@ fn extract_zip(zip_data: &[u8], target_dir: &Path) -> Result<()> {
         if file.name().ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
-            if let Some(parent) = outpath.parent() {
-                if !parent.exists() {
-                    fs::create_dir_all(parent)?;
-                }
+            if let Some(parent) = outpath.parent()
+                && !parent.exists()
+            {
+                fs::create_dir_all(parent)?;
             }
             let mut outfile = File::create(&outpath)?;
             std::io::copy(&mut file, &mut outfile)?;

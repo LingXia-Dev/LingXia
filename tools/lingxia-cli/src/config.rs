@@ -249,10 +249,10 @@ impl SecretsConfig {
     ///
     /// Priority: LINGXIA_API_KEY env var > secrets file
     pub fn get_api_key(&self) -> Option<String> {
-        if let Ok(key) = std::env::var("LINGXIA_API_KEY") {
-            if !key.is_empty() {
-                return Some(key);
-            }
+        if let Ok(key) = std::env::var("LINGXIA_API_KEY")
+            && !key.is_empty()
+        {
+            return Some(key);
         }
         self.api_key.clone()
     }
@@ -261,10 +261,10 @@ impl SecretsConfig {
     ///
     /// Priority: LINGXIA_API_SECRET env var > secrets file
     pub fn get_api_secret(&self) -> Option<String> {
-        if let Ok(secret) = std::env::var("LINGXIA_API_SECRET") {
-            if !secret.is_empty() {
-                return Some(secret);
-            }
+        if let Ok(secret) = std::env::var("LINGXIA_API_SECRET")
+            && !secret.is_empty()
+        {
+            return Some(secret);
         }
         self.api_secret.clone()
     }
@@ -273,10 +273,10 @@ impl SecretsConfig {
     ///
     /// Priority: LINGXIA_TEAM_ID env var > secrets file
     pub fn get_ios_team_id(&self) -> Option<String> {
-        if let Ok(team_id) = std::env::var("LINGXIA_TEAM_ID") {
-            if !team_id.is_empty() {
-                return Some(team_id);
-            }
+        if let Ok(team_id) = std::env::var("LINGXIA_TEAM_ID")
+            && !team_id.is_empty()
+        {
+            return Some(team_id);
         }
         self.ios.as_ref().and_then(|ios| ios.team_id.clone())
     }
@@ -285,10 +285,10 @@ impl SecretsConfig {
     ///
     /// Priority: LINGXIA_SIGNING_IDENTITY env var > secrets file
     pub fn get_ios_signing_identity(&self) -> Option<String> {
-        if let Ok(identity) = std::env::var("LINGXIA_SIGNING_IDENTITY") {
-            if !identity.is_empty() {
-                return Some(identity);
-            }
+        if let Ok(identity) = std::env::var("LINGXIA_SIGNING_IDENTITY")
+            && !identity.is_empty()
+        {
+            return Some(identity);
         }
         self.ios
             .as_ref()

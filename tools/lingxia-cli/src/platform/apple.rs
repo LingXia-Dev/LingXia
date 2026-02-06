@@ -261,10 +261,10 @@ fn resolve_swiftpm_target(
         let mut candidates = Vec::new();
         for entry in fs::read_dir(&sources_dir)? {
             let path = entry?.path();
-            if path.is_dir() {
-                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    candidates.push(name.to_string());
-                }
+            if path.is_dir()
+                && let Some(name) = path.file_name().and_then(|n| n.to_str())
+            {
+                candidates.push(name.to_string());
             }
         }
         if candidates.len() == 1 {
@@ -643,12 +643,11 @@ pub fn find_workspace_root(start: &Path) -> Result<PathBuf> {
 
     loop {
         let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists() {
-            if let Ok(content) = std::fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    return Ok(current);
-                }
-            }
+        if cargo_toml.exists()
+            && let Ok(content) = std::fs::read_to_string(&cargo_toml)
+            && content.contains("[workspace]")
+        {
+            return Ok(current);
         }
 
         if !current.pop() {

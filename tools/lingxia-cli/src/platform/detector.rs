@@ -179,13 +179,11 @@ fn is_ios_project(project_root: &Path) -> bool {
 
     // Check for Swift Package with iOS platform
     let package_swift = project_root.join("Package.swift");
-    if package_swift.exists() {
-        if let Ok(content) = std::fs::read_to_string(&package_swift) {
-            // Check if package supports iOS platform
-            if content.contains(".iOS") || content.contains(".ios") {
-                return true;
-            }
-        }
+    if package_swift.exists()
+        && let Ok(content) = std::fs::read_to_string(&package_swift)
+        && (content.contains(".iOS") || content.contains(".ios"))
+    {
+        return true;
     }
 
     false
@@ -195,12 +193,11 @@ fn is_ios_project(project_root: &Path) -> bool {
 fn is_macos_project(project_root: &Path) -> bool {
     // Swift Package with macOS platform
     let package_swift = project_root.join("Package.swift");
-    if package_swift.exists() {
-        if let Ok(content) = std::fs::read_to_string(&package_swift) {
-            if content.contains(".macOS") || content.contains(".macos") {
-                return true;
-            }
-        }
+    if package_swift.exists()
+        && let Ok(content) = std::fs::read_to_string(&package_swift)
+        && (content.contains(".macOS") || content.contains(".macos"))
+    {
+        return true;
     }
 
     false

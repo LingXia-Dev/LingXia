@@ -361,7 +361,6 @@ pub struct DeveloperCertificate {
     pub status: Option<String>,
     pub type_string: Option<String>,
     pub serial_number: Option<String>,
-    pub date_created: Option<String>,
     pub expiration_date: Option<String>,
     /// Base64-encoded certificate content
     pub certificate_content: Option<String>,
@@ -388,8 +387,6 @@ pub struct ProvisioningProfile {
     pub expiration_date: Option<String>,
     /// Team identifier from appId.prefix
     pub team_identifier: Option<String>,
-    /// Application identifier from appId
-    pub application_identifier: Option<String>,
     /// Entitlements (constructed from appId features)
     pub entitlements: Option<String>,
 }
@@ -590,10 +587,10 @@ fn parse_devices_response(response: &plist::Value) -> Result<Vec<RegisteredDevic
 
     let mut devices = Vec::new();
     for device_value in devices_array {
-        if let Some(device_dict) = device_value.as_dictionary() {
-            if let Ok(device) = parse_device(device_dict) {
-                devices.push(device);
-            }
+        if let Some(device_dict) = device_value.as_dictionary()
+            && let Ok(device) = parse_device(device_dict)
+        {
+            devices.push(device);
         }
     }
 
@@ -674,10 +671,10 @@ fn parse_certificates_response(response: &plist::Value) -> Result<Vec<DeveloperC
 
     let mut certs = Vec::new();
     for cert_value in certs_array {
-        if let Some(cert_dict) = cert_value.as_dictionary() {
-            if let Ok(cert) = parse_certificate(cert_dict) {
-                certs.push(cert);
-            }
+        if let Some(cert_dict) = cert_value.as_dictionary()
+            && let Ok(cert) = parse_certificate(cert_dict)
+        {
+            certs.push(cert);
         }
     }
 
@@ -721,11 +718,6 @@ fn parse_certificate(dict: &plist::Dictionary) -> Result<DeveloperCertificate> {
         .and_then(|v| v.as_string())
         .map(|s| s.to_string());
 
-    let date_created = dict
-        .get("dateCreated")
-        .and_then(|v| v.as_string())
-        .map(|s| s.to_string());
-
     let expiration_date = dict
         .get("expirationDate")
         .and_then(|v| v.as_string())
@@ -756,7 +748,6 @@ fn parse_certificate(dict: &plist::Dictionary) -> Result<DeveloperCertificate> {
         status,
         type_string,
         serial_number,
-        date_created,
         expiration_date,
         certificate_content,
     })
@@ -776,10 +767,10 @@ fn parse_app_ids_response(response: &plist::Value) -> Result<Vec<AppId>> {
 
     let mut app_ids = Vec::new();
     for app_id_value in app_ids_array {
-        if let Some(app_id_dict) = app_id_value.as_dictionary() {
-            if let Ok(app_id) = parse_app_id(app_id_dict) {
-                app_ids.push(app_id);
-            }
+        if let Some(app_id_dict) = app_id_value.as_dictionary()
+            && let Ok(app_id) = parse_app_id(app_id_dict)
+        {
+            app_ids.push(app_id);
         }
     }
 
@@ -833,10 +824,10 @@ fn parse_profiles_response(response: &plist::Value) -> Result<Vec<ProvisioningPr
 
     let mut profiles = Vec::new();
     for profile_value in profiles_array {
-        if let Some(profile_dict) = profile_value.as_dictionary() {
-            if let Ok(profile) = parse_profile(profile_dict) {
-                profiles.push(profile);
-            }
+        if let Some(profile_dict) = profile_value.as_dictionary()
+            && let Ok(profile) = parse_profile(profile_dict)
+        {
+            profiles.push(profile);
         }
     }
 
@@ -886,7 +877,7 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
         .map(|s| s.to_string());
 
     // Extract team identifier and entitlements from appId dictionary
-    let (team_identifier, application_identifier, entitlements) =
+    let (team_identifier, entitlements) =
         if let Some(plist::Value::Dictionary(app_id)) = dict.get("appId") {
             let team_id = app_id
                 .get("prefix")
@@ -898,10 +889,9 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
                 .and_then(|v| v.as_string())
                 .map(|s| s.to_string());
 
-            let app_identifier = if let (Some(prefix), Some(id)) = (&team_id, &identifier) {
-                Some(format!("{}.{}", prefix, id))
-            } else {
-                None
+            let app_identifier = match (&team_id, &identifier) {
+                (Some(prefix), Some(id)) => Some(format!("{}.{}", prefix, id)),
+                _ => None,
             };
 
             // Construct entitlements from features
@@ -960,9 +950,9 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
                 None
             };
 
-            (team_id, app_identifier, ents)
+            (team_id, ents)
         } else {
-            (None, None, None)
+            (None, None)
         };
 
     Ok(ProvisioningProfile {
@@ -974,7 +964,6 @@ fn parse_profile(dict: &plist::Dictionary) -> Result<ProvisioningProfile> {
         uuid,
         expiration_date,
         team_identifier,
-        application_identifier,
         entitlements,
     })
 }
