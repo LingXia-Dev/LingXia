@@ -7,13 +7,15 @@ import Foundation
 let projectRoot = ProcessInfo.processInfo.environment["LINGXIA_PROJECT_ROOT"] ??
                   URL(fileURLWithPath: #file).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
 
-let iosLibraryPath = "\(projectRoot)/target/aarch64-apple-ios/release/liblingxia.a"
+let buildConfig = ProcessInfo.processInfo.environment["LINGXIA_BUILD_CONFIG"] ?? "release"
+
+let iosLibraryPath = "\(projectRoot)/target/aarch64-apple-ios/\(buildConfig)/liblingxia.a"
 
 // Determine macOS library path based on architecture
 #if arch(arm64)
-let macosLibraryPath = "\(projectRoot)/target/aarch64-apple-darwin/release/liblingxia.a"
+let macosLibraryPath = "\(projectRoot)/target/aarch64-apple-darwin/\(buildConfig)/liblingxia.a"
 #else
-let macosLibraryPath = "\(projectRoot)/target/x86_64-apple-darwin/release/liblingxia.a"
+let macosLibraryPath = "\(projectRoot)/target/x86_64-apple-darwin/\(buildConfig)/liblingxia.a"
 #endif
 
 let package = Package(
