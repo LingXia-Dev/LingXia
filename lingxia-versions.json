@@ -1,9 +1,8 @@
 {
-  "latest": "0.1.1",
-  "android": "0.1.1",
-  "ios": "0.1.1",
-  "harmony": "0.1.1",
-  "crate": "0.1.1",
+  "android": "0.1.2",
+  "ios": "0.1.2",
+  "harmony": "0.1.2",
+  "crate": "0.1.2",
   "rong": "0.0.1",
   "minCliVersion": "0.0.8"
 }
