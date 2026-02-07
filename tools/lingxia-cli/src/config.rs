@@ -194,7 +194,7 @@ pub struct SecretsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IosSecrets {
-    /// Apple Developer Team ID (e.g., "AG98W7429S")
+    /// Apple Developer Team ID (e.g., "ABCDE12345")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_id: Option<String>,
 

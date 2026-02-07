@@ -138,10 +138,6 @@ impl AppStoreConnectClient {
         Ok(body)
     }
 
-    // =========================================================================
-    // Certificates API
-    // =========================================================================
-
     /// Create a new certificate
     pub fn create_certificate(
         &self,
@@ -162,9 +158,11 @@ impl AppStoreConnectClient {
         parse_data_object(&response)
     }
 
-    // =========================================================================
-    // Devices API
-    // =========================================================================
+    /// List all certificates
+    pub fn list_certificates(&self) -> Result<Vec<Certificate>> {
+        let response = self.get("/certificates")?;
+        parse_data_array(&response)
+    }
 
     /// List all registered devices
     pub fn list_devices(&self) -> Result<Vec<Device>> {
@@ -193,10 +191,6 @@ impl AppStoreConnectClient {
         let response = self.post("/devices", &body)?;
         parse_data_object(&response)
     }
-
-    // =========================================================================
-    // Bundle IDs API
-    // =========================================================================
 
     /// Create a new bundle ID
     pub fn create_bundle_id(
@@ -227,9 +221,11 @@ impl AppStoreConnectClient {
         Ok(bundle_ids.into_iter().next())
     }
 
-    // =========================================================================
-    // Profiles API
-    // =========================================================================
+    /// List all bundle IDs
+    pub fn list_bundle_ids(&self) -> Result<Vec<BundleId>> {
+        let response = self.get("/bundleIds")?;
+        parse_data_array(&response)
+    }
 
     /// Create a new provisioning profile
     pub fn create_profile(
@@ -294,11 +290,13 @@ impl AppStoreConnectClient {
         let response = self.get(&format!("/profiles/{}", id))?;
         parse_data_object(&response)
     }
-}
 
-// =============================================================================
-// JWT Types
-// =============================================================================
+    /// List all provisioning profiles
+    pub fn list_profiles(&self) -> Result<Vec<Profile>> {
+        let response = self.get("/profiles")?;
+        parse_data_array(&response)
+    }
+}
 
 #[derive(Serialize)]
 struct JwtHeader {
@@ -315,9 +313,7 @@ struct JwtPayload {
     aud: String,
 }
 
-// =============================================================================
 // API Response Types
-// =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -440,10 +436,6 @@ impl ProfileType {
         }
     }
 }
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
 
 /// Parse a JSON:API response data array
 fn parse_data_array<T: for<'de> Deserialize<'de>>(response: &serde_json::Value) -> Result<Vec<T>> {

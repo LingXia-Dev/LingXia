@@ -378,7 +378,7 @@ fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Res
         value
     } else {
         Input::new()
-            .with_prompt("Team ID (e.g., AG98W7429S)")
+            .with_prompt("Team ID (e.g., ABCDE12345)")
             .interact_text()?
     };
 

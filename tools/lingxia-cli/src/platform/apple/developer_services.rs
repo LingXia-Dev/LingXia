@@ -15,9 +15,7 @@ const DEVELOPER_SERVICES_BASE: &str = "https://developerservices2.apple.com/serv
 const PROTOCOL_VERSION: &str = "QH65B2";
 const CLIENT_ID: &str = "XABBG36SBA";
 
-// =============================================================================
 // Client
-// =============================================================================
 
 /// Developer Services API client for Apple ID authenticated requests.
 ///
