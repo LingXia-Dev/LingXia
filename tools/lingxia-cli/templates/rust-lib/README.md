@@ -1,4 +1,4 @@
-# {{project_name}}
+# {{PROJECT_NAME}}
 
 Native library for your LingXia app.
 

@@ -1,5 +1,5 @@
 [package]
-name = "{{project_name}}"
+name = "{{PROJECT_NAME}}"
 version = "0.1.0"
 edition = "2024"
 description = "Native library for LingXia App (builds to .so/.a)"
