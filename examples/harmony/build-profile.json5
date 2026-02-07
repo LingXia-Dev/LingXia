@@ -54,7 +54,7 @@
     },
     {
       "name": "lingxia",
-      "srcPath": "./../../lingxia-sdk/harmony/lingxia",
+      "srcPath": "./../../target/ohm/lingxia",
       "targets": [
         {
           "name": "default",

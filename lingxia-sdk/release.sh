@@ -14,6 +14,7 @@ Usage:
 Options:
   --platform <name>             iOS, Android, Harmony, or all (default: all)
   --out <dir>                   Output directory (default: dist/sdk-release)
+  --harmony-ohm-dir <dir>       Harmony: publish local OHM module to this directory
   --no-shasums                  Skip SHASUMS file generation (useful for local dev)
   --android-es5                 Android: build ES5 web runtime and publish version as <version>-es5
   --android-maven-dir <dir>     Android: publish to this local Maven repo dir (default: <out>/android/maven)
@@ -47,11 +48,13 @@ ANDROID_MAVEN_DIR=""
 ANDROID_ZIP=true
 IOS_ZIP=true
 ANDROID_VERSION=""
+HARMONY_OHM_DIR=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform) PLATFORM="${2:-}"; shift 2 ;;
     --out) OUT_DIR="${2:-}"; shift 2 ;;
+    --harmony-ohm-dir) HARMONY_OHM_DIR="${2:-}"; shift 2 ;;
     --no-shasums) NO_SHASUMS=true; shift 1 ;;
     --android-es5) ANDROID_ES5=true; shift 1 ;;
     --android-maven-dir) ANDROID_MAVEN_DIR="${2:-}"; shift 2 ;;
@@ -317,6 +320,16 @@ build_harmony() {
   local out_har="$OUT_DIR/lingxia-sdk-harmony-$VERSION.har"
   cp "$har" "$out_har"
   log "   ✅ $out_har"
+
+  if [[ -n "$HARMONY_OHM_DIR" ]]; then
+    local module_src="$HARMONY_SDK_DIR/lingxia"
+    rm -rf "$HARMONY_OHM_DIR" 2>/dev/null || true
+    mkdir -p "$(dirname "$HARMONY_OHM_DIR")"
+    cp -R "$module_src" "$HARMONY_OHM_DIR"
+    rm -rf "$HARMONY_OHM_DIR/build" 2>/dev/null || true
+    log "   ✅ Harmony OHM module: $HARMONY_OHM_DIR"
+  fi
+
   printf '%s\n' "$out_har"
 }
 

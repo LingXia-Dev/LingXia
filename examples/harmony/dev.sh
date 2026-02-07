@@ -24,12 +24,13 @@ for arg in "$@"; do
     esac
   fi
 done
-SDK_DIR="$LINGXIA_ROOT/lingxia-sdk/harmony"
 
 # Native library paths
 # Note: SDK HAR does NOT bundle .so; example app directly includes it
 RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia_lib.so"
 APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
+OHM_ROOT_DIR="$LINGXIA_ROOT/target/ohm"
+OHM_BUNDLE_DIR="$OHM_ROOT_DIR/lingxia"
 
 LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
 
@@ -74,16 +75,15 @@ stage_so() {
   echo "   ✅ Native library staged: $APP_SO_DEST"
 }
 
-# Clean previous HAR/build outputs to ensure a fresh bundle
-HAR_BUNDLE="$LINGXIA_ROOT/target/ohpm/lingxia.har"
-echo "Cleaning previous HAR artifacts..."
-rm -f "$HAR_BUNDLE" 2>/dev/null || true
-rm -rf "$LINGXIA_ROOT/lingxia-sdk/harmony/lingxia/build" 2>/dev/null || true
+# Clean previous SDK outputs to ensure a fresh bundle
+echo "Cleaning previous Harmony SDK artifacts..."
+rm -rf "$OHM_BUNDLE_DIR" 2>/dev/null || true
 
 # 0) Generate resources + build SDK HAR (no obsolete build.sh)
 echo "[0/4] Preparing HarmonyOS SDK resources + HAR..."
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
   --platform harmony \
+  --harmony-ohm-dir "$OHM_BUNDLE_DIR" \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
 
@@ -95,9 +95,9 @@ else
 fi
 stage_so
 
-# 2) Ensure SDK HAR exists for local ohpm dependency
-if [ ! -f "$HAR_BUNDLE" ]; then
-  echo "❌ HAR not found after build: $HAR_BUNDLE" >&2; exit 1
+# 2) Ensure local OHM module exists for dependency resolution
+if [ ! -f "$OHM_BUNDLE_DIR/oh-package.json5" ]; then
+  echo "❌ OHM module not found after build: $OHM_BUNDLE_DIR" >&2; exit 1
 fi
 
 # 3) Prepare example app assets (app.json + homelxapp)
@@ -109,7 +109,7 @@ generate_app_config "$RAWFILE_DIR"
 build_and_copy_homelxapp "$RAWFILE_DIR"
 
 # 4) Build & install example HAP
-echo "Installing ohpm dependencies (local har) ..."
+echo "Installing ohpm dependencies (local ohm module) ..."
 (cd "$SCRIPT_DIR/entry" && ohpm install)
 
 echo "Building example HAP ..."
