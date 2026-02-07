@@ -17,7 +17,7 @@ where
     let storage = CredentialStorage::new()?;
     let credentials = storage
         .load()?
-        .ok_or_else(|| anyhow!("Not logged in. Run 'lingxia auth login' first."))?;
+        .ok_or_else(|| anyhow!("Not logged in. Run 'lingxia auth apple login' first."))?;
 
     // Currently only AppleId credentials support Developer Services
     let (adsid, app_token, team_id) = match &credentials {
@@ -30,7 +30,7 @@ where
         crate::platform::apple::auth::AuthCredentials::AppStoreConnect { .. } => {
             return Err(anyhow!(
                 "App Store Connect API keys are not supported for this command.\n\
-                 Run 'lingxia auth login' with password mode instead."
+                 Run 'lingxia auth apple login' and choose Password mode instead."
             ));
         }
     };

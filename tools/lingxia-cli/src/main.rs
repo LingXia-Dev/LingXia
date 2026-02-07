@@ -176,10 +176,10 @@ enum Commands {
         platform: Vec<String>,
     },
 
-    /// Apple developer account authentication (iOS/macOS)
+    /// Developer account authentication (Apple/Harmony)
     Auth {
         #[command(subcommand)]
-        action: AuthAction,
+        provider: AuthProvider,
     },
 
     /// Interact with developer services (Apple, Harmony, etc.)
@@ -190,20 +190,68 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
-enum AuthAction {
+enum AuthProvider {
+    /// Apple Developer authentication (iOS/macOS)
+    Apple {
+        #[command(subcommand)]
+        action: AppleAuthAction,
+    },
+    /// Harmony authentication (reserved for future support)
+    Harmony {
+        #[command(subcommand)]
+        action: HarmonyAuthAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum AppleAuthAction {
     /// Login with Apple Developer account
     Login {
-        /// Apple ID (email)
+        /// Apple ID (email) for password mode
         #[arg(short, long)]
         username: Option<String>,
 
-        /// Password (will prompt if not provided)
+        /// Password for Apple ID mode (will prompt if not provided)
         #[arg(short, long)]
         password: Option<String>,
+
+        /// Authentication mode: key or password
+        #[arg(short = 'm', long, value_parser = ["key", "password"])]
+        mode: Option<String>,
+
+        /// App Store Connect API Key ID (for --mode key)
+        #[arg(long)]
+        key_id: Option<String>,
+
+        /// App Store Connect issuer ID (for --mode key)
+        #[arg(long)]
+        issuer_id: Option<String>,
+
+        /// Path to App Store Connect private key (.p8) (for --mode key)
+        #[arg(long)]
+        private_key_path: Option<String>,
+
+        /// Apple Developer Team ID (for --mode key)
+        #[arg(long)]
+        team_id: Option<String>,
+
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
     /// Logout and clear stored credentials
     Logout,
     /// Show current authentication status
+    Status,
+}
+
+#[derive(Subcommand)]
+enum HarmonyAuthAction {
+    /// Login with Harmony account (not implemented yet)
+    Login,
+    /// Logout Harmony credentials (not implemented yet)
+    Logout,
+    /// Show Harmony authentication status (not implemented yet)
     Status,
 }
 
@@ -286,16 +334,47 @@ fn main() -> Result<()> {
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;
         }
-        Commands::Auth { action } => match action {
-            AuthAction::Login { username, password } => {
-                commands::auth::login(username, password)?;
-            }
-            AuthAction::Logout => {
-                commands::auth::logout()?;
-            }
-            AuthAction::Status => {
-                commands::auth::status()?;
-            }
+        Commands::Auth { provider } => match provider {
+            AuthProvider::Apple { action } => match action {
+                AppleAuthAction::Login {
+                    username,
+                    password,
+                    mode,
+                    key_id,
+                    issuer_id,
+                    private_key_path,
+                    team_id,
+                    yes,
+                } => {
+                    commands::auth::apple_login(commands::auth::AppleLoginOptions {
+                        username,
+                        password,
+                        mode,
+                        key_id,
+                        issuer_id,
+                        private_key_path,
+                        team_id,
+                        yes,
+                    })?;
+                }
+                AppleAuthAction::Logout => {
+                    commands::auth::apple_logout()?;
+                }
+                AppleAuthAction::Status => {
+                    commands::auth::apple_status()?;
+                }
+            },
+            AuthProvider::Harmony { action } => match action {
+                HarmonyAuthAction::Login => {
+                    commands::auth::harmony_login()?;
+                }
+                HarmonyAuthAction::Logout => {
+                    commands::auth::harmony_logout()?;
+                }
+                HarmonyAuthAction::Status => {
+                    commands::auth::harmony_status()?;
+                }
+            },
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;

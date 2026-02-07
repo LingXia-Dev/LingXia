@@ -13,7 +13,7 @@ pub fn execute() -> Result<()> {
     let storage = CredentialStorage::new()?;
     let credentials = storage
         .load()?
-        .ok_or_else(|| anyhow!("Not logged in. Run 'lingxia auth login' first."))?;
+        .ok_or_else(|| anyhow!("Not logged in. Run 'lingxia auth apple login' first."))?;
 
     let (adsid, app_token) = match &credentials {
         crate::platform::apple::auth::AuthCredentials::AppleId {
@@ -22,7 +22,7 @@ pub fn execute() -> Result<()> {
         crate::platform::apple::auth::AuthCredentials::AppStoreConnect { .. } => {
             return Err(anyhow!(
                 "App Store Connect API keys are not supported for this command.\n\
-                 Run 'lingxia auth login' with password mode instead."
+                 Run 'lingxia auth apple login' and choose Password mode instead."
             ));
         }
     };

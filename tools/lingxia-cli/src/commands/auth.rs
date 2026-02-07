@@ -1,7 +1,9 @@
-//! Apple Developer authentication commands.
+//! Authentication commands.
 //!
-//! Provides login, logout, and status commands for Apple Developer accounts.
+//! Currently implements Apple Developer authentication.
+//! Harmony auth command shape is present and reserved for future implementation.
 
+use crate::path_completion::FilePathCompleter;
 use crate::platform::apple::anisette::OmnisetteProvider;
 use crate::platform::apple::auth::{AuthCredentials, CredentialStorage};
 use crate::platform::apple::developer_services;
@@ -13,9 +15,61 @@ use colored::Colorize;
 use dialoguer::{Input, Password, Select};
 use std::path::PathBuf;
 
-/// Execute the login command
-pub fn login(username: Option<String>, password: Option<String>) -> Result<()> {
+pub struct AppleLoginOptions {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub mode: Option<String>,
+    pub key_id: Option<String>,
+    pub issuer_id: Option<String>,
+    pub private_key_path: Option<String>,
+    pub team_id: Option<String>,
+    pub yes: bool,
+}
+
+#[derive(Default)]
+struct ApiKeyLoginArgs {
+    key_id: Option<String>,
+    issuer_id: Option<String>,
+    private_key_path: Option<PathBuf>,
+    team_id: Option<String>,
+}
+
+impl ApiKeyLoginArgs {
+    fn has_any(&self) -> bool {
+        self.key_id.is_some()
+            || self.issuer_id.is_some()
+            || self.private_key_path.is_some()
+            || self.team_id.is_some()
+    }
+}
+
+/// Execute Apple login command.
+pub fn apple_login(options: AppleLoginOptions) -> Result<()> {
+    let AppleLoginOptions {
+        username,
+        password,
+        mode,
+        key_id,
+        issuer_id,
+        private_key_path,
+        team_id,
+        yes,
+    } = options;
+
     println!("\n{}\n", "Apple Developer Authentication".cyan().bold());
+
+    let key_args = ApiKeyLoginArgs {
+        key_id,
+        issuer_id,
+        private_key_path: private_key_path.as_deref().map(expand_path),
+        team_id,
+    };
+    let mode = resolve_login_mode(
+        mode,
+        username.as_deref(),
+        password.as_deref(),
+        key_args.has_any(),
+    )?;
 
     // Check for existing credentials
     let storage = CredentialStorage::new()?;
@@ -27,24 +81,25 @@ pub fn login(username: Option<String>, password: Option<String>) -> Result<()> {
             existing.team_id()
         );
 
-        let choices = vec!["Replace existing credentials", "Cancel"];
-        let selection = Select::new()
-            .with_prompt("What would you like to do?")
-            .items(&choices)
-            .default(1)
-            .interact()?;
+        if yes {
+            println!("{} Replacing existing credentials.", "ℹ".blue());
+        } else {
+            let choices = vec!["Replace existing credentials", "Cancel"];
+            let selection = Select::new()
+                .with_prompt("What would you like to do?")
+                .items(&choices)
+                .default(1)
+                .interact()?;
 
-        if selection == 1 {
-            println!("Login cancelled.");
-            return Ok(());
+            if selection == 1 {
+                println!("Login cancelled.");
+                return Ok(());
+            }
         }
     }
 
-    // Determine login mode interactively
-    let mode = select_login_mode()?;
-
     match mode.as_str() {
-        "key" => login_with_api_key(&storage)?,
+        "key" => login_with_api_key(&storage, key_args)?,
         _ => login_with_password(&storage, username, password)?,
     }
 
@@ -68,6 +123,50 @@ fn select_login_mode() -> Result<String> {
         0 => Ok("key".to_string()),
         _ => Ok("password".to_string()),
     }
+}
+
+fn resolve_login_mode(
+    mode: Option<String>,
+    username: Option<&str>,
+    password: Option<&str>,
+    has_key_args: bool,
+) -> Result<String> {
+    if let Some(mode) = mode {
+        let normalized = mode.trim().to_ascii_lowercase();
+        if normalized != "key" && normalized != "password" {
+            return Err(anyhow!(
+                "Invalid mode '{}'. Expected one of: key, password",
+                mode
+            ));
+        }
+
+        if normalized == "password" && has_key_args {
+            return Err(anyhow!(
+                "API key parameters (--key-id/--issuer-id/--private-key-path/--team-id) are only valid with --mode key."
+            ));
+        }
+        if normalized == "key" && (username.is_some() || password.is_some()) {
+            return Err(anyhow!(
+                "--username/--password are only valid with --mode password."
+            ));
+        }
+        return Ok(normalized);
+    }
+
+    if has_key_args {
+        if username.is_some() || password.is_some() {
+            return Err(anyhow!(
+                "Cannot infer mode: both password and API key parameters were provided. Please specify --mode key or --mode password."
+            ));
+        }
+        return Ok("key".to_string());
+    }
+
+    if username.is_some() || password.is_some() {
+        return Ok("password".to_string());
+    }
+
+    select_login_mode()
 }
 
 /// Login with Apple ID (password mode)
@@ -225,84 +324,71 @@ fn login_with_password(
 }
 
 /// Login with App Store Connect API Key
-fn login_with_api_key(storage: &CredentialStorage) -> Result<()> {
+fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Result<()> {
     println!("{}", "App Store Connect API Key Authentication".bold());
-    println!();
-    println!("To create an API key:");
-    println!("  1. Go to https://appstoreconnect.apple.com/access/api");
-    println!("  2. Click '+' to create a new key");
-    println!("  3. Give it a name and select 'Developer' access");
-    println!("  4. Download the .p8 file (you can only download it once!)");
-    println!();
+    let need_key_id = args.key_id.is_none();
+    let need_issuer_id = args.issuer_id.is_none();
+    let need_private_key_path = args.private_key_path.is_none();
+    let need_team_id = args.team_id.is_none();
+    let needs_prompt = need_key_id || need_issuer_id || need_private_key_path || need_team_id;
 
-    // Get Key ID
-    let key_id: String = Input::new()
-        .with_prompt("API Key ID (e.g., ABC123DEF4)")
-        .interact_text()?;
-
-    if key_id.len() != 10 {
-        return Err(anyhow!(
-            "Invalid Key ID format. It should be 10 characters."
-        ));
+    if needs_prompt {
+        println!();
+        println!("To create an API key:");
+        println!("  1. Open https://appstoreconnect.apple.com/");
+        println!("  2. Go to Users and Access -> Integrations -> App Store Connect API");
+        println!("  3. Click '+' to create a new key");
+        println!("  4. Give it a name and select 'Developer' access");
+        println!("  5. Download the .p8 file (you can only download it once!)");
+        println!();
     }
 
-    // Get Issuer ID
-    let issuer_id: String = Input::new()
-        .with_prompt("Issuer ID (UUID from API Keys page)")
-        .interact_text()?;
+    let key_id: String = if let Some(value) = args.key_id {
+        value
+    } else {
+        Input::new()
+            .with_prompt("API Key ID (e.g., ABC123DEF4)")
+            .interact_text()?
+    };
+    let issuer_id: String = if let Some(value) = args.issuer_id {
+        value
+    } else {
+        Input::new()
+            .with_prompt("Issuer ID (UUID from API Keys page)")
+            .interact_text()?
+    };
+    let private_key_path = if let Some(path) = args.private_key_path {
+        path
+    } else {
+        let key_path: String = Input::new()
+            .with_prompt("Path to .p8 private key file")
+            .completion_with(&FilePathCompleter::new())
+            .interact_text()?;
+        expand_path(&key_path)
+    };
 
-    // Validate UUID format (basic check)
-    if !issuer_id.contains('-') || issuer_id.len() != 36 {
-        return Err(anyhow!(
-            "Invalid Issuer ID format. It should be a UUID (e.g., 12345678-1234-1234-1234-123456789012)."
-        ));
+    if need_team_id {
+        println!();
+        println!("Your Team ID can be found at:");
+        println!("  https://developer.apple.com/account -> Membership Details");
+        println!();
     }
 
-    // Get private key path
-    let key_path: String = Input::new()
-        .with_prompt("Path to .p8 private key file")
-        .interact_text()?;
+    let team_id: String = if let Some(value) = args.team_id {
+        value
+    } else {
+        Input::new()
+            .with_prompt("Team ID (e.g., AG98W7429S)")
+            .interact_text()?
+    };
 
-    let key_path = expand_path(&key_path);
-
-    if !key_path.exists() {
-        return Err(anyhow!(
-            "Private key file not found: {}",
-            key_path.display()
-        ));
-    }
-
-    // Validate the key file
-    let key_content = std::fs::read_to_string(&key_path)
-        .with_context(|| format!("Failed to read key file: {}", key_path.display()))?;
-
-    if !key_content.contains("BEGIN PRIVATE KEY") {
-        return Err(anyhow!(
-            "Invalid private key file. Expected a PKCS#8 format .p8 file."
-        ));
-    }
-
-    // Get Team ID
-    println!();
-    println!("Your Team ID can be found at:");
-    println!("  https://developer.apple.com/account -> Membership Details");
-    println!();
-
-    let team_id: String = Input::new()
-        .with_prompt("Team ID (e.g., AG98W7429S)")
-        .interact_text()?;
-
-    if team_id.len() != 10 {
-        return Err(anyhow!(
-            "Invalid Team ID format. It should be 10 characters."
-        ));
-    }
+    validate_api_key_credentials(&key_id, &issuer_id, &private_key_path, &team_id)?;
 
     // Save credentials
     let credentials = AuthCredentials::AppStoreConnect {
         key_id: key_id.clone(),
         issuer_id: issuer_id.clone(),
-        private_key_path: key_path.to_string_lossy().to_string(),
+        private_key_path: private_key_path.to_string_lossy().to_string(),
         team_id: team_id.clone(),
     };
 
@@ -317,8 +403,50 @@ fn login_with_api_key(storage: &CredentialStorage) -> Result<()> {
     Ok(())
 }
 
-/// Execute the logout command
-pub fn logout() -> Result<()> {
+fn validate_api_key_credentials(
+    key_id: &str,
+    issuer_id: &str,
+    private_key_path: &std::path::Path,
+    team_id: &str,
+) -> Result<()> {
+    if key_id.len() != 10 {
+        return Err(anyhow!(
+            "Invalid Key ID format. It should be 10 characters."
+        ));
+    }
+
+    if !issuer_id.contains('-') || issuer_id.len() != 36 {
+        return Err(anyhow!(
+            "Invalid Issuer ID format. It should be a UUID (e.g., 12345678-1234-1234-1234-123456789012)."
+        ));
+    }
+
+    if !private_key_path.exists() {
+        return Err(anyhow!(
+            "Private key file not found: {}",
+            private_key_path.display()
+        ));
+    }
+
+    let key_content = std::fs::read_to_string(private_key_path)
+        .with_context(|| format!("Failed to read key file: {}", private_key_path.display()))?;
+    if !key_content.contains("BEGIN PRIVATE KEY") {
+        return Err(anyhow!(
+            "Invalid private key file. Expected a PKCS#8 format .p8 file."
+        ));
+    }
+
+    if team_id.len() != 10 {
+        return Err(anyhow!(
+            "Invalid Team ID format. It should be 10 characters."
+        ));
+    }
+
+    Ok(())
+}
+
+/// Execute Apple logout command.
+pub fn apple_logout() -> Result<()> {
     let storage = CredentialStorage::new()?;
 
     let mut deleted_anything = false;
@@ -356,8 +484,8 @@ pub fn logout() -> Result<()> {
     Ok(())
 }
 
-/// Execute the status command
-pub fn status() -> Result<()> {
+/// Execute Apple status command.
+pub fn apple_status() -> Result<()> {
     let storage = CredentialStorage::new()?;
 
     match storage.load()? {
@@ -393,7 +521,7 @@ pub fn status() -> Result<()> {
                     if credentials.is_expired() {
                         println!();
                         println!(
-                            "{} Token has expired. Run 'lingxia auth login' to refresh.",
+                            "{} Token has expired. Run 'lingxia auth apple login' to refresh.",
                             "⚠".yellow()
                         );
                     }
@@ -408,11 +536,29 @@ pub fn status() -> Result<()> {
             println!();
             println!("{} Not logged in", "✗".red());
             println!();
-            println!("Run 'lingxia auth login' and select Apple ID or API Key mode.");
+            println!("Run 'lingxia auth apple login' to authenticate.");
         }
     }
 
     Ok(())
+}
+
+pub fn harmony_login() -> Result<()> {
+    Err(anyhow!(
+        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony login'."
+    ))
+}
+
+pub fn harmony_logout() -> Result<()> {
+    Err(anyhow!(
+        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony logout'."
+    ))
+}
+
+pub fn harmony_status() -> Result<()> {
+    Err(anyhow!(
+        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony status'."
+    ))
 }
 
 /// Fetch developer teams and let the user pick one.
