@@ -2,6 +2,7 @@ use super::android;
 use super::harmony;
 use super::ios;
 use super::locate_templates_dir;
+use super::macos;
 use super::template::process_template_dir;
 use super::types::{Platform, ProjectConfig};
 use crate::versions::LingXiaVersions;
@@ -31,17 +32,15 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
                 created_any = true;
             }
             Platform::Ios => {
-                ios::create_ios_placeholder(config)?;
+                ios::create_ios_project(config)?;
                 created_any = true;
             }
             Platform::Macos => {
-                // For now, re-use the iOS SwiftPM placeholder since the Apple
-                // SDK package supports both iOS and macOS targets.
-                ios::create_ios_placeholder(config)?;
+                macos::create_macos_project(config)?;
                 created_any = true;
             }
             Platform::Harmony => {
-                harmony::create_harmony_placeholder(config)?;
+                harmony::create_harmony_project(config)?;
                 created_any = true;
             }
         }
@@ -78,7 +77,7 @@ pub(super) fn create_rust_library(
 
     // Build variable substitution map
     let mut vars = HashMap::new();
-    vars.insert("project_name".to_string(), lib_name.clone());
+    vars.insert("PROJECT_NAME".to_string(), lib_name.clone());
     vars.insert("PACKAGE_ID".to_string(), config.package_id.clone());
 
     // Convert package ID to underscore format for JNI function names

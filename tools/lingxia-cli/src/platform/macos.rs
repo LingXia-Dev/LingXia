@@ -8,6 +8,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::MacosConfig;
+use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
@@ -116,20 +117,32 @@ impl MacosPlatform {
             cmd.args(["-c", "release"]);
         }
 
-        let output = cmd.output().context("Failed to execute swift build")?;
+        let output = cmd
+            .output()
+            .context("Failed to execute swift build --show-bin-path")?;
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(anyhow!("Swift build failed: {}", stderr.trim()));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let bin_path = stdout.trim();
+        let bin_path = stdout
+            .lines()
+            .rev()
+            .find(|line| !line.trim().is_empty())
+            .map(str::trim)
+            .unwrap_or("");
         if bin_path.is_empty() {
             return Err(anyhow!("swift build --show-bin-path returned empty output"));
         }
 
+        let bin_dir = PathBuf::from(bin_path);
+        if !bin_dir.exists() {
+            return Err(anyhow!("SwiftPM bin dir not found: {}", bin_dir.display()));
+        }
+
         println!("  {} Swift build complete", "✓".green());
-        Ok(PathBuf::from(bin_path))
+        Ok(bin_dir)
     }
 
     fn find_executable_in_bin_dir(
@@ -227,14 +240,12 @@ impl Platform for MacosPlatform {
             macos_dir.display()
         );
 
-        // Generate Swift bridge if needed
-        if config.build_native {
-            let rust_target = Self::rust_target(arch);
-            apple::generate_swift_bridge(&workspace_root, rust_target)?;
+        if let Some(ref lingxia_config) = config.lingxia_config
+            && let Some(ref app) = lingxia_config.app
+            && let Some(ref sdk_version) = app.sdk_version
+        {
+            sdk::ensure_sdk(&workspace_root, SdkPlatform::Apple, sdk_version, None)?;
         }
-
-        // Prepare SDK resources
-        apple::prepare_sdk_resources(&workspace_root, !config.build_native)?;
 
         // Build Rust static library
         self.build_rust_library(&config.project_root, &workspace_root, config, arch)?;

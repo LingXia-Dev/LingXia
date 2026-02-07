@@ -1,11 +1,11 @@
-use super::android;
 use super::locate_templates_dir;
 use super::types::{DEFAULT_ICON_BACKGROUND_COLOR, Platform, ProjectConfig};
 use crate::appicon;
 use crate::path_completion::FilePathCompleter;
 use anyhow::Result;
+use anyhow::anyhow;
 use colored::Colorize;
-use dialoguer::{Confirm, Input, theme::ColorfulTheme};
+use dialoguer::{Input, theme::ColorfulTheme};
 use std::fs;
 use std::path::Path;
 
@@ -24,59 +24,72 @@ pub fn configure_and_apply_icons(
         fs::copy(&default_icon_path, &project_icon_path)?;
     }
 
-    // Determine icon configuration
-    let icon_config = match (icon, yes) {
+    // Determine icon configuration (icon is required, explicit or default).
+    let (icon_path, background_color) = match (icon, yes) {
         // User provided explicit icon path
-        (Some(path), _) => Some((path, DEFAULT_ICON_BACKGROUND_COLOR.to_string())),
+        (Some(path), _) => {
+            let icon_path = path.trim().to_string();
+            if icon_path.is_empty() {
+                return Err(anyhow!("Icon path cannot be empty"));
+            }
+            if !std::path::Path::new(&icon_path).exists() {
+                return Err(anyhow!("Icon file not found: {}", icon_path));
+            }
+            (icon_path, DEFAULT_ICON_BACKGROUND_COLOR.to_string())
+        }
         // Auto mode (-y): use default icon if it exists
-        (None, true) => project_icon_path.exists().then(|| {
+        (None, true) => {
+            if !project_icon_path.exists() {
+                return Err(anyhow!(
+                    "Default AppIcon.png not found. Please pass --icon <path-to-png>."
+                ));
+            }
             (
                 project_icon_path.to_string_lossy().to_string(),
                 DEFAULT_ICON_BACKGROUND_COLOR.to_string(),
             )
-        }),
-        // Interactive mode: ask user, default to using the bundled icon
+        }
+        // Interactive mode: ask for icon path, default to the bundled icon.
         (None, false) => {
             println!();
-            let configure_icon = Confirm::with_theme(theme)
-                .with_prompt("Do you want to configure an app icon?")
-                .default(true)
-                .interact()?;
-
-            if !configure_icon {
-                None
+            let default_path = if project_icon_path.exists() {
+                project_icon_path.to_string_lossy().to_string()
             } else {
-                let default_path = if project_icon_path.exists() {
-                    "./AppIcon.png".to_string()
-                } else {
-                    String::new()
-                };
-                let path: String = Input::with_theme(theme)
-                    .with_prompt("Path to app icon (PNG, recommended 1024x1024)")
-                    .with_initial_text(default_path)
-                    .completion_with(&FilePathCompleter::new())
-                    .interact_text()?;
-                let background_color: String = Input::with_theme(theme)
-                    .with_prompt("Adaptive icon background color (e.g. #FFFFFF)")
-                    .default(DEFAULT_ICON_BACKGROUND_COLOR.to_string())
-                    .validate_with(|input: &String| -> Result<(), String> {
-                        appicon::normalize_android_color(input)
-                            .map(|_| ())
-                            .map_err(|e| e.to_string())
-                    })
-                    .interact_text()?;
+                String::new()
+            };
+            let path: String = Input::with_theme(theme)
+                .with_prompt("Path to app icon (PNG, recommended 1024x1024)")
+                .with_initial_text(default_path)
+                .completion_with(&FilePathCompleter::new())
+                .validate_with(|input: &String| -> Result<(), String> {
+                    let p = input.trim();
+                    if p.is_empty() {
+                        return Err("Icon path cannot be empty".to_string());
+                    }
+                    if !std::path::Path::new(p).exists() {
+                        return Err(format!("Icon file not found: {p}"));
+                    }
+                    Ok(())
+                })
+                .interact_text()?;
+            let background_color: String = Input::with_theme(theme)
+                .with_prompt("Adaptive icon background color (e.g. #FFFFFF)")
+                .default(DEFAULT_ICON_BACKGROUND_COLOR.to_string())
+                .validate_with(|input: &String| -> Result<(), String> {
+                    appicon::normalize_android_color(input)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                })
+                .interact_text()?;
 
-                Some((path, appicon::normalize_android_color(&background_color)?))
-            }
+            (
+                path.trim().to_string(),
+                appicon::normalize_android_color(&background_color)?,
+            )
         }
     };
 
-    // Generate app icons if icon path is provided, otherwise remove Android icon references.
-    if let Some((icon_path, background_color)) = icon_config {
-        generate_app_icons(config, &icon_path, &background_color)?;
-    } else if config.platforms.contains(&Platform::Android) {
-        android::remove_android_icon_references(&config.target_dir)?;
-    }
+    generate_app_icons(config, &icon_path, &background_color)?;
 
     Ok(())
 }
@@ -118,13 +131,7 @@ fn generate_app_icons(
 
     let icon_path = PathBuf::from(icon_path);
     if !icon_path.exists() {
-        eprintln!(
-            "{} Icon file not found: {}",
-            "Warning:".yellow(),
-            icon_path.display()
-        );
-        eprintln!("Skipping icon generation.");
-        return Ok(());
+        return Err(anyhow!("Icon file not found: {}", icon_path.display()));
     }
 
     println!("  Generating app icons...");
@@ -166,10 +173,15 @@ fn generate_app_icons(
                 }
             }
             Platform::Harmony => {
-                eprintln!(
-                    "{} HarmonyOS icon generation not yet implemented",
-                    "Warning:".yellow()
-                );
+                if let Err(e) = crate::platform::harmony::generate_icons(
+                    &config.target_dir,
+                    &icon_path,
+                    background_color,
+                    None,
+                ) {
+                    eprintln!("{} {}", "Warning:".yellow(), e);
+                    eprintln!("Skipping HarmonyOS icon generation.");
+                }
             }
         }
     }

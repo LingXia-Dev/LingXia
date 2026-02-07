@@ -17,6 +17,7 @@ pub mod provisioning;
 pub mod signer;
 pub mod srp;
 
+use crate::workspace::find_workspace_root_or_self;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -376,7 +377,7 @@ pub fn build_rust_staticlib(
     features: &[String],
     deployment_target: Option<&str>,
 ) -> Result<PathBuf> {
-    println!("{}", "Compiling Rust static library...".cyan());
+    println!("{}", "Compiling native static library...".cyan());
 
     let rust_manifest = rust_lib_dir.join("Cargo.toml");
     if !rust_manifest.exists() {
@@ -394,6 +395,7 @@ pub fn build_rust_staticlib(
         .arg(target)
         .arg("--manifest-path")
         .arg(&rust_manifest)
+        .env("CARGO_TARGET_DIR", workspace_root.join("target"))
         .current_dir(rust_lib_dir);
 
     // Set deployment target for iOS to ensure correct minimum version
@@ -421,147 +423,18 @@ pub fn build_rust_staticlib(
     // (Cargo workspace outputs to workspace root's target/)
     let profile_dir = if release { "release" } else { "debug" };
 
-    // The output library name is based on the crate name with underscores
-    // e.g., lingxia-lib crate -> liblingxia_lib.a
     let target_dir = workspace_root.join("target").join(target).join(profile_dir);
-
-    // Get the crate name from manifest
-    let crate_name = get_crate_name(&rust_manifest)?;
-    let lib_name = format!("lib{}.a", crate_name.replace('-', "_"));
-    let lib_path = target_dir.join(&lib_name);
-
-    if !lib_path.exists() {
+    let dest_path = target_dir.join("liblingxia.a");
+    if !dest_path.exists() {
         return Err(anyhow!(
-            "Static library not found: {}. Expected from crate '{}'",
-            lib_path.display(),
-            crate_name
+            "Static library not found: {}. Expected fixed library name 'liblingxia.a'",
+            dest_path.display()
         ));
     }
 
-    // Copy/rename to standard name liblingxia.a
-    let dest_path = target_dir.join("liblingxia.a");
-    if lib_path != dest_path {
-        std::fs::copy(&lib_path, &dest_path)?;
-        println!("  {} Copied {} -> liblingxia.a", "ℹ".blue(), lib_name);
-    }
-
-    println!("  {} Static library → {}", "✓".green(), dest_path.display());
+    println!("  {} Native library → {}", "✓".green(), dest_path.display());
 
     Ok(dest_path)
-}
-
-/// Get crate name from Cargo.toml
-fn get_crate_name(manifest_path: &Path) -> Result<String> {
-    let content = std::fs::read_to_string(manifest_path).context("Failed to read Cargo.toml")?;
-
-    // Lightweight parse: only consider the [package] table.
-    let mut in_package = false;
-    for raw_line in content.lines() {
-        // Strip comments for simplistic parsing.
-        let line = raw_line.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if line.starts_with('[') && line.ends_with(']') {
-            in_package = line == "[package]";
-            continue;
-        }
-
-        if !in_package {
-            continue;
-        }
-
-        let (key, value) = match line.split_once('=') {
-            Some((k, v)) => (k.trim(), v.trim()),
-            None => continue,
-        };
-        if key != "name" {
-            continue;
-        }
-
-        let name = value.trim_matches('"').trim_matches('\'').trim();
-        if name.is_empty() {
-            break;
-        }
-        return Ok(name.to_string());
-    }
-
-    Err(anyhow!(
-        "Could not find package name in {}",
-        manifest_path.display()
-    ))
-}
-
-/// Generate Swift bridge bindings by building with LINGXIA_GENERATE_BRIDGE=1
-pub fn generate_swift_bridge(project_root: &Path, target: &str) -> Result<()> {
-    println!("{}", "Generating Swift bridge bindings...".cyan());
-
-    // Find the workspace root
-    let workspace_root = find_workspace_root(project_root)?;
-
-    let mut cmd = Command::new("cargo");
-    cmd.arg("build")
-        .arg("-p")
-        .arg("lingxia")
-        .arg("--target")
-        .arg(target)
-        .arg("--release")
-        .env("LINGXIA_GENERATE_BRIDGE", "1")
-        .current_dir(&workspace_root);
-
-    let status = cmd.status().context("Failed to generate Swift bridge")?;
-
-    if !status.success() {
-        return Err(anyhow!("Swift bridge generation failed"));
-    }
-
-    println!("  {} Swift bridge bindings generated", "✓".green());
-    Ok(())
-}
-
-/// Prepare SDK resources by calling the release.sh script
-///
-/// This stages the Apple SDK to target/spm/lingxia for local development.
-pub fn prepare_sdk_resources(project_root: &Path, skip_rust: bool) -> Result<()> {
-    println!("{}", "Preparing iOS SDK resources...".cyan());
-
-    // Find the workspace root (where lingxia-sdk/release.sh is located)
-    let workspace_root = find_workspace_root(project_root)?;
-
-    let release_script = workspace_root.join("lingxia-sdk/release.sh");
-    if !release_script.exists() {
-        return Err(anyhow!(
-            "SDK release script not found: {}\n\
-             Make sure you're in a LingXia workspace with lingxia-sdk/release.sh",
-            release_script.display()
-        ));
-    }
-
-    let output_dir = workspace_root.join("target/sdk-dev");
-
-    let mut cmd = Command::new("bash");
-    cmd.arg(&release_script)
-        .arg("--platform")
-        .arg("ios")
-        .arg("--ios-no-zip")
-        .arg("--no-shasums")
-        .arg("--out")
-        .arg(&output_dir)
-        .current_dir(&workspace_root);
-
-    if skip_rust {
-        cmd.env("SKIP_RUST", "true");
-    }
-
-    let status = cmd.status().context("Failed to prepare SDK resources")?;
-
-    if !status.success() {
-        return Err(anyhow!("SDK resource preparation failed"));
-    }
-
-    println!("  {} SDK resources prepared", "✓".green());
-    Ok(())
 }
 
 /// Update a generated Swift source file inside the staged SPM package to force
@@ -637,28 +510,12 @@ pub fn update_spm_rust_link_stamp(
     Ok(())
 }
 
-/// Find the workspace root by looking for Cargo.toml with [workspace]
+/// Find the workspace root by looking for Cargo.toml with [workspace].
+///
+/// If no workspace is found, fallback to `start` so standalone projects outside
+/// the LingXia monorepo can still build using downloaded SDK artifacts.
 pub fn find_workspace_root(start: &Path) -> Result<PathBuf> {
-    let mut current = start.to_path_buf();
-
-    loop {
-        let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists()
-            && let Ok(content) = std::fs::read_to_string(&cargo_toml)
-            && content.contains("[workspace]")
-        {
-            return Ok(current);
-        }
-
-        if !current.pop() {
-            break;
-        }
-    }
-
-    Err(anyhow!(
-        "Could not find workspace root from: {}",
-        start.display()
-    ))
+    Ok(find_workspace_root_or_self(start))
 }
 
 /// Recursively copy a directory tree.

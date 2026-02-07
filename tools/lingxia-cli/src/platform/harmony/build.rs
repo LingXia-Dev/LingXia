@@ -1,5 +1,6 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::platform::{BuildArtifacts, BuildConfig, BuildProfile};
+use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
@@ -30,6 +31,18 @@ impl HarmonyPlatform {
         config: &BuildConfig,
         harmony_dir: &Path,
     ) -> Result<BuildArtifacts> {
+        if let Some(ref lingxia_config) = config.lingxia_config
+            && let Some(ref app) = lingxia_config.app
+            && let Some(ref sdk_version) = app.sdk_version
+        {
+            sdk::ensure_sdk(
+                &config.project_root,
+                SdkPlatform::Harmony,
+                sdk_version,
+                None,
+            )?;
+        }
+
         if config.build_native {
             let so_path = self.build_rust_library(&config.project_root, config)?;
             self.stage_native_library(&so_path, harmony_dir)?;

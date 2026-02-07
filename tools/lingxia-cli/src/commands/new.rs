@@ -1,9 +1,11 @@
 mod android;
+mod apple;
 mod config_files;
 mod harmony;
 mod icons;
 mod ios;
 mod lxapp_scaffold;
+mod macos;
 mod native;
 mod prompts;
 mod template;

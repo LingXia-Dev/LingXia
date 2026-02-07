@@ -205,11 +205,12 @@ where
         AuthCredentials::AppStoreConnect {
             key_id,
             issuer_id,
-            private_key_path,
+            private_key_pem,
             team_id,
+            ..
         } => {
             let client =
-                AppStoreConnectClient::new(&key_id, &issuer_id, &private_key_path, &team_id)
+                AppStoreConnectClient::new(&key_id, &issuer_id, &private_key_pem, &team_id)
                     .context("Failed to initialize App Store Connect API client")?;
             AppleDsClient::ApiKey { team_id, client }
         }

@@ -1,4 +1,5 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
+use super::validation::swift_target_name_from_project_name;
 use crate::config::{
     AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig,
 };
@@ -12,6 +13,8 @@ pub(super) fn generate_config_file(
     lxapp: &LxAppInfo,
     versions: &LingXiaVersions,
 ) -> Result<()> {
+    let swift_target_name = swift_target_name_from_project_name(&config.name);
+
     let platforms = config
         .platforms
         .iter()
@@ -36,7 +39,7 @@ pub(super) fn generate_config_file(
             bundle_id: config.package_id.clone(),
             deployment_target: None,
             swift_version: None,
-            target_name: Some(config.name.clone()),
+            target_name: Some(swift_target_name.clone()),
         })
     } else {
         None
@@ -46,8 +49,8 @@ pub(super) fn generate_config_file(
         Some(MacosConfig {
             bundle_id: Some(config.package_id.clone()),
             deployment_target: None,
-            executable_name: None,
-            target_name: Some(config.name.clone()),
+            executable_name: Some(swift_target_name.clone()),
+            target_name: Some(swift_target_name.clone()),
         })
     } else {
         None

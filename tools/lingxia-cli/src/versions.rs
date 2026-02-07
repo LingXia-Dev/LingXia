@@ -20,17 +20,14 @@ pub struct LingXiaVersions {
 #[serde(rename_all = "camelCase")]
 #[allow(dead_code)]
 struct VersionsJson {
-    latest: String,
-    #[serde(default)]
-    android: Option<String>,
+    android: String,
     #[serde(default)]
     ios: Option<String>,
     #[serde(default)]
     harmony: Option<String>,
-    #[serde(default, rename = "crate")]
-    crate_version: Option<String>,
-    #[serde(default)]
-    rong: Option<String>,
+    #[serde(rename = "crate")]
+    crate_version: String,
+    rong: String,
     #[serde(default)]
     min_cli_version: Option<String>,
 }
@@ -43,11 +40,10 @@ pub fn fetch_latest_versions() -> Result<LingXiaVersions> {
     let json: VersionsJson =
         serde_json::from_str(&content).map_err(|e| anyhow!("Invalid version file format: {e}"))?;
 
-    let latest = json.latest.clone();
     Ok(LingXiaVersions {
-        rong: json.rong.unwrap_or_else(|| latest.clone()),
-        rust_crate: json.crate_version.unwrap_or_else(|| latest.clone()),
-        sdk: json.android.unwrap_or_else(|| latest.clone()),
+        rong: json.rong,
+        rust_crate: json.crate_version,
+        sdk: json.android,
     })
 }
 
@@ -57,8 +53,8 @@ mod tests {
 
     #[test]
     fn test_parse_versions() {
-        let json = r#"{"latest":"0.1.1","android":"0.1.1","ios":"0.1.1","harmony":"0.1.1","crate":"0.1.1","rong":"0.1.1","minCliVersion":"0.0.8"}"#;
+        let json = r#"{"android":"0.1.1","ios":"0.1.1","harmony":"0.1.1","crate":"0.1.1","rong":"0.1.1","minCliVersion":"0.0.8"}"#;
         let versions: VersionsJson = serde_json::from_str(json).unwrap();
-        assert_eq!(versions.latest, "0.1.1");
+        assert_eq!(versions.android, "0.1.1");
     }
 }

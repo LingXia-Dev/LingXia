@@ -326,11 +326,10 @@ fn login_with_password(
 /// Login with App Store Connect API Key
 fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Result<()> {
     println!("{}", "App Store Connect API Key Authentication".bold());
-    let need_key_id = args.key_id.is_none();
-    let need_issuer_id = args.issuer_id.is_none();
-    let need_private_key_path = args.private_key_path.is_none();
-    let need_team_id = args.team_id.is_none();
-    let needs_prompt = need_key_id || need_issuer_id || need_private_key_path || need_team_id;
+    let needs_prompt = args.key_id.is_none()
+        || args.issuer_id.is_none()
+        || args.private_key_path.is_none()
+        || args.team_id.is_none();
 
     if needs_prompt {
         println!();
@@ -338,7 +337,7 @@ fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Res
         println!("  1. Open https://appstoreconnect.apple.com/");
         println!("  2. Go to Users and Access -> Integrations -> App Store Connect API");
         println!("  3. Click '+' to create a new key");
-        println!("  4. Give it a name and select 'Developer' access");
+        println!("  4. Give it a name and select 'App Manager' access (or higher, e.g. Admin)");
         println!("  5. Download the .p8 file (you can only download it once!)");
         println!();
     }
@@ -367,7 +366,7 @@ fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Res
         expand_path(&key_path)
     };
 
-    if need_team_id {
+    if args.team_id.is_none() {
         println!();
         println!("Your Team ID can be found at:");
         println!("  https://developer.apple.com/account -> Membership Details");
@@ -382,14 +381,16 @@ fn login_with_api_key(storage: &CredentialStorage, args: ApiKeyLoginArgs) -> Res
             .interact_text()?
     };
 
-    validate_api_key_credentials(&key_id, &issuer_id, &private_key_path, &team_id)?;
+    let private_key_pem =
+        validate_api_key_credentials(&key_id, &issuer_id, &private_key_path, &team_id)?;
 
     // Save credentials
     let credentials = AuthCredentials::AppStoreConnect {
         key_id: key_id.clone(),
         issuer_id: issuer_id.clone(),
-        private_key_path: private_key_path.to_string_lossy().to_string(),
+        private_key_pem,
         team_id: team_id.clone(),
+        cached_signing_identity: None,
     };
 
     storage.save(&credentials)?;
@@ -408,7 +409,7 @@ fn validate_api_key_credentials(
     issuer_id: &str,
     private_key_path: &std::path::Path,
     team_id: &str,
-) -> Result<()> {
+) -> Result<String> {
     if key_id.len() != 10 {
         return Err(anyhow!(
             "Invalid Key ID format. It should be 10 characters."
@@ -442,7 +443,7 @@ fn validate_api_key_credentials(
         ));
     }
 
-    Ok(())
+    Ok(key_content)
 }
 
 /// Execute Apple logout command.
@@ -544,21 +545,15 @@ pub fn apple_status() -> Result<()> {
 }
 
 pub fn harmony_login() -> Result<()> {
-    Err(anyhow!(
-        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony login'."
-    ))
+    harmony_auth_not_implemented("login")
 }
 
 pub fn harmony_logout() -> Result<()> {
-    Err(anyhow!(
-        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony logout'."
-    ))
+    harmony_auth_not_implemented("logout")
 }
 
 pub fn harmony_status() -> Result<()> {
-    Err(anyhow!(
-        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony status'."
-    ))
+    harmony_auth_not_implemented("status")
 }
 
 /// Fetch developer teams and let the user pick one.
@@ -635,4 +630,10 @@ fn expand_path(path: &str) -> PathBuf {
         return home.join(suffix);
     }
     PathBuf::from(path)
+}
+
+fn harmony_auth_not_implemented(action: &str) -> Result<()> {
+    Err(anyhow!(
+        "Harmony auth is not implemented yet. Planned command is 'lingxia auth harmony {action}'."
+    ))
 }

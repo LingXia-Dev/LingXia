@@ -68,12 +68,23 @@ pub(super) fn gather_native_project_info(
     let platforms = if !platforms.is_empty() {
         normalize_platforms(platforms)?
     } else if yes {
-        vec![Platform::Android, Platform::Ios, Platform::Harmony]
+        vec![
+            Platform::Android,
+            Platform::Ios,
+            Platform::Macos,
+            Platform::Harmony,
+        ]
     } else {
         println!("Use ↑/↓ to move, Space to select, Enter to confirm.");
 
-        let items = vec!["Android", "iOS", "Harmony", "All (Android + iOS + Harmony)"];
-        let defaults = vec![false, false, false, false];
+        let items = vec![
+            "Android",
+            "iOS",
+            "macOS",
+            "Harmony",
+            "All (Android + iOS + macOS + Harmony)",
+        ];
+        let defaults = vec![false, false, false, false, false];
         let selections = MultiSelect::with_theme(&ColorfulTheme::default())
             .with_prompt("Target platforms")
             .items(&items)
@@ -86,21 +97,27 @@ pub(super) fn gather_native_project_info(
             ));
         }
 
-        let has_all = selections.contains(&3);
-        let has_specific = selections.iter().any(|idx| *idx != 3);
+        let has_all = selections.contains(&4);
+        let has_specific = selections.iter().any(|idx| *idx != 4);
 
         if has_all && !has_specific {
-            vec![Platform::Android, Platform::Ios, Platform::Harmony]
+            vec![
+                Platform::Android,
+                Platform::Ios,
+                Platform::Macos,
+                Platform::Harmony,
+            ]
         } else {
             let mut selected = Vec::new();
             for idx in selections {
-                if idx == 3 {
+                if idx == 4 {
                     continue;
                 }
                 let platform = match idx {
                     0 => Platform::Android,
                     1 => Platform::Ios,
-                    2 => Platform::Harmony,
+                    2 => Platform::Macos,
+                    3 => Platform::Harmony,
                     _ => unreachable!(),
                 };
                 if !selected.contains(&platform) {
@@ -187,7 +204,12 @@ pub(super) fn gather_lxapp_framework(yes: bool) -> Result<String> {
 
 fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {
     if input.iter().any(|p| p.eq_ignore_ascii_case("all")) {
-        return Ok(vec![Platform::Android, Platform::Ios, Platform::Harmony]);
+        return Ok(vec![
+            Platform::Android,
+            Platform::Ios,
+            Platform::Macos,
+            Platform::Harmony,
+        ]);
     }
 
     let mut platforms = Vec::new();

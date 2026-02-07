@@ -323,9 +323,9 @@ impl Platform for AndroidPlatform {
         {
             sdk::ensure_sdk(
                 &config.project_root,
-                &rust_lib_name,
                 SdkPlatform::Android,
                 sdk_version,
+                Some(&rust_lib_name),
             )?;
         }
 

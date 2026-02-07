@@ -30,10 +30,13 @@ pub enum AuthCredentials {
         key_id: String,
         /// Issuer ID (e.g., "12345678-1234-1234-1234-123456789012")
         issuer_id: String,
-        /// Path to the private key file (.p8)
-        private_key_path: String,
+        /// Private key content in PKCS#8 PEM format
+        private_key_pem: String,
         /// Selected team ID
         team_id: String,
+        /// Cached signing identity created via App Store Connect API
+        #[serde(default)]
+        cached_signing_identity: Option<CachedSigningIdentity>,
     },
     /// Apple ID authentication (for Xcode Private API - future)
     #[serde(rename = "appleId")]
@@ -49,6 +52,15 @@ pub enum AuthCredentials {
         /// Token expiration time
         expiry: DateTime<Utc>,
     },
+}
+
+/// Cached signing material for App Store Connect API mode.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedSigningIdentity {
+    pub cert_id: String,
+    pub signing_identity: String,
+    pub cert_data_b64: String,
+    pub private_key: String,
 }
 
 impl AuthCredentials {
@@ -110,8 +122,12 @@ impl CredentialStorage {
         let content = fs::read_to_string(&self.credentials_path)
             .with_context(|| format!("Failed to read {}", self.credentials_path.display()))?;
 
-        let credentials: AuthCredentials = serde_json::from_str(&content)
-            .with_context(|| format!("Failed to parse {}", self.credentials_path.display()))?;
+        let credentials: AuthCredentials = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Failed to parse {}. Re-run 'lingxia auth apple login' to refresh credentials.",
+                self.credentials_path.display()
+            )
+        })?;
 
         Ok(Some(credentials))
     }

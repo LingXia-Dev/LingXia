@@ -8,10 +8,26 @@
 
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
-use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const ASC_API_BASE: &str = "https://api.appstoreconnect.apple.com/v1";
+
+#[derive(Clone, Copy)]
+enum HttpMethod {
+    Get,
+    Post,
+    Delete,
+}
+
+impl HttpMethod {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Get => "GET",
+            Self::Post => "POST",
+            Self::Delete => "DELETE",
+        }
+    }
+}
 
 /// App Store Connect API client
 pub struct AppStoreConnectClient {
@@ -25,16 +41,19 @@ impl AppStoreConnectClient {
     pub fn new(
         key_id: &str,
         issuer_id: &str,
-        private_key_path: &str,
+        private_key_pem: &str,
         _team_id: &str,
     ) -> Result<Self> {
-        let private_key = fs::read_to_string(private_key_path)
-            .with_context(|| format!("Failed to read private key from {}", private_key_path))?;
+        if !private_key_pem.contains("BEGIN PRIVATE KEY") {
+            return Err(anyhow!(
+                "Invalid App Store Connect private key. Expected PKCS#8 PEM content."
+            ));
+        }
 
         Ok(Self {
             key_id: key_id.to_string(),
             issuer_id: issuer_id.to_string(),
-            private_key,
+            private_key: private_key_pem.to_string(),
         })
     }
 
@@ -98,19 +117,7 @@ impl AppStoreConnectClient {
 
     /// Make an authenticated GET request to the API
     pub fn get(&self, endpoint: &str) -> Result<serde_json::Value> {
-        let token = self.generate_token()?;
-        let url = format!("{}{}", ASC_API_BASE, endpoint);
-
-        let mut response = ureq::get(&url)
-            .header("Authorization", &format!("Bearer {}", token))
-            .header("Content-Type", "application/json")
-            .call()
-            .with_context(|| format!("API request failed: GET {}", endpoint))?;
-
-        let body_str = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read response body")?;
+        let body_str = self.request(HttpMethod::Get, endpoint, None)?;
         let body: serde_json::Value =
             serde_json::from_str(&body_str).context("Failed to parse JSON response")?;
         Ok(body)
@@ -118,24 +125,73 @@ impl AppStoreConnectClient {
 
     /// Make an authenticated POST request to the API
     pub fn post(&self, endpoint: &str, body: &serde_json::Value) -> Result<serde_json::Value> {
-        let token = self.generate_token()?;
-        let url = format!("{}{}", ASC_API_BASE, endpoint);
-
-        let body_json = serde_json::to_string(body).context("Failed to serialize request body")?;
-
-        let mut response = ureq::post(&url)
-            .header("Authorization", &format!("Bearer {}", token))
-            .header("Content-Type", "application/json")
-            .send(body_json.as_bytes())
-            .with_context(|| format!("API request failed: POST {}", endpoint))?;
-
-        let body_str = response
-            .body_mut()
-            .read_to_string()
-            .context("Failed to read response body")?;
+        let body_str = self.request(HttpMethod::Post, endpoint, Some(body))?;
         let body: serde_json::Value =
             serde_json::from_str(&body_str).context("Failed to parse JSON response")?;
         Ok(body)
+    }
+
+    /// Make an authenticated DELETE request to the API.
+    pub fn delete(&self, endpoint: &str) -> Result<()> {
+        self.request(HttpMethod::Delete, endpoint, None)?;
+        Ok(())
+    }
+
+    fn request(
+        &self,
+        method: HttpMethod,
+        endpoint: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<String> {
+        let token = self.generate_token()?;
+        let url = format!("{}{}", ASC_API_BASE, endpoint);
+        let auth = format!("Bearer {}", token);
+
+        let mut response = match method {
+            HttpMethod::Get => ureq::get(&url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &auth)
+                .header("Content-Type", "application/json")
+                .call(),
+            HttpMethod::Post => {
+                let body_json =
+                    serde_json::to_string(body.context("Missing request body for POST")?)
+                        .context("Failed to serialize request body")?;
+                ureq::post(&url)
+                    .config()
+                    .http_status_as_error(false)
+                    .build()
+                    .header("Authorization", &auth)
+                    .header("Content-Type", "application/json")
+                    .send(body_json.as_bytes())
+            }
+            HttpMethod::Delete => ureq::delete(&url)
+                .config()
+                .http_status_as_error(false)
+                .build()
+                .header("Authorization", &auth)
+                .header("Content-Type", "application/json")
+                .call(),
+        }
+        .with_context(|| format!("API request failed: {} {}", method.as_str(), endpoint))?;
+
+        let status = response.status();
+        let body_str = response.body_mut().read_to_string().unwrap_or_default();
+
+        if !status.is_success() {
+            let detail = format_api_error_detail(&body_str);
+            return Err(anyhow!(
+                "API request failed: {} {} (HTTP {}){}",
+                method.as_str(),
+                endpoint,
+                status.as_u16(),
+                detail
+            ));
+        }
+
+        Ok(body_str)
     }
 
     /// Create a new certificate
@@ -162,6 +218,11 @@ impl AppStoreConnectClient {
     pub fn list_certificates(&self) -> Result<Vec<Certificate>> {
         let response = self.get("/certificates")?;
         parse_data_array(&response)
+    }
+
+    /// Delete a certificate by ID.
+    pub fn delete_certificate(&self, id: &str) -> Result<()> {
+        self.delete(&format!("/certificates/{}", id))
     }
 
     /// List all registered devices
@@ -467,4 +528,54 @@ fn base64_decode(data: &str) -> Result<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(data)
         .context("Failed to decode base64 data")
+}
+
+fn format_api_error_detail(body_str: &str) -> String {
+    let parsed = serde_json::from_str::<serde_json::Value>(body_str).ok();
+    if let Some(v) = parsed
+        && let Some(errors) = v.get("errors").and_then(|e| e.as_array())
+        && let Some(first) = errors.first()
+    {
+        let status = first
+            .get("status")
+            .and_then(|s| s.as_str())
+            .unwrap_or_default();
+        let code = first
+            .get("code")
+            .and_then(|s| s.as_str())
+            .unwrap_or_default();
+        let title = first
+            .get("title")
+            .and_then(|s| s.as_str())
+            .unwrap_or_default();
+        let detail = first
+            .get("detail")
+            .and_then(|s| s.as_str())
+            .unwrap_or_default();
+
+        let mut parts = Vec::new();
+        if !status.is_empty() {
+            parts.push(format!("status={status}"));
+        }
+        if !code.is_empty() {
+            parts.push(format!("code={code}"));
+        }
+        if !title.is_empty() {
+            parts.push(format!("title={title}"));
+        }
+        if !detail.is_empty() {
+            parts.push(format!("detail={detail}"));
+        }
+
+        if !parts.is_empty() {
+            return format!(" [{}]", parts.join(", "));
+        }
+    }
+
+    let compact = body_str.trim().replace('\n', " ");
+    if compact.is_empty() {
+        String::new()
+    } else {
+        format!(" [body={}]", compact)
+    }
 }

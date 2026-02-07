@@ -56,3 +56,40 @@ pub fn validate_package_id(package_id: &str) -> Result<()> {
 
     Ok(())
 }
+
+/// Convert a project name to a SwiftPM-safe target name.
+///
+/// Keeps ASCII alphanumerics and underscores, replaces other characters with
+/// underscores, and prefixes with `_` if it starts with a digit.
+pub fn swift_target_name_from_project_name(project_name: &str) -> String {
+    let mut out = String::with_capacity(project_name.len());
+    let mut last_was_underscore = false;
+
+    for ch in project_name.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() || ch == '_' {
+            ch
+        } else {
+            '_'
+        };
+
+        if mapped == '_' {
+            if !last_was_underscore {
+                out.push('_');
+                last_was_underscore = true;
+            }
+        } else {
+            out.push(mapped);
+            last_was_underscore = false;
+        }
+    }
+
+    if out.is_empty() {
+        out.push_str("App");
+    }
+
+    if out.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        out.insert(0, '_');
+    }
+
+    out
+}

@@ -11,6 +11,7 @@ mod path_completion;
 mod platform;
 pub mod sdk;
 mod versions;
+mod workspace;
 
 #[derive(Parser)]
 #[command(name = "lingxia")]

@@ -7,6 +7,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::IosConfig;
+use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -215,13 +216,12 @@ impl Platform for IosPlatform {
             ios_dir.display()
         );
 
-        // Generate Swift bridge if needed (for development builds)
-        if config.build_native {
-            apple::generate_swift_bridge(&workspace_root, IOS_TARGET)?;
+        if let Some(ref lingxia_config) = config.lingxia_config
+            && let Some(ref app) = lingxia_config.app
+            && let Some(ref sdk_version) = app.sdk_version
+        {
+            sdk::ensure_sdk(&workspace_root, SdkPlatform::Apple, sdk_version, None)?;
         }
-
-        // Prepare SDK resources
-        apple::prepare_sdk_resources(&workspace_root, !config.build_native)?;
 
         // Build Rust static library
         // Note: Use config.project_root for Rust library location (e.g., examples/lingxia-lib)
@@ -317,10 +317,16 @@ impl Platform for IosPlatform {
             return Err(anyhow!("App bundle not found at: {}", app_path.display()));
         }
 
-        // Sign the app before installing
-        apple::provisioning::sign_app(&app_path, config.device_id.as_deref())?;
+        let device_identifier = if let Some(device_id) = config.device_id.as_deref() {
+            device_id.to_string()
+        } else {
+            apple::devicectl::DeviceCtl::wait_for_device(30)?.identifier
+        };
 
-        apple::devicectl::install_app(&app_path, config.device_id.as_deref())
+        // Sign the app before installing
+        apple::provisioning::sign_app(&app_path, Some(&device_identifier))?;
+
+        apple::devicectl::install_app(&app_path, Some(&device_identifier))
     }
 
     fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {

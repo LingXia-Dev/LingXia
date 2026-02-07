@@ -17,7 +17,7 @@ use std::process::Command;
 use tempfile::NamedTempFile;
 
 use super::asc::AppStoreConnectClient;
-use super::auth::{AuthCredentials, CredentialStorage};
+use super::auth::{AuthCredentials, CachedSigningIdentity, CredentialStorage};
 use super::developer_services;
 use super::developer_services::DeveloperServicesClient;
 use super::devicectl::{ConnectedDevice, DeviceCtl};
@@ -265,7 +265,7 @@ impl ProvisioningContext {
 
         // Load credentials
         let creds = self.credentials.load()?.ok_or_else(|| {
-            anyhow!("No Apple credentials found. Run 'lingxia auth login' first.")
+            anyhow!("No Apple credentials found. Run 'lingxia auth apple login' first.")
         })?;
 
         match creds {
@@ -278,13 +278,15 @@ impl ProvisioningContext {
             AuthCredentials::AppStoreConnect {
                 key_id,
                 issuer_id,
-                private_key_path,
+                private_key_pem,
                 team_id,
+                cached_signing_identity,
             } => self.provision_with_asc(
                 &key_id,
                 &issuer_id,
-                &private_key_path,
+                &private_key_pem,
                 &team_id,
+                cached_signing_identity,
                 original_bundle_id,
             ),
         }
@@ -353,11 +355,12 @@ impl ProvisioningContext {
         &self,
         key_id: &str,
         issuer_id: &str,
-        private_key_path: &str,
+        private_key_pem: &str,
         team_id: &str,
+        cached_signing_identity: Option<CachedSigningIdentity>,
         original_bundle_id: &str,
     ) -> Result<ProvisioningResult> {
-        let client = AppStoreConnectClient::new(key_id, issuer_id, private_key_path, team_id)?;
+        let client = AppStoreConnectClient::new(key_id, issuer_id, private_key_pem, team_id)?;
 
         // 1. Register device
         println!("{}", "Step 1/4: Registering device...".cyan());
@@ -366,7 +369,7 @@ impl ProvisioningContext {
         // 2. Ensure certificate
         println!("{}", "Step 2/4: Ensuring certificate...".cyan());
         let (cert_id, signing_identity, identity_material) =
-            self.ensure_certificate_asc(&client)?;
+            self.ensure_certificate_asc(&client, key_id, team_id, cached_signing_identity)?;
 
         // 3. Ensure Bundle ID
         println!("{}", "Step 3/4: Ensuring Bundle ID...".cyan());
@@ -662,15 +665,74 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
     fn ensure_certificate_asc(
         &self,
         client: &AppStoreConnectClient,
+        key_id: &str,
+        team_id: &str,
+        cached_signing_identity: Option<CachedSigningIdentity>,
     ) -> Result<(String, String, Option<IdentityMaterial>)> {
-        // Always create a new certificate for signing
-        // This avoids needing to access the user's keychain
+        if let Some(cached) = cached_signing_identity {
+            if self.validate_cached_api_signing_identity(client, &cached)? {
+                let cert_data = base64_decode(&cached.cert_data_b64)?;
+                println!("  {} Reusing cached signing certificate", "✓".green());
+                return Ok((
+                    cached.cert_id,
+                    cached.signing_identity,
+                    Some(IdentityMaterial {
+                        cert_data,
+                        private_key: cached.private_key,
+                    }),
+                ));
+            }
+
+            println!(
+                "  {} Cached signing certificate is stale, creating a new one...",
+                "!".yellow()
+            );
+            self.update_cached_api_signing_identity(key_id, team_id, None)?;
+        }
+
         println!("  Creating new development certificate...");
         let (csr_content, private_key) = generate_csr("LingXia Development")?;
 
-        let new_cert =
-            client.create_certificate(&csr_content, super::asc::CertificateType::IosDevelopment)?;
+        match self.create_certificate_asc(client, &csr_content, private_key) {
+            Ok(result) => {
+                self.cache_created_api_signing_identity(key_id, team_id, &result)?;
+                println!("  {} Created new certificate", "✓".green());
+                Ok(result)
+            }
+            Err(e) => {
+                if !is_asc_existing_cert_conflict(&e) {
+                    return Err(e);
+                }
 
+                let deleted = self.cleanup_api_generated_dev_certs_asc(client)?;
+                if deleted > 0 {
+                    println!(
+                        "  {} Removed {deleted} API-generated iOS Development certificate(s), retrying...",
+                        "!".yellow()
+                    );
+                    let (retry_csr, retry_key) = generate_csr("LingXia Development")?;
+                    let retry = self.create_certificate_asc(client, &retry_csr, retry_key)?;
+                    self.cache_created_api_signing_identity(key_id, team_id, &retry)?;
+                    println!("  {} Created new certificate", "✓".green());
+                    return Ok(retry);
+                }
+
+                Err(anyhow!(
+                    "Unable to create a new iOS Development certificate because one already exists (or a request is pending), and no reusable cached signing identity is available.\n\
+Tip: Revoke the existing iOS Development certificate in Apple Developer portal, then rerun install once so LingXia can create and cache a signing certificate."
+                ))
+            }
+        }
+    }
+
+    fn create_certificate_asc(
+        &self,
+        client: &AppStoreConnectClient,
+        csr_content: &str,
+        private_key: String,
+    ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        let new_cert =
+            client.create_certificate(csr_content, super::asc::CertificateType::IosDevelopment)?;
         let cert_content = new_cert
             .attributes
             .certificate_content
@@ -680,7 +742,6 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         let cert_data = base64_decode(cert_content)?;
         let sha1 = sha1_hex_upper(&cert_data);
 
-        println!("  {} Created new certificate", "✓".green());
         Ok((
             new_cert.id,
             sha1,
@@ -689,6 +750,113 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
                 private_key,
             }),
         ))
+    }
+
+    fn cache_created_api_signing_identity(
+        &self,
+        key_id: &str,
+        team_id: &str,
+        cert: &(String, String, Option<IdentityMaterial>),
+    ) -> Result<()> {
+        let Some(material) = &cert.2 else {
+            return Ok(());
+        };
+
+        let cache = CachedSigningIdentity {
+            cert_id: cert.0.clone(),
+            signing_identity: cert.1.clone(),
+            cert_data_b64: base64_encode(&material.cert_data),
+            private_key: material.private_key.clone(),
+        };
+        self.update_cached_api_signing_identity(key_id, team_id, Some(cache))
+    }
+
+    fn cleanup_api_generated_dev_certs_asc(&self, client: &AppStoreConnectClient) -> Result<usize> {
+        let certs = client
+            .list_certificates()
+            .context("Failed to list certificates for recovery")?;
+
+        let mut deleted = 0usize;
+        for cert in certs {
+            if cert.attributes.certificate_type.as_deref() != Some("IOS_DEVELOPMENT") {
+                continue;
+            }
+
+            let name = cert.attributes.name.as_deref().unwrap_or_default();
+            let display = cert.attributes.display_name.as_deref().unwrap_or_default();
+            let lower_name = name.to_ascii_lowercase();
+            let lower_display = display.to_ascii_lowercase();
+            let is_api_generated =
+                lower_name.contains("created via api") || lower_display.contains("created via api");
+            if !is_api_generated {
+                continue;
+            }
+
+            if client.delete_certificate(&cert.id).is_ok() {
+                deleted += 1;
+            }
+        }
+
+        Ok(deleted)
+    }
+
+    fn validate_cached_api_signing_identity(
+        &self,
+        client: &AppStoreConnectClient,
+        cache: &CachedSigningIdentity,
+    ) -> Result<bool> {
+        let certs = client
+            .list_certificates()
+            .context("Failed to validate cached certificate against App Store Connect")?;
+
+        let Some(cert) = certs.into_iter().find(|c| c.id == cache.cert_id) else {
+            return Ok(false);
+        };
+
+        if cert.attributes.certificate_type.as_deref() != Some("IOS_DEVELOPMENT") {
+            return Ok(false);
+        }
+
+        if let Some(cert_content) = cert.attributes.certificate_content.as_deref() {
+            let cert_data = base64_decode(cert_content)?;
+            let sha1 = sha1_hex_upper(&cert_data);
+            if sha1 != cache.signing_identity {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    fn update_cached_api_signing_identity(
+        &self,
+        key_id: &str,
+        team_id: &str,
+        cache: Option<CachedSigningIdentity>,
+    ) -> Result<()> {
+        let Some(mut creds) = self.credentials.load()? else {
+            return Ok(());
+        };
+
+        let mut changed = false;
+        if let AuthCredentials::AppStoreConnect {
+            key_id: stored_key_id,
+            team_id: stored_team_id,
+            cached_signing_identity,
+            ..
+        } = &mut creds
+            && stored_key_id == key_id
+            && stored_team_id == team_id
+        {
+            *cached_signing_identity = cache;
+            changed = true;
+        }
+
+        if changed {
+            self.credentials.save(&creds)?;
+        }
+
+        Ok(())
     }
 
     fn ensure_bundle_id_asc(
@@ -704,8 +872,26 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
 
         // Create new
         let name = bundle_id.replace('.', " ");
-        let bundle =
-            client.create_bundle_id(bundle_id, &name, super::asc::BundleIdPlatform::Ios)?;
+        let bundle = match client.create_bundle_id(
+            bundle_id,
+            &name,
+            super::asc::BundleIdPlatform::Ios,
+        ) {
+            Ok(bundle) => bundle,
+            Err(e) => {
+                if is_asc_bundle_id_create_forbidden(&e) {
+                    return Err(anyhow!(
+                        "App Store Connect API key is not allowed to create Bundle IDs.\n\
+The Bundle ID '{bundle_id}' does not exist yet.\n\
+Fix options:\n\
+1) Ask a Team Admin to grant this API key access for Certificates/Identifiers/Profiles operations.\n\
+2) Create Bundle ID '{bundle_id}' manually in Apple Developer portal, then retry.\n\
+3) Use 'lingxia auth apple login -m password' and run install again."
+                    ));
+                }
+                return Err(e);
+            }
+        };
         println!("  {} Created Bundle ID: {}", "✓".green(), bundle_id);
         Ok(bundle)
     }
@@ -771,7 +957,6 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
     let device = if let Some(udid) = device_udid {
         DeviceCtl::get_device(udid)?
     } else {
-        println!("Waiting for device...");
         DeviceCtl::wait_for_device(30)?
     };
 
@@ -840,10 +1025,31 @@ fn base64_decode(data: &str) -> Result<Vec<u8>> {
         .context("Failed to decode base64")
 }
 
+fn base64_encode(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(data)
+}
+
 fn sha1_hex_upper(data: &[u8]) -> String {
     use sha1::Digest;
     let digest = sha1::Sha1::digest(data);
     digest.iter().map(|b| format!("{:02X}", b)).collect()
+}
+
+fn is_asc_existing_cert_conflict(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("POST /certificates")
+        && (msg.contains("HTTP 409")
+            || msg.contains("current iOS Development certificate")
+            || msg.contains("pending certificate request"))
+}
+
+fn is_asc_bundle_id_create_forbidden(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    msg.contains("POST /bundleIds")
+        && (msg.contains("HTTP 403")
+            || msg.contains("FORBIDDEN_ERROR")
+            || msg.contains("not allowed to perform this operation"))
 }
 
 #[cfg(test)]

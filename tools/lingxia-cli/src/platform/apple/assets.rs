@@ -73,7 +73,7 @@ pub fn compile_asset_catalog(
         device_args.push(d);
     }
 
-    let status = Command::new("xcrun")
+    let output = Command::new("xcrun")
         .args(["--sdk", paths.sdk_arg])
         // Avoid inheriting a simulator SDKROOT from parent environment.
         .env_remove("SDKROOT")
@@ -111,18 +111,31 @@ pub fn compile_asset_catalog(
                 .to_str()
                 .context("Invalid UTF-8 in assets_dir path")?,
         ])
-        // Suppress both outputs to hide simulator runtime warnings
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
+        .output()
         .context("Failed to execute xcrun actool")?;
 
-    if !status.success() {
-        anyhow::bail!("Asset catalog compilation failed");
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let details = sanitize_actool_output(&format!("{stdout}\n{stderr}"));
+        if details.is_empty() {
+            anyhow::bail!("Asset catalog compilation failed");
+        }
+        anyhow::bail!("Asset catalog compilation failed: {}", details);
     }
 
     println!("  Compiled asset catalog to Assets.car");
     Ok(())
+}
+
+fn sanitize_actool_output(raw: &str) -> String {
+    raw.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .take(8)
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 pub fn merge_assetcatalog_plist_with_platform(
