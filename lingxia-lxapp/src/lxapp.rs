@@ -55,6 +55,7 @@ const DEFAULT_VERSION: &str = "0.0.1";
 
 const LXAPP_STACK_MAX: usize = 5;
 const PAGE_STACK_MAX: usize = 10;
+const VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Development path override for home lxapp (macOS only)
 #[cfg(target_os = "macos")]
@@ -492,6 +493,10 @@ impl LxApp {
             let state = self.state.lock().unwrap();
             state.pages.lock().unwrap().keys().cloned().collect()
         };
+        crate::appservice::view_call::cancel_view_calls_for_pages(
+            &page_paths,
+            "Page removed while waiting for view response",
+        );
 
         // Break Page <-> WebView links early and detach WebViews, then drop pages by clearing the map
         if let Ok(state) = self.state.lock() {
@@ -1371,6 +1376,11 @@ impl LxApp {
 
     /// Remove specific pages from the page map and terminate their PageSvc.
     pub(crate) fn remove_pages(&self, paths: &[String]) {
+        crate::appservice::view_call::cancel_view_calls_for_pages(
+            paths,
+            "Page removed while waiting for view response",
+        );
+
         let lxapp = self.clone_arc();
         for path in paths {
             let _ = self
@@ -1439,6 +1449,48 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> Stri
 }
 
 impl LxApp {
+    /// Send a request to the current page's WebView and await the response.
+    ///
+    /// Used for Logic→View RPC calls (e.g. rendering action sheets via DOM).
+    pub async fn call_current_page_view(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, LxAppError> {
+        let path = self
+            .peek_current_page()
+            .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
+        let page = self
+            .get_page(&path)
+            .ok_or_else(|| LxAppError::WebView(format!("Page not found: {}", path)))?;
+
+        let pending = crate::appservice::view_call::call_view(&page, method, params)?;
+
+        match time::timeout(VIEW_CALL_TIMEOUT, pending.rx).await {
+            Ok(Ok(result)) => result.map_err(|rpc_err| {
+                LxAppError::Bridge(format!(
+                    "{}: {}",
+                    rpc_err.code,
+                    rpc_err.message.unwrap_or_default()
+                ))
+            }),
+            Ok(Err(_)) => Err(LxAppError::ChannelError(
+                "View call channel closed".to_string(),
+            )),
+            Err(_) => {
+                crate::appservice::view_call::cancel_view_call(
+                    &pending.id,
+                    Some(format!("View call timed out after {:?}", VIEW_CALL_TIMEOUT)),
+                );
+                Err(LxAppError::Bridge(format!(
+                    "{}: View call timed out after {:?}",
+                    crate::appservice::bridge::BRIDGE_TIMEOUT,
+                    VIEW_CALL_TIMEOUT
+                )))
+            }
+        }
+    }
+
     /// Notify the AppService (logic.js layer) with a built-in event and optional JSON payload.
     pub fn appservice_notify(
         &self,

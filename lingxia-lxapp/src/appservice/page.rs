@@ -309,6 +309,10 @@ impl MessageHandler for PageSvc {
         self.page.bridge_nonce()
     }
 
+    fn bridge_page_path(&self) -> Option<String> {
+        Some(self.page.path())
+    }
+
     fn is_cap_allowed(&self, _cap: &str) -> bool {
         // Capability control is delegated to host app, not lxapp config.
         // Host app should handle permission checks in its HostHandler implementations.

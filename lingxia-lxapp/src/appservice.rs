@@ -21,6 +21,8 @@ pub mod bridge;
 
 pub(crate) mod bridge_events;
 
+pub(crate) mod view_call;
+
 mod page;
 use crate::event::PageServiceEvent;
 pub use page::PageSvc;

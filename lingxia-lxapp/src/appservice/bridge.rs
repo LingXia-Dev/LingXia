@@ -53,6 +53,9 @@ pub(crate) trait MessageHandler {
     fn expected_bridge_nonce(&self) -> Option<String> {
         None
     }
+    fn bridge_page_path(&self) -> Option<String> {
+        None
+    }
     fn is_cap_allowed(&self, cap: &str) -> bool;
     async fn handle_state_ack(&self, scope: Option<String>, rev: u64);
 }
@@ -119,6 +122,23 @@ pub(crate) struct StateAckMsg {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub(crate) struct ResMsg {
+    #[allow(dead_code)]
+    pub v: u8,
+    pub id: String,
+    #[serde(default)]
+    pub ok: bool,
+    pub result: Option<Value>,
+    pub error: Option<ResError>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct ResError {
+    pub code: String,
+    pub message: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct UnknownMsg {
     pub v: Option<u8>,
     pub kind: Option<String>,
@@ -130,6 +150,7 @@ pub(crate) struct UnknownMsg {
 pub enum IncomingMessage {
     Hello(HelloMsg),
     Req(ReqMsg),
+    Res(ResMsg),
     Notify(NotifyMsg),
     Cancel(CancelMsg),
     StateAck(StateAckMsg),
@@ -168,6 +189,7 @@ impl IncomingMessage {
         match kind_str {
             "hello" => serde_json::from_value::<HelloMsg>(raw.clone()).map(IncomingMessage::Hello),
             "req" => serde_json::from_value::<ReqMsg>(raw.clone()).map(IncomingMessage::Req),
+            "res" => serde_json::from_value::<ResMsg>(raw.clone()).map(IncomingMessage::Res),
             "notify" => {
                 serde_json::from_value::<NotifyMsg>(raw.clone()).map(IncomingMessage::Notify)
             }
@@ -282,7 +304,7 @@ impl Bridge {
 
     // NOTE: Caller-provided `cap` MUST NOT be trusted for security. We infer the required
     // capability from `method` and only use `cap` for consistency validation.
-    fn required_cap_for_method(method: &str) -> String {
+    pub(crate) fn required_cap_for_method(method: &str) -> String {
         if method.starts_with("host.") {
             return "host".to_string();
         }
@@ -617,6 +639,26 @@ impl Bridge {
                         }
                     }
                 });
+                return Ok(());
+            }
+            IncomingMessage::Res(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                // Response from View to a Logic→View request (view_call)
+                let result = if msg.ok {
+                    Ok(msg.result.clone().unwrap_or(Value::Null))
+                } else {
+                    let err = msg.error.as_ref();
+                    Err(RpcError {
+                        code: err
+                            .map(|e| e.code.clone())
+                            .unwrap_or_else(|| BRIDGE_INTERNAL_ERROR.to_string()),
+                        message: err.and_then(|e| e.message.clone()),
+                    })
+                };
+                let page_path = handler.bridge_page_path();
+                super::view_call::resolve_view_call(&msg.id, page_path.as_deref(), result);
                 return Ok(());
             }
             IncomingMessage::Notify(msg) => {
