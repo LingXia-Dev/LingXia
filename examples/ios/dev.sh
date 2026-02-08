@@ -43,8 +43,9 @@ fi
 echo "[1/4] Preparing iOS SDK resources..."
 # For dev: generate Resources/icons/runtime assets via the unified SDK script.
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
-  --platform ios \
-  --ios-no-zip \
+  --platform apple \
+  --web-runtime-target mobile \
+  --apple-no-zip \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
 

@@ -42,8 +42,9 @@ fi
 
 echo "[0/4] Preparing macOS SDK resources..."
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
-    --platform ios \
-    --ios-no-zip \
+    --platform apple \
+    --web-runtime-target desktop \
+    --apple-no-zip \
     --no-shasums \
     --out "$LINGXIA_ROOT/target/sdk-dev"
 

@@ -20,6 +20,7 @@ Options:
   --android-maven-dir <dir>     Android: publish to this local Maven repo dir (default: <out>/android/maven)
   --android-no-zip              Android: do not create the release maven zip (useful for local dev)
   --apple-no-zip                Apple: do not create the source zip (useful for local dev)
+  --web-runtime-target <target> Web runtime target for Apple assets: desktop|mobile (default: mobile)
   --gh-upload                   Upload generated artifacts to GitHub Release via gh CLI
   --gh-tag <tag>                GitHub release tag (default: sdk-v<version>)
   -h, --help                    Show help
@@ -50,6 +51,7 @@ ANDROID_ES5=false
 ANDROID_MAVEN_DIR=""
 ANDROID_ZIP=true
 APPLE_ZIP=true
+WEB_RUNTIME_TARGET="mobile"
 ANDROID_VERSION=""
 HARMONY_OHM_DIR=""
 GH_UPLOAD=false
@@ -66,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --android-maven-dir) ANDROID_MAVEN_DIR="${2:-}"; shift 2 ;;
     --android-no-zip) ANDROID_ZIP=false; shift 1 ;;
     --apple-no-zip) APPLE_ZIP=false; shift 1 ;;
+    --web-runtime-target) WEB_RUNTIME_TARGET="${2:-}"; shift 2 ;;
     --gh-upload) GH_UPLOAD=true; shift 1 ;;
     --gh-tag) GH_TAG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -121,7 +124,10 @@ esac
 
 I18N_DIR="$ROOT_DIR/i18n"
 ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
-WEB_RUNTIME_DIST="$ROOT_DIR/lingxia-web-runtime/dist"
+WEB_RUNTIME_BUILD_DIR="$ROOT_DIR/target/web-runtime-dist"
+WEB_RUNTIME_DESKTOP_DIST="$WEB_RUNTIME_BUILD_DIR/desktop"
+WEB_RUNTIME_MOBILE_DIST="$WEB_RUNTIME_BUILD_DIR/mobile"
+APPLE_WEB_RUNTIME_INPUT=""
 
 ANDROID_SDK_DIR="$ROOT_DIR/lingxia-sdk/android"
 ANDROID_RES_DIR="$ANDROID_SDK_DIR/lingxia/src/main/res"
@@ -153,12 +159,44 @@ build_web_runtime() {
   [[ -f "$web_dir/package.json" ]] || die "Missing lingxia-web-runtime/package.json: $web_dir/package.json"
   [[ -d "$web_dir/node_modules" ]] || die "Missing $web_dir/node_modules. Run: (cd lingxia-web-runtime && npm ci)"
 
-  if $ANDROID_ES5; then
-    log "==> Building web runtime (Android ES5)"
-    (cd "$web_dir" && npm run build:es5 1>&2)
-  else
-    log "==> Building web runtime (modern)"
-    (cd "$web_dir" && npm run build 1>&2)
+  build_runtime_variant() {
+    local target="$1"
+    local build_script="$2"
+    local out_dir="$3"
+
+    log "==> Building web runtime ($target, script=$build_script)"
+    (cd "$web_dir" && LX_RUNTIME_PLATFORM="$target" npm run "$build_script" 1>&2)
+
+    rm -rf "$out_dir" 2>/dev/null || true
+    mkdir -p "$out_dir"
+    cp -R "$web_dir/dist/." "$out_dir/"
+    [[ -f "$out_dir/runtime.js" ]] || die "Web runtime build missing runtime.js for $target: $out_dir/runtime.js"
+  }
+
+  rm -rf "$WEB_RUNTIME_BUILD_DIR" 2>/dev/null || true
+  mkdir -p "$WEB_RUNTIME_BUILD_DIR"
+
+  if $WANT_APPLE; then
+    case "$WEB_RUNTIME_TARGET" in
+      desktop)
+        build_runtime_variant "desktop" "build" "$WEB_RUNTIME_DESKTOP_DIST"
+        APPLE_WEB_RUNTIME_INPUT="$WEB_RUNTIME_DESKTOP_DIST"
+        ;;
+      mobile)
+        build_runtime_variant "mobile" "build" "$WEB_RUNTIME_MOBILE_DIST"
+        APPLE_WEB_RUNTIME_INPUT="$WEB_RUNTIME_MOBILE_DIST"
+        ;;
+      *)
+        die "Unknown --web-runtime-target: $WEB_RUNTIME_TARGET (expected desktop, mobile)"
+        ;;
+    esac
+  fi
+  if $WANT_ANDROID || $WANT_HARMONY; then
+    if $ANDROID_ES5; then
+      build_runtime_variant "mobile" "build:es5" "$WEB_RUNTIME_MOBILE_DIST"
+    else
+      build_runtime_variant "mobile" "build" "$WEB_RUNTIME_MOBILE_DIST"
+    fi
   fi
 }
 
@@ -249,30 +287,47 @@ generate_resources() {
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
   local i18n_args=(cargo run -p lingxia-gen -- i18n --input "$I18N_DIR")
-  local assets_args=(cargo run -p lingxia-gen -- assets --runtime-input "$WEB_RUNTIME_DIST")
   local icons_args=(cargo run -p lingxia-gen -- icons --input "$ICONS_SVG_DIR")
 
   if $WANT_ANDROID; then
     i18n_args+=(--android-out "$ANDROID_RES_DIR")
-    assets_args+=(--android-out "$ANDROID_ASSETS_OUT")
     icons_args+=(--android-out "$ANDROID_DRAWABLE_DIR")
   fi
 
   if $WANT_APPLE; then
     i18n_args+=(--ios-out "$APPLE_RES_DIR")
-    assets_args+=(--ios-out "$APPLE_RES_DIR")
     icons_args+=(--ios-out "$APPLE_ICONS_DIR")
   fi
 
   if $WANT_HARMONY; then
     i18n_args+=(--harmony-out "$HARMONY_RES_DIR")
-    assets_args+=(--harmony-out "$HARMONY_RAWFILE_DIR")
     icons_args+=(--harmony-out "$HARMONY_ICONS_DIR")
   fi
 
   run "${i18n_args[@]}"
-  run "${assets_args[@]}"
   run "${icons_args[@]}"
+
+  if $WANT_ANDROID; then
+    [[ -d "$WEB_RUNTIME_MOBILE_DIST" ]] || die "Missing mobile web runtime build dir: $WEB_RUNTIME_MOBILE_DIST"
+    run cargo run -p lingxia-gen -- assets \
+      --runtime-input "$WEB_RUNTIME_MOBILE_DIST" \
+      --android-out "$ANDROID_ASSETS_OUT"
+  fi
+
+  if $WANT_APPLE; then
+    [[ -n "$APPLE_WEB_RUNTIME_INPUT" ]] || die "Apple runtime input is not set"
+    [[ -d "$APPLE_WEB_RUNTIME_INPUT" ]] || die "Missing Apple web runtime build dir: $APPLE_WEB_RUNTIME_INPUT"
+    run cargo run -p lingxia-gen -- assets \
+      --runtime-input "$APPLE_WEB_RUNTIME_INPUT" \
+      --ios-out "$APPLE_RES_DIR"
+  fi
+
+  if $WANT_HARMONY; then
+    [[ -d "$WEB_RUNTIME_MOBILE_DIST" ]] || die "Missing mobile web runtime build dir: $WEB_RUNTIME_MOBILE_DIST"
+    run cargo run -p lingxia-gen -- assets \
+      --runtime-input "$WEB_RUNTIME_MOBILE_DIST" \
+      --harmony-out "$HARMONY_RAWFILE_DIR"
+  fi
 }
 
 ensure_android_webview_jar() {
@@ -465,8 +520,14 @@ build_ios_source() {
 
 main() {
   if $ANDROID_ES5 && ( $WANT_APPLE || $WANT_HARMONY ); then
-    die "--android-es5 can only be used with --platform android (no directory split for web runtime dist/)"
+    die "--android-es5 can only be used with --platform android"
   fi
+
+  WEB_RUNTIME_TARGET="$(echo "$WEB_RUNTIME_TARGET" | tr '[:upper:]' '[:lower:]' | xargs)"
+  case "$WEB_RUNTIME_TARGET" in
+    desktop|mobile) ;;
+    *) die "Unknown --web-runtime-target: $WEB_RUNTIME_TARGET (expected desktop, mobile)" ;;
+  esac
 
   ANDROID_VERSION="$VERSION"
   if $ANDROID_ES5 && [[ "$ANDROID_VERSION" != *-es5 ]]; then
