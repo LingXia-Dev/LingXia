@@ -5,8 +5,6 @@ import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
 #endif
 
 public class LxAppActionSheet {
@@ -28,17 +26,15 @@ public class LxAppActionSheet {
     }
 
     public static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
+        #if os(iOS)
         let optionsArray = options["options"] as? [String] ?? []
         let cancelText = options["cancelText"] as? String ?? ""
         let itemColor = options["itemColor"] as? String ?? "#007AFF"
 
         DispatchQueue.main.async {
-            #if os(macOS)
-            showMacOSActionSheet(options: optionsArray, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
-            #else
             showIOSActionSheet(options: optionsArray, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
-            #endif
         }
+        #endif
     }
 
     internal static func sendResult(callback_id: UInt64, tapIndex: Int) {
@@ -52,23 +48,6 @@ public class LxAppActionSheet {
             _ = onCallback(callback_id, true, jsonString)
         }
     }
-
-    #if os(macOS)
-    @MainActor
-    private static func showMacOSActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) {
-        let alert = NSAlert()
-        alert.messageText = ""
-
-        for option in options {
-            alert.addButton(withTitle: option)
-        }
-        alert.addButton(withTitle: cancelText)
-
-        let response = alert.runModal()
-        let buttonIndex = response.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        sendResult(callback_id: callback_id, tapIndex: buttonIndex < options.count ? buttonIndex : -1)
-    }
-    #endif
 
     #if os(iOS)
     @MainActor

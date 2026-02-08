@@ -1,5 +1,7 @@
 use crate::{I18nKey, i18n::t};
+#[cfg(not(target_os = "macos"))]
 use lingxia_messaging::{CallbackResult, get_callback};
+#[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
@@ -31,21 +33,7 @@ async fn show_action_sheet(
         item_list,
         item_color,
     } = options;
-
-    if item_list.is_empty() {
-        return Err(HostError::new(rong::error::E_INTERNAL, "itemList cannot be empty").into());
-    }
-
     let lxapp = LxApp::from_ctx(&ctx)?;
-
-    // Do not show UI if app is not opened
-    if !lxapp.is_opened() {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            "LxApp is closed; actionSheet suppressed",
-        )
-        .into());
-    }
 
     let selected_index = present_action_sheet(&lxapp, item_list, None, item_color).await?;
     let tap_index = selected_index.map(|idx| idx as i32).unwrap_or(-1);
@@ -74,6 +62,66 @@ pub(crate) async fn present_action_sheet(
     let item_color = item_color.unwrap_or_else(|| "#007AFF".to_string());
     let item_len = item_list.len();
 
+    #[cfg(target_os = "macos")]
+    {
+        return present_action_sheet_webview(lxapp, item_list, cancel_text, item_color, item_len)
+            .await;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        present_action_sheet_native(lxapp, item_list, cancel_text, item_color, item_len).await
+    }
+}
+
+/// macOS: render action sheet inside the WebView via Logic→View RPC.
+#[cfg(target_os = "macos")]
+async fn present_action_sheet_webview(
+    lxapp: &Arc<LxApp>,
+    item_list: Vec<String>,
+    cancel_text: String,
+    item_color: String,
+    item_len: usize,
+) -> Result<Option<usize>, RongJSError> {
+    let params = serde_json::json!({
+        "itemList": item_list,
+        "cancelText": cancel_text,
+        "itemColor": item_color,
+    });
+
+    let result = lxapp
+        .call_current_page_view("ui.showActionSheet", Some(params))
+        .await
+        .map_err(|e| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("WebView action sheet failed: {}", e),
+            )
+        })?;
+
+    let index = result.get("tapIndex").and_then(Value::as_i64).unwrap_or(-1);
+
+    if index < 0 {
+        return Ok(None);
+    }
+
+    let idx = index as usize;
+    if idx >= item_len {
+        return Ok(None);
+    }
+
+    Ok(Some(idx))
+}
+
+/// Non-macOS: show action sheet via native platform UI.
+#[cfg(not(target_os = "macos"))]
+async fn present_action_sheet_native(
+    lxapp: &Arc<LxApp>,
+    item_list: Vec<String>,
+    cancel_text: String,
+    item_color: String,
+    item_len: usize,
+) -> Result<Option<usize>, RongJSError> {
     let (callback_id, receiver) = get_callback();
 
     lxapp
