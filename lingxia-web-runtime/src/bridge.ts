@@ -1,5 +1,4 @@
 import type {
-  BridgeConfig,
   CallOptions,
   DataSubscriber,
   LingXiaBridgeInterface,
@@ -12,6 +11,14 @@ import type {
 } from './types';
 import { BRIDGE_ERROR } from './types';
 import { installNativeComponentCoverageMonitor } from './nativecomponents/coverage-monitor';
+import {
+  BRIDGE_CONFIG,
+  getCommunicationMethod,
+  getPlatformOS,
+  isAndroid,
+  isHarmony,
+  isIOS,
+} from './runtime-env';
 
 const NATIVE_HANDLER_NAME = 'LingXia';
 const GLOBAL_RECEIVER_NAME = '__LingXiaRecvMessage';
@@ -53,24 +60,7 @@ function deepCopy<T>(data: T): T {
   }
 }
 
-const BRIDGE_CONFIG: BridgeConfig =
-  (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
-
-const communicationMethod = ((): string => {
-  const config = (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
-  if (config.os === 'iOS' || config.os === 'macOS') return 'webkit';
-  if (config.os === 'Harmony') return MESSAGE_PORT_TYPE;
-  if (config.os === 'Android') {
-    if (window.LingXiaProxy?.supportsMessagePort?.()) return MESSAGE_PORT_TYPE;
-    return JS_INTERFACE_TYPE;
-  }
-  return 'unknown';
-})();
-
-function isHarmony(): boolean { return BRIDGE_CONFIG.os === 'Harmony'; }
-function isIOS(): boolean { return BRIDGE_CONFIG.os === 'iOS'; }
-function isAndroid(): boolean { return BRIDGE_CONFIG.os === 'Android'; }
-function getPlatformOS(): string { return BRIDGE_CONFIG.os || 'unknown'; }
+const communicationMethod = getCommunicationMethod();
 
 // Transport
 let messagePort: MessagePort | null = null;
@@ -162,7 +152,7 @@ type StateSnapshot = { v: 2; kind: 'state.snapshot'; scope?: string; rev: number
 type JsonPatchOp = { op: 'add'; path: string; value: unknown } | { op: 'replace'; path: string; value: unknown } | { op: 'remove'; path: string };
 type StatePatch = { v: 2; kind: 'state.patch'; scope?: string; baseRev: number; rev: number; ops: JsonPatchOp[]; ack?: boolean };
 type StateAck = { v: 2; kind: 'state.ack'; scope?: string; rev: number };
-type Incoming = HelloAck | Ready | Res | StateSnapshot | StatePatch;
+type Incoming = HelloAck | Ready | Res | Req | StateSnapshot | StatePatch;
 
 // Handshake state
 let handshakeSessionId: string | null = null;
@@ -191,6 +181,16 @@ let stateRev = -1;
 let pageData: Record<string, unknown> = {};
 const dataSubscribers = new Set<DataSubscriber>();
 const subscriberInitStatus = new WeakMap<DataSubscriber, boolean>();
+
+// Logic→View method handlers (for incoming req from native side)
+const viewMethodHandlers = new Map<string, (params: unknown) => unknown | Promise<unknown>>();
+
+export function registerViewMethodHandler(
+  method: string,
+  handler: (params: unknown) => unknown | Promise<unknown>,
+): void {
+  viewMethodHandlers.set(method, handler);
+}
 
 function inferCap(method: string): string {
   if (method.startsWith('host.')) return 'host';
@@ -491,6 +491,30 @@ function handleIncomingMessage(msg: unknown): void {
       notifyStateSubscribers(false);
       if (message.ack) send({ v: 2, kind: 'state.ack', scope: message.scope, rev: message.rev } as StateAck);
       return;
+
+    case 'req': {
+      const reqMsg = message as Req;
+      const requiredCap = inferCap(reqMsg.method);
+      if (!reqMsg.cap || reqMsg.cap !== requiredCap) {
+        send({ v: 2, kind: 'res', id: reqMsg.id, ok: false, error: { code: BRIDGE_ERROR.CAPABILITY_DENIED, message: `Invalid cap for ${reqMsg.method}` } } as Res);
+        return;
+      }
+      const handler = viewMethodHandlers.get(reqMsg.method);
+      if (!handler) {
+        send({ v: 2, kind: 'res', id: reqMsg.id, ok: false, error: { code: BRIDGE_ERROR.METHOD_NOT_FOUND, message: `View handler not found: ${reqMsg.method}` } } as Res);
+        return;
+      }
+      Promise.resolve()
+        .then(() => handler(reqMsg.params))
+        .then((result) => {
+          send({ v: 2, kind: 'res', id: reqMsg.id, ok: true, result } as Res);
+        })
+        .catch((err) => {
+          const errObj = err && typeof err === 'object' ? err : {};
+          send({ v: 2, kind: 'res', id: reqMsg.id, ok: false, error: { code: errObj.code || BRIDGE_ERROR.INTERNAL_ERROR, message: errObj.message || String(err) } } as Res);
+        });
+      return;
+    }
   }
 }
 

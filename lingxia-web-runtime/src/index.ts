@@ -20,5 +20,12 @@ export { boot, bootWhenReady } from './boot';
 
 import { bootWhenReady } from './boot';
 import { setupImageProxy } from './image-proxy';
+import { registerUIHandlers } from './ui';
+
+declare const __LX_RUNTIME_PLATFORM__: 'all' | 'desktop' | 'mobile';
+
+if (__LX_RUNTIME_PLATFORM__ === 'all' || __LX_RUNTIME_PLATFORM__ === 'desktop') {
+  registerUIHandlers();
+}
 setupImageProxy();
 bootWhenReady();

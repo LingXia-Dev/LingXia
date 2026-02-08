@@ -1,3 +1,5 @@
+import { getPlatformOS } from './runtime-env';
+
 const PROXY_PREFIX = 'lx://proxy/';
 
 function shouldProxyImageUrl(trimmed: string): boolean {
@@ -28,7 +30,7 @@ function proxyImageUrl(url: string): string {
 }
 
 export function setupImageProxy(): void {
-  const os = typeof window !== 'undefined' ? window.__LX_BRIDGE_CFG?.os : undefined;
+  const os = getPlatformOS();
   if (os !== 'iOS' && os !== 'macOS') return;
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   if (typeof HTMLImageElement === 'undefined') return;
