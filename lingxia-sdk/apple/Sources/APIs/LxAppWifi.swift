@@ -41,15 +41,17 @@ public class LxAppWifi {
      * On iOS/macOS, no explicit initialization is needed
      */
     nonisolated public static func startWifi(callback_id: UInt64) {
-        #if os(iOS)
-        // Request location permission (required for WiFi info on iOS 13+)
+        #if os(iOS) || os(macOS)
+        // Request location permission (required for WiFi info on Apple platforms)
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
-                if granted {
-                    os_log("WiFi module initialized with location permission", log: log, type: .info)
-                } else {
-                    os_log("WiFi module initialized without location permission - WiFi info will be limited", log: log, type: .error)
+                guard granted else {
+                    os_log("WiFi module initialization denied due to missing location permission", log: log, type: .info)
+                    let _ = onCallback(callback_id, false, "12006") // Permission denied
+                    return
                 }
+
+                os_log("WiFi module initialized with location permission", log: log, type: .info)
                 let _ = onCallback(callback_id, true, "{}")
             }
         }
@@ -75,15 +77,16 @@ public class LxAppWifi {
     nonisolated public static func addWifiStateListener(callback_id: UInt64) {
         os_log("addWifiStateListener: callbackId=%llu", log: log, type: .info, callback_id)
 
-        #if os(iOS)
+        #if os(iOS) || os(macOS)
         // Check location permission (should already be granted by startWifi)
         // This is a defensive check - permission should have been requested during startWifi
         Task { @MainActor in
             PermissionManager.ensureLocationWhenInUseAccess { granted in
-                if !granted {
-                    os_log("Location permission not granted - WiFi info will be limited (call startWifi first)", log: log, type: .error)
+                guard granted else {
+                    os_log("Location permission not granted - skip WiFi listener registration", log: log, type: .info)
+                    return
                 }
-                // Register listener regardless of permission (defensive programming)
+
                 registerWifiStateListener(callback_id)
             }
         }
@@ -397,50 +400,60 @@ public class LxAppWifi {
                     }
                 }
 
-                // No connected WiFi found
-                os_log("No WiFi connected or permission denied", log: log, type: .error)
+                // No connected WiFi found (or insufficient entitlement on iOS)
+                os_log("No WiFi connected or permission denied", log: log, type: .info)
                 let _ = onCallback(callback_id, false, "12001") // System error
             }
         }
         #elseif os(macOS)
-        let client = CWWiFiClient.shared()
+        Task { @MainActor in
+            PermissionManager.ensureLocationWhenInUseAccess { granted in
+                guard granted else {
+                    os_log("Location permission denied on macOS", log: log, type: .info)
+                    let _ = onCallback(callback_id, false, "12006") // Permission denied
+                    return
+                }
 
-        guard let interface = client.interface() else {
-            os_log("No WiFi interface available", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // System error
-            return
-        }
+                let client = CWWiFiClient.shared()
 
-        guard let ssid = interface.ssid(), !ssid.isEmpty else {
-            os_log("No WiFi connected", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // Not connected
-            return
-        }
+                guard let interface = client.interface() else {
+                    os_log("No WiFi interface available", log: log, type: .error)
+                    let _ = onCallback(callback_id, false, "12001") // System error
+                    return
+                }
 
-        var result: [String: Any] = [
-            "ssid": ssid
-        ]
+                guard let ssid = interface.ssid(), !ssid.isEmpty else {
+                    os_log("No WiFi connected", log: log, type: .info)
+                    let _ = onCallback(callback_id, false, "12001") // Not connected
+                    return
+                }
 
-        if let bssid = interface.bssid() {
-            result["bssid"] = bssid
-        }
+                var result: [String: Any] = [
+                    "ssid": ssid
+                ]
 
-        // Get security type
-        let secure = interface.security() != .none
-        result["secure"] = secure
+                if let bssid = interface.bssid() {
+                    result["bssid"] = bssid
+                }
 
-        // Convert RSSI to signal strength (0-100)
-        let signalStrength = rssiToStrength(interface.rssiValue())
-        result["signalStrength"] = max(0, min(100, signalStrength))
+                // Get security type
+                let secure = interface.security() != .none
+                result["secure"] = secure
 
-        // Serialize to JSON
-        if let jsonData = try? JSONSerialization.data(withJSONObject: result, options: []),
-           let jsonString = String(data: jsonData, encoding: .utf8) {
-            os_log("Connected WiFi: %{public}@", log: log, type: .info, ssid)
-            let _ = onCallback(callback_id, true, jsonString)
-        } else {
-            os_log("Failed to serialize WiFi info", log: log, type: .error)
-            let _ = onCallback(callback_id, false, "12001") // System error
+                // Convert RSSI to signal strength (0-100)
+                let signalStrength = rssiToStrength(interface.rssiValue())
+                result["signalStrength"] = max(0, min(100, signalStrength))
+
+                // Serialize to JSON
+                if let jsonData = try? JSONSerialization.data(withJSONObject: result, options: []),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    os_log("Connected WiFi: %{public}@", log: log, type: .info, ssid)
+                    let _ = onCallback(callback_id, true, jsonString)
+                } else {
+                    os_log("Failed to serialize WiFi info", log: log, type: .error)
+                    let _ = onCallback(callback_id, false, "12001") // System error
+                }
+            }
         }
         #endif
     }
