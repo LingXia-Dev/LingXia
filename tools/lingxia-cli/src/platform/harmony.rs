@@ -7,10 +7,22 @@ mod deploy;
 mod doctor;
 mod project;
 
+mod agc;
+mod auth_api;
+mod credentials;
+pub mod keygen;
+pub mod provisioning;
+pub mod signer;
+
+pub use agc::{AgcApiCredentials, AgcConnectClient, AgcToken};
+pub use auth_api::HarmonyAuthService;
+pub use credentials::AgcCredentialStorage;
 pub use doctor::doctor_checks;
 pub use project::{
     generate_icons, read_bundle_name, resolve_harmony_dir, resolve_harmony_rawfile_dir,
 };
+pub use provisioning::{ProvisioningManager, SigningMode};
+pub use signer::{HarmonySigner, SigningConfig};
 
 pub(crate) const OHOS_TARGET: &str = "aarch64-unknown-linux-ohos";
 const DEFAULT_ABILITY_NAME: &str = "EntryAbility";

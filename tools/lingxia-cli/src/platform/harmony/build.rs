@@ -54,7 +54,7 @@ impl HarmonyPlatform {
         }
 
         self.ohpm_install(harmony_dir)?;
-        let hap_path = self.build_hap(harmony_dir)?;
+        let hap_path = self.build_hap(harmony_dir, config)?;
 
         Ok(BuildArtifacts::Harmony { hap_path })
     }
@@ -202,7 +202,7 @@ impl HarmonyPlatform {
         Ok(())
     }
 
-    fn build_hap(&self, harmony_dir: &Path) -> Result<PathBuf> {
+    fn build_hap(&self, harmony_dir: &Path, config: &BuildConfig) -> Result<PathBuf> {
         println!("{}", "Building HAP...".cyan());
         ensure_command("hvigorw")?;
 
@@ -216,24 +216,38 @@ impl HarmonyPlatform {
             return Err(anyhow!("hvigorw assembleHap failed"));
         }
 
-        let signed =
-            harmony_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
-        if signed.exists() {
-            println!("  {} HAP built successfully", "✓".green());
-            return Ok(signed);
-        }
-
         let unsigned =
             harmony_dir.join("entry/build/default/outputs/default/entry-default-unsigned.hap");
         if unsigned.exists() {
             println!("  {} HAP built (unsigned)", "✓".green());
+
+            if config.sign {
+                return self.sign_hap_after_build(unsigned, &config.project_root, config.profile);
+            }
+
             return Ok(unsigned);
+        }
+
+        let signed =
+            harmony_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
+        if signed.exists() {
+            println!("  {} HAP built (pre-signed by build tool)", "✓".green());
+            return Ok(signed);
         }
 
         Err(anyhow!(
             "HAP not found after build. Expected at: {}",
-            signed.display()
+            unsigned.display()
         ))
+    }
+
+    fn sign_hap_after_build(
+        &self,
+        unsigned_hap: PathBuf,
+        project_root: &Path,
+        build_profile: BuildProfile,
+    ) -> Result<PathBuf> {
+        self.sign_hap_with_project_config(&unsigned_hap, project_root, build_profile)
     }
 }
 

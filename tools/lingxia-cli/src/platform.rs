@@ -25,6 +25,8 @@ pub struct BuildConfig {
     pub ipa: bool,
     /// Package macOS app bundle as DMG (macOS only)
     pub dmg: bool,
+    /// Sign the application (HarmonyOS only for now)
+    pub sign: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

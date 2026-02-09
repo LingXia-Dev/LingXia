@@ -104,6 +104,10 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
+
+        /// Sign the application (HarmonyOS only)
+        #[arg(long)]
+        sign: bool,
     },
 
     /// List connected devices
@@ -197,7 +201,7 @@ enum AuthProvider {
         #[command(subcommand)]
         action: AppleAuthAction,
     },
-    /// Harmony authentication (reserved for future support)
+    /// Harmony authentication
     Harmony {
         #[command(subcommand)]
         action: HarmonyAuthAction,
@@ -248,11 +252,27 @@ enum AppleAuthAction {
 
 #[derive(Subcommand)]
 enum HarmonyAuthAction {
-    /// Login with Harmony account (not implemented yet)
-    Login,
-    /// Logout Harmony credentials (not implemented yet)
+    /// Login with Harmony account
+    Login {
+        /// Authentication mode: api
+        #[arg(short = 'm', long, value_parser = ["api"])]
+        mode: Option<String>,
+
+        /// API mode client ID
+        #[arg(long)]
+        client_id: Option<String>,
+
+        /// API mode client secret
+        #[arg(long)]
+        client_secret: Option<String>,
+
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Logout Harmony credentials
     Logout,
-    /// Show Harmony authentication status (not implemented yet)
+    /// Show Harmony authentication status
     Status,
 }
 
@@ -283,16 +303,18 @@ fn main() -> Result<()> {
             platform,
             ipa,
             dmg,
+            sign,
         } => {
-            commands::build::execute(
-                build_options.release,
-                build_options.features,
-                !build_options.skip_native,
-                build_options.targets,
-                platform,
+            commands::build::execute(commands::build::BuildExecuteOptions {
+                release: build_options.release,
+                features: build_options.features,
+                build_native: !build_options.skip_native,
+                targets: build_options.targets,
+                platforms: platform,
                 ipa,
                 dmg,
-            )?;
+                sign,
+            })?;
         }
         Commands::Devices { platform } => {
             commands::device::list_devices(platform)?;
@@ -366,8 +388,18 @@ fn main() -> Result<()> {
                 }
             },
             AuthProvider::Harmony { action } => match action {
-                HarmonyAuthAction::Login => {
-                    commands::auth::harmony_login()?;
+                HarmonyAuthAction::Login {
+                    mode,
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::harmony_login(commands::auth::HarmonyLoginOptions {
+                        mode,
+                        client_id,
+                        client_secret,
+                        yes,
+                    })?;
                 }
                 HarmonyAuthAction::Logout => {
                     commands::auth::harmony_logout()?;

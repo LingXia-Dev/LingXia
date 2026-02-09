@@ -5,6 +5,7 @@ use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
+use std::path::{Path, PathBuf};
 
 /// Execute the dev command
 ///
@@ -160,6 +161,7 @@ fn execute_android(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
+        sign: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -236,6 +238,7 @@ fn execute_ios(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
+        sign: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -309,6 +312,7 @@ fn execute_macos(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
+        sign: false,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -366,10 +370,11 @@ fn execute_harmony(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
+        sign: false,
     };
 
     let artifacts = harmony_platform.build(&build_config)?;
-    let hap_path = artifacts.path();
+    let built_hap_path = artifacts.path().to_path_buf();
 
     println!();
 
@@ -377,11 +382,12 @@ fn execute_harmony(
     println!("{}", "Step 2/3: Installing...".bold());
     let install_config = InstallConfig {
         project_root: project_root.clone(),
-        artifact_path: Some(hap_path.to_path_buf()),
+        artifact_path: Some(built_hap_path.clone()),
         device_id: device.clone(),
     };
 
     harmony_platform.install(&install_config)?;
+    let installed_hap_path = resolve_installed_harmony_hap(&built_hap_path);
 
     println!();
 
@@ -405,8 +411,44 @@ fn execute_harmony(
     println!("{}", "Dev workflow complete!".green().bold());
     println!("  {} Platform: {}", "*".bold(), "HarmonyOS".cyan());
     println!("  {} Bundle: {}", "*".bold(), bundle_name);
-    println!("  {} Artifact: {}", "*".bold(), hap_path.display());
+    println!("  {} Artifact: {}", "*".bold(), installed_hap_path.display());
     println!();
 
     Ok(())
+}
+
+fn resolve_installed_harmony_hap(built_hap: &Path) -> PathBuf {
+    for candidate in harmony_install_signed_candidates(built_hap) {
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    built_hap.to_path_buf()
+}
+
+fn harmony_install_signed_candidates(input_hap: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    candidates.push(install_signed_output_path(input_hap));
+
+    let stem = input_hap
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    if let Some(base) = stem.strip_suffix("-unsigned") {
+        let signed_source = input_hap.with_file_name(format!("{base}-signed.hap"));
+        candidates.push(install_signed_output_path(&signed_source));
+    }
+
+    candidates
+}
+
+fn install_signed_output_path(input_hap: &Path) -> PathBuf {
+    let stem = input_hap
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("app")
+        .trim_end_matches("-unsigned")
+        .trim_end_matches("-signed")
+        .trim_end_matches("-install-signed");
+    input_hap.with_file_name(format!("{stem}-install-signed.hap"))
 }

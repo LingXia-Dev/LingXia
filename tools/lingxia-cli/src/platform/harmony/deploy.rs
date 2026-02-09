@@ -1,5 +1,8 @@
-use super::{DEFAULT_ABILITY_NAME, HarmonyPlatform, project::resolve_harmony_dir};
-use crate::platform::{Device, DeviceType, InstallConfig, RunConfig};
+use super::{
+    DEFAULT_ABILITY_NAME, HarmonyPlatform, HarmonySigner, ProvisioningManager, SigningConfig,
+    SigningMode, project::resolve_harmony_dir, read_bundle_name,
+};
+use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::{Path, PathBuf};
@@ -20,7 +23,11 @@ impl HarmonyPlatform {
             return Err(anyhow!("HAP not found at: {}", hap_path.display()));
         }
 
-        ensure_device_connected(config.device_id.as_deref())?;
+        let target_udids = ensure_device_connected(config.device_id.as_deref())?;
+
+        // Install path is strict: always sign first, then install.
+        let hap_path = self.sign_before_install(&hap_path, &config.project_root, &target_udids)?;
+
         println!("  {} Installing HAP: {}", "→".dimmed(), hap_path.display());
 
         let mut cmd = Command::new("hdc");
@@ -30,9 +37,9 @@ impl HarmonyPlatform {
         cmd.arg("install").arg("-r").arg(&hap_path);
 
         let output = cmd.output().context("Failed to execute hdc install")?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !output.status.success() || hdc_install_failed(&stdout, &stderr) {
             return Err(anyhow!(
                 "hdc install failed:\n{}\n{}",
                 stdout.trim(),
@@ -134,20 +141,136 @@ impl HarmonyPlatform {
 
         Ok(devices)
     }
+
+    /// Sign input HAP before install regardless of current filename.
+    fn sign_before_install(
+        &self,
+        hap_path: &Path,
+        project_root: &Path,
+        target_udids: &[String],
+    ) -> Result<PathBuf> {
+        let source = preferred_resign_source(hap_path);
+        let mut output_path = install_signed_output_path(&source);
+
+        if output_path == source {
+            output_path = source.with_file_name(format!(
+                "{}-resigned.hap",
+                source.file_stem().unwrap_or_default().to_string_lossy()
+            ));
+        }
+
+        self.sign_hap_with_project_config_at(
+            &source,
+            project_root,
+            output_path,
+            BuildProfile::Debug,
+            target_udids,
+        )
+    }
+
+    pub(super) fn sign_hap_with_project_config(
+        &self,
+        input_hap: &Path,
+        project_root: &Path,
+        build_profile: BuildProfile,
+    ) -> Result<PathBuf> {
+        let output_path = signed_output_path(input_hap);
+        self.sign_hap_with_project_config_at(
+            input_hap,
+            project_root,
+            output_path,
+            build_profile,
+            &[],
+        )
+    }
+
+    fn sign_hap_with_project_config_at(
+        &self,
+        input_hap: &Path,
+        project_root: &Path,
+        output_path: PathBuf,
+        build_profile: BuildProfile,
+        target_udids: &[String],
+    ) -> Result<PathBuf> {
+        let signer = HarmonySigner::new_native();
+        let signing = load_signing_config(project_root, build_profile, target_udids)?;
+
+        println!("  {} Signing HAP (Rust native signer)...", "→".dimmed());
+        signer
+            .sign_hap(&signing, input_hap, &output_path)
+            .context("HAP signing failed")?;
+        signer
+            .verify_hap(&output_path)
+            .context("Signed HAP verification failed")?;
+
+        println!(
+            "  {} Signed HAP created: {}",
+            "✓".green(),
+            output_path.display()
+        );
+        Ok(output_path)
+    }
+}
+
+fn load_signing_config(
+    project_root: &Path,
+    build_profile: BuildProfile,
+    target_udids: &[String],
+) -> Result<SigningConfig> {
+    let harmony_dir = resolve_harmony_dir(project_root, None)?;
+    let bundle_name = read_bundle_name(&harmony_dir)?;
+
+    let mode = match build_profile {
+        BuildProfile::Debug => SigningMode::Debug,
+        BuildProfile::Release => SigningMode::Release,
+    };
+
+    let mut provisioning = ProvisioningManager::from_storage()?;
+    provisioning.prepare_signing_config(&bundle_name, mode, target_udids)
 }
 
 pub(super) fn ensure_command(name: &str) -> Result<()> {
     if which::which(name).is_err() {
         return Err(anyhow!(
             "'{}' not found in PATH. Please install HarmonyOS development tools.\n\
-             Ensure DevEco Studio command-line tools are in your PATH.",
+             Ensure Harmony command-line tools are in your PATH.",
             name
         ));
     }
     Ok(())
 }
 
-fn ensure_device_connected(device_id: Option<&str>) -> Result<()> {
+fn ensure_device_connected(device_id: Option<&str>) -> Result<Vec<String>> {
+    let targets = connected_devices()?;
+
+    if targets.is_empty() {
+        return Err(anyhow!(
+            "No HarmonyOS device connected. Connect a device via USB or start an emulator."
+        ));
+    }
+
+    if let Some(id) = device_id {
+        if let Some(exact) = targets.iter().find(|candidate| candidate.as_str() == id) {
+            return Ok(vec![fetch_harmony_udid(exact)?]);
+        }
+        if let Some(partial) = targets.iter().find(|candidate| candidate.contains(id)) {
+            return Ok(vec![fetch_harmony_udid(partial)?]);
+        }
+
+        return Err(anyhow!(
+            "Device '{}' not found. Available devices: {}",
+            id,
+            targets.join(", ")
+        ));
+    }
+
+    targets
+        .iter()
+        .map(|target| fetch_harmony_udid(target))
+        .collect()
+}
+
+fn connected_devices() -> Result<Vec<String>> {
     let output = Command::new("hdc")
         .arg("list")
         .arg("targets")
@@ -155,29 +278,48 @@ fn ensure_device_connected(device_id: Option<&str>) -> Result<()> {
         .context("Failed to execute hdc list targets")?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let devices: Vec<&str> = stdout
+    Ok(stdout
         .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && *l != "[Empty]")
-        .collect();
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty() && line != "[Empty]")
+        .collect())
+}
 
-    if devices.is_empty() {
+fn fetch_harmony_udid(target: &str) -> Result<String> {
+    let output = Command::new("hdc")
+        .arg("-t")
+        .arg(target)
+        .arg("shell")
+        .arg("bm")
+        .arg("get")
+        .arg("-u")
+        .output()
+        .with_context(|| format!("Failed to query Harmony UDID for target {target}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(anyhow!(
-            "No HarmonyOS device connected. Connect a device via USB or start an emulator."
+            "Failed to query Harmony UDID for target {}: {}\n{}",
+            target,
+            stdout.trim(),
+            stderr.trim()
         ));
     }
 
-    if let Some(id) = device_id
-        && !devices.iter().any(|d| d.contains(id))
-    {
-        return Err(anyhow!(
-            "Device '{}' not found. Available devices: {}",
-            id,
-            devices.join(", ")
-        ));
-    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let udid = stdout
+        .split(|ch: char| !ch.is_ascii_hexdigit())
+        .find(|token| token.len() >= 32)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            anyhow!(
+                "Failed to parse Harmony UDID from hdc output: {}",
+                stdout.trim()
+            )
+        })?;
 
-    Ok(())
+    Ok(udid)
 }
 
 fn auto_detect_hap(harmony_dir: &Path) -> Result<PathBuf> {
@@ -194,4 +336,61 @@ fn auto_detect_hap(harmony_dir: &Path) -> Result<PathBuf> {
             "No HAP found. Build the project first with 'lingxia build --platform harmony'"
         ))
     }
+}
+
+fn signed_output_path(input_hap: &Path) -> PathBuf {
+    let file_name = input_hap
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    if file_name.contains("unsigned") {
+        return input_hap.with_file_name(file_name.replace("unsigned", "signed"));
+    }
+    let stem = input_hap
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    input_hap.with_file_name(format!("{stem}-signed.hap"))
+}
+
+fn install_signed_output_path(input_hap: &Path) -> PathBuf {
+    let stem = input_hap
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let normalized = stem
+        .trim_end_matches("-unsigned")
+        .trim_end_matches("-signed")
+        .trim_end_matches("-install-signed");
+    input_hap.with_file_name(format!("{normalized}-install-signed.hap"))
+}
+
+fn preferred_resign_source(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    if file_name.contains("unsigned") {
+        let signed_candidate = path.with_file_name(file_name.replace("unsigned", "signed"));
+        if signed_candidate.exists() {
+            return signed_candidate;
+        }
+    }
+    path.to_path_buf()
+}
+
+fn hdc_install_failed(stdout: &str, stderr: &str) -> bool {
+    fn has_failure_marker(text: &str) -> bool {
+        let lower = text.to_ascii_lowercase();
+        lower.contains("error:")
+            || lower.contains("failed to install")
+            || lower.contains("fail to install")
+            || lower.contains("install failed")
+    }
+
+    has_failure_marker(stdout) || has_failure_marker(stderr)
 }

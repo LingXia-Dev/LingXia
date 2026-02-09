@@ -6,19 +6,33 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::env;
 
+pub struct BuildExecuteOptions {
+    pub release: bool,
+    pub features: Vec<String>,
+    pub build_native: bool,
+    pub targets: Vec<String>,
+    pub platforms: Vec<String>,
+    pub ipa: bool,
+    pub dmg: bool,
+    pub sign: bool,
+}
+
 /// Execute the build command
 ///
 /// Builds the project using the detected platform's build system.
 /// Supports debug and release profiles, custom features, and multi-target builds.
-pub fn execute(
-    release: bool,
-    features: Vec<String>,
-    build_native: bool,
-    targets: Vec<String>,
-    platforms: Vec<String>,
-    ipa: bool,
-    dmg: bool,
-) -> Result<()> {
+pub fn execute(options: BuildExecuteOptions) -> Result<()> {
+    let BuildExecuteOptions {
+        release,
+        features,
+        build_native,
+        targets,
+        platforms,
+        ipa,
+        dmg,
+        sign,
+    } = options;
+
     // Detect project root (current directory)
     let current_dir = env::current_dir()?;
     let mut project_root = current_dir.clone();
@@ -235,7 +249,9 @@ pub fn execute(
             targets: build_targets.clone(),
             lingxia_config: Some(config.clone()),
             ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
+
             dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
+            sign: sign && matches!(platform_type, platform::detector::PlatformType::Harmony),
         };
 
         let artifacts = platform.build(&build_config)?;

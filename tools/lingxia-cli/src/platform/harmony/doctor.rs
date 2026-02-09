@@ -40,7 +40,7 @@ fn check_harmony_command(cmd: &str, display_name: &str) -> CheckResult {
         CheckResult::fail(
             display_name,
             format!("'{}' not found in PATH", cmd),
-            Some("Install DevEco Studio command-line tools and add them to PATH"),
+            Some("Install Harmony command-line tools and add them to PATH"),
         )
     }
 }

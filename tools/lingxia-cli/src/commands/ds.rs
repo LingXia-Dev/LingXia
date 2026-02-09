@@ -7,6 +7,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 pub mod apple;
+pub mod harmony;
 
 /// Developer Services platform subcommands
 #[derive(Subcommand)]
@@ -16,12 +17,17 @@ pub enum DsPlatform {
         #[command(subcommand)]
         command: apple::AppleCommand,
     },
-    // Future: Harmony { ... }
+    /// Interact with Harmony Developer Services
+    Harmony {
+        #[command(subcommand)]
+        command: harmony::HarmonyCommand,
+    },
 }
 
 /// Execute the ds command
 pub fn execute(platform: DsPlatform) -> Result<()> {
     match platform {
         DsPlatform::Apple { command } => apple::execute(command),
+        DsPlatform::Harmony { command } => harmony::execute(command),
     }
 }

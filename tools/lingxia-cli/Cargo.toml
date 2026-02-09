@@ -48,8 +48,10 @@ x509-parser = "0.16"
 
 which = "8.0"
 adb_client = "3.0.1"
+urlencoding = "2.1"
 
 # Image processing for app icon generation
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+openssl = "0.10"
 
 [dev-dependencies]
