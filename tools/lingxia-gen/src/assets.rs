@@ -18,9 +18,9 @@ pub struct AssetsConfig {
     #[arg(long)]
     pub android_out: Option<PathBuf>,
 
-    /// Path to output iOS assets (Resources/lingxia-core)
-    #[arg(long)]
-    pub ios_out: Option<PathBuf>,
+    /// Path to output Apple assets (Resources/lingxia-core)
+    #[arg(long = "apple-out")]
+    pub apple_out: Option<PathBuf>,
 
     /// Path to output HarmonyOS assets (resources/rawfile/lingxia-core)
     #[arg(long)]
@@ -47,15 +47,15 @@ pub fn run(config: AssetsConfig) -> Result<()> {
         );
     }
 
-    if input_exists && runtime_exists {
-        if let Some(input) = &config.input
-            && let (Ok(input_path), Ok(runtime_path)) =
-                (input.canonicalize(), config.runtime_input.canonicalize())
-            && input_path == runtime_path
-        {
-            println!("Runtime assets path matches input; skipping duplicate sync.");
-            runtime_exists = false;
-        }
+    if input_exists
+        && runtime_exists
+        && let Some(input) = &config.input
+        && let (Ok(input_path), Ok(runtime_path)) =
+            (input.canonicalize(), config.runtime_input.canonicalize())
+        && input_path == runtime_path
+    {
+        println!("Runtime assets path matches input; skipping duplicate sync.");
+        runtime_exists = false;
     }
 
     if let Some(path) = &config.android_out {
@@ -68,14 +68,14 @@ pub fn run(config: AssetsConfig) -> Result<()> {
         println!("Synced Android assets to: {:?}", path);
     }
 
-    if let Some(path) = &config.ios_out {
+    if let Some(path) = &config.apple_out {
         if input_exists {
             sync_dir(config.input.as_ref().expect("input exists"), path)?;
         }
         if runtime_exists {
             sync_dir(&config.runtime_input, path)?;
         }
-        println!("Synced iOS assets to: {:?}", path);
+        println!("Synced Apple assets to: {:?}", path);
     }
 
     if let Some(path) = &config.harmony_out {
