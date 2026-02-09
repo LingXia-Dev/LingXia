@@ -145,8 +145,6 @@ class ToastOverlayManager {
 #if os(iOS)
     private var overlayViewController: UIViewController?
     private var overlayWindow: PassthroughWindow?
-#elseif os(macOS)
-    private var overlayView: NSView?
 #endif
 
     init(config: ToastConfig, position: ToastPosition) {
@@ -157,8 +155,6 @@ class ToastOverlayManager {
     func show() {
         #if os(iOS)
         showOnIOS()
-        #elseif os(macOS)
-        showOnMacOS()
         #endif
     }
 
@@ -176,9 +172,6 @@ class ToastOverlayManager {
         }
         overlayWindow?.isHidden = true
         overlayWindow = nil
-        #elseif os(macOS)
-        overlayView?.removeFromSuperview()
-        overlayView = nil
         #endif
     }
 
@@ -219,21 +212,6 @@ class ToastOverlayManager {
             toastWindow.isHidden = false
             overlayWindow = toastWindow
         }
-    }
-    #endif
-
-    #if os(macOS)
-    private func showOnMacOS() {
-        guard let mainWindow = NSApplication.shared.mainWindow,
-              let contentView = mainWindow.contentView else { return }
-
-        let toastView = ToastContentView(config: config, position: position)
-        let hostingView = NSHostingView(rootView: toastView)
-        hostingView.frame = contentView.bounds
-        hostingView.autoresizingMask = [.width, .height]
-
-        overlayView = hostingView
-        contentView.addSubview(hostingView)
     }
     #endif
 }

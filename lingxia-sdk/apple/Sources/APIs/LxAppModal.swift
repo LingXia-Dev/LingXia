@@ -5,8 +5,6 @@ import CLingXiaRustAPI
 
 #if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
 #endif
 
 /// Modal dialog management for LingXia applications
@@ -35,21 +33,7 @@ public class LxAppModal {
         let cancelText = options["cancelText"] as? String ?? ""
         let confirmText = options["confirmText"] as? String ?? ""
 
-        #if os(macOS)
-        // Show macOS modal asynchronously with callback
-        DispatchQueue.main.async {
-            showMacOSModal(
-                title: title,
-                content: content,
-                showCancel: showCancel,
-                cancelText: cancelText,
-                confirmText: confirmText,
-                callback_id: callback_id
-            )
-        }
-
-        #else
-        // Show iOS modal asynchronously with callback
+        #if os(iOS)
         DispatchQueue.main.async {
             showIOSModal(
                 title: title,
@@ -62,52 +46,6 @@ public class LxAppModal {
         }
         #endif
     }
-
-    #if os(macOS)
-    /// Show macOS modal using NSAlert
-    @MainActor
-    private static func showMacOSModal(
-    title: String,
-    content: String,
-    showCancel: Bool,
-    cancelText: String,
-    confirmText: String,
-    callback_id: UInt64
-) {
-    let alert = NSAlert()
-    if !title.isEmpty && title.trimmingCharacters(in: .whitespacesAndNewlines) != "" {
-        alert.messageText = title
-    } else {
-        // When title is empty, set messageText to content and clear informativeText
-        alert.messageText = content
-        alert.informativeText = ""
-    }
-
-    // Only set informativeText if we have a title
-    if !title.isEmpty && title.trimmingCharacters(in: .whitespacesAndNewlines) != "" {
-        alert.informativeText = content
-    }
-    alert.addButton(withTitle: confirmText)
-
-    if showCancel {
-        alert.addButton(withTitle: cancelText)
-    }
-
-    let response = alert.runModal()
-    let confirmed = response == .alertFirstButtonReturn
-
-    // Call callback with result
-    let result: [String: Any] = [
-        "confirm": confirmed,
-        "cancel": !confirmed
-    ]
-
-    if let jsonData = try? JSONSerialization.data(withJSONObject: result),
-       let jsonString = String(data: jsonData, encoding: .utf8) {
-        _ = onCallback(callback_id, true, jsonString)
-    }
-    }
-    #endif
 
     #if os(iOS)
     /// Show iOS modal using UIAlertController

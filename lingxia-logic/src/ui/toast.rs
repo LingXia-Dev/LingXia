@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
@@ -13,6 +14,28 @@ struct JSToastOptions {
     position: Option<String>,
 }
 
+#[cfg(not(target_os = "macos"))]
+fn convert_string_to_toast_icon(icon: &str) -> ToastIcon {
+    match icon.to_lowercase().as_str() {
+        "success" => ToastIcon::Success,
+        "error" => ToastIcon::Error,
+        "loading" => ToastIcon::Loading,
+        "none" => ToastIcon::None,
+        _ => ToastIcon::None,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn convert_string_to_toast_position(position: &str) -> ToastPosition {
+    match position.to_lowercase().as_str() {
+        "top" => ToastPosition::Top,
+        "bottom" => ToastPosition::Bottom,
+        "center" => ToastPosition::Center,
+        _ => ToastPosition::Center,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 impl From<JSToastOptions> for ToastOptions {
     fn from(js_options: JSToastOptions) -> Self {
         // Convert duration from milliseconds (JS) to seconds (native platforms)
@@ -31,31 +54,9 @@ impl From<JSToastOptions> for ToastOptions {
     }
 }
 
-/// Convert string to ToastIcon (compatible with WeChat mini-program API)
-fn convert_string_to_toast_icon(icon: &str) -> ToastIcon {
-    match icon.to_lowercase().as_str() {
-        "success" => ToastIcon::Success,
-        "error" => ToastIcon::Error,
-        "loading" => ToastIcon::Loading,
-        "none" => ToastIcon::None,
-        _ => ToastIcon::None,
-    }
-}
-
-/// Convert string to ToastPosition
-fn convert_string_to_toast_position(position: &str) -> ToastPosition {
-    match position.to_lowercase().as_str() {
-        "top" => ToastPosition::Top,
-        "bottom" => ToastPosition::Bottom,
-        "center" => ToastPosition::Center,
-        _ => ToastPosition::Center,
-    }
-}
-
 /// Show toast function
-fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
+async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let toast_options: ToastOptions = options.into();
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
@@ -64,28 +65,74 @@ fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
         );
     }
 
-    lxapp.runtime.show_toast(toast_options).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to show toast: {}", e),
-        )
-    })?;
+    #[cfg(target_os = "macos")]
+    {
+        let params = serde_json::json!({
+            "title": options.title,
+            "icon": options.icon.as_deref().unwrap_or("none"),
+            "image": options.image,
+            "duration": options.duration.unwrap_or(1500.0),
+            "mask": options.mask.unwrap_or(false),
+            "position": options.position.as_deref().unwrap_or("center"),
+        });
 
-    Ok(())
+        lxapp
+            .call_current_page_view("ui.showToast", Some(params))
+            .await
+            .map_err(|e| {
+                HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("WebView toast failed: {}", e),
+                )
+            })?;
+
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let toast_options: ToastOptions = options.into();
+        lxapp.runtime.show_toast(toast_options).map_err(|e| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to show toast: {}", e),
+            )
+        })?;
+
+        Ok(())
+    }
 }
 
 /// Hide toast function
-fn hide_toast(ctx: JSContext) -> JSResult<()> {
+async fn hide_toast(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    lxapp.runtime.hide_toast().map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to hide toast: {}", e),
-        )
-    })?;
+    #[cfg(target_os = "macos")]
+    {
+        lxapp
+            .call_current_page_view("ui.hideToast", None)
+            .await
+            .map_err(|e| {
+                HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("WebView hideToast failed: {}", e),
+                )
+            })?;
 
-    Ok(())
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        lxapp.runtime.hide_toast().map_err(|e| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("Failed to hide toast: {}", e),
+            )
+        })?;
+
+        Ok(())
+    }
 }
 
 /// Initialize toast functions
