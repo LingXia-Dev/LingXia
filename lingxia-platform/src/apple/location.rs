@@ -4,7 +4,7 @@ use super::Platform;
 use crate::error::PlatformError;
 use crate::traits::location::Location;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) mod ios {
     use super::*;
     use dispatch2::DispatchQueue;
@@ -68,7 +68,10 @@ pub(crate) mod ios {
                 let callback_id = self.callback_id();
                 let maybe_location = locations.lastObject();
                 let Some(location) = maybe_location else {
-                    log::warn!("iOS Location: Received update without locations for callback {}", callback_id);
+                    log::warn!(
+                        "Apple Location: Received update without locations for callback {}",
+                        callback_id
+                    );
                     deliver_failure(callback_id, "No location available");
                     return;
                 };
@@ -83,7 +86,7 @@ pub(crate) mod ios {
             ) {
                 let callback_id = self.callback_id();
                 let message = format!("Location update failed: {}", ns_error_to_string(error));
-                log::error!("iOS Location: {} (callback {})", message, callback_id);
+                log::error!("Apple Location: {} (callback {})", message, callback_id);
                 deliver_failure(callback_id, &message);
             }
 
@@ -98,11 +101,17 @@ pub(crate) mod ios {
                         }
                     }
                     CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted => {
-                        log::warn!("iOS Location: Authorization changed to denied/restricted for callback {}", callback_id);
+                        log::warn!(
+                            "Apple Location: Authorization changed to denied/restricted for callback {}",
+                            callback_id
+                        );
                         deliver_failure(callback_id, "Location permission denied");
                     }
                     CLAuthorizationStatus::NotDetermined => {
-                        log::debug!("iOS Location: Authorization still not determined for callback {}", callback_id);
+                        log::debug!(
+                            "Apple Location: Authorization still not determined for callback {}",
+                            callback_id
+                        );
                     }
                     _ => {}
                 }
@@ -177,7 +186,7 @@ pub(crate) mod ios {
         cleanup_request(callback_id);
         let Some(info) = info else {
             log::debug!(
-                "iOS Location: Callback {} already handled before success",
+                "Apple Location: Callback {} already handled before success",
                 callback_id
             );
             return;
@@ -185,7 +194,7 @@ pub(crate) mod ios {
 
         let payload = build_location_payload(location, info.config.include_altitude);
         log::info!(
-            "iOS Location: Delivering success result for callback {}",
+            "Apple Location: Delivering success result for callback {}",
             callback_id
         );
         lingxia_messaging::invoke_callback(callback_id, Ok(payload));
@@ -196,7 +205,7 @@ pub(crate) mod ios {
         cleanup_request(callback_id);
         if !info_present {
             log::debug!(
-                "iOS Location: Callback {} already handled before failure",
+                "Apple Location: Callback {} already handled before failure",
                 callback_id
             );
             return;
@@ -258,7 +267,7 @@ pub(crate) mod ios {
     ) -> Result<(), PlatformError> {
         let services_enabled = unsafe { CLLocationManager::locationServicesEnabled_class() };
         if !services_enabled {
-            log::error!("iOS Location: Services disabled");
+            log::error!("Apple Location: Services disabled");
             lingxia_messaging::invoke_callback(callback_id, Err(4001));
             // Error is fully reported via callback; no additional PlatformError needed.
             return Ok(());
@@ -281,7 +290,7 @@ pub(crate) mod ios {
             CLAuthorizationStatus::Denied | CLAuthorizationStatus::Restricted
         ) {
             log::warn!(
-                "iOS Location: Authorization denied/restricted before request (status: {:?})",
+                "Apple Location: Authorization denied/restricted before request (status: {:?})",
                 authorization_status
             );
             // Report permission denial via callback; the logic layer owns user-facing toasts
@@ -292,7 +301,7 @@ pub(crate) mod ios {
 
         DispatchQueue::main().exec_async(move || {
             if let Err(err_msg) = start_location_request(callback_id) {
-                log::error!("iOS Location: Failed to start request {}", err_msg);
+                log::error!("Apple Location: Failed to start request {}", err_msg);
                 deliver_failure(callback_id, &err_msg);
             }
         });
@@ -314,7 +323,7 @@ pub(crate) mod ios {
 
                 if should_timeout {
                     log::warn!(
-                        "iOS Location: Request {} timed out after {}ms",
+                        "Apple Location: Request {} timed out after {}ms",
                         callback_id,
                         timeout_ms
                     );
@@ -397,15 +406,7 @@ pub(crate) mod ios {
 
 impl Location for Platform {
     fn is_location_enabled(&self) -> Result<bool, PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            ios::is_location_enabled()
-        }
-
-        #[cfg(not(target_os = "ios"))]
-        {
-            Ok(false)
-        }
+        ios::is_location_enabled()
     }
 
     fn request_location(
@@ -413,18 +414,6 @@ impl Location for Platform {
         callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
     ) -> Result<(), PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            ios::request_location_with_config(callback_id, config)
-        }
-
-        #[cfg(not(target_os = "ios"))]
-        {
-            let _ = config;
-            let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
-            Err(PlatformError::Platform(
-                "Location not available on this platform".into(),
-            ))
-        }
+        ios::request_location_with_config(callback_id, config)
     }
 }
