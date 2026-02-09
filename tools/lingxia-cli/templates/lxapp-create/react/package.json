@@ -14,8 +14,9 @@
     "framework": "react"
   },
   "dependencies": {
-    "@lingxia/components": "^0.0.1",
+    "@lingxia/components": "^0.1.1",
     "@lingxia/rong": "^{{RONG_VERSION}}",
+    "@lingxia/types": "^0.1.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

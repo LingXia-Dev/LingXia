@@ -14,7 +14,7 @@
     "framework": "html"
   },
   "devDependencies": {
-    "@lingxia/types": "^0.1.0",
+    "@lingxia/types": "^0.1.1",
     "typescript": "^5.9.3"
   }
 }
