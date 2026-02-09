@@ -12,6 +12,7 @@ pub struct BuildExecuteOptions {
     pub build_native: bool,
     pub targets: Vec<String>,
     pub platforms: Vec<String>,
+    pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
     pub sign: bool,
@@ -28,6 +29,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         build_native,
         targets,
         platforms,
+        all_platforms,
         ipa,
         dmg,
         sign,
@@ -149,12 +151,15 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     // Determine which platforms to build.
     let mut requested_platforms = platforms;
     if requested_platforms.is_empty()
+        && !all_platforms
         && let Some(inferred_platform) = inferred_platform_from_subdir.as_ref()
     {
         requested_platforms.push(inferred_platform.as_str().to_string());
     }
-    let constrained_platforms = !requested_platforms.is_empty();
-    let platforms_to_build: Vec<platform::detector::PlatformType> = if constrained_platforms {
+    let (platforms_to_build, constrained_platforms): (
+        Vec<platform::detector::PlatformType>,
+        bool,
+    ) = if !requested_platforms.is_empty() {
         let mut selected = Vec::new();
         for p in requested_platforms {
             let platform_type: platform::detector::PlatformType = p.parse()?;
@@ -168,9 +173,19 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
                 selected.push(platform_type);
             }
         }
-        selected
+        (selected, true)
+    } else if all_platforms || available_platforms.len() == 1 {
+        (available_platforms.clone(), true)
     } else {
-        available_platforms
+        let available = available_platforms
+            .iter()
+            .map(|p| p.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(anyhow!(
+            "Multiple platforms are configured: {available}\n\
+Specify one with `--platform <name>` or build all with `--all-platforms`."
+        ));
     };
 
     // If the user explicitly asked to build iOS/macOS, fail fast on non-macOS hosts

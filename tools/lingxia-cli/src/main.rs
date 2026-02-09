@@ -93,9 +93,13 @@ enum Commands {
         #[command(flatten)]
         build_options: BuildOptions,
 
-        /// Platforms to build (comma-separated). Defaults to all detected platforms.
+        /// Platforms to build (comma-separated).
         #[arg(long, value_delimiter = ',')]
         platform: Vec<String>,
+
+        /// Build all configured platforms (disabled by default)
+        #[arg(long, conflicts_with = "platform")]
+        all_platforms: bool,
 
         /// Sign and package iOS build as IPA
         #[arg(long)]
@@ -301,6 +305,7 @@ fn main() -> Result<()> {
         Commands::Build {
             build_options,
             platform,
+            all_platforms,
             ipa,
             dmg,
             sign,
@@ -311,6 +316,7 @@ fn main() -> Result<()> {
                 build_native: !build_options.skip_native,
                 targets: build_options.targets,
                 platforms: platform,
+                all_platforms,
                 ipa,
                 dmg,
                 sign,
