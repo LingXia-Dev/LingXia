@@ -1,6 +1,6 @@
 [package]
 name = "lingxia-cli"
-version = "0.0.9"
+version = "0.1.0"
 edition = "2024"
 
 [[bin]]
@@ -28,7 +28,7 @@ tempfile = "3.24"
 # Apple signing and API
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
 base64 = "0.22"
-rcgen = "0.13"
+rcgen = "0.14"
 rsa = { version = "0.9", features = ["pem"] }
 
 # Apple ID authentication (SRP, crypto)
@@ -40,18 +40,16 @@ aes = "0.8"
 aes-gcm = "0.10"
 cbc = "0.1"
 num-bigint = "0.4"
-rand = "0.9"
+rand = "0.10"
 uuid = { version = "1.20", features = ["v4"] }
 plist = "1"
 tungstenite = { version = "0.28", features = ["native-tls"] }
-x509-parser = "0.16"
+x509-parser = "0.18"
 
 which = "8.0"
 adb_client = "3.0.1"
 urlencoding = "2.1"
 
-# Image processing for app icon generation
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
-openssl = "0.10"
 
-[dev-dependencies]
+openssl = "0.10"

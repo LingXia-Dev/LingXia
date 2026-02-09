@@ -7,7 +7,7 @@ use anyhow::{Result, anyhow};
 use hmac::{Hmac, Mac};
 use num_bigint::BigUint;
 use pbkdf2::pbkdf2_hmac;
-use rand::RngCore;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 
 type HmacSha256 = Hmac<Sha256>;
