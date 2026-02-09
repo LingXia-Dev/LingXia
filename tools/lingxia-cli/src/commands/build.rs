@@ -156,37 +156,35 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     {
         requested_platforms.push(inferred_platform.as_str().to_string());
     }
-    let (platforms_to_build, constrained_platforms): (
-        Vec<platform::detector::PlatformType>,
-        bool,
-    ) = if !requested_platforms.is_empty() {
-        let mut selected = Vec::new();
-        for p in requested_platforms {
-            let platform_type: platform::detector::PlatformType = p.parse()?;
-            if !available_platforms.contains(&platform_type) {
-                return Err(anyhow!(
-                    "Platform '{}' not detected in project directory",
-                    platform_type.as_str()
-                ));
+    let (platforms_to_build, constrained_platforms): (Vec<platform::detector::PlatformType>, bool) =
+        if !requested_platforms.is_empty() {
+            let mut selected = Vec::new();
+            for p in requested_platforms {
+                let platform_type: platform::detector::PlatformType = p.parse()?;
+                if !available_platforms.contains(&platform_type) {
+                    return Err(anyhow!(
+                        "Platform '{}' not detected in project directory",
+                        platform_type.as_str()
+                    ));
+                }
+                if !selected.contains(&platform_type) {
+                    selected.push(platform_type);
+                }
             }
-            if !selected.contains(&platform_type) {
-                selected.push(platform_type);
-            }
-        }
-        (selected, true)
-    } else if all_platforms || available_platforms.len() == 1 {
-        (available_platforms.clone(), true)
-    } else {
-        let available = available_platforms
-            .iter()
-            .map(|p| p.as_str())
-            .collect::<Vec<_>>()
-            .join(", ");
-        return Err(anyhow!(
-            "Multiple platforms are configured: {available}\n\
+            (selected, true)
+        } else if all_platforms || available_platforms.len() == 1 {
+            (available_platforms.clone(), true)
+        } else {
+            let available = available_platforms
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(anyhow!(
+                "Multiple platforms are configured: {available}\n\
 Specify one with `--platform <name>` or build all with `--all-platforms`."
-        ));
-    };
+            ));
+        };
 
     // If the user explicitly asked to build iOS/macOS, fail fast on non-macOS hosts
     // (Apple tooling requires macOS).
@@ -213,6 +211,13 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         BuildProfile::Debug
     };
 
+    // Default targets if none specified
+    let build_targets = if targets.is_empty() {
+        vec!["aarch64-linux-android".to_string()]
+    } else {
+        targets
+    };
+
     // Prepare host assets unless we're building from a platform subdirectory.
     if skip_host_assets {
         println!(
@@ -225,16 +230,10 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             &config,
             build_profile,
             &platforms_to_build,
+            &build_targets,
             constrained_platforms,
         )?;
     }
-
-    // Default targets if none specified
-    let build_targets = if targets.is_empty() {
-        vec!["aarch64-linux-android".to_string()]
-    } else {
-        targets
-    };
 
     // Build each selected platform
     let mut all_artifacts = Vec::new();

@@ -147,6 +147,7 @@ fn execute_android(
         &config,
         build_profile,
         &platforms_to_build,
+        &build_targets,
         true,
     )?;
 
@@ -224,6 +225,7 @@ fn execute_ios(
         &config,
         build_profile,
         &platforms_to_build,
+        &[],
         true,
     )?;
 
@@ -298,6 +300,7 @@ fn execute_macos(
         &config,
         build_profile,
         &platforms_to_build,
+        &[],
         true,
     )?;
 
@@ -356,6 +359,7 @@ fn execute_harmony(
         &config,
         build_profile,
         &platforms_to_build,
+        &[],
         true,
     )?;
 
@@ -411,7 +415,11 @@ fn execute_harmony(
     println!("{}", "Dev workflow complete!".green().bold());
     println!("  {} Platform: {}", "*".bold(), "HarmonyOS".cyan());
     println!("  {} Bundle: {}", "*".bold(), bundle_name);
-    println!("  {} Artifact: {}", "*".bold(), installed_hap_path.display());
+    println!(
+        "  {} Artifact: {}",
+        "*".bold(),
+        installed_hap_path.display()
+    );
     println!();
 
     Ok(())

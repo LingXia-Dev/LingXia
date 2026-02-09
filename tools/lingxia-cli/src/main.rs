@@ -9,6 +9,7 @@ mod host_assets;
 mod lxapp;
 mod path_completion;
 mod platform;
+mod runtime;
 pub mod sdk;
 mod versions;
 mod workspace;

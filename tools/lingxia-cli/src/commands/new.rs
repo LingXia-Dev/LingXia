@@ -12,6 +12,7 @@ mod template;
 mod types;
 mod validation;
 
+use crate::runtime;
 use crate::versions::fetch_latest_versions;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -85,12 +86,15 @@ pub fn execute(
     }
 
     let versions = fetch_result?;
+    let web_runtime_version = runtime::fetch_latest_runtime_version()
+        .map_err(|e| anyhow!("Failed to fetch latest lingxia-web-runtime version: {e}"))?;
     println!(
-        "  {} SDK: {}, Rong: {}, Crate: {}",
+        "  {} SDK: {}, Rong: {}, Crate: {}, Runtime: {}",
         "✓".green(),
         versions.sdk.cyan(),
         versions.rong.cyan(),
-        versions.rust_crate.cyan()
+        versions.rust_crate.cyan(),
+        web_runtime_version.cyan()
     );
     println!();
 
@@ -157,7 +161,7 @@ pub fn execute(
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
     let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework, &versions)?;
-    generate_config_file(&config, &lxapp_info, &versions)?;
+    generate_config_file(&config, &lxapp_info, &versions, &web_runtime_version)?;
     ensure_root_gitignore(&config)?;
 
     println!();

@@ -1,6 +1,7 @@
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::lxapp;
 use crate::platform::{self, BuildProfile};
+use crate::runtime;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
@@ -16,6 +17,7 @@ pub(crate) fn prepare_host_assets(
     config: &LingXiaConfig,
     build_profile: BuildProfile,
     platforms: &[platform::detector::PlatformType],
+    build_targets: &[String],
     _explicit_platforms: bool,
 ) -> Result<()> {
     let mut cache = HostAssetsCache::load(project_root);
@@ -38,6 +40,35 @@ pub(crate) fn prepare_host_assets(
     } else {
         None
     };
+    let has_android = platforms
+        .iter()
+        .any(|p| matches!(p, platform::detector::PlatformType::Android));
+    let has_non_android = platforms
+        .iter()
+        .any(|p| !matches!(p, platform::detector::PlatformType::Android));
+    let needs_es5_runtime = has_android
+        && runtime::target_from_build_targets(build_targets) == runtime::RuntimeEcmaTarget::Es5;
+
+    // Only Android can require ES5 runtime (armv7). Other platforms should stay on ES2020.
+    let prepared_runtime_es5 = if needs_embedded_lxapp && needs_es5_runtime {
+        Some(prepare_runtime_asset(
+            project_root,
+            config,
+            runtime::RuntimeEcmaTarget::Es5,
+        )?)
+    } else {
+        None
+    };
+    let prepared_runtime_es2020 = if needs_embedded_lxapp && (has_non_android || !needs_es5_runtime)
+    {
+        Some(prepare_runtime_asset(
+            project_root,
+            config,
+            runtime::RuntimeEcmaTarget::Es2020,
+        )?)
+    } else {
+        None
+    };
 
     // Deduplicate resource destinations (iOS/macOS can share the same Swift package dir).
     let mut prepared_resource_roots: HashSet<PathBuf> = HashSet::new();
@@ -51,6 +82,9 @@ pub(crate) fn prepare_host_assets(
                     &app_json,
                     &app_json_hash,
                     prepared_lxapp_assets.as_ref(),
+                    prepared_runtime_es5
+                        .as_ref()
+                        .or(prepared_runtime_es2020.as_ref()),
                     &mut cache,
                 )?;
             }
@@ -71,6 +105,7 @@ pub(crate) fn prepare_host_assets(
                     &app_json,
                     &app_json_hash,
                     prepared_lxapp_assets.as_ref(),
+                    prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
@@ -92,6 +127,7 @@ pub(crate) fn prepare_host_assets(
                     &app_json,
                     &app_json_hash,
                     prepared_lxapp_assets.as_ref(),
+                    prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
@@ -104,6 +140,7 @@ pub(crate) fn prepare_host_assets(
                     &app_json,
                     &app_json_hash,
                     prepared_lxapp_assets.as_ref(),
+                    prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
             }
@@ -119,6 +156,7 @@ fn prepare_android_assets_root(
     app_json: &str,
     app_json_hash: &str,
     lxapp_assets: Option<&PreparedLxAppAssets>,
+    runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
     fs::create_dir_all(assets_root)?;
@@ -144,6 +182,7 @@ fn prepare_android_assets_root(
         app_json_hash: app_json_hash.to_string(),
         dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
         asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+        runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
     let mut changed = false;
@@ -154,6 +193,11 @@ fn prepare_android_assets_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_runtime_file(
+        &assets_root.join("runtime.js"),
+        runtime_asset,
+        prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
+    )?;
 
     // LxApp dist
     if let Some(lxapp_assets) = lxapp_assets {
@@ -191,6 +235,7 @@ fn prepare_apple_resources_root(
     app_json: &str,
     app_json_hash: &str,
     lxapp_assets: Option<&PreparedLxAppAssets>,
+    runtime_asset: Option<&PreparedRuntimeAsset>,
     prepared_roots: &mut HashSet<PathBuf>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
@@ -212,6 +257,7 @@ fn prepare_apple_resources_root(
         app_json_hash: app_json_hash.to_string(),
         dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
         asset_name: lxapp_assets.map(|_| "homelxapp".to_string()),
+        runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
     let mut changed = false;
@@ -221,6 +267,11 @@ fn prepare_apple_resources_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_runtime_file(
+        &resources_dir.join("runtime.js"),
+        runtime_asset,
+        prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
+    )?;
 
     if let Some(lxapp_assets) = lxapp_assets {
         let target_dir = resources_dir.join("homelxapp");
@@ -254,6 +305,7 @@ fn prepare_harmony_rawfile_root(
     app_json: &str,
     app_json_hash: &str,
     lxapp_assets: Option<&PreparedLxAppAssets>,
+    runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
     println!(
@@ -285,6 +337,7 @@ fn prepare_harmony_rawfile_root(
         app_json_hash: app_json_hash.to_string(),
         dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
         asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+        runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
     let mut changed = false;
@@ -295,6 +348,11 @@ fn prepare_harmony_rawfile_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_runtime_file(
+        &rawfile_root.join("runtime.js"),
+        runtime_asset,
+        prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
+    )?;
 
     // LxApp dist
     if let Some(lxapp_assets) = lxapp_assets {
@@ -332,6 +390,7 @@ struct DestinationStamp {
     app_json_hash: String,
     dist_hash: Option<String>,
     asset_name: Option<String>,
+    runtime_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -384,6 +443,34 @@ struct PreparedLxAppAssets {
     dist_dir: PathBuf,
     asset_name: String,
     dist_hash: String,
+}
+
+struct PreparedRuntimeAsset {
+    bytes: Vec<u8>,
+    runtime_hash: String,
+}
+
+fn prepare_runtime_asset(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    target: runtime::RuntimeEcmaTarget,
+) -> Result<PreparedRuntimeAsset> {
+    let resolved = runtime::resolve_runtime_js(project_root, config, target)
+        .with_context(|| format!("Failed to resolve runtime.js ({})", target.as_str()))?;
+    let bytes = fs::read(&resolved.path)
+        .with_context(|| format!("Failed to read runtime file: {}", resolved.path.display()))?;
+
+    println!(
+        "  {} runtime.js ({}) ← {}",
+        "✓".green(),
+        target.as_str(),
+        resolved.source
+    );
+
+    Ok(PreparedRuntimeAsset {
+        bytes,
+        runtime_hash: resolved.hash,
+    })
 }
 
 fn prepare_embedded_lxapp_assets(
@@ -555,6 +642,28 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool> {
     }
     fs::write(path, bytes)?;
     Ok(true)
+}
+
+fn sync_runtime_file(
+    runtime_path: &Path,
+    runtime_asset: Option<&PreparedRuntimeAsset>,
+    prev_runtime_hash: Option<&str>,
+) -> Result<bool> {
+    if let Some(runtime_asset) = runtime_asset {
+        if write_if_changed(runtime_path, &runtime_asset.bytes)? {
+            println!("  {} runtime.js → {}", "✓".green(), runtime_path.display());
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    if prev_runtime_hash.is_some() && runtime_path.exists() {
+        fs::remove_file(runtime_path)
+            .with_context(|| format!("Failed to remove {}", runtime_path.display()))?;
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

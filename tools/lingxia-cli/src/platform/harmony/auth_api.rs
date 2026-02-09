@@ -47,11 +47,7 @@ impl HarmonyAuthService {
         self.storage.load()
     }
 
-    pub fn authenticate(
-        &self,
-        client_id: &str,
-        client_secret: &str,
-    ) -> Result<AgcApiCredentials> {
+    pub fn authenticate(&self, client_id: &str, client_secret: &str) -> Result<AgcApiCredentials> {
         let token: AgcToken = self.client.get_token(client_id, client_secret)?;
         Ok(AgcApiCredentials {
             client_id: client_id.to_string(),

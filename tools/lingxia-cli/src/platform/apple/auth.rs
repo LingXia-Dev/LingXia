@@ -159,8 +159,8 @@ impl CredentialStorage {
     }
 
     fn read_credentials_file(&self, path: &PathBuf) -> Result<AuthCredentials> {
-        let content =
-            fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+        let content = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
 
         serde_json::from_str(&content).with_context(|| {
             format!(

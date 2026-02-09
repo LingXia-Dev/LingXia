@@ -2,6 +2,7 @@ use super::types::{LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::{
     AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig,
+    ResourcesConfig,
 };
 use crate::versions::LingXiaVersions;
 use anyhow::Result;
@@ -12,6 +13,7 @@ pub(super) fn generate_config_file(
     config: &ProjectConfig,
     lxapp: &LxAppInfo,
     versions: &LingXiaVersions,
+    web_runtime_version: &str,
 ) -> Result<()> {
     let swift_target_name = swift_target_name_from_project_name(&config.name);
 
@@ -82,7 +84,11 @@ pub(super) fn generate_config_file(
         ios,
         macos,
         harmony,
-        resources: None,
+        resources: Some(ResourcesConfig {
+            i18n: None,
+            icons: None,
+            runtime: Some(format!("npm:lingxia-web-runtime@{web_runtime_version}")),
+        }),
     };
 
     // Save config file
