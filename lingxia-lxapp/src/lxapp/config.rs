@@ -38,11 +38,11 @@ pub(crate) struct LxPlugin {
 pub(crate) struct LxAppConfig {
     /// LingXia App ID
     #[serde(default)]
-    pub lxAppId: String,
+    pub appId: String,
 
     /// LingXia App name
     #[serde(default)]
-    pub lxAppName: String,
+    pub appName: String,
 
     /// LingXia App version
     #[serde(default)]
@@ -76,7 +76,7 @@ impl LxAppConfig {
     /// Get LxApp basic information for FFI
     pub fn get_lxapp_info(&self) -> LxAppInfo {
         LxAppInfo {
-            app_name: self.lxAppName.clone(),
+            app_name: self.appName.clone(),
             version: self.version.clone(),
         }
     }

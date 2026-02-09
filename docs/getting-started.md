@@ -85,7 +85,7 @@ my-app/
 
 ```
 my-lxapp/
-├── lxapp.json           # App metadata (lxAppId, lxAppName, version)
+├── lxapp.json           # App metadata (appId, appName, version)
 ├── lxapp.config.ts      # Build configuration
 ├── package.json         # NPM dependencies
 ├── pages/               # Page components

@@ -274,8 +274,8 @@ API credentials can be provided in two ways (priority from high to low):
 
 ```json
 {
-  "lxAppId": "homelxapp",
-  "lxAppName": "My LxApp",
+  "appId": "homelxapp",
+  "appName": "My LxApp",
   "version": "0.1.0",
   "pages": ["pages/home/index.tsx"]
 }

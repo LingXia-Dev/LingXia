@@ -605,9 +605,9 @@ fn resolve_lxapp_id(path: &Path) -> Result<String> {
     let content = fs::read_to_string(path)?;
     let value: serde_json::Value = serde_json::from_str(&content)?;
     let app_id = value
-        .get("lxAppId")
+        .get("appId")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("lxAppId missing in lxapp.json"))?;
+        .ok_or_else(|| anyhow!("appId missing in lxapp.json"))?;
     Ok(app_id.to_string())
 }
 

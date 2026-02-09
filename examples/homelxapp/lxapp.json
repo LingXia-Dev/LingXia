@@ -1,6 +1,6 @@
 {
-  "lxAppId": "homelxapp",
-  "lxAppName": "Home LxApp Demo",
+  "appId": "homelxapp",
+  "appName": "Home LxApp Demo",
   "version": "1.0.0",
   "pages": [
     "pages/home/index",
@@ -20,7 +20,6 @@
     "pages/picker/index",
     "pages/navigator/index"
   ],
-  "debug": true,
   "tabBar": {
     "color": "#999999",
     "selectedColor": "#1677ff",

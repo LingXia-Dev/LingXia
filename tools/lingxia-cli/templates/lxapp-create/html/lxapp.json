@@ -1,6 +1,6 @@
 {
-  "lxAppId": "__APP_ID__",
-  "lxAppName": "__APP_DISPLAY_NAME__",
+  "appId": "__APP_ID__",
+  "appName": "__APP_DISPLAY_NAME__",
   "version": "0.0.1",
   "pages": [
     "pages/home/index.html"
