@@ -12,12 +12,11 @@ get_target_info() {
     darwin-x64)   echo "x86_64-apple-darwin darwin x64 " ;;
     darwin-arm64) echo "aarch64-apple-darwin darwin arm64 " ;;
     win32-x64)    echo "x86_64-pc-windows-gnu win32 x64 .exe" ;;
-    win32-arm64)  echo "aarch64-pc-windows-gnu win32 arm64 .exe" ;;
     *) return 1 ;;
   esac
 }
 
-ALL_TARGETS="darwin-x64 darwin-arm64 win32-x64 win32-arm64"
+ALL_TARGETS="darwin-x64 darwin-arm64 win32-x64"
 
 # Detect current platform
 detect_platform() {
@@ -34,7 +33,6 @@ detect_platform() {
     MINGW*|MSYS*|CYGWIN*)
       case "$arch" in
         x86_64)  echo "win32-x64" ;;
-        aarch64) echo "win32-arm64" ;;
         *) echo ""; return 1 ;;
       esac ;;
     *) echo ""; return 1 ;;
@@ -67,15 +65,15 @@ Usage: release.sh [OPTIONS]
 Options:
   --bump <version>     Bump all version files to specified version (e.g., 0.0.8)
                        Updates: package.json, Cargo.toml, optionalDependencies, package-lock.json
-  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, win32-x64, win32-arm64, all
-  --publish            Publish platform package(s) + main @lingxia/cli
+  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, win32-x64, all
+  --publish            Publish platform package(s) + main @lingxia/cli (requires all platforms)
   --out <dir>          Output directory (default: ./dist)
   --skip-build         Skip cargo build, use existing binaries
 
 Examples:
   ./release.sh --bump 0.0.8                   # Bump version only
   ./release.sh --target darwin-x64            # Build Intel Mac
-  ./release.sh --bump 0.0.8 --target darwin-x64 --publish  # Bump + build + publish
+  ./release.sh --bump 0.0.8 --publish         # Bump + build all + publish
   ./release.sh --target all --publish         # Full release (all platforms)
 EOF
       exit 0 ;;
@@ -83,6 +81,17 @@ EOF
   esac
   shift
 done
+
+# Publishing wrapper package must include all optional platform packages.
+if [[ "$PUBLISH" -eq 1 ]]; then
+  if [[ -z "$TARGET" ]]; then
+    TARGET="all"
+  elif [[ "$TARGET" != "all" ]]; then
+    echo "ERROR: --publish requires --target all (or omit --target)."
+    echo "       Wrapper @lingxia/cli depends on all platform optionalDependencies."
+    exit 1
+  fi
+fi
 
 # Handle --bump: update all version files
 if [[ -n "$BUMP_VERSION" ]]; then
@@ -246,8 +255,59 @@ for t in "${targets[@]}"; do
   build_target "$t"
 done
 
+wait_for_package() {
+  local package_name="$1"
+  local version="$2"
+  local max_attempts="${3:-12}"
+  local sleep_secs="${4:-5}"
+  local attempt
+
+  for attempt in $(seq 1 "$max_attempts"); do
+    if npm view "${package_name}@${version}" version >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "Waiting for npm package ${package_name}@${version} (attempt ${attempt}/${max_attempts})..."
+    sleep "$sleep_secs"
+  done
+  return 1
+}
+
+ensure_optional_deps_available() {
+  local missing=0
+  local deps
+  deps="$(node -e "
+    const pkg = require('$MAIN_PKG');
+    const entries = Object.entries(pkg.optionalDependencies || {});
+    for (const [name, version] of entries) {
+      if (name.startsWith('@lingxia/cli-')) console.log(name + ' ' + version);
+    }
+  ")"
+
+  if [[ -z "$deps" ]]; then
+    echo "ERROR: No @lingxia/cli-* optionalDependencies found in $MAIN_PKG"
+    return 1
+  fi
+
+  while read -r dep_name dep_version; do
+    [[ -z "$dep_name" ]] && continue
+    if wait_for_package "$dep_name" "$dep_version"; then
+      echo "✓ Found ${dep_name}@${dep_version}"
+    else
+      echo "ERROR: Missing ${dep_name}@${dep_version} on npm."
+      missing=1
+    fi
+  done <<< "$deps"
+
+  if [[ "$missing" -ne 0 ]]; then
+    echo "Refusing to publish @lingxia/cli@$VERSION because required platform packages are not available."
+    return 1
+  fi
+}
+
 # Publish main package
 if [[ "$PUBLISH" -eq 1 ]]; then
+  ensure_optional_deps_available
+
   echo ""
   echo "========================================"
   echo "Publishing @lingxia/cli@$VERSION"
