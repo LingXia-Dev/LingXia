@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 LingXia SDK release packager (per-platform)
 
-Generates SDK-required resources (i18n/assets/icons) and produces release artifacts
+Generates SDK-required resources (i18n/icons) and produces release artifacts
 ready to be uploaded as GitHub Release assets by CI.
 
 Usage:
@@ -16,11 +16,9 @@ Options:
   --out <dir>                   Output directory (default: dist/sdk-release)
   --harmony-ohm-dir <dir>       Harmony: publish local OHM module to this directory
   --no-shasums                  Skip SHASUMS file generation (useful for local dev)
-  --android-es5                 Android: build ES5 web runtime and publish version as <version>-es5
   --android-maven-dir <dir>     Android: publish to this local Maven repo dir (default: <out>/android/maven)
   --android-no-zip              Android: do not create the release maven zip (useful for local dev)
   --apple-no-zip                Apple: do not create the source zip (useful for local dev)
-  --web-runtime-target <target> Web runtime target for Apple assets: desktop|mobile (default: mobile)
   --gh-upload                   Upload generated artifacts to GitHub Release via gh CLI
   --gh-tag <tag>                GitHub release tag (default: sdk-v<version>)
   -h, --help                    Show help
@@ -47,12 +45,9 @@ VERSION=""
 PLATFORM="all"
 OUT_DIR="$ROOT_DIR/dist/sdk-release"
 NO_SHASUMS=false
-ANDROID_ES5=false
 ANDROID_MAVEN_DIR=""
 ANDROID_ZIP=true
 APPLE_ZIP=true
-WEB_RUNTIME_TARGET="mobile"
-ANDROID_VERSION=""
 HARMONY_OHM_DIR=""
 GH_UPLOAD=false
 GH_REPO="LingXia-Dev/LingXia"
@@ -64,11 +59,9 @@ while [[ $# -gt 0 ]]; do
     --out) OUT_DIR="${2:-}"; shift 2 ;;
     --harmony-ohm-dir) HARMONY_OHM_DIR="${2:-}"; shift 2 ;;
     --no-shasums) NO_SHASUMS=true; shift 1 ;;
-    --android-es5) ANDROID_ES5=true; shift 1 ;;
     --android-maven-dir) ANDROID_MAVEN_DIR="${2:-}"; shift 2 ;;
     --android-no-zip) ANDROID_ZIP=false; shift 1 ;;
     --apple-no-zip) APPLE_ZIP=false; shift 1 ;;
-    --web-runtime-target) WEB_RUNTIME_TARGET="${2:-}"; shift 2 ;;
     --gh-upload) GH_UPLOAD=true; shift 1 ;;
     --gh-tag) GH_TAG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -124,14 +117,8 @@ esac
 
 I18N_DIR="$ROOT_DIR/i18n"
 ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
-WEB_RUNTIME_BUILD_DIR="$ROOT_DIR/target/web-runtime-dist"
-WEB_RUNTIME_DESKTOP_DIST="$WEB_RUNTIME_BUILD_DIR/desktop"
-WEB_RUNTIME_MOBILE_DIST="$WEB_RUNTIME_BUILD_DIR/mobile"
-APPLE_WEB_RUNTIME_INPUT=""
-
 ANDROID_SDK_DIR="$ROOT_DIR/lingxia-sdk/android"
 ANDROID_RES_DIR="$ANDROID_SDK_DIR/lingxia/src/main/res"
-ANDROID_ASSETS_OUT="$ANDROID_SDK_DIR/lingxia/src/main/assets"
 ANDROID_DRAWABLE_DIR="$ANDROID_RES_DIR/drawable"
 ANDROID_WEBVIEW_JAR_DIR="$ANDROID_SDK_DIR/lingxia/build/generated/lingxia-webview"
 ANDROID_WEBVIEW_JAR="$ANDROID_WEBVIEW_JAR_DIR/lingxia-webview.jar"
@@ -152,52 +139,6 @@ HARMONY_ICONS_DIR="$HARMONY_RAWFILE_DIR/icons"
 run() {
   log "+ $*"
   (cd "$ROOT_DIR" && "$@")
-}
-
-build_web_runtime() {
-  local web_dir="$ROOT_DIR/lingxia-web-runtime"
-  [[ -f "$web_dir/package.json" ]] || die "Missing lingxia-web-runtime/package.json: $web_dir/package.json"
-  [[ -d "$web_dir/node_modules" ]] || die "Missing $web_dir/node_modules. Run: (cd lingxia-web-runtime && npm ci)"
-
-  build_runtime_variant() {
-    local target="$1"
-    local build_script="$2"
-    local out_dir="$3"
-
-    log "==> Building web runtime ($target, script=$build_script)"
-    (cd "$web_dir" && LX_RUNTIME_PLATFORM="$target" npm run "$build_script" 1>&2)
-
-    rm -rf "$out_dir" 2>/dev/null || true
-    mkdir -p "$out_dir"
-    cp -R "$web_dir/dist/." "$out_dir/"
-    [[ -f "$out_dir/runtime.js" ]] || die "Web runtime build missing runtime.js for $target: $out_dir/runtime.js"
-  }
-
-  rm -rf "$WEB_RUNTIME_BUILD_DIR" 2>/dev/null || true
-  mkdir -p "$WEB_RUNTIME_BUILD_DIR"
-
-  if $WANT_APPLE; then
-    case "$WEB_RUNTIME_TARGET" in
-      desktop)
-        build_runtime_variant "desktop" "build" "$WEB_RUNTIME_DESKTOP_DIST"
-        APPLE_WEB_RUNTIME_INPUT="$WEB_RUNTIME_DESKTOP_DIST"
-        ;;
-      mobile)
-        build_runtime_variant "mobile" "build" "$WEB_RUNTIME_MOBILE_DIST"
-        APPLE_WEB_RUNTIME_INPUT="$WEB_RUNTIME_MOBILE_DIST"
-        ;;
-      *)
-        die "Unknown --web-runtime-target: $WEB_RUNTIME_TARGET (expected desktop, mobile)"
-        ;;
-    esac
-  fi
-  if $WANT_ANDROID || $WANT_HARMONY; then
-    if $ANDROID_ES5; then
-      build_runtime_variant "mobile" "build:es5" "$WEB_RUNTIME_MOBILE_DIST"
-    else
-      build_runtime_variant "mobile" "build" "$WEB_RUNTIME_MOBILE_DIST"
-    fi
-  fi
 }
 
 zip_dir() {
@@ -307,27 +248,6 @@ generate_resources() {
   run "${i18n_args[@]}"
   run "${icons_args[@]}"
 
-  if $WANT_ANDROID; then
-    [[ -d "$WEB_RUNTIME_MOBILE_DIST" ]] || die "Missing mobile web runtime build dir: $WEB_RUNTIME_MOBILE_DIST"
-    run cargo run -p lingxia-gen -- assets \
-      --runtime-input "$WEB_RUNTIME_MOBILE_DIST" \
-      --android-out "$ANDROID_ASSETS_OUT"
-  fi
-
-  if $WANT_APPLE; then
-    [[ -n "$APPLE_WEB_RUNTIME_INPUT" ]] || die "Apple runtime input is not set"
-    [[ -d "$APPLE_WEB_RUNTIME_INPUT" ]] || die "Missing Apple web runtime build dir: $APPLE_WEB_RUNTIME_INPUT"
-    run cargo run -p lingxia-gen -- assets \
-      --runtime-input "$APPLE_WEB_RUNTIME_INPUT" \
-      --ios-out "$APPLE_RES_DIR"
-  fi
-
-  if $WANT_HARMONY; then
-    [[ -d "$WEB_RUNTIME_MOBILE_DIST" ]] || die "Missing mobile web runtime build dir: $WEB_RUNTIME_MOBILE_DIST"
-    run cargo run -p lingxia-gen -- assets \
-      --runtime-input "$WEB_RUNTIME_MOBILE_DIST" \
-      --harmony-out "$HARMONY_RAWFILE_DIR"
-  fi
 }
 
 ensure_android_webview_jar() {
@@ -356,23 +276,14 @@ build_android() {
   # Build Gradle properties
   local gradle_props=()
   gradle_props+=("-PLOCAL_MAVEN_REPO_DIR=$maven_dir")
-  gradle_props+=("-Pversion=$ANDROID_VERSION")
-  
-  # Android 5 (ES5) mode: EXPERIMENTAL, NOT officially supported, no contributions accepted.
-  # Use at your own risk. Some features may not work on older devices.
-  # Note: compileSdk stays high for AndroidX dependency compatibility; only minSdk/targetSdk are lowered.
-  if $ANDROID_ES5; then
-    log "   (Android 5 mode: minSdk=21, targetSdk=28)"
-    gradle_props+=("-PminSdk=21")
-    gradle_props+=("-PtargetSdk=28")
-  fi
+  gradle_props+=("-Pversion=$VERSION")
 
   log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ${gradle_props[*]})"
   (cd "$ANDROID_SDK_DIR" && \
     LINGXIA_JAR_OUTPUT_DIR="$ANDROID_WEBVIEW_JAR_DIR" \
     ./gradlew :lingxia:publish "${gradle_props[@]}" 1>&2)
 
-  local aar="$maven_dir/com/lingxia/lingxia/$ANDROID_VERSION/lingxia-$ANDROID_VERSION.aar"
+  local aar="$maven_dir/com/lingxia/lingxia/$VERSION/lingxia-$VERSION.aar"
   [[ -f "$aar" ]] || die "AAR not found after publish: $aar"
 
   if ! $ANDROID_ZIP; then
@@ -391,7 +302,7 @@ build_android() {
   cp -R "$group_dir" "$tmp_dir/maven/com/lingxia/"
   find "$tmp_dir/maven" -name ".DS_Store" -delete 2>/dev/null || true
 
-  local out_zip="$OUT_DIR/lingxia-sdk-android-maven-$ANDROID_VERSION.zip"
+  local out_zip="$OUT_DIR/lingxia-sdk-android-maven-$VERSION.zip"
   rm -f "$out_zip"
   (cd "$tmp_dir" && zip -qr "$out_zip" "maven" -x "*.DS_Store")
   rm -rf "$tmp_dir"
@@ -519,22 +430,6 @@ build_ios_source() {
 }
 
 main() {
-  if $ANDROID_ES5 && ( $WANT_APPLE || $WANT_HARMONY ); then
-    die "--android-es5 can only be used with --platform android"
-  fi
-
-  WEB_RUNTIME_TARGET="$(echo "$WEB_RUNTIME_TARGET" | tr '[:upper:]' '[:lower:]' | xargs)"
-  case "$WEB_RUNTIME_TARGET" in
-    desktop|mobile) ;;
-    *) die "Unknown --web-runtime-target: $WEB_RUNTIME_TARGET (expected desktop, mobile)" ;;
-  esac
-
-  ANDROID_VERSION="$VERSION"
-  if $ANDROID_ES5 && [[ "$ANDROID_VERSION" != *-es5 ]]; then
-    ANDROID_VERSION="${ANDROID_VERSION}-es5"
-  fi
-
-  build_web_runtime
   generate_resources
 
   local artifacts=()
