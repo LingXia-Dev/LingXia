@@ -459,17 +459,17 @@ pub fn apple_logout() -> Result<()> {
         deleted_anything = true;
     }
 
-    // Also clear anisette cache to ensure fresh device fingerprint on next login
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-    let anisette_cache = home.join(".lingxia").join("anisette_cache.json");
-    if anisette_cache.exists() {
-        std::fs::remove_file(&anisette_cache)?;
-        println!(
-            "{} Anisette cache cleared: {}",
-            "✓".green(),
-            anisette_cache.display()
-        );
-        deleted_anything = true;
+    // Also clear anisette cache to ensure fresh device fingerprint on next login.
+    for anisette_cache in [OmnisetteProvider::cache_path()?] {
+        if anisette_cache.exists() {
+            std::fs::remove_file(&anisette_cache)?;
+            println!(
+                "{} Anisette cache cleared: {}",
+                "✓".green(),
+                anisette_cache.display()
+            );
+            deleted_anything = true;
+        }
     }
 
     if deleted_anything {

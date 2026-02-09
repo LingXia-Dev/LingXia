@@ -7,6 +7,7 @@ use super::http_agent;
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use std::net::TcpStream;
+use std::path::PathBuf;
 use tungstenite::{Message, WebSocket, connect, stream::MaybeTlsStream};
 use uuid::Uuid;
 
@@ -55,25 +56,26 @@ impl OmnisetteProvider {
 
     /// Load provisioning data from cache file
     pub fn load_cached(&mut self) -> Result<bool> {
-        let cache_path = Self::cache_path()?;
-        if cache_path.exists() {
-            let data = std::fs::read_to_string(&cache_path)
-                .context("Failed to read provisioning cache")?;
-
-            #[derive(Deserialize)]
-            struct CacheData {
-                local_user_uid: String,
-                provisioning_data: ProvisioningData,
-            }
-
-            if let Ok(cache) = serde_json::from_str::<CacheData>(&data)
-                && let Ok(uid) = Uuid::parse_str(&cache.local_user_uid)
-            {
-                self.local_user_uid = uid;
-                self.provisioning_data = Some(cache.provisioning_data);
-                return Ok(true);
-            }
+        #[derive(Deserialize)]
+        struct CacheData {
+            local_user_uid: String,
+            provisioning_data: ProvisioningData,
         }
+
+        let path = Self::cache_path()?;
+        if !path.exists() {
+            return Ok(false);
+        }
+
+        let data = std::fs::read_to_string(&path).context("Failed to read provisioning cache")?;
+        if let Ok(cache) = serde_json::from_str::<CacheData>(&data)
+            && let Ok(uid) = Uuid::parse_str(&cache.local_user_uid)
+        {
+            self.local_user_uid = uid;
+            self.provisioning_data = Some(cache.provisioning_data);
+            return Ok(true);
+        }
+
         Ok(false)
     }
 
@@ -102,9 +104,12 @@ impl OmnisetteProvider {
         Ok(())
     }
 
-    fn cache_path() -> Result<std::path::PathBuf> {
+    pub fn cache_path() -> Result<PathBuf> {
         let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-        Ok(home.join(".lingxia").join("anisette_cache.json"))
+        Ok(home
+            .join(".lingxia")
+            .join("apple")
+            .join("anisette_cache.json"))
     }
 
     fn get_client_info(&mut self) -> Result<String> {

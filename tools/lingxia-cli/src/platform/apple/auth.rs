@@ -4,7 +4,7 @@
 //! - App Store Connect API (paid accounts) - JWT-based authentication
 //! - Xcode Private API (free accounts) - Apple ID + 2FA (future)
 //!
-//! Credentials are stored in ~/.lingxia/credentials.json
+//! Credentials are stored in ~/.lingxia/apple/credentials.json
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -13,6 +13,7 @@ use std::fs;
 use std::path::PathBuf;
 
 const CREDENTIALS_DIR: &str = ".lingxia";
+const APPLE_CREDENTIALS_SUBDIR: &str = "apple";
 const CREDENTIALS_FILE: &str = "credentials.json";
 
 // =============================================================================
@@ -102,9 +103,8 @@ impl CredentialStorage {
     /// Create a new credential storage instance
     pub fn new() -> Result<Self> {
         let home = dirs::home_dir().context("Could not determine home directory")?;
-        let credentials_dir = home.join(CREDENTIALS_DIR);
+        let credentials_dir = home.join(CREDENTIALS_DIR).join(APPLE_CREDENTIALS_SUBDIR);
         let credentials_path = credentials_dir.join(CREDENTIALS_FILE);
-
         Ok(Self { credentials_path })
     }
 
@@ -119,17 +119,7 @@ impl CredentialStorage {
             return Ok(None);
         }
 
-        let content = fs::read_to_string(&self.credentials_path)
-            .with_context(|| format!("Failed to read {}", self.credentials_path.display()))?;
-
-        let credentials: AuthCredentials = serde_json::from_str(&content).with_context(|| {
-            format!(
-                "Failed to parse {}. Re-run 'lingxia auth apple login' to refresh credentials.",
-                self.credentials_path.display()
-            )
-        })?;
-
-        Ok(Some(credentials))
+        self.read_credentials_file(&self.credentials_path).map(Some)
     }
 
     /// Save credentials
@@ -166,5 +156,17 @@ impl CredentialStorage {
         } else {
             Ok(false)
         }
+    }
+
+    fn read_credentials_file(&self, path: &PathBuf) -> Result<AuthCredentials> {
+        let content =
+            fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+
+        serde_json::from_str(&content).with_context(|| {
+            format!(
+                "Failed to parse {}. Re-run 'lingxia auth apple login' to refresh credentials.",
+                path.display()
+            )
+        })
     }
 }
