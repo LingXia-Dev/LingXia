@@ -9,6 +9,8 @@ import AudioToolbox
 import ImageIO
 import UniformTypeIdentifiers
 import MobileCoreServices
+#elseif os(macOS)
+import AppKit
 #endif
 
 @MainActor
@@ -363,18 +365,6 @@ extension LxAppMedia {
 
     nonisolated static func previewMedia(items_json: RustStr) -> Bool {
         os_log("previewMedia not implemented on macOS", log: log, type: .error)
-        return false
-    }
-
-    nonisolated static func chooseMedia(
-        max_count: UInt32,
-        mode: RustStr,
-        source_types_json: RustStr,
-        camera_facing: RustStr,
-        max_duration: RustStr,
-        callback_id: UInt64
-    ) -> Bool {
-        os_log("chooseMedia not implemented on macOS", log: log, type: .error)
         return false
     }
 

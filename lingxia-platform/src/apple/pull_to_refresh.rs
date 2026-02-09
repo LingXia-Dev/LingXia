@@ -3,10 +3,10 @@ use crate::traits::pull_to_refresh::PullToRefresh;
 
 use super::Platform;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi::{start_pull_down_refresh, stop_pull_down_refresh};
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 impl PullToRefresh for Platform {
     fn start_pull_down_refresh(&self, app_id: &str, path: &str) -> Result<(), PlatformError> {
         let success = start_pull_down_refresh(app_id, path);
@@ -31,7 +31,7 @@ impl PullToRefresh for Platform {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
 impl PullToRefresh for Platform {
     fn start_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
         Err(PlatformError::Platform(

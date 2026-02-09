@@ -46,6 +46,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public var tabBarConfig: TabBar?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
+    private var pullToRefreshHelper: MacPullToRefreshHelper?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
@@ -237,6 +238,25 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private func showWebViewToUser(_ webView: WKWebView, path: String) {
         LxAppCore.getCurrentWebView()?.removeFromSuperview()
         WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
+        setupPullToRefresh(for: webView)
+    }
+
+    private func setupPullToRefresh(for webView: WKWebView) {
+        if pullToRefreshHelper == nil || pullToRefreshHelper?.webView !== webView {
+            pullToRefreshHelper = MacPullToRefreshHelper(webView: webView)
+        }
+    }
+
+    internal func startPullDownRefreshProgrammatically() {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+            setupPullToRefresh(for: webView)
+        }
+        pullToRefreshHelper?.startRefreshing()
+        let _ = onUiEvent(appId, LxAppUIEvent.pullDownRefresh, currentPath)
+    }
+
+    internal func stopPullDownRefreshProgrammatically() {
+        pullToRefreshHelper?.endRefreshing()
     }
 
     private func setupNotificationObservers() {

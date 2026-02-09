@@ -619,21 +619,6 @@ extension LxApp {
         }
     }
 
-    #if os(macOS)
-    // MARK: - macOS Stub Implementations
-
-    /// Start pull-to-refresh animation (not implemented on macOS)
-    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
-
-    /// Stop pull-to-refresh animation (not implemented on macOS)
-    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
-    #endif
 }
 
 #if os(iOS)

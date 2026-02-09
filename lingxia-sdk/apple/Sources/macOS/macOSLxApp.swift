@@ -187,6 +187,40 @@ extension macOSLxApp {
             viewController.navigate(appId: appId, to: path, with: animationType)
         }
     }
+
+    @MainActor
+    internal static func getViewController(for appId: String) -> macOSLxAppViewController? {
+        return tabWindowController?.getViewController(for: appId)
+    }
+}
+
+// MARK: - Pull-to-Refresh Bridge Functions
+extension LxApp {
+    /// Start pull-to-refresh animation programmatically
+    @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+        let appIdStr = appid.toString()
+        let pathStr = path.toString()
+
+        Task { @MainActor in
+            guard let manager = macOSLxApp.getViewController(for: appIdStr) else { return }
+            manager.startPullDownRefreshProgrammatically()
+            os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
+        }
+        return true
+    }
+
+    /// Stop pull-to-refresh animation
+    @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
+        let appIdStr = appid.toString()
+        let pathStr = path.toString()
+
+        Task { @MainActor in
+            guard let manager = macOSLxApp.getViewController(for: appIdStr) else { return }
+            manager.stopPullDownRefreshProgrammatically()
+            os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
+        }
+        return true
+    }
 }
 
 #endif
