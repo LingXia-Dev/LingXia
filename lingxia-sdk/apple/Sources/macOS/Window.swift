@@ -27,6 +27,24 @@ public class LxAppWindow: NSWindow {
     public override var canBecomeMain: Bool {
         return true
     }
+
+    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Backspace (keyCode 51) for back navigation
+        if event.keyCode == 51 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [] {
+            // Don't intercept if typing in a native text field
+            if let responder = firstResponder, responder is NSText {
+                return super.performKeyEquivalent(with: event)
+            }
+            // Only navigate back when back button is available
+            if let state = NavigationBarStateManager.shared.currentState, state.show_back_button {
+                if let appId = LxAppTabManager.shared.activeTab?.appId {
+                    let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+                    return true
+                }
+            }
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 /// SwiftUI tab bar component for Tab mode

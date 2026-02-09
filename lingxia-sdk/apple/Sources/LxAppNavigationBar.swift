@@ -74,36 +74,68 @@ public protocol NavigationBarProtocol: AnyObject {
 public struct NavigationButton: View {
     let isBackButton: Bool
     let tintColor: Color
+    let isEnabled: Bool
+    let title: String?
     let action: () -> Void
 
-    public init(isBackButton: Bool, tintColor: Color = .primary, action: @escaping () -> Void) {
+    public init(isBackButton: Bool, tintColor: Color = .primary, isEnabled: Bool = true, title: String? = nil, action: @escaping () -> Void) {
         self.isBackButton = isBackButton
         self.tintColor = tintColor
+        self.isEnabled = isEnabled
+        self.title = title
         self.action = action
     }
 
     public var body: some View {
-        Button(action: action) {
+        Button(action: {
+            if isEnabled {
+                action()
+            }
+        }) {
+            buttonContent
+        }
+        .frame(width: 44, height: 44)
+        .buttonStyle(.plain)
+        .opacity(isEnabled ? 1.0 : 0.4)
+        .scaleEffect(isPressed && isEnabled ? 0.95 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
+            if isEnabled {
+                isPressed = pressing
+            }
+        }, perform: {})
+        .background(isEnabled ? Color.clear : Color.gray.opacity(0.1))
+        .cornerRadius(8)
+    }
+
+    @ViewBuilder
+    private var buttonContent: some View {
+        if let title = title, !title.isEmpty {
+            // Show title text for home button
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(foregroundColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        } else {
+            // Show icon for back button
             #if os(iOS)
             if let uiImage = LxIcon.image(named: isBackButton ? "icon_back" : "icon_home", size: CGSize(width: 20, height: 20)) {
                 Image(uiImage: uiImage)
                     .renderingMode(.template)
-                    .foregroundColor(tintColor)
+                    .foregroundColor(foregroundColor)
             }
             #else
             // macOS: Use SF Symbols as fallback since LxIcon returns NSImage
             Image(systemName: isBackButton ? "chevron.left" : "house")
                 .font(.system(size: 16, weight: .medium))
-                .foregroundColor(tintColor)
+                .foregroundColor(foregroundColor)
             #endif
         }
-        .frame(width: 44, height: 44)
-        .buttonStyle(.plain)
-        .scaleEffect(isPressed ? 0.95 : 1.0)
-        .animation(.easeInOut(duration: 0.1), value: isPressed)
-        .onLongPressGesture(minimumDuration: 0, maximumDistance: .infinity, pressing: { pressing in
-            isPressed = pressing
-        }, perform: {})
+    }
+
+    private var foregroundColor: Color {
+        isEnabled ? tintColor : tintColor.opacity(0.5)
     }
 
     @State private var isPressed = false
@@ -113,18 +145,29 @@ public struct NavigationButton: View {
 /// Automatically renders based on NavigationBarState - no manual updates needed
 public struct macOSNavigationBarView: View {
     let state: NavigationBarState?
+    let appId: String?
     let onBackTapped: () -> Void
     let onHomeTapped: () -> Void
     @State private var isLoading: Bool = false
 
     public init(
         state: NavigationBarState?,
+        appId: String? = nil,
         onBackTapped: @escaping () -> Void = {},
         onHomeTapped: @escaping () -> Void = {}
     ) {
         self.state = state
+        self.appId = appId
         self.onBackTapped = onBackTapped
         self.onHomeTapped = onHomeTapped
+    }
+
+    /// Get the app name from LxAppInfo, returns nil if not available
+    private var appName: String? {
+        guard let appId = appId else { return nil }
+        let info = getLxAppInfo(appId)
+        let name = info.app_name.toString()
+        return name.isEmpty ? nil : name
     }
 
     public var body: some View {
@@ -158,34 +201,47 @@ public struct macOSNavigationBarView: View {
             titleView
             Spacer()
 
-            // Trailing: Space for capsule button
+            // Trailing: Space for capsule button (iOS only, macOS has no leading button to balance)
+            #if os(iOS)
             Color.clear
                 .frame(width: 44 + 10) // Match the leading button's effective width (44 button + 10 padding)
+            #endif
         }
         .frame(height: NavigationBarState.DEFAULT_HEIGHT)
     }
 
     @ViewBuilder
     private var leadingButton: some View {
-        if let state = state {
-            // Show button when navbar is visible AND button is needed
-            if state.show_navbar && (state.show_back_button || state.show_home_button) {
-                #if os(iOS)
+        #if os(iOS)
+        // Fixed position container - always reserves space for the button
+        ZStack {
+            if let state = state, state.show_navbar {
                 if state.show_back_button {
-                    NavigationButton(isBackButton: true, tintColor: textColor, action: onBackTapped)
+                    // Back button is enabled - show back icon
+                    NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: true, action: onBackTapped)
                 } else if state.show_home_button {
-                    NavigationButton(isBackButton: false, tintColor: textColor, action: onHomeTapped)
+                    // Home button is enabled - show app name instead of home icon
+                    NavigationButton(
+                        isBackButton: false,
+                        tintColor: textColor,
+                        isEnabled: true,
+                        title: appName,
+                        action: onHomeTapped
+                    )
+                } else {
+                    // No button needed but show disabled placeholder for consistent layout
+                    NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: false, action: {})
                 }
-                #else
-                // macOS uses WindowController's own navigation buttons
-                Color.clear.frame(width: 44, height: 44)
-                #endif
             } else {
-                Color.clear.frame(width: 44, height: 44)
+                // Navbar hidden or no state - show disabled placeholder
+                NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: false, action: {})
             }
-        } else {
-            Color.clear.frame(width: 44, height: 44)
         }
+        .frame(width: 44, height: 44)
+        #else
+        // macOS: navigation buttons live in the tab bar, no leading space needed
+        EmptyView()
+        #endif
     }
 
     @ViewBuilder
@@ -221,15 +277,17 @@ public struct macOSNavigationBarView: View {
 /// Clean data-driven ViewModifier for navigation bar
 public struct LxAppNavigationBarModifier: ViewModifier {
     let state: NavigationBarState?
+    let appId: String?
 
-    public init(state: NavigationBarState?) {
+    public init(state: NavigationBarState?, appId: String? = nil) {
         self.state = state
+        self.appId = appId
     }
 
     public func body(content: Content) -> some View {
         VStack(spacing: 0) {
             if let state = state, state.show_navbar {
-                macOSNavigationBarView(state: state)
+                macOSNavigationBarView(state: state, appId: appId)
             }
             content
         }
@@ -342,6 +400,7 @@ struct ReactiveNavigationBarView: View {
     var body: some View {
         macOSNavigationBarView(
             state: stateManager.currentState,
+            appId: stateManager.currentAppId,
             onBackTapped: handleBackTap,
             onHomeTapped: handleHomeTap
         )
@@ -369,7 +428,7 @@ public typealias LingXiaNavigationBar = macOSNavigationBarView
 
 public extension View {
     /// Adds navigation bar to the view using clean data-driven state
-    func lxAppNavigationBar(state: NavigationBarState?) -> some View {
-        self.modifier(LxAppNavigationBarModifier(state: state))
+    func lxAppNavigationBar(state: NavigationBarState?, appId: String? = nil) -> some View {
+        self.modifier(LxAppNavigationBarModifier(state: state, appId: appId))
     }
 }

@@ -84,6 +84,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             self?.closeTab(appId)
         }
 
+        tabBar.onNavigationAction = { [weak self] action in
+            guard let appId = self?.tabManager.activeTab?.appId else { return }
+            if action == "back" {
+                let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+            } else if action == "home" {
+                let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+            }
+        }
+
         contentView.addSubview(tabBar)
 
         NSLayoutConstraint.activate([
