@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 data class LxAppInfo(
     val appName: String,
+    val version: String,
     val cacheDir: String,
 )
 

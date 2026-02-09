@@ -8,8 +8,8 @@ use std::collections::BTreeMap;
 pub struct LxAppInfo {
     /// LxApp name
     pub app_name: String,
-    /// Debug mode enabled
-    pub debug: bool,
+    /// LxApp version
+    pub version: String,
 }
 
 /// Plugin definition embedded in `lxapp.json`.
@@ -32,7 +32,7 @@ pub(crate) struct LxPlugin {
     pub pages: BTreeMap<String, String>,
 }
 
-/// App config from app.json
+/// App config from lxapp.json
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
 pub(crate) struct LxAppConfig {
@@ -57,10 +57,6 @@ pub(crate) struct LxAppConfig {
     /// Plugin definitions.
     #[serde(default)]
     pub(crate) plugins: BTreeMap<String, LxPlugin>,
-
-    /// Debug mode - when true, developer tools will be enabled for all pages
-    #[serde(default)]
-    pub debug: bool,
 }
 
 impl LxAppConfig {
@@ -81,12 +77,7 @@ impl LxAppConfig {
     pub fn get_lxapp_info(&self) -> LxAppInfo {
         LxAppInfo {
             app_name: self.lxAppName.clone(),
-            debug: self.debug,
+            version: self.version.clone(),
         }
-    }
-
-    /// Check if debug mode is enabled
-    pub fn is_debug_enabled(&self) -> bool {
-        self.debug
     }
 }

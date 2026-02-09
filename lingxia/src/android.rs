@@ -379,7 +379,11 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
         return 0;
     }
 
-    let event_name = if event_type == KEY_EVENT_DOWN { "KeyDown" } else { "KeyUp" };
+    let event_name = if event_type == KEY_EVENT_DOWN {
+        "KeyDown"
+    } else {
+        "KeyUp"
+    };
     if lxapp::emit_app_event(&appid, event_name, Some(payload)) {
         1
     } else {
@@ -439,16 +443,24 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
+    let version_str = match env.new_string(&lxapp_info.version) {
+        Ok(s) => s,
+        Err(_) => return JObject::null(),
+    };
     let cache_dir_str = match env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned()) {
         Ok(s) => s,
         Err(_) => return JObject::null(),
     };
 
-    // Create LxAppInfo object (appName, cacheDir)
+    // Create LxAppInfo object (appName, version, cacheDir)
     match env.new_object(
         lxapp_info_class,
-        "(Ljava/lang/String;Ljava/lang/String;)V",
-        &[(&app_name_str).into(), (&cache_dir_str).into()],
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+        &[
+            (&app_name_str).into(),
+            (&version_str).into(),
+            (&cache_dir_str).into(),
+        ],
     ) {
         Ok(obj) => obj,
         Err(_) => JObject::null(),

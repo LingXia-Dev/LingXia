@@ -325,10 +325,6 @@ pub(crate) struct LxAppState {
     /// Used for LRU (Least Recently Used) eviction when memory is low
     pub(crate) last_active_time: Instant,
 
-    /// Debug mode override (can be enabled at runtime)
-    /// When true, enables additional logging and debugging features
-    debug: bool,
-
     /// Network security configuration for HTTPS domain filtering
     /// Manages which domains this app is allowed to access
     network_security: NetworkSecurity,
@@ -353,7 +349,6 @@ impl LxAppState {
             pages: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
-            debug: false,
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
@@ -664,10 +659,6 @@ impl LxApp {
                 }
 
                 Ok(())
-            })
-            .inspect_err(|_| {
-                let mut state = self.state.lock().unwrap();
-                state.debug = true;
             })?
     }
 
@@ -884,10 +875,6 @@ impl LxApp {
             serde_json::from_str(&content)
                 .map_err(|_| LxAppError::InvalidJsonFile(relative_path.to_string()))
         })
-    }
-
-    pub fn is_debug_enabled(&self) -> bool {
-        self.state.lock().unwrap().debug || self.config.is_debug_enabled()
     }
 
     pub fn is_opened(&self) -> bool {
