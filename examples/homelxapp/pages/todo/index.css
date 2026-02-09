@@ -60,6 +60,19 @@
   }
 }
 
+/* macOS / desktop */
+@media (min-width: 768px) {
+  .todoapp {
+    margin-top: 120px;
+  }
+
+  .todo-page::before {
+    position: absolute;
+    top: 30px;
+    font-size: 100px;
+  }
+}
+
 .todo-page * {
   box-sizing: border-box;
 }
@@ -122,35 +135,9 @@
 }
 
 .todoapp h1 {
-  position: absolute;
-  top: -110px;
-  width: 100%;
-  font-size: 100px;
-  font-weight: 100;
-  text-align: center;
-  color: rgba(175, 47, 47, 0.2);
-  -webkit-text-rendering: optimizeLegibility;
-  -moz-text-rendering: optimizeLegibility;
-  text-rendering: optimizeLegibility;
-  user-select: none;
-  pointer-events: none;
-  letter-spacing: -0.05em;
-  text-transform: lowercase;
+  display: none;
 }
 
-@media (max-width: 768px) {
-  .todoapp h1 {
-    top: -80px;
-    font-size: 72px;
-  }
-}
-
-@media (max-width: 480px) {
-  .todoapp h1 {
-    top: -65px;
-    font-size: 56px;
-  }
-}
 
 .new-todo {
   position: relative;

@@ -1,7 +1,7 @@
 {
   "appId": "homelxapp",
   "appName": "Home LxApp Demo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "pages": [
     "pages/home/index",
     "pages/popup/index",
