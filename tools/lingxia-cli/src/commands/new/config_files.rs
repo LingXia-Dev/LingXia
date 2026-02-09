@@ -87,7 +87,7 @@ pub(super) fn generate_config_file(
         resources: Some(ResourcesConfig {
             i18n: None,
             icons: None,
-            runtime: Some(format!("npm:lingxia-web-runtime@{web_runtime_version}")),
+            runtime: Some(format!("npm:@lingxia/web-runtime@{web_runtime_version}")),
         }),
     };
 

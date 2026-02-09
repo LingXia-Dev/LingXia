@@ -9,7 +9,7 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "lingxia-web-runtime";
+pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/web-runtime";
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
