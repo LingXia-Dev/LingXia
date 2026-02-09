@@ -8,7 +8,6 @@ const { createRequire } = require("node:module");
 const PLATFORM_PACKAGE_MAP = {
   "darwin-arm64": "@lingxia/cli-darwin-arm64",
   "darwin-x64": "@lingxia/cli-darwin-x64",
-  "win32-x64": "@lingxia/cli-win32-x64",
 };
 
 function resolvePlatformPackage() {
@@ -33,7 +32,7 @@ async function main() {
   const vendorDir = path.join(pkgRoot, "vendor");
   fs.mkdirSync(vendorDir, { recursive: true });
 
-  const binName = process.platform === "win32" ? "lingxia.exe" : "lingxia";
+  const binName = "lingxia";
   const dest = path.join(vendorDir, binName);
 
   const requireFromHere = createRequire(__filename);
@@ -73,9 +72,7 @@ async function main() {
   }
 
   fs.copyFileSync(candidate, dest);
-  if (process.platform !== "win32") {
-    fs.chmodSync(dest, 0o755);
-  }
+  fs.chmodSync(dest, 0o755);
 }
 
 main().catch((err) => {

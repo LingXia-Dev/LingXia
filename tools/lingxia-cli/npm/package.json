@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/cli",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "private": false,
   "description": "LingXia CLI for scaffolding, building, and packaging mini-apps with LingXia templates and builders.",
   "type": "module",
@@ -37,9 +37,8 @@
     "vite": "^6.0.7"
   },
   "optionalDependencies": {
-    "@lingxia/cli-darwin-arm64": "0.1.1",
-    "@lingxia/cli-darwin-x64": "0.1.1",
-    "@lingxia/cli-win32-x64": "0.1.1"
+    "@lingxia/cli-darwin-arm64": "0.1.3",
+    "@lingxia/cli-darwin-x64": "0.1.3"
   },
   "devDependencies": {
     "@types/node": "^20.19.7",

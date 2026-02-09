@@ -11,12 +11,11 @@ get_target_info() {
   case "$1" in
     darwin-x64)   echo "x86_64-apple-darwin darwin x64 " ;;
     darwin-arm64) echo "aarch64-apple-darwin darwin arm64 " ;;
-    win32-x64)    echo "x86_64-pc-windows-gnu win32 x64 .exe" ;;
     *) return 1 ;;
   esac
 }
 
-ALL_TARGETS="darwin-x64 darwin-arm64 win32-x64"
+ALL_TARGETS="darwin-x64 darwin-arm64"
 
 # Detect current platform
 detect_platform() {
@@ -28,11 +27,6 @@ detect_platform() {
       case "$arch" in
         x86_64) echo "darwin-x64" ;;
         arm64)  echo "darwin-arm64" ;;
-        *) echo ""; return 1 ;;
-      esac ;;
-    MINGW*|MSYS*|CYGWIN*)
-      case "$arch" in
-        x86_64)  echo "win32-x64" ;;
         *) echo ""; return 1 ;;
       esac ;;
     *) echo ""; return 1 ;;
@@ -65,7 +59,7 @@ Usage: release.sh [OPTIONS]
 Options:
   --bump <version>     Bump all version files to specified version (e.g., 0.0.8)
                        Updates: package.json, Cargo.toml, optionalDependencies, package-lock.json
-  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, win32-x64, all
+  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, all
   --publish            Publish platform package(s) + main @lingxia/cli (requires all platforms)
   --out <dir>          Output directory (default: ./dist)
   --skip-build         Skip cargo build, use existing binaries
@@ -188,6 +182,42 @@ OUT_DIR="${OUT_DIR:-$START_DIR/dist}"
 [[ "$OUT_DIR" != /* ]] && OUT_DIR="$START_DIR/$OUT_DIR"
 mkdir -p "$OUT_DIR"
 
+publish_with_retry() {
+  local package_name="$1"
+  local package_version="$2"
+  local package_dir="$3"
+  local max_attempts="${4:-4}"
+  local sleep_secs=3
+  local attempt
+
+  for attempt in $(seq 1 "$max_attempts"); do
+    if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+      echo "✓ ${package_name}@${package_version} already published"
+      return 0
+    fi
+
+    echo "Publishing ${package_name}@${package_version} (attempt ${attempt}/${max_attempts})..."
+    if (cd "$package_dir" && npm publish --access public --registry=https://registry.npmjs.org); then
+      echo "✓ Published ${package_name}@${package_version}"
+      return 0
+    fi
+
+    if [[ "$attempt" -lt "$max_attempts" ]]; then
+      echo "Publish failed, retrying in ${sleep_secs}s..."
+      sleep "$sleep_secs"
+      sleep_secs=$((sleep_secs * 2))
+    fi
+  done
+
+  if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
+    echo "✓ ${package_name}@${package_version} is available after retries"
+    return 0
+  fi
+
+  echo "ERROR: Failed to publish ${package_name}@${package_version} after ${max_attempts} attempts."
+  return 1
+}
+
 # Build and optionally publish a single target
 build_target() {
   local platform="$1"
@@ -229,8 +259,7 @@ EOF
     if npm view "@lingxia/cli-$platform@$VERSION" version &>/dev/null; then
       echo "⚠ @lingxia/cli-$platform@$VERSION already published, skipping"
     else
-      (cd "$pkg_dir" && npm publish --access public)
-      echo "✓ Published @lingxia/cli-$platform@$VERSION"
+      publish_with_retry "@lingxia/cli-$platform" "$VERSION" "$pkg_dir"
     fi
   fi
 }
@@ -315,8 +344,7 @@ if [[ "$PUBLISH" -eq 1 ]]; then
   if npm view "@lingxia/cli@$VERSION" version &>/dev/null; then
     echo "⚠ @lingxia/cli@$VERSION already published, skipping"
   else
-    (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm publish --access public)
-    echo "✓ Published @lingxia/cli@$VERSION"
+    publish_with_retry "@lingxia/cli" "$VERSION" "$ROOT_DIR/tools/lingxia-cli/npm"
   fi
 fi
 
