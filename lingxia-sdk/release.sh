@@ -20,7 +20,6 @@ Options:
   --android-no-zip              Android: do not create the release maven zip (useful for local dev)
   --apple-no-zip                Apple: do not create the source zip (useful for local dev)
   --gh-upload                   Upload generated artifacts to GitHub Release via gh CLI
-  --gh-tag <tag>                GitHub release tag (default: sdk-v<version>)
   -h, --help                    Show help
 
 Environment:
@@ -63,7 +62,6 @@ while [[ $# -gt 0 ]]; do
     --android-no-zip) ANDROID_ZIP=false; shift 1 ;;
     --apple-no-zip) APPLE_ZIP=false; shift 1 ;;
     --gh-upload) GH_UPLOAD=true; shift 1 ;;
-    --gh-tag) GH_TAG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown arg: $1 (try --help)" ;;
   esac
@@ -79,9 +77,7 @@ workspace_version="$(awk '
   }' "$ROOT_DIR/Cargo.toml")"
 [[ -n "$workspace_version" ]] || die "Failed to read workspace version from Cargo.toml"
 VERSION="$workspace_version"
-if [[ -z "$GH_TAG" ]]; then
-  GH_TAG="sdk-v$VERSION"
-fi
+GH_TAG="sdk-v$VERSION"
 
 mkdir -p "$OUT_DIR"
 
