@@ -21,7 +21,6 @@ LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
 
 # Android-specific options
 BUILD_ARM32=false
-USE_ES5_RUNTIME=false
 
 # SDK version defaults (can be overridden for older device support)
 MIN_SDK=29
@@ -34,14 +33,13 @@ for arg in "$@"; do
         case $arg in
             --arm32)
                 BUILD_ARM32=true
-                USE_ES5_RUNTIME=true  # ES5 runtime is always enabled for arm32
                 # Use lower min/target SDK for older 32-bit devices
                 # Note: compileSdk stays high for dependency compatibility
                 MIN_SDK=21
                 TARGET_SDK=28
                 ;;
             --help|-h)
-                show_help "  --arm32       Build 32-bit (armeabi-v7a) with ES5 runtime"
+                show_help "  --arm32       Build 32-bit (armeabi-v7a)"
                 exit 0
                 ;;
             *)
@@ -55,7 +53,7 @@ done
 
 # Show build config
 if [ "$BUILD_ARM32" = true ]; then
-    echo "✅ 32-bit (armeabi-v7a) + ES5 runtime"
+    echo "✅ 32-bit (armeabi-v7a)"
 else
     echo "✅ 64-bit (arm64-v8a)"
 fi
@@ -74,11 +72,6 @@ if [ -z "$BASE_SDK_VERSION" ]; then
     exit 1
 fi
 LINGXIA_SDK_VERSION="$BASE_SDK_VERSION"
-ANDROID_ES5_FLAG=""
-if $USE_ES5_RUNTIME; then
-    ANDROID_ES5_FLAG="--android-es5"
-    LINGXIA_SDK_VERSION="${BASE_SDK_VERSION}-es5"
-fi
 
 # Package name of the app
 APP_PACKAGE="com.lingxia.example.lxapp"
@@ -162,7 +155,6 @@ build_rust_android() {
 echo "[0/4] Preparing Android SDK (resources + local Maven)..."
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
   --platform android \
-  $ANDROID_ES5_FLAG \
   --android-maven-dir "$LOCAL_MAVEN_DIR" \
   --android-no-zip \
   --no-shasums
@@ -199,6 +191,11 @@ echo "Cleaning assets directory..."
 rm -rf "$ASSETS_DIR"/*
 
 generate_app_config "$ASSETS_DIR"
+RUNTIME_TARGET="es2020"
+if [ "$BUILD_ARM32" = true ]; then
+    RUNTIME_TARGET="es5"
+fi
+build_and_copy_runtime "$ASSETS_DIR" "$RUNTIME_TARGET" "mobile"
 build_and_copy_homelxapp "$ASSETS_DIR"
 
 echo "[4/4] Building and installing Android example app (release)..."

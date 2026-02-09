@@ -41,10 +41,9 @@ if [ "$SKIP_RUST" = false ]; then
 fi
 
 echo "[1/4] Preparing iOS SDK resources..."
-# For dev: generate Resources/icons/runtime assets via the unified SDK script.
+# For dev: generate SDK i18n/icons resources via the unified SDK script.
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
   --platform apple \
-  --web-runtime-target mobile \
   --apple-no-zip \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
@@ -77,6 +76,7 @@ mkdir -p "$RESOURCES_DIR"
 rm -rf "$RESOURCES_DIR"/*
 
 generate_app_config "$RESOURCES_DIR"
+build_and_copy_runtime "$RESOURCES_DIR" "es2020" "mobile"
 build_and_copy_homelxapp "$RESOURCES_DIR"
 
 echo "Building and deploying iOS app..."

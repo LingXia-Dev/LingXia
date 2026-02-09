@@ -43,7 +43,6 @@ fi
 echo "[0/4] Preparing macOS SDK resources..."
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
     --platform apple \
-    --web-runtime-target desktop \
     --apple-no-zip \
     --no-shasums \
     --out "$LINGXIA_ROOT/target/sdk-dev"
@@ -75,6 +74,7 @@ mkdir -p "$RESOURCES_DIR"
 rm -rf "$RESOURCES_DIR/homelxapp" 2>/dev/null || true
 
 generate_app_config "$RESOURCES_DIR"
+build_and_copy_runtime "$RESOURCES_DIR" "es2020" "desktop"
 build_and_copy_homelxapp "$RESOURCES_DIR"
 
 echo "[3/4] Building Swift project..."
@@ -115,7 +115,7 @@ if [ -d "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" ]; then
     cp -r "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# Copy SDK bundle (runtime.js, icons, localization)
+# Copy SDK bundle (icons, localization)
 if [ -d "$BUILD_DIR/lingxia_lingxia.bundle" ]; then
     cp -r "$BUILD_DIR/lingxia_lingxia.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi

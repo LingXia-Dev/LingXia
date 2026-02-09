@@ -106,6 +106,7 @@ RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
 
 generate_app_config "$RAWFILE_DIR"
+build_and_copy_runtime "$RAWFILE_DIR" "es2020" "mobile"
 build_and_copy_homelxapp "$RAWFILE_DIR"
 
 # 4) Build & install example HAP

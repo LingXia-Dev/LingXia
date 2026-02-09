@@ -124,6 +124,65 @@ build_and_copy_homelxapp() {
     fi
 }
 
+# Build web runtime and copy runtime.js to target directory
+# Usage: build_and_copy_runtime "$TARGET_DIR" [es2020|es5] [all|desktop|mobile]
+build_and_copy_runtime() {
+    local target_dir="$1"
+    local ecma_target="${2:-es2020}"
+    local runtime_platform="${3:-all}"
+    local runtime_dir="$LINGXIA_ROOT/lingxia-web-runtime"
+    local dist_runtime=""
+    local build_script="build"
+
+    case "$ecma_target" in
+        es2020)
+            build_script="build:es2020"
+            dist_runtime="$runtime_dir/dist/runtime.es2020.js"
+            ;;
+        es5)
+            build_script="build:es5"
+            dist_runtime="$runtime_dir/dist/runtime.es5.js"
+            ;;
+        *)
+            echo "❌ Error: Unsupported runtime target '$ecma_target' (expected es2020 or es5)"
+            exit 1
+            ;;
+    esac
+
+    case "$runtime_platform" in
+        all|desktop|mobile) ;;
+        *)
+            echo "❌ Error: Unsupported runtime platform '$runtime_platform' (expected all, desktop, or mobile)"
+            exit 1
+            ;;
+    esac
+
+    if [ ! -f "$runtime_dir/package.json" ]; then
+        echo "❌ Error: Runtime package not found: $runtime_dir/package.json"
+        exit 1
+    fi
+    if [ ! -d "$runtime_dir/node_modules" ]; then
+        echo "❌ Error: Missing $runtime_dir/node_modules (run: cd $runtime_dir && npm ci)"
+        exit 1
+    fi
+
+    echo "Building web runtime ($ecma_target, platform=$runtime_platform)..."
+    if [ "$runtime_platform" = "all" ]; then
+        (cd "$runtime_dir" && npm run "$build_script")
+    else
+        (cd "$runtime_dir" && LX_RUNTIME_PLATFORM="$runtime_platform" npm run "$build_script")
+    fi
+
+    if [ ! -f "$dist_runtime" ]; then
+        echo "❌ Error: runtime.js not found after build: $dist_runtime"
+        exit 1
+    fi
+
+    mkdir -p "$target_dir"
+    cp "$dist_runtime" "$target_dir/runtime.js"
+    echo "  ✅ runtime.js copied to $target_dir/runtime.js"
+}
+
 # Generate app.json configuration
 # Usage: generate_app_config "$TARGET_DIR"
 generate_app_config() {
