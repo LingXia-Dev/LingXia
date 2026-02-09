@@ -1,15 +1,28 @@
 {
-  "name": "lingxia-web-runtime",
-  "version": "1.0.0",
+  "name": "@lingxia/web-runtime",
+  "version": "0.1.2",
+  "private": false,
   "description": "LingXia Web Runtime - Bridge, boot, and error handling for WebView",
   "type": "module",
-  "main": "dist/runtime.js",
+  "main": "dist/runtime.es2020.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/runtime.es2020.js"
+    },
+    "./dist/runtime.es2020.js": "./dist/runtime.es2020.js",
+    "./dist/runtime.es5.js": "./dist/runtime.es5.js",
+    "./package.json": "./package.json"
+  },
   "scripts": {
-    "build": "rollup -c && tsc -p tsconfig.json --emitDeclarationOnly",
-    "build:es5": "TARGET=es5 rollup -c && tsc -p tsconfig.json --emitDeclarationOnly",
+    "build": "npm run clean && npm run build:es2020 && npm run build:es5 && npm run types",
+    "build:es2020": "RUNTIME_OUTPUT=runtime.es2020.js rollup -c",
+    "build:es5": "TARGET=es5 LX_RUNTIME_PLATFORM=mobile RUNTIME_OUTPUT=runtime.es5.js rollup -c",
+    "types": "tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "rollup -c -w",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
@@ -21,5 +34,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
   "license": "MIT"
 }

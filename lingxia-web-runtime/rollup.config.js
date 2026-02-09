@@ -3,6 +3,7 @@ import terser from "@rollup/plugin-terser";
 
 const isES5 = process.env.TARGET === "es5";
 const targetPlatform = (process.env.LX_RUNTIME_PLATFORM || "all").toLowerCase();
+const outputFile = process.env.RUNTIME_OUTPUT || "runtime.js";
 const validPlatforms = new Set(["all", "desktop", "mobile"]);
 
 if (!validPlatforms.has(targetPlatform)) {
@@ -31,7 +32,7 @@ function replaceRuntimePlatform() {
 export default {
   input: "src/index.ts",
   output: {
-    file: "dist/runtime.js",
+    file: `dist/${outputFile}`,
     format: "iife",
     name: "LingXiaRuntime",
     sourcemap: false,
