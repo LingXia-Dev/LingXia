@@ -4,8 +4,8 @@
   "description": "A LingXia mini app powered by HTML",
   "type": "module",
   "scripts": {
-    "dev": "lingxia build --dev",
-    "build": "lingxia build --prod"
+    "dev": "lingxia build",
+    "build": "lingxia build --release"
   },
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
