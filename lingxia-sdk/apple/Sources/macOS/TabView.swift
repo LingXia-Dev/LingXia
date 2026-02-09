@@ -12,6 +12,8 @@ public class LxAppTabView: NSView {
     private var cancellables = Set<AnyCancellable>()
     private var backButton: NSButton?
     private var homeButton: NSButton?
+    private var activePopover: NSPopover?
+    private var popoverCloseWork: DispatchWorkItem?
 
     public var onTabSelected: ((String) -> Void)?
     public var onTabClosed: ((String) -> Void)?
@@ -79,19 +81,16 @@ public class LxAppTabView: NSView {
         let showHome = (state?.show_home_button ?? false) && !showBack
 
         if showBack {
-            // Back button: active and clickable
             backButton?.isHidden = false
             backButton?.isEnabled = true
             backButton?.alphaValue = 1.0
             homeButton?.isHidden = true
         } else if showHome {
-            // Home button: active and clickable
             homeButton?.isHidden = false
             homeButton?.isEnabled = true
             homeButton?.alphaValue = 1.0
             backButton?.isHidden = true
         } else {
-            // Dimmed placeholder: back button visible but disabled
             backButton?.isHidden = false
             backButton?.isEnabled = false
             backButton?.alphaValue = 0.3
@@ -125,6 +124,8 @@ public class LxAppTabView: NSView {
     }
 
     private func refreshTabs() {
+        closeActivePopover()
+
         subviews.forEach { view in
             if view != windowControlsView && view != backButton && view != homeButton {
                 view.removeFromSuperview()
@@ -179,7 +180,7 @@ public class LxAppTabView: NSView {
     }
 
     private func createTabView(for tab: LxAppTab, width: CGFloat) -> NSView {
-        let tabView = NSView()
+        let tabView = HoverTrackingView()
         tabView.wantsLayer = true
 
         let isHomeLxApp = LxAppCore.isHomeLxApp(tab.appId)
@@ -193,6 +194,15 @@ public class LxAppTabView: NSView {
 
         let clickGesture = TabClickGestureRecognizer(target: self, action: #selector(tabClicked(_:)))
         tabView.addGestureRecognizer(clickGesture)
+
+        // Hover popover
+        tabView.onMouseEntered = { [weak self, weak tabView] in
+            guard let self, let tabView else { return }
+            self.showTabPopover(appId: tab.appId, relativeTo: tabView)
+        }
+        tabView.onMouseExited = { [weak self] in
+            self?.schedulePopoverClose()
+        }
 
         if isHomeLxApp {
             let info = getLxAppInfo(tab.appId)
@@ -247,6 +257,85 @@ public class LxAppTabView: NSView {
 
         return tabView
     }
+
+    // MARK: - Tab Popover
+
+    private func showTabPopover(appId: String, relativeTo view: NSView) {
+        closeActivePopover()
+
+        let info = getLxAppInfo(appId)
+        let appName = info.app_name.toString()
+        let version = info.version.toString()
+
+        let popover = NSPopover()
+        popover.behavior = .semitransient
+        popover.animates = true
+
+        let contentView = HoverTrackingView()
+        contentView.onMouseEntered = { [weak self] in
+            self?.popoverCloseWork?.cancel()
+        }
+        contentView.onMouseExited = { [weak self] in
+            self?.schedulePopoverClose()
+        }
+
+        // Name label
+        let nameLabel = NSTextField(labelWithString: appName)
+        nameLabel.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        nameLabel.textColor = NSColor.labelColor
+        nameLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(nameLabel)
+
+        // Version label
+        let versionText = version.isEmpty ? "—" : "v\(version)"
+        let versionLabel = NSTextField(labelWithString: versionText)
+        versionLabel.font = NSFont.systemFont(ofSize: 11)
+        versionLabel.textColor = NSColor.secondaryLabelColor
+        versionLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(versionLabel)
+
+        NSLayoutConstraint.activate([
+            nameLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            nameLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            nameLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -12),
+
+            versionLabel.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 2),
+            versionLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
+            versionLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -12),
+            versionLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+        ])
+
+        let vc = NSViewController()
+        vc.view = contentView
+        popover.contentViewController = vc
+        popover.contentSize = NSSize(width: max(120, contentView.fittingSize.width + 24), height: 48)
+
+        popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+        activePopover = popover
+    }
+
+    private func schedulePopoverClose() {
+        popoverCloseWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.dismissPopover()
+            self?.popoverCloseWork = nil
+        }
+        popoverCloseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+    }
+
+    private func dismissPopover() {
+        activePopover?.close()
+        activePopover = nil
+    }
+
+    private func closeActivePopover() {
+        popoverCloseWork?.cancel()
+        popoverCloseWork = nil
+        dismissPopover()
+    }
+
+    // MARK: - Helpers
 
     private func createCloseButton(for tab: LxAppTab) -> NSButton {
         let button = NSButton()
@@ -310,6 +399,7 @@ public class LxAppTabView: NSView {
         guard let tabView = sender.view,
               let identifier = tabView.identifier else { return }
 
+        closeActivePopover()
         let appId = identifier.rawValue
         tabManager.selectTab(appId: appId)
         onTabSelected?(appId)
@@ -329,7 +419,40 @@ public class LxAppTabView: NSView {
     }
 }
 
-/// Custom click gesture recognizer
+// MARK: - Hover tracking view
+
+@MainActor
+private class HoverTrackingView: NSView {
+    var onMouseEntered: (() -> Void)?
+    var onMouseExited: (() -> Void)?
+    private var trackingArea: NSTrackingArea?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+        trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEntered?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onMouseExited?()
+    }
+}
+
+// MARK: - Custom click gesture recognizer
+
 @MainActor
 private class TabClickGestureRecognizer: NSClickGestureRecognizer {
     override func mouseDown(with event: NSEvent) {
