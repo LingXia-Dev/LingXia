@@ -89,11 +89,11 @@ pub fn execute(
     let web_runtime_version = runtime::fetch_latest_runtime_version()
         .map_err(|e| anyhow!("Failed to fetch latest @lingxia/web-runtime version: {e}"))?;
     println!(
-        "  {} SDK: {}, Rong: {}, Crate: {}, Runtime: {}",
+        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Runtime: {}",
         "✓".green(),
         versions.sdk.cyan(),
         versions.rong.cyan(),
-        versions.rust_crate.cyan(),
+        versions.lingxia_crate.cyan(),
         web_runtime_version.cyan()
     );
     println!();

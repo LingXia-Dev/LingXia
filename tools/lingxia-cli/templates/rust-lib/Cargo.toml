@@ -10,7 +10,8 @@ name = "lingxia"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-lingxia = "{{CRATE_VERSION}}"
+lingxia = "{{LINGXIA_VERSION}}"
+rong = "{{RONG_VERSION}}"
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]

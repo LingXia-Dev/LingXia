@@ -10,7 +10,7 @@ pub struct LingXiaVersions {
     /// @lingxia/rong NPM package version
     pub rong: String,
     /// lingxia Rust crate version
-    pub rust_crate: String,
+    pub lingxia_crate: String,
     /// Native SDK version (Android/iOS/HarmonyOS)
     pub sdk: String,
 }
@@ -25,8 +25,7 @@ struct VersionsJson {
     ios: Option<String>,
     #[serde(default)]
     harmony: Option<String>,
-    #[serde(rename = "crate")]
-    crate_version: String,
+    lingxia: String,
     rong: String,
     #[serde(default)]
     min_cli_version: Option<String>,
@@ -42,7 +41,7 @@ pub fn fetch_latest_versions() -> Result<LingXiaVersions> {
 
     Ok(LingXiaVersions {
         rong: json.rong,
-        rust_crate: json.crate_version,
+        lingxia_crate: json.lingxia,
         sdk: json.android,
     })
 }
@@ -53,8 +52,9 @@ mod tests {
 
     #[test]
     fn test_parse_versions() {
-        let json = r#"{"android":"0.1.1","ios":"0.1.1","harmony":"0.1.1","crate":"0.1.1","rong":"0.1.1","minCliVersion":"0.0.8"}"#;
+        let json = r#"{"android":"0.1.1","ios":"0.1.1","harmony":"0.1.1","lingxia":"0.1.1","rong":"0.1.1","minCliVersion":"0.0.8"}"#;
         let versions: VersionsJson = serde_json::from_str(json).unwrap();
         assert_eq!(versions.android, "0.1.1");
+        assert_eq!(versions.lingxia, "0.1.1");
     }
 }
