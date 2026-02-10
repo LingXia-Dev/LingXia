@@ -117,10 +117,6 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
-
-        /// Sign the application (HarmonyOS only)
-        #[arg(long)]
-        sign: bool,
     },
 
     /// List connected devices
@@ -317,7 +313,6 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
-            sign,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
@@ -329,7 +324,6 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
-                sign,
             })?;
         }
         Commands::Devices { platform } => {

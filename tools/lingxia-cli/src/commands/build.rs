@@ -16,7 +16,6 @@ pub struct BuildExecuteOptions {
     pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
-    pub sign: bool,
 }
 
 /// Execute the build command
@@ -34,7 +33,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         all_platforms,
         ipa,
         dmg,
-        sign,
     } = options;
 
     // Detect project root (current directory)
@@ -279,7 +277,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
 
             dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
-            sign: sign && matches!(platform_type, platform::detector::PlatformType::Harmony),
             macos_arch: if matches!(platform_type, platform::detector::PlatformType::MacOs) {
                 macos_arch.clone()
             } else {

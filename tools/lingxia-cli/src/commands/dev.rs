@@ -163,7 +163,6 @@ fn execute_android(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
-        sign: false,
         macos_arch: None,
     };
 
@@ -242,7 +241,6 @@ fn execute_ios(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
-        sign: false,
         macos_arch: None,
     };
 
@@ -334,7 +332,6 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
-        sign: false,
         macos_arch,
     };
 
@@ -394,7 +391,6 @@ fn execute_harmony(
         lingxia_config: Some(config.clone()),
         ipa: false,
         dmg: false,
-        sign: false,
         macos_arch: None,
     };
 
