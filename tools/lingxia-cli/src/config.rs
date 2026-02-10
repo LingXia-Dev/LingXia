@@ -75,8 +75,8 @@ pub struct AndroidConfig {
     pub compile_sdk: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ndk_version: Option<String>,
-    /// API level for NDK toolchain (e.g., 33 for android33-clang)
-    /// If not specified, will be derived from targetSdk
+    /// API level for NDK toolchain (e.g., 21 for android21-clang)
+    /// If not specified, will be derived from minSdk, then targetSdk
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_level: Option<u32>,
 }
@@ -89,12 +89,17 @@ impl AndroidConfig {
             return api;
         }
 
-        // 2. Derive from targetSdk
+        // 2. Derive from minSdk (keeps native ABI compatible with oldest supported Android)
+        if let Some(min) = self.min_sdk {
+            return min;
+        }
+
+        // 3. Fallback to targetSdk
         if let Some(target) = self.target_sdk {
             return target;
         }
 
-        // 3. Default to 33
+        // 4. Default to 33
         33
     }
 }
@@ -365,7 +370,7 @@ impl LingXiaConfig {
                 target_sdk: Some(35),
                 compile_sdk: Some(35),
                 ndk_version: None, // Auto-detect
-                api_level: None,   // Derive from targetSdk
+                api_level: None,   // Derive from minSdk/targetSdk
             }),
             ios: None,
             macos: None,
@@ -389,7 +394,7 @@ mod tests {
             ndk_version: None,
             api_level: None,
         };
-        assert_eq!(config.get_api_level(), 35);
+        assert_eq!(config.get_api_level(), 28);
 
         let config_explicit = AndroidConfig {
             package_id: "com.example.app".to_string(),
