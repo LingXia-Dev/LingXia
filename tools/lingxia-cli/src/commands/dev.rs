@@ -17,7 +17,7 @@ pub fn execute(
     release: bool,
     features: Vec<String>,
     build_native: bool,
-    targets: Vec<String>,
+    abis: Vec<String>,
     device: Option<String>,
     platform_arg: Option<String>,
 ) -> Result<()> {
@@ -97,7 +97,7 @@ pub fn execute(
             build_profile,
             features,
             build_native,
-            targets,
+            abis,
             device,
         ),
         PlatformType::Ios => execute_ios(

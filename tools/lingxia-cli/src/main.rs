@@ -38,9 +38,13 @@ struct BuildOptions {
     #[arg(long)]
     skip_native: bool,
 
-    /// Target architectures (native host builds only)
-    #[arg(short = 't', long, value_delimiter = ',')]
-    targets: Vec<String>,
+    /// Android ABIs (comma-separated)
+    #[arg(
+        long,
+        value_delimiter = ',',
+        long_help = "Android ABIs (comma-separated).\n\nSupported values:\n  - arm64-v8a\n  - armeabi-v7a"
+    )]
+    abis: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -315,7 +319,7 @@ fn main() -> Result<()> {
                 release: build_options.release,
                 features: build_options.features,
                 build_native: !build_options.skip_native,
-                targets: build_options.targets,
+                abis: build_options.abis,
                 platforms: platform,
                 all_platforms,
                 ipa,
@@ -356,7 +360,7 @@ fn main() -> Result<()> {
                 build_options.release,
                 build_options.features,
                 !build_options.skip_native,
-                build_options.targets,
+                build_options.abis,
                 device,
                 platform,
             )?;

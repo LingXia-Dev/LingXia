@@ -15,6 +15,27 @@ pub use doctor::doctor_checks;
 pub struct AndroidPlatform;
 
 impl AndroidPlatform {
+    fn unsupported_target_error(target: &str) -> anyhow::Error {
+        anyhow!(
+            "Unsupported Android target: {}.\n\
+Supported Rust target triples:\n\
+  - aarch64-linux-android\n\
+  - armv7-linux-androideabi",
+            target
+        )
+    }
+
+    /// Normalize Android target aliases to Rust target triples.
+    fn normalize_target(target: &str) -> Option<&'static str> {
+        match target {
+            "aarch64-linux-android" | "arm64-v8a" => Some("aarch64-linux-android"),
+            "armv7-linux-androideabi" | "armv7a-linux-androideabi" | "armeabi-v7a" => {
+                Some("armv7-linux-androideabi")
+            }
+            _ => None,
+        }
+    }
+
     /// Create a new Android platform instance
     pub fn new() -> Self {
         Self
@@ -104,6 +125,10 @@ impl AndroidPlatform {
         toolchain_base: &Path,
         target: &str,
     ) -> Result<()> {
+        let normalized_target =
+            Self::normalize_target(target).ok_or_else(|| Self::unsupported_target_error(target))?;
+        let target = normalized_target;
+
         let lingxia_config = config
             .lingxia_config
             .as_ref()
@@ -145,7 +170,7 @@ impl AndroidPlatform {
                 format!("armv7a-linux-androideabi{}-clang", api_level),
                 format!("armv7a-linux-androideabi{}-clang++", api_level),
             ),
-            _ => return Err(anyhow!("Unsupported Android target: {}", target)),
+            _ => return Err(Self::unsupported_target_error(target)),
         };
 
         let mut cmd = Command::new("cargo");

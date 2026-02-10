@@ -3,6 +3,7 @@ use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 pub mod android;
+pub mod android_abis;
 pub mod apple;
 pub mod detector;
 pub mod doctor;

@@ -71,7 +71,7 @@ lingxia build [options]
 |--------|-------------|---------|
 | `--release` | Release build (optimized) | false (debug) |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
-| `-t, --targets <targets>` | Target architectures (comma-separated) | auto |
+| `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
 | `--skip-native` | Skip native Rust library compilation | false |
 
@@ -108,7 +108,7 @@ lingxia dev [options]
 | `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
 | `--release` | Release build (optimized) | false (debug) |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
-| `-t, --targets <targets>` | Target architectures (comma-separated) | auto |
+| `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--skip-native` | Skip native Rust library compilation | false |
 
 **Examples:**

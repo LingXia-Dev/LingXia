@@ -10,7 +10,7 @@ pub struct BuildExecuteOptions {
     pub release: bool,
     pub features: Vec<String>,
     pub build_native: bool,
-    pub targets: Vec<String>,
+    pub abis: Vec<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
     pub ipa: bool,
@@ -27,7 +27,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         release,
         features,
         build_native,
-        targets,
+        abis,
         platforms,
         all_platforms,
         ipa,
@@ -211,11 +211,19 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         BuildProfile::Debug
     };
 
-    // Default targets if none specified
-    let build_targets = if targets.is_empty() {
-        vec!["aarch64-linux-android".to_string()]
+    let has_android = platforms_to_build
+        .iter()
+        .any(|p| matches!(p, platform::detector::PlatformType::Android));
+    let build_targets = if has_android {
+        crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?
     } else {
-        targets
+        if !abis.is_empty() {
+            println!(
+                "{} Ignoring --abis because Android is not in selected platforms",
+                "ℹ".blue()
+            );
+        }
+        Vec::new()
     };
 
     // Prepare host assets unless we're building from a platform subdirectory.
@@ -260,7 +268,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             profile: build_profile,
             features: features.clone(),
             build_native,
-            targets: build_targets.clone(),
+            targets: if matches!(platform_type, platform::detector::PlatformType::Android) {
+                build_targets.clone()
+            } else {
+                Vec::new()
+            },
             lingxia_config: Some(config.clone()),
             ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
 
