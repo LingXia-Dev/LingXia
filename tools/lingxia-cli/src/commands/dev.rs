@@ -29,7 +29,7 @@ struct DevContext {
     reinstall: bool,
 }
 
-/// Execute the dev command
+/// Execute the run command
 ///
 /// Runs the complete development workflow:
 /// 1. Build the project
@@ -95,11 +95,11 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         }
     };
 
-    // iOS/macOS dev workflow requires macOS host (uses Xcode tooling).
+    // iOS/macOS run workflow requires macOS host (uses Xcode tooling).
     if matches!(platform_type, PlatformType::Ios | PlatformType::MacOs) {
         crate::platform::apple::ensure_macos().map_err(|e| {
             anyhow!(
-                "{}\nTip: on non-macOS hosts, pass `--platform android` to use Android dev.",
+                "{}\nTip: on non-macOS hosts, pass `--platform android` to use Android run.",
                 e
             )
         })?;
@@ -278,7 +278,7 @@ fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
         && requested_arch != host_arch
     {
         return Err(anyhow!(
-            "`lingxia dev --platform macos` launches the app locally and requires host arch `{}`.\n\
+            "`lingxia run --platform macos` launches the app locally and requires host arch `{}`.\n\
 Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
             host_arch,
             requested_arch

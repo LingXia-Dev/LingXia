@@ -176,8 +176,8 @@ enum Commands {
         platform: Option<String>,
     },
 
-    /// Development mode: build, install, and launch app
-    Dev {
+    /// Run mode: build, install, and launch app
+    Run {
         #[command(flatten)]
         build_options: BuildOptions,
 
@@ -364,7 +364,7 @@ fn main() -> Result<()> {
         } => {
             commands::device::launch(&bundle_id, device, platform)?;
         }
-        Commands::Dev {
+        Commands::Run {
             build_options,
             platform,
             device,
