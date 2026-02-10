@@ -4,9 +4,6 @@ plugins {
     id("maven-publish")
 }
 
-// Dynamic SDK version configuration via Gradle properties
-// Usage: ./gradlew :lingxia:publish -PminSdk=21 -PtargetSdk=28 -PcompileSdk=30
-val minSdkProp = (project.findProperty("minSdk") as String?)?.toIntOrNull() ?: 29
 val targetSdkProp = (project.findProperty("targetSdk") as String?)?.toIntOrNull() ?: 35
 val compileSdkProp = (project.findProperty("compileSdk") as String?)?.toIntOrNull() ?: 35
 
@@ -15,7 +12,7 @@ android {
     compileSdk = compileSdkProp
 
     defaultConfig {
-        minSdk = minSdkProp
+        minSdk = 21
         lint.targetSdk = targetSdkProp
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

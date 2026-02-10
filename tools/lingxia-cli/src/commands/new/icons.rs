@@ -139,7 +139,7 @@ fn generate_app_icons(
     for platform in &config.platforms {
         match platform {
             Platform::Android => {
-                // Default: no legacy icons (minSdk 29+)
+                // Default: no legacy Android icons.
                 if let Err(e) = crate::platform::android::generate_icons(
                     &config.target_dir,
                     &icon_path,
