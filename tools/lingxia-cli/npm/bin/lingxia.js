@@ -93,6 +93,31 @@ function performUpdate() {
   }
 }
 
+async function notifyUpdateAvailable(latestVersion) {
+  // Only prompt if running in interactive terminal
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    console.log();
+    console.log(
+      `\x1b[33m  Update available: ${pkg.version} → ${latestVersion}\x1b[0m`,
+    );
+    const answer = await promptUser("  Update now? [Y/n] ");
+    if (answer === "" || answer === "y" || answer === "yes") {
+      performUpdate();
+      return;
+    }
+    console.log();
+    return;
+  }
+
+  // Non-interactive: just show message
+  console.log();
+  console.log(
+    `\x1b[33m  Update available: ${pkg.version} → ${latestVersion}\x1b[0m`,
+  );
+  console.log(`\x1b[33m  Run: npm install -g @lingxia/cli\x1b[0m`);
+  console.log();
+}
+
 async function checkForUpdates() {
   try {
     // Read cache
@@ -103,36 +128,18 @@ async function checkForUpdates() {
 
     const now = Date.now();
     const shouldCheck = now - cache.lastCheck > CHECK_INTERVAL;
+    let promptedVersion = null;
 
     // Prompt for update if cached version is newer
     if (
       cache.latestVersion &&
       isNewerVersion(pkg.version, cache.latestVersion)
     ) {
-      // Only prompt if running in interactive terminal
-      if (process.stdin.isTTY && process.stdout.isTTY) {
-        console.log();
-        console.log(
-          `\x1b[33m  Update available: ${pkg.version} → ${cache.latestVersion}\x1b[0m`,
-        );
-        const answer = await promptUser("  Update now? [Y/n] ");
-        if (answer === "" || answer === "y" || answer === "yes") {
-          performUpdate();
-          return; // Exit after update
-        }
-        console.log();
-      } else {
-        // Non-interactive: just show message
-        console.log();
-        console.log(
-          `\x1b[33m  Update available: ${pkg.version} → ${cache.latestVersion}\x1b[0m`,
-        );
-        console.log(`\x1b[33m  Run: npm install -g @lingxia/cli\x1b[0m`);
-        console.log();
-      }
+      promptedVersion = cache.latestVersion;
+      await notifyUpdateAvailable(cache.latestVersion);
     }
 
-    // Background check - store promise so we can wait for it before exit
+    // Check registry and prompt immediately if a newer version is discovered now.
     if (shouldCheck) {
       // Use encodeURIComponent for package name (handles @ and /)
       const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/latest`;
@@ -148,9 +155,20 @@ async function checkForUpdates() {
               CACHE_FILE,
               JSON.stringify({ lastCheck: now, latestVersion: data.version }),
             );
+            return data.version;
           }
+          return null;
         })
-        .catch(() => {}); // Silently ignore errors
+        .catch(() => null); // Silently ignore errors
+
+      const latestVersion = await updateCheckPromise;
+      if (
+        latestVersion &&
+        latestVersion !== promptedVersion &&
+        isNewerVersion(pkg.version, latestVersion)
+      ) {
+        await notifyUpdateAvailable(latestVersion);
+      }
     }
   } catch {}
 }
