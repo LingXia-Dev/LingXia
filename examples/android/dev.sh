@@ -21,11 +21,7 @@ LINGXIA_SDK_ANDROID="$LINGXIA_ROOT/lingxia-sdk/android"
 
 # Android-specific options
 BUILD_ARM32=false
-
-# SDK version defaults (can be overridden for older device support)
 MIN_SDK=29
-TARGET_SDK=35
-COMPILE_SDK=35
 
 # Parse command line arguments
 for arg in "$@"; do
@@ -33,10 +29,8 @@ for arg in "$@"; do
         case $arg in
             --arm32)
                 BUILD_ARM32=true
-                # Use lower min/target SDK for older 32-bit devices
-                # Note: compileSdk stays high for dependency compatibility
+                # Keep SDK defaults high, but allow app minSdk downgrade for arm32 dev.
                 MIN_SDK=21
-                TARGET_SDK=28
                 ;;
             --help|-h)
                 show_help "  --arm32       Build 32-bit (armeabi-v7a)"
@@ -57,7 +51,7 @@ if [ "$BUILD_ARM32" = true ]; then
 else
     echo "✅ 64-bit (arm64-v8a)"
 fi
-echo "✅ SDK: min=$MIN_SDK, target=$TARGET_SDK, compile=$COMPILE_SDK"
+echo "✅ App minSdk: $MIN_SDK"
 
 BASE_SDK_VERSION="$(awk '
   /^\[workspace\.package\]/ {in_section=1; next}
@@ -203,9 +197,7 @@ cd "$SCRIPT_DIR"
 # ./gradlew clean
 ./gradlew assembleRelease \
     -PLINGXIA_SDK_VERSION="$LINGXIA_SDK_VERSION" \
-    -PMIN_SDK="$MIN_SDK" \
-    -PTARGET_SDK="$TARGET_SDK" \
-    -PCOMPILE_SDK="$COMPILE_SDK"
+    -PMIN_SDK="$MIN_SDK"
 
 echo "Installing APK on all connected devices..."
 for device in $(adb devices | awk 'NR>1 && NF>0 {print $1}'); do
