@@ -23,6 +23,7 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
     println!("{}", "Creating project structure...".bold());
 
     fs::create_dir_all(&config.target_dir)?;
+    create_root_gitignore(config)?;
 
     let mut created_any = false;
     for platform in &config.platforms {
@@ -50,6 +51,21 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
         return Err(anyhow!("No platforms selected"));
     }
 
+    Ok(())
+}
+
+fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
+    let templates_base = locate_templates_dir()?;
+    let template_dir = templates_base.join("native-root");
+    if !template_dir.exists() {
+        return Err(anyhow!(
+            "Native root template not found at: {}",
+            template_dir.display()
+        ));
+    }
+
+    let vars: HashMap<String, String> = HashMap::new();
+    process_template_dir(&template_dir, &config.target_dir, &vars)?;
     Ok(())
 }
 

@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 .lingxia/
+*.tar.zstd
 
 # IDE
 .vscode/

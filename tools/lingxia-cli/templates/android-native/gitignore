@@ -1,0 +1,32 @@
+# Gradle / Android build outputs
+.gradle/
+.kotlin/
+build/
+app/build/
+bin/
+gen/
+out/
+
+# Build artifacts
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+output.json
+output-metadata.json
+
+# LingXia generated artifacts
+app/src/main/assets/
+app/src/main/jniLibs/
+
+# Local machine files
+local.properties
+*.iml
+.idea/
+.navigation/
+captures/
+
+# Signing files
+*.jks
+*.keystore

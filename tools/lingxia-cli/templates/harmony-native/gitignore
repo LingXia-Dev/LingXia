@@ -1,0 +1,15 @@
+node_modules/
+oh_modules/
+local.properties
+.idea/
+.hvigor/
+.cxx/
+.clangd
+.clang-format
+.clang-tidy
+.appanalyzer
+**/build/
+**/.test/
+
+# LingXia generated artifacts
+entry/src/main/resources/rawfile/

@@ -20,6 +20,11 @@ pub fn process_template_dir(
         let path = entry.path();
         let file_name = entry.file_name();
         let file_name_str = file_name.to_string_lossy();
+        let output_name = if file_name_str == "gitignore" {
+            ".gitignore".to_string()
+        } else {
+            file_name_str.to_string()
+        };
 
         // Skip build artifacts and cache directories
         if file_name_str == ".gradle"
@@ -32,14 +37,14 @@ pub fn process_template_dir(
 
         if path.is_dir() {
             // Recursively process subdirectory
-            let target_subdir = target_dir.join(&file_name);
+            let target_subdir = target_dir.join(output_name.as_str());
             fs::create_dir_all(&target_subdir)?;
             process_template_dir(&path, &target_subdir, vars)?;
         } else if path.is_file() {
             // Check if file is binary or should be copied as-is
             let is_binary = is_binary_file(&path);
 
-            let target_file = target_dir.join(&file_name);
+            let target_file = target_dir.join(output_name.as_str());
 
             if is_binary {
                 // Copy binary file as-is
