@@ -37,8 +37,13 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const buildOptions: BuildOptions = {
     ...options,
     release: Boolean(options.release),
+    package: Boolean(options.package),
     framework,
   };
+
+  if (buildOptions.package && !buildOptions.release) {
+    throw new Error("--package requires --release");
+  }
 
   console.log(
     `🚀 Starting LingXia ${isPluginMode ? "plugin" : "project"} build...`,
@@ -189,20 +194,23 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       console.log("  ✔ Copied lxplugin.json to output");
     }
 
-    const packageInfo = readPackageInfo(projectPath);
-    const packagePath = await packageDist(
-      outputDir,
-      projectPath,
-      packageInfo,
-      isPluginMode,
-    );
-    const relativePackagePath =
-      path.relative(projectPath, packagePath) || packagePath;
-
     console.log("Build completed successfully!");
     console.log(` Completed in ${buildTime}s`);
     console.log(` Output directory: ${outputDir}`);
-    console.log(` Package: ${relativePackagePath}`);
+    if (buildOptions.package) {
+      const packageInfo = readPackageInfo(projectPath);
+      const packagePath = await packageDist(
+        outputDir,
+        projectPath,
+        packageInfo,
+        isPluginMode,
+      );
+      const relativePackagePath =
+        path.relative(projectPath, packagePath) || packagePath;
+      console.log(` Package: ${relativePackagePath}`);
+    } else {
+      console.log(" Package: skipped (use --package to enable)");
+    }
   } catch (error) {
     console.error(
       "❌ Build failed:",

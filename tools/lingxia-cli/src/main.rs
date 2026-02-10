@@ -12,7 +12,6 @@ mod platform;
 mod runtime;
 pub mod sdk;
 mod versions;
-mod workspace;
 
 #[derive(Parser)]
 #[command(name = "lingxia")]
@@ -117,6 +116,10 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
+
+        /// Package LxApp output archive (LxApp/LxPlugin build only)
+        #[arg(long)]
+        package: bool,
     },
 
     /// List connected devices
@@ -313,6 +316,7 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
+            package,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
@@ -324,6 +328,7 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
+                package,
             })?;
         }
         Commands::Devices { platform } => {

@@ -16,6 +16,7 @@ pub struct BuildExecuteOptions {
     pub all_platforms: bool,
     pub ipa: bool,
     pub dmg: bool,
+    pub package: bool,
 }
 
 /// Execute the build command
@@ -33,6 +34,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         all_platforms,
         ipa,
         dmg,
+        package,
     } = options;
 
     // Detect project root (current directory)
@@ -50,9 +52,17 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
     // LxApp or LxPlugin project (no host config)
     if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
+        if package && !release {
+            return Err(anyhow!(
+                "`--package` requires `--release` for LxApp/LxPlugin builds."
+            ));
+        }
         let mut args = vec!["build".to_string()];
         if release {
             args.push("--release".to_string());
+        }
+        if package {
+            args.push("--package".to_string());
         }
 
         return lxapp::run(&args);
@@ -124,6 +134,12 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     }
 
     // Host/native build
+    if package {
+        println!(
+            "{} Ignoring --package for host build (only used by LxApp/LxPlugin build)",
+            "ℹ".blue()
+        );
+    }
     let config = LingXiaConfig::load(&project_root)?;
 
     let app = config.app.as_ref().ok_or_else(|| {
