@@ -55,8 +55,8 @@ pub(crate) fn resolve_runtime_js(
         .filter(|s| !s.is_empty());
 
     match runtime_override {
-        Some(spec) => resolve_runtime_from_spec(project_root, spec, ecma),
-        None => resolve_runtime_from_npm(project_root, DEFAULT_RUNTIME_PACKAGE, None, ecma),
+        Some(spec) => resolve_runtime_from_spec(project_root, config, spec, ecma),
+        None => resolve_runtime_from_npm(project_root, config, DEFAULT_RUNTIME_PACKAGE, None, ecma),
     }
 }
 
@@ -66,16 +66,23 @@ pub(crate) fn fetch_latest_runtime_version() -> Result<String> {
 
 fn resolve_runtime_from_spec(
     project_root: &Path,
+    config: &LingXiaConfig,
     spec: &str,
     ecma: RuntimeEcmaTarget,
 ) -> Result<ResolvedRuntime> {
     if let Some(spec) = spec.strip_prefix("npm:") {
         let (package, version) = parse_npm_package_spec(spec)?;
-        return resolve_runtime_from_npm(project_root, &package, version.as_deref(), ecma);
+        return resolve_runtime_from_npm(project_root, config, &package, version.as_deref(), ecma);
     }
 
     if looks_like_version(spec) {
-        return resolve_runtime_from_npm(project_root, DEFAULT_RUNTIME_PACKAGE, Some(spec), ecma);
+        return resolve_runtime_from_npm(
+            project_root,
+            config,
+            DEFAULT_RUNTIME_PACKAGE,
+            Some(spec),
+            ecma,
+        );
     }
 
     let local_path = project_root.join(spec);
@@ -84,7 +91,7 @@ fn resolve_runtime_from_spec(
     }
 
     let (package, version) = parse_npm_package_spec(spec)?;
-    resolve_runtime_from_npm(project_root, &package, version.as_deref(), ecma)
+    resolve_runtime_from_npm(project_root, config, &package, version.as_deref(), ecma)
 }
 
 fn resolve_runtime_from_local_path(
@@ -103,14 +110,14 @@ fn resolve_runtime_from_local_path(
 
 fn resolve_runtime_from_npm(
     project_root: &Path,
+    config: &LingXiaConfig,
     package: &str,
     version: Option<&str>,
     ecma: RuntimeEcmaTarget,
 ) -> Result<ResolvedRuntime> {
     let manifest = fetch_npm_manifest(package, version)?;
-    let workspace_root = find_workspace_root_or_self(project_root);
-    let cache_dir = workspace_root
-        .join("target")
+    let cache_root = resolve_runtime_cache_root(project_root, config);
+    let cache_dir = cache_root
         .join("runtime")
         .join("npm")
         .join(safe_cache_segment(package))
@@ -150,6 +157,28 @@ fn resolve_runtime_from_npm(
         hash: sha256_hex(&bytes),
         source: format!("npm:{}@{}", package, manifest.version),
     })
+}
+
+fn resolve_runtime_cache_root(project_root: &Path, config: &LingXiaConfig) -> PathBuf {
+    if let Ok(explicit_target_dir) = std::env::var("CARGO_TARGET_DIR")
+        && !explicit_target_dir.trim().is_empty()
+    {
+        let explicit_path = PathBuf::from(explicit_target_dir);
+        return if explicit_path.is_absolute() {
+            explicit_path
+        } else {
+            project_root.join(explicit_path)
+        };
+    }
+
+    if let Some(rust_lib_name) = config.get_rust_lib_name() {
+        let rust_lib_dir = project_root.join(rust_lib_name);
+        if rust_lib_dir.join("Cargo.toml").exists() {
+            return rust_lib_dir.join("target");
+        }
+    }
+
+    find_workspace_root_or_self(project_root).join("target")
 }
 
 fn resolve_runtime_file(base_path: &Path, ecma: RuntimeEcmaTarget) -> Result<PathBuf> {
