@@ -12,6 +12,7 @@ pub fn execute(
     artifact: Option<String>,
     device: Option<String>,
     platform_arg: Option<String>,
+    reinstall: bool,
 ) -> Result<()> {
     let project_root = env::current_dir()?;
 
@@ -30,6 +31,7 @@ pub fn execute(
         project_root: project_root.clone(),
         artifact_path,
         device_id: device,
+        reinstall,
     };
 
     platform.install(&config)?;

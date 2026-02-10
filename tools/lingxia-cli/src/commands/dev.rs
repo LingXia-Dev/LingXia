@@ -7,21 +7,35 @@ use colored::Colorize;
 use std::env;
 use std::path::{Path, PathBuf};
 
+pub struct DevExecuteOptions {
+    pub release: bool,
+    pub features: Vec<String>,
+    pub build_native: bool,
+    pub abis: Vec<String>,
+    pub macos_arch: Option<String>,
+    pub device: Option<String>,
+    pub platform_arg: Option<String>,
+    pub reinstall: bool,
+}
+
+#[derive(Clone)]
+struct DevContext {
+    project_root: std::path::PathBuf,
+    config: LingXiaConfig,
+    build_profile: BuildProfile,
+    features: Vec<String>,
+    build_native: bool,
+    device: Option<String>,
+    reinstall: bool,
+}
+
 /// Execute the dev command
 ///
 /// Runs the complete development workflow:
 /// 1. Build the project
 /// 2. Install to device
 /// 3. Launch the application
-pub fn execute(
-    release: bool,
-    features: Vec<String>,
-    build_native: bool,
-    abis: Vec<String>,
-    macos_arch: Option<String>,
-    device: Option<String>,
-    platform_arg: Option<String>,
-) -> Result<()> {
+pub fn execute(options: DevExecuteOptions) -> Result<()> {
     println!();
     println!(
         "{}",
@@ -36,7 +50,7 @@ pub fn execute(
     let config = LingXiaConfig::load(&project_root)?;
 
     // Parse build profile (cargo-like): debug unless explicitly set to release.
-    let build_profile = if release {
+    let build_profile = if options.release {
         BuildProfile::Release
     } else {
         BuildProfile::Debug
@@ -50,7 +64,7 @@ pub fn execute(
         )
     })?;
 
-    let platform_type = if let Some(ref p) = platform_arg {
+    let platform_type = if let Some(ref p) = options.platform_arg {
         p.parse::<PlatformType>()?
     } else {
         // Auto-detect: prefer iOS, then macOS, then Android
@@ -91,52 +105,25 @@ pub fn execute(
         })?;
     }
 
+    let ctx = DevContext {
+        project_root,
+        config,
+        build_profile,
+        features: options.features,
+        build_native: options.build_native,
+        device: options.device,
+        reinstall: options.reinstall,
+    };
+
     match platform_type {
-        PlatformType::Android => execute_android(
-            project_root,
-            config,
-            build_profile,
-            features,
-            build_native,
-            abis,
-            device,
-        ),
-        PlatformType::Ios => execute_ios(
-            project_root,
-            config,
-            build_profile,
-            features,
-            build_native,
-            device,
-        ),
-        PlatformType::MacOs => execute_macos(
-            project_root,
-            config,
-            build_profile,
-            features,
-            build_native,
-            macos_arch,
-        ),
-        PlatformType::Harmony => execute_harmony(
-            project_root,
-            config,
-            build_profile,
-            features,
-            build_native,
-            device,
-        ),
+        PlatformType::Android => execute_android(ctx, options.abis),
+        PlatformType::Ios => execute_ios(ctx),
+        PlatformType::MacOs => execute_macos(ctx, options.macos_arch),
+        PlatformType::Harmony => execute_harmony(ctx),
     }
 }
 
-fn execute_android(
-    project_root: std::path::PathBuf,
-    config: LingXiaConfig,
-    build_profile: BuildProfile,
-    features: Vec<String>,
-    build_native: bool,
-    abis: Vec<String>,
-    device: Option<String>,
-) -> Result<()> {
+fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
 
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
@@ -144,9 +131,9 @@ fn execute_android(
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Android];
     prepare_host_assets(
-        &project_root,
-        &config,
-        build_profile,
+        &ctx.project_root,
+        &ctx.config,
+        ctx.build_profile,
         &platforms_to_build,
         &build_targets,
         true,
@@ -155,12 +142,12 @@ fn execute_android(
     // Step 1: Build
     println!("{}", "Step 1/3: Building...".bold());
     let build_config = BuildConfig {
-        project_root: project_root.clone(),
-        profile: build_profile,
-        features,
-        build_native,
+        project_root: ctx.project_root.clone(),
+        profile: ctx.build_profile,
+        features: ctx.features.clone(),
+        build_native: ctx.build_native,
         targets: build_targets,
-        lingxia_config: Some(config.clone()),
+        lingxia_config: Some(ctx.config.clone()),
         ipa: false,
         dmg: false,
         macos_arch: None,
@@ -173,10 +160,17 @@ fn execute_android(
 
     // Step 2: Install
     println!("{}", "Step 2/3: Installing...".bold());
+    let package_id = ctx
+        .config
+        .android
+        .as_ref()
+        .map(|android| android.package_id.clone())
+        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.config.json"))?;
     let install_config = InstallConfig {
-        project_root: project_root.clone(),
+        project_root: ctx.project_root.clone(),
         artifact_path: Some(artifact_path.to_path_buf()),
-        device_id: device.clone(),
+        device_id: ctx.device.clone(),
+        reinstall: ctx.reinstall,
     };
 
     platform.install(&install_config)?;
@@ -186,14 +180,8 @@ fn execute_android(
     // Step 3: Launch app
     println!("{}", "Step 3/3: Launching app...".bold());
 
-    let package_id = config
-        .android
-        .as_ref()
-        .map(|android| android.package_id.clone())
-        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.config.json"))?;
-
     let run_config = RunConfig {
-        device_id: device,
+        device_id: ctx.device,
         package_id,
         main_activity: None,
     };
@@ -209,22 +197,15 @@ fn execute_android(
     Ok(())
 }
 
-fn execute_ios(
-    project_root: std::path::PathBuf,
-    config: LingXiaConfig,
-    build_profile: BuildProfile,
-    features: Vec<String>,
-    build_native: bool,
-    device: Option<String>,
-) -> Result<()> {
+fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform = platform::ios::IosPlatform::new();
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Ios];
     prepare_host_assets(
-        &project_root,
-        &config,
-        build_profile,
+        &ctx.project_root,
+        &ctx.config,
+        ctx.build_profile,
         &platforms_to_build,
         &[],
         true,
@@ -233,12 +214,12 @@ fn execute_ios(
     // Step 1: Build
     println!("{}", "Step 1/3: Building...".bold());
     let build_config = BuildConfig {
-        project_root: project_root.clone(),
-        profile: build_profile,
-        features,
-        build_native,
+        project_root: ctx.project_root.clone(),
+        profile: ctx.build_profile,
+        features: ctx.features.clone(),
+        build_native: ctx.build_native,
         targets: vec![],
-        lingxia_config: Some(config.clone()),
+        lingxia_config: Some(ctx.config.clone()),
         ipa: false,
         dmg: false,
         macos_arch: None,
@@ -252,9 +233,10 @@ fn execute_ios(
     // Step 2: Sign + Install
     println!("{}", "Step 2/3: Installing...".bold());
     let install_config = InstallConfig {
-        project_root: project_root.clone(),
+        project_root: ctx.project_root.clone(),
         artifact_path: Some(app_path.to_path_buf()),
-        device_id: device.clone(),
+        device_id: ctx.device.clone(),
+        reinstall: ctx.reinstall,
     };
     platform.install(&install_config)?;
 
@@ -269,7 +251,7 @@ fn execute_ios(
     let run_config = RunConfig {
         package_id: bundle_id.clone(),
         main_activity: None,
-        device_id: device,
+        device_id: ctx.device,
     };
     platform.run(&run_config)?;
 
@@ -283,14 +265,7 @@ fn execute_ios(
     Ok(())
 }
 
-fn execute_macos(
-    project_root: std::path::PathBuf,
-    config: LingXiaConfig,
-    build_profile: BuildProfile,
-    features: Vec<String>,
-    build_native: bool,
-    macos_arch: Option<String>,
-) -> Result<()> {
+fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
@@ -313,9 +288,9 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     // Generate app.json and embed LxApp assets (macOS build prepares resources itself)
     let platforms_to_build = vec![PlatformType::MacOs];
     prepare_host_assets(
-        &project_root,
-        &config,
-        build_profile,
+        &ctx.project_root,
+        &ctx.config,
+        ctx.build_profile,
         &platforms_to_build,
         &[],
         true,
@@ -324,12 +299,12 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     // Step 1: Build
     println!("{}", "Step 1/2: Building...".bold());
     let build_config = BuildConfig {
-        project_root: project_root.clone(),
-        profile: build_profile,
-        features,
-        build_native,
+        project_root: ctx.project_root.clone(),
+        profile: ctx.build_profile,
+        features: ctx.features.clone(),
+        build_native: ctx.build_native,
         targets: vec![],
-        lingxia_config: Some(config.clone()),
+        lingxia_config: Some(ctx.config.clone()),
         ipa: false,
         dmg: false,
         macos_arch,
@@ -359,22 +334,15 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     Ok(())
 }
 
-fn execute_harmony(
-    project_root: std::path::PathBuf,
-    config: LingXiaConfig,
-    build_profile: BuildProfile,
-    features: Vec<String>,
-    build_native: bool,
-    device: Option<String>,
-) -> Result<()> {
+fn execute_harmony(ctx: DevContext) -> Result<()> {
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Harmony];
     prepare_host_assets(
-        &project_root,
-        &config,
-        build_profile,
+        &ctx.project_root,
+        &ctx.config,
+        ctx.build_profile,
         &platforms_to_build,
         &[],
         true,
@@ -383,12 +351,12 @@ fn execute_harmony(
     // Step 1: Build
     println!("{}", "Step 1/3: Building...".bold());
     let build_config = BuildConfig {
-        project_root: project_root.clone(),
-        profile: build_profile,
-        features,
-        build_native,
+        project_root: ctx.project_root.clone(),
+        profile: ctx.build_profile,
+        features: ctx.features.clone(),
+        build_native: ctx.build_native,
         targets: vec![],
-        lingxia_config: Some(config.clone()),
+        lingxia_config: Some(ctx.config.clone()),
         ipa: false,
         dmg: false,
         macos_arch: None,
@@ -401,10 +369,14 @@ fn execute_harmony(
 
     // Step 2: Install
     println!("{}", "Step 2/3: Installing...".bold());
+    let harmony_dir =
+        platform::harmony::resolve_harmony_dir(&ctx.project_root, ctx.config.harmony.as_ref())?;
+    let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
     let install_config = InstallConfig {
-        project_root: project_root.clone(),
+        project_root: ctx.project_root.clone(),
         artifact_path: Some(built_hap_path.clone()),
-        device_id: device.clone(),
+        device_id: ctx.device.clone(),
+        reinstall: ctx.reinstall,
     };
 
     harmony_platform.install(&install_config)?;
@@ -416,14 +388,10 @@ fn execute_harmony(
     println!("{}", "Step 3/3: Launching app...".bold());
 
     // Read bundleName from app.json5 (authoritative source).
-    let harmony_dir =
-        platform::harmony::resolve_harmony_dir(&project_root, config.harmony.as_ref())?;
-    let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
-
     let run_config = RunConfig {
         package_id: bundle_name.clone(),
         main_activity: None, // defaults to "EntryAbility" in harmony platform
-        device_id: device,
+        device_id: ctx.device,
     };
 
     harmony_platform.run(&run_config)?;

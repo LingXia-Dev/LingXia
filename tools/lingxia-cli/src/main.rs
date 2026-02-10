@@ -124,7 +124,7 @@ enum Commands {
 
     /// List connected devices
     Devices {
-        /// Target platform (android, ios). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
     },
@@ -139,9 +139,13 @@ enum Commands {
         #[arg(short = 'd', long)]
         device: Option<String>,
 
-        /// Target platform (android, ios). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
+
+        /// Reinstall app by uninstalling existing one first (best effort)
+        #[arg(long)]
+        reinstall: bool,
     },
 
     /// Uninstall an app from a device
@@ -153,7 +157,7 @@ enum Commands {
         #[arg(short = 'd', long)]
         device: Option<String>,
 
-        /// Target platform (android, ios). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
     },
@@ -167,7 +171,7 @@ enum Commands {
         #[arg(short = 'd', long)]
         device: Option<String>,
 
-        /// Target platform (android, ios). Auto-detected if not specified.
+        /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
     },
@@ -177,13 +181,17 @@ enum Commands {
         #[command(flatten)]
         build_options: BuildOptions,
 
-        /// Target platform (android, ios, macos). Auto-detected if not specified.
+        /// Target platform (android, ios, macos, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
 
         /// Device ID (required if multiple devices connected)
         #[arg(short = 'd', long)]
         device: Option<String>,
+
+        /// Reinstall app by uninstalling existing one first (best effort)
+        #[arg(long)]
+        reinstall: bool,
     },
 
     /// Check development environment setup
@@ -338,8 +346,9 @@ fn main() -> Result<()> {
             artifact,
             device,
             platform,
+            reinstall,
         } => {
-            commands::install::execute(artifact, device, platform)?;
+            commands::install::execute(artifact, device, platform, reinstall)?;
         }
         Commands::Uninstall {
             bundle_id,
@@ -359,16 +368,18 @@ fn main() -> Result<()> {
             build_options,
             platform,
             device,
+            reinstall,
         } => {
-            commands::dev::execute(
-                build_options.release,
-                build_options.features,
-                !build_options.skip_native,
-                build_options.abis,
-                build_options.macos_arch,
+            commands::dev::execute(commands::dev::DevExecuteOptions {
+                release: build_options.release,
+                features: build_options.features,
+                build_native: !build_options.skip_native,
+                abis: build_options.abis,
+                macos_arch: build_options.macos_arch,
                 device,
-                platform,
-            )?;
+                platform_arg: platform,
+                reinstall,
+            })?;
         }
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;

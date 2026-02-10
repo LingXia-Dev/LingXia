@@ -28,6 +28,25 @@ impl HarmonyPlatform {
         // Install path is strict: always sign first, then install.
         let hap_path = self.sign_before_install(&hap_path, &config.project_root, &target_udids)?;
 
+        if config.reinstall {
+            let package_id = infer_harmony_bundle_for_uninstall(&config.project_root);
+            if let Some(package_id) = package_id {
+                if let Err(err) = self.uninstall_impl(&package_id, config.device_id.as_deref()) {
+                    eprintln!(
+                        "  {} failed to uninstall {} before install: {}",
+                        "Warning:".yellow(),
+                        package_id,
+                        err
+                    );
+                }
+            } else {
+                eprintln!(
+                    "  {} could not resolve Harmony bundle name for --reinstall; continuing install",
+                    "Warning:".yellow()
+                );
+            }
+        }
+
         println!("  {} Installing HAP: {}", "→".dimmed(), hap_path.display());
 
         let mut cmd = Command::new("hdc");
@@ -268,6 +287,11 @@ fn ensure_device_connected(device_id: Option<&str>) -> Result<Vec<String>> {
         .iter()
         .map(|target| fetch_harmony_udid(target))
         .collect()
+}
+
+fn infer_harmony_bundle_for_uninstall(project_root: &Path) -> Option<String> {
+    let harmony_dir = resolve_harmony_dir(project_root, None).ok()?;
+    read_bundle_name(&harmony_dir).ok()
 }
 
 fn connected_devices() -> Result<Vec<String>> {

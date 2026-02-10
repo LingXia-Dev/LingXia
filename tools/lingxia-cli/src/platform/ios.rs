@@ -326,6 +326,27 @@ impl Platform for IosPlatform {
         // Sign the app before installing
         apple::provisioning::sign_app(&app_path, Some(&device_identifier))?;
 
+        if config.reinstall {
+            let bundle_id = read_bundle_id(&app_path).ok();
+            if let Some(bundle_id) = bundle_id {
+                if let Err(err) =
+                    apple::devicectl::uninstall_app(&bundle_id, Some(&device_identifier))
+                {
+                    eprintln!(
+                        "{} failed to uninstall {} before install: {}",
+                        "Warning:".yellow(),
+                        bundle_id,
+                        err
+                    );
+                }
+            } else {
+                eprintln!(
+                    "{} could not resolve iOS bundle id for --reinstall; continuing install",
+                    "Warning:".yellow()
+                );
+            }
+        }
+
         apple::devicectl::install_app(&app_path, Some(&device_identifier))
     }
 

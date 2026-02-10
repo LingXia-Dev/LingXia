@@ -52,6 +52,8 @@ pub struct InstallConfig {
     /// Optional artifact path (auto-detected if None)
     pub artifact_path: Option<PathBuf>,
     pub device_id: Option<String>,
+    /// Whether to reinstall app before install (best effort).
+    pub reinstall: bool,
 }
 
 /// Platform-specific run configuration

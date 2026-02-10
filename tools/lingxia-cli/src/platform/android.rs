@@ -402,6 +402,27 @@ impl Platform for AndroidPlatform {
         spinner.set_message(format!("Installing ({:.1} MB)...", size_mb));
         spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
+        if config.reinstall {
+            let package_id = infer_android_package_id_for_uninstall(&config.project_root);
+            if let Some(package_id) = package_id {
+                spinner.set_message(format!("Uninstalling {package_id}..."));
+                if let Err(err) = device.uninstall(&package_id, None) {
+                    eprintln!(
+                        "{} failed to uninstall {} before install: {}",
+                        "Warning:".yellow(),
+                        package_id,
+                        err
+                    );
+                }
+                spinner.set_message(format!("Installing ({:.1} MB)...", size_mb));
+            } else {
+                eprintln!(
+                    "{} could not resolve Android package id for --reinstall; continuing install",
+                    "Warning:".yellow()
+                );
+            }
+        }
+
         // Install APK
         let result = device.install(&apk_path, None);
 
@@ -499,6 +520,12 @@ impl Platform for AndroidPlatform {
 
         Ok(devices)
     }
+}
+
+fn infer_android_package_id_for_uninstall(project_root: &Path) -> Option<String> {
+    crate::config::LingXiaConfig::load(project_root)
+        .ok()
+        .and_then(|c| c.android.map(|a| a.package_id))
 }
 
 /// Generate Android app icons
