@@ -36,7 +36,7 @@ impl AppBundler {
     ///
     /// # Arguments
     /// * `package_dir` - Path to the SwiftPM package (containing Package.swift)
-    /// * `workspace_root` - Workspace root for LINGXIA_PROJECT_ROOT
+    /// * `project_root` - Host project root for LINGXIA_PROJECT_ROOT
     /// * `config` - App bundle configuration
     /// * `release` - Whether to build in release mode
     ///
@@ -44,7 +44,7 @@ impl AppBundler {
     /// Path to the created .app bundle
     pub fn create_app_bundle(
         package_dir: &Path,
-        workspace_root: &Path,
+        project_root: &Path,
         config: &AppBundleConfig,
         release: bool,
     ) -> Result<PathBuf> {
@@ -55,7 +55,7 @@ impl AppBundler {
 
         // 2. Build the executable
         let build_dir =
-            Self::build_executable(package_dir, &tmp_package_dir, workspace_root, release)?;
+            Self::build_executable(package_dir, &tmp_package_dir, project_root, release)?;
 
         // 3. Create .app bundle structure
         let app_bundle = Self::create_bundle_structure(package_dir, &build_dir, config)?;
@@ -136,7 +136,7 @@ let package = Package(
     fn build_executable(
         package_dir: &Path,
         tmp_package_dir: &Path,
-        workspace_root: &Path,
+        project_root: &Path,
         release: bool,
     ) -> Result<PathBuf> {
         println!("  Building executable...");
@@ -148,7 +148,7 @@ let package = Package(
 
         let mut cmd = Command::new("swift");
         cmd.current_dir(package_dir)
-            .env("LINGXIA_PROJECT_ROOT", workspace_root)
+            .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env_remove("SDKROOT")
             .args([

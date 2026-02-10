@@ -2,7 +2,7 @@
 //!
 //! Builds, signs, and deploys iOS applications using Swift Package Manager.
 
-use super::apple::{self, IOS_TARGET, find_workspace_root};
+use super::apple::{self, IOS_TARGET};
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
@@ -29,12 +29,11 @@ impl IosPlatform {
     /// Build Rust static library for iOS
     ///
     /// - `project_root`: Where to find the Rust library (e.g., examples/)
-    /// - `workspace_root`: Where to output the built library (e.g., workspace target/)
+    /// - output is always under `{project_root}/target`
     /// - `ios_config`: iOS configuration for deployment target
     fn build_rust_library(
         &self,
         project_root: &Path,
-        workspace_root: &Path,
         config: &BuildConfig,
         ios_config: Option<&IosConfig>,
     ) -> Result<PathBuf> {
@@ -43,7 +42,7 @@ impl IosPlatform {
 
         if !config.build_native {
             // Return expected path even if not building
-            return Ok(workspace_root
+            return Ok(project_root
                 .join("target")
                 .join(IOS_TARGET)
                 .join(profile_dir)
@@ -65,7 +64,7 @@ impl IosPlatform {
         let deployment_target = ios_config.and_then(|c| c.deployment_target.as_deref());
 
         apple::build_rust_staticlib(
-            workspace_root,
+            project_root,
             &rust_lib_dir,
             IOS_TARGET,
             is_release,
@@ -117,7 +116,7 @@ impl IosPlatform {
     fn create_app_bundle(
         &self,
         ios_dir: &Path,
-        workspace_root: &Path,
+        project_root: &Path,
         config: &BuildConfig,
         ios_config: Option<&IosConfig>,
     ) -> Result<PathBuf> {
@@ -170,7 +169,7 @@ impl IosPlatform {
 
         AppBundler::create_app_bundle(
             ios_dir,
-            workspace_root,
+            project_root,
             &bundle_config,
             matches!(config.profile, BuildProfile::Release),
         )
@@ -207,8 +206,8 @@ impl Platform for IosPlatform {
         // Resolve iOS project directory
         let ios_dir = resolve_ios_dir(&config.project_root, ios_config)?;
 
-        // Find the workspace root for SDK and bridge generation
-        let workspace_root = find_workspace_root(&config.project_root)?;
+        // SDK/runtime/native artifacts are scoped to this host project.
+        let sdk_root = config.project_root.clone();
 
         println!(
             "{} Building iOS app from {}",
@@ -220,26 +219,27 @@ impl Platform for IosPlatform {
             && let Some(ref app) = lingxia_config.app
             && let Some(ref sdk_version) = app.sdk_version
         {
-            sdk::ensure_sdk(&workspace_root, SdkPlatform::Apple, sdk_version, None)?;
+            sdk::ensure_sdk(&sdk_root, SdkPlatform::Apple, sdk_version)?;
         }
 
         // Build Rust static library
-        // Note: Use config.project_root for Rust library location (e.g., examples/lingxia-lib)
-        // but workspace_root for output target directory
-        self.build_rust_library(&config.project_root, &workspace_root, config, ios_config)?;
+        // Use host project root for both crate discovery and target output.
+        self.build_rust_library(&config.project_root, config, ios_config)?;
         if config.build_native {
             apple::update_spm_rust_link_stamp(
-                &workspace_root,
+                &config.project_root,
+                &sdk_root,
                 IOS_TARGET,
                 config.profile.as_str(),
             )?;
         }
 
         // Build Swift Package (library dependencies first)
-        self.swift_build(&ios_dir, &workspace_root, config.profile)?;
+        self.swift_build(&ios_dir, &config.project_root, config.profile)?;
 
         // Create .app bundle using AppBundler (converts library to executable app)
-        let app_path = self.create_app_bundle(&ios_dir, &workspace_root, config, ios_config)?;
+        let app_path =
+            self.create_app_bundle(&ios_dir, &config.project_root, config, ios_config)?;
 
         // Compile asset catalog (includes AppIcon) and merge generated plist
         let deployment_target = ios_config

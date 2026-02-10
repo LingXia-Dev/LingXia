@@ -35,12 +35,7 @@ impl HarmonyPlatform {
             && let Some(ref app) = lingxia_config.app
             && let Some(ref sdk_version) = app.sdk_version
         {
-            sdk::ensure_sdk(
-                &config.project_root,
-                SdkPlatform::Harmony,
-                sdk_version,
-                None,
-            )?;
+            sdk::ensure_sdk(&config.project_root, SdkPlatform::Harmony, sdk_version)?;
         }
 
         if config.build_native {
@@ -103,6 +98,7 @@ impl HarmonyPlatform {
         );
 
         let mut cmd = Command::new("cargo");
+        let target_dir = project_root.join("target");
         cmd.arg("build")
             .arg("--target")
             .arg(OHOS_TARGET)
@@ -110,6 +106,7 @@ impl HarmonyPlatform {
             .arg(&crate_name)
             .arg("--manifest-path")
             .arg(&rust_manifest)
+            .env("CARGO_TARGET_DIR", &target_dir)
             .current_dir(&rust_lib_dir);
 
         if matches!(config.profile, BuildProfile::Release) {
@@ -141,26 +138,12 @@ impl HarmonyPlatform {
 
         let profile_dir = config.profile.as_str();
         let so_file_name = format!("lib{lib_name}.so");
-        let so_path = rust_lib_dir
-            .join("target")
+        let so_path = target_dir
             .join(OHOS_TARGET)
             .join(profile_dir)
             .join(&so_file_name);
-
         if !so_path.exists() {
-            let workspace_so = project_root
-                .join("target")
-                .join(OHOS_TARGET)
-                .join(profile_dir)
-                .join(&so_file_name);
-            if workspace_so.exists() {
-                return Ok(workspace_so);
-            }
-            return Err(anyhow!(
-                "Built .so not found at: {} or {}",
-                so_path.display(),
-                workspace_so.display()
-            ));
+            return Err(anyhow!("Built .so not found at: {}", so_path.display()));
         }
 
         println!("  {} Rust build complete", "✓".green());
@@ -220,12 +203,7 @@ impl HarmonyPlatform {
             harmony_dir.join("entry/build/default/outputs/default/entry-default-unsigned.hap");
         if unsigned.exists() {
             println!("  {} HAP built (unsigned)", "✓".green());
-
-            if config.sign {
-                return self.sign_hap_after_build(unsigned, &config.project_root, config.profile);
-            }
-
-            return Ok(unsigned);
+            return self.sign_hap_after_build(unsigned, &config.project_root, config.profile);
         }
 
         let signed =

@@ -3,7 +3,6 @@
 //! Downloads LingXia SDK artifacts from GitHub releases and stages them locally.
 
 use crate::github;
-use crate::workspace::find_workspace_root_or_self;
 use anyhow::{Context, Result};
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
@@ -35,29 +34,17 @@ impl SdkPlatform {
 /// - Apple: staged SwiftPM package directory
 /// - Harmony: local HAR file path
 ///
-pub fn ensure_sdk(
-    project_root: &Path,
-    platform: SdkPlatform,
-    version: &str,
-    rust_lib_name: Option<&str>,
-) -> Result<PathBuf> {
+pub fn ensure_sdk(project_root: &Path, platform: SdkPlatform, version: &str) -> Result<PathBuf> {
     match platform {
-        SdkPlatform::Android => {
-            let rust_lib_name = rust_lib_name.ok_or_else(|| {
-                anyhow::anyhow!("rust_lib_name is required for Android SDK staging")
-            })?;
-            ensure_android_sdk(project_root, rust_lib_name, version)
-        }
+        SdkPlatform::Android => ensure_android_sdk(project_root, version),
         SdkPlatform::Apple => ensure_apple_sdk(project_root, version),
         SdkPlatform::Harmony => ensure_harmony_sdk(project_root, version),
     }
 }
 
-fn ensure_android_sdk(project_root: &Path, rust_lib_name: &str, version: &str) -> Result<PathBuf> {
-    let maven_dir = project_root
-        .join(rust_lib_name)
-        .join("target")
-        .join("maven");
+fn ensure_android_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
+    let sdk_root = resolve_sdk_root(project_root);
+    let maven_dir = sdk_root.join("target").join("maven");
     let sdk_marker = maven_dir
         .join("com")
         .join("lingxia")
@@ -238,5 +225,5 @@ fn version_marker_matches(path: &Path, version: &str) -> Result<bool> {
 }
 
 fn resolve_sdk_root(start: &Path) -> PathBuf {
-    find_workspace_root_or_self(start)
+    start.to_path_buf()
 }

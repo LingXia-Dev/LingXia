@@ -3,7 +3,7 @@
 //! Builds and runs macOS applications using Swift Package Manager.
 //! Simpler than iOS - no signing or device deployment needed.
 
-use super::apple::{self, find_workspace_root};
+use super::apple::{self};
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
@@ -51,7 +51,6 @@ impl MacosPlatform {
     fn build_rust_library(
         &self,
         project_root: &Path,
-        workspace_root: &Path,
         config: &BuildConfig,
         arch: &str,
     ) -> Result<PathBuf> {
@@ -60,7 +59,7 @@ impl MacosPlatform {
         let profile_dir = config.profile.as_str();
 
         if !config.build_native {
-            return Ok(workspace_root
+            return Ok(project_root
                 .join("target")
                 .join(rust_target)
                 .join(profile_dir)
@@ -79,7 +78,7 @@ impl MacosPlatform {
         let rust_lib_dir = project_root.join(&rust_lib_name);
 
         apple::build_rust_staticlib(
-            workspace_root,
+            project_root,
             &rust_lib_dir,
             rust_target,
             is_release,
@@ -92,7 +91,7 @@ impl MacosPlatform {
     fn swift_build_and_get_bin_dir(
         &self,
         macos_dir: &Path,
-        workspace_root: &Path,
+        project_root: &Path,
         profile: BuildProfile,
         arch: &str,
         deployment_target: &str,
@@ -104,7 +103,7 @@ impl MacosPlatform {
 
         let mut cmd = Command::new("swift");
         cmd.current_dir(macos_dir)
-            .env("LINGXIA_PROJECT_ROOT", workspace_root)
+            .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .args(["build", "--show-bin-path"]);
         let triple = Self::swift_triple(arch, deployment_target);
@@ -235,7 +234,7 @@ impl Platform for MacosPlatform {
 
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
-        let workspace_root = find_workspace_root(&config.project_root)?;
+        let sdk_root = config.project_root.clone();
 
         println!(
             "{} Building macOS app from {}",
@@ -247,7 +246,7 @@ impl Platform for MacosPlatform {
             && let Some(ref app) = lingxia_config.app
             && let Some(ref sdk_version) = app.sdk_version
         {
-            sdk::ensure_sdk(&workspace_root, SdkPlatform::Apple, sdk_version, None)?;
+            sdk::ensure_sdk(&sdk_root, SdkPlatform::Apple, sdk_version)?;
         }
 
         let deployment_target = macos_config
@@ -255,11 +254,12 @@ impl Platform for MacosPlatform {
             .unwrap_or_else(|| "14.0".to_string());
 
         // Build Rust static library
-        self.build_rust_library(&config.project_root, &workspace_root, config, arch)?;
+        self.build_rust_library(&config.project_root, config, arch)?;
         if config.build_native {
             let rust_target = Self::rust_target(arch);
             apple::update_spm_rust_link_stamp(
-                &workspace_root,
+                &config.project_root,
+                &sdk_root,
                 rust_target,
                 config.profile.as_str(),
             )?;
@@ -268,7 +268,7 @@ impl Platform for MacosPlatform {
         // Build Swift Package and get bin dir
         let bin_dir = self.swift_build_and_get_bin_dir(
             &macos_dir,
-            &workspace_root,
+            &config.project_root,
             config.profile,
             arch,
             &deployment_target,

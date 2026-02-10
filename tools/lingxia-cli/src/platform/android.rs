@@ -174,11 +174,13 @@ Supported Rust target triples:\n\
         };
 
         let mut cmd = Command::new("cargo");
+        let target_dir = project_root.join("target");
         cmd.arg("build")
             .arg("--target")
             .arg(target)
             .arg("--manifest-path")
             .arg(&rust_manifest)
+            .env("CARGO_TARGET_DIR", &target_dir)
             .current_dir(&rust_lib_dir);
 
         // Add --release flag for release builds (debug is the default)
@@ -247,8 +249,7 @@ Supported Rust target triples:\n\
         } else {
             "debug"
         };
-        let so_path = rust_lib_dir
-            .join("target")
+        let so_path = target_dir
             .join(target)
             .join(profile_dir)
             .join("liblingxia.so");
@@ -344,14 +345,8 @@ impl Platform for AndroidPlatform {
         if let Some(ref lingxia_config) = config.lingxia_config
             && let Some(ref app) = lingxia_config.app
             && let Some(ref sdk_version) = app.sdk_version
-            && let Some(rust_lib_name) = lingxia_config.get_rust_lib_name()
         {
-            sdk::ensure_sdk(
-                &config.project_root,
-                SdkPlatform::Android,
-                sdk_version,
-                Some(&rust_lib_name),
-            )?;
+            sdk::ensure_sdk(&config.project_root, SdkPlatform::Android, sdk_version)?;
         }
 
         // Build Rust libraries

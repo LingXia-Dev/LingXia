@@ -17,7 +17,6 @@ pub mod provisioning;
 pub mod signer;
 pub mod srp;
 
-use crate::workspace::find_workspace_root_or_self;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -366,11 +365,11 @@ pub fn ensure_tools() -> Result<()> {
 ///
 /// iOS requires static libraries (.a), not dynamic libraries (.dylib).
 ///
-/// - `workspace_root`: The workspace root (where target/ directory is located)
+/// - `project_root`: Host project root (where target/ directory is located)
 /// - `rust_lib_dir`: The crate directory containing Cargo.toml
 /// - `deployment_target`: Optional iOS deployment target (e.g., "17.0")
 pub fn build_rust_staticlib(
-    workspace_root: &Path,
+    project_root: &Path,
     rust_lib_dir: &Path,
     target: &str,
     release: bool,
@@ -395,7 +394,7 @@ pub fn build_rust_staticlib(
         .arg(target)
         .arg("--manifest-path")
         .arg(&rust_manifest)
-        .env("CARGO_TARGET_DIR", workspace_root.join("target"))
+        .env("CARGO_TARGET_DIR", project_root.join("target"))
         .current_dir(rust_lib_dir);
 
     // Set deployment target for iOS to ensure correct minimum version
@@ -419,11 +418,10 @@ pub fn build_rust_staticlib(
         return Err(anyhow!("Rust build failed for target: {}", target));
     }
 
-    // Determine output path - use workspace target directory
-    // (Cargo workspace outputs to workspace root's target/)
+    // Determine output path - force host project's target directory.
     let profile_dir = if release { "release" } else { "debug" };
 
-    let target_dir = workspace_root.join("target").join(target).join(profile_dir);
+    let target_dir = project_root.join("target").join(target).join(profile_dir);
     let dest_path = target_dir.join("liblingxia.a");
     if !dest_path.exists() {
         return Err(anyhow!(
@@ -445,11 +443,12 @@ pub fn build_rust_staticlib(
 /// generated `.swift` file whose contents depend on the `liblingxia.a` mtime and
 /// size, we ensure a rebuild + relink when native code changes.
 pub fn update_spm_rust_link_stamp(
-    workspace_root: &Path,
+    project_root: &Path,
+    sdk_root: &Path,
     rust_target: &str,
     build_config: &str,
 ) -> Result<()> {
-    let lib_path = workspace_root
+    let lib_path = project_root
         .join("target")
         .join(rust_target)
         .join(build_config)
@@ -469,7 +468,7 @@ pub fn update_spm_rust_link_stamp(
     let modified_secs = dur.as_secs();
     let modified_nanos = dur.subsec_nanos();
 
-    let staged_dir = workspace_root.join("target").join("spm").join("lingxia");
+    let staged_dir = sdk_root.join("target").join("spm").join("lingxia");
     let stamp_path = staged_dir
         .join("Sources")
         .join("_LingXiaRustLinkStamp.swift");
@@ -508,14 +507,6 @@ pub fn update_spm_rust_link_stamp(
     }
 
     Ok(())
-}
-
-/// Find the workspace root by looking for Cargo.toml with [workspace].
-///
-/// If no workspace is found, fallback to `start` so standalone projects outside
-/// the LingXia monorepo can still build using downloaded SDK artifacts.
-pub fn find_workspace_root(start: &Path) -> Result<PathBuf> {
-    Ok(find_workspace_root_or_self(start))
 }
 
 /// Recursively copy a directory tree.

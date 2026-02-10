@@ -16,7 +16,7 @@ dependencyResolutionManagement {
     repositories {
         // LingXia SDK local Maven repository
         maven {
-            url = uri("../{{PROJECT_NAME}}-lib/target/maven")
+            url = uri("../target/maven")
         }
         google()
         mavenCentral()
