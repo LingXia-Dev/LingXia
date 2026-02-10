@@ -91,11 +91,12 @@ fn resolve_platforms(platform_arg: Option<String>) -> Result<Vec<PlatformType>> 
     if let Some(p) = platform_arg {
         Ok(vec![p.parse()?])
     } else {
-        // Default: show both Android and iOS
-        let mut platforms = vec![PlatformType::Android];
-        #[cfg(target_os = "macos")]
-        platforms.push(PlatformType::Ios);
-        Ok(platforms)
+        // Default: show all supported device platforms.
+        Ok(vec![
+            PlatformType::Android,
+            PlatformType::Ios,
+            PlatformType::Harmony,
+        ])
     }
 }
 
