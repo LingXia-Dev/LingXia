@@ -11,6 +11,7 @@ pub struct BuildExecuteOptions {
     pub features: Vec<String>,
     pub build_native: bool,
     pub abis: Vec<String>,
+    pub macos_arch: Option<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
     pub ipa: bool,
@@ -28,6 +29,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         features,
         build_native,
         abis,
+        macos_arch,
         platforms,
         all_platforms,
         ipa,
@@ -278,6 +280,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 
             dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
             sign: sign && matches!(platform_type, platform::detector::PlatformType::Harmony),
+            macos_arch: if matches!(platform_type, platform::detector::PlatformType::MacOs) {
+                macos_arch.clone()
+            } else {
+                None
+            },
         };
 
         let artifacts = platform.build(&build_config)?;

@@ -18,6 +18,7 @@ pub fn execute(
     features: Vec<String>,
     build_native: bool,
     abis: Vec<String>,
+    macos_arch: Option<String>,
     device: Option<String>,
     platform_arg: Option<String>,
 ) -> Result<()> {
@@ -108,9 +109,14 @@ pub fn execute(
             build_native,
             device,
         ),
-        PlatformType::MacOs => {
-            execute_macos(project_root, config, build_profile, features, build_native)
-        }
+        PlatformType::MacOs => execute_macos(
+            project_root,
+            config,
+            build_profile,
+            features,
+            build_native,
+            macos_arch,
+        ),
         PlatformType::Harmony => execute_harmony(
             project_root,
             config,
@@ -128,17 +134,12 @@ fn execute_android(
     build_profile: BuildProfile,
     features: Vec<String>,
     build_native: bool,
-    targets: Vec<String>,
+    abis: Vec<String>,
     device: Option<String>,
 ) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
 
-    // Default targets if none specified
-    let build_targets = if targets.is_empty() {
-        vec!["aarch64-linux-android".to_string()]
-    } else {
-        targets
-    };
+    let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Android];
@@ -163,6 +164,7 @@ fn execute_android(
         ipa: false,
         dmg: false,
         sign: false,
+        macos_arch: None,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -241,6 +243,7 @@ fn execute_ios(
         ipa: false,
         dmg: false,
         sign: false,
+        macos_arch: None,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -288,10 +291,26 @@ fn execute_macos(
     build_profile: BuildProfile,
     features: Vec<String>,
     build_native: bool,
+    macos_arch: Option<String>,
 ) -> Result<()> {
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
+    let host_arch = if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x86_64"
+    };
+    if let Some(ref requested_arch) = macos_arch
+        && requested_arch != host_arch
+    {
+        return Err(anyhow!(
+            "`lingxia dev --platform macos` launches the app locally and requires host arch `{}`.\n\
+Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
+            host_arch,
+            requested_arch
+        ));
+    }
 
     // Generate app.json and embed LxApp assets (macOS build prepares resources itself)
     let platforms_to_build = vec![PlatformType::MacOs];
@@ -316,6 +335,7 @@ fn execute_macos(
         ipa: false,
         dmg: false,
         sign: false,
+        macos_arch,
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -375,6 +395,7 @@ fn execute_harmony(
         ipa: false,
         dmg: false,
         sign: false,
+        macos_arch: None,
     };
 
     let artifacts = harmony_platform.build(&build_config)?;

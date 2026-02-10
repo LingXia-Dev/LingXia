@@ -45,6 +45,10 @@ struct BuildOptions {
         long_help = "Android ABIs (comma-separated).\n\nSupported values:\n  - arm64-v8a\n  - armeabi-v7a"
     )]
     abis: Vec<String>,
+
+    /// macOS architecture for native build
+    #[arg(long, value_parser = ["arm64", "x86_64"])]
+    macos_arch: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -320,6 +324,7 @@ fn main() -> Result<()> {
                 features: build_options.features,
                 build_native: !build_options.skip_native,
                 abis: build_options.abis,
+                macos_arch: build_options.macos_arch,
                 platforms: platform,
                 all_platforms,
                 ipa,
@@ -361,6 +366,7 @@ fn main() -> Result<()> {
                 build_options.features,
                 !build_options.skip_native,
                 build_options.abis,
+                build_options.macos_arch,
                 device,
                 platform,
             )?;

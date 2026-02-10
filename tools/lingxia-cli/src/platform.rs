@@ -28,6 +28,8 @@ pub struct BuildConfig {
     pub dmg: bool,
     /// Sign the application (HarmonyOS only for now)
     pub sign: bool,
+    /// Requested macOS architecture for native build (`arm64` or `x86_64`)
+    pub macos_arch: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

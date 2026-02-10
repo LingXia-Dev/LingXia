@@ -43,6 +43,10 @@ impl MacosPlatform {
         }
     }
 
+    fn swift_triple(arch: &str, deployment_target: &str) -> String {
+        format!("{arch}-apple-macosx{deployment_target}")
+    }
+
     /// Build Rust static library for macOS
     fn build_rust_library(
         &self,
@@ -91,6 +95,7 @@ impl MacosPlatform {
         workspace_root: &Path,
         profile: BuildProfile,
         arch: &str,
+        deployment_target: &str,
     ) -> Result<PathBuf> {
         println!("{}", "Building Swift Package for macOS...".cyan());
 
@@ -102,16 +107,8 @@ impl MacosPlatform {
             .env("LINGXIA_PROJECT_ROOT", workspace_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .args(["build", "--show-bin-path"]);
-
-        // Cross-compile if target arch differs from host
-        let host_arch = if cfg!(target_arch = "aarch64") {
-            "arm64"
-        } else {
-            "x86_64"
-        };
-        if arch != host_arch {
-            cmd.args(["--arch", arch]);
-        }
+        let triple = Self::swift_triple(arch, deployment_target);
+        cmd.args(["--triple", &triple]);
 
         if is_release {
             cmd.args(["-c", "release"]);
@@ -223,12 +220,18 @@ impl Platform for MacosPlatform {
             .as_ref()
             .and_then(|c| c.macos.as_ref());
 
-        // Default to host architecture
-        let arch = if cfg!(target_arch = "aarch64") {
+        let host_arch = if cfg!(target_arch = "aarch64") {
             "arm64"
         } else {
             "x86_64"
         };
+        let arch = config.macos_arch.as_deref().unwrap_or(host_arch);
+        if arch != "arm64" && arch != "x86_64" {
+            return Err(anyhow!(
+                "Unsupported macOS arch '{}'. Supported values: arm64, x86_64",
+                arch
+            ));
+        }
 
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
@@ -247,6 +250,10 @@ impl Platform for MacosPlatform {
             sdk::ensure_sdk(&workspace_root, SdkPlatform::Apple, sdk_version, None)?;
         }
 
+        let deployment_target = macos_config
+            .and_then(|c| c.deployment_target.clone())
+            .unwrap_or_else(|| "14.0".to_string());
+
         // Build Rust static library
         self.build_rust_library(&config.project_root, &workspace_root, config, arch)?;
         if config.build_native {
@@ -259,8 +266,13 @@ impl Platform for MacosPlatform {
         }
 
         // Build Swift Package and get bin dir
-        let bin_dir =
-            self.swift_build_and_get_bin_dir(&macos_dir, &workspace_root, config.profile, arch)?;
+        let bin_dir = self.swift_build_and_get_bin_dir(
+            &macos_dir,
+            &workspace_root,
+            config.profile,
+            arch,
+            &deployment_target,
+        )?;
 
         let mut preferred = Vec::new();
         if let Some(macos) = &macos_config
@@ -309,10 +321,6 @@ impl Platform for MacosPlatform {
                     .map(|c| c.bundle_id.clone())
             })
             .unwrap_or_else(|| "com.example.app".to_string());
-
-        let deployment_target = macos_config
-            .and_then(|c| c.deployment_target.clone())
-            .unwrap_or_else(|| "14.0".to_string());
 
         let app_project_name = config
             .lingxia_config
