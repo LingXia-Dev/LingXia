@@ -3,11 +3,11 @@
 
 # Environment variables (must be set by caller)
 # TARGET_DIR - Build output directory (set by build.rs)
-# ANDROID_SDK_HOME - Android SDK path (must be set by user)
+# ANDROID_SDK_ROOT - Android SDK path (must be set by user)
 
 # Validate required environment variables
-ifndef ANDROID_SDK_HOME
-$(error ANDROID_SDK_HOME environment variable is not set. Please set it to your PATH)
+ifndef ANDROID_SDK_ROOT
+$(error ANDROID_SDK_ROOT environment variable is not set. Please set it to your PATH)
 endif
 
 ifndef TARGET_DIR
@@ -15,7 +15,7 @@ $(error TARGET_DIR environment variable is not set. This should be set by build.
 endif
 
 # Auto-detect latest Android API level
-ANDROID_PLATFORMS_DIR = $(ANDROID_SDK_HOME)/platforms
+ANDROID_PLATFORMS_DIR = $(ANDROID_SDK_ROOT)/platforms
 LATEST_ANDROID_API = $(shell ls $(ANDROID_PLATFORMS_DIR) | grep '^android-[0-9]*$$' | sed 's/android-//' | sort -n | tail -1)
 SELECTED_ANDROID_API = $(if $(ANDROID_API_LEVEL),$(ANDROID_API_LEVEL),$(LATEST_ANDROID_API))
 ANDROID_JAR = $(ANDROID_PLATFORMS_DIR)/android-$(SELECTED_ANDROID_API)/android.jar
@@ -34,7 +34,7 @@ check-env:
 	@echo "Checking Android environment..."
 	@if [ ! -d "$(ANDROID_PLATFORMS_DIR)" ]; then \
 		echo "Error: Android platforms directory not found at $(ANDROID_PLATFORMS_DIR)"; \
-		echo "Please ensure ANDROID_SDK_HOME is set correctly: $(ANDROID_SDK_HOME)"; \
+		echo "Please ensure ANDROID_SDK_ROOT is set correctly: $(ANDROID_SDK_ROOT)"; \
 		exit 1; \
 	fi
 	@if [ -z "$(LATEST_ANDROID_API)" ]; then \

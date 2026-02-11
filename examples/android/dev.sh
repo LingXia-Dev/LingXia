@@ -48,6 +48,24 @@ done
 # Mobile builds default to ring unless TLS backend is explicitly chosen.
 ensure_tls_feature_default "tls-ring"
 
+require_dir_env() {
+    local var_name="$1"
+    local example="$2"
+    local value="${!var_name:-}"
+    if [ -z "$value" ]; then
+        echo "❌ $var_name is not set" >&2
+        echo "   Example: export $var_name=$example" >&2
+        exit 1
+    fi
+    if [ ! -d "$value" ]; then
+        echo "❌ $var_name does not exist: $value" >&2
+        exit 1
+    fi
+}
+
+require_dir_env "ANDROID_SDK_ROOT" "\$HOME/android-sdk"
+require_dir_env "ANDROID_NDK_ROOT" "\$ANDROID_SDK_ROOT/ndk/28.2.13676358"
+
 # Show build config
 if [ "$BUILD_ARM32" = true ]; then
     echo "✅ 32-bit (armeabi-v7a)"
@@ -102,22 +120,18 @@ build_rust_android() {
     local cc_bin="$3"
     local cxx_bin="$4"
 
-    # Set ANDROID_NDK_ROOT for aws-lc-sys to find the NDK
-    export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-    export ANDROID_NDK="$ANDROID_NDK_HOME"
-
     case "$target" in
         aarch64-linux-android)
-            export AR_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
-            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
-            export CC_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
-            export CXX_aarch64_linux_android="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cxx_bin"
+            export AR_aarch64_linux_android="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+            export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
+            export CC_aarch64_linux_android="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
+            export CXX_aarch64_linux_android="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cxx_bin"
             ;;
         armv7-linux-androideabi)
-            export AR_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
-            export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
-            export CC_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
-            export CXX_armv7_linux_androideabi="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cxx_bin"
+            export AR_armv7_linux_androideabi="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"
+            export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
+            export CC_armv7_linux_androideabi="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cc_bin"
+            export CXX_armv7_linux_androideabi="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/darwin-x86_64/bin/$cxx_bin"
             # Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
             export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS="-C link-arg=-Wl,--hash-style=both"
             ;;

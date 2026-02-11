@@ -21,9 +21,9 @@ fn compile_android_java() {
         return;
     }
 
-    // Check if ANDROID_SDK_HOME is set
-    if env::var("ANDROID_SDK_HOME").is_err() {
-        println!("cargo:error=ANDROID_SDK_HOME is not set");
+    // Check if ANDROID_SDK_ROOT is set
+    if env::var("ANDROID_SDK_ROOT").is_err() {
+        println!("cargo:error=ANDROID_SDK_ROOT is not set");
         return;
     }
 
