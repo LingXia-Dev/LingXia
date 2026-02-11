@@ -144,14 +144,12 @@ Supported Rust target triples:\n\
             .map(|a| a.get_api_level())
             .unwrap_or(default_api_level);
 
-        let (cmake_proc, cc_bin, cxx_bin) = match target {
+        let (cc_bin, cxx_bin) = match target {
             "aarch64-linux-android" => (
-                "aarch64",
                 format!("aarch64-linux-android{}-clang", api_level),
                 format!("aarch64-linux-android{}-clang++", api_level),
             ),
             "armv7-linux-androideabi" => (
-                "armv7-a",
                 format!("armv7a-linux-androideabi{}-clang", api_level),
                 format!("armv7a-linux-androideabi{}-clang++", api_level),
             ),
@@ -172,22 +170,9 @@ Supported Rust target triples:\n\
                 cmd.env("ANDROID_NDK_ROOT", ndk_path);
                 cmd.env("ANDROID_API_LEVEL", api_level.to_string());
 
-                // CMake configuration
-                cmd.env(
-                    "CMAKE_CONFIGURE_ARGS",
-                    format!(
-                        "-DCMAKE_TOOLCHAIN_FILE={}/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR={}",
-                        ndk_path.display(),
-                        cmake_proc
-                    ),
-                );
-
                 // Clear macOS SDK pollution
                 cmd.env_remove("SDKROOT");
-                cmd.env_remove("CMAKE_OSX_SYSROOT");
-                cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
                 cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
-                cmd.env_remove("CMAKE_TOOLCHAIN_FILE");
 
                 // Set target-specific toolchain
                 let bin_dir = toolchain_base.join("bin");

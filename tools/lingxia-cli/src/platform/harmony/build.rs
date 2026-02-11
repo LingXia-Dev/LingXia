@@ -124,8 +124,6 @@ impl HarmonyPlatform {
                 cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_args);
 
                 cmd.env_remove("SDKROOT");
-                cmd.env_remove("CMAKE_OSX_SYSROOT");
-                cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
                 cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
             },
         )?;
