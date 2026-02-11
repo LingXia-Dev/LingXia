@@ -1,5 +1,5 @@
-use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
+use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::prepare_host_assets;
 use crate::lxapp;
 use crate::platform::{self, BuildConfig};

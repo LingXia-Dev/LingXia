@@ -124,8 +124,10 @@ pub fn resolve_platform_features(
         ));
     }
 
-    let is_mobile_platform =
-        matches!(platform, PlatformType::Android | PlatformType::Ios | PlatformType::Harmony);
+    let is_mobile_platform = matches!(
+        platform,
+        PlatformType::Android | PlatformType::Ios | PlatformType::Harmony
+    );
     if is_mobile_platform && !has_tls_ring && !has_tls_aws {
         features.push("tls-ring".to_string());
         println!(

@@ -1,5 +1,5 @@
-use crate::config::LingXiaConfig;
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
+use crate::config::LingXiaConfig;
 use crate::host_assets::prepare_host_assets;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};

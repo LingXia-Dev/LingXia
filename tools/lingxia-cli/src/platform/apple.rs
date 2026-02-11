@@ -17,9 +17,7 @@ pub mod provisioning;
 pub mod signer;
 pub mod srp;
 
-use crate::commands::rust::{
-    resolve_build_profile, run_cargo_rustc_staticlib_for_target,
-};
+use crate::commands::rust::{resolve_build_profile, run_cargo_rustc_staticlib_for_target};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;

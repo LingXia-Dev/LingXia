@@ -1,5 +1,5 @@
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::commands::rust::cargo_version_line;
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::platform::detector::PlatformType;
 use crate::platform::doctor::{CheckResult, CheckStatus, command_version_line};
 use crate::platform::{android, detector, harmony, ios, macos};

@@ -55,17 +55,35 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
 }
 
 fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
-    let templates_base = locate_templates_dir()?;
-    let template_dir = templates_base.join("native-root");
-    if !template_dir.exists() {
-        return Err(anyhow!(
-            "Native root template not found at: {}",
-            template_dir.display()
-        ));
+    let mut lines: Vec<&str> = vec!["# LingXia generated", ".lingxia/", "target/"];
+
+    if config.platforms.contains(&Platform::Android) {
+        lines.extend([
+            "",
+            "# Android generated",
+            "android/.gradle/",
+            "android/build/",
+            "android/app/build/",
+            "android/app/src/main/assets/",
+            "android/app/src/main/jniLibs/",
+        ]);
     }
 
-    let vars: HashMap<String, String> = HashMap::new();
-    process_template_dir(&template_dir, &config.target_dir, &vars)?;
+    if config.platforms.contains(&Platform::Harmony) {
+        lines.extend([
+            "",
+            "# Harmony generated",
+            "harmony/.hvigor/",
+            "harmony/build/",
+            "harmony/entry/build/",
+            "harmony/entry/.preview/",
+            "harmony/entry/src/main/resources/rawfile/",
+        ]);
+    }
+
+    let mut content = lines.join("\n");
+    content.push('\n');
+    fs::write(config.target_dir.join(".gitignore"), content)?;
     Ok(())
 }
 
