@@ -5,12 +5,13 @@ use super::{
 use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 impl HarmonyPlatform {
     pub(super) fn install_impl(&self, config: &InstallConfig) -> Result<()> {
-        ensure_command("hdc")?;
+        let hdc = ensure_command("hdc")?;
 
         let hap_path = if let Some(ref path) = config.artifact_path {
             path.clone()
@@ -49,7 +50,7 @@ impl HarmonyPlatform {
 
         println!("  {} Installing HAP: {}", "→".dimmed(), hap_path.display());
 
-        let mut cmd = Command::new("hdc");
+        let mut cmd = Command::new(&hdc);
         if let Some(ref device_id) = config.device_id {
             cmd.arg("-t").arg(device_id);
         }
@@ -71,9 +72,9 @@ impl HarmonyPlatform {
     }
 
     pub(super) fn uninstall_impl(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
-        ensure_command("hdc")?;
+        let hdc = ensure_command("hdc")?;
 
-        let mut cmd = Command::new("hdc");
+        let mut cmd = Command::new(&hdc);
         if let Some(id) = device_id {
             cmd.arg("-t").arg(id);
         }
@@ -89,14 +90,14 @@ impl HarmonyPlatform {
     }
 
     pub(super) fn run_impl(&self, config: &RunConfig) -> Result<()> {
-        ensure_command("hdc")?;
+        let hdc = ensure_command("hdc")?;
 
         let ability = config
             .main_activity
             .as_deref()
             .unwrap_or(DEFAULT_ABILITY_NAME);
 
-        let mut cmd = Command::new("hdc");
+        let mut cmd = Command::new(&hdc);
         if let Some(ref device_id) = config.device_id {
             cmd.arg("-t").arg(device_id);
         }
@@ -133,9 +134,9 @@ impl HarmonyPlatform {
     }
 
     pub(super) fn list_devices_impl(&self) -> Result<Vec<Device>> {
-        ensure_command("hdc")?;
+        let hdc = ensure_command("hdc")?;
 
-        let output = Command::new("hdc")
+        let output = Command::new(&hdc)
             .arg("list")
             .arg("targets")
             .output()
@@ -248,15 +249,78 @@ fn load_signing_config(
     provisioning.prepare_signing_config(&bundle_name, mode, target_udids)
 }
 
-pub(super) fn ensure_command(name: &str) -> Result<()> {
-    if which::which(name).is_err() {
-        return Err(anyhow!(
-            "'{}' not found in PATH. Please install HarmonyOS development tools.\n\
-             Ensure Harmony command-line tools are in your PATH.",
+pub(super) fn ensure_command(name: &str) -> Result<PathBuf> {
+    resolve_command_path(name).ok_or_else(|| {
+        anyhow!(
+            "'{}' not found. Install Harmony command-line tools and set OHOS_NDK_HOME.\n\
+             Also ensure '{}' is available in PATH or under the OHOS_NDK_HOME tool directories.",
+            name,
             name
-        ));
+        )
+    })
+}
+
+pub(super) fn resolve_command_path(name: &str) -> Option<PathBuf> {
+    if let Ok(path) = which::which(name) {
+        return Some(path);
     }
-    Ok(())
+    resolve_command_from_ohos_ndk_home(name)
+}
+
+fn resolve_command_from_ohos_ndk_home(name: &str) -> Option<PathBuf> {
+    let ndk_home = env::var("OHOS_NDK_HOME").ok()?;
+    let ndk_home = PathBuf::from(ndk_home);
+    if !ndk_home.exists() {
+        return None;
+    }
+
+    let mut candidates = Vec::new();
+    let toolchains = ndk_home.join("toolchains");
+    let root = ndk_home
+        .parent()
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf());
+
+    if name == "hdc" {
+        candidates.push(toolchains.join("hdc"));
+        candidates.push(toolchains.join("hdc.exe"));
+        candidates.push(toolchains.join("hdc.cmd"));
+        candidates.push(toolchains.join("hdc.bat"));
+    } else {
+        candidates.push(toolchains.join(name));
+        candidates.push(toolchains.join(format!("{name}.exe")));
+        candidates.push(toolchains.join(format!("{name}.cmd")));
+        candidates.push(toolchains.join(format!("{name}.bat")));
+        candidates.push(toolchains.join(name).join("bin").join(name));
+        candidates.push(
+            toolchains
+                .join(name)
+                .join("bin")
+                .join(format!("{name}.exe")),
+        );
+        candidates.push(
+            toolchains
+                .join(name)
+                .join("bin")
+                .join(format!("{name}.cmd")),
+        );
+        candidates.push(
+            toolchains
+                .join(name)
+                .join("bin")
+                .join(format!("{name}.bat")),
+        );
+    }
+
+    if let Some(root) = root {
+        candidates.push(root.join("bin").join(name));
+        candidates.push(root.join("bin").join(format!("{name}.exe")));
+        candidates.push(root.join("bin").join(format!("{name}.cmd")));
+        candidates.push(root.join("bin").join(format!("{name}.bat")));
+    }
+
+    candidates.into_iter().find(|candidate| candidate.is_file())
 }
 
 fn ensure_device_connected(device_id: Option<&str>) -> Result<Vec<String>> {
@@ -295,7 +359,8 @@ fn infer_harmony_bundle_for_uninstall(project_root: &Path) -> Option<String> {
 }
 
 fn connected_devices() -> Result<Vec<String>> {
-    let output = Command::new("hdc")
+    let hdc = ensure_command("hdc")?;
+    let output = Command::new(&hdc)
         .arg("list")
         .arg("targets")
         .output()
@@ -310,7 +375,8 @@ fn connected_devices() -> Result<Vec<String>> {
 }
 
 fn fetch_harmony_udid(target: &str) -> Result<String> {
-    let output = Command::new("hdc")
+    let hdc = ensure_command("hdc")?;
+    let output = Command::new(&hdc)
         .arg("-t")
         .arg(target)
         .arg("shell")

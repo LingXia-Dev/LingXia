@@ -1,12 +1,20 @@
-use super::super::doctor::{CheckResult, command_exists, command_version_line};
+use super::super::doctor::{CheckResult, CheckStatus, command_exists, command_version_line};
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+const ANDROID_CMDLINE_TOOLS_URL: &str = "https://developer.android.com/studio#command-tools";
+
 pub fn doctor_checks() -> Vec<CheckResult> {
     let mut checks = Vec::new();
     checks.push(check_java());
-    checks.extend(check_android_sdk_checks());
+    let sdk_check = check_android_sdk();
+    let sdk_ready = sdk_check.status == CheckStatus::Pass;
+    checks.push(sdk_check);
+    if sdk_ready {
+        checks.push(check_android_cmdline_tools());
+        checks.push(check_android_platform_tools());
+    }
     checks.push(check_gradle());
     checks.push(check_android_ndk());
     checks
@@ -23,53 +31,74 @@ fn check_java() -> CheckResult {
     }
 }
 
-fn check_android_sdk_checks() -> Vec<CheckResult> {
-    let mut checks = Vec::new();
-    let android_home = env::var("ANDROID_HOME").or_else(|_| env::var("ANDROID_SDK_ROOT"));
-
-    match android_home {
-        Ok(path) => {
+fn check_android_sdk() -> CheckResult {
+    match resolve_android_sdk_root() {
+        Some(path) => {
             let sdk_path = PathBuf::from(&path);
             if sdk_path.exists() {
-                checks.push(CheckResult::pass(
-                    "Android SDK",
-                    format!("Found at: {}", sdk_path.display()),
-                ));
-
-                let adb_path = sdk_path.join("platform-tools").join("adb");
-                if adb_path.exists() || command_exists("adb") {
-                    let detail = if adb_path.exists() {
-                        format!("Found at: {}", adb_path.display())
-                    } else {
-                        "Found in PATH".to_string()
-                    };
-                    checks.push(CheckResult::pass("Android platform-tools", detail));
-                } else {
-                    checks.push(CheckResult::warn(
-                        "Android platform-tools",
-                        "adb not found".to_string(),
-                        Some("Install platform-tools via Android Studio SDK Manager"),
-                    ));
-                }
+                CheckResult::pass("Android SDK", format!("ANDROID_SDK_ROOT set: {}", path))
             } else {
-                checks.push(CheckResult::fail(
+                CheckResult::fail(
                     "Android SDK",
-                    format!(
-                        "ANDROID_HOME/ANDROID_SDK_ROOT points to missing path: {}",
-                        path
-                    ),
-                    Some("Install Android SDK and set ANDROID_HOME or ANDROID_SDK_ROOT"),
-                ));
+                    format!("ANDROID_SDK_ROOT points to missing path: {}", path),
+                    Some(android_sdk_install_hint()),
+                )
             }
         }
-        Err(_) => checks.push(CheckResult::fail(
+        None => CheckResult::fail(
             "Android SDK",
-            "ANDROID_HOME/ANDROID_SDK_ROOT not set".to_string(),
-            Some("Install Android Studio and set ANDROID_HOME"),
-        )),
+            "Missing required env var: ANDROID_SDK_ROOT".to_string(),
+            Some(android_sdk_install_hint()),
+        ),
+    }
+}
+
+fn check_android_cmdline_tools() -> CheckResult {
+    if let Some(sdk_root) = resolve_android_sdk_root() {
+        let sdkmanager = PathBuf::from(&sdk_root)
+            .join("cmdline-tools")
+            .join("latest")
+            .join("bin")
+            .join("sdkmanager");
+        if sdkmanager.exists() || command_exists("sdkmanager") {
+            let detail = if sdkmanager.exists() {
+                format!("Found at: {}", sdkmanager.display())
+            } else {
+                "sdkmanager found in PATH".to_string()
+            };
+            return CheckResult::pass("Android cmdline-tools", detail);
+        }
     }
 
-    checks
+    CheckResult::warn(
+        "Android cmdline-tools",
+        "sdkmanager not found".to_string(),
+        Some(
+            "Install command-line tools under $ANDROID_SDK_ROOT/cmdline-tools/latest \
+(see Android SDK hint above)"
+                .to_string(),
+        ),
+    )
+}
+
+fn check_android_platform_tools() -> CheckResult {
+    if let Some(sdk_root) = resolve_android_sdk_root() {
+        let adb_path = PathBuf::from(&sdk_root).join("platform-tools").join("adb");
+        if adb_path.exists() || command_exists("adb") {
+            let detail = if adb_path.exists() {
+                format!("Found at: {}", adb_path.display())
+            } else {
+                "adb found in PATH".to_string()
+            };
+            return CheckResult::pass("Android platform-tools", detail);
+        }
+    }
+
+    CheckResult::warn(
+        "Android platform-tools",
+        "adb not found".to_string(),
+        Some("Install with sdkmanager: \"platform-tools\" (after SDK setup)".to_string()),
+    )
 }
 
 fn check_gradle() -> CheckResult {
@@ -101,28 +130,43 @@ fn check_gradle() -> CheckResult {
 }
 
 fn check_android_ndk() -> CheckResult {
-    if let Ok(path) = env::var("ANDROID_NDK_HOME").or_else(|_| env::var("NDK_HOME")) {
+    if let Ok(path) = env::var("ANDROID_NDK_ROOT") {
         let ndk_path = PathBuf::from(&path);
         if ndk_path.exists() {
-            return CheckResult::pass("Android NDK", format!("Found at: {}", ndk_path.display()));
+            return CheckResult::pass("Android NDK", format!("ANDROID_NDK_ROOT set: {}", path));
         }
         return CheckResult::fail(
             "Android NDK",
-            format!("ANDROID_NDK_HOME/NDK_HOME points to missing path: {}", path),
-            Some("Install Android NDK and fix ANDROID_NDK_HOME"),
+            format!("ANDROID_NDK_ROOT points to missing path: {}", path),
+            Some(android_ndk_install_hint()),
         );
-    }
-
-    if let Ok(android_home) = env::var("ANDROID_HOME").or_else(|_| env::var("ANDROID_SDK_ROOT")) {
-        let ndk_dir = PathBuf::from(android_home).join("ndk");
-        if ndk_dir.exists() {
-            return CheckResult::pass("Android NDK", format!("Found under: {}", ndk_dir.display()));
-        }
     }
 
     CheckResult::fail(
         "Android NDK",
-        "Not found".to_string(),
-        Some("Install Android NDK via SDK Manager and set ANDROID_NDK_HOME"),
+        "Missing required env var: ANDROID_NDK_ROOT".to_string(),
+        Some(android_ndk_install_hint()),
     )
+}
+
+fn resolve_android_sdk_root() -> Option<String> {
+    env::var("ANDROID_SDK_ROOT").ok()
+}
+
+fn android_sdk_install_hint() -> String {
+    format!(
+        "Download Android command-line tools: {}\n\
+Set env var and install SDK tools:\n\
+export ANDROID_SDK_ROOT=$HOME/android-sdk\n\
+$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install \"build-tools;34.0.0\" \"platform-tools\" \"platforms;android-33\" \"ndk;28.2.13676358\"\n\
+If permission is denied, retry with:\n\
+sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install ...",
+        ANDROID_CMDLINE_TOOLS_URL
+    )
+}
+
+fn android_ndk_install_hint() -> String {
+    "Set env var to an installed NDK directory, for example:\n\
+export ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/28.2.13676358"
+        .to_string()
 }

@@ -101,7 +101,10 @@ pub(super) fn create_rust_library(
     let package_id_underscore = config.package_id.replace('.', "_");
     vars.insert("PACKAGE_ID_UNDERSCORE".to_string(), package_id_underscore);
 
-    vars.insert("LINGXIA_VERSION".to_string(), versions.lingxia_crate.clone());
+    vars.insert(
+        "LINGXIA_VERSION".to_string(),
+        versions.lingxia_crate.clone(),
+    );
     vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
 
     // Process all template files into {project}-lib/ directory

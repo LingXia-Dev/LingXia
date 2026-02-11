@@ -1,46 +1,86 @@
-use crate::platform::doctor::{CheckResult, command_exists};
+use super::deploy::resolve_command_path;
+use crate::platform::doctor::{CheckResult, CheckStatus};
 use std::env;
 use std::path::PathBuf;
 
+const HMOS_CMDLINE_TOOLS_URL: &str =
+    "https://developer.huawei.com/consumer/en/download/command-line-tools-for-hmos";
+
 pub fn doctor_checks() -> Vec<CheckResult> {
-    vec![
-        check_ohos_ndk_home(),
-        check_harmony_command("ohpm", "ohpm package manager"),
-        check_harmony_command("hvigorw", "hvigorw build tool"),
-        check_harmony_command("hdc", "Harmony device bridge"),
-    ]
+    let mut checks = Vec::new();
+    let sdk_check = check_harmony_sdk_env();
+    let sdk_ready = sdk_check.status == CheckStatus::Pass;
+    checks.push(sdk_check);
+
+    if sdk_ready {
+        checks.push(check_harmony_command("ohpm", "ohpm package manager"));
+        checks.push(check_harmony_command("hvigorw", "hvigorw build tool"));
+        checks.push(check_harmony_command("hdc", "Harmony device bridge"));
+    }
+
+    checks
 }
 
-fn check_ohos_ndk_home() -> CheckResult {
+fn check_harmony_sdk_env() -> CheckResult {
     match env::var("OHOS_NDK_HOME") {
         Ok(path) => {
-            let ndk = PathBuf::from(&path);
-            if ndk.exists() {
-                CheckResult::pass("OHOS_NDK_HOME", format!("Found at: {}", ndk.display()))
-            } else {
-                CheckResult::fail(
-                    "OHOS_NDK_HOME",
-                    format!("Path does not exist: {}", path),
-                    Some("Set OHOS_NDK_HOME to your Harmony SDK root"),
-                )
+            let sdk_root = PathBuf::from(&path);
+            if !sdk_root.exists() {
+                return CheckResult::fail(
+                    "Harmony command-line SDK",
+                    format!("OHOS_NDK_HOME points to missing path: {path}"),
+                    Some(harmony_sdk_setup_hint()),
+                );
             }
+
+            if !sdk_root.join("native").exists() {
+                return CheckResult::fail(
+                    "Harmony command-line SDK",
+                    format!(
+                        "OHOS_NDK_HOME set: {} (missing native/ directory)",
+                        sdk_root.display()
+                    ),
+                    Some(
+                        "Set OHOS_NDK_HOME to command-line-tools/sdk/default/openharmony"
+                            .to_string(),
+                    ),
+                );
+            }
+
+            CheckResult::pass(
+                "Harmony command-line SDK",
+                format!("OHOS_NDK_HOME set: {}", sdk_root.display()),
+            )
         }
         Err(_) => CheckResult::fail(
-            "OHOS_NDK_HOME",
-            "Environment variable is not set".to_string(),
-            Some("Example: export OHOS_NDK_HOME=/path/to/ohos-sdk"),
+            "Harmony command-line SDK",
+            "Missing required env var: OHOS_NDK_HOME".to_string(),
+            Some(harmony_sdk_setup_hint()),
         ),
     }
 }
 
 fn check_harmony_command(cmd: &str, display_name: &str) -> CheckResult {
-    if command_exists(cmd) {
-        CheckResult::pass(display_name, format!("Found: {}", cmd))
+    if let Some(path) = resolve_command_path(cmd) {
+        CheckResult::pass(display_name, format!("Found at: {}", path.display()))
     } else {
         CheckResult::fail(
             display_name,
-            format!("'{}' not found in PATH", cmd),
-            Some("Install Harmony command-line tools and add them to PATH"),
+            format!("'{}' not found", cmd),
+            Some(format!(
+                "Install Harmony command-line tools and set OHOS_NDK_HOME \
+(or make sure '{}' is in PATH).\n\
+This check also auto-resolves tools under OHOS_NDK_HOME.",
+                cmd
+            )),
         )
     }
+}
+
+fn harmony_sdk_setup_hint() -> String {
+    format!(
+        "Download Harmony command-line tools: {HMOS_CMDLINE_TOOLS_URL}\n\
+Set environment variable to SDK root, for example:\n\
+export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmony"
+    )
 }

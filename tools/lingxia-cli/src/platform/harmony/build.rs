@@ -7,22 +7,36 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const HMOS_CMDLINE_TOOLS_URL: &str =
+    "https://developer.huawei.com/consumer/en/download/command-line-tools-for-hmos";
+
 impl HarmonyPlatform {
     fn detect_ohos_ndk() -> Result<PathBuf> {
-        if let Ok(ndk_home) = env::var("OHOS_NDK_HOME") {
-            let path = PathBuf::from(&ndk_home);
-            if path.exists() {
+        if let Ok(value) = env::var("OHOS_NDK_HOME") {
+            let path = PathBuf::from(&value);
+            if !path.exists() {
+                return Err(anyhow!(
+                    "OHOS_NDK_HOME is set to '{}' but path does not exist",
+                    value
+                ));
+            }
+
+            if path.join("native").exists() {
                 return Ok(path);
             }
+
             return Err(anyhow!(
-                "OHOS_NDK_HOME is set to '{}' but path does not exist",
-                ndk_home
+                "OHOS_NDK_HOME='{}' is not a valid Harmony SDK root (missing native/ directory)",
+                value
             ));
         }
 
         Err(anyhow!(
-            "OHOS_NDK_HOME not set. Please set it to your HarmonyOS SDK native directory.\n\
-             Example: export OHOS_NDK_HOME=/path/to/ohos-sdk"
+            "Harmony SDK environment variable not set.\n\
+             Set OHOS_NDK_HOME to Harmony command-line tools SDK root.\n\
+             Download: {}\n\
+             Example: export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmony",
+            HMOS_CMDLINE_TOOLS_URL
         ))
     }
 
@@ -169,9 +183,9 @@ impl HarmonyPlatform {
 
     fn ohpm_install(&self, harmony_dir: &Path) -> Result<()> {
         println!("{}", "Installing ohpm dependencies...".cyan());
-        ensure_command("ohpm")?;
+        let ohpm = ensure_command("ohpm")?;
 
-        let status = Command::new("ohpm")
+        let status = Command::new(&ohpm)
             .arg("install")
             .current_dir(harmony_dir.join("entry"))
             .status()
@@ -187,9 +201,9 @@ impl HarmonyPlatform {
 
     fn build_hap(&self, harmony_dir: &Path, config: &BuildConfig) -> Result<PathBuf> {
         println!("{}", "Building HAP...".cyan());
-        ensure_command("hvigorw")?;
+        let hvigorw = ensure_command("hvigorw")?;
 
-        let status = Command::new("hvigorw")
+        let status = Command::new(&hvigorw)
             .arg("assembleHap")
             .current_dir(harmony_dir)
             .status()

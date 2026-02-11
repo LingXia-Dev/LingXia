@@ -194,6 +194,12 @@ fn print_check(check: &CheckResult) {
     println!("  {} {}: {}", symbol, colorized_name, check.detail);
 
     if let Some(hint) = &check.hint {
-        println!("    {} {}", "Hint:".dimmed(), hint.dimmed());
+        let mut lines = hint.lines();
+        if let Some(first) = lines.next() {
+            println!("    {} {}", "Hint:".dimmed(), first.dimmed());
+        }
+        for line in lines {
+            println!("          {}", line.dimmed());
+        }
     }
 }

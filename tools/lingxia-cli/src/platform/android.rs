@@ -43,34 +43,19 @@ Supported Rust target triples:\n\
 
     /// Detect Android NDK path from environment
     fn detect_ndk_path() -> Result<PathBuf> {
-        // 1. Check ANDROID_NDK_HOME environment variable
-        if let Ok(ndk_home) = env::var("ANDROID_NDK_HOME") {
-            let path = PathBuf::from(ndk_home);
+        if let Ok(value) = env::var("ANDROID_NDK_ROOT") {
+            let path = PathBuf::from(&value);
             if path.exists() {
                 return Ok(path);
             }
-        }
-
-        // 2. Check ANDROID_HOME/ndk/*
-        if let Ok(android_home) = env::var("ANDROID_HOME") {
-            let ndk_dir = PathBuf::from(android_home).join("ndk");
-            if ndk_dir.exists() {
-                // Find the latest NDK version
-                if let Ok(entries) = std::fs::read_dir(&ndk_dir) {
-                    let mut versions: Vec<_> = entries
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.path().is_dir())
-                        .collect();
-                    versions.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
-                    if let Some(latest) = versions.first() {
-                        return Ok(latest.path());
-                    }
-                }
-            }
+            return Err(anyhow!(
+                "ANDROID_NDK_ROOT is set to '{}' but path does not exist",
+                value
+            ));
         }
 
         Err(anyhow!(
-            "Android NDK not found. Please set ANDROID_NDK_HOME environment variable"
+            "Android NDK not found. Set ANDROID_NDK_ROOT (for example: $ANDROID_SDK_ROOT/ndk/28.2.13676358)"
         ))
     }
 
@@ -194,9 +179,7 @@ Supported Rust target triples:\n\
         }
 
         // Set Android NDK environment variables
-        cmd.env("ANDROID_NDK_HOME", ndk_path);
         cmd.env("ANDROID_NDK_ROOT", ndk_path);
-        cmd.env("ANDROID_NDK", ndk_path);
         cmd.env("ANDROID_API_LEVEL", api_level.to_string());
 
         // CMake configuration
