@@ -123,7 +123,7 @@ struct CreateProfileRequest {
 impl AgcConnectClient {
     pub fn new() -> Self {
         Self {
-            http_agent: crate::platform::apple::http_agent().clone(),
+            http_agent: crate::http_client::shared_native_roots_agent().clone(),
         }
     }
 
@@ -235,46 +235,39 @@ Use credentials from AGC `API密钥 > Connect API > API客户端`, and set Proje
     ) -> Result<Value> {
         let url = format!("{}{}", AGC_PROVISION_API_BASE, path);
         let auth_header = format!("Bearer {}", token.access_token);
+        let mut headers = vec![
+            ("Authorization", auth_header.as_str()),
+            ("client_id", token.client_id.as_str()),
+            ("Content-Type", "application/json"),
+            ("Accept", "application/json"),
+        ];
+        for (name, value) in extra_headers {
+            headers.push((*name, value.as_str()));
+        }
 
         let response = match method {
             "GET" | "DELETE" => {
-                let req = if method == "GET" {
-                    self.http_agent.get(&url)
-                } else {
-                    self.http_agent.delete(&url)
-                };
-                let mut req = req
-                    .header("Authorization", &auth_header)
-                    .header("client_id", &token.client_id)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json");
-                for (name, value) in extra_headers {
-                    req = req.header(*name, value.as_str());
-                }
-                req.config().http_status_as_error(false).build().call()
+                crate::http_client::call_with_headers(&self.http_agent, method, &url, &headers)
             }
             "POST" | "PUT" => {
-                let req = if method == "POST" {
-                    self.http_agent.post(&url)
-                } else {
-                    self.http_agent.put(&url)
-                };
-                let req = req
-                    .header("Authorization", &auth_header)
-                    .header("client_id", &token.client_id)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json");
-                let mut req = req.config().http_status_as_error(false).build();
-                for (name, value) in extra_headers {
-                    req = req.header(*name, value.as_str());
-                }
-
                 if let Some(payload) = body {
                     let body_json =
                         serde_json::to_string(payload).context("Failed to serialize request")?;
-                    req.send(body_json.as_bytes())
+                    crate::http_client::send_bytes_with_headers(
+                        &self.http_agent,
+                        method,
+                        &url,
+                        &headers,
+                        body_json.as_bytes(),
+                    )
                 } else {
-                    req.send(&[])
+                    crate::http_client::send_bytes_with_headers(
+                        &self.http_agent,
+                        method,
+                        &url,
+                        &headers,
+                        &[],
+                    )
                 }
             }
             _ => return Err(anyhow!("Unsupported HTTP method: {}", method)),

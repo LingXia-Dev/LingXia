@@ -146,34 +146,36 @@ impl AppStoreConnectClient {
         let token = self.generate_token()?;
         let url = format!("{}{}", ASC_API_BASE, endpoint);
         let auth = format!("Bearer {}", token);
+        let headers = [
+            ("Authorization", auth.as_str()),
+            ("Content-Type", "application/json"),
+        ];
 
         let mut response = match method {
-            HttpMethod::Get => ureq::get(&url)
-                .config()
-                .http_status_as_error(false)
-                .build()
-                .header("Authorization", &auth)
-                .header("Content-Type", "application/json")
-                .call(),
+            HttpMethod::Get => crate::http_client::call_with_headers(
+                crate::platform::apple::http_agent(),
+                "GET",
+                &url,
+                &headers,
+            ),
             HttpMethod::Post => {
                 let body_json =
                     serde_json::to_string(body.context("Missing request body for POST")?)
                         .context("Failed to serialize request body")?;
-                ureq::post(&url)
-                    .config()
-                    .http_status_as_error(false)
-                    .build()
-                    .header("Authorization", &auth)
-                    .header("Content-Type", "application/json")
-                    .send(body_json.as_bytes())
+                crate::http_client::send_bytes_with_headers(
+                    crate::platform::apple::http_agent(),
+                    "POST",
+                    &url,
+                    &headers,
+                    body_json.as_bytes(),
+                )
             }
-            HttpMethod::Delete => ureq::delete(&url)
-                .config()
-                .http_status_as_error(false)
-                .build()
-                .header("Authorization", &auth)
-                .header("Content-Type", "application/json")
-                .call(),
+            HttpMethod::Delete => crate::http_client::call_with_headers(
+                crate::platform::apple::http_agent(),
+                "DELETE",
+                &url,
+                &headers,
+            ),
         }
         .with_context(|| format!("API request failed: {} {}", method.as_str(), endpoint))?;
 

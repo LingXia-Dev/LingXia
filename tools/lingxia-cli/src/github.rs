@@ -9,7 +9,6 @@
 use anyhow::{Context, Result, anyhow};
 use serde::Deserialize;
 use std::env;
-use std::time::Duration;
 
 /// GitHub repository owner/name
 const GITHUB_REPO: &str = "LingXia-Dev/LingXia";
@@ -35,11 +34,7 @@ struct GitHubRelease {
 
 /// Create a ureq agent with specified timeout
 fn create_agent(timeout_secs: u64) -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(timeout_secs)))
-        .http_status_as_error(false)
-        .build()
-        .into()
+    crate::http_client::create_agent(timeout_secs)
 }
 
 /// Get GitHub token from environment

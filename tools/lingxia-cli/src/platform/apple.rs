@@ -23,34 +23,10 @@ use colored::Colorize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::OnceLock;
 
 /// Get a shared HTTP agent with native root certificates (using rustls)
 pub fn http_agent() -> &'static ureq::Agent {
-    static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
-    AGENT.get_or_init(|| {
-        use ureq::tls::{RootCerts, TlsConfig};
-
-        // Load native root certificates from the system
-        let native_certs = rustls_native_certs::load_native_certs();
-        let certs: Vec<ureq::tls::Certificate<'static>> = native_certs
-            .certs
-            .into_iter()
-            .map(|c| {
-                let cert = ureq::tls::Certificate::from_der(c.as_ref());
-                cert.to_owned()
-            })
-            .collect();
-
-        ureq::Agent::config_builder()
-            .tls_config(
-                TlsConfig::builder()
-                    .root_certs(RootCerts::from(certs))
-                    .build(),
-            )
-            .build()
-            .new_agent()
-    })
+    crate::http_client::shared_native_roots_agent()
 }
 
 // Rust cross-compilation target for iOS

@@ -6,7 +6,6 @@ use std::fs;
 use std::io::Cursor;
 use std::path::Component;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/web-runtime";
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
@@ -310,11 +309,7 @@ fn extract_runtime_dist_from_tarball(tarball: &[u8], out_root: &Path) -> Result<
 }
 
 fn http_agent() -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(60)))
-        .http_status_as_error(false)
-        .build()
-        .into()
+    crate::http_client::create_agent(60)
 }
 
 fn safe_cache_segment(package: &str) -> String {
