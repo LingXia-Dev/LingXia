@@ -145,7 +145,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let app = config.app.as_ref().ok_or_else(|| {
         anyhow!(
             "Missing app section in {}.\n\
-             Please configure app.productName/app.productVersion/app.platforms/app.homeLxAppID/app.homeLxAppVersion.",
+             Please configure app.productName/app.productVersion/app.platforms/app.homeLxAppID.",
             HOST_CONFIG_FILE
         )
     })?;
@@ -321,5 +321,3 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 
     Ok(())
 }
-
-// Asset preparation moved to `crate::host_assets` to keep platform builds consistent.

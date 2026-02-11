@@ -8,7 +8,6 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::MacosConfig;
-use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
@@ -241,13 +240,6 @@ impl Platform for MacosPlatform {
             "[macOS]".cyan(),
             macos_dir.display()
         );
-
-        if let Some(ref lingxia_config) = config.lingxia_config
-            && let Some(ref app) = lingxia_config.app
-            && let Some(ref sdk_version) = app.sdk_version
-        {
-            sdk::ensure_sdk(&sdk_root, SdkPlatform::Apple, sdk_version)?;
-        }
 
         let deployment_target = macos_config
             .and_then(|c| c.deployment_target.clone())

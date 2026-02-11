@@ -21,8 +21,6 @@ pub(crate) fn prepare_host_assets(
     _explicit_platforms: bool,
 ) -> Result<()> {
     let mut cache = HostAssetsCache::load(project_root);
-    let app_json = build_app_json_from_config(config)?;
-    let app_json_hash = sha256_hex(app_json.as_bytes());
     let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
 
     let needs_embedded_lxapp = platforms.iter().any(|p| {
@@ -34,12 +32,17 @@ pub(crate) fn prepare_host_assets(
                 | platform::detector::PlatformType::Harmony
         )
     });
+    if !needs_embedded_lxapp {
+        return Err(anyhow!(
+            "No platform requires embedded home LxApp assets for this build"
+        ));
+    }
 
-    let prepared_lxapp_assets = if needs_embedded_lxapp {
-        prepare_embedded_lxapp_assets(project_root, config, build_profile, &mut cache)?
-    } else {
-        None
-    };
+    let prepared_lxapp_assets =
+        prepare_embedded_lxapp_assets(project_root, config, build_profile, &mut cache)?;
+    let app_json = build_app_json_from_config(config, &prepared_lxapp_assets)?;
+    let app_json_hash = sha256_hex(app_json.as_bytes());
+
     let has_android = platforms
         .iter()
         .any(|p| matches!(p, platform::detector::PlatformType::Android));
@@ -50,7 +53,7 @@ pub(crate) fn prepare_host_assets(
         && runtime::target_from_build_targets(build_targets) == runtime::RuntimeEcmaTarget::Es5;
 
     // Only Android can require ES5 runtime (armv7). Other platforms should stay on ES2020.
-    let prepared_runtime_es5 = if needs_embedded_lxapp && needs_es5_runtime {
+    let prepared_runtime_es5 = if needs_es5_runtime {
         Some(prepare_runtime_asset(
             project_root,
             config,
@@ -59,8 +62,7 @@ pub(crate) fn prepare_host_assets(
     } else {
         None
     };
-    let prepared_runtime_es2020 = if needs_embedded_lxapp && (has_non_android || !needs_es5_runtime)
-    {
+    let prepared_runtime_es2020 = if has_non_android || !needs_es5_runtime {
         Some(prepare_runtime_asset(
             project_root,
             config,
@@ -81,7 +83,7 @@ pub(crate) fn prepare_host_assets(
                     &assets_root,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    Some(&prepared_lxapp_assets),
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
@@ -104,7 +106,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    Some(&prepared_lxapp_assets),
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -126,7 +128,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    Some(&prepared_lxapp_assets),
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -139,7 +141,7 @@ pub(crate) fn prepare_host_assets(
                     &rawfile_root,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    Some(&prepared_lxapp_assets),
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
@@ -443,6 +445,7 @@ struct PreparedLxAppAssets {
     dist_dir: PathBuf,
     asset_name: String,
     dist_hash: String,
+    home_lxapp_version: String,
 }
 
 struct PreparedRuntimeAsset {
@@ -478,14 +481,18 @@ fn prepare_embedded_lxapp_assets(
     config: &LingXiaConfig,
     build_profile: BuildProfile,
     cache: &mut HostAssetsCache,
-) -> Result<Option<PreparedLxAppAssets>> {
-    let Some(app) = &config.app else {
-        return Ok(None);
-    };
+) -> Result<PreparedLxAppAssets> {
+    let app = config
+        .app
+        .as_ref()
+        .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
 
     let lxapp_dir = project_root.join(&app.home_lxapp_id);
     if !lxapp_dir.exists() {
-        return Ok(None);
+        return Err(anyhow!(
+            "Home LxApp directory not found: {}",
+            lxapp_dir.display()
+        ));
     }
 
     let lxapp_json = lxapp_dir.join("lxapp.json");
@@ -495,6 +502,15 @@ fn prepare_embedded_lxapp_assets(
             "LxApp project must include lxapp.json and {} in {}",
             LXAPP_BUILD_CONFIG_FILE,
             lxapp_dir.display()
+        ));
+    }
+    let metadata = read_lxapp_metadata(&lxapp_json)?;
+    if metadata.app_id != app.home_lxapp_id {
+        return Err(anyhow!(
+            "homeLxAppID '{}' does not match lxapp.json appId '{}' in {}",
+            app.home_lxapp_id,
+            metadata.app_id,
+            lxapp_json.display()
         ));
     }
 
@@ -531,7 +547,7 @@ fn prepare_embedded_lxapp_assets(
         ));
     }
 
-    let asset_name = resolve_lxapp_id(&lxapp_json).unwrap_or_else(|_| app.home_lxapp_id.clone());
+    let asset_name = metadata.app_id;
     let dist_hash = hash_tree(&dist_dir, &[])?;
 
     cache.lxapp_builds.insert(
@@ -543,18 +559,23 @@ fn prepare_embedded_lxapp_assets(
         },
     );
 
-    Ok(Some(PreparedLxAppAssets {
+    Ok(PreparedLxAppAssets {
         dist_dir,
         asset_name,
         dist_hash,
-    }))
+        home_lxapp_version: metadata.version,
+    })
 }
 
-fn build_app_json_from_config(config: &LingXiaConfig) -> Result<String> {
+fn build_app_json_from_config(
+    config: &LingXiaConfig,
+    lxapp_assets: &PreparedLxAppAssets,
+) -> Result<String> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
+    let home_lxapp_version = lxapp_assets.home_lxapp_version.as_str();
 
     // Read apiKey/apiSecret from environment variables (CI-friendly)
     let api_key = std::env::var("LINGXIA_API_KEY")
@@ -590,7 +611,7 @@ fn build_app_json_from_config(config: &LingXiaConfig) -> Result<String> {
     );
     obj.insert(
         "homeLxAppVersion".to_string(),
-        serde_json::json!(app.home_lxapp_version),
+        serde_json::json!(home_lxapp_version),
     );
     if let Some(max_age) = app.cache_max_age_days {
         obj.insert("cacheMaxAgeDays".to_string(), serde_json::json!(max_age));
@@ -601,14 +622,31 @@ fn build_app_json_from_config(config: &LingXiaConfig) -> Result<String> {
     ))?)
 }
 
-fn resolve_lxapp_id(path: &Path) -> Result<String> {
+struct LxAppMetadata {
+    app_id: String,
+    version: String,
+}
+
+fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
     let content = fs::read_to_string(path)?;
     let value: serde_json::Value = serde_json::from_str(&content)?;
     let app_id = value
         .get("appId")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow!("appId missing in lxapp.json"))?;
-    Ok(app_id.to_string())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("appId missing in {}", path.display()))?;
+    let version = value
+        .get("version")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow!("version missing in {}", path.display()))?;
+
+    Ok(LxAppMetadata {
+        app_id: app_id.to_string(),
+        version: version.to_string(),
+    })
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {

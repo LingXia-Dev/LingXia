@@ -161,7 +161,7 @@ pub fn execute(
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
     let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework, &versions)?;
-    generate_config_file(&config, &lxapp_info, &versions, &web_runtime_version)?;
+    generate_config_file(&config, &lxapp_info, &web_runtime_version)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());

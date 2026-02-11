@@ -4,13 +4,11 @@ use crate::config::{
     AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig,
     ResourcesConfig,
 };
-use crate::versions::LingXiaVersions;
 use anyhow::Result;
 
 pub(super) fn generate_config_file(
     config: &ProjectConfig,
     lxapp: &LxAppInfo,
-    versions: &LingXiaVersions,
     web_runtime_version: &str,
 ) -> Result<()> {
     let swift_target_name = swift_target_name_from_project_name(&config.name);
@@ -74,8 +72,6 @@ pub(super) fn generate_config_file(
             api_server: None,
             platforms: platforms.clone(),
             home_lxapp_id: lxapp.app_id.clone(),
-            home_lxapp_version: "1.0.0".to_string(),
-            sdk_version: Some(versions.sdk.clone()),
             cache_max_age_days: None,
         }),
         android,

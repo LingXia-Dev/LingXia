@@ -7,7 +7,6 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::IosConfig;
-use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -214,13 +213,6 @@ impl Platform for IosPlatform {
             "[iOS]".cyan(),
             ios_dir.display()
         );
-
-        if let Some(ref lingxia_config) = config.lingxia_config
-            && let Some(ref app) = lingxia_config.app
-            && let Some(ref sdk_version) = app.sdk_version
-        {
-            sdk::ensure_sdk(&sdk_root, SdkPlatform::Apple, sdk_version)?;
-        }
 
         // Build Rust static library
         // Use host project root for both crate discovery and target output.

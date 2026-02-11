@@ -1,5 +1,4 @@
 use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
-use crate::sdk::{self, SdkPlatform};
 use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -323,14 +322,6 @@ impl Platform for AndroidPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
-
-        // Ensure SDK is downloaded
-        if let Some(ref lingxia_config) = config.lingxia_config
-            && let Some(ref app) = lingxia_config.app
-            && let Some(ref sdk_version) = app.sdk_version
-        {
-            sdk::ensure_sdk(&config.project_root, SdkPlatform::Android, sdk_version)?;
-        }
 
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
