@@ -11,8 +11,6 @@
       "harmony"
     ],
     "homeLxAppID": "homelxapp",
-    "homeLxAppVersion": "0.1.0",
-    "sdkVersion": "0.1.0",
     "cacheMaxAgeDays": 7
   },
   "android": {

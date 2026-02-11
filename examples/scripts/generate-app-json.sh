@@ -35,58 +35,49 @@ generate_app_json() {
         return 1
     fi
 
-    # Check if jq is available
-    if command -v jq &> /dev/null; then
-        # Use jq for clean JSON generation
-        local base_json=$(jq '{
-            productName: .app.productName,
-            productVersion: .app.productVersion,
-            homeLxAppID: .app.homeLxAppID,
-            homeLxAppVersion: .app.homeLxAppVersion
-        } + (if .app.apiServer then {apiServer: .app.apiServer} else {} end)
-          + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")
-
-        # Add apiKey/apiSecret from environment variables if set
-        if [ -n "${LINGXIA_API_KEY:-}" ]; then
-            base_json=$(echo "$base_json" | jq --arg key "$LINGXIA_API_KEY" '. + {apiKey: $key}')
-        fi
-        if [ -n "${LINGXIA_API_SECRET:-}" ]; then
-            base_json=$(echo "$base_json" | jq --arg secret "$LINGXIA_API_SECRET" '. + {apiSecret: $secret}')
-        fi
-
-        echo "$base_json" > "$output_dir/app.json"
-    else
-        # Fallback: use grep/sed for basic extraction (no jq dependency)
-        # Extract values from lingxia.config.json
-        local product_name=$(grep -o '"productName"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-        local product_version=$(grep -o '"productVersion"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-        local home_lxapp_id=$(grep -o '"homeLxAppID"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-        local home_lxapp_version=$(grep -o '"homeLxAppVersion"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-        local api_server=$(grep -o '"apiServer"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-        local cache_max_age_days=$(grep -o '"cacheMaxAgeDays"[[:space:]]*:[[:space:]]*[0-9]*' "$config_file" | head -1 | sed 's/.*: *\([0-9]*\)/\1/')
-
-        # Generate app.json
-        {
-            echo "{"
-            echo "  \"productName\": \"$product_name\","
-            echo "  \"productVersion\": \"$product_version\","
-            echo "  \"homeLxAppID\": \"$home_lxapp_id\","
-            if [ -n "$api_server" ]; then
-                echo "  \"apiServer\": \"$api_server\","
-            fi
-            if [ -n "${LINGXIA_API_KEY:-}" ]; then
-                echo "  \"apiKey\": \"$LINGXIA_API_KEY\","
-            fi
-            if [ -n "${LINGXIA_API_SECRET:-}" ]; then
-                echo "  \"apiSecret\": \"$LINGXIA_API_SECRET\","
-            fi
-            if [ -n "$cache_max_age_days" ]; then
-                echo "  \"cacheMaxAgeDays\": $cache_max_age_days,"
-            fi
-            echo "  \"homeLxAppVersion\": \"$home_lxapp_version\""
-            echo "}"
-        } > "$output_dir/app.json"
+    if ! command -v jq > /dev/null 2>&1; then
+        echo "Error: jq is required to generate app.json" >&2
+        return 1
     fi
+
+    local home_lxapp_id
+    home_lxapp_id=$(jq -r '.app.homeLxAppID // empty' "$config_file")
+    if [ -z "$home_lxapp_id" ]; then
+        echo "Error: app.homeLxAppID missing in $config_file" >&2
+        return 1
+    fi
+
+    local home_lxapp_json="$LINGXIA_ROOT/examples/$home_lxapp_id/lxapp.json"
+    if [ ! -f "$home_lxapp_json" ]; then
+        echo "Error: home lxapp config not found: $home_lxapp_json" >&2
+        return 1
+    fi
+
+    local home_lxapp_version
+    home_lxapp_version=$(jq -r '.version // empty' "$home_lxapp_json")
+    if [ -z "$home_lxapp_version" ]; then
+        echo "Error: version missing in $home_lxapp_json" >&2
+        return 1
+    fi
+
+    local base_json
+    base_json=$(jq --arg home_lxapp_id "$home_lxapp_id" --arg home_lxapp_version "$home_lxapp_version" '{
+        productName: .app.productName,
+        productVersion: .app.productVersion,
+        homeLxAppID: $home_lxapp_id,
+        homeLxAppVersion: $home_lxapp_version
+    } + (if .app.apiServer then {apiServer: .app.apiServer} else {} end)
+      + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")
+
+    # Add apiKey/apiSecret from environment variables if set
+    if [ -n "${LINGXIA_API_KEY:-}" ]; then
+        base_json=$(echo "$base_json" | jq --arg key "$LINGXIA_API_KEY" '. + {apiKey: $key}')
+    fi
+    if [ -n "${LINGXIA_API_SECRET:-}" ]; then
+        base_json=$(echo "$base_json" | jq --arg secret "$LINGXIA_API_SECRET" '. + {apiSecret: $secret}')
+    fi
+
+    echo "$base_json" > "$output_dir/app.json"
 
     echo "✅ Generated app.json in $output_dir"
 }
