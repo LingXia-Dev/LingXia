@@ -646,20 +646,19 @@ impl LxApp {
         );
 
         // Load app configuration if it exists
-        self.read_json("lxapp.json")
-            .map(|app_json| {
-                self.config = LxAppConfig::from_value(app_json)
-                    .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
+        self.read_json("lxapp.json").map(|app_json| {
+            self.config = LxAppConfig::from_value(app_json)
+                .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
-                // Initialize TabBar state if config has TabBar
-                if let Some(tabbar_config) = &self.config.tabBar {
-                    let mut state = self.state.lock().unwrap();
-                    // Convert icon paths to absolute paths using the lxapp directory as base
-                    state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
-                }
+            // Initialize TabBar state if config has TabBar
+            if let Some(tabbar_config) = &self.config.tabBar {
+                let mut state = self.state.lock().unwrap();
+                // Convert icon paths to absolute paths using the lxapp directory as base
+                state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
+            }
 
-                Ok(())
-            })?
+            Ok(())
+        })?
     }
 
     /// Initialize paths and load configuration

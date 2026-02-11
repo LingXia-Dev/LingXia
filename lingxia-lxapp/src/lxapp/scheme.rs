@@ -117,6 +117,7 @@ impl LxApp {
         });
 
         let (parts, _) = response.into_parts();
+        self.touch_user_cache_access_time(&asset_path);
         Some((parts, asset_path).into())
     }
 
@@ -433,6 +434,7 @@ impl LxApp {
                             .expect("Failed to build cached file response")
                     });
                     let (parts, _) = response.into_parts();
+                    self.touch_user_cache_access_time(&file_path);
                     return Some((parts, file_path).into());
                 }
                 crate::cache::ResolveResult::NonExists(dest_path) => {
@@ -519,6 +521,7 @@ impl LxApp {
                                         .expect("Failed to build cached file response")
                                 });
                                 let (parts, _) = response.into_parts();
+                                self.touch_user_cache_access_time(&dest_path);
                                 return Some((parts, dest_path).into());
                             }
 
@@ -766,6 +769,12 @@ impl LxApp {
             "wav" => "audio/wav",
             "mp4" => "video/mp4",
             _ => "application/octet-stream",
+        }
+    }
+
+    fn touch_user_cache_access_time(&self, path: &Path) {
+        if path.starts_with(&self.user_cache_dir) && path.exists() {
+            crate::cache::touch_access_time(path);
         }
     }
 
