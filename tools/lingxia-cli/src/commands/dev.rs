@@ -1,4 +1,5 @@
 use crate::config::LingXiaConfig;
+use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::host_assets::prepare_host_assets;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
@@ -50,11 +51,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     let config = LingXiaConfig::load(&project_root)?;
 
     // Parse build profile (cargo-like): debug unless explicitly set to release.
-    let build_profile = if options.release {
-        BuildProfile::Release
-    } else {
-        BuildProfile::Debug
-    };
+    let build_profile = resolve_build_profile(options.release);
 
     // Determine platform from argument or config
     let app = config.app.as_ref().ok_or_else(|| {
@@ -125,6 +122,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
+    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Android)?;
 
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
 
@@ -144,7 +142,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: ctx.features.clone(),
+        features: platform_features,
         build_native: ctx.build_native,
         targets: build_targets,
         lingxia_config: Some(ctx.config.clone()),
@@ -199,6 +197,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
 
 fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform = platform::ios::IosPlatform::new();
+    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Ios)?;
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Ios];
@@ -216,7 +215,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: ctx.features.clone(),
+        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
@@ -269,6 +268,7 @@ fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
+    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::MacOs)?;
     let host_arch = if cfg!(target_arch = "aarch64") {
         "arm64"
     } else {
@@ -301,7 +301,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: ctx.features.clone(),
+        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
@@ -336,6 +336,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
 
 fn execute_harmony(ctx: DevContext) -> Result<()> {
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
+    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Harmony)?;
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Harmony];
@@ -353,7 +354,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: ctx.features.clone(),
+        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),

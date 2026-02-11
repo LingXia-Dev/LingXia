@@ -1,4 +1,5 @@
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::commands::rust::cargo_version_line;
 use crate::platform::detector::PlatformType;
 use crate::platform::doctor::{CheckResult, CheckStatus, command_version_line};
 use crate::platform::{android, detector, harmony, ios, macos};
@@ -82,7 +83,7 @@ fn check_rust() -> CheckResult {
 }
 
 fn check_cargo() -> CheckResult {
-    match command_version_line("cargo", &["--version"], false) {
+    match cargo_version_line() {
         Some(version) => CheckResult::pass("Cargo", version),
         None => CheckResult::fail(
             "Cargo",

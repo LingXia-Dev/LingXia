@@ -1,4 +1,5 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
+use crate::commands::rust::run_cargo_build_for_target;
 use crate::platform::{BuildArtifacts, BuildConfig, BuildProfile};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -103,44 +104,31 @@ impl HarmonyPlatform {
             sysroot.join("usr/include/aarch64-linux-ohos").display()
         );
 
-        let mut cmd = Command::new("cargo");
         let target_dir = project_root.join("target");
-        cmd.arg("build")
-            .arg("--target")
-            .arg(OHOS_TARGET)
-            .arg("-p")
-            .arg(&crate_name)
-            .arg("--manifest-path")
-            .arg(&rust_manifest)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .current_dir(&rust_lib_dir);
+        run_cargo_build_for_target(
+            &rust_manifest,
+            &rust_lib_dir,
+            &target_dir,
+            OHOS_TARGET,
+            Some(&crate_name),
+            config.profile,
+            &config.features,
+            |cmd| {
+                let target_env = OHOS_TARGET.replace('-', "_");
+                let target_upper = OHOS_TARGET.to_uppercase().replace('-', "_");
+                cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &linker);
+                cmd.env(format!("AR_{}", target_env), &ar);
+                cmd.env(format!("CC_{}", target_env), &cc);
+                cmd.env(format!("CXX_{}", target_env), &cxx);
+                cmd.env("CPATH", &cpath);
+                cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_args);
 
-        if matches!(config.profile, BuildProfile::Release) {
-            cmd.arg("--release");
-        }
-
-        if !config.features.is_empty() {
-            cmd.arg("--features").arg(config.features.join(","));
-        }
-
-        let target_env = OHOS_TARGET.replace('-', "_");
-        let target_upper = OHOS_TARGET.to_uppercase().replace('-', "_");
-        cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &linker);
-        cmd.env(format!("AR_{}", target_env), &ar);
-        cmd.env(format!("CC_{}", target_env), &cc);
-        cmd.env(format!("CXX_{}", target_env), &cxx);
-        cmd.env("CPATH", &cpath);
-        cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_args);
-
-        cmd.env_remove("SDKROOT");
-        cmd.env_remove("CMAKE_OSX_SYSROOT");
-        cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
-        cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
-
-        let status = cmd.status().context("Failed to execute cargo build")?;
-        if !status.success() {
-            return Err(anyhow!("Rust build failed for target: {}", OHOS_TARGET));
-        }
+                cmd.env_remove("SDKROOT");
+                cmd.env_remove("CMAKE_OSX_SYSROOT");
+                cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
+                cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
+            },
+        )?;
 
         let profile_dir = config.profile.as_str();
         let so_file_name = format!("lib{lib_name}.so");

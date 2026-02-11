@@ -1,4 +1,5 @@
 use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
+use crate::commands::rust::run_cargo_build_for_target;
 use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -157,73 +158,59 @@ Supported Rust target triples:\n\
             _ => return Err(Self::unsupported_target_error(target)),
         };
 
-        let mut cmd = Command::new("cargo");
         let target_dir = project_root.join("target");
-        cmd.arg("build")
-            .arg("--target")
-            .arg(target)
-            .arg("--manifest-path")
-            .arg(&rust_manifest)
-            .env("CARGO_TARGET_DIR", &target_dir)
-            .current_dir(&rust_lib_dir);
+        run_cargo_build_for_target(
+            &rust_manifest,
+            &rust_lib_dir,
+            &target_dir,
+            target,
+            None,
+            config.profile,
+            &config.features,
+            |cmd| {
+                // Set Android NDK environment variables
+                cmd.env("ANDROID_NDK_ROOT", ndk_path);
+                cmd.env("ANDROID_API_LEVEL", api_level.to_string());
 
-        // Add --release flag for release builds (debug is the default)
-        if matches!(config.profile, super::BuildProfile::Release) {
-            cmd.arg("--release");
-        }
+                // CMake configuration
+                cmd.env(
+                    "CMAKE_CONFIGURE_ARGS",
+                    format!(
+                        "-DCMAKE_TOOLCHAIN_FILE={}/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR={}",
+                        ndk_path.display(),
+                        cmake_proc
+                    ),
+                );
 
-        // Add features if specified
-        if !config.features.is_empty() {
-            cmd.arg("--features").arg(config.features.join(","));
-        }
+                // Clear macOS SDK pollution
+                cmd.env_remove("SDKROOT");
+                cmd.env_remove("CMAKE_OSX_SYSROOT");
+                cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
+                cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
+                cmd.env_remove("CMAKE_TOOLCHAIN_FILE");
 
-        // Set Android NDK environment variables
-        cmd.env("ANDROID_NDK_ROOT", ndk_path);
-        cmd.env("ANDROID_API_LEVEL", api_level.to_string());
+                // Set target-specific toolchain
+                let bin_dir = toolchain_base.join("bin");
+                let ar_path = bin_dir.join("llvm-ar");
+                let cc_path = bin_dir.join(&cc_bin);
+                let cxx_path = bin_dir.join(&cxx_bin);
 
-        // CMake configuration
-        cmd.env(
-            "CMAKE_CONFIGURE_ARGS",
-            format!(
-                "-DCMAKE_TOOLCHAIN_FILE={}/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR={}",
-                ndk_path.display(),
-                cmake_proc
-            ),
-        );
+                let target_upper = target.to_uppercase().replace('-', "_");
+                let target_env = target.replace('-', "_");
+                cmd.env(format!("AR_{}", target_env), &ar_path);
+                cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &cc_path);
+                cmd.env(format!("CC_{}", target_env), &cc_path);
+                cmd.env(format!("CXX_{}", target_env), &cxx_path);
 
-        // Clear macOS SDK pollution
-        cmd.env_remove("SDKROOT");
-        cmd.env_remove("CMAKE_OSX_SYSROOT");
-        cmd.env_remove("CMAKE_OSX_ARCHITECTURES");
-        cmd.env_remove("MACOSX_DEPLOYMENT_TARGET");
-        cmd.env_remove("CMAKE_TOOLCHAIN_FILE");
-
-        // Set target-specific toolchain
-        let bin_dir = toolchain_base.join("bin");
-        let ar_path = bin_dir.join("llvm-ar");
-        let cc_path = bin_dir.join(&cc_bin);
-        let cxx_path = bin_dir.join(&cxx_bin);
-
-        let target_upper = target.to_uppercase().replace('-', "_");
-        let target_env = target.replace('-', "_");
-        cmd.env(format!("AR_{}", target_env), &ar_path);
-        cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &cc_path);
-        cmd.env(format!("CC_{}", target_env), &cc_path);
-        cmd.env(format!("CXX_{}", target_env), &cxx_path);
-
-        // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
-        if target == "armv7-linux-androideabi" {
-            cmd.env(
-                format!("CARGO_TARGET_{}_RUSTFLAGS", target_upper),
-                "-C link-arg=-Wl,--hash-style=both",
-            );
-        }
-
-        let status = cmd.status().context("Failed to execute cargo build")?;
-
-        if !status.success() {
-            return Err(anyhow!("Rust build failed for target: {}", target));
-        }
+                // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
+                if target == "armv7-linux-androideabi" {
+                    cmd.env(
+                        format!("CARGO_TARGET_{}_RUSTFLAGS", target_upper),
+                        "-C link-arg=-Wl,--hash-style=both",
+                    );
+                }
+            },
+        )?;
 
         // Copy .so file to jniLibs directory
         let profile_dir = if matches!(config.profile, super::BuildProfile::Release) {

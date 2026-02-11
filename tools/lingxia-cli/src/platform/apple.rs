@@ -17,6 +17,9 @@ pub mod provisioning;
 pub mod signer;
 pub mod srp;
 
+use crate::commands::rust::{
+    resolve_build_profile, run_cargo_rustc_staticlib_for_target,
+};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -386,37 +389,23 @@ pub fn build_rust_staticlib(
         ));
     }
 
-    // Build with cargo rustc --crate-type=staticlib
-    let mut cmd = Command::new("cargo");
-    cmd.arg("rustc")
-        .arg("--crate-type=staticlib")
-        .arg("--target")
-        .arg(target)
-        .arg("--manifest-path")
-        .arg(&rust_manifest)
-        .env("CARGO_TARGET_DIR", project_root.join("target"))
-        .current_dir(rust_lib_dir);
-
-    // Set deployment target for iOS to ensure correct minimum version
-    if target.contains("ios") {
-        let deploy_ver = deployment_target.unwrap_or("17.0");
-        cmd.env("IPHONEOS_DEPLOYMENT_TARGET", deploy_ver);
-        println!("  {} iOS deployment target: {}", "ℹ".blue(), deploy_ver);
-    }
-
-    if release {
-        cmd.arg("--release");
-    }
-
-    if !features.is_empty() {
-        cmd.arg("--features").arg(features.join(","));
-    }
-
-    let status = cmd.status().context("Failed to execute cargo rustc")?;
-
-    if !status.success() {
-        return Err(anyhow!("Rust build failed for target: {}", target));
-    }
+    let profile = resolve_build_profile(release);
+    run_cargo_rustc_staticlib_for_target(
+        &rust_manifest,
+        rust_lib_dir,
+        &project_root.join("target"),
+        target,
+        profile,
+        features,
+        |cmd| {
+            // Set deployment target for iOS to ensure correct minimum version
+            if target.contains("ios") {
+                let deploy_ver = deployment_target.unwrap_or("17.0");
+                cmd.env("IPHONEOS_DEPLOYMENT_TARGET", deploy_ver);
+                println!("  {} iOS deployment target: {}", "ℹ".blue(), deploy_ver);
+            }
+        },
+    )?;
 
     // Determine output path - force host project's target directory.
     let profile_dir = if release { "release" } else { "debug" };

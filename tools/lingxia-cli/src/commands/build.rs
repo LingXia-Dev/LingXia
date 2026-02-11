@@ -1,7 +1,8 @@
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
+use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::host_assets::prepare_host_assets;
 use crate::lxapp;
-use crate::platform::{self, BuildConfig, BuildProfile};
+use crate::platform::{self, BuildConfig};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
 use std::env;
@@ -221,11 +222,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     // Parse build profile (cargo-like): debug unless explicitly set to release.
-    let build_profile = if release {
-        BuildProfile::Release
-    } else {
-        BuildProfile::Debug
-    };
+    let build_profile = resolve_build_profile(release);
 
     let has_android = platforms_to_build
         .iter()
@@ -263,6 +260,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let mut all_artifacts = Vec::new();
 
     for platform_type in platforms_to_build {
+        let platform_features = resolve_platform_features(&features, &platform_type)?;
         let platform = match platform::detector::create_platform(&platform_type) {
             Ok(p) => p,
             Err(e) => {
@@ -282,7 +280,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         let build_config = BuildConfig {
             project_root: project_root.clone(),
             profile: build_profile,
-            features: features.clone(),
+            features: platform_features,
             build_native,
             targets: if matches!(platform_type, platform::detector::PlatformType::Android) {
                 build_targets.clone()
