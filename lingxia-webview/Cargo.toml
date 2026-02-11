@@ -9,7 +9,7 @@ keywords = ["lingxia", "webview", "lxapp", "cross-platform"]
 categories = ["web-programming", "api-bindings"]
 
 [dependencies]
-log = "0.4.27"
+log = { workspace = true }
 thiserror =  { workspace = true }
 
 # Use workspace dependencies

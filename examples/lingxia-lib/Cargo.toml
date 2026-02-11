@@ -8,10 +8,15 @@ description = "Native library for the example app (builds to .so/.a)"
 # cdylib for Android/Harmony (.so), staticlib for iOS (.a)
 crate-type = ["cdylib", "staticlib"]
 
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lingxia/tls-aws-lc", "lingxia-cloud/tls-aws-lc"]
+tls-ring = ["lingxia/tls-ring", "lingxia-cloud/tls-ring"]
+
 [dependencies]
-lingxia = { path = "../../lingxia" }
+lingxia = { path = "../../lingxia", default-features = false }
 rong = { workspace = true }
-log = "0.4"
+log = { workspace = true }
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]
@@ -20,4 +25,3 @@ jni = "0.21.1"
 [target.'cfg(target_env = "ohos")'.dependencies]
 napi-ohos = { workspace = true }
 napi-derive-ohos = { workspace = true }
-

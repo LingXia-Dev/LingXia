@@ -45,6 +45,9 @@ for arg in "$@"; do
     fi
 done
 
+# Mobile builds default to ring unless TLS backend is explicitly chosen.
+ensure_tls_feature_default "tls-ring"
+
 # Show build config
 if [ "$BUILD_ARM32" = true ]; then
     echo "✅ 32-bit (armeabi-v7a)"
@@ -99,13 +102,6 @@ build_rust_android() {
     local cc_bin="$3"
     local cxx_bin="$4"
 
-    # Configure CMake for the target CPU
-    export CMAKE_CONFIGURE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DCMAKE_SYSTEM_PROCESSOR=$cmake_proc"
-
-    # Avoid macOS SDK pollution when cross-compiling
-    unset SDKROOT CMAKE_OSX_SYSROOT CMAKE_OSX_ARCHITECTURES MACOSX_DEPLOYMENT_TARGET
-    # CRITICAL: Do NOT set CMAKE_TOOLCHAIN_FILE - let cmake-rs handle Android configuration
-    unset CMAKE_TOOLCHAIN_FILE
     # Set ANDROID_NDK_ROOT for aws-lc-sys to find the NDK
     export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
     export ANDROID_NDK="$ANDROID_NDK_HOME"
@@ -139,11 +135,10 @@ build_rust_android() {
     # Build lingxia-lib (native library + user extensions)
     if [ -n "$LXAPP_FEATURES" ]; then
         echo "  → Building lingxia-lib ($target) with features: $LXAPP_FEATURES"
-        cargo build --target $target --release -p lingxia-lib --features "$LXAPP_FEATURES"
     else
         echo "  → Building lingxia-lib ($target)..."
-        cargo build --target $target --release -p lingxia-lib
     fi
+    run_cargo_with_lxapp_features cargo build --target $target --release -p lingxia-lib
 }
 
 echo "[0/4] Preparing Android SDK (resources + local Maven)..."

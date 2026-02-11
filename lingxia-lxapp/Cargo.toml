@@ -8,6 +8,11 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "lxapp", "lightweight-app", "webview"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["rong_modules/tls-aws-lc", "rong_http/tls-aws-lc"]
+tls-ring = ["rong_modules/tls-ring", "rong_http/tls-ring"]
+
 [dependencies]
 # Use workspace dependencies
 http = { workspace = true }
@@ -27,7 +32,7 @@ ring = "0.17.14"
 filetime = "0.2"
 
 # Local dependencies
-rong_modules = { workspace = true }
+rong_modules = { workspace = true, features = ["timer", "navigator", "path", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
 rong_http = { workspace = true }
 rong_fs = { workspace = true }
 rong_console = { workspace = true }
@@ -40,7 +45,9 @@ lingxia-messaging = { workspace = true }
 # iOS/macOS automatically use JavaScriptCore
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"] }
+rong_modules = { workspace = true, features = ["jscore"] }
 
 # Other platforms automatically use QuickJS
 [target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, features = ["quickjs"] }

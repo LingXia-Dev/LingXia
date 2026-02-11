@@ -30,11 +30,11 @@ base64 = "0.22.1"
 
 # Workspace-local crates
 lingxia-lxapp = { path = "lingxia-lxapp", version = "0.1.1" }
-lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.1.1" }
+lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.1.1", default-features = false }
 lingxia-webview = { path = "lingxia-webview", version = "0.1.1" }
 lingxia-platform = { path = "lingxia-platform", version = "0.1.1" }
 lingxia-messaging = { path = "lingxia-messaging", version = "0.1.1" }
-lingxia-logic = { path = "lingxia-logic", version = "0.1.1" }
+lingxia-logic = { path = "lingxia-logic", version = "0.1.1", default-features = false }
 lingxia = { path = "lingxia", version = "0.1.1" }
 lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.1" }
 
@@ -43,9 +43,9 @@ napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
 # Rong runtime (published on crates.io)
-rong = "0.1.1"
-rong_modules = { version = "0.1.1", features = ["default", "storage"] }
-rong_http = "0.1.1"
+rong = { version = "0.1.1", default-features = false }
+rong_modules = { version = "0.1.1", default-features = false }
+rong_http = { version = "0.1.1", default-features = false }
 rong_fs = "0.1.1"
 rong_console = "0.1.1"
 rong_event = "0.1.1"

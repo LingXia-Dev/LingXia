@@ -8,15 +8,29 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "javascript", "runtime"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lxapp/tls-aws-lc", "rong_modules/tls-aws-lc"]
+tls-ring = ["lxapp/tls-ring", "rong_modules/tls-ring"]
+
 [dependencies]
-rong = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-log = "0.4.28"
+log = { workspace = true }
 lxapp = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-messaging = { workspace = true }
 futures = { workspace = true }
-rong_modules = { workspace = true }
+rong_modules = { workspace = true, features = ["timer", "navigator", "path", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream"] }
 rong_storage = { workspace = true }
 
+# Target-specific JavaScript engine selection
+# iOS/macOS automatically use JavaScriptCore
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+rong = { workspace = true, features = ["jscore"] }
+rong_modules = { workspace = true, features = ["jscore"] }
+
+# Other platforms automatically use QuickJS
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, features = ["quickjs"] }

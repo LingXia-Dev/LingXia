@@ -11,6 +11,11 @@ categories = ["web-programming", "api-bindings"]
 [lib]
 crate-type = ["rlib", "staticlib"]
 
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lxapp/tls-aws-lc", "lingxia-logic/tls-aws-lc"]
+tls-ring = ["lxapp/tls-ring", "lingxia-logic/tls-ring"]
+
 [dependencies]
 rong = { workspace = true }
 lxapp = { workspace = true }
@@ -18,7 +23,7 @@ lingxia-logic = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
-log = "0.4"
+log = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"

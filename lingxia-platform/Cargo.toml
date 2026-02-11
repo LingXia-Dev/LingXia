@@ -10,7 +10,7 @@ categories = ["api-bindings"]
 
 [dependencies]
 thiserror = { workspace = true }
-log = "0.4.27"
+log = { workspace = true }
 serde = { workspace = true }
 lingxia-messaging = { workspace = true }
 
@@ -29,7 +29,7 @@ objc2-foundation = "0.3"
 objc2-core-location = "0.3"
 dispatch2 = "0.3"
 swift-bridge = "0.1.57"
-log = "0.4.27"
+log = { workspace = true }
 oslog = "0.2.0"
 serde_json = { workspace = true }
 base64 = { workspace = true }

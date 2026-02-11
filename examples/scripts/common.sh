@@ -18,6 +18,57 @@ init_common_vars() {
     EXPECT_LXAPP=false
 }
 
+# Ensure a default TLS feature is present in LXAPP_FEATURES.
+# If user already specified tls-ring or tls-aws-lc, keep user choice.
+ensure_tls_feature_default() {
+    local default_tls_feature="$1"
+    local features="${LXAPP_FEATURES// /}"
+
+    if [[ "$features" =~ (^|,)tls-ring(,|$) ]] || [[ "$features" =~ (^|,)tls-aws-lc(,|$) ]]; then
+        LXAPP_FEATURES="$features"
+        return 0
+    fi
+
+    if [ -z "$features" ]; then
+        LXAPP_FEATURES="$default_tls_feature"
+    else
+        LXAPP_FEATURES="$features,$default_tls_feature"
+    fi
+    echo "🔐 Default TLS feature enabled: $default_tls_feature"
+}
+
+# Run cargo command with LXAPP feature policy:
+# - if both tls-ring and tls-aws-lc are set: fail fast
+# - if only tls-ring is set: add --no-default-features to avoid default tls-aws-lc conflict
+# - otherwise: pass --features as-is
+run_cargo_with_lxapp_features() {
+    local features="${LXAPP_FEATURES// /}"
+    if [ -z "$features" ]; then
+        "$@"
+        return $?
+    fi
+
+    local has_ring=false
+    local has_aws=false
+    if [[ ",$features," == *",tls-ring,"* ]]; then
+        has_ring=true
+    fi
+    if [[ ",$features," == *",tls-aws-lc,"* ]]; then
+        has_aws=true
+    fi
+
+    if [ "$has_ring" = true ] && [ "$has_aws" = true ]; then
+        echo "❌ Conflicting TLS features: tls-ring and tls-aws-lc cannot be enabled together" >&2
+        return 1
+    fi
+
+    if [ "$has_ring" = true ] && [ "$has_aws" = false ]; then
+        "$@" --no-default-features --features "$features"
+    else
+        "$@" --features "$features"
+    fi
+}
+
 # Parse a single argument
 # Returns 0 if handled, 1 if not recognized (let caller handle)
 parse_common_arg() {

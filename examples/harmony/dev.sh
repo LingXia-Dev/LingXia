@@ -25,14 +25,15 @@ for arg in "$@"; do
   fi
 done
 
+# Mobile builds default to ring unless TLS backend is explicitly chosen.
+ensure_tls_feature_default "tls-ring"
+
 # Native library paths
 # Note: SDK HAR does NOT bundle .so; example app directly includes it
 RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia_lib.so"
 APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
 OHM_ROOT_DIR="$LINGXIA_ROOT/target/ohm"
 OHM_BUNDLE_DIR="$OHM_ROOT_DIR/lingxia"
-
-LXAPP_FEATURES="${LXAPP_FEATURES:-}" # set via env var, e.g. LXAPP_FEATURES=cloud ./dev.sh
 
 # Example app config
 APP_PACKAGE="app.lingxia.lxapp.example"
@@ -57,11 +58,10 @@ build_rust() {
   cd "$LINGXIA_ROOT"
   if [ -n "$LXAPP_FEATURES" ]; then
     echo "  → Building lingxia-lib with features: $LXAPP_FEATURES"
-    cargo build --target $TARGET --release -p lingxia-lib --features "$LXAPP_FEATURES"
   else
     echo "  → Building lingxia-lib..."
-    cargo build --target $TARGET --release -p lingxia-lib
   fi
+  run_cargo_with_lxapp_features cargo build --target $TARGET --release -p lingxia-lib
   echo "✅ Rust build complete"
 }
 

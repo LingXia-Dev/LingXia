@@ -26,6 +26,9 @@ for arg in "$@"; do
     fi
 done
 
+# Mobile builds default to ring unless TLS backend is explicitly chosen.
+ensure_tls_feature_default "tls-ring"
+
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/lxapp/Resources"
 echo "RESOURCES_DIR: $RESOURCES_DIR"
@@ -37,7 +40,7 @@ if [ "$SKIP_RUST" = false ]; then
     cd "$WORKSPACE_ROOT"
 
     TARGET="aarch64-apple-ios"
-    LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release 2>&1 | grep -E "Generated|warning:" | head -5 || true
+    run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release 2>&1 | grep -E "Generated|warning:" | head -5 || true
 fi
 
 echo "[1/4] Preparing iOS SDK resources..."
@@ -57,11 +60,10 @@ if [ "$SKIP_RUST" = false ]; then
     # Note: iOS requires staticlib (.a), not cdylib (.dylib)
     if [ -n "$LXAPP_FEATURES" ]; then
         echo "  → Building lingxia-lib (staticlib) with features: $LXAPP_FEATURES"
-        cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib --features "$LXAPP_FEATURES"
     else
         echo "  → Building lingxia-lib (staticlib)..."
-        cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
     fi
+    run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
 
     # Copy to expected name (liblingxia.a) for Xcode project compatibility
     cp "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia_lib.a" "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
