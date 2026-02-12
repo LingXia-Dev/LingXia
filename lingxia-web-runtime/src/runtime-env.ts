@@ -22,6 +22,14 @@ export function isAndroid(): boolean {
   return BRIDGE_CONFIG.os === 'Android';
 }
 
+export function isMacOS(): boolean {
+  return BRIDGE_CONFIG.os === 'macOS';
+}
+
+export function isDesktop(): boolean {
+  return isMacOS();
+}
+
 export function getCommunicationMethod(): CommunicationMethod {
   if (BRIDGE_CONFIG.os === 'iOS' || BRIDGE_CONFIG.os === 'macOS') return 'webkit';
   if (BRIDGE_CONFIG.os === 'Harmony') return 'messageport';

@@ -18,6 +18,8 @@ import {
   isAndroid,
   isHarmony,
   isIOS,
+  isMacOS,
+  isDesktop,
 } from './runtime-env';
 
 const NATIVE_HANDLER_NAME = 'LingXia';
@@ -633,7 +635,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     },
   }),
 
-  platform: { isHarmony, isIOS, isAndroid, getOS: getPlatformOS },
+  platform: { isHarmony, isIOS, isAndroid, isMacOS, isDesktop, getOS: getPlatformOS },
 
   dom: {
     measureById(id: string): [number, number, number, number, number] | null {
