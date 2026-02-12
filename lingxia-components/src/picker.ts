@@ -1,7 +1,7 @@
 import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
 import { ensureComponentId } from "./component.js";
 import { measureElement } from "./dom.js";
-import { isHarmony } from "./platform.js";
+import { isHarmony, isDesktop } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -76,6 +76,7 @@ export class LxPickerElement extends HTMLElement {
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
+  private webCleanup?: () => void;
 
   connectedCallback() {
     this.componentId = ensureComponentId(this, "lx-picker", this.componentId);
@@ -91,7 +92,12 @@ export class LxPickerElement extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this.componentId && !isHarmony()) {
+    if (this.webCleanup) {
+      this.webCleanup();
+      this.webCleanup = undefined;
+    }
+
+    if (this.componentId && !isHarmony() && !isDesktop()) {
       sendNativeComponentMessage({
         action: "component.unmount",
         id: this.componentId
@@ -170,7 +176,7 @@ export class LxPickerElement extends HTMLElement {
     return props;
   }
 
-  private mountPicker() {
+  private async mountPicker() {
     if (!this.componentId) return;
 
     const props = this.collectProps();
@@ -178,6 +184,17 @@ export class LxPickerElement extends HTMLElement {
 
     if (isHarmony()) {
       this.ensureHarmonyEmbed(rect, props, cornerRadius);
+      this.mounted = true;
+      return;
+    }
+
+    if (isDesktop()) {
+      if (this.webCleanup) return;
+      const { renderWebPicker } = await import('./picker-web.js');
+      if (!this.isConnected || !this.componentId || this.webCleanup) return;
+      this.webCleanup = renderWebPicker(this, props, (detail) => {
+        this.dispatchEvent(new CustomEvent('change', { detail, bubbles: true }));
+      });
       this.mounted = true;
       return;
     }

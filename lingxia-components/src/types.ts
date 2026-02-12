@@ -22,6 +22,8 @@ declare global {
         isHarmony(): boolean;
         isIOS(): boolean;
         isAndroid(): boolean;
+        isMacOS(): boolean;
+        isDesktop(): boolean;
         getOS(): string;
       };
       nativeComponents?: {

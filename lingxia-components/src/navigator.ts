@@ -411,7 +411,7 @@ export class LxNavigatorElement extends HTMLElement {
       return;
     }
 
-    if (!url && options.openType !== 'navigateBack') {
+    if (!url) {
       throw new Error(`${options.openType} requires url`);
     }
 

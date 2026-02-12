@@ -3,7 +3,12 @@ import terser from "@rollup/plugin-terser";
 export default {
   input: "dist/index.js",
   output: [
-    { file: "dist/bundle.js", format: "es", sourcemap: true }
+    {
+      dir: "dist/bundle",
+      format: "es",
+      sourcemap: true,
+      preserveModules: false
+    }
   ],
   plugins: [terser()]
 };
