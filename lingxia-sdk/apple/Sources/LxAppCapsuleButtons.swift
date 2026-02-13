@@ -21,7 +21,7 @@ public class LxAppCapsuleButtons {
 
         let capsuleButtons = LxAppUnifiedCapsuleView(
             onMoreTapped: {
-                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionMore)
+                LxAppCapsuleMenu.show(appId: appId)
             },
             onCloseTapped: {
                 let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)

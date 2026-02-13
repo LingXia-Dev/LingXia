@@ -19,7 +19,6 @@ public struct LxAppUIEvent {
     public static var pullDownRefresh: UiEventType { UiEventType.PullDownRefresh }
 
     // UI Event Data Constants
-    public static let capsuleActionMore = "more"
     public static let capsuleActionClose = "close"
     public static let navigationActionBack = "back"
     public static let navigationActionHome = "home"
