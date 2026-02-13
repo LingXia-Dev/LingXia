@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "lingxia build",
-    "build": "lingxia build --release"
+    "build": "lingxia build --release",
+    "release": "lingxia build --release --package"
   },
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
