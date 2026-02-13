@@ -14,30 +14,9 @@ extension LxAppMedia {
         callback_id: UInt64
     ) -> Bool {
         let modeStr = mode.toString().lowercased()
-        let sourceTypesJson = source_types_json.toString()
-        let _ = (camera_facing, max_duration)
+        let _ = (source_types_json, camera_facing, max_duration)
 
         DispatchQueue.main.async {
-            guard let sourceTypesData = sourceTypesJson.data(using: .utf8),
-                  let sourceTypes = try? JSONDecoder().decode([String].self, from: sourceTypesData) else {
-                let _ = onCallback(callback_id, false, "1002")
-                return
-            }
-
-            let allowAlbum = sourceTypes.contains("album")
-            let allowCamera = sourceTypes.contains("camera")
-
-            if allowCamera && !allowAlbum {
-                let _ = onCallback(callback_id, false, "6001")
-                sendDone(callback_id)
-                return
-            }
-
-            guard allowAlbum else {
-                let _ = onCallback(callback_id, false, "1002")
-                return
-            }
-
             let selectionLimit = modeStr == "video" ? 1 : max(1, Int(max_count))
             presentOpenPanel(
                 mode: modeStr,

@@ -1,9 +1,7 @@
 use super::app::Platform;
-#[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi::choose_media;
 use super::ffi::preview_media;
 use crate::error::PlatformError;
-#[cfg(any(target_os = "ios", target_os = "macos"))]
 use crate::traits::media_interaction::{CameraFacing, ChooseMediaMode, MediaSource};
 use crate::traits::media_interaction::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
@@ -56,18 +54,7 @@ impl MediaInteraction for Platform {
     }
 
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        #[cfg(any(target_os = "ios", target_os = "macos"))]
-        {
-            choose_media_impl(request)
-        }
-
-        #[cfg(not(any(target_os = "ios", target_os = "macos")))]
-        {
-            let _ = request;
-            Err(PlatformError::Platform(
-                "choose_media is not implemented on this Apple target".to_string(),
-            ))
-        }
+        choose_media_impl(request)
     }
 
     fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
@@ -264,7 +251,6 @@ impl MediaRuntime for Platform {
     }
 }
 
-#[cfg(any(target_os = "ios", target_os = "macos"))]
 fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
     let max_count = request.max_count;
     let mode = match request.mode {
@@ -365,7 +351,6 @@ mod ios {
             return Err(PlatformError::Platform(message));
         }
 
-        // log::info!("Saved image to Photos album: {}", path);
         Ok(())
     }
 
@@ -397,7 +382,6 @@ mod ios {
             return Err(PlatformError::Platform(message));
         }
 
-        // log::info!("Saved video to Photos album: {}", path);
         Ok(())
     }
 

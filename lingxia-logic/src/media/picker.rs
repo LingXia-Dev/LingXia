@@ -80,6 +80,7 @@ async fn choose_media(
         sources.first().copied().unwrap_or(MediaSource::Album)
     };
 
+    #[cfg(not(target_os = "macos"))]
     if matches!(selected_source, MediaSource::Camera) && matches!(mode, ChooseMediaMode::Mix) {
         return Err(HostError::new(
             rong::error::E_INTERNAL,
