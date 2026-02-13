@@ -372,7 +372,28 @@ impl UpdateManager {
         lxappid: &str,
         release_type: ReleaseType,
     ) -> Result<bool, LxAppError> {
-        metadata::exists(lxappid, release_type)
+        let Some(record) = metadata::get(lxappid, release_type)? else {
+            return Ok(false);
+        };
+
+        let install_path_str = record.install_path.trim();
+        let install_path = Path::new(install_path_str);
+        let config_path = install_path.join("lxapp.json");
+
+        let is_valid =
+            !install_path_str.is_empty() && install_path.is_dir() && config_path.is_file();
+        if is_valid {
+            return Ok(true);
+        }
+
+        crate::warn!(
+            "Stale installed metadata detected (release_type={}, install_path={}); treating as not installed",
+            release_type,
+            record.install_path
+        )
+        .with_appid(lxappid);
+        let _ = metadata::remove(lxappid, release_type);
+        Ok(false)
     }
 
     /// Install an app from pre-bundled assets (used for home app bootstrap).

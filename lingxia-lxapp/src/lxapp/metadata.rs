@@ -217,8 +217,23 @@ pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
-pub(crate) fn exists(lxappid: &str, release_type: ReleaseType) -> Result<bool, LxAppError> {
-    Ok(get(lxappid, release_type)?.is_some())
+pub(crate) fn remove(lxappid: &str, release_type: ReleaseType) -> Result<(), LxAppError> {
+    let key = key_for(lxappid, release_type);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(INSTALLED_TABLE)
+            .map_err(|e| metadata_error("open installed table", e))?;
+        table
+            .remove(key.as_str())
+            .map_err(|e| metadata_error("delete installed record", e))?;
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit installed delete", e))?;
+    Ok(())
 }
 
 pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {

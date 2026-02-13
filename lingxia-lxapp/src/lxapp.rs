@@ -157,8 +157,15 @@ impl LxApps {
         if has_pending_update {
             // Tear down any existing instance before applying new files
             self.destroy_lxapp(&appid);
-            let _ =
-                UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type);
+            if let Err(e) =
+                UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type)
+            {
+                error!(
+                    "Failed to apply downloaded update before opening app: {}",
+                    e
+                )
+                .with_appid(appid.clone());
+            }
         } else if let Some(app_arc) = self.lxapps.get(&appid) {
             return app_arc.clone();
         }
