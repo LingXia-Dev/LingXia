@@ -2,6 +2,7 @@
 import AppKit
 import SwiftUI
 import WebKit
+import Quartz
 import os.log
 import CLingXiaRustAPI
 
@@ -166,8 +167,22 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         viewController.resumeNativeComponents()
     }
 
+    // MARK: - QLPreviewPanel support
+
+    public override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        return MainActor.assumeIsolated {
+            LxAppMedia.qlController != nil
+        }
     }
 
+    public override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    }
+
+    public override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated {
+            LxAppMedia.clearQLController()
+        }
+    }
 
     private func closeTab(_ appId: String) {
         if let viewController = viewControllers[appId] {
