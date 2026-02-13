@@ -821,7 +821,7 @@ class LxAppActivity : AppCompatActivity() {
                 rightMargin = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
             }
             setOnMenuClickListener {
-                NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_MORE)
+                CapsuleMenuBottomSheet.show(this@LxAppActivity, appId)
             }
             setOnCloseClickListener {
                 NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_CLOSE)

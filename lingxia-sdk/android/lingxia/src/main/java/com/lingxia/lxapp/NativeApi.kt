@@ -49,6 +49,9 @@ object NativeApi {
     // UI Event Data Constants
     const val CAPSULE_ACTION_MORE = "more"
     const val CAPSULE_ACTION_CLOSE = "close"
+    const val CAPSULE_ACTION_CLEAN_CACHE_RESTART = "clean_cache_restart"
+    const val CAPSULE_ACTION_RESTART = "restart"
+    const val CAPSULE_ACTION_UNINSTALL = "uninstall"
     const val NAVIGATION_ACTION_BACK = "back"
     const val NAVIGATION_ACTION_HOME = "home"
 
