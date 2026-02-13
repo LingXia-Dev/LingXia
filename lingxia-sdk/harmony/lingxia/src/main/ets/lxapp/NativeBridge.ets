@@ -34,8 +34,10 @@ export const UI_EVENT_NAVIGATION_CLICK = 2;
 export const UI_EVENT_BACK_PRESS = 3;
 
 // UI Event Data Constants
-export const CAPSULE_ACTION_MORE = "more";
 export const CAPSULE_ACTION_CLOSE = "close";
+export const CAPSULE_ACTION_CLEAN_CACHE_RESTART = "clean_cache_restart";
+export const CAPSULE_ACTION_RESTART = "restart";
+export const CAPSULE_ACTION_UNINSTALL = "uninstall";
 export const NAVIGATION_ACTION_BACK = "back";
 export const NAVIGATION_ACTION_HOME = "home";
 

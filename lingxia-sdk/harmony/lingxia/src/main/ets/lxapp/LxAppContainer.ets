@@ -21,13 +21,14 @@ import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
-import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_MORE, CAPSULE_ACTION_CLOSE } from './NativeBridge';
+import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
+import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -610,6 +611,9 @@ export struct LxAppContainer {
           }
         })
       }
+
+      // Capsule menu bottom sheet - renders on top of everything
+      CapsuleMenuBottomSheetComponent()
     }
     .width('100%')
     .height('100%')
@@ -1263,7 +1267,10 @@ export struct LxAppContainer {
 
   private handleCapsuleMore(): void {
     hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
-    let _: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_MORE);
+    const shown: boolean = CapsuleMenuManager.show(this.appId);
+    if (!shown) {
+      hilog.error(DOMAIN, TAG, `Failed to show capsule menu for app: ${this.appId}`);
+    }
   }
 
   private handleCapsuleClose(): void {
