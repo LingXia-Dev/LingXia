@@ -1,51 +1,25 @@
-use crate::{i18n::err_code_message, ui::present_action_sheet};
+mod cache;
+mod parser;
+mod source_picker;
+mod types;
+
+use crate::i18n::err_code_message;
+use cache::ensure_cached_media_path;
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::app_runtime::AppRuntime;
+#[cfg(not(target_os = "macos"))]
+use lingxia_platform::traits::media_interaction::ChooseMediaMode;
 use lingxia_platform::traits::media_interaction::{
-    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
+    ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
 };
 use lxapp::{LxApp, lx};
-use rong::{
-    FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError, function::Optional,
-};
-use serde::{Deserialize, Serialize};
+use parser::{parse_camera, parse_choose_mode, parse_sources};
+use rong::{HostError, JSContext, JSFunc, JSResult, RongJSError, function::Optional};
 use serde_json::Value;
+use source_picker::present_source_picker;
 use std::fs;
-use std::hash::Hash;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-#[derive(FromJSObj, Clone)]
-struct JSChooseMediaOptions {
-    #[rename = "count"]
-    count: Option<u32>,
-    #[rename = "mediaType"]
-    media_type: Option<Vec<String>>,
-    #[rename = "sourceType"]
-    source_type: Option<Vec<String>>,
-    camera: Option<String>,
-    #[rename = "maxDuration"]
-    max_duration: Option<f64>,
-}
-
-#[derive(Debug, Clone, IntoJSObj)]
-struct ChosenMediaEntry {
-    #[rename = "tempFilePath"]
-    path: String,
-    #[rename = "fileType"]
-    kind: String,
-    #[rename = "isOriginal"]
-    is_original: bool,
-}
-
-#[derive(Deserialize, Serialize, Hash, Clone)]
-struct MediaKey {
-    uri: String,
-    #[serde(rename = "fileType", default = "default_kind")]
-    kind: String,
-    #[serde(rename = "isOriginal", default = "default_is_original")]
-    is_original: bool,
-}
+use types::{ChosenMediaEntry, JSChooseMediaOptions, MediaKey};
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     let choose_media_func = JSFunc::new(ctx, |ctx, options| async move {
@@ -236,147 +210,4 @@ async fn choose_media(
         });
     }
     Ok(out)
-}
-
-fn ensure_cached_media_path<F>(
-    lxapp: &LxApp,
-    key: &MediaKey,
-    ext: &str,
-    write: F,
-) -> Result<PathBuf, RongJSError>
-where
-    F: FnOnce(&Path) -> Result<(), RongJSError>,
-{
-    let cache = lxapp.cache().map_err(|e| {
-        HostError::new(rong::error::E_INTERNAL, format!("cache unavailable: {}", e))
-    })?;
-
-    match cache.resolve_path_with_ext(key, ext) {
-        lxapp::ResolveResult::Exists(path) => Ok(path),
-        lxapp::ResolveResult::NonExists(dest_path) => {
-            if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    RongJSError::from(HostError::new(
-                        rong::error::E_INTERNAL,
-                        format!(
-                            "chooseMedia failed to create cache directory {}: {}",
-                            parent.display(),
-                            e
-                        ),
-                    ))
-                })?;
-            }
-            write(&dest_path)?;
-            Ok(dest_path)
-        }
-    }
-}
-
-fn parse_choose_mode(values: Option<Vec<String>>) -> JSResult<ChooseMediaMode> {
-    let raw = values.unwrap_or_else(|| vec!["image".to_string(), "video".to_string()]);
-    let mut has_image = false;
-    let mut has_video = false;
-
-    for token in raw {
-        match token.to_lowercase().as_str() {
-            "image" => has_image = true,
-            "video" => has_video = true,
-            other => {
-                return Err(HostError::new(
-                    rong::error::E_INTERNAL,
-                    format!("chooseMedia invalid mediaType token \"{}\"", other),
-                )
-                .into());
-            }
-        }
-    }
-
-    if !has_image && !has_video {
-        has_image = true;
-        has_video = true;
-    }
-
-    Ok(match (has_image, has_video) {
-        (true, true) => ChooseMediaMode::Mix,
-        (true, false) => ChooseMediaMode::Images,
-        (false, true) => ChooseMediaMode::Videos,
-        _ => ChooseMediaMode::Images,
-    })
-}
-
-fn parse_sources(values: Option<Vec<String>>) -> JSResult<Vec<MediaSource>> {
-    let raw = values.unwrap_or_else(|| vec!["album".to_string()]);
-    let mut out: Vec<MediaSource> = Vec::new();
-
-    for token in raw {
-        let source = match token.to_lowercase().as_str() {
-            "album" => MediaSource::Album,
-            "camera" => MediaSource::Camera,
-            other => {
-                return Err(HostError::new(
-                    rong::error::E_INTERNAL,
-                    format!("chooseMedia invalid sourceType token \"{}\"", other),
-                )
-                .into());
-            }
-        };
-
-        if !out.contains(&source) {
-            out.push(source);
-        }
-    }
-
-    if out.is_empty() {
-        out.push(MediaSource::Album);
-    }
-
-    Ok(out)
-}
-
-async fn present_source_picker(
-    lxapp: &Arc<LxApp>,
-    sources: &[MediaSource],
-) -> JSResult<Option<MediaSource>> {
-    let item_list: Vec<String> = sources
-        .iter()
-        .map(|source| label_for_media_source(*source).to_string())
-        .collect();
-
-    let selection = present_action_sheet(lxapp, item_list, None, None).await?;
-
-    match selection {
-        Some(idx) => sources
-            .get(idx)
-            .copied()
-            .ok_or_else(|| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "chooseMedia source picker returned invalid index",
-                ))
-            })
-            .map(Some),
-        None => Ok(None),
-    }
-}
-
-fn label_for_media_source(source: MediaSource) -> &'static str {
-    match source {
-        MediaSource::Album => "Album",
-        MediaSource::Camera => "Camera",
-    }
-}
-
-fn parse_camera(s: Option<String>) -> Option<CameraFacing> {
-    s.map(|v| match v.to_lowercase().as_str() {
-        "front" => CameraFacing::Front,
-        _ => CameraFacing::Back,
-    })
-}
-
-fn default_kind() -> String {
-    "image".to_string()
-}
-
-fn default_is_original() -> bool {
-    true
 }
