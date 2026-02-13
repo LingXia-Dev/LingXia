@@ -63,12 +63,9 @@ impl MediaInteraction for Platform {
             ios::scan_code_impl(request)
         }
 
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(target_os = "macos")]
         {
-            let _ = request;
-            Err(PlatformError::Platform(
-                "scan_code is not implemented on this Apple target".to_string(),
-            ))
+            crate::desktop::scan::scan_code_desktop(request)
         }
     }
 
@@ -211,12 +208,9 @@ impl MediaRuntime for Platform {
             })
         }
 
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(target_os = "macos")]
         {
-            let _ = uri;
-            Err(PlatformError::Platform(
-                "get_image_info is only supported on iOS".to_string(),
-            ))
+            crate::desktop::image::get_image_info_desktop(uri)
         }
     }
 
@@ -241,12 +235,9 @@ impl MediaRuntime for Platform {
             Ok(PathBuf::from(result.path))
         }
 
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(target_os = "macos")]
         {
-            let _ = request;
-            Err(PlatformError::Platform(
-                "compress_image is only supported on iOS".to_string(),
-            ))
+            crate::desktop::image::compress_image_desktop(request)
         }
     }
 }

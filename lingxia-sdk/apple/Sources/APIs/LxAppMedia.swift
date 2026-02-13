@@ -336,13 +336,13 @@ extension LxAppMedia {
 #endif
 
 #if os(macOS)
-// MARK: - macOS Stub Implementations
+// MARK: - macOS Stub Implementations (use Rust for desktop)
 
 extension LxAppMedia {
     nonisolated static func getImageInfo(uri: RustStr) -> SwiftImageInfoResult {
         return SwiftImageInfoResult(
             success: false,
-            error: RustString("Not implemented on macOS"),
+            error: RustString("Not implemented on macOS - use Rust implementation"),
             width: 0,
             height: 0,
             mime_type: RustString("")
@@ -358,14 +358,9 @@ extension LxAppMedia {
     ) -> SwiftCompressImageResult {
         return SwiftCompressImageResult(
             success: false,
-            error: RustString("Not implemented on macOS"),
+            error: RustString("Not implemented on macOS - use Rust implementation"),
             path: RustString("")
         )
-    }
-
-    nonisolated static func previewMedia(items_json: RustStr) -> Bool {
-        os_log("previewMedia not implemented on macOS", log: log, type: .error)
-        return false
     }
 
     nonisolated static func scanCode(

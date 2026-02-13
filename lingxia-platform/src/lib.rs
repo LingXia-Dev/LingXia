@@ -38,7 +38,9 @@ mod apple;
 #[cfg(target_env = "ohos")]
 pub mod harmony;
 
-// Export Platform and Device types for each platform
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub mod desktop;
+
 #[cfg(target_os = "android")]
 pub use android::{
     CachedClass, Platform, get_android_id, get_api_level, has_telephony_feature, init_cached_class,
@@ -51,5 +53,4 @@ pub use apple::Platform;
 pub use harmony::Platform;
 
 pub mod error;
-// Re-export error types
 pub use error::*;
