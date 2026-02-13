@@ -2,6 +2,7 @@ use crate::PageLifecycleEvent;
 use crate::event::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
+use crate::update::UpdateManager;
 use crate::{LxApp, error, info, lxapp};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
@@ -276,9 +277,57 @@ impl LxApp {
                 info!("LxApp minimize requested").with_appid(self.appid.clone());
                 return true;
             }
-            "more" => {
-                // Show more options menu
-                info!("More options requested").with_appid(self.appid.clone());
+            "clean_cache_restart" => {
+                // Clear cache directory and restart the LxApp
+                info!("Clean cache & restart requested").with_appid(self.appid.clone());
+
+                // Clear and recreate cache directory
+                let cache_dir = &self.user_cache_dir;
+                if cache_dir.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(cache_dir) {
+                        error!("Failed to remove cache directory: {}", e).with_appid(self.appid.clone());
+                    } else {
+                        info!("Cache directory cleared: {}", cache_dir.display()).with_appid(self.appid.clone());
+                    }
+                }
+                // Recreate the cache directory
+                if let Err(e) = std::fs::create_dir_all(cache_dir) {
+                    error!("Failed to recreate cache directory: {}", e).with_appid(self.appid.clone());
+                }
+
+                if let Err(e) = self.restart() {
+                    error!("Failed to restart app after cache cleanup: {}", e)
+                        .with_appid(self.appid.clone());
+                    return false;
+                }
+                return true;
+            }
+            "restart" => {
+                info!("Restart requested").with_appid(self.appid.clone());
+                if let Err(e) = self.restart() {
+                    error!("Failed to restart app: {}", e).with_appid(self.appid.clone());
+                    return false;
+                }
+                return true;
+            }
+            "uninstall" => {
+                info!("Uninstall requested").with_appid(self.appid.clone());
+
+                // Fully shutdown first so uninstall precondition (`!is_lxapp_open`) is satisfied.
+                if let Err(e) = self.shutdown() {
+                    error!("Failed to shutdown app before uninstall: {}", e)
+                        .with_appid(self.appid.clone());
+                    return false;
+                }
+
+                let appid = self.appid.clone();
+                let lxapp = self.clone();
+                let _ = rong::bg::spawn(async move {
+                    let updater = UpdateManager::new(lxapp);
+                    if let Err(e) = updater.uninstall_all(&appid) {
+                        error!("Failed to uninstall app: {}", e).with_appid(appid);
+                    }
+                });
                 return true;
             }
             _ => {
