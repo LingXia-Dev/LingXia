@@ -9,7 +9,7 @@ pub enum HarmonyCommand {
     Appids {
         /// Harmony package name / bundle id (e.g. app.lingxia.wow)
         #[arg(long)]
-        package_name: String,
+        package_name: Option<String>,
     },
     /// List registered Harmony devices
     Devices,
@@ -30,7 +30,11 @@ pub enum HarmonyCommand {
 pub fn execute(command: HarmonyCommand) -> Result<()> {
     with_client(|client, token| match command {
         HarmonyCommand::Appids { package_name } => {
-            let appids = client.list_app_ids(token, Some(&package_name))?;
+            let Some(package_name) = package_name.as_deref() else {
+                return Err(anyhow!("AGC `appid-list` API requires `--package-name`.\n"));
+            };
+
+            let appids = client.list_app_ids(token, Some(package_name))?;
             println!("{}", "Harmony App IDs".cyan().bold());
             println!();
             if appids.is_empty() {
