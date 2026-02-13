@@ -8,7 +8,7 @@ This crate builds a platform-native library (`.so` for Android/Harmony, `.a` for
 
 This crate is automatically built by `lingxia-cli` when you run:
 ```bash
-lingxia run
+lingxia build
 ```
 
 The compiled library will be bundled into your app automatically.

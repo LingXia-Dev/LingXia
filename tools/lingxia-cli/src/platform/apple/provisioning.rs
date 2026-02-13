@@ -377,7 +377,8 @@ impl ProvisioningContext {
 
         // 4. Create provisioning profile
         println!("{}", "Step 4/4: Creating provisioning profile...".cyan());
-        let profile_data = self.create_profile_asc(&client, &bundle_id_record.id, &cert_id)?;
+        let profile_data =
+            self.create_profile_asc(&client, &bundle_id_record.id, original_bundle_id, &cert_id)?;
 
         // Extract entitlements
         let entitlements = extract_entitlements_from_profile(&profile_data)?;
@@ -392,10 +393,6 @@ impl ProvisioningContext {
             identity_material,
         })
     }
-
-    // =========================================================================
-    // Apple ID (Developer Services) Implementation
-    // =========================================================================
 
     fn ensure_device_registered(&self, client: &DeveloperServicesClient) -> Result<()> {
         // Check if device is already registered
@@ -599,44 +596,85 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
             .map(|d| d.id.clone())
             .ok_or_else(|| anyhow!("Device not found on portal: {}", self.target_device_udid))?;
 
-        // Free teams have tight limits; delete only profiles created by this tool for this app.
+        let prefix = profile_name_prefix(bundle_id);
+        let profiles = client.list_provisioning_profiles()?;
+
+        if let Some(existing) = select_reusable_dev_profile_by_prefix(
+            profiles.iter().map(|p| (p.id.as_str(), p.name.as_str())),
+            &prefix,
+        ) {
+            match client.download_provisioning_profile(existing.profile_id) {
+                Ok(profile_data) => {
+                    println!(
+                        "  {} Reusing provisioning profile: {}",
+                        "✓".green(),
+                        existing.profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Err(err) => println!(
+                    "  {} Failed to download reusable profile {}, creating a new one: {}",
+                    "!".yellow(),
+                    existing.profile_name,
+                    err
+                ),
+            }
+        }
+
+        // Free teams have tight limits; remove stale LingXia-managed profiles before creating.
         if cleanup_existing {
-            let prefix = profile_name_prefix(bundle_id);
-            let profiles = client.list_provisioning_profiles()?;
-            for profile in profiles {
-                if profile.name.starts_with(&prefix) {
-                    let _ = client.delete_provisioning_profile(&profile.id);
+            for profile in &profiles {
+                if !profile.name.starts_with(&prefix) {
+                    continue;
+                }
+                match client.delete_provisioning_profile(&profile.id) {
+                    Ok(_) => println!(
+                        "  {} Deleted stale provisioning profile: {}",
+                        "✓".green(),
+                        profile.name
+                    ),
+                    Err(err) => println!(
+                        "  {} Failed to delete stale profile {}: {}",
+                        "!".yellow(),
+                        profile.name,
+                        err
+                    ),
                 }
             }
         }
 
-        // Create new profile
-        let profile_name = format!(
-            "{}{}",
-            profile_name_prefix(bundle_id),
-            chrono::Utc::now().timestamp()
-        );
         let device_ids = [target_device_id.as_str()];
-        let profile = client.create_provisioning_profile(
-            &profile_name,
-            app_id_id,
-            &[cert_id],
-            &device_ids,
-        )?;
+        for attempt in 0..2 {
+            let profile_name = build_profile_name(bundle_id);
+            match client.create_provisioning_profile(
+                &profile_name,
+                app_id_id,
+                &[cert_id],
+                &device_ids,
+            ) {
+                Ok(profile) => {
+                    // Download the profile
+                    let profile_data = client.download_provisioning_profile(&profile.id)?;
+                    println!(
+                        "  {} Created provisioning profile: {}",
+                        "✓".green(),
+                        profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Err(err) if attempt == 0 && is_profile_create_conflict(&err) => {
+                    println!(
+                        "  {} Profile name conflict while creating profile, retrying...",
+                        "!".yellow()
+                    );
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
 
-        // Download the profile
-        let profile_data = client.download_provisioning_profile(&profile.id)?;
-        println!(
-            "  {} Created provisioning profile: {}",
-            "✓".green(),
-            profile_name
-        );
-        Ok(profile_data)
+        unreachable!("profile creation loop should always return")
     }
-
-    // =========================================================================
-    // App Store Connect API Implementation
-    // =========================================================================
 
     fn ensure_device_registered_asc(&self, client: &AppStoreConnectClient) -> Result<()> {
         let devices = client.list_devices()?;
@@ -899,7 +937,8 @@ Fix options:\n\
     fn create_profile_asc(
         &self,
         client: &AppStoreConnectClient,
-        bundle_id: &str,
+        bundle_id_id: &str,
+        bundle_identifier: &str,
         cert_id: &str,
     ) -> Result<Vec<u8>> {
         // Include only the target device.
@@ -915,29 +954,120 @@ Fix options:\n\
                 )
             })?;
 
-        // Create profile
-        let profile_name = format!(
-            "{}{}",
-            profile_name_prefix(bundle_id),
-            chrono::Utc::now().timestamp()
-        );
-        let profile = client.create_profile(
-            &profile_name,
-            super::asc::ProfileType::IosAppDevelopment,
-            bundle_id,
-            &[cert_id.to_string()],
-            &[target_device_id],
-        )?;
+        let prefix = profile_name_prefix(bundle_identifier);
+        let profiles = client.list_profiles()?;
+        if let Some(existing) = select_reusable_dev_profile_by_prefix(
+            profiles
+                .iter()
+                .map(|p| (p.id.as_str(), p.attributes.name.as_deref().unwrap_or(""))),
+            &prefix,
+        ) {
+            match client.download_profile(existing.profile_id) {
+                Ok(profile_data) => {
+                    println!(
+                        "  {} Reusing provisioning profile: {}",
+                        "✓".green(),
+                        existing.profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Err(err) => println!(
+                    "  {} Failed to download reusable profile {}, creating a new one: {}",
+                    "!".yellow(),
+                    existing.profile_name,
+                    err
+                ),
+            }
+        }
 
-        // Download
-        let profile_data = client.download_profile(&profile.id)?;
-        println!(
-            "  {} Created provisioning profile: {}",
-            "✓".green(),
-            profile_name
-        );
-        Ok(profile_data)
+        for attempt in 0..2 {
+            let profile_name = build_profile_name(bundle_identifier);
+            match client.create_profile(
+                &profile_name,
+                super::asc::ProfileType::IosAppDevelopment,
+                bundle_id_id,
+                &[cert_id.to_string()],
+                std::slice::from_ref(&target_device_id),
+            ) {
+                Ok(profile) => {
+                    // Download
+                    let profile_data = client.download_profile(&profile.id)?;
+                    println!(
+                        "  {} Created provisioning profile: {}",
+                        "✓".green(),
+                        profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Err(err) if attempt == 0 && is_profile_create_conflict(&err) => {
+                    // Recover from profile-limit/conflict by removing stale LingXia profiles and retrying.
+                    for profile in &profiles {
+                        let Some(name) = profile.attributes.name.as_deref() else {
+                            continue;
+                        };
+                        if !name.starts_with(&prefix) {
+                            continue;
+                        }
+                        match client.delete_profile(&profile.id) {
+                            Ok(_) => println!(
+                                "  {} Deleted stale provisioning profile: {}",
+                                "✓".green(),
+                                name
+                            ),
+                            Err(delete_err) => println!(
+                                "  {} Failed to delete stale profile {}: {}",
+                                "!".yellow(),
+                                name,
+                                delete_err
+                            ),
+                        }
+                    }
+                    println!(
+                        "  {} Profile creation conflicted, retrying...",
+                        "!".yellow()
+                    );
+                    continue;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        unreachable!("ASC profile creation loop should always return")
     }
+}
+
+struct ReusableProfile<'a> {
+    profile_id: &'a str,
+    profile_name: &'a str,
+}
+
+fn select_reusable_dev_profile_by_prefix<'a>(
+    profiles: impl Iterator<Item = (&'a str, &'a str)>,
+    prefix: &str,
+) -> Option<ReusableProfile<'a>> {
+    profiles
+        .filter(|(_, name)| name.starts_with(prefix))
+        // Keep deterministic behavior by preferring lexicographically latest name.
+        .max_by(|a, b| a.1.cmp(b.1))
+        .map(|(profile_id, profile_name)| ReusableProfile {
+            profile_id,
+            profile_name,
+        })
+}
+
+fn build_profile_name(bundle_id: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static PROFILE_NAME_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    let ts_ms = chrono::Utc::now().timestamp_millis();
+    let seq = PROFILE_NAME_SEQ.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "{}{}-{}-{}",
+        profile_name_prefix(bundle_id),
+        ts_ms,
+        std::process::id(),
+        seq
+    )
 }
 
 fn profile_name_prefix(bundle_id: &str) -> String {
@@ -1050,6 +1180,15 @@ fn is_asc_bundle_id_create_forbidden(err: &anyhow::Error) -> bool {
         && (msg.contains("HTTP 403")
             || msg.contains("FORBIDDEN_ERROR")
             || msg.contains("not allowed to perform this operation"))
+}
+
+fn is_profile_create_conflict(err: &anyhow::Error) -> bool {
+    let msg = err.to_string();
+    (msg.contains("createProvisioningProfile") || msg.contains("POST /profiles"))
+        && (msg.contains("HTTP 409")
+            || msg.contains("already exists")
+            || msg.contains("is not unique")
+            || msg.contains("ENTITY_ERROR"))
 }
 
 #[cfg(test)]

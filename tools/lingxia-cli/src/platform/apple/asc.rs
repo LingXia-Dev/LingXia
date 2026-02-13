@@ -359,6 +359,11 @@ impl AppStoreConnectClient {
         let response = self.get("/profiles")?;
         parse_data_array(&response)
     }
+
+    /// Delete a provisioning profile by ID.
+    pub fn delete_profile(&self, id: &str) -> Result<()> {
+        self.delete(&format!("/profiles/{}", id))
+    }
 }
 
 #[derive(Serialize)]
