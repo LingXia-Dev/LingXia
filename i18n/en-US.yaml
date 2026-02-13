@@ -37,6 +37,12 @@ common:
   home: "Home"
   auto: "Auto"
 
+# Capsule Menu
+capsule:
+  clean_cache: "Clean cache"
+  restart: "Restart"
+  uninstall: "Uninstall"
+
 # Camera
 camera:
   tap_to_capture: "Tap to capture"

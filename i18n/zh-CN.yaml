@@ -37,6 +37,12 @@ common:
   home: "首页"
   auto: "自动"
 
+# Capsule Menu
+capsule:
+  clean_cache: "清理缓存"
+  restart: "重启"
+  uninstall: "卸载"
+
 # Camera
 camera:
   tap_to_capture: "轻触拍照"
