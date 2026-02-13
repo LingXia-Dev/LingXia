@@ -1,6 +1,6 @@
 /**
  * System APIs
- * Corresponds to: lingxia-logic/src/system.rs, navigator.rs, update.rs
+ * Corresponds to: lingxia-logic/src/system.rs
  */
 
 export interface AppBaseInfo {
@@ -18,16 +18,4 @@ export interface SystemSettingInfo {
 export interface OpenURLOptions {
   url: string;
   openIn?: 'external' | 'internal';
-}
-
-export interface NavigateToLxAppOptions {
-  appId: string;
-  path?: string;
-  envVersion?: 'develop' | 'trial' | 'release';
-}
-
-export interface UpdateManager {
-  applyUpdate(): void;
-  onUpdateReady(callback: () => void): void;
-  onUpdateFailed(callback: () => void): void;
 }

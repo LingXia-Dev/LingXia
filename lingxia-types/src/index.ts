@@ -6,10 +6,14 @@
 
 export * from './app';
 export * from './device';
+export * from './display';
 export * from './input';
 export * from './storage';
+export * from './document';
 export * from './location';
+export * from './navigator';
 export * from './system';
+export * from './update';
 export * from './media';
 export * from './ui';
 
@@ -27,8 +31,6 @@ import type {
   WifiInfo,
   ConnectWifiOptions,
   WifiConnectedCallback,
-  AppOrientationInfo,
-  SetAppOrientationOptions,
 } from './device';
 
 import type { KeyEventCallback } from './input';
@@ -36,8 +38,14 @@ import type { KeyEventCallback } from './input';
 import type {
   LxEnv,
   Storage,
-  OpenDocumentOptions,
 } from './storage';
+
+import type { OpenDocumentOptions } from './document';
+
+import type {
+  AppOrientationInfo,
+  SetAppOrientationOptions,
+} from './display';
 
 import type {
   GetLocationOptions,
@@ -48,9 +56,11 @@ import type {
   AppBaseInfo,
   SystemSettingInfo,
   OpenURLOptions,
-  NavigateToLxAppOptions,
-  UpdateManager,
 } from './system';
+
+import type { NavigateToLxAppOptions } from './navigator';
+
+import type { UpdateManager } from './update';
 
 import type {
   GetImageInfoOptions,

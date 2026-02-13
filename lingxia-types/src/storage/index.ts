@@ -1,6 +1,6 @@
 /**
- * Storage & File System APIs
- * Corresponds to: lingxia-logic/src/storage.rs, fs.rs, env.rs
+ * Storage APIs
+ * Corresponds to: lingxia-logic/src/storage.rs, env.rs
  */
 
 export interface LxEnv {
@@ -16,10 +16,4 @@ export interface Storage {
   keys(): string[];
   has(key: string): boolean;
   size(): number;
-}
-
-export interface OpenDocumentOptions {
-  filePath: string;
-  fileType?: string;
-  showMenu?: boolean;
 }

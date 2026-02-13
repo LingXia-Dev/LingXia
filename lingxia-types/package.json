@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/types",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "TypeScript type definitions for the LingXia JS API",
   "repository": {
     "type": "git",
@@ -26,6 +26,11 @@
       "import": "./dist/device/index.js",
       "require": "./dist/device/index.js"
     },
+    "./display": {
+      "types": "./dist/display/index.d.ts",
+      "import": "./dist/display/index.js",
+      "require": "./dist/display/index.js"
+    },
     "./input": {
       "types": "./dist/input/index.d.ts",
       "import": "./dist/input/index.js",
@@ -36,15 +41,30 @@
       "import": "./dist/storage/index.js",
       "require": "./dist/storage/index.js"
     },
+    "./document": {
+      "types": "./dist/document/index.d.ts",
+      "import": "./dist/document/index.js",
+      "require": "./dist/document/index.js"
+    },
     "./location": {
       "types": "./dist/location/index.d.ts",
       "import": "./dist/location/index.js",
       "require": "./dist/location/index.js"
     },
+    "./navigator": {
+      "types": "./dist/navigator/index.d.ts",
+      "import": "./dist/navigator/index.js",
+      "require": "./dist/navigator/index.js"
+    },
     "./system": {
       "types": "./dist/system/index.d.ts",
       "import": "./dist/system/index.js",
       "require": "./dist/system/index.js"
+    },
+    "./update": {
+      "types": "./dist/update/index.d.ts",
+      "import": "./dist/update/index.js",
+      "require": "./dist/update/index.js"
     },
     "./media": {
       "types": "./dist/media/index.d.ts",
