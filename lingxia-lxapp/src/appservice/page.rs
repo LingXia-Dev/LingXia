@@ -9,8 +9,8 @@ use crate::host::get_host;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, Source, error::HostError,
-    function::Optional, js_class, js_export, js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, JsonToJSValue, RongJSError, Source,
+    error::HostError, function::Optional, js_class, js_export, js_method,
 };
 use rong_event::EventEmitter;
 use serde::Deserialize;
@@ -90,17 +90,12 @@ impl MessageHandler for PageSvc {
     ) -> Result<Value, RpcError> {
         let ctx = self.get_ctx();
 
-        let build_args_obj = |json: Option<&str>| -> Option<JSObject> {
+        let build_call_arg = |json: Option<&str>| -> Option<JSValue> {
             let json = json?;
-            match serde_json::from_str::<Value>(json) {
-                Ok(Value::Object(_)) => rong::JSObject::from_json_string(&ctx, json).ok(),
-                Ok(Value::Null) => None,
-                Ok(other) => {
-                    let wrapped = json!({ "value": other }).to_string();
-                    rong::JSObject::from_json_string(&ctx, &wrapped).ok()
-                }
-                Err(_) => None,
+            if json == "null" {
+                return None;
             }
+            json.json_to_js_value(&ctx).ok()
         };
 
         let js_value_to_json = |v: JSValue| -> Result<Value, RpcError> {
@@ -161,12 +156,12 @@ impl MessageHandler for PageSvc {
 
         match service_type {
             ServiceType::JSFunc(js_func) => {
-                let args_obj = build_args_obj(params_json);
+                let call_arg = build_call_arg(params_json);
                 let fut = async {
-                    match args_obj {
-                        Some(obj) => {
+                    match call_arg {
+                        Some(val) => {
                             js_func
-                                .call_async::<_, JSValue>(Some(self.this.clone()), (obj,))
+                                .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
                                 .await
                         }
                         None => {
@@ -257,8 +252,12 @@ impl MessageHandler for PageSvc {
     ) {
         let ctx = self.get_ctx();
 
-        let args_obj =
-            params_json.and_then(|json| rong::JSObject::from_json_string(&ctx, json).ok());
+        let call_arg = params_json.and_then(|json| {
+            if json == "null" {
+                return None;
+            }
+            json.json_to_js_value(&ctx).ok()
+        });
 
         match service_type {
             ServiceType::JSFunc(js_func) => {
@@ -266,8 +265,8 @@ impl MessageHandler for PageSvc {
                 let method_name = method.to_string();
                 let page_path = self.page.path().to_string();
                 let task = async move {
-                    let result = match args_obj {
-                        Some(obj) => js_func.call_async::<_, ()>(Some(this_obj), (obj,)).await,
+                    let result = match call_arg {
+                        Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
                         None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
                     };
                     if let Err(e) = result {

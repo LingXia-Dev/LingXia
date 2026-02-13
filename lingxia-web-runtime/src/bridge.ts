@@ -202,8 +202,7 @@ function inferCap(method: string): string {
 
 function normalizeParams(params: unknown): unknown | undefined {
   if (params === null || params === undefined) return undefined;
-  if (typeof params === 'object' && !Array.isArray(params)) return params;
-  return { value: params };
+  return params;
 }
 
 function isTransportReady(): boolean {
