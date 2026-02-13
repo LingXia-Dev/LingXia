@@ -40,7 +40,15 @@ if [ "$SKIP_RUST" = false ]; then
     cd "$WORKSPACE_ROOT"
 
     TARGET="aarch64-apple-ios"
-    run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release 2>&1 | grep -E "Generated|warning:" | head -5 || true
+    BRIDGE_LOG="$(mktemp -t lingxia_ios_bridge.XXXXXX)"
+    if run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release >"$BRIDGE_LOG" 2>&1; then
+        grep -E "Generated|warning:" "$BRIDGE_LOG" | head -5 || true
+    else
+        cat "$BRIDGE_LOG" >&2
+        rm -f "$BRIDGE_LOG"
+        exit 1
+    fi
+    rm -f "$BRIDGE_LOG"
 fi
 
 echo "[1/4] Preparing iOS SDK resources..."

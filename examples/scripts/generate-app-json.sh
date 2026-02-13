@@ -12,8 +12,13 @@
 #   LINGXIA_ROOT - path to LingXia repository root
 #
 # Optional environment
+#   LINGXIA_API_SERVER - API server to include in app.json
 #   LINGXIA_API_KEY    - API key to include in app.json
 #   LINGXIA_API_SECRET - API secret to include in app.json
+#
+# Optional secrets file:
+#   $LINGXIA_ROOT/examples/.lingxia.secrets.json
+#   Supports: apiServer, apiKey, apiSecret
 
 generate_app_json() {
     local output_dir="$1"
@@ -66,15 +71,50 @@ generate_app_json() {
         productVersion: .app.productVersion,
         homeLxAppID: $home_lxapp_id,
         homeLxAppVersion: $home_lxapp_version
-    } + (if .app.apiServer then {apiServer: .app.apiServer} else {} end)
-      + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")
+    } + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")
 
-    # Add apiKey/apiSecret from environment variables if set
+    local config_api_server
+    config_api_server=$(jq -r '.app.apiServer // empty' "$config_file")
+
+    local secrets_file="$LINGXIA_ROOT/examples/.lingxia.secrets.json"
+    local secrets_api_server=""
+    local secrets_api_key=""
+    local secrets_api_secret=""
+    if [ -f "$secrets_file" ]; then
+        if ! jq -e . "$secrets_file" > /dev/null 2>&1; then
+            echo "Error: Invalid JSON in $secrets_file" >&2
+            return 1
+        fi
+        secrets_api_server=$(jq -r '.apiServer // empty' "$secrets_file")
+        secrets_api_key=$(jq -r '.apiKey // empty' "$secrets_file")
+        secrets_api_secret=$(jq -r '.apiSecret // empty' "$secrets_file")
+    fi
+
+    local effective_api_server="$config_api_server"
+    local effective_api_key="$secrets_api_key"
+    local effective_api_secret="$secrets_api_secret"
+
+    # Priority: environment variables > secrets file > config file
+    if [ -n "${LINGXIA_API_SERVER:-}" ]; then
+        effective_api_server="$LINGXIA_API_SERVER"
+    elif [ -n "$secrets_api_server" ]; then
+        effective_api_server="$secrets_api_server"
+    fi
     if [ -n "${LINGXIA_API_KEY:-}" ]; then
-        base_json=$(echo "$base_json" | jq --arg key "$LINGXIA_API_KEY" '. + {apiKey: $key}')
+        effective_api_key="$LINGXIA_API_KEY"
     fi
     if [ -n "${LINGXIA_API_SECRET:-}" ]; then
-        base_json=$(echo "$base_json" | jq --arg secret "$LINGXIA_API_SECRET" '. + {apiSecret: $secret}')
+        effective_api_secret="$LINGXIA_API_SECRET"
+    fi
+
+    if [ -n "$effective_api_server" ]; then
+        base_json=$(echo "$base_json" | jq --arg server "$effective_api_server" '. + {apiServer: $server}')
+    fi
+    if [ -n "$effective_api_key" ]; then
+        base_json=$(echo "$base_json" | jq --arg key "$effective_api_key" '. + {apiKey: $key}')
+    fi
+    if [ -n "$effective_api_secret" ]; then
+        base_json=$(echo "$base_json" | jq --arg secret "$effective_api_secret" '. + {apiSecret: $secret}')
     fi
 
     echo "$base_json" > "$output_dir/app.json"
