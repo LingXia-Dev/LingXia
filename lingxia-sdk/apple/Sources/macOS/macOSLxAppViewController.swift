@@ -205,6 +205,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private func setupWebViewContainer() {
         webViewContainer = NSView()
         webViewContainer.wantsLayer = true
+        webViewContainer.layer?.masksToBounds = true
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webViewContainer)
     }
@@ -213,14 +214,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         guard let tabBarConfig = lingxia.getTabBar(appId) else { return }
         self.tabBarConfig = tabBarConfig
 
-        // Use native macOS wrapper so selection updates via ObservableObject are reflected in UI
         let tabBar = LingXiaTabBar()
         tabBar.initialize(config: tabBarConfig, appId: appId)
         tabBar.setOnTabSelectedListener { [weak self] index, _ in
             guard let self = self else { return }
             let _ = onUiEvent(self.appId, LxAppUIEvent.tabBarClick, String(index))
         }
-        // Initialize selection based on Rust state
         let initIndex = Int(tabBarConfig.selected_index)
         tabBar.setSelectedIndex(initIndex, notifyListener: false)
 
@@ -234,10 +233,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    /// Unified method to show a WebView to the user
     private func showWebViewToUser(_ webView: WKWebView, path: String) {
-        LxAppCore.getCurrentWebView()?.removeFromSuperview()
+        let oldWebView = LxAppCore.getCurrentWebView()
+        if let old = oldWebView, old !== webView {
+            old.pauseWebView()
+        }
+        oldWebView?.removeFromSuperview()
+
         WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
+        MacNativeBridge.attachIfNeeded(to: webView, in: webViewContainer)
+        webView.resumeWebView()
         setupPullToRefresh(for: webView)
     }
 
@@ -271,7 +276,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             }
         }
 
-        // Add TabBar state change observer
         tabBarObserver = NotificationCenter.default.addObserver(
             forName: .tabBarStateChanged,
             object: nil,
@@ -280,7 +284,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             guard let self = self else { return }
 
             Task { @MainActor in
-                // The tab bar state has changed, tell the current tab bar to refresh itself.
                 if let wrapper = self.tabBarView as? LingXiaTabBar {
                     wrapper.refreshLayout()
                 }
@@ -289,16 +292,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func setupKeyboardShortcuts() {
-        // Add keyboard shortcut for back navigation (Cmd+Left Arrow or Escape)
         let backMenuItem = NSMenuItem(title: "Back", action: #selector(handleBackKeyPress), keyEquivalent: "\u{001B}") // Escape key
         backMenuItem.target = self
 
-        // Also support Cmd+Left Arrow
         let backMenuItem2 = NSMenuItem(title: "Back", action: #selector(handleBackKeyPress), keyEquivalent: String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!)))
         backMenuItem2.keyEquivalentModifierMask = .command
         backMenuItem2.target = self
 
-        // Add to main menu if available
         if let mainMenu = NSApp.mainMenu {
             let appMenu = mainMenu.items.first
             appMenu?.submenu?.addItem(backMenuItem)
@@ -307,26 +307,21 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     @objc private func handleBackKeyPress() {
-        // macOS keyboard shortcuts trigger navigation back action
         let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
     }
 
-    /// Navigate - using shared navigation logic
     @MainActor
     public func navigate(appId: String, to path: String, with animationType: AnimationType) {
         guard !appId.isEmpty else { return }
 
         self.currentPath = path
 
-        // Update UI components
         updateNavigationBar(appId: appId, path: path)
 
-        // Show WebView
         if let webView = WebViewManager.findWebView(appId: appId, path: path) {
             showWebViewToUser(webView, path: path)
         }
 
-        // Update app state
         LxAppCore.setCurrentPath(path)
     }
 
@@ -336,21 +331,38 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
 
 
-    // Method required by WindowController
     func updateLayoutForNavigationStyle(currentPath: String) {
         self.currentPath = currentPath
 
-        // Tell TabBar to refresh its state from Rust - this will handle visibility and content for the new page
         if let wrapper = tabBarView as? LingXiaTabBar {
             wrapper.refreshLayout()
         }
     }
 
-    /// Update navigation bar state
     @MainActor
     public func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
-        // Tab mode: navigation bar state is managed by NavigationBarStateManager
+    }
+
+    @MainActor
+    func pauseNativeComponents() {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+            MacNativeBridge.notifyPageInactive(for: webView)
+        }
+    }
+
+    @MainActor
+    func resumeNativeComponents() {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+            MacNativeBridge.notifyPageActive(for: webView)
+        }
+    }
+
+    @MainActor
+    func destroyNativeComponents() {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+            MacNativeBridge.notifyPageDestroyed(for: webView)
+        }
     }
 }
 

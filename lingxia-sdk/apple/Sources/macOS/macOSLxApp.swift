@@ -103,7 +103,9 @@ public class macOSLxApp: ObservableObject {
             object: nil,
             queue: .main
         ) { _ in
-            handleAppShow()
+            Task { @MainActor in
+                handleAppShow()
+            }
         }
         lifecycleObservers.append(activeObserver)
 
@@ -113,12 +115,15 @@ public class macOSLxApp: ObservableObject {
             object: nil,
             queue: .main
         ) { _ in
-            handleAppHide()
+            Task { @MainActor in
+                handleAppHide()
+            }
         }
         lifecycleObservers.append(resignObserver)
     }
 
     /// Handle app becoming active
+    @MainActor
     private static func handleAppShow() {
         guard hasResignedActive else { return }
         hasResignedActive = false
@@ -128,6 +133,7 @@ public class macOSLxApp: ObservableObject {
     }
 
     /// Handle app resigning active
+    @MainActor
     private static func handleAppHide() {
         hasResignedActive = true
         guard let currentAppId = LxAppCore.currentAppId else { return }

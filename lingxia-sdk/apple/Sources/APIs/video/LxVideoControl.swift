@@ -133,15 +133,15 @@ enum LxAppVideo {
 import Foundation
 import CLingXiaRustAPI
 
-// MARK: - macOS Stub Implementations
-
 enum LxAppVideo {
     nonisolated static func setVideoPlayerCallback(
         component_id: RustStr,
         callback_id: UInt64
     ) -> Bool {
-        // Not implemented on macOS
-        return false
+        let id = component_id.toString()
+        return runOnMainActor {
+            MacComponentRouter.shared.setCallback(componentId: id, callbackId: callback_id)
+        }
     }
 
     nonisolated static func dispatchVideoCommand(
@@ -149,30 +149,37 @@ enum LxAppVideo {
         name: RustStr,
         params_json: RustStr
     ) -> Bool {
-        // Not implemented on macOS
-        return false
+        let componentId = component_id.toString()
+        let commandName = name.toString()
+        let paramsString = params_json.toString()
+
+        var params: [String: Any]?
+        if !paramsString.isEmpty,
+           let data = paramsString.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            params = parsed
+        }
+
+        return runOnMainActor {
+            MacComponentRouter.shared.dispatchCommand(
+                componentId: componentId,
+                name: commandName,
+                params: params
+            )
+        }
     }
 
-    nonisolated static func createStreamDecoder(component_id: RustStr) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
+    nonisolated static func createStreamDecoder(component_id: RustStr) -> Bool { false }
 
     nonisolated static func configureStreamVideo(
         component_id: RustStr,
         config_json: RustStr
-    ) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
+    ) -> Bool { false }
 
     nonisolated static func configureStreamAudio(
         component_id: RustStr,
         config_json: RustStr
-    ) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
+    ) -> Bool { false }
 
     nonisolated static func pushStreamVideo(
         component_id: RustStr,
@@ -180,24 +187,25 @@ enum LxAppVideo {
         dts_ms: UInt32,
         pts_ms: UInt32,
         keyframe: Bool
-    ) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
+    ) -> Bool { false }
 
     nonisolated static func pushStreamAudio(
         component_id: RustStr,
         data: RustVec<UInt8>,
         dts_ms: UInt32,
         pts_ms: UInt32
-    ) -> Bool {
-        // Not implemented on macOS
-        return false
-    }
+    ) -> Bool { false }
 
-    nonisolated static func stopStreamDecoder(component_id: RustStr) -> Bool {
-        // Not implemented on macOS
-        return false
+    nonisolated static func stopStreamDecoder(component_id: RustStr) -> Bool { false }
+
+    private nonisolated static func runOnMainActor<T: Sendable>(_ block: @MainActor () -> T) -> T {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated(block)
+        } else {
+            return DispatchQueue.main.sync {
+                MainActor.assumeIsolated(block)
+            }
+        }
     }
 }
 #endif

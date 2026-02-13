@@ -66,6 +66,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     public func windowWillClose(_ notification: Notification) {
+        for (_, viewController) in viewControllers {
+            viewController.destroyNativeComponents()
+        }
         // Tab mode cleanup
         for tab in tabManager.tabs {
             let _ = onLxappClosed(tab.appId)
@@ -80,6 +83,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         guard let tabBar = tabView else { return }
 
         tabBar.translatesAutoresizingMaskIntoConstraints = false
+        tabBar.wantsLayer = true
+        tabBar.layer?.zPosition = 10
         tabBar.onTabClosed = { [weak self] appId in
             self?.closeTab(appId)
         }
@@ -128,7 +133,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             return vc
         }()
 
-        // Only call onLxappOpened for newly created view controllers
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath()
             let _ = onLxappOpened(appId, currentPath).toString()
@@ -138,6 +142,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func updateContentView(with viewController: macOSLxAppViewController) {
+        currentViewController?.pauseNativeComponents()
         currentViewController?.view.removeFromSuperview()
         currentViewController = viewController
 
@@ -149,7 +154,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         viewController.view.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(viewController.view)
 
-        // Tab style: space for tab bar only
         let topOffset = Layout.tabBarHeight
 
         NSLayoutConstraint.activate([
@@ -158,10 +162,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             viewController.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             viewController.view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
         ])
+
+        viewController.resumeNativeComponents()
     }
+
+    }
+
 
     private func closeTab(_ appId: String) {
         if let viewController = viewControllers[appId] {
+            viewController.destroyNativeComponents()
             viewController.view.removeFromSuperview()
             viewControllers.removeValue(forKey: appId)
         }
@@ -169,7 +179,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         tabManager.closeTab(appId: appId)
         let _ = onLxappClosed(appId)
 
-        // Get next LxApp from Rust stack and open it as a new tab
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()

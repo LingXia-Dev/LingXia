@@ -6,25 +6,23 @@ use crate::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
 
 use super::Platform;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 use crate::traits::video_player::{VideoPlayerCommand, VideoPlayerHandleImpl};
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi;
 
 #[cfg(target_os = "ios")]
 use base64::{Engine as _, engine::general_purpose};
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 use serde_json::json;
 
-#[cfg(target_os = "ios")]
-/// iOS implementation delegates to native component video players.
-/// Native player is created by UI layer; this returns a handle.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 impl VideoPlayerManager for Platform {
     fn bind_player(&self, component_id: &str) -> Result<Box<dyn VideoPlayerHandle>, PlatformError> {
         let cid = component_id.to_string();
         let handle = VideoPlayerHandleImpl::new(move |command| {
-            let (name, params_json) = map_command_to_ios(command);
+            let (name, params_json) = map_command_to_apple(command);
             ffi::dispatch_video_command(&cid, &name, &params_json)
                 .then_some(())
                 .ok_or_else(|| PlatformError::Platform(format!("Failed to dispatch {}", name)))
@@ -48,8 +46,8 @@ impl VideoPlayerManager for Platform {
     }
 }
 
-#[cfg(target_os = "ios")]
-fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn map_command_to_apple(command: VideoPlayerCommand) -> (String, String) {
     const EMPTY: &str = "{}";
 
     match command {
@@ -58,11 +56,11 @@ fn map_command_to_ios(command: VideoPlayerCommand) -> (String, String) {
         VideoPlayerCommand::Stop => ("stop".into(), EMPTY.into()),
         VideoPlayerCommand::NotifyEnded => ("notifyEnded".into(), EMPTY.into()),
         VideoPlayerCommand::Seek { position } => {
-            ("seek".into(), format!(r#"{{"time":{}}}"#, position))
+            ("seek".into(), json!({ "time": position }).to_string())
         }
         VideoPlayerCommand::SetDuration { duration } => (
             "setDuration".into(),
-            format!(r#"{{"duration":{}}}"#, duration),
+            json!({ "duration": duration }).to_string(),
         ),
         VideoPlayerCommand::EnterFullscreen => ("enterFullscreen".into(), EMPTY.into()),
         VideoPlayerCommand::ExitFullscreen => ("exitFullscreen".into(), EMPTY.into()),
@@ -206,7 +204,7 @@ impl VideoStreamDecoderHandle for IosStreamDecoderHandle {
     }
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "macos")))]
 impl VideoPlayerManager for Platform {
     fn bind_player(
         &self,

@@ -1,0 +1,203 @@
+import Foundation
+import AVFoundation
+
+// MARK: - Cross-platform media types shared between iOS and macOS players
+
+public enum LxMediaSource {
+    case url(URL)
+    case file(path: String)
+
+    var bridgeValue: [String: Any] {
+        switch self {
+        case .url(let url):
+            return ["type": "url", "value": url.absoluteString]
+        case .file(let path):
+            return ["type": "file", "value": path]
+        }
+    }
+}
+
+public struct LxMediaQuality {
+    public var label: String
+    public var url: URL?
+
+    public init(label: String, url: URL?) {
+        self.label = label
+        self.url = url
+    }
+
+    var bridgeValue: [String: Any] {
+        var dict: [String: Any] = ["label": label]
+        if let url {
+            dict["url"] = url.absoluteString
+        }
+        return dict
+    }
+}
+
+public enum LxMediaObjectFit: String {
+    case cover
+    case contain
+    case fill
+    case fit
+
+    var bridgeValue: String {
+        rawValue
+    }
+}
+
+public struct LxMediaPlayerConfig {
+    public var source: LxMediaSource?
+    public var src: URL?
+    public var poster: URL?
+    public var duration: Double?
+    public var autoplay: Bool?
+    public var loop: Bool?
+    public var muted: Bool?
+    public var volume: Double?
+    public var controls: Bool?
+    public var progressBar: Bool?
+    public var cornerRadius: Double?
+    public var qualities: [LxMediaQuality]?
+    public var speeds: [Double]?
+    public var showControlsOnInit: Bool?
+    public var objectFit: LxMediaObjectFit?
+
+    public init(
+        source: LxMediaSource? = nil,
+        src: URL? = nil,
+        poster: URL? = nil,
+        duration: Double? = nil,
+        autoplay: Bool? = nil,
+        loop: Bool? = nil,
+        muted: Bool? = nil,
+        volume: Double? = nil,
+        controls: Bool? = nil,
+        progressBar: Bool? = nil,
+        cornerRadius: Double? = nil,
+        qualities: [LxMediaQuality]? = nil,
+        speeds: [Double]? = nil,
+        showControlsOnInit: Bool? = nil,
+        objectFit: LxMediaObjectFit? = nil
+    ) {
+        self.source = source
+        self.src = src
+        self.poster = poster
+        self.duration = duration
+        self.autoplay = autoplay
+        self.loop = loop
+        self.muted = muted
+        self.volume = volume
+        self.controls = controls
+        self.progressBar = progressBar
+        self.cornerRadius = cornerRadius
+        self.qualities = qualities
+        self.speeds = speeds
+        self.showControlsOnInit = showControlsOnInit
+        self.objectFit = objectFit
+    }
+
+    var bridgeValue: [String: Any] {
+        var dict: [String: Any] = [:]
+        if let source {
+            dict["source"] = source.bridgeValue
+        }
+        if let src { dict["src"] = src.absoluteString }
+        if let poster { dict["poster"] = poster.absoluteString }
+        if let duration { dict["duration"] = duration }
+        if let autoplay { dict["autoplay"] = autoplay }
+        if let loop { dict["loop"] = loop }
+        if let muted { dict["muted"] = muted }
+        if let volume { dict["volume"] = volume }
+        if let controls { dict["controls"] = controls }
+        if let progressBar { dict["progressBar"] = progressBar }
+        if let cornerRadius { dict["cornerRadius"] = cornerRadius }
+        if let qualities { dict["qualities"] = qualities.map { $0.bridgeValue } }
+        if let speeds { dict["speeds"] = speeds }
+        if let showControlsOnInit { dict["showControlsOnInit"] = showControlsOnInit }
+        if let objectFit { dict["objectFit"] = objectFit.bridgeValue }
+        return dict
+    }
+}
+
+public enum LxMediaCommand {
+    case play
+    case pause
+    case stop
+    case seek(time: Double)
+    case setVolume(Double)
+    case setMuted(Bool)
+    case setPlaybackRate(Double)
+    case enterFullscreen
+    case exitFullscreen
+}
+
+public enum LxMediaEvent {
+    case play
+    case playing
+    case pause
+    case stop
+    case ended
+    case waiting
+    case seeked(time: Double)
+    case timeUpdate(currentTime: Double, duration: Double)
+    case rateChange(rate: Double)
+    case volumeChange(volume: Double)
+    case fullscreenChange(fullScreen: Bool, direction: String)
+    case loadedMetadata(width: Double, height: Double, duration: Double)
+    case qualityChange(quality: String, url: String?)
+    case error(code: String, message: String)
+    case raw(name: String, data: [String: Any])
+
+    var rawName: String {
+        switch self {
+        case .play: return "play"
+        case .playing: return "playing"
+        case .pause: return "pause"
+        case .stop: return "stop"
+        case .ended: return "ended"
+        case .waiting: return "waiting"
+        case .seeked: return "seeked"
+        case .timeUpdate: return "timeupdate"
+        case .rateChange: return "ratechange"
+        case .volumeChange: return "volumechange"
+        case .fullscreenChange: return "fullscreenchange"
+        case .loadedMetadata: return "loadedmetadata"
+        case .qualityChange: return "qualitychange"
+        case .error: return "error"
+        case .raw(let name, _): return name
+        }
+    }
+
+    var rawData: [String: Any] {
+        switch self {
+        case .play, .playing, .pause, .stop, .ended, .waiting:
+            return [:]
+        case .seeked(let time):
+            return ["time": time]
+        case .timeUpdate(let currentTime, let duration):
+            return ["currentTime": currentTime, "duration": duration]
+        case .rateChange(let rate):
+            return ["rate": rate]
+        case .volumeChange(let volume):
+            return ["volume": volume]
+        case .fullscreenChange(let fullScreen, let direction):
+            return ["fullScreen": fullScreen, "direction": direction]
+        case .loadedMetadata(let width, let height, let duration):
+            return ["width": width, "height": height, "duration": duration]
+        case .qualityChange(let quality, let url):
+            return ["quality": quality, "url": url ?? ""]
+        case .error(let code, let message):
+            return ["code": code, "message": message]
+        case .raw(_, let data):
+            return data
+        }
+    }
+
+    var rawPayload: [String: Any] {
+        return [
+            "event": rawName,
+            "detail": rawData
+        ]
+    }
+}

@@ -244,10 +244,13 @@ pub use bridge::{
 #[allow(unused_imports)]
 pub use bridge::{
     compress_image, configure_stream_audio, configure_stream_video, copy_album_media_to_file,
-    create_stream_decoder, dispatch_video_command, get_capsule_rect, get_image_info,
-    push_stream_audio, push_stream_video, scan_code, set_video_player_callback,
-    stop_stream_decoder,
+    create_stream_decoder, get_capsule_rect, get_image_info, push_stream_audio, push_stream_video,
+    scan_code, stop_stream_decoder,
 };
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[allow(unused_imports)]
+pub use bridge::{dispatch_video_command, set_video_player_callback};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

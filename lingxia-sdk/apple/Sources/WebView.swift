@@ -45,6 +45,8 @@ extension WKWebView {
         isHidden = true
         #if os(iOS)
         NativeBridge.notifyPageInactive(for: self)
+        #elseif os(macOS)
+        MacNativeBridge.notifyPageInactive(for: self)
         #endif
     }
 
@@ -54,6 +56,8 @@ extension WKWebView {
         isHidden = false
         #if os(iOS)
         NativeBridge.notifyPageActive(for: self)
+        #elseif os(macOS)
+        MacNativeBridge.notifyPageActive(for: self)
         #endif
     }
 
