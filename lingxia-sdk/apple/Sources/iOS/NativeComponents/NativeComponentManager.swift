@@ -43,6 +43,8 @@ final class NativeComponentManager {
     private var components: [String: LxNativeComponent] = [:]
     private var componentPage: [String: String] = [:]
     private var pageComponents: [String: Set<String>] = [:]
+    // Monotonic generation per component id. Used to drop stale async events from old instances.
+    private var componentEpochs: [String: UInt64] = [:]
     private var componentWKChildScrollView: [String: UIScrollView] = [:]
     // Rust callback IDs for VideoContext event forwarding
     private var componentCallbacks: [String: UInt64] = [:]
@@ -122,8 +124,14 @@ final class NativeComponentManager {
             return
         }
 
+        let nextEpoch = (componentEpochs[id] ?? 0) + 1
+        componentEpochs[id] = nextEpoch
         let component = factory.make(id: id, initialProps: props) { [weak self] event in
-            self?.sendEventToWeb(componentId: id, event: event)
+            guard let self else { return }
+            // Guard against stale events from a previously unmounted instance that shared the same id.
+            guard self.componentEpochs[id] == nextEpoch else { return }
+            guard self.components[id] != nil else { return }
+            self.sendEventToWeb(componentId: id, event: event)
         }
         components[id] = component
         componentPage[id] = pageId
@@ -271,6 +279,7 @@ final class NativeComponentManager {
     // MARK: - Helpers
 
     private func sendEventToWeb(componentId: String, event: [String: Any]) {
+        guard components[componentId] != nil else { return }
         var payload = event
         payload["action"] = "component.event"
         payload["id"] = componentId
@@ -381,23 +390,14 @@ final class NativeComponentManager {
     }
 
     private func unmountComponent(id: String, pageId: String?) {
+        // Unregister first to block any queued command from being routed back to a component
+        // that is in the middle of teardown.
+        ComponentRouter.shared.unregister(componentId: id)
+        let callbackId = componentCallbacks.removeValue(forKey: id)
         guard let component = components.removeValue(forKey: id) else { return }
         if component is VideoComponent {
             webOverlayCoverageRestore.removeValue(forKey: id)
             updateScrollBounceSuppression()
-        }
-        if let callbackId = componentCallbacks[id] {
-            let payload: [String: Any] = [
-                "action": "component.event",
-                "id": id,
-                "componentId": id,
-                "event": "unmount",
-                "detail": [:]
-            ]
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-               let json = String(data: data, encoding: .utf8) {
-                _ = onCallback(callbackId, true, json)
-            }
         }
         // Unregister from hit-test swizzler before unmount
         WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
@@ -413,8 +413,19 @@ final class NativeComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
-        componentCallbacks.removeValue(forKey: id)
-        ComponentRouter.shared.unregister(componentId: id)
+        if let callbackId {
+            let payload: [String: Any] = [
+                "action": "component.event",
+                "id": id,
+                "componentId": id,
+                "event": "unmount",
+                "detail": [:]
+            ]
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+               let json = String(data: data, encoding: .utf8) {
+                _ = onCallback(callbackId, true, json)
+            }
+        }
     }
 
     private func handleCoverage(_ parameters: [String: Any]) {

@@ -27,8 +27,8 @@ final class ComponentRouter {
     }
     
     func unregister(componentId: String) {
+        StreamDecoderRegistry.shared.destroy(componentId: componentId)
         managers.removeValue(forKey: componentId)
-        StreamDecoderRegistry.shared.stop(componentId: componentId)
     }
     
     /// Set callback for a component. Called from Rust FFI.

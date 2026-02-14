@@ -292,11 +292,7 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
     @MainActor
     func markPageDestroyed() {
         refreshPageKeyIfNeeded()
-        componentManager?.handle(message: [
-            "action": "page.lifecycle",
-            "state": "destroyed",
-            "pageId": pageKey
-        ])
+        // WebView is being torn down; release everything once to avoid duplicate destroy paths.
         componentManager?.teardownAll()
     }
 
