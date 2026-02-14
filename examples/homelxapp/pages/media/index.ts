@@ -48,6 +48,24 @@ function parsePositiveInt(value) {
   return parsed;
 }
 
+function parseNonNegativeInt(value) {
+  const parsed = parseInt(String(value ?? ""), 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
+function clampToSourceMax(value, maxValue) {
+  if (typeof value !== "number" || value <= 0) {
+    return value;
+  }
+  if (typeof maxValue !== "number" || maxValue <= 0) {
+    return value;
+  }
+  return Math.min(value, maxValue);
+}
+
 const MODE_SETTINGS = {
   Pictures: {
     mediaType: "image",
@@ -78,6 +96,13 @@ const MODE_SETTINGS = {
       compressQuality: "80",
     },
   },
+  VideoTools: {
+    mediaType: "videoTools",
+    defaults: {
+      thumbnailQuality: "80",
+      thumbnailTimeMs: "0",
+    },
+  },
   SaveToAlbum: {
     mediaType: "saveToAlbum",
     defaults: {},
@@ -101,6 +126,15 @@ function getModeCopy(mediaType) {
       previewHint: "",
       galleryHint: "",
       addLabel: "Image Info",
+    };
+  }
+  if (mediaType === "videoTools") {
+    return {
+      headerSubtitle: "lx.getVideoInfo / lx.extractVideoThumbnail",
+      emptyHint: "Pick one video, inspect metadata, then generate thumbnail.",
+      previewHint: "",
+      galleryHint: "",
+      addLabel: "Video Tools",
     };
   }
   if (mediaType === "saveToAlbum") {
@@ -130,9 +164,34 @@ function getModeCopy(mediaType) {
   };
 }
 
+function getModeTitle(mediaType) {
+  switch (mediaType) {
+    case "video":
+      return "Record / Pick Video";
+    case "scanCode":
+      return "Scan";
+    case "imageInfo":
+      return "Image Info";
+    case "videoTools":
+      return "Video Tools";
+    case "saveToAlbum":
+      return "Save to Album";
+    default:
+      return "Photos";
+  }
+}
+
 function resolveModeKey(input) {
   if (typeof input === "string" && input.trim()) {
     const normalized = input.trim().toLowerCase();
+    const aliases = {
+      videoinfo: "VideoTools",
+      videothumbnail: "VideoTools",
+      videotools: "VideoTools",
+    };
+    if (aliases[normalized]) {
+      return aliases[normalized];
+    }
     const matched = Object.keys(MODE_SETTINGS).find(
       (key) => key.toLowerCase() === normalized,
     );
@@ -284,11 +343,23 @@ function createState(modeKey) {
     imageInfoError: "",
     imageInfoBusy: false,
     compressQuality: defaults.compressQuality || "80",
-    compressMaxWidth: "",
-    compressMaxHeight: "",
+    compressedWidth: "",
+    compressedHeight: "",
     compressing: false,
     compressResult: null,
     compressError: "",
+    videoInfoResult: null,
+    videoInfoError: "",
+    videoInfoBusy: false,
+    thumbnailVideoPath: "",
+    thumbnailSourceInfo: null,
+    thumbnailQuality: defaults.thumbnailQuality || "80",
+    thumbnailMaxWidth: "",
+    thumbnailMaxHeight: "",
+    thumbnailTimeMs: defaults.thumbnailTimeMs || "0",
+    thumbnailBusy: false,
+    thumbnailResult: null,
+    thumbnailError: "",
   };
 }
 
@@ -310,16 +381,7 @@ Page({
     const state = createState(modeKey);
     this.setData(state);
 
-    const title =
-      state.mediaType === "video"
-        ? "Record / Pick Video"
-        : state.mediaType === "scanCode"
-          ? "Scan"
-          : state.mediaType === "imageInfo"
-            ? "Image Info"
-            : state.mediaType === "saveToAlbum"
-              ? "Save to Album"
-              : "Photos";
+    const title = getModeTitle(state.mediaType);
     lx.setNavigationBarTitle({ title });
   },
 
@@ -552,7 +614,7 @@ Page({
     if (this.data.imageInfoBusy) {
       return;
     }
-    const picked = await this.pickSingleImage();
+    const picked = await this.pickSingleMedia("image");
     if (!picked) {
       return;
     }
@@ -563,14 +625,7 @@ Page({
     });
     try {
       const info = await lx.getImageInfo({ path: picked });
-      // Get file size using Rong.stat
-      let size = 0;
-      try {
-        const stat = await Rong.stat(picked);
-        size = stat.size;
-      } catch (statError) {
-        console.warn("Failed to get file size:", statError);
-      }
+      const size = await this.getFileSize(picked);
       this.setData({
         imageInfoResult: { ...info, size } || null,
         imageInfoBusy: false,
@@ -584,6 +639,161 @@ Page({
       });
       lx.showToast({
         title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  pickVideoForTools: async function () {
+    if (this.data.thumbnailBusy || this.data.videoInfoBusy) {
+      return;
+    }
+    const picked = await this.pickSingleMedia("video");
+    if (!picked) {
+      return;
+    }
+    this.setData({
+      thumbnailVideoPath: picked,
+      thumbnailSourceInfo: null,
+      thumbnailError: "",
+      thumbnailResult: null,
+      videoInfoBusy: true,
+      videoInfoError: "",
+      videoInfoResult: null,
+    });
+    try {
+      const info = await lx.getVideoInfo({ path: picked });
+      const size = await this.getFileSize(picked);
+      this.setData({
+        videoInfoResult: { ...info, size } || null,
+        videoInfoBusy: false,
+        thumbnailSourceInfo: info || null,
+      });
+    } catch (error) {
+      const message = error?.message || "getVideoInfo failed";
+      this.setData({
+        videoInfoBusy: false,
+        videoInfoError: message,
+      });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  onThumbnailQualityInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ thumbnailQuality: value });
+  },
+
+  onThumbnailMaxWidthInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ thumbnailMaxWidth: value });
+  },
+
+  onThumbnailMaxHeightInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ thumbnailMaxHeight: value });
+  },
+
+  onThumbnailTimeInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ thumbnailTimeMs: value });
+  },
+
+  createVideoThumbnail: async function () {
+    if (this.data.thumbnailBusy) {
+      return;
+    }
+    const sourcePath = this.data.thumbnailVideoPath;
+    if (!sourcePath) {
+      lx.showToast({
+        title: "Please pick a video first",
+        icon: "none",
+      });
+      return;
+    }
+
+    const quality = clampQualityInput(this.data.thumbnailQuality);
+    const maxWidth = parsePositiveInt(this.data.thumbnailMaxWidth);
+    const maxHeight = parsePositiveInt(this.data.thumbnailMaxHeight);
+    const timeMs = parseNonNegativeInt(this.data.thumbnailTimeMs);
+    const sourceWidth = this.data.thumbnailSourceInfo?.width;
+    const sourceHeight = this.data.thumbnailSourceInfo?.height;
+    const clampedWidth = clampToSourceMax(maxWidth, sourceWidth);
+    const clampedHeight = clampToSourceMax(maxHeight, sourceHeight);
+    const adjusted =
+      clampedWidth !== maxWidth || clampedHeight !== maxHeight;
+
+    const payload = {
+      path: sourcePath,
+      quality,
+    };
+    if (typeof clampedWidth === "number") {
+      payload.maxWidth = clampedWidth;
+    }
+    if (typeof clampedHeight === "number") {
+      payload.maxHeight = clampedHeight;
+    }
+    if (typeof timeMs === "number") {
+      payload.timeMs = timeMs;
+    }
+
+    this.setData({
+      thumbnailBusy: true,
+      thumbnailError: "",
+      thumbnailResult: null,
+      thumbnailMaxWidth:
+        typeof clampedWidth === "number" ? String(clampedWidth) : this.data.thumbnailMaxWidth,
+      thumbnailMaxHeight:
+        typeof clampedHeight === "number" ? String(clampedHeight) : this.data.thumbnailMaxHeight,
+    });
+    if (adjusted) {
+      lx.showToast({
+        title: "Max width/height adjusted to source video size",
+        icon: "none",
+      });
+    }
+    try {
+      const thumbnail = await lx.extractVideoThumbnail(payload);
+      this.setData({
+        thumbnailResult: thumbnail || null,
+        thumbnailBusy: false,
+      });
+    } catch (error) {
+      const message = error?.message || "extractVideoThumbnail failed";
+      this.setData({
+        thumbnailError: message,
+        thumbnailResult: null,
+        thumbnailBusy: false,
+      });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  previewVideoThumbnail: async function () {
+    const path = this.data.thumbnailResult?.tempFilePath;
+    if (!path) {
+      lx.showToast({
+        title: "No thumbnail to preview",
+        icon: "none",
+      });
+      return;
+    }
+
+    try {
+      await lx.previewMedia({
+        sources: [{ path, type: "image" }],
+        current: 0,
+      });
+    } catch (error) {
+      console.error("[media-demo] previewVideoThumbnail failed:", error);
+      lx.showToast({
+        title: error?.message || "Preview failed",
         icon: "none",
       });
     }
@@ -608,7 +818,7 @@ Page({
     if (this.data.compressing) {
       return;
     }
-    const path = await this.pickSingleImage();
+    const path = await this.pickSingleMedia("image");
     if (!path) {
       return;
     }
@@ -687,13 +897,13 @@ Page({
       if (resultPath) {
         try {
           const info = await lx.getImageInfo({ path: resultPath });
-          const stat = await Rong.stat(resultPath);
+          const size = await this.getFileSize(resultPath);
           compressResult = {
             path: resultPath,
             width: info.width,
             height: info.height,
             type: info.type,
-            size: stat.size,
+            size,
           };
         } catch (infoError) {
           console.warn("Failed to get compressed image info:", infoError);
@@ -744,11 +954,22 @@ Page({
     }
   },
 
-  pickSingleImage: async function () {
+  getFileSize: async function (path) {
+    try {
+      const stat = await Rong.stat(path);
+      return stat.size || 0;
+    } catch (error) {
+      console.warn("Failed to get file size:", error);
+      return 0;
+    }
+  },
+
+  pickSingleMedia: async function (type) {
+    const mediaType = type === "video" ? "video" : "image";
     try {
       const result = await lx.chooseMedia({
         count: 1,
-        mediaType: ["image"],
+        mediaType: [mediaType],
         sourceType: ["album", "camera"],
         camera: "back",
       });
@@ -757,16 +978,19 @@ Page({
         return null;
       }
       const first = list[0];
-      const candidate = first?.tempFilePath || first?.path || first?.uri;
-      return candidate || null;
+      return first?.tempFilePath || first?.path || first?.uri || null;
     } catch (error) {
-      console.error("[media-demo] pickSingleImage failed:", error);
+      console.error(`[media-demo] pickSingle${mediaType} failed:`, error);
       lx.showToast({
         title: error?.message || "chooseMedia failed",
         icon: "none",
       });
       return null;
     }
+  },
+
+  pickSingleImage: async function () {
+    return this.pickSingleMedia("image");
   },
 
   captureImageForAlbum: async function () {

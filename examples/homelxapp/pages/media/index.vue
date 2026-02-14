@@ -154,6 +154,205 @@
             </div>
           </template>
 
+          <!-- Video Tools Mode -->
+          <template v-else-if="isVideoToolsMode">
+            <div class="space-y-5">
+              <button
+                @click="pickVideoForTools"
+                :disabled="thumbnailBusy || videoInfoBusy"
+                :class="[
+                  'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
+                  (thumbnailBusy || videoInfoBusy) ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                ]"
+              >
+                {{ (thumbnailBusy || videoInfoBusy) ? 'Loading…' : (thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video') }}
+              </button>
+
+              <div v-if="thumbnailVideoPath" class="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 break-all">
+                {{ thumbnailVideoPath }}
+              </div>
+
+              <div v-if="videoInfoError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <span>⚠️</span>
+                <span>{{ videoInfoError }}</span>
+              </div>
+
+              <div v-if="videoInfoResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                  Video Information
+                </h3>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Resolution</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.width ?? '--' }} × {{ videoInfoResult.height ?? '--' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Duration</span>
+                    <span class="font-semibold text-gray-800">{{ formatDuration(videoInfoResult.durationMs) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Rotation</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.rotation ?? '--' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Bitrate</span>
+                    <span class="font-semibold text-gray-800">{{ formatBitrate(videoInfoResult.bitrate) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">FPS</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.fps ?? '--' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Type</span>
+                    <span class="font-semibold text-gray-800">{{ videoInfoResult.type || '--' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Size</span>
+                    <span class="font-semibold text-gray-800">{{ formatFileSize(videoInfoResult.size || 0) }}</span>
+                  </div>
+                </div>
+                <div v-if="videoInfoResult.path" class="pt-4 border-t border-gray-200 space-y-1">
+                  <div class="text-xs font-medium text-gray-700">Path</div>
+                  <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    {{ videoInfoResult.path }}
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="thumbnailSourceInfo" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                  Source Video
+                </h3>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Resolution</span>
+                    <span class="font-semibold text-gray-800">{{ thumbnailSourceInfo.width ?? '--' }} × {{ thumbnailSourceInfo.height ?? '--' }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Duration</span>
+                    <span class="font-semibold text-gray-800">{{ formatDuration(thumbnailSourceInfo.durationMs) }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Type</span>
+                    <span class="font-semibold text-gray-800">{{ thumbnailSourceInfo.type || '--' }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 space-y-1">
+                <div>Quality: 0-100</div>
+                <div>Time (ms): 0 means first frame</div>
+                <div>Max Width / Max Height unit: px</div>
+                <div>Leave Max Width/Height empty to keep original size</div>
+                <div>Thumbnail is scaled proportionally, not cropped</div>
+                <div>If Max Width/Height exceeds source, it is clamped automatically</div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-gray-600">Quality</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="80"
+                    :value="thumbnailQuality"
+                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    @input="onThumbnailQualityInput"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-gray-600">Time (ms)</span>
+                  <input
+                    type="text"
+                    placeholder="0"
+                    :value="thumbnailTimeMs"
+                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    @input="onThumbnailTimeInput"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-gray-600">Max Width (px)</span>
+                  <input
+                    type="text"
+                    :placeholder="thumbnailSourceInfo?.width ? `e.g. ${thumbnailSourceInfo.width}` : 'leave empty'"
+                    :value="thumbnailMaxWidth"
+                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    @input="onThumbnailMaxWidthInput"
+                  />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-gray-600">Max Height (px)</span>
+                  <input
+                    type="text"
+                    :placeholder="thumbnailSourceInfo?.height ? `e.g. ${thumbnailSourceInfo.height}` : 'leave empty'"
+                    :value="thumbnailMaxHeight"
+                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    @input="onThumbnailMaxHeightInput"
+                  />
+                </label>
+              </div>
+
+              <button
+                @click="createVideoThumbnail"
+                :disabled="thumbnailBusy"
+                :class="[
+                  'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
+                  thumbnailBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                ]"
+              >
+                {{ thumbnailBusy ? 'Generating…' : 'Generate Thumbnail' }}
+              </button>
+
+              <div v-if="thumbnailError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <span>⚠️</span>
+                <span>{{ thumbnailError }}</span>
+              </div>
+
+              <div v-if="thumbnailResult?.tempFilePath" class="space-y-4">
+                <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                  <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                    Thumbnail Result
+                  </h3>
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">Width</span>
+                      <span class="font-semibold text-gray-800">{{ thumbnailResult.width ?? '--' }} px</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">Height</span>
+                      <span class="font-semibold text-gray-800">{{ thumbnailResult.height ?? '--' }} px</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">Type</span>
+                      <span class="font-semibold text-gray-800">{{ thumbnailResult.type || '--' }}</span>
+                    </div>
+                  </div>
+                  <div class="space-y-2">
+                    <img
+                      :src="thumbnailResult.tempFilePath"
+                      alt="thumbnail"
+                      class="w-full rounded-lg border border-gray-200 bg-gray-100"
+                    />
+                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      {{ thumbnailResult.tempFilePath }}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  @click="previewVideoThumbnail"
+                  class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
+                >
+                  Preview Thumbnail
+                </button>
+              </div>
+            </div>
+          </template>
+
           <!-- Save to Album Mode -->
           <template v-else-if="isSaveToAlbumMode">
             <div class="space-y-5">
@@ -337,6 +536,29 @@ const DURATION_OPTIONS = [
 
 type MediaItem = { path: string; type: 'image' | 'video' };
 type ImageInfoResult = { width?: number; height?: number; type?: string; path?: string; size?: number };
+type VideoInfoResult = {
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  rotation?: number;
+  bitrate?: number;
+  fps?: number;
+  type?: string;
+  path?: string;
+  size?: number;
+};
+type VideoThumbnailSourceInfo = {
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  type?: string;
+};
+type VideoThumbnailResult = {
+  tempFilePath?: string;
+  width?: number;
+  height?: number;
+  type?: string;
+};
 
 declare function useLingXia(): any;
 
@@ -352,12 +574,20 @@ const {
   openScanTypePicker,
   startScan,
   pickImageForInfo,
+  pickVideoForTools,
+  onThumbnailQualityInput,
+  onThumbnailMaxWidthInput,
+  onThumbnailMaxHeightInput,
+  onThumbnailTimeInput,
+  createVideoThumbnail,
+  previewVideoThumbnail,
   captureImageForAlbum,
   captureVideoForAlbum,
 } = useLingXia();
 
 const mediaTypeInput = computed(() => data?.mediaType || 'image');
 const isImageInfoMode = computed(() => mediaTypeInput.value === 'imageInfo');
+const isVideoToolsMode = computed(() => mediaTypeInput.value === 'videoTools');
 const isSaveToAlbumMode = computed(() => mediaTypeInput.value === 'saveToAlbum');
 const mediaType = computed(() => {
   if (mediaTypeInput.value === 'video') return 'video';
@@ -381,7 +611,7 @@ const durationOption = computed(() => DURATION_OPTIONS.find(o => o.key === durat
 const countLimit = computed(() => typeof data?.countLimit === 'number' ? data.countLimit : (countOption.value.value ?? 0));
 const counterText = computed(() => countLimit.value ? `${selectedMedia.value.length}/${countLimit.value}` : `${selectedMedia.value.length}`);
 
-const isPictureMode = computed(() => mediaType.value === 'image' && !isImageInfoMode.value);
+const isPictureMode = computed(() => mediaType.value === 'image' && !isImageInfoMode.value && !isVideoToolsMode.value);
 const isScanMode = computed(() => mediaType.value === 'scanCode');
 const isVideoMode = computed(() => mediaType.value === 'video');
 
@@ -402,10 +632,34 @@ const canAddMore = computed(() => selectedMedia.value.length < enforceLimit.valu
 const imageInfoResult = computed<ImageInfoResult | null>(() => data?.imageInfoResult ?? null);
 const imageInfoError = computed(() => data?.imageInfoError || '');
 const imageInfoBusy = computed(() => Boolean(data?.imageInfoBusy));
+const videoInfoResult = computed<VideoInfoResult | null>(() => data?.videoInfoResult ?? null);
+const videoInfoError = computed(() => data?.videoInfoError || '');
+const videoInfoBusy = computed(() => Boolean(data?.videoInfoBusy));
+const thumbnailVideoPath = computed(() => data?.thumbnailVideoPath || '');
+const thumbnailSourceInfo = computed<VideoThumbnailSourceInfo | null>(() => data?.thumbnailSourceInfo ?? null);
+const thumbnailQuality = computed(() => {
+  const raw = data?.thumbnailQuality ?? '80';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const thumbnailMaxWidth = computed(() => {
+  const raw = data?.thumbnailMaxWidth ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const thumbnailMaxHeight = computed(() => {
+  const raw = data?.thumbnailMaxHeight ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const thumbnailTimeMs = computed(() => {
+  const raw = data?.thumbnailTimeMs ?? '0';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const thumbnailBusy = computed(() => Boolean(data?.thumbnailBusy));
+const thumbnailResult = computed<VideoThumbnailResult | null>(() => data?.thumbnailResult ?? null);
+const thumbnailError = computed(() => data?.thumbnailError || '');
 const saveToAlbumBusy = computed(() => Boolean(data?.saveToAlbumBusy));
 
 const settingRows = computed(() => {
-  if (isScanMode.value || isImageInfoMode.value || isSaveToAlbumMode.value) return [];
+  if (isScanMode.value || isImageInfoMode.value || isVideoToolsMode.value || isSaveToAlbumMode.value) return [];
   if (isPictureMode.value) {
     return [
       { label: 'Photo Source', value: sourceOption.value.label, action: openSourcePicker },
@@ -426,6 +680,9 @@ const pageInfo = computed(() => {
   if (isImageInfoMode.value) {
     return { title: 'lx.getImageInfo / lx.compressImage', subtitle: 'Image Tools', description: 'Get image info and create compressed copy' };
   }
+  if (isVideoToolsMode.value) {
+    return { title: 'Video Tools', subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail', description: 'Pick a video, inspect metadata, then generate thumbnail' };
+  }
   if (isSaveToAlbumMode.value) {
     return { title: 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum', subtitle: 'Save to Album', description: 'Capture photo or video and save to device album' };
   }
@@ -438,5 +695,15 @@ function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+function formatDuration(durationMs?: number): string {
+  if (!durationMs || durationMs <= 0) return '--';
+  return `${(durationMs / 1000).toFixed(2)} s`;
+}
+
+function formatBitrate(bitrate?: number): string {
+  if (!bitrate || bitrate <= 0) return '--';
+  return `${Math.round((bitrate / 1000) * 10) / 10} kbps`;
 }
 </script>

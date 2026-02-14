@@ -41,8 +41,34 @@ type ImageInfoResult = {
   size?: number;
 };
 
+type VideoInfoResult = {
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  rotation?: number;
+  bitrate?: number;
+  fps?: number;
+  type?: string;
+  path?: string;
+  size?: number;
+};
+
+type VideoThumbnailResult = {
+  tempFilePath?: string;
+  width?: number;
+  height?: number;
+  type?: string;
+};
+
+type VideoThumbnailSourceInfo = {
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  type?: string;
+};
+
 type PageData = {
-  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'saveToAlbum';
+  mediaType?: 'image' | 'video' | 'scanCode' | 'imageInfo' | 'videoTools' | 'saveToAlbum';
   selectedMedia?: MediaItem[];
   isRunning?: boolean;
   countLimit?: number;
@@ -70,6 +96,18 @@ type PageData = {
   compressResult?: ImageInfoResult | null;
   compressError?: string;
   imageInfoBusy?: boolean;
+  videoInfoResult?: VideoInfoResult | null;
+  videoInfoError?: string;
+  videoInfoBusy?: boolean;
+  thumbnailVideoPath?: string;
+  thumbnailSourceInfo?: VideoThumbnailSourceInfo | null;
+  thumbnailQuality?: string | number;
+  thumbnailMaxWidth?: string | number;
+  thumbnailMaxHeight?: string | number;
+  thumbnailTimeMs?: string | number;
+  thumbnailBusy?: boolean;
+  thumbnailResult?: VideoThumbnailResult | null;
+  thumbnailError?: string;
   saveToAlbumBusy?: boolean;
   saveToAlbumResult?: string;
   saveToAlbumError?: string;
@@ -90,6 +128,13 @@ type PageActions = {
   onCompressedWidthInput?(event: any): void;
   onCompressedHeightInput?(event: any): void;
   pickImageForInfo?(): void;
+  pickVideoForTools?(): void;
+  onThumbnailQualityInput?(event: any): void;
+  onThumbnailMaxWidthInput?(event: any): void;
+  onThumbnailMaxHeightInput?(event: any): void;
+  onThumbnailTimeInput?(event: any): void;
+  createVideoThumbnail?(): void;
+  previewVideoThumbnail?(): void;
   pickImageForCompress?(): void;
   compressSelectedImage?(): void;
   previewCompressedImage?(): void;
@@ -292,6 +337,13 @@ export default function MediaPage() {
     onCompressedWidthInput,
     onCompressedHeightInput,
     pickImageForInfo,
+    pickVideoForTools,
+    onThumbnailQualityInput,
+    onThumbnailMaxWidthInput,
+    onThumbnailMaxHeightInput,
+    onThumbnailTimeInput,
+    createVideoThumbnail,
+    previewVideoThumbnail,
     pickImageForCompress,
     compressSelectedImage,
     previewCompressedImage,
@@ -301,6 +353,7 @@ export default function MediaPage() {
 
   const mediaTypeInput = data?.mediaType || 'image';
   const isImageInfoMode = mediaTypeInput === 'imageInfo';
+  const isVideoToolsMode = mediaTypeInput === 'videoTools';
   const isSaveToAlbumMode = mediaTypeInput === 'saveToAlbum';
   const mediaType = mediaTypeInput === 'video'
     ? 'video'
@@ -326,9 +379,10 @@ export default function MediaPage() {
   const countLimit = typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
   const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
 
-  const isPictureMode = mediaType === 'image' && !isImageInfoMode;
+  const isPictureMode = mediaType === 'image'
+    && !isImageInfoMode
+    && !isVideoToolsMode;
   const isScanMode = mediaType === 'scanCode';
-  const isVideoMode = mediaType === 'video';
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
   const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
@@ -344,6 +398,31 @@ export default function MediaPage() {
   const imageInfoResult = data?.imageInfoResult || null;
   const imageInfoError = data?.imageInfoError || '';
   const imageInfoBusy = Boolean(data?.imageInfoBusy);
+  const videoInfoResult = data?.videoInfoResult || null;
+  const videoInfoError = data?.videoInfoError || '';
+  const videoInfoBusy = Boolean(data?.videoInfoBusy);
+
+  const thumbnailVideoPath = data?.thumbnailVideoPath || '';
+  const thumbnailSourceInfo = data?.thumbnailSourceInfo || null;
+  const rawThumbnailQuality = data?.thumbnailQuality ?? '80';
+  const thumbnailQuality = typeof rawThumbnailQuality === 'number'
+    ? rawThumbnailQuality.toString()
+    : rawThumbnailQuality;
+  const rawThumbnailMaxWidth = data?.thumbnailMaxWidth ?? '';
+  const thumbnailMaxWidth = typeof rawThumbnailMaxWidth === 'number'
+    ? rawThumbnailMaxWidth.toString()
+    : rawThumbnailMaxWidth;
+  const rawThumbnailMaxHeight = data?.thumbnailMaxHeight ?? '';
+  const thumbnailMaxHeight = typeof rawThumbnailMaxHeight === 'number'
+    ? rawThumbnailMaxHeight.toString()
+    : rawThumbnailMaxHeight;
+  const rawThumbnailTimeMs = data?.thumbnailTimeMs ?? '0';
+  const thumbnailTimeMs = typeof rawThumbnailTimeMs === 'number'
+    ? rawThumbnailTimeMs.toString()
+    : rawThumbnailTimeMs;
+  const thumbnailBusy = Boolean(data?.thumbnailBusy);
+  const thumbnailResult = data?.thumbnailResult || null;
+  const thumbnailError = data?.thumbnailError || '';
 
   const rawQuality = data?.compressQuality ?? '80';
   const compressQuality = typeof rawQuality === 'number' ? rawQuality.toString() : rawQuality;
@@ -505,6 +584,170 @@ export default function MediaPage() {
               ) : undefined
             }
           />
+        )}
+      </div>
+    );
+  };
+
+  const renderVideoToolsDemo = () => {
+    const formatDuration = (durationMs?: number) => {
+      if (!durationMs || durationMs <= 0) return '--';
+      return `${(durationMs / 1000).toFixed(2)} s`;
+    };
+    const formatBitrate = (bitrate?: number) => {
+      if (!bitrate || bitrate <= 0) return '--';
+      return `${Math.round((bitrate / 1000) * 10) / 10} kbps`;
+    };
+
+    return (
+      <div className="space-y-5">
+        <Button
+          onClick={() => pickVideoForTools?.()}
+          disabled={thumbnailBusy || videoInfoBusy}
+          loading={thumbnailBusy || videoInfoBusy}
+          fullWidth
+        >
+          {thumbnailVideoPath ? 'Pick Another Video' : 'Pick Video'}
+        </Button>
+
+        {thumbnailVideoPath && (
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600 break-all">
+            {thumbnailVideoPath}
+          </div>
+        )}
+
+        {videoInfoError && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+            <span>⚠️</span>
+            <span>{videoInfoError}</span>
+          </div>
+        )}
+
+        {videoInfoResult && (
+          <InfoCard
+            title="Video Information"
+            items={[
+              { label: 'Resolution', value: `${videoInfoResult.width ?? '--'} × ${videoInfoResult.height ?? '--'}` },
+              { label: 'Duration', value: formatDuration(videoInfoResult.durationMs) },
+              { label: 'Rotation', value: videoInfoResult.rotation ?? '--' },
+              { label: 'Bitrate', value: formatBitrate(videoInfoResult.bitrate) },
+              { label: 'FPS', value: videoInfoResult.fps ?? '--' },
+              { label: 'Type', value: videoInfoResult.type || '--' },
+              { label: 'Size', value: formatFileSize(videoInfoResult.size || 0) },
+            ]}
+            footer={
+              videoInfoResult.path ? (
+                <div className="space-y-1">
+                  <div className="text-xs font-medium text-gray-700">Path</div>
+                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    {videoInfoResult.path}
+                  </div>
+                </div>
+              ) : undefined
+            }
+          />
+        )}
+
+        {thumbnailSourceInfo && (
+          <InfoCard
+            title="Source Video"
+            items={[
+              { label: 'Resolution', value: `${thumbnailSourceInfo.width ?? '--'} × ${thumbnailSourceInfo.height ?? '--'}` },
+              { label: 'Duration', value: formatDuration(thumbnailSourceInfo.durationMs) },
+              { label: 'Type', value: thumbnailSourceInfo.type || '--' },
+            ]}
+          />
+        )}
+
+        <div className="text-xs text-gray-600 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2">
+          <div>Quality: 0-100</div>
+          <div>Time (ms): 0 means first frame</div>
+          <div>Max Width / Max Height unit: px</div>
+          <div>Leave Max Width/Height empty to keep original size</div>
+          <div>Thumbnail is scaled proportionally, not cropped</div>
+          <div>If Max Width/Height exceeds source, it is clamped automatically</div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            type="number"
+            label="Quality"
+            value={thumbnailQuality}
+            onChange={(e) => onThumbnailQualityInput?.({ detail: { value: e.target.value } })}
+            placeholder="80"
+            min={0}
+            max={100}
+          />
+          <Input
+            type="text"
+            label="Time (ms)"
+            value={thumbnailTimeMs}
+            onChange={(e) => onThumbnailTimeInput?.({ detail: { value: e.target.value } })}
+            placeholder="0"
+          />
+          <Input
+            type="text"
+            label="Max Width (px)"
+            value={thumbnailMaxWidth}
+            onChange={(e) => onThumbnailMaxWidthInput?.({ detail: { value: e.target.value } })}
+            placeholder={thumbnailSourceInfo?.width ? `e.g. ${thumbnailSourceInfo.width}` : 'leave empty'}
+          />
+          <Input
+            type="text"
+            label="Max Height (px)"
+            value={thumbnailMaxHeight}
+            onChange={(e) => onThumbnailMaxHeightInput?.({ detail: { value: e.target.value } })}
+            placeholder={thumbnailSourceInfo?.height ? `e.g. ${thumbnailSourceInfo.height}` : 'leave empty'}
+          />
+        </div>
+
+        <Button
+          onClick={() => createVideoThumbnail?.()}
+          disabled={thumbnailBusy}
+          loading={thumbnailBusy}
+          fullWidth
+        >
+          {thumbnailBusy ? 'Generating…' : 'Generate Thumbnail'}
+        </Button>
+
+        {thumbnailError && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+            <span>⚠️</span>
+            <span>{thumbnailError}</span>
+          </div>
+        )}
+
+        {thumbnailResult?.tempFilePath && (
+          <div className="space-y-4">
+            <InfoCard
+              title="Thumbnail Result"
+              items={[
+                { label: 'Width', value: `${thumbnailResult.width ?? '--'} px` },
+                { label: 'Height', value: `${thumbnailResult.height ?? '--'} px` },
+                { label: 'Type', value: thumbnailResult.type || '--' },
+              ]}
+              footer={
+                <div className="space-y-2">
+                  <img
+                    src={thumbnailResult.tempFilePath}
+                    alt="thumbnail"
+                    className="w-full rounded-lg border border-gray-200 bg-black/5"
+                  />
+                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    {thumbnailResult.tempFilePath}
+                  </div>
+                </div>
+              }
+            />
+
+            <Button
+              onClick={() => previewVideoThumbnail?.()}
+              variant="primary"
+              fullWidth
+            >
+              Preview Thumbnail
+            </Button>
+          </div>
         )}
       </div>
     );
@@ -708,7 +951,7 @@ export default function MediaPage() {
 
   const settingRows = isScanMode
     ? []  // Handled separately in renderScanCodeDemo
-    : (isImageInfoMode || isSaveToAlbumMode)
+    : (isImageInfoMode || isVideoToolsMode || isSaveToAlbumMode)
       ? []
       : isPictureMode
         ? [
@@ -734,6 +977,13 @@ export default function MediaPage() {
         title: 'lx.getImageInfo / lx.compressImage',
         subtitle: 'Image Tools',
         description: 'Get image info and create compressed copy',
+      };
+    }
+    if (isVideoToolsMode) {
+      return {
+        title: 'Video Tools',
+        subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail',
+        description: 'Pick a video, inspect metadata, then generate thumbnail',
       };
     }
     if (isSaveToAlbumMode) {
@@ -778,6 +1028,8 @@ export default function MediaPage() {
             <Card>
               {isImageInfoMode ? (
                 renderImageInfoDemo()
+              ) : isVideoToolsMode ? (
+                renderVideoToolsDemo()
               ) : isSaveToAlbumMode ? (
                 renderSaveToAlbumDemo()
               ) : (
