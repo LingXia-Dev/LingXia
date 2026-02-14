@@ -25,6 +25,97 @@ export interface CompressImageResult {
   tempFilePath: string;
 }
 
+export interface GetVideoInfoOptions {
+  /**
+   * Video file path or `lx://` URI.
+   */
+  path: string;
+}
+
+export interface VideoInfo {
+  /**
+   * Encoded display width in pixels.
+   */
+  width: number;
+  /**
+   * Encoded display height in pixels.
+   */
+  height: number;
+  /**
+   * Video duration in milliseconds.
+   */
+  durationMs: number;
+  /**
+   * Clockwise rotation in degrees (usually `0 | 90 | 180 | 270`).
+   */
+  rotation?: number;
+  /**
+   * Average bitrate in bits per second (bps).
+   */
+  bitrate?: number;
+  /**
+   * Frame rate in frames per second (fps).
+   */
+  fps?: number;
+  /**
+   * MIME type, e.g. `video/mp4`.
+   */
+  type?: string;
+  /**
+   * Resolved path used by runtime (typically `lx://...`).
+   */
+  path: string;
+}
+
+export interface ExtractVideoThumbnailOptions {
+  /**
+   * Source video path or `lx://` URI.
+   */
+  path: string;
+  /**
+   * Optional output image path. If omitted, runtime chooses a temporary path.
+   */
+  outputPath?: string;
+  /**
+   * Max output width in pixels.
+   * Optional; when set with/without `maxHeight`, output keeps aspect ratio (no cropping).
+   */
+  maxWidth?: number;
+  /**
+   * Max output height in pixels.
+   * Optional; when set with/without `maxWidth`, output keeps aspect ratio (no cropping).
+   */
+  maxHeight?: number;
+  /**
+   * Target frame time in milliseconds from video start.
+   * `0` means first frame.
+   */
+  timeMs?: number;
+  /**
+   * JPEG quality in range `0-100`.
+   */
+  quality?: number;
+}
+
+export interface ExtractVideoThumbnailResult {
+  /**
+   * Generated thumbnail file path.
+   */
+  tempFilePath: string;
+  /**
+   * Output image width in pixels.
+   */
+  width: number;
+  /**
+   * Output image height in pixels.
+   */
+  height: number;
+  /**
+   * Output MIME type, usually `image/jpeg`.
+   */
+  type: string;
+}
+
 export interface ChooseMediaOptions {
   count?: number;
   mediaType?: ('image' | 'video')[];

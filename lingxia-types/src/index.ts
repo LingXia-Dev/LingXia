@@ -67,6 +67,10 @@ import type {
   ImageInfo,
   CompressImageOptions,
   CompressImageResult,
+  GetVideoInfoOptions,
+  VideoInfo,
+  ExtractVideoThumbnailOptions,
+  ExtractVideoThumbnailResult,
   ChooseMediaOptions,
   ChosenMediaEntry,
   PreviewMediaOptions,
@@ -137,6 +141,8 @@ export interface Lx {
 
   getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
   compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
+  getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
+  extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
 
   chooseMedia(options?: ChooseMediaOptions): Promise<ChosenMediaEntry[]>;
 
