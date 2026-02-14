@@ -2,6 +2,8 @@ package com.lingxia.lxapp.APIs
 
 import android.content.ContentResolver
 import android.content.ContentValues
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -18,6 +20,7 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
 
@@ -190,6 +193,178 @@ internal object LxAppMedia {
         }
     }
 
+    @JvmStatic
+    fun getVideoInfo(uri: String): String {
+        val sourceFile = resolveLocalFile(uri) ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Only local file paths are supported")
+        }.toString()
+        if (!sourceFile.exists()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "Source file does not exist")
+            }.toString()
+        }
+
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(sourceFile.absolutePath)
+
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull() ?: 0
+            val height =
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    ?.toIntOrNull() ?: 0
+            val durationMs =
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull() ?: 0L
+            val rotation =
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    ?.toIntOrNull()
+            val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                ?.toLongOrNull()
+            val fps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)
+                    ?.toDoubleOrNull()
+            } else {
+                null
+            }
+            val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                ?: inferVideoMimeType(sourceFile)
+
+            JSONObject().apply {
+                put("success", true)
+                put("width", width)
+                put("height", height)
+                put("durationMs", durationMs)
+                if (rotation != null) put("rotation", rotation)
+                if (bitrate != null) put("bitrate", bitrate)
+                if (fps != null) put("fps", fps)
+                put("mimeType", mimeType)
+            }.toString()
+        } catch (e: Exception) {
+            JSONObject().apply {
+                put("success", false)
+                put("error", e.message ?: "getVideoInfo failed")
+            }.toString()
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    @JvmStatic
+    fun extractVideoThumbnail(
+        uri: String,
+        outputPath: String,
+        quality: Int,
+        targetWidth: Int,
+        targetHeight: Int,
+        timeMs: Long
+    ): String {
+        val sourceFile = resolveLocalFile(uri) ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Only local file paths are supported")
+        }.toString()
+        if (!sourceFile.exists()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "Source file does not exist")
+            }.toString()
+        }
+        if (outputPath.isBlank()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "outputPath is empty")
+            }.toString()
+        }
+
+        val outputFile = File(outputPath)
+        outputFile.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs()) {
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", "Failed to create output directory")
+                }.toString()
+            }
+        }
+
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(sourceFile.absolutePath)
+            val frameTimeUs = if (timeMs >= 0) timeMs * 1000L else 0L
+            var bitmap: Bitmap? = retriever.getFrameAtTime(
+                frameTimeUs,
+                MediaMetadataRetriever.OPTION_CLOSEST
+            )
+            if (bitmap == null) {
+                bitmap = retriever.getFrameAtTime(
+                    frameTimeUs,
+                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+                )
+            }
+
+            if (bitmap == null) {
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", "Failed to decode video frame")
+                }.toString()
+            }
+
+            val maxWidth = targetWidth.takeIf { it > 0 }
+            val maxHeight = targetHeight.takeIf { it > 0 }
+            if (maxWidth != null || maxHeight != null) {
+                val (resizedWidth, resizedHeight) = calculateTargetSize(
+                    bitmap.width,
+                    bitmap.height,
+                    maxWidth,
+                    maxHeight
+                )
+                if (resizedWidth != bitmap.width || resizedHeight != bitmap.height) {
+                    bitmap = Bitmap.createScaledBitmap(bitmap, resizedWidth, resizedHeight, true)
+                }
+            }
+
+            val normalizedQuality = quality.coerceIn(0, 100)
+            FileOutputStream(outputFile).use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, normalizedQuality, output)) {
+                    outputFile.delete()
+                    return JSONObject().apply {
+                        put("success", false)
+                        put("error", "Failed to encode JPEG")
+                    }.toString()
+                }
+            }
+
+            JSONObject().apply {
+                put("success", true)
+                put("path", outputFile.absolutePath)
+                put("width", bitmap.width)
+                put("height", bitmap.height)
+                put("mimeType", "image/jpeg")
+            }.toString()
+        } catch (oom: OutOfMemoryError) {
+            outputFile.delete()
+            JSONObject().apply {
+                put("success", false)
+                put("error", "Out of memory during thumbnail generation")
+            }.toString()
+        } catch (e: Exception) {
+            outputFile.delete()
+            JSONObject().apply {
+                put("success", false)
+                put("error", e.message ?: "extractVideoThumbnail failed")
+            }.toString()
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     private fun resolveLocalFile(uri: String): File? {
         return when {
             uri.startsWith("file://", ignoreCase = true) -> {
@@ -203,6 +378,68 @@ internal object LxAppMedia {
 
     private fun errorResult(message: String): String {
         return "__ERROR__:$message"
+    }
+
+    private fun inferVideoMimeType(file: File): String {
+        return when (file.extension.lowercase()) {
+            "mp4", "m4v" -> "video/mp4"
+            "mov" -> "video/quicktime"
+            "webm" -> "video/webm"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "3gp", "3gpp" -> "video/3gpp"
+            else -> ""
+        }
+    }
+
+    private fun calculateTargetSize(
+        originalWidth: Int,
+        originalHeight: Int,
+        maxWidth: Int?,
+        maxHeight: Int?
+    ): Pair<Int, Int> {
+        if (originalWidth <= 0 || originalHeight <= 0) {
+            return Pair(0, 0)
+        }
+
+        return when {
+            maxWidth != null && maxHeight != null -> {
+                val widthRatio = maxWidth.toDouble() / originalWidth.toDouble()
+                val heightRatio = maxHeight.toDouble() / originalHeight.toDouble()
+                val ratio = minOf(widthRatio, heightRatio)
+                if (ratio < 1.0) {
+                    Pair(
+                        (originalWidth * ratio).toInt().coerceAtLeast(1),
+                        (originalHeight * ratio).toInt().coerceAtLeast(1)
+                    )
+                } else {
+                    Pair(originalWidth, originalHeight)
+                }
+            }
+            maxWidth != null -> {
+                if (maxWidth < originalWidth) {
+                    val ratio = maxWidth.toDouble() / originalWidth.toDouble()
+                    Pair(
+                        maxWidth,
+                        (originalHeight * ratio).toInt().coerceAtLeast(1)
+                    )
+                } else {
+                    Pair(originalWidth, originalHeight)
+                }
+            }
+            maxHeight != null -> {
+                if (maxHeight < originalHeight) {
+                    val ratio = maxHeight.toDouble() / originalHeight.toDouble()
+                    Pair(
+                        (originalWidth * ratio).toInt().coerceAtLeast(1),
+                        maxHeight
+                    )
+                } else {
+                    Pair(originalWidth, originalHeight)
+                }
+            }
+            else -> Pair(originalWidth, originalHeight)
+        }
     }
 
 

@@ -4,7 +4,10 @@ use crate::traits::media_interaction::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
     ScanCodeRequest, ScanType,
 };
-use crate::traits::media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
+use crate::traits::media_runtime::{
+    CompressImageRequest, ExtractVideoThumbnailRequest, ImageInfo, MediaRuntime, VideoInfo,
+    VideoThumbnail,
+};
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jint, jlong};
@@ -301,6 +304,19 @@ impl MediaRuntime for Platform {
         compress_image_impl(request)
             .map_err(|e| PlatformError::Platform(format!("compress_image failed: {}", e)))
     }
+
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+        get_video_info_impl(uri)
+            .map_err(|e| PlatformError::Platform(format!("get_video_info failed: {}", e)))
+    }
+
+    fn extract_video_thumbnail(
+        &self,
+        request: &ExtractVideoThumbnailRequest,
+    ) -> Result<VideoThumbnail, PlatformError> {
+        extract_video_thumbnail_impl(request)
+            .map_err(|e| PlatformError::Platform(format!("extract_video_thumbnail failed: {}", e)))
+    }
 }
 
 fn copy_album_media_to_file_impl(
@@ -395,6 +411,97 @@ fn compress_image_impl(
     Ok(PathBuf::from(path))
 }
 
+fn get_video_info_impl(uri: &str) -> Result<VideoInfo, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+    let j_uri = env.new_string(uri)?;
+    let result = env.call_static_method(
+        media_class,
+        "getVideoInfo",
+        "(Ljava/lang/String;)Ljava/lang/String;",
+        &[(&j_uri).into()],
+    )?;
+    let json_obj = result.l()?;
+    if json_obj.is_null() {
+        return Err("getVideoInfo returned null".into());
+    }
+    let java_str = JString::from(json_obj);
+    let json_str: String = env.get_string(&java_str)?.into();
+    let parsed: AndroidVideoInfoResponse = serde_json::from_str(&json_str)?;
+    if !parsed.success {
+        return Err(parsed
+            .error
+            .unwrap_or_else(|| "getVideoInfo failed".to_string())
+            .into());
+    }
+    Ok(VideoInfo {
+        width: parsed.width.unwrap_or(0),
+        height: parsed.height.unwrap_or(0),
+        duration_ms: parsed.duration_ms.unwrap_or(0),
+        rotation: parsed.rotation,
+        bitrate: parsed.bitrate,
+        fps: parsed.fps.map(|v| v as f32),
+        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+    })
+}
+
+fn extract_video_thumbnail_impl(
+    request: &ExtractVideoThumbnailRequest,
+) -> Result<VideoThumbnail, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+
+    let j_uri = env.new_string(&request.source_uri)?;
+    let output_path = request.output_path.to_string_lossy();
+    let j_output_path = env.new_string(output_path.as_ref())?;
+    let quality = i32::from(request.quality);
+    let width = request.max_width.unwrap_or(0) as i32;
+    let height = request.max_height.unwrap_or(0) as i32;
+    let time_ms = request.time_ms.map(|v| v as i64).unwrap_or(-1);
+
+    let result = env.call_static_method(
+        media_class,
+        "extractVideoThumbnail",
+        "(Ljava/lang/String;Ljava/lang/String;IIIJ)Ljava/lang/String;",
+        &[
+            (&j_uri).into(),
+            (&j_output_path).into(),
+            JValue::Int(quality),
+            JValue::Int(width),
+            JValue::Int(height),
+            JValue::Long(time_ms),
+        ],
+    )?;
+    let json_obj = result.l()?;
+    if json_obj.is_null() {
+        return Err("extractVideoThumbnail returned null".into());
+    }
+    let java_str = JString::from(json_obj);
+    let json_str: String = env.get_string(&java_str)?.into();
+    let parsed: AndroidVideoThumbnailResponse = serde_json::from_str(&json_str)?;
+    if !parsed.success {
+        return Err(parsed
+            .error
+            .unwrap_or_else(|| "extractVideoThumbnail failed".to_string())
+            .into());
+    }
+
+    let path = parsed.path.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "extractVideoThumbnail missing output path",
+        )
+    })?;
+    Ok(VideoThumbnail {
+        path: PathBuf::from(path),
+        width: parsed.width.unwrap_or(0),
+        height: parsed.height.unwrap_or(0),
+        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+    })
+}
+
 #[derive(Deserialize)]
 struct AndroidImageInfoResponse {
     success: bool,
@@ -402,6 +509,32 @@ struct AndroidImageInfoResponse {
     #[serde(rename = "width")]
     width: Option<u32>,
     #[serde(rename = "height")]
+    height: Option<u32>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AndroidVideoInfoResponse {
+    success: bool,
+    error: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    rotation: Option<u16>,
+    bitrate: Option<u64>,
+    fps: Option<f64>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AndroidVideoThumbnailResponse {
+    success: bool,
+    error: Option<String>,
+    path: Option<String>,
+    width: Option<u32>,
     height: Option<u32>,
     #[serde(rename = "mimeType")]
     mime_type: Option<String>,

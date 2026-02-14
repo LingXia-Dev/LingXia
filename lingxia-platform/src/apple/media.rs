@@ -7,7 +7,10 @@ use crate::traits::media_interaction::{
     ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
     ScanCodeRequest,
 };
-use crate::traits::media_runtime::{CompressImageRequest, ImageInfo, MediaRuntime};
+use crate::traits::media_runtime::{
+    CompressImageRequest, ExtractVideoThumbnailRequest, ImageInfo, MediaRuntime, VideoInfo,
+    VideoThumbnail,
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -238,6 +241,77 @@ impl MediaRuntime for Platform {
         #[cfg(target_os = "macos")]
         {
             crate::desktop::image::compress_image_desktop(request)
+        }
+    }
+
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            let info = super::ffi::get_video_info(uri);
+            if !info.success {
+                return Err(PlatformError::Platform(if info.error.is_empty() {
+                    "get_video_info failed".to_string()
+                } else {
+                    info.error
+                }));
+            }
+            Ok(VideoInfo {
+                width: info.width,
+                height: info.height,
+                duration_ms: info.duration_ms,
+                rotation: if info.has_rotation && info.rotation >= 0 {
+                    Some(info.rotation as u16)
+                } else {
+                    None
+                },
+                bitrate: if info.has_bitrate {
+                    Some(info.bitrate)
+                } else {
+                    None
+                },
+                fps: if info.has_fps { Some(info.fps) } else { None },
+                mime_type: if info.mime_type.is_empty() {
+                    None
+                } else {
+                    Some(info.mime_type)
+                },
+            })
+        }
+    }
+
+    fn extract_video_thumbnail(
+        &self,
+        request: &ExtractVideoThumbnailRequest,
+    ) -> Result<VideoThumbnail, PlatformError> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            let output_path = request.output_path.to_string_lossy();
+            let result = super::ffi::extract_video_thumbnail(
+                &request.source_uri,
+                request.quality as i32,
+                request.max_width.unwrap_or(0) as i32,
+                request.max_height.unwrap_or(0) as i32,
+                request.time_ms.map(|v| v as i64).unwrap_or(-1),
+                output_path.as_ref(),
+            );
+            if !result.success || result.path.is_empty() {
+                return Err(PlatformError::Platform(if result.error.is_empty() {
+                    "extract_video_thumbnail failed".to_string()
+                } else {
+                    result.error
+                }));
+            }
+
+            Ok(VideoThumbnail {
+                path: PathBuf::from(result.path),
+                width: result.width,
+                height: result.height,
+                mime_type: if result.mime_type.is_empty() {
+                    None
+                } else {
+                    Some(result.mime_type)
+                },
+            })
         }
     }
 }

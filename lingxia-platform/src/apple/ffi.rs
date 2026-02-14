@@ -76,6 +76,32 @@ mod bridge {
         pub path: String,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct SwiftVideoInfoResult {
+        pub success: bool,
+        pub error: String,
+        pub width: u32,
+        pub height: u32,
+        pub duration_ms: u64,
+        pub rotation: i32,
+        pub has_rotation: bool,
+        pub bitrate: u64,
+        pub has_bitrate: bool,
+        pub fps: f32,
+        pub has_fps: bool,
+        pub mime_type: String,
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct SwiftVideoThumbnailResult {
+        pub success: bool,
+        pub error: String,
+        pub path: String,
+        pub width: u32,
+        pub height: u32,
+        pub mime_type: String,
+    }
+
     extern "Swift" {
         // LxApp navigation functions
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
@@ -164,6 +190,19 @@ mod bridge {
             output_path: &str,
         ) -> SwiftCompressImageResult;
 
+        #[swift_bridge(swift_name = "LxAppMedia.getVideoInfo")]
+        fn get_video_info(uri: &str) -> SwiftVideoInfoResult;
+
+        #[swift_bridge(swift_name = "LxAppMedia.extractVideoThumbnail")]
+        fn extract_video_thumbnail(
+            source_uri: &str,
+            quality: i32,
+            target_width: i32,
+            target_height: i32,
+            time_ms: i64,
+            output_path: &str,
+        ) -> SwiftVideoThumbnailResult;
+
         // Video player control (native component-backed)
         // Note: UI manages component lifecycle; Rust only dispatches commands.
         #[swift_bridge(swift_name = "LxAppVideo.setVideoPlayerCallback")]
@@ -240,12 +279,12 @@ pub use bridge::{
     preview_media, show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui,
     update_tabbar_ui,
 };
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{
     compress_image, configure_stream_audio, configure_stream_video, copy_album_media_to_file,
-    create_stream_decoder, get_capsule_rect, get_image_info, push_stream_audio, push_stream_video,
-    scan_code, stop_stream_decoder,
+    create_stream_decoder, extract_video_thumbnail, get_capsule_rect, get_image_info,
+    get_video_info, push_stream_audio, push_stream_video, scan_code, stop_stream_decoder,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
