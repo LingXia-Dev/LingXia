@@ -178,7 +178,7 @@ class NativeBridge private constructor(
 
     fun markPageDestroyed() {
         refreshPageKeyIfNeeded()
-        componentManager?.handle(mapOf("action" to "page.lifecycle", "state" to "destroyed", "pageId" to pageKey))
+        // WebView is being torn down; release everything once to avoid duplicate destroy paths.
         componentManager?.teardownAll()
         
         // Clean up pre-draw listener

@@ -81,7 +81,6 @@ class VideoComponent(
     }
 
     override fun unmount() {
-        player?.pause()
         player?.exitFullscreen()
         player?.detach()
         player = null

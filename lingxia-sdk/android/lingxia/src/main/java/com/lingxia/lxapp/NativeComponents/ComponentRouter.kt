@@ -153,6 +153,9 @@ object ComponentRouter {
     }
 
     fun unregister(componentId: String) {
+        // Defensive cleanup for teardown races: ensure decoder/session and pending frames are released
+        // even if callers skipped an explicit stop call.
+        stopStreamDecoder(componentId)
         managers.remove(componentId)
         cachedVideoConfigJson.remove(componentId)
         cachedAudioConfigJson.remove(componentId)

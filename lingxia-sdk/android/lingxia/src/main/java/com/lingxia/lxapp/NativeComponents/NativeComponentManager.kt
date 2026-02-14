@@ -45,6 +45,8 @@ class NativeComponentManager(
     // Pre-allocated screen rects to avoid GC during scroll
     private val componentScreenRects = mutableMapOf<String, RectF>()
     private val pageComponents = mutableMapOf<String, MutableSet<String>>()
+    // Monotonic generation per component id. Used to drop stale async events from old instances.
+    private val componentEpochs = mutableMapOf<String, Long>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
 
     private val webOverlayCoverageRestore: MutableMap<String, Int> = mutableMapOf()
@@ -114,7 +116,14 @@ class NativeComponentManager(
         // Calculate initial screen position
         val screenRect = contentRectToScreenRect(contentRect)
 
-        val component = factory.make(id, props) { sendEventToWeb(id, it) }
+        val epoch = (componentEpochs[id] ?: 0L) + 1L
+        componentEpochs[id] = epoch
+        val component = factory.make(id, props) { event ->
+            // Guard against stale events from a previously unmounted instance that shared the same id.
+            if (componentEpochs[id] != epoch) return@make
+            if (!components.containsKey(id)) return@make
+            sendEventToWeb(id, event)
+        }
 
         components[id] = component
         componentPage[id] = pageId
@@ -485,25 +494,30 @@ class NativeComponentManager(
 
     private fun unmountComponent(id: String, pageId: String?) {
         webOverlayCoverageRestore.remove(id)
-        // If a stream decoder session exists, stop it when the component is unmounted.
-        // Otherwise we can end up with orphaned AudioTrack playback (audio-only) and a decoder
-        // still bound to an old/detached TextureView after React remounts the component.
-        ComponentRouter.stopStreamDecoder(id)
-        componentCallbacks.remove(id)?.let { callbackId ->
+        // Unregister first to block any queued JNI command from being routed back into a component
+        // that is in the middle of teardown.
+        ComponentRouter.unregister(id)
+        val callbackId = componentCallbacks.remove(id)
+        clearRectSyncRetry(id)
+        components.remove(id)?.let { component ->
+            try {
+                component.unmount()
+            } catch (e: Exception) {
+                Log.w(logTag, "component unmount failed: $id", e)
+            }
+        }
+        componentContentRects.remove(id)
+        componentScreenRects.remove(id)
+        componentPage.remove(id)
+        pageId?.let { pageComponents[it]?.remove(id) }
+        callbackId?.let {
             val payload = JSONObject()
             payload.put("action", "component.event")
             payload.put("id", id)
             payload.put("componentId", id)
             payload.put("event", "unmount")
             payload.put("detail", JSONObject())
-            NativeApi.onCallback(callbackId, true, payload.toString())
+            NativeApi.onCallback(it, true, payload.toString())
         }
-        clearRectSyncRetry(id)
-        components.remove(id)?.unmount()
-        componentContentRects.remove(id)
-        componentScreenRects.remove(id)
-        componentPage.remove(id)
-        pageId?.let { pageComponents[it]?.remove(id) }
-        ComponentRouter.unregister(id)
     }
 }
