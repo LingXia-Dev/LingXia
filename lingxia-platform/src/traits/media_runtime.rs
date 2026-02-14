@@ -20,6 +20,35 @@ pub struct CompressImageRequest {
     pub output_path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+pub struct VideoInfo {
+    pub width: u32,
+    pub height: u32,
+    pub duration_ms: u64,
+    pub rotation: Option<u16>,
+    pub bitrate: Option<u64>,
+    pub fps: Option<f32>,
+    pub mime_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExtractVideoThumbnailRequest {
+    pub source_uri: String,
+    pub output_path: PathBuf,
+    pub max_width: Option<u32>,
+    pub max_height: Option<u32>,
+    pub time_ms: Option<u64>,
+    pub quality: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct VideoThumbnail {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub mime_type: Option<String>,
+}
+
 pub trait MediaRuntime: Send + Sync + 'static {
     /// Copy a picked/album media asset identified by `uri` into a local file at `dest_path`.
     ///
@@ -43,4 +72,11 @@ pub trait MediaRuntime: Send + Sync + 'static {
     fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError>;
 
     fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError>;
+
+    fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError>;
+
+    fn extract_video_thumbnail(
+        &self,
+        request: &ExtractVideoThumbnailRequest,
+    ) -> Result<VideoThumbnail, PlatformError>;
 }
