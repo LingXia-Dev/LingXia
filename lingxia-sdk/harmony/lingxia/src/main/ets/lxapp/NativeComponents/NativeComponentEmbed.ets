@@ -366,8 +366,27 @@ export class NativeComponentEmbedManager {
    * Cleanup all resources
    */
   teardown(): void {
+    this.pendingUnmountTimers.forEach((timerId) => {
+      clearTimeout(timerId);
+    });
+    this.pendingUnmountTimers.clear();
+
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
+      if (nodeController?.getComponentType() === 'video.native') {
+        LxNativeVideoPlayer.destroyStatic(componentId);
+      }
+      const callbackId = getComponentCallback(componentId);
+      if (callbackId) {
+        const payload = new NativeComponentRecord();
+        payload.set('action', 'component.event');
+        payload.set('id', componentId);
+        payload.set('componentId', componentId);
+        payload.set('event', 'unmount');
+        payload.set('detail', new NativeComponentEmptyDetail());
+        onCallback(callbackId, true, payload.toJSONString());
+        removeComponentCallback(componentId);
+      }
       if (nodeController) {
         nodeController.setBuilderNode(null);
         nodeController.rebuild();
