@@ -7,9 +7,26 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import androidx.annotation.OptIn
 import androidx.appcompat.app.AppCompatActivity
+import androidx.media3.common.Effect
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.Presentation
+import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
+import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.Effects
+import androidx.media3.transformer.ExportException
+import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.TransformationRequest
+import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
 import com.lingxia.lxapp.APIs.media.ImageOps
 import com.lingxia.lxapp.APIs.media.MediaCaptureFragment
 import com.lingxia.lxapp.APIs.media.MediaPickerFragment
@@ -23,9 +40,14 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.Locale
+import kotlin.math.roundToInt
 
 internal object LxAppMedia {
     private const val TAG = "LingXia.LxAppMedia"
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @JvmStatic
     fun previewMedia(items: Array<PreviewMediaPayload>) {
@@ -365,6 +387,212 @@ internal object LxAppMedia {
         }
     }
 
+    @OptIn(UnstableApi::class)
+    @JvmStatic
+    fun compressVideo(
+        uri: String,
+        outputPath: String,
+        quality: String,
+        bitrateKbps: Int,
+        fps: Int,
+        resolution: Float
+    ): String {
+        if (Looper.getMainLooper().thread === Thread.currentThread()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "compressVideo cannot run on main thread")
+            }.toString()
+        }
+
+        val context = LxApp.applicationContext() ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Application context unavailable")
+        }.toString()
+        val sourceFile = resolveLocalFile(uri) ?: return JSONObject().apply {
+            put("success", false)
+            put("error", "Only local file paths are supported")
+        }.toString()
+        if (!sourceFile.exists()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "Source file does not exist")
+            }.toString()
+        }
+        if (outputPath.isBlank()) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "outputPath is empty")
+            }.toString()
+        }
+
+        val outputFile = File(outputPath)
+        val samePath = try {
+            sourceFile.canonicalFile == outputFile.canonicalFile
+        } catch (_: IOException) {
+            sourceFile.absolutePath == outputFile.absolutePath
+        }
+        if (samePath) {
+            return JSONObject().apply {
+                put("success", false)
+                put("error", "outputPath must differ from source file")
+            }.toString()
+        }
+        outputFile.parentFile?.let { parent ->
+            if (!parent.exists() && !parent.mkdirs()) {
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", "Failed to create output directory")
+                }.toString()
+            }
+        }
+        if (outputFile.exists()) {
+            outputFile.delete()
+        }
+
+        val sourceInfo = readSourceVideoMetadata(sourceFile)
+        val normalizedQuality = quality.trim().lowercase(Locale.ROOT)
+        val targetBitrate = selectTargetVideoBitrate(
+            quality = normalizedQuality,
+            bitrateKbps = bitrateKbps,
+            sourceBitrate = sourceInfo?.bitrate
+        )
+        val targetFps = selectTargetFrameRate(fps)
+        val targetResolutionRatio = selectTargetResolutionRatio(
+            quality = normalizedQuality,
+            resolutionRatio = resolution
+        )
+
+        val mediaItem = MediaItem.fromUri(Uri.fromFile(sourceFile))
+        val requestBuilder = TransformationRequest.Builder()
+            .setVideoMimeType(MimeTypes.VIDEO_H264)
+            .setAudioMimeType(MimeTypes.AUDIO_AAC)
+        val videoEffects = buildVideoEffects(sourceInfo, targetResolutionRatio)
+        val editedMediaItemBuilder = EditedMediaItem.Builder(mediaItem)
+        if (targetFps != null) {
+            editedMediaItemBuilder.setFrameRate(targetFps)
+        }
+        if (videoEffects.isNotEmpty()) {
+            editedMediaItemBuilder.setEffects(Effects(emptyList(), videoEffects))
+        }
+        val editedMediaItem = editedMediaItemBuilder.build()
+
+        val latch = CountDownLatch(1)
+        var exportError: String? = null
+        val transformerHolder = arrayOfNulls<Transformer>(1)
+        val request = requestBuilder.build()
+        mainHandler.post {
+            try {
+                val transformerBuilder = Transformer.Builder(context)
+                    .setTransformationRequest(request)
+                if (targetBitrate != null) {
+                    val videoEncoderSettings = VideoEncoderSettings.Builder()
+                        .setBitrate(targetBitrate)
+                        .build()
+                    val encoderFactory = DefaultEncoderFactory.Builder(context)
+                        .setRequestedVideoEncoderSettings(videoEncoderSettings)
+                        .build()
+                    transformerBuilder.setEncoderFactory(encoderFactory)
+                }
+                val transformer = transformerBuilder
+                    .addListener(object : Transformer.Listener {
+                        override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                            latch.countDown()
+                        }
+
+                        override fun onError(
+                            composition: Composition,
+                            exportResult: ExportResult,
+                            exportException: ExportException
+                        ) {
+                            exportError = exportException.message ?: "compressVideo failed"
+                            latch.countDown()
+                        }
+                    })
+                    .build()
+                transformerHolder[0] = transformer
+                transformer.start(editedMediaItem, outputFile.absolutePath)
+            } catch (e: Exception) {
+                exportError = e.message ?: "compressVideo failed"
+                latch.countDown()
+            }
+        }
+
+        return try {
+            val completed = latch.await(180, TimeUnit.SECONDS)
+            if (!completed) {
+                val transformer = transformerHolder[0]
+                if (transformer != null) {
+                    mainHandler.post { transformer.cancel() }
+                }
+                outputFile.delete()
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", "compressVideo timed out")
+                }.toString()
+            }
+            if (exportError != null) {
+                outputFile.delete()
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", exportError)
+                }.toString()
+            }
+
+            val infoJson = getVideoInfo(outputFile.absolutePath)
+            val infoObj = JSONObject(infoJson)
+            if (!infoObj.optBoolean("success", false)) {
+                outputFile.delete()
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", infoObj.optString("error", "Failed to read compressed video info"))
+                }.toString()
+            }
+
+            if (sourceFile.length() > 0 && outputFile.length() >= sourceFile.length()) {
+                if (!replaceOutputWithSource(sourceFile, outputFile)) {
+                    outputFile.delete()
+                    return JSONObject().apply {
+                        put("success", false)
+                        put("error", "Failed to fallback to source video")
+                    }.toString()
+                }
+            }
+
+            val finalInfoJson = getVideoInfo(outputFile.absolutePath)
+            val finalInfoObj = JSONObject(finalInfoJson)
+            if (!finalInfoObj.optBoolean("success", false)) {
+                outputFile.delete()
+                return JSONObject().apply {
+                    put("success", false)
+                    put("error", finalInfoObj.optString("error", "Failed to read compressed video info"))
+                }.toString()
+            }
+            val mimeType = finalInfoObj.optString("mimeType", "").ifBlank {
+                inferVideoMimeType(outputFile)
+            }
+
+            JSONObject().apply {
+                put("success", true)
+                put("path", outputFile.absolutePath)
+                put("width", finalInfoObj.optInt("width", 0))
+                put("height", finalInfoObj.optInt("height", 0))
+                put("durationMs", finalInfoObj.optLong("durationMs", 0L))
+                put("size", outputFile.length())
+                put("mimeType", mimeType)
+            }.toString()
+        } catch (e: Exception) {
+            val transformer = transformerHolder[0]
+            if (transformer != null) {
+                mainHandler.post { transformer.cancel() }
+            }
+            outputFile.delete()
+            JSONObject().apply {
+                put("success", false)
+                put("error", e.message ?: "compressVideo failed")
+            }.toString()
+        }
+    }
+
     private fun resolveLocalFile(uri: String): File? {
         return when {
             uri.startsWith("file://", ignoreCase = true) -> {
@@ -389,6 +617,134 @@ internal object LxAppMedia {
             "avi" -> "video/x-msvideo"
             "3gp", "3gpp" -> "video/3gpp"
             else -> ""
+        }
+    }
+
+    private data class SourceVideoMetadata(
+        val width: Int,
+        val height: Int,
+        val bitrate: Int?
+    )
+
+    private fun readSourceVideoMetadata(file: File): SourceVideoMetadata? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(file.absolutePath)
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                ?.toIntOrNull() ?: 0
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                ?.toIntOrNull() ?: 0
+            if (width <= 0 || height <= 0) {
+                null
+            } else {
+                val bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+                    ?.toIntOrNull()
+                SourceVideoMetadata(width = width, height = height, bitrate = bitrate)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to read source video metadata: ${e.message}")
+            null
+        } finally {
+            try {
+                retriever.release()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun selectTargetVideoBitrate(
+        quality: String,
+        bitrateKbps: Int,
+        sourceBitrate: Int?
+    ): Int? {
+        if (bitrateKbps > 0) {
+            return (bitrateKbps.toLong() * 1000L).coerceIn(300_000L, 20_000_000L).toInt()
+        }
+        if (quality.isEmpty()) {
+            return null
+        }
+
+        val qualityRatio = when (quality) {
+            "low" -> 0.35
+            "high" -> 0.80
+            else -> 0.55
+        }
+        val fallbackBitrate = when (quality) {
+            "low" -> 900_000
+            "high" -> 2_400_000
+            else -> 1_500_000
+        }
+        val estimatedBitrate = if (sourceBitrate != null && sourceBitrate > 0) {
+            (sourceBitrate * qualityRatio).roundToInt()
+        } else {
+            fallbackBitrate
+        }
+        return estimatedBitrate.coerceIn(300_000, 20_000_000)
+    }
+
+    private fun selectTargetFrameRate(fps: Int): Int? {
+        if (fps <= 0) {
+            return null
+        }
+        return fps.coerceIn(10, 60)
+    }
+
+    private fun selectTargetResolutionRatio(
+        quality: String,
+        resolutionRatio: Float
+    ): Float? {
+        if (resolutionRatio > 0f && resolutionRatio < 1f) {
+            return resolutionRatio.coerceIn(0.10f, 0.99f)
+        }
+        return when (quality) {
+            "low" -> 0.60f
+            "medium" -> 0.80f
+            else -> null
+        }
+    }
+
+    private fun buildVideoEffects(
+        sourceInfo: SourceVideoMetadata?,
+        resolutionRatio: Float?
+    ): List<Effect> {
+        if (sourceInfo == null || resolutionRatio == null) {
+            return emptyList()
+        }
+        val targetWidth = toEven((sourceInfo.width * resolutionRatio).roundToInt())
+        val targetHeight = toEven((sourceInfo.height * resolutionRatio).roundToInt())
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            return emptyList()
+        }
+        if (targetWidth >= sourceInfo.width && targetHeight >= sourceInfo.height) {
+            return emptyList()
+        }
+        val presentation = Presentation.createForWidthAndHeight(
+            targetWidth,
+            targetHeight,
+            Presentation.LAYOUT_SCALE_TO_FIT
+        )
+        return listOf(presentation)
+    }
+
+    private fun toEven(value: Int): Int {
+        val clamped = value.coerceAtLeast(2)
+        return if (clamped % 2 == 0) clamped else clamped - 1
+    }
+
+    private fun replaceOutputWithSource(sourceFile: File, outputFile: File): Boolean {
+        return try {
+            if (outputFile.exists() && !outputFile.delete()) {
+                return false
+            }
+            sourceFile.inputStream().use { input ->
+                outputFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            true
+        } catch (e: IOException) {
+            Log.e(TAG, "Failed to fallback to source video: ${e.message}", e)
+            false
         }
     }
 

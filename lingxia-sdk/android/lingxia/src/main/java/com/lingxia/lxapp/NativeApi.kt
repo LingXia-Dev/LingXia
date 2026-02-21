@@ -20,11 +20,11 @@ object NativeApi {
     fun ensureLoaded(): Boolean {
         if (libraryLoaded.get()) return true
         if (loadAttempted.compareAndSet(false, true)) {
-            runCatching {
+            try {
                 System.loadLibrary("lingxia")
                 libraryLoaded.set(true)
                 Log.d(TAG, "Native library 'lingxia' loaded")
-            }.onFailure { error ->
+            } catch (error: Throwable) {
                 Log.e(TAG, "Failed to load native library 'lingxia'", error)
             }
         }

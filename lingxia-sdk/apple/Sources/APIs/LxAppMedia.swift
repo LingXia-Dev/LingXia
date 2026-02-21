@@ -222,6 +222,192 @@ extension LxAppMedia {
         )
     }
 
+    nonisolated static func compressVideo(
+        source_uri: RustStr,
+        quality: RustStr,
+        bitrate_kbps: UInt32,
+        fps: UInt32,
+        resolution_ratio: Float,
+        output_path: RustStr
+    ) -> SwiftCompressVideoResult {
+        let source = source_uri.toString()
+        let qualityValue = quality.toString().lowercased()
+        let outputPath = output_path.toString()
+
+        guard !source.isEmpty else {
+            return compressVideoFailure("source_uri is empty")
+        }
+        guard !outputPath.isEmpty else {
+            return compressVideoFailure("output_path is empty")
+        }
+        guard let sourceURL = normalizeURL(from: source), sourceURL.isFileURL else {
+            return compressVideoFailure("Invalid source URI")
+        }
+
+        let destinationURL = URL(fileURLWithPath: outputPath)
+        if sourceURL.standardizedFileURL.path == destinationURL.standardizedFileURL.path {
+            return compressVideoFailure("output_path must differ from source file")
+        }
+        do {
+            let parentDir = destinationURL.deletingLastPathComponent()
+            if !parentDir.path.isEmpty {
+                try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+        } catch {
+            return compressVideoFailure("Failed to prepare output path: \(error.localizedDescription)")
+        }
+
+        let asset = AVURLAsset(url: sourceURL)
+        let preset = selectExportPreset(
+            asset: asset,
+            quality: qualityValue,
+            bitrateKbps: Int(bitrate_kbps),
+            fps: Int(fps),
+            resolutionRatio: Double(resolution_ratio)
+        )
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
+            return compressVideoFailure("Failed to create AVAssetExportSession")
+        }
+
+        session.outputURL = destinationURL
+        let supportedTypes = session.supportedFileTypes
+        if supportedTypes.contains(.mp4) {
+            session.outputFileType = .mp4
+        } else if let first = supportedTypes.first {
+            session.outputFileType = first
+        } else {
+            return compressVideoFailure("No supported output type")
+        }
+        session.shouldOptimizeForNetworkUse = true
+        let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
+            .uint64Value ?? 0
+
+        let semaphore = DispatchSemaphore(value: 0)
+        session.exportAsynchronously {
+            semaphore.signal()
+        }
+        let waitResult = semaphore.wait(timeout: .now() + 180)
+        if waitResult == .timedOut {
+            session.cancelExport()
+            _ = try? FileManager.default.removeItem(at: destinationURL)
+            return compressVideoFailure("compressVideo timed out")
+        }
+
+        guard session.status == .completed else {
+            let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
+            _ = try? FileManager.default.removeItem(at: destinationURL)
+            return compressVideoFailure(msg)
+        }
+
+        var finalMimeType = mimeTypeFromExportFileType(session.outputFileType)
+        var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+            .uint64Value ?? 0
+        if sourceFileSize > 0, outputFileSize >= sourceFileSize {
+            do {
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
+                }
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                    .uint64Value ?? sourceFileSize
+                finalMimeType = mimeTypeFromExtension(sourceURL.pathExtension.lowercased())
+            } catch {
+                _ = try? FileManager.default.removeItem(at: destinationURL)
+                return compressVideoFailure("Failed to fallback to source video: \(error.localizedDescription)")
+            }
+        }
+        if finalMimeType.isEmpty {
+            finalMimeType = mimeTypeFromExtension(destinationURL.pathExtension.lowercased())
+        }
+
+        let outputAsset = AVURLAsset(url: destinationURL)
+        let track = outputAsset.tracks(withMediaType: .video).first
+        let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
+        let width = UInt32(clamping: Int(abs((transformedSize?.width ?? 0).rounded())))
+        let height = UInt32(clamping: Int(abs((transformedSize?.height ?? 0).rounded())))
+        let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
+        let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
+            ? UInt64((durationSeconds * 1000.0).rounded())
+            : 0
+
+        return SwiftCompressVideoResult(
+            success: true,
+            error: RustString(""),
+            path: RustString(destinationURL.path),
+            width: width,
+            height: height,
+            duration_ms: durationMs,
+            size: outputFileSize,
+            mime_type: RustString(finalMimeType)
+        )
+    }
+
+    nonisolated private static func selectExportPreset(
+        asset: AVURLAsset,
+        quality: String,
+        bitrateKbps: Int,
+        fps: Int,
+        resolutionRatio: Double
+    ) -> String {
+        let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        let preferred: String
+
+        if !quality.isEmpty {
+            switch quality {
+            case "low":
+                preferred = AVAssetExportPreset640x480
+            case "high":
+                preferred = AVAssetExportPresetHighestQuality
+            default:
+                preferred = AVAssetExportPresetMediumQuality
+            }
+        } else {
+            if resolutionRatio > 0 {
+                if resolutionRatio <= 0.4 {
+                    preferred = AVAssetExportPreset640x480
+                } else if resolutionRatio <= 0.75 {
+                    preferred = AVAssetExportPresetMediumQuality
+                } else {
+                    preferred = AVAssetExportPresetHighestQuality
+                }
+            } else if bitrateKbps > 0 {
+                preferred = bitrateKbps <= 900 ? AVAssetExportPreset640x480 : AVAssetExportPresetMediumQuality
+            } else if fps > 0 && fps < 24 {
+                preferred = AVAssetExportPresetMediumQuality
+            } else {
+                preferred = AVAssetExportPresetHighestQuality
+            }
+        }
+
+        if compatible.contains(preferred) {
+            return preferred
+        }
+        if compatible.contains(AVAssetExportPresetMediumQuality) {
+            return AVAssetExportPresetMediumQuality
+        }
+        if compatible.contains(AVAssetExportPresetHighestQuality) {
+            return AVAssetExportPresetHighestQuality
+        }
+        return compatible.first ?? AVAssetExportPresetPassthrough
+    }
+
+    nonisolated private static func compressVideoFailure(_ message: String) -> SwiftCompressVideoResult {
+        SwiftCompressVideoResult(
+            success: false,
+            error: RustString(message),
+            path: RustString(""),
+            width: 0,
+            height: 0,
+            duration_ms: 0,
+            size: 0,
+            mime_type: RustString("")
+        )
+    }
+
     /// Internal compress an image with optional quality, width, and height parameters
     /// - Parameters:
     ///   - sourceURL: URL to the source image file
@@ -380,6 +566,26 @@ extension LxAppMedia {
             }
             return (UTTypeCopyPreferredTagWithClass(uti, kUTTagClassMIMEType)?.takeRetainedValue() as String?) ?? ""
         }
+    }
+
+    nonisolated private static func mimeTypeFromExportFileType(_ fileType: AVFileType?) -> String {
+        guard let fileType = fileType else {
+            return ""
+        }
+        let raw = fileType.rawValue.lowercased()
+        if raw.contains("quicktime") {
+            return "video/quicktime"
+        }
+        if raw.contains("3gpp2") {
+            return "video/3gpp2"
+        }
+        if raw.contains("3gpp") {
+            return "video/3gpp"
+        }
+        if raw.contains("mpeg-4") || raw.contains("m4v") {
+            return "video/mp4"
+        }
+        return ""
     }
 
     nonisolated private static func normalizedRotationDegrees(_ transform: CGAffineTransform) -> Int32? {
@@ -702,6 +908,130 @@ extension LxAppMedia {
         )
     }
 
+    nonisolated static func compressVideo(
+        source_uri: RustStr,
+        quality: RustStr,
+        bitrate_kbps: UInt32,
+        fps: UInt32,
+        resolution_ratio: Float,
+        output_path: RustStr
+    ) -> SwiftCompressVideoResult {
+        let source = source_uri.toString()
+        let qualityValue = quality.toString().lowercased()
+        let outputPath = output_path.toString()
+
+        guard !source.isEmpty else {
+            return compressVideoFailureMac("source_uri is empty")
+        }
+        guard !outputPath.isEmpty else {
+            return compressVideoFailureMac("output_path is empty")
+        }
+        guard let sourceURL = normalizeURLMac(from: source), sourceURL.isFileURL else {
+            return compressVideoFailureMac("Invalid source URI")
+        }
+
+        let destinationURL = URL(fileURLWithPath: outputPath)
+        if sourceURL.standardizedFileURL.path == destinationURL.standardizedFileURL.path {
+            return compressVideoFailureMac("output_path must differ from source file")
+        }
+        do {
+            let parentDir = destinationURL.deletingLastPathComponent()
+            if !parentDir.path.isEmpty {
+                try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
+            }
+        } catch {
+            return compressVideoFailureMac("Failed to prepare output path: \(error.localizedDescription)")
+        }
+
+        let asset = AVURLAsset(url: sourceURL)
+        let preset = selectExportPresetMac(
+            asset: asset,
+            quality: qualityValue,
+            bitrateKbps: Int(bitrate_kbps),
+            fps: Int(fps),
+            resolutionRatio: Double(resolution_ratio)
+        )
+
+        guard let session = AVAssetExportSession(asset: asset, presetName: preset) else {
+            return compressVideoFailureMac("Failed to create AVAssetExportSession")
+        }
+
+        session.outputURL = destinationURL
+        let supportedTypes = session.supportedFileTypes
+        if supportedTypes.contains(.mp4) {
+            session.outputFileType = .mp4
+        } else if let first = supportedTypes.first {
+            session.outputFileType = first
+        } else {
+            return compressVideoFailureMac("No supported output type")
+        }
+        session.shouldOptimizeForNetworkUse = true
+        let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
+            .uint64Value ?? 0
+
+        let semaphore = DispatchSemaphore(value: 0)
+        session.exportAsynchronously {
+            semaphore.signal()
+        }
+        let waitResult = semaphore.wait(timeout: .now() + 180)
+        if waitResult == .timedOut {
+            session.cancelExport()
+            _ = try? FileManager.default.removeItem(at: destinationURL)
+            return compressVideoFailureMac("compressVideo timed out")
+        }
+
+        guard session.status == .completed else {
+            let msg = session.error?.localizedDescription ?? "export failed with status \(session.status.rawValue)"
+            _ = try? FileManager.default.removeItem(at: destinationURL)
+            return compressVideoFailureMac(msg)
+        }
+
+        var finalMimeType = mimeTypeFromExportFileTypeMac(session.outputFileType)
+        var outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+            .uint64Value ?? 0
+        if sourceFileSize > 0, outputFileSize >= sourceFileSize {
+            do {
+                if FileManager.default.fileExists(atPath: destinationURL.path) {
+                    try FileManager.default.removeItem(at: destinationURL)
+                }
+                try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+                outputFileSize = (try? FileManager.default.attributesOfItem(atPath: destinationURL.path)[.size] as? NSNumber)?
+                    .uint64Value ?? sourceFileSize
+                finalMimeType = inferVideoMimeTypeMac(sourceURL.pathExtension.lowercased())
+            } catch {
+                _ = try? FileManager.default.removeItem(at: destinationURL)
+                return compressVideoFailureMac("Failed to fallback to source video: \(error.localizedDescription)")
+            }
+        }
+        if finalMimeType.isEmpty {
+            finalMimeType = inferVideoMimeTypeMac(destinationURL.pathExtension.lowercased())
+        }
+
+        let outputAsset = AVURLAsset(url: destinationURL)
+        let track = outputAsset.tracks(withMediaType: .video).first
+        let transformedSize = track?.naturalSize.applying(track?.preferredTransform ?? .identity)
+        let width = UInt32(clamping: Int(abs((transformedSize?.width ?? 0).rounded())))
+        let height = UInt32(clamping: Int(abs((transformedSize?.height ?? 0).rounded())))
+        let durationSeconds = CMTimeGetSeconds(outputAsset.duration)
+        let durationMs: UInt64 = (durationSeconds.isFinite && durationSeconds >= 0)
+            ? UInt64((durationSeconds * 1000.0).rounded())
+            : 0
+
+        return SwiftCompressVideoResult(
+            success: true,
+            error: RustString(""),
+            path: RustString(destinationURL.path),
+            width: width,
+            height: height,
+            duration_ms: durationMs,
+            size: outputFileSize,
+            mime_type: RustString(finalMimeType)
+        )
+    }
+
     nonisolated private static func normalizeURLMac(from path: String) -> URL? {
         if path.hasPrefix("file://") {
             return URL(string: path)
@@ -729,6 +1059,88 @@ extension LxAppMedia {
         default:
             return ""
         }
+    }
+
+    nonisolated private static func mimeTypeFromExportFileTypeMac(_ fileType: AVFileType?) -> String {
+        guard let fileType = fileType else {
+            return ""
+        }
+        let raw = fileType.rawValue.lowercased()
+        if raw.contains("quicktime") {
+            return "video/quicktime"
+        }
+        if raw.contains("3gpp2") {
+            return "video/3gpp2"
+        }
+        if raw.contains("3gpp") {
+            return "video/3gpp"
+        }
+        if raw.contains("mpeg-4") || raw.contains("m4v") {
+            return "video/mp4"
+        }
+        return ""
+    }
+
+    nonisolated private static func selectExportPresetMac(
+        asset: AVURLAsset,
+        quality: String,
+        bitrateKbps: Int,
+        fps: Int,
+        resolutionRatio: Double
+    ) -> String {
+        let compatible = AVAssetExportSession.exportPresets(compatibleWith: asset)
+        let preferred: String
+
+        if !quality.isEmpty {
+            switch quality {
+            case "low":
+                preferred = AVAssetExportPreset640x480
+            case "high":
+                preferred = AVAssetExportPresetHighestQuality
+            default:
+                preferred = AVAssetExportPresetMediumQuality
+            }
+        } else {
+            if resolutionRatio > 0 {
+                if resolutionRatio <= 0.4 {
+                    preferred = AVAssetExportPreset640x480
+                } else if resolutionRatio <= 0.75 {
+                    preferred = AVAssetExportPresetMediumQuality
+                } else {
+                    preferred = AVAssetExportPresetHighestQuality
+                }
+            } else if bitrateKbps > 0 {
+                preferred = bitrateKbps <= 900 ? AVAssetExportPreset640x480 : AVAssetExportPresetMediumQuality
+            } else if fps > 0 && fps < 24 {
+                preferred = AVAssetExportPresetMediumQuality
+            } else {
+                preferred = AVAssetExportPresetHighestQuality
+            }
+        }
+
+        if compatible.contains(preferred) {
+            return preferred
+        }
+        if compatible.contains(AVAssetExportPresetMediumQuality) {
+            return AVAssetExportPresetMediumQuality
+        }
+        if compatible.contains(AVAssetExportPresetHighestQuality) {
+            return AVAssetExportPresetHighestQuality
+        }
+        return compatible.first ?? AVAssetExportPresetPassthrough
+    }
+
+    nonisolated private static func compressVideoFailureMac(_ message: String) -> SwiftCompressVideoResult {
+        SwiftCompressVideoResult(
+            success: false,
+            error: RustString(message),
+            path: RustString(""),
+            width: 0,
+            height: 0,
+            duration_ms: 0,
+            size: 0,
+            mime_type: RustString("")
+        )
     }
 
     nonisolated private static func normalizedRotationDegreesMac(_ transform: CGAffineTransform) -> Int32? {

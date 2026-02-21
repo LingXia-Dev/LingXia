@@ -260,7 +260,7 @@ object LxAppPicker {
             }
         }
 
-        // Add picker wheels first (WeChat style - wheels at top)
+        // Add picker wheels first (wheels at top)
         val wheelContainer = createWheelContainer(context, config, callbackId)
         pickerContent.addView(wheelContainer)
 
@@ -274,7 +274,7 @@ object LxAppPicker {
         }
         pickerContent.addView(separator)
 
-        // Add buttons at bottom (WeChat style)
+        // Add buttons at bottom
         val buttonsContainer = createButtonsContainer(context, config, callbackId)
         pickerContent.addView(buttonsContainer)
 

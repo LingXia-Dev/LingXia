@@ -36,7 +36,7 @@ data class NavigationBarState(
 }
 
 /**
- * Custom Navigation Bar view mimicking WeChat Mini Program behavior.
+ * Custom Navigation Bar view mimicking mini-app behavior.
  */
 class NavigationBar @JvmOverloads constructor(
     context: Context,

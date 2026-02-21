@@ -8,6 +8,7 @@ mod document;
 mod ffi;
 mod location;
 mod media;
+mod network;
 mod popup;
 mod pull_to_refresh;
 mod resources;

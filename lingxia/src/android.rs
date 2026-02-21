@@ -27,10 +27,52 @@ fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
 }
 
 fn init_cached_java_class(env: &mut JNIEnv<'_>, class: CachedClass) {
-    if let Ok(local_class) = env.find_class(class.class_path())
-        && let Ok(global_class) = env.new_global_ref(local_class)
-    {
-        lingxia_platform::init_cached_class(class, global_class);
+    match env.find_class(class.class_path()) {
+        Ok(local_class) => match env.new_global_ref(local_class) {
+            Ok(global_class) => lingxia_platform::init_cached_class(class, global_class),
+            Err(e) => warn!(
+                "Failed to create global ref for cached class {}: {:?}",
+                class.class_path(),
+                e
+            ),
+        },
+        Err(e) => {
+            // `FindClass` leaves a pending exception. We treat this as best-effort caching,
+            // so clear it to keep JNI usable.
+            let _ = env.exception_clear();
+            warn!(
+                "Failed to find cached class {} (will retry later): {:?}",
+                class.class_path(),
+                e
+            );
+        }
+    }
+}
+
+fn init_cached_java_classes(env: &mut JNIEnv<'_>) {
+    // Keep this in sync with `lingxia_platform::CachedClass`.
+    let classes = [
+        CachedClass::LxApp,
+        CachedClass::PreviewMediaPayload,
+        CachedClass::LxAppMedia,
+        CachedClass::LxAppDevice,
+        CachedClass::LxAppLocation,
+        CachedClass::LxAppPopup,
+        CachedClass::LxAppToast,
+        CachedClass::LxAppModal,
+        CachedClass::LxAppActionSheet,
+        CachedClass::LxAppPicker,
+        CachedClass::LxAppDocument,
+        CachedClass::ComponentRouter,
+        CachedClass::LxAppPullToRefresh,
+        CachedClass::UpdateManager,
+        CachedClass::LxAppCapsule,
+        CachedClass::LxAppWifi,
+        CachedClass::LxAppNetwork,
+    ];
+
+    for class in classes {
+        init_cached_java_class(env, class);
     }
 }
 
@@ -69,27 +111,8 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
         }
     });
 
-    // Create global reference to LxApp class for worker threads first
-    if let Ok(mut env) = vm.get_env() {
-        init_cached_java_class(&mut env, CachedClass::LxApp);
-        init_cached_java_class(&mut env, CachedClass::PreviewMediaPayload);
-        init_cached_java_class(&mut env, CachedClass::LxAppMedia);
-        init_cached_java_class(&mut env, CachedClass::LxAppDevice);
-        init_cached_java_class(&mut env, CachedClass::LxAppLocation);
-        init_cached_java_class(&mut env, CachedClass::LxAppPopup);
-        init_cached_java_class(&mut env, CachedClass::LxAppToast);
-        init_cached_java_class(&mut env, CachedClass::LxAppModal);
-        init_cached_java_class(&mut env, CachedClass::LxAppActionSheet);
-        init_cached_java_class(&mut env, CachedClass::LxAppPicker);
-        init_cached_java_class(&mut env, CachedClass::LxAppDocument);
-        init_cached_java_class(&mut env, CachedClass::ComponentRouter);
-        init_cached_java_class(&mut env, CachedClass::LxAppPullToRefresh);
-        init_cached_java_class(&mut env, CachedClass::UpdateManager);
-        init_cached_java_class(&mut env, CachedClass::LxAppCapsule);
-        init_cached_java_class(&mut env, CachedClass::LxAppWifi);
-    }
-
-    // Initialize JNI environment
+    // Only store JavaVM here. App/library classes must be cached from a Java->native call so
+    // `FindClass` uses the correct classloader.
     lingxia_webview::initialize_jni(vm);
 
     info!("Rust library loaded successfully");
@@ -105,6 +128,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
     asset_manager: JObject,
     locale: JString,
 ) -> jni::sys::jstring {
+    // Cache app/library classes here (Java -> native entrypoint) so `FindClass` resolves via
+    // the app classloader. Doing this in `JNI_OnLoad` can fail on Android.
+    init_cached_java_classes(&mut env);
+
     let data_dir: String = env.get_string(&data_dir).unwrap().into();
     let cache_dir: String = env.get_string(&cache_dir).unwrap().into();
     let locale: String = env.get_string(&locale).unwrap().into();

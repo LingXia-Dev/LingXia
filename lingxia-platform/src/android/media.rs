@@ -5,8 +5,8 @@ use crate::traits::media_interaction::{
     ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, ExtractVideoThumbnailRequest, ImageInfo, MediaRuntime, VideoInfo,
-    VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
+    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
@@ -317,6 +317,14 @@ impl MediaRuntime for Platform {
         extract_video_thumbnail_impl(request)
             .map_err(|e| PlatformError::Platform(format!("extract_video_thumbnail failed: {}", e)))
     }
+
+    fn compress_video(
+        &self,
+        request: &CompressVideoRequest,
+    ) -> Result<CompressedVideo, PlatformError> {
+        compress_video_impl(request)
+            .map_err(|e| PlatformError::Platform(format!("compress_video failed: {}", e)))
+    }
 }
 
 fn copy_album_media_to_file_impl(
@@ -502,6 +510,70 @@ fn extract_video_thumbnail_impl(
     })
 }
 
+fn compress_video_impl(
+    request: &CompressVideoRequest,
+) -> Result<CompressedVideo, Box<dyn std::error::Error>> {
+    let mut env = get_env()?;
+    let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
+    let media_class: &JClass = media_class_ref.as_obj().into();
+
+    let j_uri = env.new_string(&request.source_uri)?;
+    let output_path = request.output_path.to_string_lossy();
+    let j_output_path = env.new_string(output_path.as_ref())?;
+    let quality = request.quality.map_or_else(String::new, |q| match q {
+        crate::traits::media_runtime::VideoCompressQuality::Low => "low".to_string(),
+        crate::traits::media_runtime::VideoCompressQuality::Medium => "medium".to_string(),
+        crate::traits::media_runtime::VideoCompressQuality::High => "high".to_string(),
+    });
+    let j_quality = env.new_string(&quality)?;
+    let bitrate = request.bitrate_kbps.unwrap_or(0) as i32;
+    let fps = request.fps.unwrap_or(0) as i32;
+    let resolution = request.resolution_ratio.unwrap_or(0.0f32);
+
+    let result = env.call_static_method(
+        media_class,
+        "compressVideo",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIF)Ljava/lang/String;",
+        &[
+            (&j_uri).into(),
+            (&j_output_path).into(),
+            (&j_quality).into(),
+            JValue::Int(bitrate),
+            JValue::Int(fps),
+            JValue::Float(resolution),
+        ],
+    )?;
+    let json_obj = result.l()?;
+    if json_obj.is_null() {
+        return Err("compressVideo returned null".into());
+    }
+    let java_str = JString::from(json_obj);
+    let json_str: String = env.get_string(&java_str)?.into();
+    let parsed: AndroidCompressVideoResponse = serde_json::from_str(&json_str)?;
+    if !parsed.success {
+        return Err(parsed
+            .error
+            .unwrap_or_else(|| "compressVideo failed".to_string())
+            .into());
+    }
+
+    let path = parsed.path.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "compressVideo missing output path",
+        )
+    })?;
+
+    Ok(CompressedVideo {
+        path: PathBuf::from(path),
+        width: parsed.width.unwrap_or(0),
+        height: parsed.height.unwrap_or(0),
+        duration_ms: parsed.duration_ms.unwrap_or(0),
+        size: parsed.size.unwrap_or(0),
+        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+    })
+}
+
 #[derive(Deserialize)]
 struct AndroidImageInfoResponse {
     success: bool,
@@ -536,6 +608,20 @@ struct AndroidVideoThumbnailResponse {
     path: Option<String>,
     width: Option<u32>,
     height: Option<u32>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AndroidCompressVideoResponse {
+    success: bool,
+    error: Option<String>,
+    path: Option<String>,
+    width: Option<u32>,
+    height: Option<u32>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+    size: Option<u64>,
     #[serde(rename = "mimeType")]
     mime_type: Option<String>,
 }

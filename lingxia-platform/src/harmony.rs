@@ -4,6 +4,7 @@ mod device;
 mod document;
 mod location;
 mod media;
+mod network;
 mod popup;
 mod pull_to_refresh;
 mod ui_update;

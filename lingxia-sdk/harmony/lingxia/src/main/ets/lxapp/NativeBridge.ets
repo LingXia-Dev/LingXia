@@ -12,6 +12,7 @@ import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import { LxAppDocument } from './APIs/LxAppDocument';
 import { LxAppWifi } from './APIs/LxAppWifi';
+import { LxAppNetwork } from './APIs/LxAppNetwork';
 import { LxAppCapsule } from './APIs/LxAppCapsule';
 import {
   createWebViewController,
@@ -272,6 +273,18 @@ class NativeBridge {
       LxAppWifi.removeWifiStateListener(callbackId);
     });
 
+    this.register('getNetworkInfo', (callbackId: string): void => {
+      LxAppNetwork.getNetworkInfo(callbackId);
+    });
+
+    this.register('addNetworkChangeListener', (callbackId: string): void => {
+      LxAppNetwork.addNetworkChangeListener(callbackId);
+    });
+
+    this.register('removeNetworkChangeListener', (callbackId: string): void => {
+      LxAppNetwork.removeNetworkChangeListener(callbackId);
+    });
+
     this.register('makePhoneCall', (phoneNumber: string): void => {
       LxAppDevice.makePhoneCall(phoneNumber);
     });
@@ -282,6 +295,10 @@ class NativeBridge {
 
     this.register('chooseMedia', (payload: string): boolean => {
       return LxAppMedia.chooseMedia(payload);
+    });
+
+    this.register('compressVideo', (payload: string): boolean => {
+      return LxAppMedia.compressVideo(payload);
     });
 
     this.register('saveMedia', (path: string, mediaTypeStr: string, callbackId: string): boolean => {

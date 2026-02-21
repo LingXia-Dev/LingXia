@@ -56,6 +56,7 @@ ohos-raw-sys = "0.1.0"
 serde_json = { workspace = true }
 lingxia-webview = { workspace = true }
 libc = "0.2"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 [build-dependencies]
 swift-bridge-build = "0.1.57"

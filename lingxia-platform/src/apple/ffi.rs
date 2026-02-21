@@ -102,6 +102,18 @@ mod bridge {
         pub mime_type: String,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct SwiftCompressVideoResult {
+        pub success: bool,
+        pub error: String,
+        pub path: String,
+        pub width: u32,
+        pub height: u32,
+        pub duration_ms: u64,
+        pub size: u64,
+        pub mime_type: String,
+    }
+
     extern "Swift" {
         // LxApp navigation functions
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
@@ -203,6 +215,16 @@ mod bridge {
             output_path: &str,
         ) -> SwiftVideoThumbnailResult;
 
+        #[swift_bridge(swift_name = "LxAppMedia.compressVideo")]
+        fn compress_video(
+            source_uri: &str,
+            quality: &str,
+            bitrate_kbps: u32,
+            fps: u32,
+            resolution_ratio: f32,
+            output_path: &str,
+        ) -> SwiftCompressVideoResult;
+
         // Video player control (native component-backed)
         // Note: UI manages component lifecycle; Rust only dispatches commands.
         #[swift_bridge(swift_name = "LxAppVideo.setVideoPlayerCallback")]
@@ -269,6 +291,16 @@ mod bridge {
 
         #[swift_bridge(swift_name = "LxAppWifi.removeWifiStateListener")]
         fn remove_wifi_state_listener(callback_id: u64);
+
+        // Network APIs
+        #[swift_bridge(swift_name = "LxAppNetwork.getNetworkInfo")]
+        fn get_network_info(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppNetwork.addNetworkChangeListener")]
+        fn add_network_change_listener(callback_id: u64);
+
+        #[swift_bridge(swift_name = "LxAppNetwork.removeNetworkChangeListener")]
+        fn remove_network_change_listener(callback_id: u64);
     }
 }
 
@@ -282,9 +314,10 @@ pub use bridge::{
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{
-    compress_image, configure_stream_audio, configure_stream_video, copy_album_media_to_file,
-    create_stream_decoder, extract_video_thumbnail, get_capsule_rect, get_image_info,
-    get_video_info, push_stream_audio, push_stream_video, scan_code, stop_stream_decoder,
+    compress_image, compress_video, configure_stream_audio, configure_stream_video,
+    copy_album_media_to_file, create_stream_decoder, extract_video_thumbnail, get_capsule_rect,
+    get_image_info, get_video_info, push_stream_audio, push_stream_video, scan_code,
+    stop_stream_decoder,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -301,3 +334,7 @@ pub use bridge::{
     add_wifi_state_listener, connect_wifi, get_connected_wifi, get_wifi_list, is_wifi_enabled,
     remove_wifi_state_listener, start_wifi, stop_wifi,
 };
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+#[allow(unused_imports)]
+pub use bridge::{add_network_change_listener, get_network_info, remove_network_change_listener};

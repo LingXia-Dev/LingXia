@@ -9,6 +9,7 @@ use super::document::DocumentInteraction;
 use super::location::Location;
 use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
+use super::network::Network;
 use super::ui::{PopupPresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
@@ -35,6 +36,7 @@ pub trait AppRuntime:
     + Sync
     + MediaInteraction
     + MediaRuntime
+    + Network
     + PopupPresenter
     + Device
     + DeviceHardware

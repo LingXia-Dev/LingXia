@@ -20,6 +20,36 @@ pub struct CompressImageRequest {
     pub output_path: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoCompressQuality {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompressVideoRequest {
+    pub source_uri: String,
+    pub quality: Option<VideoCompressQuality>,
+    /// Target average bitrate in kbps.
+    pub bitrate_kbps: Option<u32>,
+    /// Target frame rate in fps.
+    pub fps: Option<u32>,
+    /// Scale ratio relative to source resolution in (0, 1].
+    pub resolution_ratio: Option<f32>,
+    pub output_path: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompressedVideo {
+    pub path: PathBuf,
+    pub width: u32,
+    pub height: u32,
+    pub duration_ms: u64,
+    pub size: u64,
+    pub mime_type: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct VideoInfo {
     pub width: u32,
@@ -72,6 +102,11 @@ pub trait MediaRuntime: Send + Sync + 'static {
     fn get_image_info(&self, uri: &str) -> Result<ImageInfo, PlatformError>;
 
     fn compress_image(&self, request: &CompressImageRequest) -> Result<PathBuf, PlatformError>;
+
+    fn compress_video(
+        &self,
+        request: &CompressVideoRequest,
+    ) -> Result<CompressedVideo, PlatformError>;
 
     fn get_video_info(&self, uri: &str) -> Result<VideoInfo, PlatformError>;
 

@@ -8,8 +8,8 @@ use crate::traits::media_interaction::{
     ScanCodeRequest,
 };
 use crate::traits::media_runtime::{
-    CompressImageRequest, ExtractVideoThumbnailRequest, ImageInfo, MediaRuntime, VideoInfo,
-    VideoThumbnail,
+    CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
+    ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -306,6 +306,52 @@ impl MediaRuntime for Platform {
                 path: PathBuf::from(result.path),
                 width: result.width,
                 height: result.height,
+                mime_type: if result.mime_type.is_empty() {
+                    None
+                } else {
+                    Some(result.mime_type)
+                },
+            })
+        }
+    }
+
+    fn compress_video(
+        &self,
+        request: &CompressVideoRequest,
+    ) -> Result<CompressedVideo, PlatformError> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            let output_path = request.output_path.to_string_lossy();
+            let quality = request
+                .quality
+                .map(|v| match v {
+                    crate::traits::media_runtime::VideoCompressQuality::Low => "low",
+                    crate::traits::media_runtime::VideoCompressQuality::Medium => "medium",
+                    crate::traits::media_runtime::VideoCompressQuality::High => "high",
+                })
+                .unwrap_or("");
+
+            let result = super::ffi::compress_video(
+                &request.source_uri,
+                quality,
+                request.bitrate_kbps.unwrap_or(0),
+                request.fps.unwrap_or(0),
+                request.resolution_ratio.unwrap_or(0.0f32),
+                output_path.as_ref(),
+            );
+            if !result.success || result.path.is_empty() {
+                return Err(PlatformError::Platform(if result.error.is_empty() {
+                    "compress_video failed".to_string()
+                } else {
+                    result.error
+                }));
+            }
+            Ok(CompressedVideo {
+                path: PathBuf::from(result.path),
+                width: result.width,
+                height: result.height,
+                duration_ms: result.duration_ms,
+                size: result.size,
                 mime_type: if result.mime_type.is_empty() {
                     None
                 } else {
