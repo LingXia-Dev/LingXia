@@ -9,12 +9,18 @@ export default function DevicePage() {
     vibrateShort,
     vibrateLong,
     makePhoneCall,
+    getNetworkInfo,
+    startNetworkChangeListen,
+    stopNetworkChangeListen,
   } = useLingXia();
 
   const {
     currentType = 'device',
     deviceInfo = null,
     screenInfo = null,
+    networkInfo = null,
+    networkChange = null,
+    networkListening = false,
   } = data;
   const [phoneNumber, setPhoneNumber] = React.useState('');
 
@@ -199,6 +205,110 @@ export default function DevicePage() {
     </>
   );
 
+  const renderNetworkTypeSection = () => (
+    <>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-light text-gray-800 mb-2">Network Type</h1>
+        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+      </div>
+
+      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-50 to-sky-50">
+            <span className="text-2xl">🌐</span>
+          </div>
+          <div className="flex-1">
+            <div className="text-sm text-gray-800 font-semibold">Get Network Type</div>
+            <div className="text-xs text-gray-500 mt-0.5">none / unknown / wifi / 2g / 3g / 4g / 5g / ethernet</div>
+          </div>
+          <button
+            onClick={getNetworkInfo}
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+          >
+            Get Info
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <InfoRow label="Connected" value={networkInfo?.isConnected === undefined ? '--' : (networkInfo.isConnected ? 'Yes' : 'No')} />
+            <InfoRow label="Network Type" value={networkInfo?.networkType || '--'} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderLocalIPSection = () => (
+    <>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-light text-gray-800 mb-2">Local IP Addresses</h1>
+        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+      </div>
+
+      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-teal-50 to-emerald-50">
+            <span className="text-2xl">📡</span>
+          </div>
+          <div className="flex-1">
+            <div className="text-sm text-gray-800 font-semibold">Get Local IPs (IPv4 + IPv6)</div>
+            <div className="text-xs text-gray-500 mt-0.5">Current active network addresses</div>
+          </div>
+          <button
+            onClick={getNetworkInfo}
+            className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-teal-600 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+          >
+            Get IP
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <InfoRow label="IPv4" value={networkInfo?.ipv4?.length ? networkInfo.ipv4 : '--'} />
+            <InfoRow label="IPv6" value={networkInfo?.ipv6?.length ? networkInfo.ipv6 : '--'} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderNetworkStatusSection = () => (
+    <>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-light text-gray-800 mb-2">Network Status Listener</h1>
+        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+      </div>
+
+      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={startNetworkChangeListen}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Start Listen
+            </button>
+            <button
+              onClick={stopNetworkChangeListen}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Stop Listen
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <InfoRow label="Listening" value={networkListening ? 'Yes' : 'No'} />
+            <InfoRow label="Connected" value={networkChange?.isConnected === undefined ? '--' : (networkChange.isConnected ? 'Yes' : 'No')} />
+            <InfoRow label="Network Type" value={networkChange?.networkType || '--'} />
+            <InfoRow label="IPv4" value={networkChange?.ipv4?.length ? networkChange.ipv4 : '--'} />
+            <InfoRow label="IPv6" value={networkChange?.ipv6?.length ? networkChange.ipv6 : '--'} />
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="px-4 py-6">
@@ -206,8 +316,11 @@ export default function DevicePage() {
         {currentType === 'screen' && renderScreenInfoSection()}
         {currentType === 'vibrate' && renderVibrationSection()}
         {currentType === 'dial' && renderDialSection()}
+        {currentType === 'networkType' && renderNetworkTypeSection()}
+        {currentType === 'localIP' && renderLocalIPSection()}
+        {currentType === 'networkStatus' && renderNetworkStatusSection()}
 
-        {!['device', 'screen', 'vibrate', 'dial'].includes(currentType) && renderDeviceInfoSection()}
+        {!['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus'].includes(currentType) && renderDeviceInfoSection()}
       </div>
     </div>
   );
@@ -215,17 +328,20 @@ export default function DevicePage() {
 
 interface InfoRowProps {
   label: string;
-  value?: string | number;
+  value?: string | number | string[];
   suffix?: string;
 }
 
 function InfoRow({ label, value, suffix }: InfoRowProps) {
   const display = value === undefined || value === null || value === '' ? '--' : value;
   const text = suffix && display !== '--' ? `${display}${suffix}` : display;
+  const textContent = Array.isArray(text) ? text.join('\n') : String(text);
   return (
-    <div className="flex justify-between items-center py-3 border-b border-gray-200 last:border-b-0">
-      <span className="text-sm text-gray-600">{label}</span>
-      <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{text}</span>
+    <div className="flex justify-between items-start gap-3 py-3 border-b border-gray-200 last:border-b-0">
+      <span className="text-sm text-gray-600 shrink-0">{label}</span>
+      <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg text-right max-w-[72%] whitespace-pre-wrap break-all">
+        {textContent}
+      </span>
     </div>
   );
 }

@@ -3,6 +3,9 @@ Page({
     currentType: "",
     deviceInfo: null,
     screenInfo: null,
+    networkInfo: null,
+    networkChange: null,
+    networkListening: false,
   },
 
   onLoad: async function (options) {
@@ -20,6 +23,11 @@ Page({
 
   onHide: function () {
     console.log("Device page onHide");
+    this.stopNetworkChangeListen();
+  },
+
+  onUnload: function () {
+    this.stopNetworkChangeListen();
   },
 
   // Get device information
@@ -78,5 +86,39 @@ Page({
     } catch (error) {
       console.error("Failed to make phone call:", error);
     }
+  },
+
+  getNetworkInfo: async function () {
+    try {
+      const result = await lx.getNetworkInfo();
+      this.setData({
+        networkInfo: result || null,
+      });
+    } catch (error) {
+      console.error("Failed to get network info:", error);
+    }
+  },
+
+  startNetworkChangeListen: function () {
+    if (this._networkChangeHandler) {
+      return;
+    }
+    const handler = (info) => {
+      this.setData({
+        networkChange: info || null,
+      });
+    };
+    this._networkChangeHandler = handler;
+    lx.onNetworkChange(handler);
+    this.setData({ networkListening: true });
+  },
+
+  stopNetworkChangeListen: function () {
+    if (!this._networkChangeHandler) {
+      return;
+    }
+    lx.offNetworkChange(this._networkChangeHandler);
+    this._networkChangeHandler = null;
+    this.setData({ networkListening: false });
   },
 });

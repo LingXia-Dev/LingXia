@@ -56,6 +56,14 @@ function parseNonNegativeInt(value) {
   return parsed;
 }
 
+function parseResolutionRatio(value) {
+  const parsed = parseFloat(String(value ?? ""));
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    return undefined;
+  }
+  return parsed;
+}
+
 function clampToSourceMax(value, maxValue) {
   if (typeof value !== "number" || value <= 0) {
     return value;
@@ -130,8 +138,8 @@ function getModeCopy(mediaType) {
   }
   if (mediaType === "videoTools") {
     return {
-      headerSubtitle: "lx.getVideoInfo / lx.extractVideoThumbnail",
-      emptyHint: "Pick one video, inspect metadata, then generate thumbnail.",
+      headerSubtitle: "lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo",
+      emptyHint: "Pick one video, inspect metadata, generate thumbnail, and compress.",
       previewHint: "",
       galleryHint: "",
       addLabel: "Video Tools",
@@ -360,6 +368,13 @@ function createState(modeKey) {
     thumbnailBusy: false,
     thumbnailResult: null,
     thumbnailError: "",
+    videoCompressQuality: "medium",
+    videoCompressBitrate: "1200",
+    videoCompressFps: "30",
+    videoCompressResolution: "0.8",
+    videoCompressBusy: false,
+    videoCompressResult: null,
+    videoCompressError: "",
   };
 }
 
@@ -657,6 +672,8 @@ Page({
       thumbnailSourceInfo: null,
       thumbnailError: "",
       thumbnailResult: null,
+      videoCompressError: "",
+      videoCompressResult: null,
       videoInfoBusy: true,
       videoInfoError: "",
       videoInfoResult: null,
@@ -792,6 +809,108 @@ Page({
       });
     } catch (error) {
       console.error("[media-demo] previewVideoThumbnail failed:", error);
+      lx.showToast({
+        title: error?.message || "Preview failed",
+        icon: "none",
+      });
+    }
+  },
+
+  onVideoCompressQualityInput: function (event) {
+    const value = extractInputValue(event).trim().toLowerCase();
+    this.setData({ videoCompressQuality: value });
+  },
+
+  onVideoCompressBitrateInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ videoCompressBitrate: value });
+  },
+
+  onVideoCompressFpsInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ videoCompressFps: value });
+  },
+
+  onVideoCompressResolutionInput: function (event) {
+    const value = extractInputValue(event);
+    this.setData({ videoCompressResolution: value });
+  },
+
+  compressSelectedVideo: async function () {
+    if (this.data.videoCompressBusy) {
+      return;
+    }
+    const sourcePath = this.data.thumbnailVideoPath;
+    if (!sourcePath) {
+      lx.showToast({
+        title: "Please pick a video first",
+        icon: "none",
+      });
+      return;
+    }
+
+    const quality = (this.data.videoCompressQuality || "").trim().toLowerCase();
+    const payload = { path: sourcePath };
+    if (quality) {
+      payload.quality = quality;
+    } else {
+      const bitrate = parsePositiveInt(this.data.videoCompressBitrate);
+      const fps = parsePositiveInt(this.data.videoCompressFps);
+      const resolution = parseResolutionRatio(this.data.videoCompressResolution);
+      if (typeof bitrate === "number") {
+        payload.bitrate = bitrate;
+      }
+      if (typeof fps === "number") {
+        payload.fps = fps;
+      }
+      if (typeof resolution === "number") {
+        payload.resolution = resolution;
+      }
+    }
+
+    this.setData({
+      videoCompressBusy: true,
+      videoCompressError: "",
+      videoCompressResult: null,
+    });
+
+    try {
+      const result = await lx.compressVideo(payload);
+      this.setData({
+        videoCompressResult: result || null,
+        videoCompressBusy: false,
+      });
+    } catch (error) {
+      const message = error?.message || "compressVideo failed";
+      this.setData({
+        videoCompressError: message,
+        videoCompressResult: null,
+        videoCompressBusy: false,
+      });
+      lx.showToast({
+        title: message,
+        icon: "none",
+      });
+    }
+  },
+
+  previewCompressedVideo: async function () {
+    const path = this.data.videoCompressResult?.tempFilePath;
+    if (!path) {
+      lx.showToast({
+        title: "No compressed video to preview",
+        icon: "none",
+      });
+      return;
+    }
+
+    try {
+      await lx.previewMedia({
+        sources: [{ path, type: "video" }],
+        current: 0,
+      });
+    } catch (error) {
+      console.error("[media-demo] previewCompressedVideo failed:", error);
       lx.showToast({
         title: error?.message || "Preview failed",
         icon: "none",

@@ -60,6 +60,15 @@ type VideoThumbnailResult = {
   type?: string;
 };
 
+type CompressVideoResult = {
+  tempFilePath?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  size?: number;
+  type?: string;
+};
+
 type VideoThumbnailSourceInfo = {
   width?: number;
   height?: number;
@@ -108,6 +117,13 @@ type PageData = {
   thumbnailBusy?: boolean;
   thumbnailResult?: VideoThumbnailResult | null;
   thumbnailError?: string;
+  videoCompressQuality?: string | number;
+  videoCompressBitrate?: string | number;
+  videoCompressFps?: string | number;
+  videoCompressResolution?: string | number;
+  videoCompressBusy?: boolean;
+  videoCompressResult?: CompressVideoResult | null;
+  videoCompressError?: string;
   saveToAlbumBusy?: boolean;
   saveToAlbumResult?: string;
   saveToAlbumError?: string;
@@ -135,6 +151,12 @@ type PageActions = {
   onThumbnailTimeInput?(event: any): void;
   createVideoThumbnail?(): void;
   previewVideoThumbnail?(): void;
+  onVideoCompressQualityInput?(event: any): void;
+  onVideoCompressBitrateInput?(event: any): void;
+  onVideoCompressFpsInput?(event: any): void;
+  onVideoCompressResolutionInput?(event: any): void;
+  compressSelectedVideo?(): void;
+  previewCompressedVideo?(): void;
   pickImageForCompress?(): void;
   compressSelectedImage?(): void;
   previewCompressedImage?(): void;
@@ -344,6 +366,12 @@ export default function MediaPage() {
     onThumbnailTimeInput,
     createVideoThumbnail,
     previewVideoThumbnail,
+    onVideoCompressQualityInput,
+    onVideoCompressBitrateInput,
+    onVideoCompressFpsInput,
+    onVideoCompressResolutionInput,
+    compressSelectedVideo,
+    previewCompressedVideo,
     pickImageForCompress,
     compressSelectedImage,
     previewCompressedImage,
@@ -423,6 +451,25 @@ export default function MediaPage() {
   const thumbnailBusy = Boolean(data?.thumbnailBusy);
   const thumbnailResult = data?.thumbnailResult || null;
   const thumbnailError = data?.thumbnailError || '';
+  const rawVideoCompressQuality = data?.videoCompressQuality ?? 'medium';
+  const videoCompressQuality = typeof rawVideoCompressQuality === 'number'
+    ? rawVideoCompressQuality.toString()
+    : rawVideoCompressQuality;
+  const rawVideoCompressBitrate = data?.videoCompressBitrate ?? '1200';
+  const videoCompressBitrate = typeof rawVideoCompressBitrate === 'number'
+    ? rawVideoCompressBitrate.toString()
+    : rawVideoCompressBitrate;
+  const rawVideoCompressFps = data?.videoCompressFps ?? '30';
+  const videoCompressFps = typeof rawVideoCompressFps === 'number'
+    ? rawVideoCompressFps.toString()
+    : rawVideoCompressFps;
+  const rawVideoCompressResolution = data?.videoCompressResolution ?? '0.8';
+  const videoCompressResolution = typeof rawVideoCompressResolution === 'number'
+    ? rawVideoCompressResolution.toString()
+    : rawVideoCompressResolution;
+  const videoCompressBusy = Boolean(data?.videoCompressBusy);
+  const videoCompressResult = data?.videoCompressResult || null;
+  const videoCompressError = data?.videoCompressError || '';
 
   const rawQuality = data?.compressQuality ?? '80';
   const compressQuality = typeof rawQuality === 'number' ? rawQuality.toString() : rawQuality;
@@ -749,6 +796,95 @@ export default function MediaPage() {
             </Button>
           </div>
         )}
+
+        <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <span className="w-1 h-4 bg-indigo-500 rounded-full" />
+            Compress Video
+          </h3>
+
+          <div className="text-xs text-gray-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2">
+            <div>Quality: low / medium / high</div>
+            <div>If quality is set, bitrate/fps/resolution are ignored.</div>
+            <div>Bitrate unit: kbps, FPS unit: frame/s, Resolution range: (0, 1]</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              type="text"
+              label="Quality"
+              value={videoCompressQuality}
+              onChange={(e) => onVideoCompressQualityInput?.({ detail: { value: e.target.value } })}
+              placeholder="medium"
+            />
+            <Input
+              type="number"
+              label="Bitrate (kbps)"
+              value={videoCompressBitrate}
+              onChange={(e) => onVideoCompressBitrateInput?.({ detail: { value: e.target.value } })}
+              placeholder="1200"
+              min={1}
+            />
+            <Input
+              type="number"
+              label="FPS"
+              value={videoCompressFps}
+              onChange={(e) => onVideoCompressFpsInput?.({ detail: { value: e.target.value } })}
+              placeholder="30"
+              min={1}
+            />
+            <Input
+              type="text"
+              label="Resolution Ratio"
+              value={videoCompressResolution}
+              onChange={(e) => onVideoCompressResolutionInput?.({ detail: { value: e.target.value } })}
+              placeholder="0.8"
+            />
+          </div>
+
+          <Button
+            onClick={() => compressSelectedVideo?.()}
+            disabled={videoCompressBusy}
+            loading={videoCompressBusy}
+            fullWidth
+            variant="success"
+          >
+            {videoCompressBusy ? 'Compressing…' : 'Compress Video'}
+          </Button>
+
+          {videoCompressError && (
+            <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+              <span>⚠️</span>
+              <span>{videoCompressError}</span>
+            </div>
+          )}
+
+          {videoCompressResult?.tempFilePath && (
+            <div className="space-y-3">
+              <InfoCard
+                title="Compressed Video"
+                items={[
+                  { label: 'Resolution', value: `${videoCompressResult.width ?? '--'} × ${videoCompressResult.height ?? '--'}` },
+                  { label: 'Duration', value: formatDuration(videoCompressResult.durationMs) },
+                  { label: 'Type', value: videoCompressResult.type || '--' },
+                  { label: 'File Size', value: formatFileSize(videoCompressResult.size || 0) },
+                ]}
+                footer={
+                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                    {videoCompressResult.tempFilePath}
+                  </div>
+                }
+              />
+              <Button
+                onClick={() => previewCompressedVideo?.()}
+                variant="primary"
+                fullWidth
+              >
+                Preview Compressed Video
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
