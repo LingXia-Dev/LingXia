@@ -31,6 +31,8 @@ import type {
   WifiInfo,
   ConnectWifiOptions,
   WifiConnectedCallback,
+  NetworkInfo,
+  NetworkChangeCallback,
 } from './device';
 
 import type { KeyEventCallback } from './input';
@@ -67,6 +69,8 @@ import type {
   ImageInfo,
   CompressImageOptions,
   CompressImageResult,
+  CompressVideoOptions,
+  CompressVideoResult,
   GetVideoInfoOptions,
   VideoInfo,
   ExtractVideoThumbnailOptions,
@@ -120,6 +124,9 @@ export interface Lx {
   getConnectedWifi(): Promise<WifiInfo>;
   onWifiConnected(callback: WifiConnectedCallback): void;
   offWifiConnected(callback?: WifiConnectedCallback): void;
+  getNetworkInfo(): Promise<NetworkInfo>;
+  onNetworkChange(callback: NetworkChangeCallback): void;
+  offNetworkChange(callback?: NetworkChangeCallback): void;
 
   getAppOrientation(): AppOrientationInfo;
   setAppOrientation(options: SetAppOrientationOptions): boolean;
@@ -141,6 +148,7 @@ export interface Lx {
 
   getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
   compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
+  compressVideo(options: CompressVideoOptions): Promise<CompressVideoResult>;
   getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
   extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
 

@@ -8,7 +8,7 @@ use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSE
 use serde_json::Value;
 use std::sync::Arc;
 
-/// Modal options from JavaScript (compatible with WeChat mini-program API)
+/// Modal options from JavaScript (compatible with common mini-app APIs)
 #[derive(FromJSObj)]
 struct JSModalOptions {
     title: Option<String>,

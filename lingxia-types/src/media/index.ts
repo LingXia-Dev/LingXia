@@ -25,6 +25,55 @@ export interface CompressImageResult {
   tempFilePath: string;
 }
 
+export type VideoCompressQuality = 'low' | 'medium' | 'high';
+
+export interface CompressVideoOptions {
+  /**
+   * Source video path or `lx://` URI.
+   */
+  path: string;
+  /**
+   * Cross-platform note: video compression parameters are best-effort and may map to
+   * native presets instead of exact encoder settings.
+   *
+   * Compression quality preset.
+   * When provided, `bitrate`, `fps`, and `resolution` are ignored.
+   */
+  quality?: VideoCompressQuality;
+  /**
+   * Preferred target video bitrate in kbps.
+   * May be adjusted or ignored by platform codec/runtime limitations.
+   */
+  bitrate?: number;
+  /**
+   * Preferred target frame rate in fps.
+   * Some platforms may ignore this option.
+   */
+  fps?: number;
+  /**
+   * Target resolution scale ratio relative to source size, in range `(0, 1]`.
+   * May be approximated or ignored by platform transcoder capabilities.
+   */
+  resolution?: number;
+  /**
+   * Optional output path for compressed file.
+   */
+  outputPath?: string;
+}
+
+export interface CompressVideoResult {
+  tempFilePath: string;
+  width: number;
+  height: number;
+  durationMs: number;
+  /**
+   * Output file size in bytes.
+   * Could be close to source size when platform falls back to source content.
+   */
+  size: number;
+  type: string;
+}
+
 export interface GetVideoInfoOptions {
   /**
    * Video file path or `lx://` URI.

@@ -1,5 +1,6 @@
 use lingxia_platform::traits::media_runtime::{
-    ExtractVideoThumbnailRequest, MediaRuntime, VideoInfo as PlatformVideoInfo,
+    CompressVideoRequest, CompressedVideo as PlatformCompressedVideo, ExtractVideoThumbnailRequest,
+    MediaRuntime, VideoCompressQuality, VideoInfo as PlatformVideoInfo,
 };
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
@@ -9,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static THUMBNAIL_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
+static COMPRESS_VIDEO_NAME_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(FromJSObj)]
 struct JSGetVideoInfoOptions {
@@ -43,6 +45,17 @@ struct JSVideoThumbnailOptions {
     quality: Option<i32>,
 }
 
+#[derive(FromJSObj)]
+struct JSCompressVideoOptions {
+    path: String,
+    #[rename = "outputPath"]
+    output_path: Option<String>,
+    quality: Option<String>,
+    bitrate: Option<u32>,
+    fps: Option<u32>,
+    resolution: Option<f64>,
+}
+
 #[derive(Debug, Clone, IntoJSObj)]
 struct JSVideoThumbnailResult {
     #[rename = "tempFilePath"]
@@ -53,12 +66,28 @@ struct JSVideoThumbnailResult {
     image_type: String,
 }
 
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSCompressVideoResult {
+    #[rename = "tempFilePath"]
+    temp_file_path: String,
+    width: u32,
+    height: u32,
+    #[rename = "durationMs"]
+    duration_ms: u64,
+    size: u64,
+    #[rename = "type"]
+    video_type: String,
+}
+
 pub fn init(ctx: &JSContext) -> JSResult<()> {
     let get_video_info_func = JSFunc::new(ctx, get_video_info_api)?;
     lx::register_js_api(ctx, "getVideoInfo", get_video_info_func)?;
 
     let extract_video_thumbnail_func = JSFunc::new(ctx, extract_video_thumbnail_api)?;
     lx::register_js_api(ctx, "extractVideoThumbnail", extract_video_thumbnail_func)?;
+
+    let compress_video_func = JSFunc::new(ctx, compress_video_api)?;
+    lx::register_js_api(ctx, "compressVideo", compress_video_func)?;
     Ok(())
 }
 
@@ -127,8 +156,8 @@ async fn extract_video_thumbnail_api(
     let request = ExtractVideoThumbnailRequest {
         source_uri,
         output_path,
-        max_width: sanitize_dimension(options.max_width),
-        max_height: sanitize_dimension(options.max_height),
+        max_width: sanitize_optional_u32(options.max_width),
+        max_height: sanitize_optional_u32(options.max_height),
         time_ms: sanitize_time_ms(options.time_ms),
         quality: clamp_quality(options.quality),
     };
@@ -161,19 +190,96 @@ async fn extract_video_thumbnail_api(
     })
 }
 
+async fn compress_video_api(
+    ctx: JSContext,
+    options: JSCompressVideoOptions,
+) -> JSResult<JSCompressVideoResult> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let runtime = &lxapp.runtime;
+
+    let resolved_source = lxapp
+        .resolve_accessible_path(options.path.trim())
+        .map_err(|err| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                format!("compressVideo path error: {}", err),
+            )
+        })?;
+    let source_uri = resolved_source.to_string_lossy().into_owned();
+
+    let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
+    let quality = parse_video_quality(options.quality.as_deref())?;
+    let (bitrate_kbps, fps, resolution_ratio) = if quality.is_some() {
+        (None, None, None)
+    } else {
+        (
+            sanitize_optional_u32(options.bitrate),
+            sanitize_optional_u32(options.fps),
+            sanitize_resolution(options.resolution)?,
+        )
+    };
+
+    let request = CompressVideoRequest {
+        source_uri,
+        quality,
+        bitrate_kbps,
+        fps,
+        resolution_ratio,
+        output_path,
+    };
+
+    let compressed = runtime.compress_video(&request).map_err(|e| {
+        HostError::new(
+            rong::error::E_INTERNAL,
+            format!("compressVideo failed: {}", e),
+        )
+    })?;
+
+    compressed_video_to_js(&lxapp, compressed)
+}
+
 fn resolve_thumbnail_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
+    resolve_output_path(
+        lxapp,
+        raw_output_path,
+        || generate_thumbnail_output_path(&lxapp.user_cache_dir),
+        "extractVideoThumbnail",
+    )
+}
+
+fn resolve_compress_video_output_path(
+    lxapp: &LxApp,
+    raw_output_path: Option<&str>,
+) -> JSResult<PathBuf> {
+    resolve_output_path(
+        lxapp,
+        raw_output_path,
+        || generate_compress_video_output_path(&lxapp.user_cache_dir),
+        "compressVideo",
+    )
+}
+
+fn resolve_output_path<F>(
+    lxapp: &LxApp,
+    raw_output_path: Option<&str>,
+    default: F,
+    operation: &str,
+) -> JSResult<PathBuf>
+where
+    F: FnOnce() -> JSResult<PathBuf>,
+{
     match raw_output_path.map(str::trim).filter(|s| !s.is_empty()) {
         Some(path) => lxapp.resolve_accessible_path(path).map_err(|err| {
             HostError::new(
                 rong::error::E_INTERNAL,
-                format!("extractVideoThumbnail outputPath error: {}", err),
+                format!("{} outputPath error: {}", operation, err),
             )
             .into()
         }),
-        None => generate_thumbnail_output_path(&lxapp.user_cache_dir),
+        None => default(),
     }
 }
 
@@ -190,11 +296,68 @@ fn platform_video_info_to_js(info: PlatformVideoInfo, path: String) -> JSVideoIn
     }
 }
 
-fn sanitize_dimension(value: Option<u32>) -> Option<u32> {
-    match value {
-        Some(v) if v > 0 => Some(v),
-        _ => None,
+fn compressed_video_to_js(
+    lxapp: &LxApp,
+    compressed: PlatformCompressedVideo,
+) -> JSResult<JSCompressVideoResult> {
+    let temp_file_path = lxapp
+        .to_uri(&compressed.path)
+        .ok_or_else(|| {
+            HostError::new(
+                rong::error::E_INTERNAL,
+                "compressVideo failed to convert output path to lx:// uri",
+            )
+        })?
+        .into_string();
+
+    Ok(JSCompressVideoResult {
+        temp_file_path,
+        width: compressed.width,
+        height: compressed.height,
+        duration_ms: compressed.duration_ms,
+        size: compressed.size,
+        video_type: compressed
+            .mime_type
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| "video/mp4".to_string()),
+    })
+}
+
+fn parse_video_quality(value: Option<&str>) -> JSResult<Option<VideoCompressQuality>> {
+    let Some(raw) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let quality = match raw.to_ascii_lowercase().as_str() {
+        "low" => VideoCompressQuality::Low,
+        "medium" => VideoCompressQuality::Medium,
+        "high" => VideoCompressQuality::High,
+        _ => {
+            return Err(HostError::new(
+                rong::error::E_INTERNAL,
+                "compressVideo quality must be one of: low, medium, high",
+            )
+            .into());
+        }
+    };
+    Ok(Some(quality))
+}
+
+fn sanitize_optional_u32(value: Option<u32>) -> Option<u32> {
+    value.filter(|v| *v > 0)
+}
+
+fn sanitize_resolution(value: Option<f64>) -> JSResult<Option<f32>> {
+    let Some(v) = value else {
+        return Ok(None);
+    };
+    if !v.is_finite() || v <= 0.0 || v > 1.0 {
+        return Err(HostError::new(
+            rong::error::E_INTERNAL,
+            "compressVideo resolution must be in range (0, 1]",
+        )
+        .into());
     }
+    Ok(Some(v as f32))
 }
 
 fn sanitize_time_ms(value: Option<i64>) -> Option<u64> {
@@ -225,15 +388,36 @@ fn ensure_dir(path: &Path) -> JSResult<()> {
 }
 
 fn generate_thumbnail_output_path(cache_root: &Path) -> JSResult<PathBuf> {
-    let base_dir = cache_root.join("video-thumbnail");
-    ensure_dir(&base_dir)?;
+    generate_timestamped_output_path(
+        &cache_root.join("video-thumbnail"),
+        "vx",
+        "jpg",
+        &THUMBNAIL_NAME_COUNTER,
+    )
+}
 
+fn generate_compress_video_output_path(cache_root: &Path) -> JSResult<PathBuf> {
+    generate_timestamped_output_path(
+        &cache_root.join("video-compress"),
+        "vx_comp",
+        "mp4",
+        &COMPRESS_VIDEO_NAME_COUNTER,
+    )
+}
+
+fn generate_timestamped_output_path(
+    base_dir: &Path,
+    prefix: &str,
+    ext: &str,
+    counter: &AtomicU64,
+) -> JSResult<PathBuf> {
+    ensure_dir(base_dir)?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    let nonce = THUMBNAIL_NAME_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let filename = format!("vx_{}_{}.jpg", timestamp, nonce);
+    let nonce = counter.fetch_add(1, Ordering::Relaxed);
+    let filename = format!("{}_{}_{}.{}", prefix, timestamp, nonce, ext);
 
     Ok(base_dir.join(filename))
 }
