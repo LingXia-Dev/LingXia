@@ -121,34 +121,120 @@
                 <span>{{ imageInfoError }}</span>
               </div>
 
-              <div v-if="imageInfoResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
-                <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                  <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
-                  Image Information
-                </h3>
-                <div class="space-y-3">
-                  <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Width</span>
-                    <span class="font-semibold text-gray-800">{{ imageInfoResult.width ?? '--' }} px</span>
+              <div v-if="imageInfoResult" class="space-y-4">
+                <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                  <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                    Source Image
+                  </h3>
+                  <div class="space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">Dimensions</span>
+                      <span class="font-semibold text-gray-800">{{ imageInfoResult.width ?? '--' }} × {{ imageInfoResult.height ?? '--' }}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">Type</span>
+                      <span class="font-semibold text-gray-800">{{ imageInfoResult.type || '--' }}</span>
+                    </div>
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-gray-600">File Size</span>
+                      <span class="font-semibold text-gray-800">{{ formatFileSize(imageInfoResult.size || 0) }}</span>
+                    </div>
                   </div>
-                  <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Height</span>
-                    <span class="font-semibold text-gray-800">{{ imageInfoResult.height ?? '--' }} px</span>
-                  </div>
-                  <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Type</span>
-                    <span class="font-semibold text-gray-800">{{ imageInfoResult.type || '--' }}</span>
-                  </div>
-                  <div class="flex items-center justify-between text-sm">
-                    <span class="text-gray-600">Size</span>
-                    <span class="font-semibold text-gray-800">{{ formatFileSize(imageInfoResult.size || 0) }}</span>
+                  <div v-if="imageInfoResult.path" class="pt-4 border-t border-gray-200 space-y-1">
+                    <div class="text-xs font-medium text-gray-700">Path</div>
+                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      {{ imageInfoResult.path }}
+                    </div>
                   </div>
                 </div>
-                <div v-if="imageInfoResult.path" class="pt-4 border-t border-gray-200 space-y-1">
-                  <div class="text-xs font-medium text-gray-700">Path</div>
-                  <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
-                    {{ imageInfoResult.path }}
+
+                <div class="grid grid-cols-3 gap-3">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Quality</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      :value="compressQuality"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onCompressQualityInput"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Width</span>
+                    <input
+                      type="number"
+                      min="0"
+                      :value="compressedWidth"
+                      :placeholder="String(imageInfoResult.width || '')"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onCompressedWidthInput"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Height</span>
+                    <input
+                      type="number"
+                      min="0"
+                      :value="compressedHeight"
+                      :placeholder="String(imageInfoResult.height || '')"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onCompressedHeightInput"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  @click="compressSelectedImage"
+                  :disabled="compressing"
+                  :class="[
+                    'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
+                    compressing ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                  ]"
+                >
+                  {{ compressing ? 'Compressing…' : 'Compress Image' }}
+                </button>
+
+                <div v-if="compressError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                  <span>⚠️</span>
+                  <span>{{ compressError }}</span>
+                </div>
+
+                <div v-if="compressResult" class="space-y-4">
+                  <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                    <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                      Compressed Image
+                    </h3>
+                    <div class="space-y-3">
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Dimensions</span>
+                        <span class="font-semibold text-gray-800">{{ compressResult.width ?? '--' }} × {{ compressResult.height ?? '--' }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Type</span>
+                        <span class="font-semibold text-gray-800">{{ compressResult.type || '--' }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">File Size</span>
+                        <span class="font-semibold text-gray-800">{{ formatFileSize(compressResult.size || 0) }}</span>
+                      </div>
+                    </div>
+                    <div v-if="compressResult.path" class="pt-4 border-t border-gray-200 space-y-1">
+                      <div class="text-xs font-medium text-gray-700">Path</div>
+                      <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                        {{ compressResult.path }}
+                      </div>
+                    </div>
                   </div>
+
+                  <button
+                    @click="previewCompressedImage"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white"
+                  >
+                    Preview Image
+                  </button>
                 </div>
               </div>
             </div>
@@ -349,6 +435,117 @@
                 >
                   Preview Thumbnail
                 </button>
+              </div>
+
+              <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <span class="w-1 h-4 bg-indigo-500 rounded-full"></span>
+                  Compress Video
+                </h3>
+
+                <div class="text-xs text-gray-600 bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 space-y-1">
+                  <div>Quality: low / medium / high</div>
+                  <div>If quality is set, bitrate/fps/resolution are ignored.</div>
+                  <div>Bitrate unit: kbps, FPS unit: frame/s, Resolution range: (0, 1]</div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Quality</span>
+                    <input
+                      type="text"
+                      placeholder="medium"
+                      :value="videoCompressQuality"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onVideoCompressQualityInput"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Bitrate (kbps)</span>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="1200"
+                      :value="videoCompressBitrate"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onVideoCompressBitrateInput"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">FPS</span>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="30"
+                      :value="videoCompressFps"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onVideoCompressFpsInput"
+                    />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs font-medium text-gray-600">Resolution Ratio</span>
+                    <input
+                      type="text"
+                      placeholder="0.8"
+                      :value="videoCompressResolution"
+                      class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                      @input="onVideoCompressResolutionInput"
+                    />
+                  </label>
+                </div>
+
+                <button
+                  @click="compressSelectedVideo"
+                  :disabled="videoCompressBusy"
+                  :class="[
+                    'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
+                    videoCompressBusy ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white'
+                  ]"
+                >
+                  {{ videoCompressBusy ? 'Compressing…' : 'Compress Video' }}
+                </button>
+
+                <div v-if="videoCompressError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                  <span>⚠️</span>
+                  <span>{{ videoCompressError }}</span>
+                </div>
+
+                <div v-if="videoCompressResult?.tempFilePath" class="space-y-3">
+                  <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                    <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                      <span class="w-1 h-4 bg-green-500 rounded-full"></span>
+                      Compressed Video
+                    </h3>
+                    <div class="space-y-3">
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Resolution</span>
+                        <span class="font-semibold text-gray-800">{{ videoCompressResult.width ?? '--' }} × {{ videoCompressResult.height ?? '--' }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Duration</span>
+                        <span class="font-semibold text-gray-800">{{ formatDuration(videoCompressResult.durationMs) }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">Type</span>
+                        <span class="font-semibold text-gray-800">{{ videoCompressResult.type || '--' }}</span>
+                      </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">File Size</span>
+                        <span class="font-semibold text-gray-800">{{ formatFileSize(videoCompressResult.size || 0) }}</span>
+                      </div>
+                    </div>
+                    <div class="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
+                      {{ videoCompressResult.tempFilePath }}
+                    </div>
+                  </div>
+
+                  <button
+                    @click="previewCompressedVideo"
+                    class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white"
+                  >
+                    Preview Compressed Video
+                  </button>
+                </div>
               </div>
             </div>
           </template>
@@ -559,6 +756,14 @@ type VideoThumbnailResult = {
   height?: number;
   type?: string;
 };
+type CompressVideoResult = {
+  tempFilePath?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  size?: number;
+  type?: string;
+};
 
 declare function useLingXia(): any;
 
@@ -575,12 +780,23 @@ const {
   startScan,
   pickImageForInfo,
   pickVideoForTools,
+  onCompressQualityInput,
+  onCompressedWidthInput,
+  onCompressedHeightInput,
+  compressSelectedImage,
+  previewCompressedImage,
   onThumbnailQualityInput,
   onThumbnailMaxWidthInput,
   onThumbnailMaxHeightInput,
   onThumbnailTimeInput,
   createVideoThumbnail,
   previewVideoThumbnail,
+  onVideoCompressQualityInput,
+  onVideoCompressBitrateInput,
+  onVideoCompressFpsInput,
+  onVideoCompressResolutionInput,
+  compressSelectedVideo,
+  previewCompressedVideo,
   captureImageForAlbum,
   captureVideoForAlbum,
 } = useLingXia();
@@ -632,6 +848,21 @@ const canAddMore = computed(() => selectedMedia.value.length < enforceLimit.valu
 const imageInfoResult = computed<ImageInfoResult | null>(() => data?.imageInfoResult ?? null);
 const imageInfoError = computed(() => data?.imageInfoError || '');
 const imageInfoBusy = computed(() => Boolean(data?.imageInfoBusy));
+const compressQuality = computed(() => {
+  const raw = data?.compressQuality ?? '80';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const compressedWidth = computed(() => {
+  const raw = data?.compressedWidth ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const compressedHeight = computed(() => {
+  const raw = data?.compressedHeight ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const compressing = computed(() => Boolean(data?.compressing));
+const compressResult = computed<ImageInfoResult | null>(() => data?.compressResult ?? null);
+const compressError = computed(() => data?.compressError || '');
 const videoInfoResult = computed<VideoInfoResult | null>(() => data?.videoInfoResult ?? null);
 const videoInfoError = computed(() => data?.videoInfoError || '');
 const videoInfoBusy = computed(() => Boolean(data?.videoInfoBusy));
@@ -656,6 +887,25 @@ const thumbnailTimeMs = computed(() => {
 const thumbnailBusy = computed(() => Boolean(data?.thumbnailBusy));
 const thumbnailResult = computed<VideoThumbnailResult | null>(() => data?.thumbnailResult ?? null);
 const thumbnailError = computed(() => data?.thumbnailError || '');
+const videoCompressQuality = computed(() => {
+  const raw = data?.videoCompressQuality ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const videoCompressBitrate = computed(() => {
+  const raw = data?.videoCompressBitrate ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const videoCompressFps = computed(() => {
+  const raw = data?.videoCompressFps ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const videoCompressResolution = computed(() => {
+  const raw = data?.videoCompressResolution ?? '';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const videoCompressBusy = computed(() => Boolean(data?.videoCompressBusy));
+const videoCompressResult = computed<CompressVideoResult | null>(() => data?.videoCompressResult ?? null);
+const videoCompressError = computed(() => data?.videoCompressError || '');
 const saveToAlbumBusy = computed(() => Boolean(data?.saveToAlbumBusy));
 
 const settingRows = computed(() => {
@@ -681,7 +931,7 @@ const pageInfo = computed(() => {
     return { title: 'lx.getImageInfo / lx.compressImage', subtitle: 'Image Tools', description: 'Get image info and create compressed copy' };
   }
   if (isVideoToolsMode.value) {
-    return { title: 'Video Tools', subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail', description: 'Pick a video, inspect metadata, then generate thumbnail' };
+    return { title: 'Video Tools', subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo', description: 'Get video info, generate thumbnail, and create compressed copy' };
   }
   if (isSaveToAlbumMode.value) {
     return { title: 'lx.saveImageToPhotosAlbum / lx.saveVideoToPhotosAlbum', subtitle: 'Save to Album', description: 'Capture photo or video and save to device album' };
