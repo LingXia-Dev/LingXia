@@ -933,49 +933,6 @@ Page({
     this.setData({ compressedHeight: value });
   },
 
-  pickImageForCompress: async function () {
-    if (this.data.compressing) {
-      return;
-    }
-    const path = await this.pickSingleMedia("image");
-    if (!path) {
-      return;
-    }
-    const quality = clampQualityInput(this.data.compressQuality);
-    const compressedWidth = parsePositiveInt(this.data.compressedWidth);
-    const compressedHeight = parsePositiveInt(this.data.compressedHeight);
-
-    const payload = { path, quality };
-    if (typeof compressedWidth === "number") {
-      payload.compressedWidth = compressedWidth;
-    }
-    if (typeof compressedHeight === "number") {
-      payload.compressedHeight = compressedHeight;
-    }
-
-    this.setData({
-      compressing: true,
-      compressError: "",
-      compressResultPath: "",
-    });
-
-    try {
-      const result = await lx.compressImage(payload);
-      this.setData({
-        compressResultPath: result?.tempFilePath || "",
-      });
-    } catch (error) {
-      const message = error?.message || "compressImage failed";
-      this.setData({ compressError: message, compressResultPath: "" });
-      lx.showToast({
-        title: message,
-        icon: "none",
-      });
-    } finally {
-      this.setData({ compressing: false });
-    }
-  },
-
   compressSelectedImage: async function () {
     if (this.data.compressing) {
       return;

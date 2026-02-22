@@ -157,7 +157,6 @@ type PageActions = {
   onVideoCompressResolutionInput?(event: any): void;
   compressSelectedVideo?(): void;
   previewCompressedVideo?(): void;
-  pickImageForCompress?(): void;
   compressSelectedImage?(): void;
   previewCompressedImage?(): void;
   captureImageForAlbum?(): void;
@@ -372,7 +371,6 @@ export default function MediaPage() {
     onVideoCompressResolutionInput,
     compressSelectedVideo,
     previewCompressedVideo,
-    pickImageForCompress,
     compressSelectedImage,
     previewCompressedImage,
     captureImageForAlbum,
@@ -588,50 +586,6 @@ export default function MediaPage() {
           </Card>
         ))}
         {canAddMore ? renderAddTile() : null}
-      </div>
-    );
-  };
-
-  const renderImageInfoDemo = () => {
-    return (
-      <div className="space-y-5">
-        <Button
-          onClick={() => pickImageForInfo?.()}
-          disabled={imageInfoBusy}
-          loading={imageInfoBusy}
-          fullWidth
-        >
-          {imageInfoBusy ? 'Getting Info…' : 'Pick Image'}
-        </Button>
-
-        {imageInfoError && (
-          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
-            <span>⚠️</span>
-            <span>{imageInfoError}</span>
-          </div>
-        )}
-
-        {imageInfoResult && (
-          <InfoCard
-            title="Image Information"
-            items={[
-              { label: 'Width', value: `${imageInfoResult.width ?? '--'} px` },
-              { label: 'Height', value: `${imageInfoResult.height ?? '--'} px` },
-              { label: 'Type', value: imageInfoResult.type || '--' },
-              { label: 'Size', value: formatFileSize(imageInfoResult.size || 0) },
-            ]}
-            footer={
-              imageInfoResult.path ? (
-                <div className="space-y-1">
-                  <div className="text-xs font-medium text-gray-700">Path</div>
-                  <div className="text-[11px] text-gray-500 break-all bg-gray-100 px-3 py-2 rounded-lg">
-                    {imageInfoResult.path}
-                  </div>
-                </div>
-              ) : undefined
-            }
-          />
-        )}
       </div>
     );
   };
@@ -890,29 +844,25 @@ export default function MediaPage() {
   };
 
   const renderCompressDemo = () => {
-    const hasImageInfo = Boolean(imageInfoResult);
-
     return (
       <div className="space-y-5">
-        {!hasImageInfo ? (
-          <>
-            <Button
-              onClick={() => pickImageForInfo?.()}
-              disabled={imageInfoBusy}
-              loading={imageInfoBusy}
-              fullWidth
-            >
-              {imageInfoBusy ? 'Loading…' : 'Pick Image'}
-            </Button>
+        <Button
+          onClick={() => pickImageForInfo?.()}
+          disabled={imageInfoBusy}
+          loading={imageInfoBusy}
+          fullWidth
+        >
+          {imageInfoBusy ? 'Getting Info…' : 'Pick Image'}
+        </Button>
 
-            {imageInfoError && (
-              <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
-                <span>⚠️</span>
-                <span>{imageInfoError}</span>
-              </div>
-            )}
-          </>
-        ) : (
+        {imageInfoError && (
+          <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+            <span>⚠️</span>
+            <span>{imageInfoError}</span>
+          </div>
+        )}
+
+        {imageInfoResult && (
           <>
             <InfoCard
               title="Source Image"
@@ -1118,8 +1068,8 @@ export default function MediaPage() {
     if (isVideoToolsMode) {
       return {
         title: 'Video Tools',
-        subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail',
-        description: 'Pick a video, inspect metadata, then generate thumbnail',
+        subtitle: 'lx.getVideoInfo / lx.extractVideoThumbnail / lx.compressVideo',
+        description: 'Get video info, generate thumbnail, and create compressed copy',
       };
     }
     if (isSaveToAlbumMode) {
@@ -1163,7 +1113,7 @@ export default function MediaPage() {
 
             <Card>
               {isImageInfoMode ? (
-                renderImageInfoDemo()
+                renderCompressDemo()
               ) : isVideoToolsMode ? (
                 renderVideoToolsDemo()
               ) : isSaveToAlbumMode ? (
