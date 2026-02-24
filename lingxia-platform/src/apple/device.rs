@@ -39,12 +39,18 @@ impl Device for Platform {
         let brand = "Apple".to_string(); // Fixed for Apple devices
         let model = get_device_model();
         let market_name = get_device_market_name(&model);
-        let system = get_system_version();
+        let os_name = if cfg!(target_os = "ios") {
+            "iOS".to_string()
+        } else {
+            "macOS".to_string()
+        };
+        let os_version = get_os_version();
         DeviceInfo {
             brand,
             model,
             market_name,
-            system,
+            os_name,
+            os_version,
         }
     }
 
@@ -317,19 +323,17 @@ fn get_macos_market_name() -> Option<String> {
     None
 }
 
-/// Get system version using objc2 bindings
-/// Returns system version string like "iOS 17.0" or "macOS 14.0"
-fn get_system_version() -> String {
+/// Get OS version only (without OS name prefix).
+fn get_os_version() -> String {
     #[cfg(target_os = "ios")]
     {
         let device = UIDevice::current();
         let version = device.system_version();
-        format!("iOS {}", version)
+        version.to_string()
     }
 
     #[cfg(target_os = "macos")]
     {
-        // Use a simpler approach to get macOS version
         let output = std::process::Command::new("sw_vers")
             .arg("-productVersion")
             .output();
@@ -337,13 +341,9 @@ fn get_system_version() -> String {
         match output {
             Ok(output) if output.status.success() => {
                 let version_str = String::from_utf8_lossy(&output.stdout);
-                let version_str = version_str.trim();
-                format!("macOS {}", version_str)
+                version_str.trim().to_string()
             }
-            _ => {
-                // Fallback to a generic version
-                "macOS 14.0".to_string()
-            }
+            _ => "Unknown".to_string(),
         }
     }
 }

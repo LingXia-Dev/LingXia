@@ -16,7 +16,8 @@ pub struct DeviceInfo {
     pub brand: String,
     pub model: String,
     pub market_name: String,
-    pub system: String,
+    pub os_name: String,
+    pub os_version: String,
 }
 
 /// Screen information reported in logical pixels (dp/pt) and scale factor

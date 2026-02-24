@@ -237,6 +237,19 @@ fn call_cstr(f: unsafe extern "C" fn() -> *const c_char) -> Option<String> {
     cstr_to_string(p)
 }
 
+fn parse_openharmony_version_from_full_name(full_name: &str) -> Option<String> {
+    let s = full_name.trim();
+    let start = s
+        .char_indices()
+        .find_map(|(idx, ch)| if ch.is_ascii_digit() { Some(idx) } else { None })?;
+    let version = s[start..].trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
+}
+
 // Platform Device trait implementation - direct implementation without delegation
 impl Device for Platform {
     fn device_info(&self) -> DeviceInfo {
@@ -244,12 +257,20 @@ impl Device for Platform {
         let brand = call_cstr(OH_GetBrand).unwrap_or_else(|| "Unknown".to_string());
         let model = call_cstr(OH_GetProductModel).unwrap_or_else(|| "Unknown".to_string());
         let market_name = call_cstr(OH_GetMarketName).unwrap_or_else(|| model.clone());
-        let system = call_cstr(OH_GetOSFullName).unwrap_or_else(|| "Unknown".to_string());
+        let os_name = "OpenHarmony".to_string();
+        let distribution_os_version = call_cstr(OH_GetDistributionOSVersion);
+        let os_full_name = call_cstr(OH_GetOSFullName);
+        let os_version = os_full_name
+            .as_deref()
+            .and_then(parse_openharmony_version_from_full_name)
+            .or(distribution_os_version.clone())
+            .unwrap_or_else(|| "Unknown".to_string());
         DeviceInfo {
             brand,
             model,
             market_name,
-            system,
+            os_name,
+            os_version,
         }
     }
 

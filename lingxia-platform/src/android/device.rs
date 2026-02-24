@@ -78,16 +78,16 @@ impl Device for Platform {
             .or_else(|| get_system_property("ro.config.marketing_name"))
             .unwrap_or_else(|| model.clone());
 
-        let android_version = get_system_property("ro.build.version.release")
+        let os_name = "Android".to_string();
+        let os_version = get_system_property("ro.build.version.release")
             .unwrap_or_else(|| "Unknown".to_string());
-
-        let system = format!("Android {}", android_version);
 
         DeviceInfo {
             brand,
             model,
             market_name,
-            system,
+            os_name,
+            os_version,
         }
     }
 
