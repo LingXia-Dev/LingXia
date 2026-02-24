@@ -8,6 +8,8 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/web-runtime";
+pub(crate) const DEFAULT_TYPES_PACKAGE: &str = "@lingxia/types";
+pub(crate) const DEFAULT_COMPONENTS_PACKAGE: &str = "@lingxia/components";
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +32,13 @@ pub(crate) struct ResolvedRuntime {
     pub path: PathBuf,
     pub hash: String,
     pub source: String,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScaffoldPackageVersions {
+    pub web_runtime: String,
+    pub types: String,
+    pub components: String,
 }
 
 pub(crate) fn target_from_build_targets(build_targets: &[String]) -> RuntimeEcmaTarget {
@@ -58,8 +67,16 @@ pub(crate) fn resolve_runtime_js(
     }
 }
 
-pub(crate) fn fetch_latest_runtime_version() -> Result<String> {
-    Ok(fetch_npm_manifest(DEFAULT_RUNTIME_PACKAGE, None)?.version)
+pub(crate) fn fetch_latest_npm_package_version(package: &str) -> Result<String> {
+    Ok(fetch_npm_manifest(package, None)?.version)
+}
+
+pub(crate) fn fetch_latest_scaffold_versions() -> Result<ScaffoldPackageVersions> {
+    Ok(ScaffoldPackageVersions {
+        web_runtime: fetch_latest_npm_package_version(DEFAULT_RUNTIME_PACKAGE)?,
+        types: fetch_latest_npm_package_version(DEFAULT_TYPES_PACKAGE)?,
+        components: fetch_latest_npm_package_version(DEFAULT_COMPONENTS_PACKAGE)?,
+    })
 }
 
 fn resolve_runtime_from_spec(

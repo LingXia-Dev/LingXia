@@ -1,8 +1,8 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::{
-    AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig,
-    ResourcesConfig,
+    AndroidConfig, DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB, HarmonyConfig,
+    HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourcesConfig,
 };
 use anyhow::Result;
 
@@ -11,6 +11,19 @@ pub(super) fn generate_config_file(
     lxapp: &LxAppInfo,
     web_runtime_version: &str,
 ) -> Result<()> {
+    let lingxia_config = build_lingxia_config(config, lxapp, web_runtime_version);
+
+    // Save config file
+    lingxia_config.save(&config.target_dir)?;
+
+    Ok(())
+}
+
+fn build_lingxia_config(
+    config: &ProjectConfig,
+    lxapp: &LxAppInfo,
+    web_runtime_version: &str,
+) -> LingXiaConfig {
     let swift_target_name = swift_target_name_from_project_name(&config.name);
 
     let platforms = config
@@ -64,7 +77,7 @@ pub(super) fn generate_config_file(
         None
     };
 
-    let lingxia_config = LingXiaConfig {
+    LingXiaConfig {
         app: Some(HostAppConfig {
             project_name: config.name.clone(),
             product_name: config.product_name.clone(),
@@ -72,8 +85,8 @@ pub(super) fn generate_config_file(
             api_server: None,
             platforms: platforms.clone(),
             home_lxapp_id: lxapp.app_id.clone(),
-            cache_max_age_days: None,
-            cache_max_size_mb: None,
+            cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
+            cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
         }),
         android,
         ios,
@@ -84,10 +97,38 @@ pub(super) fn generate_config_file(
             icons: None,
             runtime: Some(format!("npm:@lingxia/web-runtime@{web_runtime_version}")),
         }),
-    };
+    }
+}
 
-    // Save config file
-    lingxia_config.save(&config.target_dir)?;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB};
+    use std::path::PathBuf;
 
-    Ok(())
+    #[test]
+    fn build_lingxia_config_sets_runtime_and_cache_defaults() {
+        let config = ProjectConfig {
+            name: "demo".to_string(),
+            product_name: "Demo".to_string(),
+            project_type: super::super::types::ProjectType::NativeApp,
+            platforms: vec![Platform::Android],
+            package_id: "com.example.demo".to_string(),
+            target_dir: PathBuf::from("/tmp/demo"),
+        };
+        let lxapp = LxAppInfo {
+            app_id: "homelxapp".to_string(),
+        };
+
+        let lingxia = build_lingxia_config(&config, &lxapp, "0.2.0");
+        let app = lingxia.app.expect("app config should exist");
+        let resources = lingxia.resources.expect("resources config should exist");
+
+        assert_eq!(app.cache_max_age_days, Some(DEFAULT_CACHE_MAX_AGE_DAYS));
+        assert_eq!(app.cache_max_size_mb, Some(DEFAULT_CACHE_MAX_SIZE_MB));
+        assert_eq!(
+            resources.runtime.as_deref(),
+            Some("npm:@lingxia/web-runtime@0.2.0")
+        );
+    }
 }

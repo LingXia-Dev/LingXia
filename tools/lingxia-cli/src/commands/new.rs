@@ -86,15 +86,17 @@ pub fn execute(
     }
 
     let versions = fetch_result?;
-    let web_runtime_version = runtime::fetch_latest_runtime_version()
-        .map_err(|e| anyhow!("Failed to fetch latest @lingxia/web-runtime version: {e}"))?;
+    let scaffold_versions = runtime::fetch_latest_scaffold_versions()
+        .map_err(|e| anyhow!("Failed to fetch latest scaffold package versions: {e}"))?;
     println!(
-        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Runtime: {}",
+        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Runtime: {}, Types: {}, Components: {}",
         "✓".green(),
         versions.sdk.cyan(),
         versions.rong.cyan(),
         versions.lingxia_crate.cyan(),
-        web_runtime_version.cyan()
+        scaffold_versions.web_runtime.cyan(),
+        scaffold_versions.types.cyan(),
+        scaffold_versions.components.cyan()
     );
     println!();
 
@@ -105,7 +107,15 @@ pub fn execute(
     if matches!(project_type, ProjectType::LxApp) {
         let framework = gather_lxapp_framework(yes)?;
         let target_dir = std::env::current_dir()?.join(&name);
-        create_lxapp_from_template(&target_dir, &name, &product_name, &framework, &versions)?;
+        create_lxapp_from_template(
+            &target_dir,
+            &name,
+            &product_name,
+            &framework,
+            &versions,
+            &scaffold_versions.types,
+            &scaffold_versions.components,
+        )?;
 
         println!();
         println!("{}", "Project created successfully!".green().bold());
@@ -160,11 +170,23 @@ pub fn execute(
 
     let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
-    let lxapp_info = create_lxapp_project(&config, &lxapp_dir_name, &lxapp_framework, &versions)?;
-    generate_config_file(&config, &lxapp_info, &web_runtime_version)?;
+    let lxapp_info = create_lxapp_project(
+        &config,
+        &lxapp_dir_name,
+        &lxapp_framework,
+        &versions,
+        &scaffold_versions.types,
+        &scaffold_versions.components,
+    )?;
+    generate_config_file(&config, &lxapp_info, &scaffold_versions.web_runtime)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
+    println!();
+    println!(
+        "{}",
+        "Note: in lingxia.config.json -> app, set cacheMaxAgeDays=0 and/or cacheMaxSizeMB=0 to disable cache cleanup limits.".yellow()
+    );
     println!();
     println!("{}", "Next steps:".bold());
     println!("  cd {}", config.name);

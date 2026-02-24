@@ -6,6 +6,8 @@ use std::path::Path;
 pub const HOST_CONFIG_FILE: &str = "lingxia.config.json";
 pub const SECRETS_CONFIG_FILE: &str = ".lingxia.secrets.json";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
+pub const DEFAULT_CACHE_MAX_AGE_DAYS: u64 = 7;
+pub const DEFAULT_CACHE_MAX_SIZE_MB: u64 = 1024;
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -359,8 +361,8 @@ impl LingXiaConfig {
                 api_server: None,
                 platforms: vec!["android".to_string()],
                 home_lxapp_id: "homelxapp".to_string(),
-                cache_max_age_days: None,
-                cache_max_size_mb: None,
+                cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
+                cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),

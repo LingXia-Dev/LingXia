@@ -14,6 +14,8 @@ pub(super) fn create_lxapp_from_template(
     product_name: &str,
     framework: &str,
     versions: &LingXiaVersions,
+    lingxia_types_version: &str,
+    lingxia_components_version: &str,
 ) -> Result<()> {
     if target_dir.exists() {
         return Err(anyhow!(
@@ -42,6 +44,14 @@ pub(super) fn create_lxapp_from_template(
     vars.insert("APP_DISPLAY_NAME".to_string(), product_name.to_string());
 
     vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
+    vars.insert(
+        "LINGXIA_TYPES_VERSION".to_string(),
+        lingxia_types_version.to_string(),
+    );
+    vars.insert(
+        "LINGXIA_COMPONENTS_VERSION".to_string(),
+        lingxia_components_version.to_string(),
+    );
 
     process_template_dir(&template_dir, target_dir, &vars)?;
     icons::ensure_lxapp_public_icon(target_dir)?;
@@ -54,6 +64,8 @@ pub(super) fn create_lxapp_project(
     lxapp_dir_name: &str,
     framework: &str,
     versions: &LingXiaVersions,
+    lingxia_types_version: &str,
+    lingxia_components_version: &str,
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(lxapp_dir_name);
@@ -64,6 +76,8 @@ pub(super) fn create_lxapp_project(
         &config.product_name,
         framework,
         versions,
+        lingxia_types_version,
+        lingxia_components_version,
     )?;
     Ok(LxAppInfo {
         app_id: lxapp_dir_name.to_string(),

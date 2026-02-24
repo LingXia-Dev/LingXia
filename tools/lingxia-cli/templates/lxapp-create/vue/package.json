@@ -15,9 +15,9 @@
     "framework": "vue"
   },
   "dependencies": {
-    "@lingxia/components": "^0.1.1",
+    "@lingxia/components": "^{{LINGXIA_COMPONENTS_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",
-    "@lingxia/types": "^0.1.1",
+    "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
     "vue": "^3.5.27"
   },
   "devDependencies": {
