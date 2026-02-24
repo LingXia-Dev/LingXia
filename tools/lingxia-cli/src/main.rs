@@ -105,7 +105,11 @@ enum Commands {
         build_options: BuildOptions,
 
         /// Platforms to build (comma-separated).
-        #[arg(long, value_delimiter = ',')]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            long_help = "Platforms to build (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)"
+        )]
         platform: Vec<String>,
 
         /// Build all configured platforms (disabled by default)

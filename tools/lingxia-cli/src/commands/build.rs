@@ -179,9 +179,17 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
             for p in requested_platforms {
                 let platform_type: platform::detector::PlatformType = p.parse()?;
                 if !available_platforms.contains(&platform_type) {
+                    let configured = available_platforms
+                        .iter()
+                        .map(|p| p.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     return Err(anyhow!(
-                        "Platform '{}' not detected in project directory",
-                        platform_type.as_str()
+                        "Platform '{}' is not configured in {} (app.platforms).\n\
+Configured platforms: {}",
+                        platform_type.as_str(),
+                        HOST_CONFIG_FILE,
+                        configured
                     ));
                 }
                 if !selected.contains(&platform_type) {
