@@ -211,6 +211,9 @@ let package = Package(
         // Copy frameworks (if any)
         Self::copy_frameworks(build_dir, &app_bundle)?;
 
+        // Copy InfoPlist.strings localizations from package root.
+        Self::copy_info_plist_localizations(package_dir, &app_bundle)?;
+
         // Generate Info.plist
         Self::generate_info_plist(package_dir, &app_bundle, config)?;
 
@@ -258,6 +261,37 @@ let package = Package(
             }
         }
 
+        Ok(())
+    }
+
+    fn copy_info_plist_localizations(package_dir: &Path, app_bundle: &Path) -> Result<()> {
+        for entry in fs::read_dir(package_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.ends_with(".lproj") {
+                continue;
+            }
+            let src_strings = path.join("InfoPlist.strings");
+            if !src_strings.exists() {
+                continue;
+            }
+            let dest_dir = app_bundle.join(name);
+            fs::create_dir_all(&dest_dir)?;
+            let dest_strings = dest_dir.join("InfoPlist.strings");
+            fs::copy(&src_strings, &dest_strings).with_context(|| {
+                format!(
+                    "Failed to copy InfoPlist.strings from {} to {}",
+                    src_strings.display(),
+                    dest_strings.display()
+                )
+            })?;
+        }
         Ok(())
     }
 

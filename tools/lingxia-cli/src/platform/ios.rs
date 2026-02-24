@@ -7,6 +7,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::IosConfig;
+use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -214,6 +215,23 @@ impl Platform for IosPlatform {
             ios_dir.display()
         );
 
+        let bundle_id = ios_config
+            .map(|c| c.bundle_id.clone())
+            .unwrap_or_else(|| "com.example.app".to_string());
+        let granted_entitlements =
+            load_cached_apple_entitlements(PermissionPlatform::Ios, &bundle_id);
+
+        if let Err(err) = warn_missing_restricted_apple_entitlements(&granted_entitlements, "iOS") {
+            eprintln!("{} {}", "Warning:".yellow(), err);
+        }
+
+        if apple::capabilities::sync_ios_capability_files(&ios_dir, &granted_entitlements)? {
+            println!(
+                "{} Synced iOS capability metadata (Info.plist/App.entitlements)",
+                "[iOS]".cyan()
+            );
+        }
+
         // Build Rust static library
         // Use host project root for both crate discovery and target output.
         self.build_rust_library(&config.project_root, config, ios_config)?;
@@ -354,6 +372,31 @@ impl Platform for IosPlatform {
         // Use devicectl (Xcode 15+).
         apple::devicectl::list_devices()
     }
+}
+
+fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str) -> Vec<String> {
+    let Ok(cache) = PermissionCache::load() else {
+        return Vec::new();
+    };
+    cache
+        .get(platform, bundle_id, Some(DEFAULT_MAX_AGE_SECONDS))
+        .unwrap_or_default()
+}
+
+fn warn_missing_restricted_apple_entitlements(
+    granted_entitlements: &[String],
+    platform_label: &str,
+) -> Result<()> {
+    let missing = apple::capabilities::missing_restricted_apple_entitlements(granted_entitlements);
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "{platform_label} restricted permissions not verified yet: {}.\n\
+LingXia will not inject these entitlements until approval is confirmed.",
+        missing.join(", ")
+    ))
 }
 
 /// Resolve the iOS Swift Package directory.

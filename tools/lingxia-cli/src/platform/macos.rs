@@ -8,6 +8,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
 use crate::config::MacosConfig;
+use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
@@ -241,6 +242,31 @@ impl Platform for MacosPlatform {
             macos_dir.display()
         );
 
+        let bundle_id = macos_config
+            .and_then(|c| c.bundle_id.clone())
+            .or_else(|| {
+                config
+                    .lingxia_config
+                    .as_ref()
+                    .and_then(|c| c.ios.as_ref())
+                    .map(|c| c.bundle_id.clone())
+            })
+            .unwrap_or_else(|| "com.example.app".to_string());
+        let granted_entitlements =
+            load_cached_apple_entitlements(PermissionPlatform::Macos, &bundle_id);
+
+        if let Err(err) = warn_missing_restricted_apple_entitlements(&granted_entitlements, "macOS")
+        {
+            eprintln!("{} {}", "Warning:".yellow(), err);
+        }
+
+        if apple::capabilities::sync_macos_capability_files(&macos_dir, &granted_entitlements)? {
+            println!(
+                "{} Synced macOS capability metadata (Info.plist/App.entitlements)",
+                "[macOS]".cyan()
+            );
+        }
+
         let deployment_target = macos_config
             .and_then(|c| c.deployment_target.clone())
             .unwrap_or_else(|| "14.0".to_string());
@@ -302,17 +328,6 @@ impl Platform for MacosPlatform {
             .and_then(|c| c.app.as_ref())
             .map(|a| a.product_version.clone())
             .unwrap_or_else(|| "1.0.0".to_string());
-
-        let bundle_id = macos_config
-            .and_then(|c| c.bundle_id.clone())
-            .or_else(|| {
-                config
-                    .lingxia_config
-                    .as_ref()
-                    .and_then(|c| c.ios.as_ref())
-                    .map(|c| c.bundle_id.clone())
-            })
-            .unwrap_or_else(|| "com.example.app".to_string());
 
         let app_project_name = config
             .lingxia_config
@@ -402,6 +417,44 @@ impl Platform for MacosPlatform {
     }
 }
 
+fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str) -> Vec<String> {
+    let Ok(cache) = PermissionCache::load() else {
+        return Vec::new();
+    };
+    let current = cache
+        .get(platform, bundle_id, Some(DEFAULT_MAX_AGE_SECONDS))
+        .unwrap_or_default();
+    if !current.is_empty() {
+        return current;
+    }
+    if matches!(platform, PermissionPlatform::Macos) {
+        return cache
+            .get(
+                PermissionPlatform::Ios,
+                bundle_id,
+                Some(DEFAULT_MAX_AGE_SECONDS),
+            )
+            .unwrap_or_default();
+    }
+    current
+}
+
+fn warn_missing_restricted_apple_entitlements(
+    granted_entitlements: &[String],
+    platform_label: &str,
+) -> Result<()> {
+    let missing = apple::capabilities::missing_restricted_apple_entitlements(granted_entitlements);
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    Err(anyhow!(
+        "{platform_label} restricted permissions not verified yet: {}.\n\
+LingXia will not inject these entitlements until approval is confirmed.",
+        missing.join(", ")
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn create_macos_app_bundle(
     macos_dir: &Path,
@@ -460,6 +513,8 @@ fn create_macos_app_bundle(
         }
     }
 
+    copy_info_plist_localizations(macos_dir, &resources_dir)?;
+
     generate_macos_info_plist(
         macos_dir,
         &contents_dir,
@@ -472,6 +527,37 @@ fn create_macos_app_bundle(
     )?;
 
     Ok(app_bundle)
+}
+
+fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Result<()> {
+    for entry in fs::read_dir(source_root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".lproj") {
+            continue;
+        }
+        let src_strings = path.join("InfoPlist.strings");
+        if !src_strings.exists() {
+            continue;
+        }
+        let dest_dir = resources_dir.join(name);
+        fs::create_dir_all(&dest_dir)?;
+        let dest_strings = dest_dir.join("InfoPlist.strings");
+        fs::copy(&src_strings, &dest_strings).with_context(|| {
+            format!(
+                "Failed to copy InfoPlist.strings from {} to {}",
+                src_strings.display(),
+                dest_strings.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {

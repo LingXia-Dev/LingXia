@@ -1,3 +1,4 @@
+use crate::config::HOST_CONFIG_FILE;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, InstallConfig};
 use anyhow::{Result, anyhow};
@@ -14,7 +15,9 @@ pub fn execute(
     platform_arg: Option<String>,
     reinstall: bool,
 ) -> Result<()> {
-    let project_root = env::current_dir()?;
+    let current_dir = env::current_dir()?;
+    let project_root = platform::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
+        .unwrap_or_else(|| current_dir.clone());
 
     // Convert artifact path string to PathBuf if provided
     let artifact_path = artifact.map(PathBuf::from);

@@ -3,6 +3,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 mod build;
+mod capabilities;
 mod deploy;
 mod doctor;
 mod project;
@@ -16,10 +17,12 @@ pub mod signer;
 
 pub use agc::{AgcApiCredentials, AgcConnectClient, AgcToken};
 pub use auth_api::HarmonyAuthService;
+pub use capabilities::resolve_effective_acl_permissions;
 pub use credentials::AgcCredentialStorage;
 pub use doctor::doctor_checks;
 pub use project::{
     generate_icons, read_bundle_name, resolve_harmony_dir, resolve_harmony_rawfile_dir,
+    sync_acl_permissions,
 };
 pub use provisioning::{ProvisioningManager, SigningMode};
 pub use signer::{HarmonySigner, SigningConfig};
@@ -37,11 +40,35 @@ impl HarmonyPlatform {
 
 impl Platform for HarmonyPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
-        let harmony_config = config
-            .lingxia_config
-            .as_ref()
-            .and_then(|c| c.harmony.as_ref());
+        let lingxia_config = config.lingxia_config.as_ref();
+        let harmony_config = lingxia_config.and_then(|c| c.harmony.as_ref());
         let harmony_dir = resolve_harmony_dir(&config.project_root, harmony_config)?;
+        let package_name = read_bundle_name(&harmony_dir)?;
+        let resolution = resolve_effective_acl_permissions(&package_name);
+        let effective_acl_permissions = resolution.effective_permissions;
+
+        if !resolution.missing_permissions.is_empty() {
+            eprintln!(
+                "{} Harmony restricted ACL permissions not granted for `{}`: {}",
+                "Warning:".yellow(),
+                package_name,
+                resolution.missing_permissions.join(", ")
+            );
+        }
+
+        if resolution.can_sync_managed_permissions {
+            if sync_acl_permissions(&harmony_dir, &effective_acl_permissions)? {
+                println!(
+                    "{} Synced Harmony ACL permissions to module.json5",
+                    "[Harmony]".cyan()
+                );
+            }
+        } else {
+            eprintln!(
+                "{} Skip syncing managed Harmony ACL permissions because approvals are not verified.",
+                "Warning:".yellow()
+            );
+        }
 
         println!(
             "{} Building HarmonyOS app from {}",

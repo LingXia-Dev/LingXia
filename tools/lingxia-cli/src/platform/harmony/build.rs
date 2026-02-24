@@ -183,6 +183,7 @@ impl HarmonyPlatform {
 
         let status = Command::new(&hvigorw)
             .arg("assembleHap")
+            .arg("--no-daemon")
             .current_dir(harmony_dir)
             .status()
             .context("Failed to execute hvigorw assembleHap")?;

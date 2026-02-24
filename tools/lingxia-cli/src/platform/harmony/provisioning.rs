@@ -1,9 +1,11 @@
 use super::agc::{
-    AgcApiCredentials, AgcConnectClient, AgcToken, AppIdInfo, CertInfo, ProvisionInfo,
+    AgcApiCredentials, AgcConnectClient, AgcToken, AppIdInfo, CertInfo, CreateProfileParams,
+    ProvisionInfo,
 };
 use super::credentials::AgcCredentialStorage;
 use super::keygen::{self, CsrSubject};
 use super::signer::{SignAlgorithm, SigningConfig};
+use crate::permission_cache::{PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use openssl::pkcs12::Pkcs12;
@@ -90,6 +92,7 @@ impl ProvisioningManager {
         bundle_name: &str,
         mode: SigningMode,
         target_udids: &[String],
+        acl_permissions: &[String],
     ) -> Result<SigningConfig> {
         let app = self
             .ensure_app_id(bundle_name)
@@ -130,7 +133,13 @@ impl ProvisioningManager {
         std::fs::write(&paths.cert_path, &cert_bytes)
             .with_context(|| format!("Failed to write {}", paths.cert_path.display()))?;
 
-        let profile = self.ensure_profile(mode, &app, &cert, &device_ids, &mut state)?;
+        let profile =
+            self.ensure_profile(mode, &app, &cert, &device_ids, acl_permissions, &mut state)?;
+        update_permission_cache(
+            PermissionPlatform::Harmony,
+            bundle_name,
+            &profile.acl_permissions,
+        );
         let profile_bytes = self
             .download_signed_asset(&profile.provision_download_url)
             .context("Failed to download provisioning profile")?;
@@ -294,6 +303,7 @@ impl ProvisioningManager {
         app: &AppIdInfo,
         cert: &CertInfo,
         required_device_ids: &[String],
+        required_acl_permissions: &[String],
         state: &mut SigningState,
     ) -> Result<ProvisionInfo> {
         let mut load_or_create = |profiles: Vec<ProvisionInfo>,
@@ -301,15 +311,26 @@ impl ProvisioningManager {
          -> Result<ProvisionInfo> {
             if let Some(profile_id) = state.profile_id.as_ref()
                 && let Some(existing) = profiles.iter().find(|p| p.id == *profile_id)
-                && profile_matches(existing, app, cert, required_device_ids)
+                && profile_matches(
+                    existing,
+                    app,
+                    cert,
+                    required_device_ids,
+                    required_acl_permissions,
+                )
             {
                 return Ok(existing.clone());
             }
 
-            if let Some(existing) = profiles
-                .iter()
-                .find(|profile| profile_matches(profile, app, cert, required_device_ids))
-            {
+            if let Some(existing) = profiles.iter().find(|profile| {
+                profile_matches(
+                    profile,
+                    app,
+                    cert,
+                    required_device_ids,
+                    required_acl_permissions,
+                )
+            }) {
                 state.profile_id = Some(existing.id.clone());
                 return Ok(existing.clone());
             }
@@ -325,10 +346,15 @@ impl ProvisioningManager {
             let profile = match created {
                 Ok(profile) => profile,
                 Err(err) => {
-                    if let Some(existing) = profiles
-                        .iter()
-                        .find(|profile| profile_matches(profile, app, cert, required_device_ids))
-                    {
+                    if let Some(existing) = profiles.iter().find(|profile| {
+                        profile_matches(
+                            profile,
+                            app,
+                            cert,
+                            required_device_ids,
+                            required_acl_permissions,
+                        )
+                    }) {
                         existing.clone()
                     } else {
                         return Err(err);
@@ -348,11 +374,14 @@ impl ProvisioningManager {
             self.client
                 .create_profile(
                     &token,
-                    &profile_name,
-                    &app.app_id,
-                    &cert.id,
-                    required_device_ids.to_vec(),
-                    mode == SigningMode::Debug,
+                    CreateProfileParams {
+                        name: profile_name.clone(),
+                        app_id: app.app_id.clone(),
+                        cert_id: cert.id.clone(),
+                        device_ids: required_device_ids.to_vec(),
+                        acl_permissions: required_acl_permissions.to_vec(),
+                        is_debug: mode == SigningMode::Debug,
+                    },
                 )
                 .with_context(|| {
                     format!(
@@ -368,6 +397,14 @@ impl ProvisioningManager {
         let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
         self.client.download_signed_asset(&token, target)
     }
+}
+
+fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissions: &[String]) {
+    let Ok(mut cache) = PermissionCache::load() else {
+        return;
+    };
+    cache.set(platform, app_id, permissions);
+    let _ = cache.save();
 }
 
 fn signing_paths(bundle_name: &str, mode: SigningMode) -> Result<SigningPaths> {
@@ -534,6 +571,7 @@ fn profile_matches(
     app: &AppIdInfo,
     cert: &CertInfo,
     required_device_ids: &[String],
+    required_acl_permissions: &[String],
 ) -> bool {
     if profile.app_id != app.app_id {
         return false;
@@ -553,6 +591,24 @@ fn profile_matches(
     required_device_ids
         .iter()
         .all(|id| profile.device_ids.iter().any(|d| d == id))
+        && acl_permissions_match(&profile.acl_permissions, required_acl_permissions)
+}
+
+fn acl_permissions_match(existing: &[String], required: &[String]) -> bool {
+    use std::collections::HashSet;
+
+    let existing_set = existing
+        .iter()
+        .map(|permission| permission.trim())
+        .filter(|permission| !permission.is_empty())
+        .collect::<HashSet<_>>();
+    let required_set = required
+        .iter()
+        .map(|permission| permission.trim())
+        .filter(|permission| !permission.is_empty())
+        .collect::<HashSet<_>>();
+
+    required_set.is_subset(&existing_set)
 }
 
 fn profile_name_for(bundle_name: &str, mode: SigningMode) -> String {

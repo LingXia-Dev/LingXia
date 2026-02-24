@@ -1,6 +1,6 @@
 use super::{
     DEFAULT_ABILITY_NAME, HarmonyPlatform, HarmonySigner, ProvisioningManager, SigningConfig,
-    SigningMode, project::resolve_harmony_dir, read_bundle_name,
+    SigningMode, project::resolve_harmony_dir, read_bundle_name, resolve_effective_acl_permissions,
 };
 use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
 use anyhow::{Context, Result, anyhow};
@@ -244,9 +244,30 @@ fn load_signing_config(
         BuildProfile::Debug => SigningMode::Debug,
         BuildProfile::Release => SigningMode::Release,
     };
+    let resolution = resolve_effective_acl_permissions(&bundle_name);
+    if !resolution.missing_permissions.is_empty() {
+        eprintln!(
+            "{} Harmony restricted ACL permissions not granted for `{}`: {}",
+            "Warning:".yellow(),
+            bundle_name,
+            resolution.missing_permissions.join(", ")
+        );
+    }
+    if !resolution.can_sync_managed_permissions {
+        eprintln!(
+            "{} Harmony ACL approvals are not verified; signing will proceed without requesting managed restricted ACL permissions.",
+            "Warning:".yellow()
+        );
+    }
+    let effective_acl_permissions = resolution.effective_permissions;
 
     let mut provisioning = ProvisioningManager::from_storage()?;
-    provisioning.prepare_signing_config(&bundle_name, mode, target_udids)
+    provisioning.prepare_signing_config(
+        &bundle_name,
+        mode,
+        target_udids,
+        &effective_acl_permissions,
+    )
 }
 
 pub(super) fn ensure_command(name: &str) -> Result<PathBuf> {

@@ -58,6 +58,7 @@ pub struct ProvisionInfo {
     pub cert_name: String,
     pub app_id: String,
     pub device_ids: Vec<String>,
+    pub acl_permissions: Vec<String>,
     pub provision_download_url: String,
 }
 
@@ -66,6 +67,16 @@ pub struct AppIdInfo {
     pub app_id: String,
     pub package_name: String,
     pub app_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateProfileParams {
+    pub name: String,
+    pub app_id: String,
+    pub cert_id: String,
+    pub device_ids: Vec<String>,
+    pub acl_permissions: Vec<String>,
+    pub is_debug: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -459,26 +470,22 @@ Use credentials from AGC `API密钥 > Connect API > API客户端`, and set Proje
     pub fn create_profile(
         &self,
         token: &AgcToken,
-        name: &str,
-        app_id: &str,
-        cert_id: &str,
-        device_ids: Vec<String>,
-        is_debug: bool,
+        params: CreateProfileParams,
     ) -> Result<ProvisionInfo> {
         let req = CreateProfileRequest {
-            provision_name: name.to_string(),
-            provision_type: if is_debug { 1 } else { 2 },
-            cert_id: cert_id.to_string(),
-            app_id: app_id.to_string(),
-            device_id_list: device_ids,
-            acl_permission_list: vec![],
+            provision_name: params.name.clone(),
+            provision_type: if params.is_debug { 1 } else { 2 },
+            cert_id: params.cert_id,
+            app_id: params.app_id,
+            device_id_list: params.device_ids,
+            acl_permission_list: params.acl_permissions,
         };
 
         let root = self.request_json("POST", "/v3/provision", token, Some(&req))?;
         ensure_success_response(&root)?;
         let info = object_field(&root, &["provisionInfo", "provision_info"])
             .ok_or_else(|| anyhow!("AGC did not return provisionInfo"))?;
-        parse_provision_info(info, if is_debug { 1 } else { 2 })
+        parse_provision_info(info, if params.is_debug { 1 } else { 2 })
     }
 
     pub fn list_app_ids(
@@ -606,6 +613,11 @@ fn parse_provision_info(value: &Value, default_type: i32) -> Result<ProvisionInf
         }
     }
 
+    let acl_permissions = array_field(value, &["aclPermissionList", "acl_permissions"])
+        .iter()
+        .filter_map(value_to_string)
+        .collect::<Vec<_>>();
+
     Ok(ProvisionInfo {
         id,
         provision_name: string_field(value, &["provisionName", "name"])
@@ -615,6 +627,7 @@ fn parse_provision_info(value: &Value, default_type: i32) -> Result<ProvisionInf
         cert_name: string_field(value, &["certName"]).unwrap_or_default(),
         app_id: string_field(value, &["appId", "appid"]).unwrap_or_default(),
         device_ids,
+        acl_permissions,
         provision_download_url,
     })
 }

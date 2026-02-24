@@ -16,8 +16,11 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
 
+use crate::permission_cache::{PermissionCache, PermissionPlatform};
+
 use super::asc::AppStoreConnectClient;
 use super::auth::{AuthCredentials, CachedSigningIdentity, CredentialStorage};
+use super::capabilities;
 use super::developer_services;
 use super::developer_services::DeveloperServicesClient;
 use super::devicectl::{ConnectedDevice, DeviceCtl};
@@ -1095,12 +1098,15 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
     // Read bundle ID from app
     let info_plist = app_path.join("Info.plist");
     let bundle_id = read_bundle_id(&info_plist)?;
+    super::capabilities::validate_built_app_info_plist(app_path)?;
 
     // Create provisioning context
     let ctx = ProvisioningContext::new(&device)?;
 
     // Run provisioning
     let result = ctx.provision(&bundle_id)?;
+    let signing_entitlements =
+        apply_capability_entitlement_policy(&result.entitlements, &bundle_id)?;
 
     if let Some(ref material) = result.identity_material {
         // Create temporary keychain for signing (avoids password prompts)
@@ -1114,7 +1120,7 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
             app_path,
             &result.signing_identity,
             &result.profile_data,
-            Some(&result.entitlements),
+            Some(&signing_entitlements),
             Some(&result.bundle_id),
             Some(temp_keychain.path()),
         )?;
@@ -1125,7 +1131,7 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
             app_path,
             &result.signing_identity,
             &result.profile_data,
-            Some(&result.entitlements),
+            Some(&signing_entitlements),
             Some(&result.bundle_id),
         )?;
     }
@@ -1191,6 +1197,54 @@ fn is_profile_create_conflict(err: &anyhow::Error) -> bool {
             || msg.contains("ENTITY_ERROR"))
 }
 
+fn apply_capability_entitlement_policy(
+    profile_entitlements: &[u8],
+    bundle_id: &str,
+) -> Result<Vec<u8>> {
+    let value = plist::from_bytes::<plist::Value>(profile_entitlements)
+        .context("Failed to parse profile entitlements plist")?;
+    let entitlements = value
+        .into_dictionary()
+        .ok_or_else(|| anyhow!("Invalid entitlements plist format"))?;
+
+    let mut granted_controlled = Vec::new();
+    let mut missing_controlled = Vec::new();
+
+    for entitlement_key in capabilities::controlled_apple_entitlements() {
+        let present = entitlements.contains_key(entitlement_key);
+
+        if present {
+            granted_controlled.push(entitlement_key.to_string());
+        } else {
+            missing_controlled.push(entitlement_key.to_string());
+        }
+    }
+
+    update_permission_cache(PermissionPlatform::Ios, bundle_id, &granted_controlled);
+
+    if !missing_controlled.is_empty() {
+        eprintln!(
+            "  {} iOS restricted permissions not granted for `{}`: {}",
+            "Warning:".yellow(),
+            bundle_id,
+            missing_controlled.join(", ")
+        );
+    }
+
+    let mut output = Vec::new();
+    plist::to_writer_xml(&mut output, &entitlements)
+        .context("Failed to serialize filtered entitlements plist")?;
+    Ok(output)
+}
+
+fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissions: &[String]) {
+    let Ok(mut cache) = PermissionCache::load() else {
+        return;
+    };
+    cache.set(platform, app_id, permissions);
+    let _ = cache.save();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1200,5 +1254,34 @@ mod tests {
         let encoded = "SGVsbG8gV29ybGQ=";
         let decoded = base64_decode(encoded).unwrap();
         assert_eq!(decoded, b"Hello World");
+    }
+
+    #[test]
+    fn test_capability_policy_keeps_granted_hotspot_entitlement() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.networking.HotspotConfiguration".to_string(),
+            plist::Value::Boolean(true),
+        );
+        entitlements.insert("get-task-allow".to_string(), plist::Value::Boolean(true));
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(&source, "app.lingxia.test").unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        assert!(dict.contains_key("com.apple.developer.networking.HotspotConfiguration"));
+        assert!(dict.contains_key("get-task-allow"));
+    }
+
+    #[test]
+    fn test_capability_policy_keeps_profile_when_entitlement_missing() {
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &plist::Dictionary::new()).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(&source, "app.lingxia.test").unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        assert!(!dict.contains_key("com.apple.developer.networking.HotspotConfiguration"));
     }
 }

@@ -9,6 +9,7 @@ pub mod app_bundle;
 pub mod asc;
 pub mod assets;
 pub mod auth;
+pub mod capabilities;
 pub mod developer_services;
 pub mod devicectl;
 pub mod grandslam;
