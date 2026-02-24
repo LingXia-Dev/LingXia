@@ -10,7 +10,10 @@ pub struct DevInfoObj {
     model: String,
     #[rename = "marketName"]
     market_name: String,
-    system: String,
+    #[rename = "osName"]
+    os_name: String,
+    #[rename = "osVersion"]
+    os_version: String,
 }
 
 #[derive(Debug, Clone, IntoJSObj)]
@@ -26,7 +29,8 @@ impl From<DeviceInfo> for DevInfoObj {
             brand: device_info.brand,
             model: device_info.model,
             market_name: device_info.market_name,
-            system: device_info.system,
+            os_name: device_info.os_name,
+            os_version: device_info.os_version,
         }
     }
 }

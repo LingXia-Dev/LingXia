@@ -7,7 +7,8 @@ export interface DeviceInfo {
   brand: string;
   model: string;
   marketName: string;
-  system: string;
+  osName: string;
+  osVersion: string;
 }
 
 export interface ScreenInfo {
