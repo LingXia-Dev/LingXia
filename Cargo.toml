@@ -44,13 +44,13 @@ napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
 # Rong runtime (published on crates.io)
-rong = { version = "0.1.1", default-features = false }
-rong_modules = { version = "0.1.1", default-features = false }
-rong_http = { version = "0.1.1", default-features = false }
-rong_fs = "0.1.1"
-rong_console = "0.1.1"
-rong_event = "0.1.1"
-rong_storage = "0.1.1"
+rong = { version = "0.2.0", default-features = false }
+rong_modules = { version = "0.2.0", default-features = false }
+rong_http = { version = "0.2.0", default-features = false }
+rong_fs = "0.2.0"
+rong_console = "0.2.0"
+rong_event = "0.2.0"
+rong_storage = "0.2.0"
 
 [profile.release]
 opt-level = 'z'

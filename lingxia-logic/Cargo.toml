@@ -25,12 +25,22 @@ rong_modules = { workspace = true, features = ["timer", "navigator", "path", "ht
 rong_storage = { workspace = true }
 
 # Target-specific JavaScript engine selection
-# iOS/macOS automatically use JavaScriptCore
+# Apple platforms use JavaScriptCore.
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"] }
 rong_modules = { workspace = true, features = ["jscore"] }
 
-# Other platforms automatically use QuickJS
-[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+# Android currently uses QuickJS.
+[target.'cfg(target_os = "android")'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, features = ["quickjs"] }
+
+# HarmonyOS currently uses QuickJS; keep this explicit for future engine split.
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+rong = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, features = ["quickjs"] }
+
+# Fallback for other targets.
+[target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
 rong_modules = { workspace = true, features = ["quickjs"] }
