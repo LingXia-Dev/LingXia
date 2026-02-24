@@ -123,7 +123,6 @@ pub(super) fn create_rust_library(
         "LINGXIA_VERSION".to_string(),
         versions.lingxia_crate.clone(),
     );
-    vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
 
     // Process all template files into {project}-lib/ directory
     process_template_dir(&template_dir, &lib_dir, &vars)?;

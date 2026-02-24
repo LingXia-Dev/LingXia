@@ -9,9 +9,13 @@ name = "lingxia"
 # cdylib for Android/Harmony (.so), staticlib for iOS (.a)
 crate-type = ["cdylib", "staticlib"]
 
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lingxia/tls-aws-lc"]
+tls-ring = ["lingxia/tls-ring"]
+
 [dependencies]
-lingxia = "{{LINGXIA_VERSION}}"
-rong = "{{RONG_VERSION}}"
+lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false }
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]
