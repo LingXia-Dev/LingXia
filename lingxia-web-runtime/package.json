@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/web-runtime",
-  "version": "0.1.2",
+  "version": "0.3.0",
   "private": false,
   "description": "LingXia Web Runtime - Bridge, boot, and error handling for WebView",
   "type": "module",
