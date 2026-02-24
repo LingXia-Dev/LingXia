@@ -15,7 +15,7 @@
             </div>
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Get Device Information</div>
-              <div class="text-xs text-gray-500 mt-0.5">Brand, model, and system version</div>
+              <div class="text-xs text-gray-500 mt-0.5">Brand, model, and OS version</div>
             </div>
             <button
               @click="getDeviceInfo"
@@ -43,9 +43,13 @@
                 <span class="text-sm text-gray-600">Model</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ deviceInfo.model || '--' }}</span>
               </div>
+              <div class="flex justify-between items-center py-3 border-b border-gray-200">
+                <span class="text-sm text-gray-600">OS Name</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ deviceInfo.osName || '--' }}</span>
+              </div>
               <div class="flex justify-between items-center py-3">
-                <span class="text-sm text-gray-600">System</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ deviceInfo.system || '--' }}</span>
+                <span class="text-sm text-gray-600">OS Version</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ deviceInfo.osVersion || '--' }}</span>
               </div>
             </div>
           </div>
@@ -208,4 +212,5 @@ function formatNumber(value: number | undefined): string {
   }
   return Number.isInteger(value) ? value.toString() : value.toFixed(2);
 }
+
 </script>

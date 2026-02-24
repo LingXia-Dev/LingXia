@@ -56,7 +56,7 @@ export default function DevicePage() {
           </div>
           <div className="flex-1">
             <div className="text-sm text-gray-800 font-semibold">Get Device Information</div>
-            <div className="text-xs text-gray-500 mt-0.5">Brand, model, and system version</div>
+            <div className="text-xs text-gray-500 mt-0.5">Brand, model, and OS version</div>
           </div>
           <button
             onClick={getDeviceInfo}
@@ -77,7 +77,8 @@ export default function DevicePage() {
                 <InfoRow label="Brand" value={deviceInfo.brand} />
                 <InfoRow label="Market Name" value={deviceInfo.marketName || deviceInfo.model} />
                 <InfoRow label="Model" value={deviceInfo.model} />
-                <InfoRow label="System" value={deviceInfo.system} />
+                <InfoRow label="OS Name" value={deviceInfo.osName} />
+                <InfoRow label="OS Version" value={deviceInfo.osVersion} />
               </div>
             </div>
           </div>
