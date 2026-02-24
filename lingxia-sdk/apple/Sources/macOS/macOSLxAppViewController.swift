@@ -85,7 +85,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         setupLayout()
         setupNotificationObservers()
-        setupKeyboardShortcuts()
         loadWebViewContent()
     }
 
@@ -289,25 +288,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 }
             }
         }
-    }
-
-    private func setupKeyboardShortcuts() {
-        let backMenuItem = NSMenuItem(title: "Back", action: #selector(handleBackKeyPress), keyEquivalent: "\u{001B}") // Escape key
-        backMenuItem.target = self
-
-        let backMenuItem2 = NSMenuItem(title: "Back", action: #selector(handleBackKeyPress), keyEquivalent: String(Character(UnicodeScalar(NSLeftArrowFunctionKey)!)))
-        backMenuItem2.keyEquivalentModifierMask = .command
-        backMenuItem2.target = self
-
-        if let mainMenu = NSApp.mainMenu {
-            let appMenu = mainMenu.items.first
-            appMenu?.submenu?.addItem(backMenuItem)
-            appMenu?.submenu?.addItem(backMenuItem2)
-        }
-    }
-
-    @objc private func handleBackKeyPress() {
-        let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
     }
 
     @MainActor
