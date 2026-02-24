@@ -53,6 +53,13 @@ pub struct HostAppConfig {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_max_age_days: Option<u64>,
+
+    /// Maximum cache size in MiB for each lxapp user cache directory (default: 1024)
+    /// Set to 0 to disable capacity-based cache cleanup.
+    #[serde(default)]
+    #[serde(rename = "cacheMaxSizeMB")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_max_size_mb: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,6 +360,7 @@ impl LingXiaConfig {
                 platforms: vec!["android".to_string()],
                 home_lxapp_id: "homelxapp".to_string(),
                 cache_max_age_days: None,
+                cache_max_size_mb: None,
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),

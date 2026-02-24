@@ -616,6 +616,9 @@ fn build_app_json_from_config(
     if let Some(max_age) = app.cache_max_age_days {
         obj.insert("cacheMaxAgeDays".to_string(), serde_json::json!(max_age));
     }
+    if let Some(max_size_mb) = app.cache_max_size_mb {
+        obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
+    }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,

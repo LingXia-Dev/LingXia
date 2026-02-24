@@ -73,6 +73,7 @@ pub(super) fn generate_config_file(
             platforms: platforms.clone(),
             home_lxapp_id: lxapp.app_id.clone(),
             cache_max_age_days: None,
+            cache_max_size_mb: None,
         }),
         android,
         ios,
