@@ -2,11 +2,12 @@ use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use filetime::FileTime;
 use rong_http::{self as net, BodySink};
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 type HashId = String;
 
@@ -396,77 +397,363 @@ pub fn touch_access_time(path: &Path) {
     let _ = filetime::set_file_atime(path, now);
 }
 
-// Falls back to mtime if atime unavailable
-fn get_file_age_and_size(path: &Path) -> Option<(Duration, u64)> {
-    let metadata = path.metadata().ok()?;
-    let now = SystemTime::now();
-    let last_access = metadata.accessed().or_else(|_| metadata.modified()).ok()?;
-
-    let age = now.duration_since(last_access).ok()?;
-    Some((age, metadata.len()))
+struct CacheEntry {
+    path: PathBuf,
+    size: u64,
+    last_access: SystemTime,
 }
 
-fn should_skip_cleanup(filename: &str) -> bool {
-    filename.ends_with(".lock") || filename.ends_with(".part")
+pub struct CacheCapacityManager {
+    cache_dir: PathBuf,
+    max_bytes: u64,
+    max_age: Duration,
+    min_check_interval: Duration,
+    worker: Mutex<Option<CacheCapacityWorker>>,
 }
 
-/// Clean up stale files in a cache directory.
-/// Removes files that haven't been accessed for longer than `max_age_days`.
-///
-/// This function:
-/// - Skips `.lock` and `.part` files (in-progress downloads)
-/// - Removes both data files and their corresponding `.ok` marker files
-/// - Silently ignores errors for individual files
-pub fn cleanup_stale_files(cache_dir: &Path, max_age_days: u64) {
-    if max_age_days == 0 {
-        return;
+struct CacheCapacityWorker {
+    tx: mpsc::Sender<CacheCapacityEvent>,
+}
+
+enum CacheCapacityEvent {
+    Access,
+    Shutdown,
+}
+
+impl CacheCapacityManager {
+    pub fn new(
+        cache_dir: PathBuf,
+        max_bytes: u64,
+        max_age: Duration,
+        min_check_interval: Duration,
+    ) -> Self {
+        Self {
+            cache_dir,
+            max_bytes,
+            max_age,
+            min_check_interval,
+            worker: Mutex::new(None),
+        }
     }
 
-    let max_age = Duration::from_secs(max_age_days * 24 * 60 * 60);
+    pub fn on_cache_access(&self, path: &Path) {
+        if path.exists() {
+            touch_access_time(path);
+        }
+        self.enqueue_access_check();
+    }
 
-    let Ok(entries) = fs::read_dir(cache_dir) else {
-        return;
-    };
+    pub fn shutdown(&self) {
+        let worker = self.worker.lock().ok().and_then(|mut worker| worker.take());
+        if let Some(worker) = worker {
+            // If the queue is full, dropping the sender still closes the channel
+            // and lets the worker task exit once pending events are drained.
+            let _ = worker.tx.try_send(CacheCapacityEvent::Shutdown);
+        }
+    }
 
-    let mut files_removed = 0u32;
-    let mut bytes_freed = 0u64;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-
-        if path.is_dir() {
-            continue;
+    fn enqueue_access_check(&self) {
+        if self.max_bytes == 0 && self.max_age.is_zero() {
+            return;
         }
 
-        let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
+        let Some(tx) = self.ensure_worker_sender() else {
+            return;
         };
 
-        // Skip in-progress files and marker files (we'll clean markers with their data files)
-        if should_skip_cleanup(filename) || filename.ends_with(".ok") {
-            continue;
-        }
-
-        if let Some((age, file_size)) = get_file_age_and_size(&path) {
-            if age > max_age && fs::remove_file(&path).is_ok() {
-                files_removed += 1;
-                bytes_freed += file_size;
-
-                // Also remove the corresponding .ok marker file
-                // Hash is the filename stem (e.g., "a1b2c3" from "a1b2c3.png")
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-                    let ok_file = cache_dir.join(format!("{}.ok", stem));
-                    let _ = fs::remove_file(&ok_file);
+        match tx.try_send(CacheCapacityEvent::Access) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {}
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                self.worker.lock().unwrap().take();
+                if let Some(retry_tx) = self.ensure_worker_sender() {
+                    let _ = retry_tx.try_send(CacheCapacityEvent::Access);
                 }
             }
         }
     }
 
-    if files_removed > 0 {
+    fn ensure_worker_sender(&self) -> Option<mpsc::Sender<CacheCapacityEvent>> {
+        let mut worker = self.worker.lock().unwrap();
+        if let Some(worker) = worker.as_ref() {
+            return Some(worker.tx.clone());
+        }
+
+        let (tx, rx) = mpsc::channel(32);
+        let cache_dir = self.cache_dir.clone();
+        let max_bytes = self.max_bytes;
+        let max_age = self.max_age;
+        let min_check_interval = self.min_check_interval;
+
+        match rong::bg::spawn(async move {
+            run_cache_capacity_worker(cache_dir, max_bytes, max_age, min_check_interval, rx).await;
+        }) {
+            Ok(_) => {
+                // Send initial access event so cleanup runs once at startup
+                let _ = tx.try_send(CacheCapacityEvent::Access);
+                *worker = Some(CacheCapacityWorker { tx: tx.clone() });
+                Some(tx)
+            }
+            Err(e) => {
+                crate::error!("Failed to spawn cache capacity worker: {}", e);
+                None
+            }
+        }
+    }
+}
+
+impl Drop for CacheCapacityManager {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+async fn run_cache_capacity_worker(
+    cache_dir: PathBuf,
+    max_bytes: u64,
+    max_age: Duration,
+    min_check_interval: Duration,
+    mut rx: mpsc::Receiver<CacheCapacityEvent>,
+) {
+    let mut last_check: Option<Instant> = None;
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            CacheCapacityEvent::Shutdown => break,
+            CacheCapacityEvent::Access => {
+                let now = Instant::now();
+                if let Some(prev) = last_check
+                    && now.duration_since(prev) < min_check_interval
+                {
+                    continue;
+                }
+                last_check = Some(now);
+
+                let cache_dir_clone = cache_dir.clone();
+                let blocking = rong::bg::spawn_blocking(move || {
+                    enforce_cache_limits(&cache_dir_clone, max_bytes, max_age)
+                });
+
+                match blocking {
+                    Ok(handle) => match handle.await {
+                        Ok(outcome) => {
+                            if outcome.files_removed > 0 {
+                                crate::info!(
+                                    "Cache cleanup: removed {} files, freed {} bytes (limit={} bytes, max_age={}s)",
+                                    outcome.files_removed,
+                                    outcome.bytes_freed,
+                                    max_bytes,
+                                    max_age.as_secs()
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            crate::error!("Cache cleanup task failed: {}", e);
+                        }
+                    },
+                    Err(e) => {
+                        crate::error!("Failed to spawn blocking cache cleanup: {}", e);
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct CapacityCleanupOutcome {
+    files_removed: u32,
+    bytes_freed: u64,
+}
+
+fn enforce_cache_limits(
+    cache_dir: &Path,
+    max_bytes: u64,
+    max_age: Duration,
+) -> CapacityCleanupOutcome {
+    let mut outcome = CapacityCleanupOutcome {
+        files_removed: 0,
+        bytes_freed: 0,
+    };
+
+    let cache_root = cache_dir
+        .canonicalize()
+        .unwrap_or_else(|_| cache_dir.to_path_buf());
+
+    let mut total_bytes = 0u64;
+    let mut entries = collect_cache_entries(cache_dir, &mut total_bytes);
+
+    // First pass: remove files older than max_age
+    if !max_age.is_zero() {
+        let now = SystemTime::now();
+        entries.retain(|entry| {
+            let age = now
+                .duration_since(entry.last_access)
+                .unwrap_or(Duration::ZERO);
+            if age > max_age {
+                if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
+                    total_bytes = total_bytes.saturating_sub(entry.size);
+                    outcome.files_removed += 1;
+                    outcome.bytes_freed = outcome.bytes_freed.saturating_add(entry.size);
+                }
+                false // remove from entries list
+            } else {
+                true // keep for potential LRU pass
+            }
+        });
+    }
+
+    // Second pass: LRU eviction if still over capacity
+    if max_bytes > 0 && total_bytes > max_bytes {
+        entries.sort_by_key(|entry| entry.last_access);
+
+        for entry in entries {
+            if total_bytes <= max_bytes {
+                break;
+            }
+
+            if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
+                total_bytes = total_bytes.saturating_sub(entry.size);
+                outcome.files_removed += 1;
+                outcome.bytes_freed = outcome.bytes_freed.saturating_add(entry.size);
+            }
+        }
+    }
+
+    outcome
+}
+
+pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
+    if max_bytes == 0 && max_age.is_zero() {
+        return;
+    }
+    let outcome = enforce_cache_limits(cache_dir, max_bytes, max_age);
+    if outcome.files_removed > 0 {
         crate::info!(
-            "Cache cleanup: removed {} files, freed {} bytes",
-            files_removed,
-            bytes_freed
+            "Startup cache cleanup: removed {} files, freed {} bytes",
+            outcome.files_removed,
+            outcome.bytes_freed
         );
     }
+}
+
+fn collect_cache_entries(cache_dir: &Path, total_bytes: &mut u64) -> Vec<CacheEntry> {
+    let mut out = Vec::new();
+    let mut pending_dirs = vec![cache_dir.to_path_buf()];
+
+    while let Some(dir) = pending_dirs.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+
+            // Never recurse into symlink directories.
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                pending_dirs.push(path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+
+            let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            let protected_name = should_skip_cleanup(filename);
+
+            let Ok(metadata) = path.metadata() else {
+                continue;
+            };
+            let size = metadata.len();
+            *total_bytes = total_bytes.saturating_add(size);
+
+            // Keep marker files and lock-associated files in total usage accounting,
+            // but never evict them directly while protected by an active lock.
+            if protected_name || filename.ends_with(".ok") || has_active_lock_for(&path) {
+                continue;
+            }
+
+            let last_access = metadata
+                .accessed()
+                .or_else(|_| metadata.modified())
+                .unwrap_or(UNIX_EPOCH);
+
+            out.push(CacheEntry {
+                path,
+                size,
+                last_access,
+            });
+        }
+    }
+
+    out
+}
+
+fn remove_ok_marker_for(_cache_dir: &Path, data_path: &Path) {
+    let Some(parent) = data_path.parent() else {
+        return;
+    };
+    if let Some(stem) = data_path.file_stem().and_then(|s| s.to_str()) {
+        let _ = fs::remove_file(parent.join(format!("{}.ok", stem)));
+    }
+}
+
+fn try_remove_cache_entry(cache_dir: &Path, cache_root: &Path, data_path: &Path) -> bool {
+    if !is_path_within_root(cache_root, data_path) {
+        crate::warn!(
+            "Skip cache cleanup outside root: root={}, path={}",
+            cache_root.display(),
+            data_path.display()
+        );
+        return false;
+    }
+    if fs::remove_file(data_path).is_err() {
+        return false;
+    }
+    remove_ok_marker_for(cache_dir, data_path);
+    remove_empty_parent_dirs(cache_dir, data_path);
+    true
+}
+
+fn is_path_within_root(cache_root: &Path, data_path: &Path) -> bool {
+    data_path
+        .canonicalize()
+        .map(|p| p.starts_with(cache_root))
+        .unwrap_or(false)
+}
+
+fn has_active_lock_for(data_path: &Path) -> bool {
+    let Some(stem) = data_path.file_stem().and_then(|s| s.to_str()) else {
+        return false;
+    };
+    let dir = data_path.parent().unwrap_or_else(|| Path::new("."));
+    dir.join(format!("{}.lock", stem)).exists()
+}
+
+fn remove_empty_parent_dirs(cache_root: &Path, data_path: &Path) {
+    let mut current = data_path.parent();
+    while let Some(dir) = current {
+        if dir == cache_root {
+            break;
+        }
+        if !dir.starts_with(cache_root) {
+            break;
+        }
+        if fs::remove_dir(dir).is_ok() {
+            current = dir.parent();
+        } else {
+            break;
+        }
+    }
+}
+
+fn should_skip_cleanup(filename: &str) -> bool {
+    filename.ends_with(".lock") || filename.ends_with(".part")
 }

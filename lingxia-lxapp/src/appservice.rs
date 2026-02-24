@@ -190,14 +190,16 @@ pub(crate) async fn lxapp_service_handler(
             let _ = plugin::init(&ctx);
             bridge_events::init(&ctx);
 
+            let app_ctx = LxAppCtx::new(lxapp.clone());
+
             // Set console writer
-            console::set_writer(Box::new(LxAppCtx::new(lxapp.clone())));
+            console::set_writer(Box::new(app_ctx.clone()));
 
             // Set file access guard to prevent cross-app file access (Context-scoped)
-            fs::set_file_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
+            fs::set_file_access_guard(Box::new(app_ctx.clone()));
 
             // Set network access guard to prevent unauthorized domain access
-            http::set_network_access_guard(Box::new(LxAppCtx::new(lxapp.clone())));
+            http::set_network_access_guard(Box::new(app_ctx));
 
             let _ = rong_modules::init(&ctx);
             let _ = lx::init(&ctx);
@@ -257,6 +259,11 @@ pub(crate) async fn lxapp_service_handler(
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
+            // Clear guards on app terminate so the previous LxAppCtx is dropped
+            // immediately (this shuts down its per-app cache capacity worker).
+            console::set_writer(Box::new(NoopConsoleWriter));
+            fs::set_file_access_guard(Box::new(DenyAllFileAccessGuard));
+            http::set_network_access_guard(Box::new(DenyAllNetworkAccessGuard));
             // Remove runtime context for this app so that all associated resources can be dropped.
             remove_app_ctx(&runtime, &lxapp.appid);
             // ACK back to the caller that cleanup is complete
@@ -519,13 +526,59 @@ pub(crate) fn terminate_app_svc(
 }
 
 /// Wrapper for LxApp to implement external traits
+#[derive(Clone)]
 struct LxAppCtx {
     lxapp: Arc<LxApp>,
+    cache_capacity_manager: Arc<crate::cache::CacheCapacityManager>,
+}
+
+#[derive(Debug)]
+struct DenyAllFileAccessGuard;
+
+#[derive(Debug)]
+struct DenyAllNetworkAccessGuard;
+
+#[derive(Debug)]
+struct NoopConsoleWriter;
+
+impl fs::FileAccessGuard for DenyAllFileAccessGuard {
+    fn resolve_access(&self, _path: &str) -> JSResult<std::path::PathBuf> {
+        Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "Access denied",
+        )))
+    }
+}
+
+impl http::NetworkAccessGuard for DenyAllNetworkAccessGuard {
+    fn check_access(&self, _domain: &str) -> JSResult<()> {
+        Err(RongJSError::from(HostError::new(
+            rong::error::E_INTERNAL,
+            "Access denied",
+        )))
+    }
+}
+
+impl console::ConsoleWriter for NoopConsoleWriter {
+    fn write(&self, _level: console::LogLevel, _message: String) {}
+
+    fn is_tty(&self) -> bool {
+        false
+    }
 }
 
 impl LxAppCtx {
     pub fn new(lxapp: Arc<LxApp>) -> Self {
-        Self { lxapp }
+        let cache_capacity_manager = Arc::new(crate::cache::CacheCapacityManager::new(
+            lxapp.user_cache_dir.clone(),
+            crate::app::cache_max_size_bytes(),
+            crate::app::cache_max_age(),
+            Duration::from_secs(30),
+        ));
+        Self {
+            lxapp,
+            cache_capacity_manager,
+        }
     }
 }
 
@@ -574,8 +627,8 @@ impl fs::FileAccessGuard for LxAppCtx {
     ///
     /// Relative paths are also resolved relative to the allowed roots.
     ///
-    /// For files in the user cache directory, this also updates the access time
-    /// to support LRU-based cache cleanup.
+    /// For files in the user cache directory, this also updates access time and
+    /// enqueues an async capacity-based LRU eviction check.
     fn resolve_access(&self, path: &str) -> JSResult<std::path::PathBuf> {
         let resolved = self
             .lxapp
@@ -585,8 +638,8 @@ impl fs::FileAccessGuard for LxAppCtx {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, "Access denied"))
             })?;
 
-        if resolved.starts_with(&self.lxapp.user_cache_dir) && resolved.exists() {
-            crate::cache::touch_access_time(&resolved);
+        if resolved.starts_with(&self.lxapp.user_cache_dir) {
+            self.cache_capacity_manager.on_cache_access(&resolved);
         }
 
         Ok(resolved)

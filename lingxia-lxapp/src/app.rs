@@ -36,10 +36,17 @@ pub struct AppConfig {
 
     #[serde(rename = "cacheMaxAgeDays", default = "default_cache_max_age_days")]
     pub cache_max_age_days: u64,
+
+    #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
+    pub cache_max_size_mb: u64,
 }
 
 fn default_cache_max_age_days() -> u64 {
     7
+}
+
+fn default_cache_max_size_mb() -> u64 {
+    1024
 }
 
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
@@ -61,6 +68,18 @@ pub fn cache_max_age_days() -> u64 {
         .get()
         .map(|c| c.cache_max_age_days)
         .unwrap_or_else(default_cache_max_age_days)
+}
+
+pub fn cache_max_age() -> std::time::Duration {
+    std::time::Duration::from_secs(cache_max_age_days() * 86400)
+}
+
+pub fn cache_max_size_bytes() -> u64 {
+    const MIB: u64 = 1024 * 1024;
+    APP_CONFIG
+        .get()
+        .map(|c| c.cache_max_size_mb.saturating_mul(MIB))
+        .unwrap_or_else(|| default_cache_max_size_mb().saturating_mul(MIB))
 }
 
 impl AppConfig {

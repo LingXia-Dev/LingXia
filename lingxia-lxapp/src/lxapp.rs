@@ -1532,15 +1532,14 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
 }
 
 fn spawn_cache_cleanup(runtime: Arc<Platform>) {
-    let max_age_days = crate::app::cache_max_age_days();
-    if max_age_days == 0 {
-        info!("Cache cleanup disabled (cacheMaxAgeDays = 0)");
+    let max_bytes = crate::app::cache_max_size_bytes();
+    let max_age = crate::app::cache_max_age();
+    if max_bytes == 0 && max_age.is_zero() {
+        info!("Cache cleanup disabled (cacheMaxSizeMB=0 and cacheMaxAgeDays=0)");
         return;
     }
 
     let _ = rong::bg::spawn(async move {
-        info!("Starting cache cleanup (max age: {} days)", max_age_days);
-
         let cache_base_dir = runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
@@ -1550,13 +1549,14 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
         if let Ok(entries) = fs::read_dir(&cache_base_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.is_dir() {
-                    crate::cache::cleanup_stale_files(&path, max_age_days);
+                let Ok(file_type) = entry.file_type() else {
+                    continue;
+                };
+                if file_type.is_dir() && !file_type.is_symlink() {
+                    crate::cache::cleanup_cache_dir(&path, max_bytes, max_age);
                 }
             }
         }
-
-        info!("Cache cleanup completed");
     });
 }
 
@@ -1697,7 +1697,6 @@ pub fn init(runtime: Platform) -> Option<String> {
             info!("LxApps initialized successfully");
 
             spawn_cache_cleanup(runtime_arc.clone());
-
             UpdateManager::spawn_app_update_flow(runtime_arc.clone(), Some(app_version.clone()));
             Some(home_lxapp_appid)
         }
