@@ -5,4 +5,4 @@ mod webview;
 pub(crate) use webview::WebViewInner;
 
 // Re-export JNI utilities
-pub use jni_env::{get_env, initialize_jni};
+pub use jni_env::{initialize_jni, with_env};

@@ -70,7 +70,7 @@ impl WebView {
 
     /// Get Java WebView reference (Android only)
     #[cfg(target_os = "android")]
-    pub fn get_java_webview(&self) -> &jni::objects::GlobalRef {
+    pub fn get_java_webview(&self) -> &jni::objects::Global<jni::objects::JObject<'static>> {
         self.inner.get_java_webview()
     }
 }

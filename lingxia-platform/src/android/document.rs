@@ -1,8 +1,9 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
-use jni::objects::{JClass, JObject, JString, JValue};
-use lingxia_webview::get_env;
+use jni::objects::{JObject, JString, JValue};
+use jni::{jni_sig, jni_str};
+use lingxia_webview::with_env;
 use std::error::Error;
 
 impl DocumentInteraction for Platform {
@@ -26,38 +27,36 @@ fn open_document_impl(
     mime_type: Option<&str>,
     show_menu: bool,
 ) -> Result<bool, Box<dyn Error>> {
-    let mut env = get_env()?;
-    let document_class = super::get_cached_class(super::CachedClass::LxAppDocument)?;
+    with_env(|env| {
+        let class = super::get_cached_class(super::CachedClass::LxAppDocument)?;
 
-    let class_ref = env.new_local_ref(document_class.as_obj())?;
-    let class = JClass::from(class_ref);
+        let path_java: JString = env.new_string(file_path)?;
+        let path_obj: JObject = path_java.into();
 
-    let path_java: JString = env.new_string(file_path)?;
-    let path_obj: JObject = path_java.into();
+        let mime_obj = match mime_type.filter(|m| !m.is_empty()) {
+            Some(mime) => {
+                let mime_java: JString = env.new_string(mime)?;
+                mime_java.into()
+            }
+            None => JObject::null(),
+        };
 
-    let mime_obj = match mime_type.filter(|m| !m.is_empty()) {
-        Some(mime) => {
-            let mime_java: JString = env.new_string(mime)?;
-            mime_java.into()
+        let result = env.call_static_method(
+            class,
+            jni_str!("openDocument"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Z)Z"),
+            &[
+                JValue::Object(&path_obj),
+                JValue::Object(&mime_obj),
+                JValue::Bool(show_menu),
+            ],
+        )?;
+
+        if env.exception_check() {
+            env.exception_clear();
+            return Ok(false);
         }
-        None => JObject::null(),
-    };
 
-    let result = env.call_static_method(
-        class,
-        "openDocument",
-        "(Ljava/lang/String;Ljava/lang/String;Z)Z",
-        &[
-            JValue::Object(&path_obj),
-            JValue::Object(&mime_obj),
-            JValue::Bool(show_menu as u8),
-        ],
-    )?;
-
-    if env.exception_check()? {
-        env.exception_clear()?;
-        return Ok(false);
-    }
-
-    Ok(result.z()?)
+        Ok(result.z()?)
+    })
 }

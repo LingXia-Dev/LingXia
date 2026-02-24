@@ -1,4 +1,4 @@
-use jni::objects::GlobalRef;
+use jni::objects::{Global, JClass};
 use std::sync::OnceLock;
 
 mod app;
@@ -139,8 +139,8 @@ impl CachedClass {
     }
 }
 
-fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
-    static CLASS_CACHE: [OnceLock<GlobalRef>; CachedClass::COUNT] = [
+fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
+    static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
@@ -163,11 +163,13 @@ fn cached_slot(kind: CachedClass) -> &'static OnceLock<GlobalRef> {
 }
 
 /// Initialize a cached Java class reference (called from JNI_OnLoad)
-pub fn init_cached_class(kind: CachedClass, global_ref: GlobalRef) {
+pub fn init_cached_class(kind: CachedClass, global_ref: Global<JClass<'static>>) {
     let _ = cached_slot(kind).set(global_ref);
 }
 
 /// Fetch a cached Java class reference
-pub(crate) fn get_cached_class(kind: CachedClass) -> Result<&'static GlobalRef, &'static str> {
+pub(crate) fn get_cached_class(
+    kind: CachedClass,
+) -> Result<&'static Global<JClass<'static>>, &'static str> {
     cached_slot(kind).get().ok_or(kind.missing_message())
 }

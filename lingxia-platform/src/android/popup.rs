@@ -2,24 +2,21 @@ use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::ui::{PopupPresenter, PopupRequest};
 use jni::objects::{JClass, JObject, JValue};
+use jni::{jni_sig, jni_str};
 
 impl PopupPresenter for Platform {
     fn show_popup(&self, request: PopupRequest) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = lingxia_webview::get_env()?;
+        let PopupRequest {
+            app_id,
+            path,
+            width_ratio,
+            height_ratio,
+            position,
+        } = request;
+        let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-            let PopupRequest {
-                app_id,
-                path,
-                width_ratio,
-                height_ratio,
-                position,
-            } = request;
-
-            let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)?
-                .as_obj()
-                .into();
-
+        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
             let app_id_jstring = env.new_string(&app_id)?;
             let app_id_obj: JObject = app_id_jstring.into();
 
@@ -28,8 +25,8 @@ impl PopupPresenter for Platform {
 
             env.call_static_method(
                 popup_class,
-                "showPopup",
-                "(Ljava/lang/String;Ljava/lang/String;DDI)V",
+                jni_str!("showPopup"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;DDI)V"),
                 &[
                     JValue::Object(&app_id_obj),
                     JValue::Object(&path_obj),
@@ -38,42 +35,28 @@ impl PopupPresenter for Platform {
                     JValue::Int(position as i32),
                 ],
             )?;
-
             Ok(())
-        }() {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to show popup: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to show popup: {}", e)))
     }
 
     fn hide_popup(&self, app_id: &str) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = lingxia_webview::get_env()?;
+        let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-            let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)?
-                .as_obj()
-                .into();
-
+        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
             let app_id_jstring = env.new_string(app_id)?;
             let app_id_obj: JObject = app_id_jstring.into();
 
             env.call_static_method(
                 popup_class,
-                "hidePopup",
-                "(Ljava/lang/String;)V",
+                jni_str!("hidePopup"),
+                jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&app_id_obj)],
             )?;
 
             Ok(())
-        }() {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to hide popup: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to hide popup: {}", e)))
     }
 }

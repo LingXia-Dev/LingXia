@@ -23,7 +23,7 @@ rfd = "0.17.2"
 
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21.1"
+jni = "0.22.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"

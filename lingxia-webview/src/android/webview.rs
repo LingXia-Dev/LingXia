@@ -1,11 +1,12 @@
 use crate::{WebViewController, WebViewError};
-use jni::objects::{GlobalRef, JObject, JValue};
+use jni::objects::{Global, JObject};
+use jni::{jni_sig, jni_str};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::oneshot::Sender;
 
 // Import JNI environment access from shared utils
-use super::jni_env::{get_env, get_lingxia_webview_class};
+use super::jni_env::{get_lingxia_webview_class, with_env};
 
 // Import WebTag from the main webview module
 use crate::webview::WebTag;
@@ -19,7 +20,7 @@ pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new()
 
 #[derive(Debug)]
 pub struct WebViewInner {
-    java_webview: GlobalRef,
+    java_webview: Global<JObject<'static>>,
     pub(crate) webtag: WebTag,
 }
 
@@ -48,70 +49,65 @@ impl WebViewInner {
             }
         };
 
-        // Get JNI environment
-        let mut env = match get_env() {
-            Ok(env) => env,
-            Err(_) => {
-                log::error!("Failed to get JNI environment");
-                remove_and_send_error("Failed to get JNI environment".to_string());
-                return;
-            }
-        };
+        let appid_owned = appid.to_string();
+        let path_owned = path.to_string();
 
-        // Get WebView class reference
-        let webview_class = match get_lingxia_webview_class() {
-            Some(class) => class,
-            None => {
-                log::error!("LingXiaWebView class not cached");
-                remove_and_send_error("LingXiaWebView class not cached".to_string());
-                return;
-            }
-        };
+        // Get JNI environment via closure
+        let result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            // Get WebView class reference
+            let webview_class =
+                get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
 
-        // Create Java strings - these rarely fail
-        let appid_jstring = env.new_string(appid).unwrap();
-        let path_jstring = env.new_string(path).unwrap();
+            // Create Java strings
+            let appid_jstring = env.new_string(&appid_owned)?;
+            let path_jstring = env.new_string(&path_owned)?;
 
-        // Call Java static method to request WebView creation
-        match env.call_static_method(
-            webview_class,
-            "requestWebView",
-            "(Ljava/lang/String;Ljava/lang/String;)V",
-            &[
-                JValue::Object(&appid_jstring),
-                JValue::Object(&path_jstring),
-            ],
-        ) {
-            Ok(_) => log::info!(
+            // Call Java static method to request WebView creation
+            env.call_static_method(
+                webview_class,
+                jni_str!("requestWebView"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                &[(&appid_jstring).into(), (&path_jstring).into()],
+            )?;
+
+            log::info!(
                 "Successfully requested WebView creation for {}-{}",
-                appid,
-                path
-            ),
-            Err(e) => {
-                log::error!("Failed to call requestWebView: {:?}", e);
-                remove_and_send_error(format!("Failed to call requestWebView: {:?}", e));
-            }
+                appid_owned,
+                path_owned
+            );
+            Ok(())
+        });
+
+        if let Err(e) = result {
+            log::error!("Failed to request WebView creation: {:?}", e);
+            remove_and_send_error(format!("Failed to request WebView creation: {:?}", e));
         }
     }
 
     /// Create WebViewInner from existing Java WebView object (called from onWebViewReady)
-    pub(crate) fn from_java_object(java_webview: GlobalRef, webtag: WebTag) -> Self {
+    pub(crate) fn from_java_object(java_webview: Global<JObject<'static>>, webtag: WebTag) -> Self {
         WebViewInner {
             java_webview,
             webtag,
         }
     }
 
-    pub fn get_java_webview(&self) -> &GlobalRef {
+    pub fn get_java_webview(&self) -> &Global<JObject<'static>> {
         &self.java_webview
     }
 }
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        if let Ok(mut env) = get_env() {
-            let _ = env.call_method(self.java_webview.as_obj(), "destroy", "()V", &[]);
-        }
+        let _ = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let _ = env.call_method(
+                &*self.java_webview,
+                jni_str!("destroy"),
+                jni_sig!("()V"),
+                &[],
+            );
+            Ok(())
+        });
         log::info!(
             "[WebViewInner] Android WebViewInner dropped and destroyed ({})",
             self.webtag.as_str()
@@ -121,27 +117,17 @@ impl Drop for WebViewInner {
 
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: String) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
-
-        match env.new_string(&url) {
-            Ok(url_string) => {
-                let result = env.call_method(
-                    self.java_webview.as_obj(),
-                    "loadUrl",
-                    "(Ljava/lang/String;)V",
-                    &[JValue::Object(&url_string)],
-                );
-
-                if result.is_ok() {
-                    Ok(())
-                } else {
-                    Err(WebViewError::WebView("Failed to load URL".to_string()))
-                }
-            }
-            Err(_) => Err(WebViewError::WebView(
-                "Failed to create Java string".to_string(),
-            )),
-        }
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let url_string = env.new_string(&url)?;
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("loadUrl"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[(&url_string).into()],
+            )?;
+            Ok(())
+        })
+        .map_err(|e| WebViewError::WebView(format!("Failed to load URL: {:?}", e)))
     }
 
     fn load_data(
@@ -150,128 +136,84 @@ impl WebViewController for WebViewInner {
         base_url: String,
         history_url: Option<String>,
     ) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let data_string = env.new_string(&data)?;
+            let base_url_string = env.new_string(&base_url)?;
+            let history_url_string = match history_url {
+                Some(url) => env.new_string(&url)?,
+                None => env.new_string(&base_url)?,
+            };
 
-        let data_string = env.new_string(&data).unwrap();
-        let base_url_string = env.new_string(&base_url).unwrap();
-        let history_url_string = match history_url {
-            Some(url) => env.new_string(&url).unwrap(),
-            None => env.new_string(&base_url).unwrap(),
-        };
-
-        let result = env.call_method(
-            self.java_webview.as_obj(),
-            "loadHtmlData",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-            &[
-                JValue::Object(&data_string),
-                JValue::Object(&base_url_string),
-                JValue::Object(&history_url_string),
-            ],
-        );
-
-        if result.is_ok() {
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("loadHtmlData"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+                &[
+                    (&data_string).into(),
+                    (&base_url_string).into(),
+                    (&history_url_string).into(),
+                ],
+            )?;
             Ok(())
-        } else {
-            Err(WebViewError::WebView("Failed to load data".to_string()))
-        }
+        })
+        .map_err(|e| WebViewError::WebView(format!("Failed to load data: {:?}", e)))
     }
 
     fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let script_string = env.new_string(&js)?;
 
-        let script_string = match env.new_string(&js) {
-            Ok(s) => s,
-            Err(_) => {
-                return Err(WebViewError::WebView(
-                    "Failed to create Java string".to_string(),
-                ));
-            }
-        };
-
-        let result = env.call_method(
-            self.java_webview.as_obj(),
-            "evaluateJavascript",
-            "(Ljava/lang/String;Landroid/webkit/ValueCallback;)V",
-            &[
-                JValue::Object(&script_string),
-                JValue::Object(&JObject::null()),
-            ],
-        );
-
-        if result.is_ok() {
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("evaluateJavascript"),
+                jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
+                &[(&script_string).into(), (&JObject::null()).into()],
+            )?;
             Ok(())
-        } else {
-            Err(WebViewError::WebView(
-                "JavaScript evaluation failed".to_string(),
-            ))
-        }
+        })
+        .map_err(|e| WebViewError::WebView(format!("JavaScript evaluation failed: {:?}", e)))
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
-        let result = env.call_method(self.java_webview.as_obj(), "clearBrowsingData", "()V", &[]);
-
-        if result.is_ok() {
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("clearBrowsingData"),
+                jni_sig!("()V"),
+                &[],
+            )?;
             Ok(())
-        } else {
-            Err(WebViewError::WebView(
-                "Failed to clear browsing data".to_string(),
-            ))
-        }
+        })
+        .map_err(|e| WebViewError::WebView(format!("Failed to clear browsing data: {:?}", e)))
     }
 
     fn post_message(&self, message: String) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let msg_string = env.new_string(&message)?;
 
-        let msg_string = match env.new_string(&message) {
-            Ok(s) => s,
-            Err(_) => {
-                return Err(WebViewError::WebView(
-                    "Failed to create Java string".to_string(),
-                ));
-            }
-        };
-
-        let result = env.call_method(
-            self.java_webview.as_obj(),
-            "postMessageToWebView",
-            "(Ljava/lang/String;)V",
-            &[JValue::Object(&msg_string)],
-        );
-
-        if result.is_ok() {
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("postMessageToWebView"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[(&msg_string).into()],
+            )?;
             Ok(())
-        } else {
-            Err(WebViewError::WebView("Failed to post message".to_string()))
-        }
+        })
+        .map_err(|e| WebViewError::WebView(format!("Failed to post message: {:?}", e)))
     }
 
     fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
-        let mut env = get_env().unwrap();
+        with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            let ua_string = env.new_string(&ua)?;
 
-        let ua_string = match env.new_string(&ua) {
-            Ok(s) => s,
-            Err(_) => {
-                return Err(WebViewError::WebView(
-                    "Failed to create Java string".to_string(),
-                ));
-            }
-        };
-
-        let result = env.call_method(
-            self.java_webview.as_obj(),
-            "setUserAgent",
-            "(Ljava/lang/String;)V",
-            &[JValue::Object(&ua_string)],
-        );
-
-        if result.is_ok() {
+            env.call_method(
+                &*self.java_webview,
+                jni_str!("setUserAgent"),
+                jni_sig!("(Ljava/lang/String;)V"),
+                &[(&ua_string).into()],
+            )?;
             Ok(())
-        } else {
-            Err(WebViewError::WebView(
-                "Failed to set user agent".to_string(),
-            ))
-        }
+        })
+        .map_err(|e| WebViewError::WebView(format!("Failed to set user agent: {:?}", e)))
     }
 }

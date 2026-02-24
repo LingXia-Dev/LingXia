@@ -2,9 +2,9 @@ use crate::webview::{WebTag, get_webview_delegate, register_webview};
 use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
-use jni::JNIEnv;
 use jni::objects::{JByteArray, JObject, JObjectArray, JString};
 use jni::sys::jint;
+use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use std::fs;
 use std::sync::Arc;
 
@@ -13,60 +13,69 @@ use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner};
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
     path: JString,
     message: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
-    let message: String = env.get_string(&message).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let message: String = message.try_to_string(env)?;
 
-    let webtag = WebTag::new(&appid, &path, None);
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.handle_post_message(message);
-    }
-    0
+        let webtag = WebTag::new(&appid, &path, None);
+        if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.handle_post_message(message);
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
     path: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    let webtag = WebTag::new(&appid, &path, None);
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_started();
-    }
-    0
+        let webtag = WebTag::new(&appid, &path, None);
+        if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.on_page_started();
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
     path: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    let webtag = WebTag::new(&appid, &path, None);
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.on_page_finished();
-    }
-    0
+        let webtag = WebTag::new(&appid, &path, None);
+        if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.on_page_finished();
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     appid: JString<'a>,
     path: JString<'a>,
@@ -74,92 +83,94 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     method: JString<'a>,
     headers_array: jni::sys::jobjectArray,
 ) -> JObject<'a> {
-    // Convert Java strings to Rust strings
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
-    let url_str: String = env.get_string(&url).unwrap().into();
-    let method_str: String = env.get_string(&method).unwrap().into();
+    env.with_env(|env| -> Result<JObject<'a>, jni::errors::Error> {
+        // Convert Java strings to Rust strings
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url_str: String = url.try_to_string(env)?;
+        let method_str: String = method.try_to_string(env)?;
 
-    // Parse headers from array: [key1, value1, key2, value2, ...]
-    let mut http_headers = HeaderMap::new();
+        // Parse headers from array: [key1, value1, key2, value2, ...]
+        let mut http_headers = HeaderMap::new();
 
-    if !headers_array.is_null() {
-        // Convert raw pointer to JObjectArray
-        let headers_array = unsafe { JObjectArray::from_raw(headers_array) };
+        if !headers_array.is_null() {
+            // Convert raw pointer to JObjectArray
+            let headers_array = unsafe { JObjectArray::<JString>::from_raw(env, headers_array) };
 
-        match env.get_array_length(&headers_array) {
-            Ok(array_len) => {
-                // Process pairs of key-value
-                for i in (0..array_len).step_by(2) {
-                    if i + 1 < array_len {
-                        // Get key and value from array
-                        if let (Ok(key_obj), Ok(value_obj)) = (
-                            env.get_object_array_element(&headers_array, i),
-                            env.get_object_array_element(&headers_array, i + 1),
-                        ) {
-                            let key_jstring = JString::from(key_obj);
-                            let value_jstring = JString::from(value_obj);
+            match headers_array.len(env) {
+                Ok(array_len) => {
+                    // Process pairs of key-value
+                    for i in (0..array_len).step_by(2) {
+                        if i + 1 < array_len {
+                            // Get key and value from array
+                            if let (Ok(key_obj), Ok(value_obj)) = (
+                                headers_array.get_element(env, i as usize),
+                                headers_array.get_element(env, (i + 1) as usize),
+                            ) {
+                                let key_jstring = key_obj;
+                                let value_jstring = value_obj;
 
-                            if let (Ok(key), Ok(value)) =
-                                (env.get_string(&key_jstring), env.get_string(&value_jstring))
-                            {
-                                let key_str: String = key.into();
-                                let value_str: String = value.into();
-
-                                if let (Ok(name), Ok(val)) = (
-                                    HeaderName::from_bytes(key_str.as_bytes()),
-                                    HeaderValue::from_str(&value_str),
+                                if let (Ok(key_str), Ok(value_str)) = (
+                                    key_jstring.try_to_string(env),
+                                    value_jstring.try_to_string(env),
                                 ) {
-                                    http_headers.insert(name, val);
+                                    if let (Ok(name), Ok(val)) = (
+                                        HeaderName::from_bytes(key_str.as_bytes()),
+                                        HeaderValue::from_str(&value_str),
+                                    ) {
+                                        http_headers.insert(name, val);
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            Err(_) => {
-                // If we can't get array length, continue with empty headers
+                Err(_) => {
+                    // If we can't get array length, continue with empty headers
+                }
             }
         }
-    }
 
-    // Parse HTTP method with fallback to GET
-    let http_method = method_str.parse::<Method>().unwrap_or(Method::GET);
+        // Parse HTTP method with fallback to GET
+        let http_method = method_str.parse::<Method>().unwrap_or(Method::GET);
 
-    // Build request with proper error handling
-    let request = match Request::builder()
-        .method(http_method)
-        .uri(url_str)
-        .body(Vec::new())
-    {
-        Ok(mut req) => {
-            *req.headers_mut() = http_headers;
-            req
+        // Build request with proper error handling
+        let request = match Request::builder()
+            .method(http_method)
+            .uri(url_str)
+            .body(Vec::new())
+        {
+            Ok(mut req) => {
+                *req.headers_mut() = http_headers;
+                req
+            }
+            Err(_) => return Ok(JObject::null()),
+        };
+
+        // Handle request and convert response
+        let webtag = WebTag::new(&appid, &path, None);
+        let response = if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.handle_request(request)
+        } else {
+            None
+        };
+        if let Some(response) = response {
+            Ok(create_java_response(env, response)?)
+        } else {
+            Ok(JObject::null())
         }
-        Err(_) => return JObject::null(),
-    };
-
-    // Handle request and convert response
-    let webtag = WebTag::new(&appid, &path, None);
-    let response = if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.handle_request(request)
-    } else {
-        None
-    };
-    if let Some(response) = response {
-        create_java_response(&mut env, response)
-    } else {
-        JObject::null()
-    }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse) -> JObject<'a> {
+fn create_java_response<'a>(
+    env: &mut Env<'a>,
+    response: WebResourceResponse,
+) -> jni::errors::Result<JObject<'a>> {
     // Try to find the WebResourceResponseData inner class with package
-    let response_class =
-        match env.find_class("com/lingxia/webview/LingXiaWebView$WebResourceResponseData") {
-            Ok(c) => c,
-            Err(_) => return JObject::null(),
-        };
+    let response_class = env.find_class(jni_str!(
+        "com/lingxia/webview/LingXiaWebView$WebResourceResponseData"
+    ))?;
 
     let (parts, body) = response.into_parts();
 
@@ -185,49 +196,33 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
         .unwrap_or(("application/octet-stream", "UTF-8"));
 
     // Create HashMap for headers
-    let map = match env.new_object("java/util/HashMap", "()V", &[]) {
-        Ok(map) => map,
-        Err(_) => return JObject::null(),
-    };
+    let map = env.new_object(jni_str!("java/util/HashMap"), jni_sig!("()V"), &[])?;
 
     // Convert headers to Java HashMap
     for (key, value) in headers.iter() {
         if let Ok(v) = value.to_str() {
-            let key_str = env.new_string(key.as_str());
-            let value_str = env.new_string(v);
+            let key_str = env.new_string(key.as_str())?;
+            let value_str = env.new_string(v)?;
 
-            if let (Ok(k), Ok(v)) = (key_str, value_str) {
-                let _ = env.call_method(
-                    &map,
-                    "put",
-                    "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;",
-                    &[(&k).into(), (&v).into()],
-                );
-            }
+            let _ = env.call_method(
+                &map,
+                jni_str!("put"),
+                jni_sig!("(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"),
+                &[(&key_str).into(), (&value_str).into()],
+            );
         }
     }
 
     // Create Java strings and byte array
-    let mime_type_str = match env.new_string(mime_type) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let encoding_str = match env.new_string(encoding) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let reason_str = match env.new_string(reason) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
+    let mime_type_str = env.new_string(mime_type)?;
+    let encoding_str = env.new_string(encoding)?;
+    let reason_str = env.new_string(reason)?;
+
     // Prepare file path, pipe fd, or bytes
     let (file_path_str, pipe_fd_jint, data_array, content_length): (JString, jint, JObject, i64) =
         match body {
             WebResourceBody::Path(path) => {
-                let file_path_str = match env.new_string(path.to_string_lossy()) {
-                    Ok(s) => s,
-                    Err(_) => return JObject::null(),
-                };
+                let file_path_str = env.new_string(path.to_string_lossy())?;
                 let content_length = headers
                     .get(http::header::CONTENT_LENGTH)
                     .and_then(|h| h.to_str().ok())
@@ -237,30 +232,21 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
                 (file_path_str, 0, JObject::null(), content_length)
             }
             WebResourceBody::Pipe(reader) => {
-                let empty_path = match env.new_string("") {
-                    Ok(s) => s,
-                    Err(_) => return JObject::null(),
-                };
+                let empty_path = env.new_string("")?;
                 let fd = reader.into_raw_fd();
                 (empty_path, fd as jint, JObject::null(), -1i64)
             }
             WebResourceBody::Bytes(data) => {
-                let empty_path = match env.new_string("") {
-                    Ok(s) => s,
-                    Err(_) => return JObject::null(),
-                };
-                let data_array: JByteArray = match env.byte_array_from_slice(&data) {
-                    Ok(array) => array,
-                    Err(_) => return JObject::null(),
-                };
+                let empty_path = env.new_string("")?;
+                let data_array: JByteArray = env.byte_array_from_slice(&data)?;
                 (empty_path, 0, JObject::from(data_array), data.len() as i64)
             }
         };
 
     // Create the WebResourceResponseData object
-    match env.new_object(
+    env.new_object(
         response_class,
-        "(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;Ljava/lang/String;I[BJ)V",
+        jni_sig!("(Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/util/Map;Ljava/lang/String;I[BJ)V"),
         &[
             (&mime_type_str).into(),
             (&encoding_str).into(),
@@ -272,81 +258,86 @@ fn create_java_response<'a>(env: &mut JNIEnv<'a>, response: WebResourceResponse)
             (&data_array).into(),
             content_length.into(),
         ],
-    ) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+    )
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
     path: JString,
     level: jint,
     message: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
-    let message: String = env.get_string(&message).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let message: String = message.try_to_string(env)?;
 
-    let webtag = WebTag::new(&appid, &path, None);
-    let log_level = match level {
-        2 => LogLevel::Verbose, // VERBOSE
-        3 => LogLevel::Debug,   // DEBUG
-        4 => LogLevel::Info,    // INFO
-        5 => LogLevel::Warn,    // WARN
-        6 => LogLevel::Error,   // ERROR
-        _ => LogLevel::Info,    // Default to INFO
-    };
+        let webtag = WebTag::new(&appid, &path, None);
+        let log_level = match level {
+            2 => LogLevel::Verbose, // VERBOSE
+            3 => LogLevel::Debug,   // DEBUG
+            4 => LogLevel::Info,    // INFO
+            5 => LogLevel::Warn,    // WARN
+            6 => LogLevel::Error,   // ERROR
+            _ => LogLevel::Info,    // Default to INFO
+        };
 
-    if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.log(log_level, &message);
-    }
-    1
+        if let Some(delegate) = get_webview_delegate(&webtag) {
+            delegate.log(log_level, &message);
+        }
+        Ok(1)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewReady(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JObject,
     appid: JString,
     path: JString,
     webview_obj: JObject,
 ) {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    // Retrieve the sender from our global map and send the WebView instance
-    if let Some(senders) = WEBVIEW_SENDERS.get() {
-        let webtag = WebTag::new(&appid, &path, None);
+        // Retrieve the sender from our global map and send the WebView instance
+        if let Some(senders) = WEBVIEW_SENDERS.get() {
+            let webtag = WebTag::new(&appid, &path, None);
 
-        if let Ok(mut senders_map) = senders.lock()
-            && let Some(sender) = senders_map.remove(&webtag.to_string())
-        {
-            // Create global reference to the passed WebView object
-            match env.new_global_ref(webview_obj) {
-                Ok(global_ref) => {
-                    // Create WebViewInner from the Java object
-                    let webview_inner = WebViewInner::from_java_object(global_ref, webtag.clone());
+            if let Ok(mut senders_map) = senders.lock()
+                && let Some(sender) = senders_map.remove(&webtag.to_string())
+            {
+                // Create global reference to the passed WebView object
+                match env.new_global_ref(webview_obj) {
+                    Ok(global_ref) => {
+                        // Create WebViewInner from the Java object
+                        let webview_inner =
+                            WebViewInner::from_java_object(global_ref, webtag.clone());
 
-                    // Create WebView wrapper
-                    let webview = Arc::new(crate::WebView::new(webview_inner));
+                        // Create WebView wrapper
+                        let webview = Arc::new(crate::WebView::new(webview_inner));
 
-                    // Register the WebView instance for future lookups
-                    register_webview(webview.clone());
+                        // Register the WebView instance for future lookups
+                        register_webview(webview.clone());
 
-                    // Send the WebView instance through the channel
-                    let _ = sender.send(Ok(webview));
-                }
-                Err(e) => {
-                    let _ = sender.send(Err(WebViewError::WebView(format!(
-                        "Failed to create global ref: {:?}",
-                        e
-                    ))));
+                        // Send the WebView instance through the channel
+                        let _ = sender.send(Ok(webview));
+                    }
+                    Err(e) => {
+                        let _ = sender.send(Err(WebViewError::WebView(format!(
+                            "Failed to create global ref: {:?}",
+                            e
+                        ))));
+                    }
                 }
             }
         }
-    }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }

@@ -1,9 +1,10 @@
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use jni::objects::{GlobalRef, JClass, JObject, JString, JValue};
+use jni::objects::{Global, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
-use lingxia_webview::get_env;
+use jni::{Env, jni_sig, jni_str};
+use lingxia_webview::with_env;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};
@@ -11,13 +12,31 @@ use std::path::{Path, PathBuf};
 use super::{CachedClass, get_cached_class};
 
 // Platform for Android
-#[derive(Clone)]
 pub struct Platform {
     asset_manager: *mut ndk_sys::AAssetManager,
-    java_asset_manager: GlobalRef,
+    java_asset_manager: Global<JObject<'static>>,
     data_dir: String,
     cache_dir: String,
     locale: String,
+}
+
+impl Clone for Platform {
+    fn clone(&self) -> Self {
+        let java_asset_manager = with_env(
+            |env| -> Result<Global<JObject<'static>>, Box<dyn std::error::Error>> {
+                Ok(env.new_global_ref(self.java_asset_manager.as_ref())?)
+            },
+        )
+        .expect("Failed to clone Platform java_asset_manager");
+
+        Platform {
+            asset_manager: self.asset_manager,
+            java_asset_manager,
+            data_dir: self.data_dir.clone(),
+            cache_dir: self.cache_dir.clone(),
+            locale: self.locale.clone(),
+        }
+    }
 }
 
 unsafe impl Send for Platform {}
@@ -52,37 +71,30 @@ impl crate::traits::update::UpdateService for Platform {
     }
 
     fn install_update(&self, apk_path: &Path) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
+        let update_manager_class: &JClass =
+            super::get_cached_class(super::CachedClass::UpdateManager)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-            let update_manager_class: &JClass =
-                super::get_cached_class(super::CachedClass::UpdateManager)?
-                    .as_obj()
-                    .into();
-
-            let path_str = apk_path.to_str().ok_or_else(|| "Invalid APK path")?;
+        with_env(|env| -> Result<(), PlatformError> {
+            let path_str = apk_path
+                .to_str()
+                .ok_or_else(|| PlatformError::Platform("Invalid APK path".to_string()))?;
             let path_jstring = env.new_string(path_str)?;
 
             let result = env.call_static_method(
                 update_manager_class,
-                "installUpdate",
-                "(Ljava/lang/String;)Z",
+                jni_str!("installUpdate"),
+                jni_sig!("(Ljava/lang/String;)Z"),
                 &[JValue::Object(&path_jstring)],
             )?;
-            let success = result
-                .z()
-                .map_err(|e| format!("Invalid installUpdate result: {}", e))?;
-            if !success {
-                return Err("installUpdate returned false".into());
+            if !result.z()? {
+                return Err(PlatformError::Platform(
+                    "installUpdate returned false".to_string(),
+                ));
             }
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to install update: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to install update: {}", e)))
     }
 }
 
@@ -144,54 +156,58 @@ impl<'a> RecursiveAssetIterator<'a> {
     }
 
     fn list_via_jni(&self, path_to_list: &str) -> Result<Option<Vec<String>>, PlatformError> {
-        let mut jni_env = get_env()
-            .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
-        let path_jstring = Self::handle_jni_error(jni_env.new_string(path_to_list), path_to_list)?;
+        with_env(|env| -> Result<Option<Vec<String>>, PlatformError> {
+            let path_jstring = Self::handle_jni_error(env.new_string(path_to_list), path_to_list)?;
 
-        let java_am_obj = self.app.java_asset_manager.as_obj();
-        let jvalue = Self::handle_jni_error(
-            jni_env.call_method(
-                java_am_obj,
-                "list",
-                "(Ljava/lang/String;)[Ljava/lang/String;",
-                &[JValue::from(&path_jstring)],
-            ),
-            path_to_list,
-        )?;
+            let java_am_obj = self.app.java_asset_manager.as_ref();
+            let jvalue = Self::handle_jni_error(
+                env.call_method(
+                    java_am_obj,
+                    jni_str!("list"),
+                    jni_sig!("(Ljava/lang/String;)[Ljava/lang/String;"),
+                    &[JValue::from(&path_jstring)],
+                ),
+                path_to_list,
+            )?;
 
-        if Self::handle_jni_error(jni_env.exception_check(), path_to_list)? {
-            Self::handle_jni_error(jni_env.exception_clear(), path_to_list)?;
-            Ok(None)
-        } else {
-            let jobject_array = Self::handle_jni_error(jvalue.l(), path_to_list)?;
-
-            if jobject_array.is_null() {
+            if env.exception_check() {
+                env.exception_clear();
                 Ok(None)
             } else {
-                let jobject_array = jni::objects::JObjectArray::from(jobject_array);
-                let array_len =
-                    Self::handle_jni_error(jni_env.get_array_length(&jobject_array), path_to_list)?;
+                let jobject_array = Self::handle_jni_error(jvalue.l(), path_to_list)?;
 
-                if array_len == 0 {
-                    return Ok(Some(Vec::new()));
-                }
+                if jobject_array.is_null() {
+                    Ok(None)
+                } else {
+                    let jobject_array = unsafe {
+                        jni::objects::JObjectArray::<JObject>::from_raw(
+                            env,
+                            jobject_array.into_raw() as _,
+                        )
+                    };
+                    let array_len = jobject_array.len(env)?;
 
-                let mut entries = Vec::with_capacity(array_len as usize);
-                for i in 0..array_len {
-                    let entry_jobject = Self::handle_jni_error(
-                        jni_env.get_object_array_element(&jobject_array, i),
-                        path_to_list,
-                    )?;
-                    let entry_jstring_wrapper: jni::objects::JString = entry_jobject.into();
-                    let entry_java_str = Self::handle_jni_error(
-                        jni_env.get_string(&entry_jstring_wrapper),
-                        path_to_list,
-                    )?;
-                    entries.push(entry_java_str.into());
+                    if array_len == 0 {
+                        return Ok(Some(Vec::new()));
+                    }
+
+                    let mut entries = Vec::with_capacity(array_len);
+                    for i in 0..array_len {
+                        let entry_jobject: JObject = jobject_array.get_element(env, i)?;
+                        let entry_jstring_wrapper = unsafe {
+                            jni::objects::JString::from_raw(env, entry_jobject.into_raw() as _)
+                        };
+                        let entry_str = Self::handle_jni_error(
+                            entry_jstring_wrapper.try_to_string(env),
+                            path_to_list,
+                        )?;
+                        entries.push(entry_str);
+                    }
+                    Ok(Some(entries))
                 }
-                Ok(Some(entries))
             }
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))
     }
 }
 
@@ -278,15 +294,19 @@ impl Platform {
     /// # Safety
     /// Caller must ensure `java_asset_manager_obj` is a valid `android.content.res.AssetManager`.
     pub unsafe fn from_java(
-        jni_env: &mut jni::JNIEnv,
+        jni_env: &mut Env,
         java_asset_manager_obj: jobject,
         data_dir: String,
         cache_dir: String,
         locale: String,
     ) -> Result<Self, String> {
         // Get the native asset manager pointer from the Java AssetManager
-        let asset_manager_ptr =
-            unsafe { ndk_sys::AAssetManager_fromJava(jni_env.get_raw(), java_asset_manager_obj) };
+        let asset_manager_ptr = unsafe {
+            ndk_sys::AAssetManager_fromJava(
+                jni_env.get_raw() as *mut _,
+                java_asset_manager_obj as *mut _,
+            )
+        };
 
         if asset_manager_ptr.is_null() {
             return Err("Failed to get native AssetManager".to_string());
@@ -294,7 +314,7 @@ impl Platform {
 
         // Create a global reference to the Java AssetManager for later use
         let java_asset_manager = jni_env
-            .new_global_ref(unsafe { JObject::from_raw(java_asset_manager_obj) })
+            .new_global_ref(unsafe { JObject::from_raw(jni_env, java_asset_manager_obj) })
             .map_err(|e| format!("Failed to create global reference: {:?}", e))?;
 
         Ok(Platform {
@@ -306,38 +326,45 @@ impl Platform {
         })
     }
 
-    fn resolve_app_identifier(jni_env: &mut jni::JNIEnv) -> Result<String, String> {
+    fn resolve_app_identifier(jni_env: &mut Env) -> Result<String, PlatformError> {
         // Use cached LxApp class to obtain the application context and package name.
         let lxapp_class: &JClass = get_cached_class(CachedClass::LxApp)
-            .map_err(|e| e.to_string())?
-            .as_obj()
-            .into();
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
         let context = jni_env
             .call_static_method(
                 lxapp_class,
-                "getApplicationContext",
-                "()Landroid/content/Context;",
+                jni_str!("getApplicationContext"),
+                jni_sig!("()Landroid/content/Context;"),
                 &[],
             )
             .and_then(|val| val.l())
-            .map_err(|e| format!("Failed to get application context: {:?}", e))?;
+            .map_err(|e| {
+                PlatformError::Platform(format!("Failed to get application context: {:?}", e))
+            })?;
         if context.is_null() {
-            return Err("Application context is null".to_string());
+            return Err(PlatformError::Platform(
+                "Application context is null".to_string(),
+            ));
         }
 
         let package_obj = jni_env
-            .call_method(context, "getPackageName", "()Ljava/lang/String;", &[])
+            .call_method(
+                context,
+                jni_str!("getPackageName"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )
             .and_then(|val| val.l())
-            .map_err(|e| format!("Failed to get package name: {:?}", e))?;
+            .map_err(|e| PlatformError::Platform(format!("Failed to get package name: {:?}", e)))?;
         if package_obj.is_null() {
-            return Err("Package name is null".to_string());
+            return Err(PlatformError::Platform("Package name is null".to_string()));
         }
 
-        let package_name: String = jni_env
-            .get_string(&JString::from(package_obj))
-            .map_err(|e| format!("Failed to read package name: {:?}", e))?
-            .into();
+        let package_jstring = unsafe { JString::from_raw(jni_env, package_obj.into_raw() as _) };
+        let package_name = package_jstring.try_to_string(jni_env).map_err(|e| {
+            PlatformError::Platform(format!("Failed to read package name: {:?}", e))
+        })?;
 
         Ok(package_name)
     }
@@ -388,16 +415,8 @@ impl AppRuntime for Platform {
     }
 
     fn get_app_identifier(&self) -> Result<String, PlatformError> {
-        match || -> Result<String, String> {
-            let mut env = get_env().map_err(|e| e.to_string())?;
-            Platform::resolve_app_identifier(&mut env)
-        }() {
-            Ok(identifier) => Ok(identifier),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to get app identifier: {}",
-                e
-            ))),
-        }
+        with_env(Platform::resolve_app_identifier)
+            .map_err(|e| PlatformError::Platform(format!("Failed to get app identifier: {}", e)))
     }
 
     fn copy_album_media_to_file(
@@ -416,58 +435,40 @@ impl AppRuntime for Platform {
     }
 
     fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
+        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
 
             env.call_static_method(
                 lxapp_class,
-                "openLxApp",
-                "(Ljava/lang/String;Ljava/lang/String;)V",
+                jni_str!("openLxApp"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                 ],
             )?;
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to show lxapp: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
     }
 
     fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
-
+        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
-
             env.call_static_method(
                 lxapp_class,
-                "closeLxApp",
-                "(Ljava/lang/String;)V",
+                jni_str!("closeLxApp"),
+                jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&appid_jstring)],
             )?;
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to hide lxapp: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
     }
 
     fn navigate(
@@ -476,98 +477,77 @@ impl AppRuntime for Platform {
         path: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
+        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
-
+        with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let path_jstring = env.new_string(&path)?;
-
-            // Pass AnimationType as integer to Android
             let anim_type_int = animation_type as i32;
 
             let result = env.call_static_method(
                 lxapp_class,
-                "navigate",
-                "(Ljava/lang/String;Ljava/lang/String;I)Z",
+                jni_str!("navigate"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;I)Z"),
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
                     JValue::Int(anim_type_int),
                 ],
             )?;
-
-            // Check if navigation was successful
-            if let Ok(success) = result.z()
-                && !success
-            {
-                return Err(format!(
+            if !result.z()? {
+                return Err(PlatformError::Platform(format!(
                     "Navigation returned false: appid={}, path={}, animation_type={:?}",
                     appid, path, animation_type
-                )
-                .into());
+                )));
             }
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(_) => Err(PlatformError::Platform(format!(
+        })
+        .map_err(|_| {
+            PlatformError::Platform(format!(
                 "Failed to navigate: appid={}, path={}, animation_type={:?}",
                 appid, path, animation_type
-            ))),
-        }
+            ))
+        })
     }
 
     /// Launch external application with URL
     fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-
-            let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)?
-                .as_obj()
-                .into();
+        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
             let url_jstring = env.new_string(url)?;
-
             env.call_static_method(
                 lxapp_class,
-                "launchWithUrl",
-                "(Ljava/lang/String;)V",
+                jni_str!("launchWithUrl"),
+                jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&url_jstring)],
             )?;
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to launch_with_url: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to launch_with_url: {}", e)))
     }
 
     fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
-        let mut env = get_env()
-            .map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))?;
+        with_env(|env| -> Result<(), PlatformError> {
+            let capsule_class: &JClass = super::get_cached_class(super::CachedClass::LxAppCapsule)
+                .map_err(|e| {
+                    PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
+                })?;
 
-        let capsule_class: &JClass = super::get_cached_class(super::CachedClass::LxAppCapsule)
+            env.call_static_method(
+                capsule_class,
+                jni_str!("getCapsuleRect"),
+                jni_sig!("(J)V"),
+                &[JValue::Long(callback_id as i64)],
+            )
             .map_err(|e| {
-                PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
-            })?
-            .as_obj()
-            .into();
+                log::error!("[Android] getCapsuleRect JNI call failed: {}", e);
+                PlatformError::Platform(format!("Failed to get capsule rect: {}", e))
+            })?;
 
-        env.call_static_method(
-            capsule_class,
-            "getCapsuleRect",
-            "(J)V",
-            &[JValue::Long(callback_id as i64)],
-        )
-        .map_err(|e| {
-            log::error!("[Android] getCapsuleRect JNI call failed: {}", e);
-            PlatformError::Platform(format!("Failed to get capsule rect: {}", e))
-        })?;
-
-        Ok(())
+            Ok(())
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))
     }
 }

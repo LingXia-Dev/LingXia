@@ -15,3 +15,10 @@ pub enum PlatformError {
 
 /// Result type for platform operations
 pub type PlatformResult<T> = Result<T, PlatformError>;
+
+#[cfg(target_os = "android")]
+impl From<jni::errors::Error> for PlatformError {
+    fn from(value: jni::errors::Error) -> Self {
+        PlatformError::Platform(format!("JNI error: {}", value))
+    }
+}

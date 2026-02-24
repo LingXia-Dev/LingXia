@@ -1,7 +1,12 @@
 use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
+use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, jlong};
-use jni::{JNIEnv, JavaVM};
+use jni::{
+    Env, EnvUnowned, JavaVM,
+    errors::{LogErrorAndDefault, ThrowRuntimeExAndDefault},
+    jni_sig, jni_str,
+};
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::CachedClass;
 use log::{error, info, warn};
@@ -26,8 +31,8 @@ fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
     default_color
 }
 
-fn init_cached_java_class(env: &mut JNIEnv<'_>, class: CachedClass) {
-    match env.find_class(class.class_path()) {
+fn init_cached_java_class(env: &mut Env<'_>, class: CachedClass) {
+    match env.find_class(JNIString::new(class.class_path())) {
         Ok(local_class) => match env.new_global_ref(local_class) {
             Ok(global_class) => lingxia_platform::init_cached_class(class, global_class),
             Err(e) => warn!(
@@ -49,7 +54,7 @@ fn init_cached_java_class(env: &mut JNIEnv<'_>, class: CachedClass) {
     }
 }
 
-fn init_cached_java_classes(env: &mut JNIEnv<'_>) {
+fn init_cached_java_classes(env: &mut Env<'_>) {
     // Keep this in sync with `lingxia_platform::CachedClass`.
     let classes = [
         CachedClass::LxApp,
@@ -77,6 +82,7 @@ fn init_cached_java_classes(env: &mut JNIEnv<'_>) {
 }
 
 #[unsafe(no_mangle)]
+#[allow(improper_ctypes_definitions)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     android_logger::init_once(
         Config::default()
@@ -120,218 +126,225 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited(
-    mut env: JNIEnv,
-    _class: JClass,
-    data_dir: JString,
-    cache_dir: JString,
-    asset_manager: JObject,
-    locale: JString,
-) -> jni::sys::jstring {
-    // Cache app/library classes here (Java -> native entrypoint) so `FindClass` resolves via
-    // the app classloader. Doing this in `JNI_OnLoad` can fail on Android.
-    init_cached_java_classes(&mut env);
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    data_dir: JString<'a>,
+    cache_dir: JString<'a>,
+    asset_manager: JObject<'a>,
+    locale: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        // Cache app/library classes here (Java -> native entrypoint) so `FindClass` resolves via
+        // the app classloader. Doing this in `JNI_OnLoad` can fail on Android.
+        init_cached_java_classes(env);
 
-    let data_dir: String = env.get_string(&data_dir).unwrap().into();
-    let cache_dir: String = env.get_string(&cache_dir).unwrap().into();
-    let locale: String = env.get_string(&locale).unwrap().into();
+        let data_dir_str: String = data_dir.try_to_string(env)?;
+        let cache_dir_str: String = cache_dir.try_to_string(env)?;
+        let locale_str: String = locale.try_to_string(env)?;
 
-    log::info!(
-        "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
-        data_dir,
-        cache_dir,
-        locale
-    );
+        log::info!(
+            "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
+            data_dir_str,
+            cache_dir_str,
+            locale_str
+        );
 
-    let platform = match unsafe {
-        lingxia_platform::Platform::from_java(
-            &mut env,
-            asset_manager.as_raw(),
-            data_dir,
-            cache_dir,
-            locale,
-        )
-    } {
-        Ok(platform) => platform,
-        Err(_) => {
-            return JObject::null().into_raw();
+        let platform = unsafe {
+            lingxia_platform::Platform::from_java(
+                env,
+                asset_manager.as_raw(),
+                data_dir_str,
+                cache_dir_str,
+                locale_str,
+            )
         }
-    };
+        .map_err(|_| jni::errors::Error::JniCall(jni::errors::JniError::Unknown))?;
 
-    let home_app_id = crate::init_with_platform(platform);
+        let home_app_id = crate::init_with_platform(platform);
 
-    // Return the home appid
-    match home_app_id {
-        Some(appid) => match env.new_string(&appid) {
-            Ok(java_string) => java_string.into_raw(),
-            Err(_) => JObject::null().into_raw(),
-        },
-        None => {
-            error!("Failed to obtain LxApp home app details during initialization.");
-            JObject::null().into_raw()
+        // Return the home appid
+        match home_app_id {
+            Some(appid) => {
+                let java_string = env.new_string(&appid)?;
+                Ok(java_string)
+            }
+            None => {
+                error!("Failed to obtain LxApp home app details during initialization.");
+                Ok(JString::null())
+            }
         }
-    }
+    })
+    .resolve::<LogErrorAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
     path: JString,
 ) {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    if let Some(lxapp) = lxapp::try_get(&appid) {
-        lxapp.on_page_show(path);
-    }
+        if let Some(lxapp) = lxapp::try_get(&appid) {
+            lxapp.on_page_show(path);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
 ) -> JObject<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    let webtag = lingxia_webview::WebTag::new(&appid, &path, None);
-    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
-        // Get direct access to the WebView and create a new local reference to the Java WebView object
-        match env.new_local_ref(webview.get_java_webview()) {
-            Ok(local_ref) => unsafe { JObject::from_raw(local_ref.into_raw()) },
-            Err(e) => {
-                error!("Failed to create local reference to WebView: {:?}", e);
-                JObject::null()
+        let webtag = lingxia_webview::WebTag::new(&appid, &path, None);
+        if let Some(webview) = lingxia_webview::find_webview(&webtag) {
+            // Get direct access to the WebView and create a new local reference to the Java WebView object
+            match env.new_local_ref(webview.get_java_webview()) {
+                Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
+                Err(e) => {
+                    error!("Failed to create local reference to WebView: {:?}", e);
+                    Ok(JObject::null())
+                }
             }
+        } else {
+            // No WebView found for this appid/path
+            error!("💥 Not found webview for {}-{}", appid, path);
+            Ok(JObject::null())
         }
-    } else {
-        // No WebView found for this appid/path
-        error!("💥 Not found webview for {}-{}", appid, path);
-        JObject::null()
-    }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 // Function for LxAppActivity class to handle the mini app close event
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
 
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        warn!("Received close event for unknown lxapp: {}", appid);
-        return 0;
-    };
-    lxapp.on_lxapp_closed();
-    0
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            warn!("Received close event for unknown lxapp: {}", appid);
+            return Ok(0);
+        };
+        lxapp.on_lxapp_closed();
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Get navigation bar configuration for a specific page
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getNavigationBarState<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
 ) -> JObject<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    // Get the lxapp instance
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        return JObject::null();
-    };
+        // Get the lxapp instance
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(JObject::null());
+        };
 
-    // Get navigation bar state from page
-    let nav_state = lxapp
-        .get_page(&path)
-        .and_then(|page| page.get_navbar_state())
-        .unwrap_or_default();
+        // Get navigation bar state from page
+        let nav_state = lxapp
+            .get_page(&path)
+            .and_then(|page| page.get_navbar_state())
+            .unwrap_or_default();
 
-    // Find the NavigationBarState class
-    let nav_bar_class = match env.find_class("com/lingxia/lxapp/NavigationBarState") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
+        // Find the NavigationBarState class
+        let nav_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/NavigationBarState"))?;
 
-    // Parse background color using unified function
-    let bg_color_int = parse_color_to_i32(
-        &nav_state.navigationBarBackgroundColor,
-        0xFFFFFFFFu32 as i32,
-    );
+        // Parse background color using unified function
+        let bg_color_int = parse_color_to_i32(
+            &nav_state.navigationBarBackgroundColor,
+            0xFFFFFFFFu32 as i32,
+        );
 
-    // Create Java strings
-    let title_text = match env.new_string(&nav_state.navigationBarTitleText) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let text_style = match env.new_string(&nav_state.navigationBarTextStyle) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
+        // Create Java strings
+        let title_text = env.new_string(&nav_state.navigationBarTitleText)?;
+        let text_style = env.new_string(&nav_state.navigationBarTextStyle)?;
 
-    // Create NavigationBarState object with new boolean fields
-    // Constructor signature: (ILjava/lang/String;Ljava/lang/String;ZZZ)V
-    // Parameters: backgroundColor, textStyle, titleText, showNavbar, showBackButton, showHomeButton
-    match env.new_object(
-        nav_bar_class,
-        "(ILjava/lang/String;Ljava/lang/String;ZZZ)V",
-        &[
-            (bg_color_int as jint).into(),
-            (&text_style).into(),
-            (&title_text).into(),
-            (nav_state.show_navbar as jboolean).into(),
-            (nav_state.show_back_button as jboolean).into(),
-            (nav_state.show_home_button as jboolean).into(),
-        ],
-    ) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+        // Create NavigationBarState object with new boolean fields
+        // Constructor signature: (ILjava/lang/String;Ljava/lang/String;ZZZ)V
+        // Parameters: backgroundColor, textStyle, titleText, showNavbar, showBackButton, showHomeButton
+        let obj = env.new_object(
+            nav_bar_class,
+            jni_sig!("(ILjava/lang/String;Ljava/lang/String;ZZZ)V"),
+            &[
+                (bg_color_int as jint).into(),
+                (&text_style).into(),
+                (&title_text).into(),
+                (nav_state.show_navbar as jboolean).into(),
+                (nav_state.show_back_button as jboolean).into(),
+                (nav_state.show_home_button as jboolean).into(),
+            ],
+        )?;
+        Ok(obj)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Check if pull-to-refresh is enabled for a specific page
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_isPullDownRefreshEnabled<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
 ) -> jboolean {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    if lxapp::is_pull_down_refresh_enabled(&appid, &path) {
-        1
-    } else {
-        0
-    }
+        if lxapp::is_pull_down_refresh_enabled(&appid, &path) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Get page orientation for a specific page
 /// Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getPageOrientation<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    let Some(lxapp_instance) = lxapp::try_get(&appid) else {
-        return 0;
-    };
+        let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+            return Ok(0);
+        };
 
-    let orientation = lxapp_instance.get_page_orientation(&path);
-    orientation_to_android_value(orientation)
+        let orientation = lxapp_instance.get_page_orientation(&path);
+        Ok(orientation_to_android_value(orientation))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 fn orientation_to_android_value(orientation: OrientationConfig) -> jint {
@@ -346,271 +359,262 @@ fn orientation_to_android_value(orientation: OrientationConfig) -> jint {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
     event_type: jint,
     data: JString,
 ) -> jint {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let data_str: String = env.get_string(&data).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let data_str: String = data.try_to_string(env)?;
 
-    let ui_event_type = match event_type {
-        0 => UiEventType::TabBarClick,
-        1 => UiEventType::CapsuleClick,
-        2 => UiEventType::NavigationClick,
-        3 => UiEventType::BackPress,
-        4 => UiEventType::PullDownRefresh,
-        _ => {
-            error!("Unknown UI event type: {}", event_type);
-            return 0;
+        let ui_event_type = match event_type {
+            0 => UiEventType::TabBarClick,
+            1 => UiEventType::CapsuleClick,
+            2 => UiEventType::NavigationClick,
+            3 => UiEventType::BackPress,
+            4 => UiEventType::PullDownRefresh,
+            _ => {
+                error!("Unknown UI event type: {}", event_type);
+                return Ok(0);
+            }
+        };
+
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(0);
+        };
+        if lxapp.on_ui_event(ui_event_type, data_str) {
+            Ok(1)
+        } else {
+            Ok(0)
         }
-    };
-
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        return 0;
-    };
-    if lxapp.on_ui_event(ui_event_type, data_str) {
-        1
-    } else {
-        0
-    }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
     event_type: jint,
     payload_json: JString,
 ) -> jboolean {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let payload: String = env.get_string(&payload_json).unwrap().into();
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let payload: String = payload_json.try_to_string(env)?;
 
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        return 0;
-    };
-    let session_id = lxapp.session_id();
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(false);
+        };
+        let session_id = lxapp.session_id();
 
-    const KEY_EVENT_DOWN: jint = 0;
-    const KEY_EVENT_UP: jint = 1;
+        const KEY_EVENT_DOWN: jint = 0;
+        const KEY_EVENT_UP: jint = 1;
 
-    let should_dispatch = match event_type {
-        KEY_EVENT_DOWN => lxapp::key_event::has_key_down(&appid, session_id),
-        KEY_EVENT_UP => lxapp::key_event::has_key_up(&appid, session_id),
-        _ => false,
-    };
+        let should_dispatch = match event_type {
+            KEY_EVENT_DOWN => lxapp::key_event::has_key_down(&appid, session_id),
+            KEY_EVENT_UP => lxapp::key_event::has_key_up(&appid, session_id),
+            _ => false,
+        };
 
-    if !should_dispatch {
-        return 0;
-    }
+        if !should_dispatch {
+            return Ok(false);
+        }
 
-    let event_name = if event_type == KEY_EVENT_DOWN {
-        "KeyDown"
-    } else {
-        "KeyUp"
-    };
-    if lxapp::emit_app_event(&appid, event_name, Some(payload)) {
-        1
-    } else {
-        0
-    }
+        let event_name = if event_type == KEY_EVENT_DOWN {
+            "KeyDown"
+        } else {
+            "KeyUp"
+        };
+        if lxapp::emit_app_event(&appid, event_name, Some(payload)) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
 ) -> JString<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let path: String = env.get_string(&path).unwrap().into();
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
 
-    let resolved_path = lxapp::try_get(&appid)
-        .map(|lxapp| lxapp.on_lxapp_opened(path))
-        .unwrap_or_default();
+        let resolved_path = lxapp::try_get(&appid)
+            .map(|lxapp| lxapp.on_lxapp_opened(path))
+            .unwrap_or_default();
 
-    match env.new_string(&resolved_path) {
-        Ok(jstring) => jstring,
-        Err(_) => {
-            // Return empty string as fallback
-            env.new_string("").unwrap_or_else(|_| {
-                // If even empty string fails, return null
-                JString::from(jni::objects::JObject::null())
-            })
+        match env.new_string(&resolved_path) {
+            Ok(jstring) => Ok(jstring),
+            Err(_) => {
+                // Return empty string as fallback
+                env.new_string("").or_else(|_| {
+                    // If even empty string fails, return null
+                    Ok(JString::null())
+                })
+            }
         }
-    }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Get LxApp information using new typed API
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
 ) -> JObject<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        return JObject::null();
-    };
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(JObject::null());
+        };
 
-    let lxapp_info = lxapp.get_lxapp_info();
+        let lxapp_info = lxapp.get_lxapp_info();
 
-    // Find the LxAppInfo class
-    let lxapp_info_class = match env.find_class("com/lingxia/lxapp/LxAppInfo") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
+        // Find the LxAppInfo class
+        let lxapp_info_class = env.find_class(jni_str!("com/lingxia/lxapp/LxAppInfo"))?;
 
-    // Create Java strings
-    let app_name_str = match env.new_string(&lxapp_info.app_name) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let version_str = match env.new_string(&lxapp_info.version) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let cache_dir_str = match env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned()) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
+        // Create Java strings
+        let app_name_str = env.new_string(&lxapp_info.app_name)?;
+        let version_str = env.new_string(&lxapp_info.version)?;
+        let cache_dir_str = env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned())?;
 
-    // Create LxAppInfo object (appName, version, cacheDir)
-    match env.new_object(
-        lxapp_info_class,
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-        &[
-            (&app_name_str).into(),
-            (&version_str).into(),
-            (&cache_dir_str).into(),
-        ],
-    ) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+        // Create LxAppInfo object (appName, version, cacheDir)
+        let obj = env.new_object(
+            lxapp_info_class,
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+            &[
+                (&app_name_str).into(),
+                (&version_str).into(),
+                (&cache_dir_str).into(),
+            ],
+        )?;
+        Ok(obj)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 // Get TabBar configuration using new typed API
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getTabBarState<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
 ) -> JObject<'a> {
-    let appid: String = env.get_string(&appid).unwrap().into();
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
 
-    let tab_bar_config = match lxapp::try_get(&appid).and_then(|lxapp| lxapp.get_tabbar()) {
-        Some(config) => config,
-        None => {
-            return JObject::null();
+        let tab_bar_config = match lxapp::try_get(&appid).and_then(|lxapp| lxapp.get_tabbar()) {
+            Some(config) => config,
+            None => {
+                return Ok(JObject::null());
+            }
+        };
+
+        // Find the TabBarState class
+        let tab_bar_class = env.find_class(jni_str!("com/lingxia/lxapp/TabBarState"))?;
+
+        // Convert background color using unified function
+        let background_color =
+            parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
+
+        // Convert selected color using unified function
+        let selected_color =
+            parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
+
+        // Convert unselected color using unified function
+        let color = parse_color_to_i32(&tab_bar_config.color, 0xFF666666u32 as i32);
+
+        // Convert border style using unified function
+        let border_style = parse_color_to_i32(&tab_bar_config.borderStyle, 0xFFF0F0F0u32 as i32);
+
+        // Convert dimension (height for top/bottom, width for left/right)
+        let dimension = tab_bar_config.dimension;
+
+        // Use int for position (0=Bottom, 1=Top, 2=Left, 3=Right)
+        let position_int = tab_bar_config.position.to_i32();
+
+        // Create TabBarItem list
+        let array_list_class = env.find_class(jni_str!("java/util/ArrayList"))?;
+
+        let tab_items_list = env.new_object(array_list_class, jni_sig!("()V"), &[])?;
+
+        for item in tab_bar_config.list.iter() {
+            if let Some(tab_item) = create_tab_bar_item(env, item) {
+                let _ = env.call_method(
+                    &tab_items_list,
+                    jni_str!("add"),
+                    jni_sig!("(Ljava/lang/Object;)Z"),
+                    &[(&tab_item).into()],
+                );
+            } else {
+                log::warn!(
+                    "[Android] Failed to create TabBar item in getTabBarState for {}",
+                    &item.pagePath
+                );
+            }
         }
-    };
 
-    // Find the TabBarState class
-    let tab_bar_class = match env.find_class("com/lingxia/lxapp/TabBarState") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
+        // Create Position enum
+        let position_class = env.find_class(jni_str!("com/lingxia/lxapp/TabBarState$Position"))?;
 
-    // Convert background color using unified function
-    let background_color =
-        parse_color_to_i32(&tab_bar_config.backgroundColor, 0xFFFFFFFFu32 as i32);
+        let position_enum = match position_int {
+            1 => env.get_static_field(
+                position_class,
+                jni_str!("LEFT"),
+                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+            )?,
+            2 => env.get_static_field(
+                position_class,
+                jni_str!("RIGHT"),
+                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+            )?,
+            _ => env.get_static_field(
+                position_class,
+                jni_str!("BOTTOM"),
+                jni_sig!("Lcom/lingxia/lxapp/TabBarState$Position;"),
+            )?,
+        };
 
-    // Convert selected color using unified function
-    let selected_color = parse_color_to_i32(&tab_bar_config.selectedColor, 0xFF1677FFu32 as i32);
-
-    // Convert unselected color using unified function
-    let color = parse_color_to_i32(&tab_bar_config.color, 0xFF666666u32 as i32);
-
-    // Convert border style using unified function
-    let border_style = parse_color_to_i32(&tab_bar_config.borderStyle, 0xFFF0F0F0u32 as i32);
-
-    // Convert dimension (height for top/bottom, width for left/right)
-    let dimension = tab_bar_config.dimension;
-
-    // Use int for position (0=Bottom, 1=Top, 2=Left, 3=Right)
-    let position_int = tab_bar_config.position.to_i32();
-
-    // Create TabBarItem list
-    let array_list_class = match env.find_class("java/util/ArrayList") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
-
-    let tab_items_list = match env.new_object(array_list_class, "()V", &[]) {
-        Ok(list) => list,
-        Err(_) => return JObject::null(),
-    };
-
-    for item in tab_bar_config.list.iter() {
-        if let Some(tab_item) = create_tab_bar_item(&mut env, item) {
-            let _ = env.call_method(
-                &tab_items_list,
-                "add",
-                "(Ljava/lang/Object;)Z",
-                &[(&tab_item).into()],
-            );
-        } else {
-            log::warn!(
-                "[Android] Failed to create TabBar item in getTabBarState for {}",
-                &item.pagePath
-            );
-        }
-    }
-
-    // Create Position enum
-    let position_class = match env.find_class("com/lingxia/lxapp/TabBarState$Position") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
-
-    let position_enum_value = match position_int {
-        1 => "LEFT",
-        2 => "RIGHT",
-        _ => "BOTTOM", // default
-    };
-
-    let position_enum = match env.get_static_field(
-        position_class,
-        position_enum_value,
-        "Lcom/lingxia/lxapp/TabBarState$Position;",
-    ) {
-        Ok(pos) => pos,
-        Err(_) => return JObject::null(),
-    };
-
-    // Create TabBarState object (all parameters non-nullable)
-    match env.new_object(
-        tab_bar_class,
-        "(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;ZI)V",
-        &[
-            background_color.into(),
-            selected_color.into(),
-            color.into(),
-            border_style.into(),
-            dimension.into(),
-            (&position_enum).into(),
-            (&tab_items_list).into(),
-            tab_bar_config.is_visible.into(),
-            tab_bar_config.selected_index.into(),
-        ],
-    ) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+        // Create TabBarState object (all parameters non-nullable)
+        let obj = env.new_object(
+            tab_bar_class,
+            jni_sig!("(IIIIILcom/lingxia/lxapp/TabBarState$Position;Ljava/util/List;ZI)V"),
+            &[
+                background_color.into(),
+                selected_color.into(),
+                color.into(),
+                border_style.into(),
+                dimension.into(),
+                (&position_enum).into(),
+                (&tab_items_list).into(),
+                tab_bar_config.is_visible.into(),
+                tab_bar_config.selected_index.into(),
+            ],
+        )?;
+        Ok(obj)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Create TabBarItem with actual badge and red dot data from Rust
 fn create_tab_bar_item<'a>(
-    env: &mut JNIEnv<'a>,
+    env: &mut Env<'a>,
     item: &lxapp::tabbar::TabBarItem,
 ) -> Option<JObject<'a>> {
     // Find TabBarItem class
-    let tab_item_class = match env.find_class("com/lingxia/lxapp/TabBarItem") {
+    let tab_item_class = match env.find_class(jni_str!("com/lingxia/lxapp/TabBarItem")) {
         Ok(c) => c,
         Err(_) => return None,
     };
@@ -653,7 +657,7 @@ fn create_tab_bar_item<'a>(
     env
         .new_object(
             tab_item_class,
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V",
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZILjava/lang/String;Z)V"),
             &[
                 (&page_path).into(),
                 (&text).into(),
@@ -671,49 +675,44 @@ fn create_tab_bar_item<'a>(
 /// Handle DeepLink URL by processing the path without host
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     applink_url: JString,
 ) -> jint {
-    let url: String = env.get_string(&applink_url).unwrap().into();
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let url: String = applink_url.try_to_string(env)?;
 
-    log::info!("[Android] AppLink received: {}", url);
-    0
+        log::info!("[Android] AppLink received: {}", url);
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Get current active LxApp ID and path from Rust stack
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
 ) -> JObject<'a> {
-    let (current_appid, current_path) = lxapp::get_current_lxapp();
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let (current_appid, current_path) = lxapp::get_current_lxapp();
 
-    // Find the CurrentLxApp class (we'll need to create this)
-    let current_lxapp_class = match env.find_class("com/lingxia/lxapp/CurrentLxApp") {
-        Ok(c) => c,
-        Err(_) => return JObject::null(),
-    };
+        // Find the CurrentLxApp class (we'll need to create this)
+        let current_lxapp_class = env.find_class(jni_str!("com/lingxia/lxapp/CurrentLxApp"))?;
 
-    // Create Java strings
-    let appid_str = match env.new_string(&current_appid) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
-    let path_str = match env.new_string(&current_path) {
-        Ok(s) => s,
-        Err(_) => return JObject::null(),
-    };
+        // Create Java strings
+        let appid_str = env.new_string(&current_appid)?;
+        let path_str = env.new_string(&current_path)?;
 
-    // Create CurrentLxApp object
-    match env.new_object(
-        current_lxapp_class,
-        "(Ljava/lang/String;Ljava/lang/String;)V",
-        &[(&appid_str).into(), (&path_str).into()],
-    ) {
-        Ok(obj) => obj,
-        Err(_) => JObject::null(),
-    }
+        // Create CurrentLxApp object
+        let obj = env.new_object(
+            current_lxapp_class,
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+            &[(&appid_str).into(), (&path_str).into()],
+        )?;
+        Ok(obj)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Callback from platform (called from Kotlin via NativeAPI)
@@ -724,94 +723,105 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
 /// - `data`: When `success=true`, contains JSON payload; when `success=false`, contains error code string (see i18n/err_code)
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     id: jlong,
     success: jboolean,
     data: JString,
 ) -> jboolean {
-    let id = id as u64;
-    let success = success != 0;
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let id = id as u64;
+        let success = success;
 
-    let data_str: String = match env.get_string(&data) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!("[Android] Failed to get data string: {}", e);
-            let _ = invoke_callback(id, Err(1000));
-            return 0;
+        let data_str: String = match data.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(e) => {
+                error!("[Android] Failed to get data string: {}", e);
+                let _ = invoke_callback(id, Err(1000));
+                return Ok(false);
+            }
+        };
+
+        let result = if success {
+            Ok(data_str)
+        } else {
+            Err(data_str.parse::<u32>().unwrap_or(1000))
+        };
+
+        if invoke_callback(id, result) {
+            Ok(true)
+        } else {
+            warn!("[Android] Callback not found for id={}", id);
+            Ok(false)
         }
-    };
-
-    let result = if success {
-        Ok(data_str)
-    } else {
-        Err(data_str.parse::<u32>().unwrap_or(1000))
-    };
-
-    if invoke_callback(id, result) {
-        1
-    } else {
-        warn!("[Android] Callback not found for id={}", id);
-        0
-    }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Notify native layer that app entered foreground
 /// This should be called from LxAppActivity.onStart
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppShow(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     lxappid: JString,
 ) {
-    let lxappid: String = match env.get_string(&lxappid) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!(
-                "[Android] Failed to get lxappid string for onAppShow: {}",
-                e
-            );
-            return;
-        }
-    };
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let lxappid: String = match lxappid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(e) => {
+                error!(
+                    "[Android] Failed to get lxappid string for onAppShow: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
 
-    if let Some(lxapp) = lxapp::try_get(&lxappid) {
-        let args = AppServiceEventArgs {
-            source: AppServiceEventSource::Host,
-            reason: AppServiceEventReason::Foreground,
+        if let Some(lxapp) = lxapp::try_get(&lxappid) {
+            let args = AppServiceEventArgs {
+                source: AppServiceEventSource::Host,
+                reason: AppServiceEventReason::Foreground,
+            }
+            .to_json_string();
+            let _ = lxapp.appservice_notify(AppServiceEvent::OnShow, Some(args));
         }
-        .to_json_string();
-        let _ = lxapp.appservice_notify(AppServiceEvent::OnShow, Some(args));
-    }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Notify native layer that app entered background
 /// This should be called from LxAppActivity.onStop
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppHide(
-    mut env: JNIEnv,
+    mut env: EnvUnowned,
     _class: JClass,
     lxappid: JString,
 ) {
-    let lxappid: String = match env.get_string(&lxappid) {
-        Ok(s) => s.into(),
-        Err(e) => {
-            error!(
-                "[Android] Failed to get lxappid string for onAppHide: {}",
-                e
-            );
-            return;
-        }
-    };
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let lxappid: String = match lxappid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(e) => {
+                error!(
+                    "[Android] Failed to get lxappid string for onAppHide: {}",
+                    e
+                );
+                return Err(e);
+            }
+        };
 
-    if let Some(lxapp) = lxapp::try_get(&lxappid) {
-        let args = AppServiceEventArgs {
-            source: AppServiceEventSource::Host,
-            reason: AppServiceEventReason::Background,
+        if let Some(lxapp) = lxapp::try_get(&lxappid) {
+            let args = AppServiceEventArgs {
+                source: AppServiceEventSource::Host,
+                reason: AppServiceEventReason::Background,
+            }
+            .to_json_string();
+            let _ = lxapp.appservice_notify(AppServiceEvent::OnHide, Some(args));
         }
-        .to_json_string();
-        let _ = lxapp.appservice_notify(AppServiceEvent::OnHide, Some(args));
-    }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 /// Resolve a lx:// URI or sandbox path to a native-consumable URL/path.
@@ -823,47 +833,48 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppHide(
 /// - Returns `file://...` for local filesystem paths.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
-    mut env: JNIEnv<'a>,
+    mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
     input: JString<'a>,
 ) -> JString<'a> {
-    let appid: String = match env.get_string(&appid) {
-        Ok(s) => s.into(),
-        Err(_) => return JString::from(JObject::null()),
-    };
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
 
-    let input: String = match env.get_string(&input) {
-        Ok(s) => s.into(),
-        Err(_) => return JString::from(JObject::null()),
-    };
+        let input: String = match input.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
 
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return JString::from(JObject::null());
-    }
+        let trimmed = input.trim();
+        if trimmed.is_empty() {
+            return Ok(JString::null());
+        }
 
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        return env
-            .new_string(trimmed)
-            .unwrap_or_else(|_| JString::from(JObject::null()));
-    }
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            return env.new_string(trimmed).or_else(|_| Ok(JString::null()));
+        }
 
-    let Some(lxapp) = lxapp::try_get(&appid) else {
-        return JString::from(JObject::null());
-    };
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(JString::null());
+        };
 
-    let resolved = if let Some(path) = trimmed.strip_prefix("file://") {
-        lxapp.resolve_accessible_path(path).ok()
-    } else {
-        lxapp.resolve_accessible_path(trimmed).ok()
-    };
+        let resolved = if let Some(path) = trimmed.strip_prefix("file://") {
+            lxapp.resolve_accessible_path(path).ok()
+        } else {
+            lxapp.resolve_accessible_path(trimmed).ok()
+        };
 
-    let Some(resolved) = resolved else {
-        return JString::from(JObject::null());
-    };
+        let Some(resolved) = resolved else {
+            return Ok(JString::null());
+        };
 
-    let resolved_str = resolved.to_string_lossy();
-    env.new_string(format!("file://{}", resolved_str))
-        .unwrap_or_else(|_| JString::from(JObject::null()))
+        let resolved_str = resolved.to_string_lossy();
+        env.new_string(format!("file://{}", resolved_str))
+            .or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }

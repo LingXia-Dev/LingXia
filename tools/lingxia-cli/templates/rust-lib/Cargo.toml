@@ -15,7 +15,7 @@ rong = "{{RONG_VERSION}}"
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.22"
+jni = "0.22.1"
 
 [target.'cfg(target_env = "ohos")'.dependencies]
 napi-ohos = "1.1"

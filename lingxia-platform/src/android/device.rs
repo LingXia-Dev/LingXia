@@ -4,24 +4,21 @@ use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
 use jni::objects::{JObject, JValue};
-use lingxia_webview::get_env;
+use jni::{Env, jni_sig, jni_str};
+use lingxia_webview::with_env;
 use std::fs;
 use std::process::Command;
 
 use super::Platform;
 
-fn get_lxapp_context<'a>(
-    env: &mut jni::JNIEnv<'a>,
-) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
-    let lxapp_class: &jni::objects::JClass = super::get_cached_class(super::CachedClass::LxApp)?
-        .as_obj()
-        .into();
+fn get_lxapp_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, Box<dyn std::error::Error>> {
+    let lxapp_class: &jni::objects::JClass = super::get_cached_class(super::CachedClass::LxApp)?;
 
     let mut context_obj = env
         .call_static_method(
             lxapp_class,
-            "getCurrentActivity",
-            "()Lcom/lingxia/lxapp/LxAppActivity;",
+            jni_str!("getCurrentActivity"),
+            jni_sig!("()Lcom/lingxia/lxapp/LxAppActivity;"),
             &[],
         )?
         .l()?;
@@ -30,8 +27,8 @@ fn get_lxapp_context<'a>(
         context_obj = env
             .call_static_method(
                 lxapp_class,
-                "applicationContext",
-                "()Landroid/content/Context;",
+                jni_str!("applicationContext"),
+                jni_sig!("()Landroid/content/Context;"),
                 &[],
             )?
             .l()?;
@@ -92,26 +89,19 @@ impl Device for Platform {
     }
 
     fn screen_info(&self) -> ScreenInfo {
-        // Synchronous retrieval via JNI: getCurrentActivity -> Resources -> DisplayMetrics
-        match || -> Result<ScreenInfo, Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-
-            // Get current activity
+        let result = with_env(|env| -> Result<ScreenInfo, Box<dyn std::error::Error>> {
             let lxapp_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxApp)?
-                    .as_obj()
-                    .into();
+                super::get_cached_class(super::CachedClass::LxApp)?;
 
             let activity_obj = env
                 .call_static_method(
                     lxapp_class,
-                    "getCurrentActivity",
-                    "()Lcom/lingxia/lxapp/LxAppActivity;",
+                    jni_str!("getCurrentActivity"),
+                    jni_sig!("()Lcom/lingxia/lxapp/LxAppActivity;"),
                     &[],
                 )?
                 .l()?;
 
-            // If activity is null, fall back to defaults
             if activity_obj.is_null() {
                 return Ok(ScreenInfo {
                     width: 0.0,
@@ -120,31 +110,32 @@ impl Device for Platform {
                 });
             }
 
-            // resources = activity.getResources()
             let resources: JObject = env
                 .call_method(
                     activity_obj,
-                    "getResources",
-                    "()Landroid/content/res/Resources;",
+                    jni_str!("getResources"),
+                    jni_sig!("()Landroid/content/res/Resources;"),
                     &[],
                 )?
                 .l()?;
-
-            // metrics = resources.getDisplayMetrics()
             let metrics: JObject = env
                 .call_method(
                     resources,
-                    "getDisplayMetrics",
-                    "()Landroid/util/DisplayMetrics;",
+                    jni_str!("getDisplayMetrics"),
+                    jni_sig!("()Landroid/util/DisplayMetrics;"),
                     &[],
                 )?
                 .l()?;
 
-            // Read widthPixels, heightPixels, density from DisplayMetrics
-            let width_px = env.get_field(&metrics, "widthPixels", "I")?.i()? as f64;
-            let height_px = env.get_field(&metrics, "heightPixels", "I")?.i()? as f64;
-            let density = env.get_field(&metrics, "density", "F")?.f()? as f64;
-
+            let width_px = env
+                .get_field(&metrics, jni_str!("widthPixels"), jni_sig!("I"))?
+                .i()? as f64;
+            let height_px = env
+                .get_field(&metrics, jni_str!("heightPixels"), jni_sig!("I"))?
+                .i()? as f64;
+            let density = env
+                .get_field(&metrics, jni_str!("density"), jni_sig!("F"))?
+                .f()? as f64;
             let scale = if density > 0.0 {
                 (density * 10.0).round() / 10.0
             } else {
@@ -158,59 +149,46 @@ impl Device for Platform {
                 height,
                 scale,
             })
-        }() {
-            Ok(info) => info,
-            Err(_) => ScreenInfo {
-                width: 0.0,
-                height: 0.0,
-                scale: 1.0,
-            },
-        }
+        });
+
+        result.unwrap_or(ScreenInfo {
+            width: 0.0,
+            height: 0.0,
+            scale: 1.0,
+        })
     }
 
     fn vibrate(&self, long: bool) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let device_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppDevice)?
-                    .as_obj()
-                    .into();
-            let mut jni_env = get_env()?;
-
-            jni_env.call_static_method(device_class, "vibrate", "(Z)V", &[long.into()])?;
+        let device_class: &jni::objects::JClass =
+            super::get_cached_class(super::CachedClass::LxAppDevice)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
+            env.call_static_method(
+                device_class,
+                jni_str!("vibrate"),
+                jni_sig!("(Z)V"),
+                &[long.into()],
+            )?;
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to vibrate via JNI: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to vibrate via JNI: {}", e)))
     }
 
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-            let device_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppDevice)?
-                    .as_obj()
-                    .into();
-
+        let device_class: &jni::objects::JClass =
+            super::get_cached_class(super::CachedClass::LxAppDevice)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
             let phone_number_jstring = env.new_string(phone_number)?;
-
             env.call_static_method(
                 device_class,
-                "makePhoneCall",
-                "(Ljava/lang/String;)V",
+                jni_str!("makePhoneCall"),
+                jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&phone_number_jstring)],
             )?;
             Ok(())
-        }() {
-            Ok(_) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to make phone call: {}",
-                e
-            ))),
-        }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to make phone call: {}", e)))
     }
 }
 
@@ -218,28 +196,27 @@ impl Device for Platform {
 pub fn get_android_id() -> Option<String> {
     use jni::objects::JValue;
 
-    match || -> Result<String, Box<dyn std::error::Error>> {
-        let mut env = get_env()?;
-        let context_obj = get_lxapp_context(&mut env)?;
+    match with_env(|env| -> Result<String, Box<dyn std::error::Error>> {
+        let context_obj = get_lxapp_context(env)?;
 
         // Get ContentResolver
         let content_resolver = env
             .call_method(
                 context_obj,
-                "getContentResolver",
-                "()Landroid/content/ContentResolver;",
+                jni_str!("getContentResolver"),
+                jni_sig!("()Landroid/content/ContentResolver;"),
                 &[],
             )?
             .l()?;
 
         // Settings.Secure.ANDROID_ID
-        let settings_secure_class = env.find_class("android/provider/Settings$Secure")?;
+        let settings_secure_class = env.find_class(jni_str!("android/provider/Settings$Secure"))?;
         let android_id_key = env.new_string("android_id")?;
 
         let result = env.call_static_method(
             settings_secure_class,
-            "getString",
-            "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
+            jni_str!("getString"),
+            jni_sig!("(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;"),
             &[
                 JValue::Object(&content_resolver),
                 JValue::Object(&android_id_key),
@@ -248,16 +225,15 @@ pub fn get_android_id() -> Option<String> {
 
         let obj = result.l()?;
         if !obj.is_null() {
-            let jstr: jni::objects::JString = obj.into();
-            let rust_str = env.get_string(&jstr)?;
-            let android_id = rust_str.to_string_lossy().trim().to_string();
+            let jstr = unsafe { jni::objects::JString::from_raw(env, obj.into_raw() as _) };
+            let android_id = jstr.try_to_string(env)?;
+            let android_id = android_id.trim().to_string();
             if !android_id.is_empty() {
                 return Ok(android_id);
             }
         }
-
         Err("Settings.Secure.getString(android_id) returned empty".into())
-    }() {
+    }) {
         Ok(s) => Some(s),
         Err(e) => {
             log::warn!("Failed to get Android ID via JNI: {}", e);
@@ -342,34 +318,41 @@ impl DeviceHardware for Platform {
 
     fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
         // Use JNI to get StatFs for data directory
-        match || -> Result<u64, Box<dyn std::error::Error>> {
-            let mut env = get_env()?;
-
-            // Environment.getDataDirectory()
-            let env_class = env.find_class("android/os/Environment")?;
+        match with_env(|env| -> Result<u64, Box<dyn std::error::Error>> {
+            let env_class = env.find_class(jni_str!("android/os/Environment"))?;
             let data_dir = env
-                .call_static_method(env_class, "getDataDirectory", "()Ljava/io/File;", &[])?
+                .call_static_method(
+                    env_class,
+                    jni_str!("getDataDirectory"),
+                    jni_sig!("()Ljava/io/File;"),
+                    &[],
+                )?
                 .l()?;
 
-            // file.getPath()
             let path_str_obj = env
-                .call_method(data_dir, "getPath", "()Ljava/lang/String;", &[])?
+                .call_method(
+                    data_dir,
+                    jni_str!("getPath"),
+                    jni_sig!("()Ljava/lang/String;"),
+                    &[],
+                )?
                 .l()?;
-            let path_jstr: jni::objects::JString = path_str_obj.into();
+            let path_jstr =
+                unsafe { jni::objects::JString::from_raw(env, path_str_obj.into_raw() as _) };
 
-            // new StatFs(path)
-            let statfs_class = env.find_class("android/os/StatFs")?;
+            let statfs_class = env.find_class(jni_str!("android/os/StatFs"))?;
             let statfs = env.new_object(
                 statfs_class,
-                "(Ljava/lang/String;)V",
+                jni_sig!("(Ljava/lang/String;)V"),
                 &[JValue::Object(&path_jstr)],
             )?;
 
-            // statfs.getTotalBytes()
-            let total_bytes = env.call_method(statfs, "getTotalBytes", "()J", &[])?.j()?;
+            let total_bytes = env
+                .call_method(statfs, jni_str!("getTotalBytes"), jni_sig!("()J"), &[])?
+                .j()?;
 
             Ok(total_bytes as u64)
-        }() {
+        }) {
             Ok(bytes) => Ok(bytes),
             Err(e) => Err(PlatformError::Platform(format!(
                 "Failed to get storage info: {}",
@@ -390,33 +373,27 @@ pub fn get_api_level() -> i32 {
 
 /// Check if device has telephony feature (is a phone).
 pub fn has_telephony_feature() -> bool {
-    match || -> Result<bool, Box<dyn std::error::Error>> {
-        let mut env = get_env()?;
-        let context = get_lxapp_context(&mut env)?;
-
-        // PackageManager pm = context.getPackageManager()
+    match with_env(|env| -> Result<bool, Box<dyn std::error::Error>> {
+        let context = get_lxapp_context(env)?;
         let pm = env
             .call_method(
                 context,
-                "getPackageManager",
-                "()Landroid/content/pm/PackageManager;",
+                jni_str!("getPackageManager"),
+                jni_sig!("()Landroid/content/pm/PackageManager;"),
                 &[],
             )?
             .l()?;
-
-        // pm.hasSystemFeature(PackageManager.FEATURE_TELEPHONY)
         let feature_str = env.new_string("android.hardware.telephony")?;
         let has_feature = env
             .call_method(
                 pm,
-                "hasSystemFeature",
-                "(Ljava/lang/String;)Z",
+                jni_str!("hasSystemFeature"),
+                jni_sig!("(Ljava/lang/String;)Z"),
                 &[JValue::Object(&feature_str)],
             )?
             .z()?;
-
         Ok(has_feature)
-    }() {
+    }) {
         Ok(result) => result,
         Err(e) => {
             log::warn!("[device] Failed to check telephony feature: {}", e);

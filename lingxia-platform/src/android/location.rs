@@ -4,7 +4,7 @@ use crate::error::PlatformError;
 use crate::traits::location::Location;
 use jni::objects::JValue;
 use jni::sys::{JNI_FALSE, JNI_TRUE};
-use lingxia_webview::get_env;
+use jni::{jni_sig, jni_str};
 
 use super::Platform;
 
@@ -12,13 +12,17 @@ impl Location for Platform {
     fn is_location_enabled(&self) -> Result<bool, PlatformError> {
         match || -> Result<bool, Box<dyn std::error::Error>> {
             let location_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppLocation)?
-                    .as_obj()
-                    .into();
-            let mut env = get_env()?;
+                super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
-            let result = env.call_static_method(location_class, "isLocationEnabled", "()Z", &[])?;
-            Ok(result.z()?)
+            lingxia_webview::with_env(|env| {
+                let result = env.call_static_method(
+                    location_class,
+                    jni_str!("isLocationEnabled"),
+                    jni_sig!("()Z"),
+                    &[],
+                )?;
+                Ok(result.z()?)
+            })
         }() {
             Ok(value) => Ok(value),
             Err(e) => Err(PlatformError::Platform(format!(
@@ -35,32 +39,31 @@ impl Location for Platform {
     ) -> Result<(), PlatformError> {
         match || -> Result<(), Box<dyn std::error::Error>> {
             let location_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppLocation)?
-                    .as_obj()
-                    .into();
-            let mut env = get_env()?;
+                super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
-            // Pass configuration parameters to Android implementation
-            env.call_static_method(
-                location_class,
-                "requestLocation",
-                "(JZZI)V",
-                &[
-                    JValue::Long(callback_id as i64),
-                    JValue::Bool(if config.is_high_accuracy {
-                        JNI_TRUE
-                    } else {
-                        JNI_FALSE
-                    }),
-                    JValue::Bool(if config.include_altitude {
-                        JNI_TRUE
-                    } else {
-                        JNI_FALSE
-                    }),
-                    JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
-                ],
-            )?;
-            Ok(())
+            lingxia_webview::with_env(|env| {
+                // Pass configuration parameters to Android implementation
+                env.call_static_method(
+                    location_class,
+                    jni_str!("requestLocation"),
+                    jni_sig!("(JZZI)V"),
+                    &[
+                        JValue::Long(callback_id as i64),
+                        JValue::Bool(if config.is_high_accuracy {
+                            JNI_TRUE
+                        } else {
+                            JNI_FALSE
+                        }),
+                        JValue::Bool(if config.include_altitude {
+                            JNI_TRUE
+                        } else {
+                            JNI_FALSE
+                        }),
+                        JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
+                    ],
+                )?;
+                Ok(())
+            })
         }() {
             Ok(()) => Ok(()),
             Err(e) => {

@@ -6,10 +6,12 @@ use crate::traits::stream_decoder::{
 use crate::traits::video_player::{
     VideoPlayerCommand, VideoPlayerHandle, VideoPlayerHandleImpl, VideoPlayerManager,
 };
-use jni::JNIEnv;
 use jni::objects::{JClass, JThrowable, JValue};
+use jni::signature::MethodSignature;
+use jni::strings::JNIStr;
 use jni::sys::jboolean;
-use lingxia_webview::get_env;
+use jni::{Env, jni_sig, jni_str};
+use lingxia_webview::with_env;
 use serde_json::json;
 
 use super::Platform;
@@ -20,33 +22,38 @@ fn platform_error(context: &str, err: impl std::fmt::Display) -> PlatformError {
 
 fn with_env_and_class<T>(
     context: &str,
-    f: impl FnOnce(&mut JNIEnv, &JClass) -> Result<T, PlatformError>,
+    f: impl FnOnce(&mut Env, &JClass) -> Result<T, PlatformError>,
 ) -> Result<T, PlatformError> {
-    let mut env = get_env().map_err(|e| platform_error(context, e))?;
-    let class: &JClass = super::get_cached_class(super::CachedClass::ComponentRouter)
-        .map_err(|e| platform_error(context, e))?
-        .as_obj()
-        .into();
-
-    f(&mut env, class)
+    with_env(|env| {
+        let class: &JClass = super::get_cached_class(super::CachedClass::ComponentRouter)
+            .map_err(|e| platform_error(context, e))?;
+        f(env, class)
+    })
+    .map_err(|e| platform_error(context, e))
 }
 
 /// Extract Java exception message if one is pending
-fn extract_exception_message(env: &mut JNIEnv) -> Option<String> {
-    if env.exception_check().unwrap_or(false) {
-        let exception = env.exception_occurred().ok()?;
-        env.exception_clear().ok()?;
+fn extract_exception_message(env: &mut Env) -> Option<String> {
+    if env.exception_check() {
+        let exception = env.exception_occurred()?;
+        env.exception_clear();
 
         if !exception.is_null() {
             // Try to get the exception message via toString()
             let throwable: JThrowable = exception;
-            if let Ok(msg_obj) =
-                env.call_method(&throwable, "toString", "()Ljava/lang/String;", &[])
-            {
+            if let Ok(msg_obj) = env.call_method(
+                &throwable,
+                jni_str!("toString"),
+                jni_sig!(() -> java.lang.String),
+                &[],
+            ) {
                 if let Ok(msg_jstring) = msg_obj.l() {
                     if !msg_jstring.is_null() {
-                        if let Ok(msg) = env.get_string((&msg_jstring).into()) {
-                            return Some(msg.into());
+                        let msg_jstring = unsafe {
+                            jni::objects::JString::from_raw(env, msg_jstring.into_raw() as _)
+                        };
+                        if let Ok(msg) = msg_jstring.try_to_string(env) {
+                            return Some(msg);
                         }
                     }
                 }
@@ -56,11 +63,11 @@ fn extract_exception_message(env: &mut JNIEnv) -> Option<String> {
     None
 }
 
-fn call_video_static_method(
-    env: &mut JNIEnv,
+fn call_video_static_method<'sig, 'sig_args>(
+    env: &mut Env,
     lxapp_video_class: &JClass,
-    method: &str,
-    signature: &str,
+    method: &JNIStr,
+    signature: MethodSignature<'sig, 'sig_args>,
     args: &[JValue],
     failure_context: &str,
 ) -> Result<(), PlatformError> {
@@ -77,11 +84,11 @@ fn call_video_static_method(
     Ok(())
 }
 
-fn call_component_router_bool(
-    env: &mut JNIEnv,
+fn call_component_router_bool<'sig, 'sig_args>(
+    env: &mut Env,
     lxapp_video_class: &JClass,
-    method: &str,
-    signature: &str,
+    method: &JNIStr,
+    signature: MethodSignature<'sig, 'sig_args>,
     args: &[JValue],
     failure_context: &str,
 ) -> Result<bool, PlatformError> {
@@ -115,7 +122,7 @@ fn ensure_component_ok(component_id: &str, method: &str, ok: bool) -> Result<(),
 fn with_component_id<T>(
     component_id: &str,
     context: &str,
-    f: impl FnOnce(&mut JNIEnv, &JClass, &jni::objects::JString) -> Result<T, PlatformError>,
+    f: impl FnOnce(&mut Env, &JClass, &jni::objects::JString) -> Result<T, PlatformError>,
 ) -> Result<T, PlatformError> {
     with_env_and_class(context, |env, lxapp_video_class| {
         let component_id_jstring = env
@@ -224,8 +231,8 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    method,
-                    "(Ljava/lang/String;Ljava/lang/String;)Z",
+                    jni_str!("configureStreamVideo"),
+                    jni_sig!((java.lang.String, java.lang.String) -> boolean),
                     &[
                         JValue::Object(component_id_jstring),
                         JValue::Object(&config_jstring),
@@ -250,8 +257,8 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    method,
-                    "(Ljava/lang/String;Ljava/lang/String;)Z",
+                    jni_str!("configureStreamAudio"),
+                    jni_sig!((java.lang.String, java.lang.String) -> boolean),
                     &[
                         JValue::Object(component_id_jstring),
                         JValue::Object(&config_jstring),
@@ -283,8 +290,8 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    method,
-                    "(Ljava/lang/String;[BIIZ)Z",
+                    jni_str!("pushStreamVideo"),
+                    jni_sig!((java.lang.String, [byte], int, int, boolean) -> boolean),
                     &[
                         JValue::Object(component_id_jstring),
                         JValue::Object(&data_array),
@@ -318,8 +325,8 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    method,
-                    "(Ljava/lang/String;[BII)Z",
+                    jni_str!("pushStreamAudio"),
+                    jni_sig!((java.lang.String, [byte], int, int) -> boolean),
                     &[
                         JValue::Object(component_id_jstring),
                         JValue::Object(&data_array),
@@ -342,8 +349,8 @@ impl VideoStreamDecoderHandle for AndroidStreamDecoderHandle {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    method,
-                    "(Ljava/lang/String;)Z",
+                    jni_str!("stopStreamDecoder"),
+                    jni_sig!((java.lang.String) -> boolean),
                     &[JValue::Object(component_id_jstring)],
                     method,
                 )
@@ -364,8 +371,8 @@ impl VideoPlayerManager for Platform {
             let result = env
                 .call_static_method(
                     component_router_class,
-                    "hasComponent",
-                    "(Ljava/lang/String;)Z",
+                    jni_str!("hasComponent"),
+                    jni_sig!((java.lang.String) -> boolean),
                     &[JValue::Object(&component_id_jstring)],
                 )
                 .map_err(|e| platform_error(&failure_context, e))?;
@@ -409,8 +416,8 @@ impl VideoPlayerManager for Platform {
             let result = env
                 .call_static_method(
                     component_router_class,
-                    "setVideoPlayerCallback",
-                    "(Ljava/lang/String;J)Z",
+                    jni_str!("setVideoPlayerCallback"),
+                    jni_sig!((java.lang.String, long) -> boolean),
                     &[
                         JValue::Object(&component_id_jstring),
                         JValue::Long(callback_id as i64),
@@ -464,8 +471,8 @@ impl VideoStreamDecoderManager for Platform {
                 call_component_router_bool(
                     env,
                     lxapp_video_class,
-                    "createStreamDecoder",
-                    "(Ljava/lang/String;)Z",
+                    jni_str!("createStreamDecoder"),
+                    jni_sig!((java.lang.String) -> boolean),
                     &[JValue::Object(component_id_jstring)],
                     "createStreamDecoder",
                 )
@@ -503,8 +510,8 @@ fn dispatch_video_command(
         call_video_static_method(
             env,
             lxapp_video_class,
-            "dispatchVideoCommand",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+            jni_str!("dispatchVideoCommand"),
+            jni_sig!((java.lang.String, java.lang.String, java.lang.String) -> void),
             &[
                 JValue::Object(&component_id_jstring),
                 JValue::Object(&name_jstring),

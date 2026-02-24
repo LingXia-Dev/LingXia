@@ -1,27 +1,29 @@
 use crate::error::PlatformError;
 use crate::traits::network::Network;
+use jni::jni_sig;
 use jni::objects::{JClass, JValue};
-use lingxia_webview::get_env;
+use jni::strings::JNIString;
 
 use super::Platform;
 
 fn call_network_method(method_name: &str, callback_id: u64) -> Result<(), PlatformError> {
-    let mut env =
-        get_env().map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))?;
-    let network_class_ref = super::get_cached_class(super::CachedClass::LxAppNetwork)
+    let network_class: &JClass = super::get_cached_class(super::CachedClass::LxAppNetwork)
         .map_err(|e| PlatformError::Platform(format!("Failed to get LxAppNetwork class: {}", e)))?;
-    // Convert cached global class ref to a `JClass` descriptor for this call.
-    let network_class: &JClass = network_class_ref.as_obj().into();
+    let method = JNIString::new(method_name);
 
-    env.call_static_method(
-        network_class,
-        method_name,
-        "(J)V",
-        &[JValue::Long(callback_id as i64)],
-    )
-    .map_err(|e| PlatformError::Platform(format!("JNI call to {} failed: {}", method_name, e)))?;
+    lingxia_webview::with_env(|env| {
+        env.call_static_method(
+            network_class,
+            &method,
+            jni_sig!("(J)V"),
+            &[JValue::Long(callback_id as i64)],
+        )
+        .map_err(|e| {
+            PlatformError::Platform(format!("JNI call to {} failed: {}", method_name, e))
+        })?;
 
-    Ok(())
+        Ok(())
+    })
 }
 
 impl Network for Platform {

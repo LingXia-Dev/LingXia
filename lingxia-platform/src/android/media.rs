@@ -8,27 +8,13 @@ use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
     ImageInfo, MediaRuntime, VideoInfo, VideoThumbnail,
 };
-use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
+use jni::strings::JNIString;
 use jni::sys::{jint, jlong};
-use lingxia_webview::get_env;
+use jni::{jni_sig, jni_str};
+use lingxia_webview::with_env;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-
-fn with_jni<T, F>(env: &mut JNIEnv<'static>, f: F) -> Result<T, Box<dyn std::error::Error>>
-where
-    F: FnOnce(&mut JNIEnv<'static>) -> jni::errors::Result<T>,
-{
-    match f(env) {
-        Ok(value) => Ok(value),
-        Err(err) => {
-            if let Ok(true) = env.exception_check() {
-                let _ = env.exception_clear();
-            }
-            Err(Box::new(err))
-        }
-    }
-}
 
 impl MediaInteraction for Platform {
     fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError> {
@@ -71,77 +57,62 @@ impl MediaInteraction for Platform {
 }
 
 fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
-
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
     let payload_class_ref = super::get_cached_class(super::CachedClass::PreviewMediaPayload)?;
 
     let item_count = request.items.len();
-    let payload_array = with_jni(&mut env, |env| {
-        let class_ref = env.new_local_ref(payload_class_ref.as_obj())?;
-        let class = JClass::from(class_ref);
-        env.new_object_array(item_count as i32, class, JObject::null())
-    })?;
 
-    for (idx, item) in request.items.iter().enumerate() {
-        let path_java = with_jni(&mut env, |env| env.new_string(&item.path))?;
-        let path_obj: JObject = path_java.into();
+    with_env(|env| {
+        let payload_class: &JClass = payload_class_ref.as_ref();
+        let payload_array =
+            env.new_object_array(item_count as i32, payload_class, JObject::null())?;
 
-        let media_type_value = match item.media_type {
-            MediaKind::Image => 0,
-            MediaKind::Video => 1,
-            MediaKind::Unknown => -1,
-        } as jint;
+        for (idx, item) in request.items.iter().enumerate() {
+            let path_java = env.new_string(&item.path)?;
+            let path_obj: JObject = path_java.into();
 
-        let cover_obj = match item.cover_path.as_deref().filter(|s| !s.is_empty()) {
-            Some(url) => {
-                let cover_java: JString = with_jni(&mut env, |env| env.new_string(url))?;
-                cover_java.into()
-            }
-            None => JObject::null(),
-        };
+            let media_type_value = match item.media_type {
+                MediaKind::Image => 0,
+                MediaKind::Video => 1,
+                MediaKind::Unknown => -1,
+            } as jint;
 
-        let payload_obj = with_jni(&mut env, |env| {
-            let class_ref = env.new_local_ref(payload_class_ref.as_obj())?;
-            let class = JClass::from(class_ref);
-            env.new_object(
-                class,
-                "(Ljava/lang/String;ILjava/lang/String;)V",
+            let cover_obj = match item.cover_path.as_deref().filter(|s| !s.is_empty()) {
+                Some(url) => {
+                    let cover_java: JString = env.new_string(url)?;
+                    cover_java.into()
+                }
+                None => JObject::null(),
+            };
+
+            let payload_obj = env.new_object(
+                payload_class,
+                jni_sig!("(Ljava/lang/String;ILjava/lang/String;)V"),
                 &[
                     JValue::Object(&path_obj),
                     JValue::Int(media_type_value),
                     JValue::Object(&cover_obj),
                 ],
-            )
-        })?;
+            )?;
 
-        with_jni(&mut env, |env| {
-            env.set_object_array_element(&payload_array, idx as i32, payload_obj)
-        })?;
-    }
+            payload_array.set_element(env, idx, &payload_obj)?;
+        }
 
-    let preview_signature = format!(
-        "([L{};)V",
-        super::CachedClass::PreviewMediaPayload.class_path()
-    );
-
-    with_jni(&mut env, |env| {
-        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
-        let class = JClass::from(class_ref);
+        let class: &JClass = media_class_ref.as_ref();
         env.call_static_method(
             class,
-            "previewMedia",
-            preview_signature.as_str(),
+            jni_str!("previewMedia"),
+            jni_sig!("([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;)V"),
             &[JValue::Object(&payload_array)],
-        )
+        )?;
+
+        Ok::<(), jni::errors::Error>(())
     })?;
 
     Ok(())
 }
 
 fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
-
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
 
     // Group codes understood by Kotlin fragment:
@@ -157,74 +128,67 @@ fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Er
         })
         .collect();
 
-    let scan_types_array = with_jni(&mut env, |env| {
-        let array = env.new_int_array(type_codes.len() as i32)?;
+    with_env(|env| {
+        let array = env.new_int_array(type_codes.len())?;
         if !type_codes.is_empty() {
-            env.set_int_array_region(&array, 0, &type_codes)?;
+            array.set_region(env, 0, &type_codes)?;
         }
-        Ok::<_, jni::errors::Error>(JObject::from(array))
-    })?;
+        let scan_types_array = JObject::from(array);
 
-    with_jni(&mut env, |env| {
-        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
-        let class = JClass::from(class_ref);
+        let class: &JClass = media_class_ref.as_ref();
         env.call_static_method(
             class,
-            "scanCode",
-            "([IZJ)V",
+            jni_str!("scanCode"),
+            jni_sig!("([IZJ)V"),
             &[
                 JValue::Object(&scan_types_array),
-                JValue::Bool(if request.only_from_camera { 1 } else { 0 }),
+                JValue::Bool(request.only_from_camera),
                 JValue::Long(request.callback_id as jlong),
             ],
-        )
+        )?;
+
+        Ok::<(), jni::errors::Error>(())
     })?;
 
     Ok(())
 }
 
 fn save_media_impl(request: SaveMediaRequest, method: &str) -> Result<(), PlatformError> {
-    let mut env =
-        get_env().map_err(|e| PlatformError::Platform(format!("Failed to get JNIEnv: {}", e)))?;
-
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
         PlatformError::Platform(format!("Failed to get cached Java class LxAppMedia: {}", e))
     })?;
 
-    let path_java = with_jni(&mut env, |env| env.new_string(&request.file_uri)).map_err(|err| {
-        let _ = lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
-        PlatformError::Platform(format!(
-            "Failed to create Java string for media path: {}",
-            err
-        ))
-    })?;
-    let path_obj: JObject = path_java.into();
+    let method_str = method.to_string();
+    let method_jni = JNIString::new(method_str.as_str());
+    let callback_id = request.callback_id;
+    let file_uri = request.file_uri.clone();
 
-    let callback_id = request.callback_id as jlong;
+    with_env(move |env| {
+        let path_java = env.new_string(&file_uri)?;
+        let path_obj: JObject = path_java.into();
 
-    if let Err(err) = with_jni(&mut env, |env| {
-        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
-        let class = JClass::from(class_ref);
+        let class: &JClass = media_class_ref.as_ref();
         env.call_static_method(
             class,
-            method,
-            "(Ljava/lang/String;J)V",
-            &[JValue::Object(&path_obj), JValue::Long(callback_id)],
-        )
-    }) {
-        let _ = lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
-        return Err(PlatformError::Platform(format!(
-            "Failed to start {}: {}",
-            method, err
-        )));
-    }
+            &method_jni,
+            jni_sig!("(Ljava/lang/String;J)V"),
+            &[
+                JValue::Object(&path_obj),
+                JValue::Long(callback_id as jlong),
+            ],
+        )?;
+
+        Ok::<(), jni::errors::Error>(())
+    })
+    .map_err(|err| {
+        let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
+        PlatformError::Platform(format!("Failed to start {}: {}", method, err))
+    })?;
 
     Ok(())
 }
 
 fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
-
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
 
     // Map enums to integers expected by Android side
@@ -262,13 +226,12 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
         })
         .unwrap_or(-1);
 
-    with_jni(&mut env, |env| {
-        let class_ref = env.new_local_ref(media_class_ref.as_obj())?;
-        let class = JClass::from(class_ref);
+    with_env(|env| {
+        let class: &JClass = media_class_ref.as_ref();
         env.call_static_method(
             class,
-            "chooseMedia",
-            "(IIIIIJ)V",
+            jni_str!("chooseMedia"),
+            jni_sig!("(IIIIIJ)V"),
             &[
                 JValue::Int(request.max_count as jint),
                 JValue::Int(mode_value),
@@ -277,7 +240,9 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
                 JValue::Int(camera_facing_value),
                 JValue::Long(request.callback_id as i64),
             ],
-        )
+        )?;
+
+        Ok::<(), jni::errors::Error>(())
     })?;
 
     Ok(())
@@ -331,246 +296,267 @@ fn copy_album_media_to_file_impl(
     uri: &str,
     dest_path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-    let j_uri = env.new_string(uri)?;
-    let j_dest = env.new_string(dest_path.to_string_lossy().as_ref())?;
-    let res = env.call_static_method(
-        media_class,
-        "copyAlbumMediaToFile",
-        "(Ljava/lang/String;Ljava/lang/String;)Z",
-        &[(&j_uri).into(), (&j_dest).into()],
-    )?;
-    if res.z()? {
-        Ok(())
-    } else {
-        Err("copyAlbumMediaToFile returned false".into())
-    }
+    let uri = uri.to_string();
+    let dest_path_str = dest_path.to_string_lossy().to_string();
+
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
+        let j_uri = env.new_string(&uri)?;
+        let j_dest = env.new_string(&dest_path_str)?;
+        let res = env.call_static_method(
+            media_class,
+            jni_str!("copyAlbumMediaToFile"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+            &[(&j_uri).into(), (&j_dest).into()],
+        )?;
+        if res.z()? {
+            Ok(())
+        } else {
+            Err("copyAlbumMediaToFile returned false".into())
+        }
+    })
 }
 
 fn get_image_info_impl(uri: &str) -> Result<ImageInfo, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-    let j_uri = env.new_string(uri)?;
-    let result = env.call_static_method(
-        media_class,
-        "getImageInfo",
-        "(Ljava/lang/String;)Ljava/lang/String;",
-        &[(&j_uri).into()],
-    )?;
-    let json_obj = result.l()?;
-    if json_obj.is_null() {
-        return Err("getImageInfo returned null".into());
-    }
-    let java_str = JString::from(json_obj);
-    let json_str: String = env.get_string(&java_str)?.into();
-    let parsed: AndroidImageInfoResponse = serde_json::from_str(&json_str)?;
-    if !parsed.success {
-        return Err(parsed
-            .error
-            .unwrap_or_else(|| "getImageInfo failed".to_string())
-            .into());
-    }
-    Ok(ImageInfo {
-        width: parsed.width.unwrap_or(0),
-        height: parsed.height.unwrap_or(0),
-        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+    let uri = uri.to_string();
+
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
+        let j_uri = env.new_string(&uri)?;
+        let result = env.call_static_method(
+            media_class,
+            jni_str!("getImageInfo"),
+            jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+            &[(&j_uri).into()],
+        )?;
+        let json_obj = result.l()?;
+        if json_obj.is_null() {
+            return Err("getImageInfo returned null".into());
+        }
+        let java_str = unsafe { JString::from_raw(env, json_obj.into_raw() as _) };
+        let json_str: String = java_str.try_to_string(env)?;
+        let parsed: AndroidImageInfoResponse = serde_json::from_str(&json_str)?;
+        if !parsed.success {
+            return Err(parsed
+                .error
+                .unwrap_or_else(|| "getImageInfo failed".to_string())
+                .into());
+        }
+        Ok(ImageInfo {
+            width: parsed.width.unwrap_or(0),
+            height: parsed.height.unwrap_or(0),
+            mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        })
     })
 }
 
 fn compress_image_impl(
     request: &CompressImageRequest,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-    let j_uri = env.new_string(&request.source_uri)?;
-    let output_path = request.output_path.to_string_lossy();
-    let j_output_path = env.new_string(output_path.as_ref())?;
+    let source_uri = request.source_uri.clone();
+    let output_path = request.output_path.to_string_lossy().to_string();
     let quality = i32::from(request.quality);
     let width = request.max_width.unwrap_or(0) as i32;
     let height = request.max_height.unwrap_or(0) as i32;
-    let result = env.call_static_method(
-        media_class,
-        "compressImage",
-        "(Ljava/lang/String;Ljava/lang/String;III)Ljava/lang/String;",
-        &[
-            (&j_uri).into(),
-            (&j_output_path).into(),
-            JValue::Int(quality),
-            JValue::Int(width),
-            JValue::Int(height),
-        ],
-    )?;
-    let path_obj = result.l()?;
-    if path_obj.is_null() {
-        return Err("compressImage returned null".into());
-    }
-    let java_path = JString::from(path_obj);
-    let path: String = env.get_string(&java_path)?.into();
-    if let Some(err) = path.strip_prefix("__ERROR__:") {
-        return Err(err.to_string().into());
-    }
-    if path.is_empty() {
-        return Err("compressImage failed".into());
-    }
-    Ok(PathBuf::from(path))
+
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
+        let j_uri = env.new_string(&source_uri)?;
+        let j_output_path = env.new_string(&output_path)?;
+        let result = env.call_static_method(
+            media_class,
+            jni_str!("compressImage"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;III)Ljava/lang/String;"),
+            &[
+                (&j_uri).into(),
+                (&j_output_path).into(),
+                JValue::Int(quality),
+                JValue::Int(width),
+                JValue::Int(height),
+            ],
+        )?;
+        let path_obj = result.l()?;
+        if path_obj.is_null() {
+            return Err("compressImage returned null".into());
+        }
+        let java_path = unsafe { JString::from_raw(env, path_obj.into_raw() as _) };
+        let path: String = java_path.try_to_string(env)?;
+        if let Some(err) = path.strip_prefix("__ERROR__:") {
+            return Err(err.to_string().into());
+        }
+        if path.is_empty() {
+            return Err("compressImage failed".into());
+        }
+        Ok(PathBuf::from(path))
+    })
 }
 
 fn get_video_info_impl(uri: &str) -> Result<VideoInfo, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-    let j_uri = env.new_string(uri)?;
-    let result = env.call_static_method(
-        media_class,
-        "getVideoInfo",
-        "(Ljava/lang/String;)Ljava/lang/String;",
-        &[(&j_uri).into()],
-    )?;
-    let json_obj = result.l()?;
-    if json_obj.is_null() {
-        return Err("getVideoInfo returned null".into());
-    }
-    let java_str = JString::from(json_obj);
-    let json_str: String = env.get_string(&java_str)?.into();
-    let parsed: AndroidVideoInfoResponse = serde_json::from_str(&json_str)?;
-    if !parsed.success {
-        return Err(parsed
-            .error
-            .unwrap_or_else(|| "getVideoInfo failed".to_string())
-            .into());
-    }
-    Ok(VideoInfo {
-        width: parsed.width.unwrap_or(0),
-        height: parsed.height.unwrap_or(0),
-        duration_ms: parsed.duration_ms.unwrap_or(0),
-        rotation: parsed.rotation,
-        bitrate: parsed.bitrate,
-        fps: parsed.fps.map(|v| v as f32),
-        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+    let uri = uri.to_string();
+
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
+        let j_uri = env.new_string(&uri)?;
+        let result = env.call_static_method(
+            media_class,
+            jni_str!("getVideoInfo"),
+            jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+            &[(&j_uri).into()],
+        )?;
+        let json_obj = result.l()?;
+        if json_obj.is_null() {
+            return Err("getVideoInfo returned null".into());
+        }
+        let java_str = unsafe { JString::from_raw(env, json_obj.into_raw() as _) };
+        let json_str: String = java_str.try_to_string(env)?;
+        let parsed: AndroidVideoInfoResponse = serde_json::from_str(&json_str)?;
+        if !parsed.success {
+            return Err(parsed
+                .error
+                .unwrap_or_else(|| "getVideoInfo failed".to_string())
+                .into());
+        }
+        Ok(VideoInfo {
+            width: parsed.width.unwrap_or(0),
+            height: parsed.height.unwrap_or(0),
+            duration_ms: parsed.duration_ms.unwrap_or(0),
+            rotation: parsed.rotation,
+            bitrate: parsed.bitrate,
+            fps: parsed.fps.map(|v| v as f32),
+            mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        })
     })
 }
 
 fn extract_video_thumbnail_impl(
     request: &ExtractVideoThumbnailRequest,
 ) -> Result<VideoThumbnail, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-
-    let j_uri = env.new_string(&request.source_uri)?;
-    let output_path = request.output_path.to_string_lossy();
-    let j_output_path = env.new_string(output_path.as_ref())?;
+    let source_uri = request.source_uri.clone();
+    let output_path = request.output_path.to_string_lossy().to_string();
     let quality = i32::from(request.quality);
     let width = request.max_width.unwrap_or(0) as i32;
     let height = request.max_height.unwrap_or(0) as i32;
     let time_ms = request.time_ms.map(|v| v as i64).unwrap_or(-1);
 
-    let result = env.call_static_method(
-        media_class,
-        "extractVideoThumbnail",
-        "(Ljava/lang/String;Ljava/lang/String;IIIJ)Ljava/lang/String;",
-        &[
-            (&j_uri).into(),
-            (&j_output_path).into(),
-            JValue::Int(quality),
-            JValue::Int(width),
-            JValue::Int(height),
-            JValue::Long(time_ms),
-        ],
-    )?;
-    let json_obj = result.l()?;
-    if json_obj.is_null() {
-        return Err("extractVideoThumbnail returned null".into());
-    }
-    let java_str = JString::from(json_obj);
-    let json_str: String = env.get_string(&java_str)?.into();
-    let parsed: AndroidVideoThumbnailResponse = serde_json::from_str(&json_str)?;
-    if !parsed.success {
-        return Err(parsed
-            .error
-            .unwrap_or_else(|| "extractVideoThumbnail failed".to_string())
-            .into());
-    }
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
 
-    let path = parsed.path.ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "extractVideoThumbnail missing output path",
-        )
-    })?;
-    Ok(VideoThumbnail {
-        path: PathBuf::from(path),
-        width: parsed.width.unwrap_or(0),
-        height: parsed.height.unwrap_or(0),
-        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        let j_uri = env.new_string(&source_uri)?;
+        let j_output_path = env.new_string(&output_path)?;
+
+        let result = env.call_static_method(
+            media_class,
+            jni_str!("extractVideoThumbnail"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;IIIJ)Ljava/lang/String;"),
+            &[
+                (&j_uri).into(),
+                (&j_output_path).into(),
+                JValue::Int(quality),
+                JValue::Int(width),
+                JValue::Int(height),
+                JValue::Long(time_ms),
+            ],
+        )?;
+        let json_obj = result.l()?;
+        if json_obj.is_null() {
+            return Err("extractVideoThumbnail returned null".into());
+        }
+        let java_str = unsafe { JString::from_raw(env, json_obj.into_raw() as _) };
+        let json_str: String = java_str.try_to_string(env)?;
+        let parsed: AndroidVideoThumbnailResponse = serde_json::from_str(&json_str)?;
+        if !parsed.success {
+            return Err(parsed
+                .error
+                .unwrap_or_else(|| "extractVideoThumbnail failed".to_string())
+                .into());
+        }
+
+        let path = parsed.path.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "extractVideoThumbnail missing output path",
+            )
+        })?;
+        Ok(VideoThumbnail {
+            path: PathBuf::from(path),
+            width: parsed.width.unwrap_or(0),
+            height: parsed.height.unwrap_or(0),
+            mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        })
     })
 }
 
 fn compress_video_impl(
     request: &CompressVideoRequest,
 ) -> Result<CompressedVideo, Box<dyn std::error::Error>> {
-    let mut env = get_env()?;
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
-    let media_class: &JClass = media_class_ref.as_obj().into();
-
-    let j_uri = env.new_string(&request.source_uri)?;
-    let output_path = request.output_path.to_string_lossy();
-    let j_output_path = env.new_string(output_path.as_ref())?;
+    let source_uri = request.source_uri.clone();
+    let output_path = request.output_path.to_string_lossy().to_string();
     let quality = request.quality.map_or_else(String::new, |q| match q {
         crate::traits::media_runtime::VideoCompressQuality::Low => "low".to_string(),
         crate::traits::media_runtime::VideoCompressQuality::Medium => "medium".to_string(),
         crate::traits::media_runtime::VideoCompressQuality::High => "high".to_string(),
     });
-    let j_quality = env.new_string(&quality)?;
     let bitrate = request.bitrate_kbps.unwrap_or(0) as i32;
     let fps = request.fps.unwrap_or(0) as i32;
     let resolution = request.resolution_ratio.unwrap_or(0.0f32);
 
-    let result = env.call_static_method(
-        media_class,
-        "compressVideo",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIF)Ljava/lang/String;",
-        &[
-            (&j_uri).into(),
-            (&j_output_path).into(),
-            (&j_quality).into(),
-            JValue::Int(bitrate),
-            JValue::Int(fps),
-            JValue::Float(resolution),
-        ],
-    )?;
-    let json_obj = result.l()?;
-    if json_obj.is_null() {
-        return Err("compressVideo returned null".into());
-    }
-    let java_str = JString::from(json_obj);
-    let json_str: String = env.get_string(&java_str)?.into();
-    let parsed: AndroidCompressVideoResponse = serde_json::from_str(&json_str)?;
-    if !parsed.success {
-        return Err(parsed
-            .error
-            .unwrap_or_else(|| "compressVideo failed".to_string())
-            .into());
-    }
+    with_env(|env| {
+        let media_class: &JClass = media_class_ref.as_ref();
 
-    let path = parsed.path.ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "compressVideo missing output path",
-        )
-    })?;
+        let j_uri = env.new_string(&source_uri)?;
+        let j_output_path = env.new_string(&output_path)?;
+        let j_quality = env.new_string(&quality)?;
 
-    Ok(CompressedVideo {
-        path: PathBuf::from(path),
-        width: parsed.width.unwrap_or(0),
-        height: parsed.height.unwrap_or(0),
-        duration_ms: parsed.duration_ms.unwrap_or(0),
-        size: parsed.size.unwrap_or(0),
-        mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        let result = env.call_static_method(
+            media_class,
+            jni_str!("compressVideo"),
+            jni_sig!(
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIF)Ljava/lang/String;"
+            ),
+            &[
+                (&j_uri).into(),
+                (&j_output_path).into(),
+                (&j_quality).into(),
+                JValue::Int(bitrate),
+                JValue::Int(fps),
+                JValue::Float(resolution),
+            ],
+        )?;
+        let json_obj = result.l()?;
+        if json_obj.is_null() {
+            return Err("compressVideo returned null".into());
+        }
+        let java_str = unsafe { JString::from_raw(env, json_obj.into_raw() as _) };
+        let json_str: String = java_str.try_to_string(env)?;
+        let parsed: AndroidCompressVideoResponse = serde_json::from_str(&json_str)?;
+        if !parsed.success {
+            return Err(parsed
+                .error
+                .unwrap_or_else(|| "compressVideo failed".to_string())
+                .into());
+        }
+
+        let path = parsed.path.ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "compressVideo missing output path",
+            )
+        })?;
+
+        Ok(CompressedVideo {
+            path: PathBuf::from(path),
+            width: parsed.width.unwrap_or(0),
+            height: parsed.height.unwrap_or(0),
+            duration_ms: parsed.duration_ms.unwrap_or(0),
+            size: parsed.size.unwrap_or(0),
+            mime_type: parsed.mime_type.filter(|s| !s.is_empty()),
+        })
     })
 }
 

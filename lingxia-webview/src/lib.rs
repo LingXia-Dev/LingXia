@@ -40,7 +40,7 @@ pub use webview::{
 };
 
 #[cfg(target_os = "android")]
-pub use android::{get_env, initialize_jni};
+pub use android::{initialize_jni, with_env};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 pub use harmony::{
