@@ -31,6 +31,9 @@ pub enum I18nKey {
     CameraTapToStop,
     CameraVideoInputFailed,
     CameraVideoOutputFailed,
+    CapsuleCleanCache,
+    CapsuleRestart,
+    CapsuleUninstall,
     CommonAuto,
     CommonBack,
     CommonCancel,
@@ -109,6 +112,7 @@ pub enum I18nKey {
     PermissionLocationReason,
     PermissionMediaReason,
     PermissionMicrophoneDenied,
+    PermissionNetworkReason,
     PermissionPhotoDenied,
     PermissionWifiReason,
     UpdateConfirm,
@@ -124,12 +128,18 @@ impl I18nKey {
     pub fn get(&self, locale: &str) -> &'static str {
         let lang = locale.split('-').next().unwrap_or("en");
         match (self, lang) {
-            (I18nKey::AlbumAddMoreMedia, "en") => "Add more
-accessible items",
-            (I18nKey::AlbumAddMorePhotos, "en") => "Add more
-accessible photos",
-            (I18nKey::AlbumAddMoreVideos, "en") => "Add more
-accessible videos",
+            (I18nKey::AlbumAddMoreMedia, "en") => {
+                "Add more
+accessible items"
+            }
+            (I18nKey::AlbumAddMorePhotos, "en") => {
+                "Add more
+accessible photos"
+            }
+            (I18nKey::AlbumAddMoreVideos, "en") => {
+                "Add more
+accessible videos"
+            }
             (I18nKey::AlbumAllMedia, "en") => "Photos & Videos",
             (I18nKey::AlbumAllPhotos, "en") => "All Photos",
             (I18nKey::AlbumAllVideos, "en") => "All Videos",
@@ -156,6 +166,9 @@ accessible videos",
             (I18nKey::CameraTapToStop, "en") => "Tap to stop",
             (I18nKey::CameraVideoInputFailed, "en") => "Cannot add video input",
             (I18nKey::CameraVideoOutputFailed, "en") => "Cannot add video output",
+            (I18nKey::CapsuleCleanCache, "en") => "Clean cache",
+            (I18nKey::CapsuleRestart, "en") => "Restart",
+            (I18nKey::CapsuleUninstall, "en") => "Uninstall",
             (I18nKey::CommonAuto, "en") => "Auto",
             (I18nKey::CommonBack, "en") => "Back",
             (I18nKey::CommonCancel, "en") => "Cancel",
@@ -191,11 +204,15 @@ accessible videos",
             (I18nKey::ErrCode12002, "en") => "Password error (incorrect WiFi password)",
             (I18nKey::ErrCode12003, "en") => "Connection timeout",
             (I18nKey::ErrCode12004, "en") => "Duplicate connection request",
-            (I18nKey::ErrCode12005, "en") => "Not supported on this platform (e.g., iOS WiFi scanning)",
+            (I18nKey::ErrCode12005, "en") => {
+                "Not supported on this platform (e.g., iOS WiFi scanning)"
+            }
             (I18nKey::ErrCode12006, "en") => "Permission denied",
             (I18nKey::ErrCode12007, "en") => "User did not respond",
             (I18nKey::ErrCode12008, "en") => "User refused connection",
-            (I18nKey::ErrCode12009, "en") => "WiFi is disabled (Please enable WiFi in system settings)",
+            (I18nKey::ErrCode12009, "en") => {
+                "WiFi is disabled (Please enable WiFi in system settings)"
+            }
             (I18nKey::ErrCode2000, "en") => "User cancelled",
             (I18nKey::ErrCode2001, "en") => "User declined",
             (I18nKey::ErrCode3000, "en") => "Permission denied",
@@ -219,26 +236,68 @@ accessible videos",
             (I18nKey::ErrCode6001, "en") => "Device not supported",
             (I18nKey::ErrCode6002, "en") => "System version too low",
             (I18nKey::ErrorNetworkError, "en") => "Network Error",
-            (I18nKey::ErrorSaveFailed, "en") => "Save failed. Please check permissions or available space.",
+            (I18nKey::ErrorSaveFailed, "en") => {
+                "Save failed. Please check permissions or available space."
+            }
             (I18nKey::ErrorServerError, "en") => "Server Error",
             (I18nKey::ErrorTimeout, "en") => "Request Timeout",
             (I18nKey::ErrorUnauthorized, "en") => "Unauthorized",
             (I18nKey::ErrorUnknown, "en") => "Unknown Error",
             (I18nKey::ErrorVideoTooShort, "en") => "Video too short",
-            (I18nKey::PermissionCameraDenied, "en") => if cfg!(target_os = "android") { "Camera permission required. Please enable in App Settings." } else if cfg!(target_env = "ohos") { "Camera permission is required. Please enable it in system settings." } else if cfg!(any(target_os = "ios", target_os = "macos")) { "Go to Settings > Privacy > Camera to enable access." } else if cfg!(not(any(target_os = "android", target_env = "ohos", target_os = "ios", target_os = "macos"))) { "Camera access denied. Check your system's privacy settings." } else { "Camera permission denied. Please enable it in System Settings." },
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => "Add more
-accessible items",
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => "Add more
-accessible photos",
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => "Add more
-accessible videos",
-            (I18nKey::PermissionLimitedAccessWarning, "en") => "You have limited photo access. Grant full access in settings.",
-            (I18nKey::PermissionLocationDenied, "en") => "Location permission denied. Please enable it in System Settings.",
-            (I18nKey::PermissionLocationReason, "en") => "Location permission required to provide location-based services",
-            (I18nKey::PermissionMediaReason, "en") => "Media permission required to save images and videos to album",
-            (I18nKey::PermissionMicrophoneDenied, "en") => "Microphone permission denied. Please enable it in System Settings.",
-            (I18nKey::PermissionPhotoDenied, "en") => "Photo library access denied. Please enable it in System Settings.",
-            (I18nKey::PermissionWifiReason, "en") => "WiFi permission required to scan and connect to WiFi networks",
+            (I18nKey::PermissionCameraDenied, "en") => {
+                if cfg!(target_os = "android") {
+                    "Camera permission required. Please enable in App Settings."
+                } else if cfg!(target_env = "ohos") {
+                    "Camera permission is required. Please enable it in system settings."
+                } else if cfg!(any(target_os = "ios", target_os = "macos")) {
+                    "Go to Settings > Privacy > Camera to enable access."
+                } else if cfg!(not(any(
+                    target_os = "android",
+                    target_env = "ohos",
+                    target_os = "ios",
+                    target_os = "macos"
+                ))) {
+                    "Camera access denied. Check your system's privacy settings."
+                } else {
+                    "Camera permission denied. Please enable it in System Settings."
+                }
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => {
+                "Add more
+accessible items"
+            }
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => {
+                "Add more
+accessible photos"
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "en") => {
+                "Add more
+accessible videos"
+            }
+            (I18nKey::PermissionLimitedAccessWarning, "en") => {
+                "You have limited photo access. Grant full access in settings."
+            }
+            (I18nKey::PermissionLocationDenied, "en") => {
+                "Location permission denied. Please enable it in System Settings."
+            }
+            (I18nKey::PermissionLocationReason, "en") => {
+                "Location permission required to provide location-based services"
+            }
+            (I18nKey::PermissionMediaReason, "en") => {
+                "Media permission required to save images and videos to album"
+            }
+            (I18nKey::PermissionMicrophoneDenied, "en") => {
+                "Microphone permission denied. Please enable it in System Settings."
+            }
+            (I18nKey::PermissionNetworkReason, "en") => {
+                "Network permission required to detect network status"
+            }
+            (I18nKey::PermissionPhotoDenied, "en") => {
+                "Photo library access denied. Please enable it in System Settings."
+            }
+            (I18nKey::PermissionWifiReason, "en") => {
+                "WiFi permission required to scan and connect to WiFi networks"
+            }
             (I18nKey::UpdateConfirm, "en") => "Download & Install",
             (I18nKey::UpdateDownloadFailed, "en") => "Download failed. Please try again.",
             (I18nKey::UpdateDownloading, "en") => "Downloading Update",
@@ -246,12 +305,18 @@ accessible videos",
             (I18nKey::UpdateTitle, "en") => "New Version Available",
             (I18nKey::VideoQuality, "en") => "Quality",
             (I18nKey::VideoSpeed, "en") => "Speed",
-            (I18nKey::AlbumAddMoreMedia, "zh") => "添加更多
-可访问内容",
-            (I18nKey::AlbumAddMorePhotos, "zh") => "添加更多
-可访问照片",
-            (I18nKey::AlbumAddMoreVideos, "zh") => "添加更多
-可访问视频",
+            (I18nKey::AlbumAddMoreMedia, "zh") => {
+                "添加更多
+可访问内容"
+            }
+            (I18nKey::AlbumAddMorePhotos, "zh") => {
+                "添加更多
+可访问照片"
+            }
+            (I18nKey::AlbumAddMoreVideos, "zh") => {
+                "添加更多
+可访问视频"
+            }
             (I18nKey::AlbumAllMedia, "zh") => "图片和视频",
             (I18nKey::AlbumAllPhotos, "zh") => "所有图片",
             (I18nKey::AlbumAllVideos, "zh") => "所有视频",
@@ -278,6 +343,9 @@ accessible videos",
             (I18nKey::CameraTapToStop, "zh") => "点击停止",
             (I18nKey::CameraVideoInputFailed, "zh") => "无法添加视频输入",
             (I18nKey::CameraVideoOutputFailed, "zh") => "无法添加视频输出",
+            (I18nKey::CapsuleCleanCache, "zh") => "清理缓存",
+            (I18nKey::CapsuleRestart, "zh") => "重启",
+            (I18nKey::CapsuleUninstall, "zh") => "卸载",
             (I18nKey::CommonAuto, "zh") => "自动",
             (I18nKey::CommonBack, "zh") => "返回",
             (I18nKey::CommonCancel, "zh") => "取消",
@@ -347,18 +415,44 @@ accessible videos",
             (I18nKey::ErrorUnauthorized, "zh") => "未授权",
             (I18nKey::ErrorUnknown, "zh") => "未知错误",
             (I18nKey::ErrorVideoTooShort, "zh") => "拍摄时间过短",
-            (I18nKey::PermissionCameraDenied, "zh") => if cfg!(target_os = "android") { "相机权限不足，请在应用设置中开启。" } else if cfg!(target_env = "ohos") { "请在系统设置中允许应用访问相机。" } else if cfg!(any(target_os = "ios", target_os = "macos")) { "请前往“设置”>“隐私”>“相机”开启权限。" } else if cfg!(not(any(target_os = "android", target_env = "ohos", target_os = "ios", target_os = "macos"))) { "相机访问被拒绝。请检查系统的隐私设置。" } else { "需要相机权限，请在系统设置中开启" },
-            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => "添加更多
-可访问内容",
-            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => "添加更多
-可访问照片",
-            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => "添加更多
-可访问视频",
-            (I18nKey::PermissionLimitedAccessWarning, "zh") => "你仅开启有限访问相册权限，建议允许访问「所有照片」",
+            (I18nKey::PermissionCameraDenied, "zh") => {
+                if cfg!(target_os = "android") {
+                    "相机权限不足，请在应用设置中开启。"
+                } else if cfg!(target_env = "ohos") {
+                    "请在系统设置中允许应用访问相机。"
+                } else if cfg!(any(target_os = "ios", target_os = "macos")) {
+                    "请前往“设置”>“隐私”>“相机”开启权限。"
+                } else if cfg!(not(any(
+                    target_os = "android",
+                    target_env = "ohos",
+                    target_os = "ios",
+                    target_os = "macos"
+                ))) {
+                    "相机访问被拒绝。请检查系统的隐私设置。"
+                } else {
+                    "需要相机权限，请在系统设置中开启"
+                }
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => {
+                "添加更多
+可访问内容"
+            }
+            (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => {
+                "添加更多
+可访问照片"
+            }
+            (I18nKey::PermissionLimitedAccessAddMoreVideos, "zh") => {
+                "添加更多
+可访问视频"
+            }
+            (I18nKey::PermissionLimitedAccessWarning, "zh") => {
+                "你仅开启有限访问相册权限，建议允许访问「所有照片」"
+            }
             (I18nKey::PermissionLocationDenied, "zh") => "需要定位权限，请在系统设置中开启",
             (I18nKey::PermissionLocationReason, "zh") => "LingXia需要位置权限为你提供服务",
             (I18nKey::PermissionMediaReason, "zh") => "LingXia需要相册权限保存图片和视频",
             (I18nKey::PermissionMicrophoneDenied, "zh") => "需要麦克风权限，请在系统设置中开启",
+            (I18nKey::PermissionNetworkReason, "zh") => "LingXia需要网络权限来检测网络状态",
             (I18nKey::PermissionPhotoDenied, "zh") => "需要相册访问权限，请在系统设置中开启",
             (I18nKey::PermissionWifiReason, "zh") => "LingXia需要WiFi权限来扫描和连接WiFi网络",
             (I18nKey::UpdateConfirm, "zh") => "下载并安装",
@@ -369,12 +463,18 @@ accessible videos",
             (I18nKey::VideoQuality, "zh") => "画质",
             (I18nKey::VideoSpeed, "zh") => "倍速",
             (key, _) => match key {
-                I18nKey::AlbumAddMoreMedia => "Add more
-accessible items",
-                I18nKey::AlbumAddMorePhotos => "Add more
-accessible photos",
-                I18nKey::AlbumAddMoreVideos => "Add more
-accessible videos",
+                I18nKey::AlbumAddMoreMedia => {
+                    "Add more
+accessible items"
+                }
+                I18nKey::AlbumAddMorePhotos => {
+                    "Add more
+accessible photos"
+                }
+                I18nKey::AlbumAddMoreVideos => {
+                    "Add more
+accessible videos"
+                }
                 I18nKey::AlbumAllMedia => "Photos & Videos",
                 I18nKey::AlbumAllPhotos => "All Photos",
                 I18nKey::AlbumAllVideos => "All Videos",
@@ -401,6 +501,9 @@ accessible videos",
                 I18nKey::CameraTapToStop => "Tap to stop",
                 I18nKey::CameraVideoInputFailed => "Cannot add video input",
                 I18nKey::CameraVideoOutputFailed => "Cannot add video output",
+                I18nKey::CapsuleCleanCache => "Clean cache",
+                I18nKey::CapsuleRestart => "Restart",
+                I18nKey::CapsuleUninstall => "Uninstall",
                 I18nKey::CommonAuto => "Auto",
                 I18nKey::CommonBack => "Back",
                 I18nKey::CommonCancel => "Cancel",
@@ -464,26 +567,68 @@ accessible videos",
                 I18nKey::ErrCode6001 => "Device not supported",
                 I18nKey::ErrCode6002 => "System version too low",
                 I18nKey::ErrorNetworkError => "Network Error",
-                I18nKey::ErrorSaveFailed => "Save failed. Please check permissions or available space.",
+                I18nKey::ErrorSaveFailed => {
+                    "Save failed. Please check permissions or available space."
+                }
                 I18nKey::ErrorServerError => "Server Error",
                 I18nKey::ErrorTimeout => "Request Timeout",
                 I18nKey::ErrorUnauthorized => "Unauthorized",
                 I18nKey::ErrorUnknown => "Unknown Error",
                 I18nKey::ErrorVideoTooShort => "Video too short",
-                I18nKey::PermissionCameraDenied => if cfg!(target_os = "android") { "Camera permission required. Please enable in App Settings." } else if cfg!(target_env = "ohos") { "Camera permission is required. Please enable it in system settings." } else if cfg!(any(target_os = "ios", target_os = "macos")) { "Go to Settings > Privacy > Camera to enable access." } else if cfg!(not(any(target_os = "android", target_env = "ohos", target_os = "ios", target_os = "macos"))) { "Camera access denied. Check your system's privacy settings." } else { "Camera permission denied. Please enable it in System Settings." },
-                I18nKey::PermissionLimitedAccessAddMoreMedia => "Add more
-accessible items",
-                I18nKey::PermissionLimitedAccessAddMorePhotos => "Add more
-accessible photos",
-                I18nKey::PermissionLimitedAccessAddMoreVideos => "Add more
-accessible videos",
-                I18nKey::PermissionLimitedAccessWarning => "You have limited photo access. Grant full access in settings.",
-                I18nKey::PermissionLocationDenied => "Location permission denied. Please enable it in System Settings.",
-                I18nKey::PermissionLocationReason => "Location permission required to provide location-based services",
-                I18nKey::PermissionMediaReason => "Media permission required to save images and videos to album",
-                I18nKey::PermissionMicrophoneDenied => "Microphone permission denied. Please enable it in System Settings.",
-                I18nKey::PermissionPhotoDenied => "Photo library access denied. Please enable it in System Settings.",
-                I18nKey::PermissionWifiReason => "WiFi permission required to scan and connect to WiFi networks",
+                I18nKey::PermissionCameraDenied => {
+                    if cfg!(target_os = "android") {
+                        "Camera permission required. Please enable in App Settings."
+                    } else if cfg!(target_env = "ohos") {
+                        "Camera permission is required. Please enable it in system settings."
+                    } else if cfg!(any(target_os = "ios", target_os = "macos")) {
+                        "Go to Settings > Privacy > Camera to enable access."
+                    } else if cfg!(not(any(
+                        target_os = "android",
+                        target_env = "ohos",
+                        target_os = "ios",
+                        target_os = "macos"
+                    ))) {
+                        "Camera access denied. Check your system's privacy settings."
+                    } else {
+                        "Camera permission denied. Please enable it in System Settings."
+                    }
+                }
+                I18nKey::PermissionLimitedAccessAddMoreMedia => {
+                    "Add more
+accessible items"
+                }
+                I18nKey::PermissionLimitedAccessAddMorePhotos => {
+                    "Add more
+accessible photos"
+                }
+                I18nKey::PermissionLimitedAccessAddMoreVideos => {
+                    "Add more
+accessible videos"
+                }
+                I18nKey::PermissionLimitedAccessWarning => {
+                    "You have limited photo access. Grant full access in settings."
+                }
+                I18nKey::PermissionLocationDenied => {
+                    "Location permission denied. Please enable it in System Settings."
+                }
+                I18nKey::PermissionLocationReason => {
+                    "Location permission required to provide location-based services"
+                }
+                I18nKey::PermissionMediaReason => {
+                    "Media permission required to save images and videos to album"
+                }
+                I18nKey::PermissionMicrophoneDenied => {
+                    "Microphone permission denied. Please enable it in System Settings."
+                }
+                I18nKey::PermissionNetworkReason => {
+                    "Network permission required to detect network status"
+                }
+                I18nKey::PermissionPhotoDenied => {
+                    "Photo library access denied. Please enable it in System Settings."
+                }
+                I18nKey::PermissionWifiReason => {
+                    "WiFi permission required to scan and connect to WiFi networks"
+                }
                 I18nKey::UpdateConfirm => "Download & Install",
                 I18nKey::UpdateDownloadFailed => "Download failed. Please try again.",
                 I18nKey::UpdateDownloading => "Downloading Update",
@@ -491,7 +636,7 @@ accessible videos",
                 I18nKey::UpdateTitle => "New Version Available",
                 I18nKey::VideoQuality => "Quality",
                 I18nKey::VideoSpeed => "Speed",
-            }
+            },
         }
     }
 
