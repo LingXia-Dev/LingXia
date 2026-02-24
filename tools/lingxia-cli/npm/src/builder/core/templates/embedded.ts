@@ -108,7 +108,9 @@ window.__lxData = __lxReactiveData;
   window.LingXiaBridge.subscribe((d) => {
     if (!d) return;
     // Replace snapshot (including deletions) while keeping the same reactive root reference.
-    Object.keys(__lxReactiveData).forEach((k) => { if (!Object.hasOwn(d, k)) delete __lxReactiveData[k]; });
+    Object.keys(__lxReactiveData).forEach((k) => {
+      if (!Object.prototype.hasOwnProperty.call(d, k)) delete __lxReactiveData[k];
+    });
     Object.assign(__lxReactiveData, d);
   });
 })();
