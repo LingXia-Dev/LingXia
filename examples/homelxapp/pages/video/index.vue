@@ -135,6 +135,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import { LxVideo } from 'lingxia-components/vue';
 import '../../tailwind.css';
 
@@ -149,8 +150,6 @@ type VideoConfig = {
 type PageData = {
   videos?: VideoConfig[];
 };
-
-declare function useLingXia(): any;
 
 const { data, play, pause, stop, seek, requestFullScreen, onQualityChange, onRateChange } = useLingXia();
 

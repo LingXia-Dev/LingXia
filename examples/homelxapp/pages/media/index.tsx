@@ -1,6 +1,7 @@
 import React from 'react';
-import '../../tailwind.css';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import { LxVideo } from 'lingxia-components/react';
+import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [
   { key: 'album', label: 'Album' },
@@ -162,8 +163,6 @@ type PageActions = {
   captureImageForAlbum?(): void;
   captureVideoForAlbum?(): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const Card: React.FC<{ children: React.ReactNode; className?: string; noPadding?: boolean }> = ({
   children,

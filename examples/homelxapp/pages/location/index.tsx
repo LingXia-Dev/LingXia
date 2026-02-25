@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import '../../tailwind.css';
 
 export default function LocationPage() {

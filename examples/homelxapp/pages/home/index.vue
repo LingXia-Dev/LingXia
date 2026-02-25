@@ -69,6 +69,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 
 type PageData = {
@@ -81,8 +82,6 @@ type PageActions = {
   data: PageData;
   greet(payload: { name: string }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const { data, greet } = useLingXia();
 const name = ref('');

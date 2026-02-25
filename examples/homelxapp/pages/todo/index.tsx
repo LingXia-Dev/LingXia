@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import '../../tailwind.css';
 import './index.css';
 
@@ -23,8 +24,6 @@ type PageActions = {
   clearCompleted(): void;
   setFilter(params: { filter: TodoFilter }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 export default function TodoPage() {
   const {

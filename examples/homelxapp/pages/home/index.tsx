@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import '../../tailwind.css';
 
 type PageData = {
@@ -8,14 +9,11 @@ type PageData = {
 };
 
 type PageActions = {
-  data: PageData;
   greet(payload: { name: string }): void;
 };
 
-declare function useLingXia(): PageActions;
-
 export default function HomePage() {
-  const { data, greet } = useLingXia();
+  const { data, greet } = useLingXia<PageData, PageActions>();
   const [name, setName] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
 

@@ -97,12 +97,11 @@
 
 <script setup lang="ts">
 import '../../tailwind.css';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 
 type PageActions = {
   navigateTo(payload: { url: string }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const { navigateTo } = useLingXia();
 </script>

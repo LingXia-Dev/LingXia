@@ -1,4 +1,4 @@
-import React from 'react';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import '../../tailwind.css';
 
 type PageData = {
@@ -19,8 +19,6 @@ type PageActions = {
   openPdf(): void;
   openOffice(): void;
 };
-
-declare function useLingXia(): PageActions;
 
 export default function DocumentPage() {
   const {

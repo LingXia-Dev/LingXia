@@ -387,6 +387,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 
 type ExpandedSections = {
@@ -411,8 +412,6 @@ type PageActions = {
   navigateToTestMiniApp(): void;
   navigateToPullDownRefreshPage(): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const {
   data,

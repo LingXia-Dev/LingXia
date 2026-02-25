@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import '../../tailwind.css';
 
 type WifiInfo = {
@@ -43,8 +44,6 @@ type PageActions = {
   offWifiConnected(): void | Promise<unknown>;
   clearWifiConnectedEvents(): void | Promise<unknown>;
 };
-
-declare function useLingXia(): PageActions;
 
 export default function WifiPage() {
   const {

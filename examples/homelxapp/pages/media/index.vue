@@ -705,6 +705,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import { LxVideo } from 'lingxia-components/vue';
 import '../../tailwind.css';
 
@@ -764,8 +765,6 @@ type CompressVideoResult = {
   size?: number;
   type?: string;
 };
-
-declare function useLingXia(): any;
 
 const {
   data,

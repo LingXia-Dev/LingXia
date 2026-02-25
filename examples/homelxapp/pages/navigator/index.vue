@@ -226,7 +226,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { LxNavigator } from 'lingxia-components/vue';
+import { LxNavigator } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 
 const logs = ref<string[]>([]);

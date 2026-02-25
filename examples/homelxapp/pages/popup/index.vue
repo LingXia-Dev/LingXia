@@ -36,14 +36,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 
 type PageActions = {
   data: { queryString?: string };
   sendPopupMessage(payload: { message: string }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const { data, sendPopupMessage } = useLingXia();
 const message = ref('');

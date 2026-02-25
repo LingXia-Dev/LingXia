@@ -17,21 +17,22 @@
   "license": "MIT",
   "dependencies": {
     "@lingxia/rong": "^0.0.1",
+    "@lingxia/web-runtime": "file:../../lingxia-web-runtime",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "lingxia-components": "file:../../lingxia-components",
     "lingxia-types": "file:../../lingxia-types",
     "lodash-es": "^4.17.21",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "tailwindcss": "^3.4.13",
-    "vue": "^3.6.0-beta.5"
+    "vue": "^3.5.0"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",
-    "@types/react": "^19.0.6",
-    "@types/react-dom": "^19.0.2",
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
     "typescript": "^5.7.2"

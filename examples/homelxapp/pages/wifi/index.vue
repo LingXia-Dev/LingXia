@@ -247,6 +247,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 
 type WifiInfo = {
@@ -272,8 +273,6 @@ type WifiEvent = {
   connected?: boolean;
   state?: string;
 };
-
-declare function useLingXia(): any;
 
 const {
   data,

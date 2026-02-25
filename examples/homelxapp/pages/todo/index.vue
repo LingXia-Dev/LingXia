@@ -89,6 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import '../../tailwind.css';
 import './index.css';
 
@@ -113,8 +114,6 @@ type PageActions = {
   clearCompleted(): void;
   setFilter(params: { filter: TodoFilter }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const {
   data,

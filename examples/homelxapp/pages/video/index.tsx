@@ -1,6 +1,7 @@
 import React from 'react';
-import '../../tailwind.css';
+import { useLingXia } from '@lingxia/web-runtime/react';
 import { LxVideo } from 'lingxia-components/react';
+import '../../tailwind.css';
 
 type LxVideoEvent<TDetail> = { detail?: TDetail };
 
@@ -26,8 +27,6 @@ type PageActions = {
   onQualityChange(payload: { videoId: string; detail: unknown }): void;
   onRateChange(payload: { videoId: string; detail: unknown }): void;
 };
-
-declare function useLingXia(): PageActions;
 
 const SEEK_STEP_SECONDS = 10;
 
