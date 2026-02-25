@@ -74,7 +74,6 @@ lingxia new my-lxapp --project-type lxapp
 ```
 my-app/
 ├── lingxia.config.json  # Host app configuration
-├── .lingxia.secrets.json # Secrets (hidden, not tracked by git)
 ├── android/             # Android native project
 ├── ios/                 # iOS native project (if selected)
 ├── harmony/             # HarmonyOS project (if selected)

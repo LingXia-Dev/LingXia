@@ -577,13 +577,10 @@ fn build_app_json_from_config(
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
     let home_lxapp_version = lxapp_assets.home_lxapp_version.as_str();
 
-    // Read apiKey/apiSecret from environment variables (CI-friendly)
-    let api_key = std::env::var("LINGXIA_API_KEY")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
-    let api_secret = std::env::var("LINGXIA_API_SECRET")
-        .ok()
-        .filter(|s| !s.trim().is_empty());
+    let api_server =
+        env_non_empty("LINGXIA_API_SERVER").or_else(|| app.api_server.as_ref().cloned());
+    let api_key = env_non_empty("LINGXIA_API_KEY");
+    let api_secret = env_non_empty("LINGXIA_API_SECRET");
 
     let mut obj = serde_json::Map::new();
     obj.insert(
@@ -595,7 +592,11 @@ fn build_app_json_from_config(
         serde_json::json!(app.product_version),
     );
 
-    if let Some(api_server) = app.api_server.as_ref().filter(|s| !s.trim().is_empty()) {
+    if let Some(api_server) = api_server
+        .as_ref()
+        .map(String::as_str)
+        .filter(|s| !s.is_empty())
+    {
         obj.insert("apiServer".to_string(), serde_json::json!(api_server));
     }
     if let Some(api_key) = api_key {
@@ -783,4 +784,11 @@ fn hex_lower(bytes: &[u8]) -> String {
         let _ = write!(out, "{:02x}", b);
     }
     out
+}
+
+fn env_non_empty(env_name: &str) -> Option<String> {
+    std::env::var(env_name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
 }
