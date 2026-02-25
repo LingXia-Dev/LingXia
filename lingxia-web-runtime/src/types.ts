@@ -72,17 +72,12 @@ export interface NotifyOptions {
 }
 
 declare global {
-  function useLingXia<
-    TData = Record<string, unknown>,
-    TActions = Record<string, (...args: unknown[]) => unknown>
-  >(): { data: TData } & TActions;
-
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
+    __PAGE_FUNCTIONS?: string[];
     __LingXiaRecvMessage?: (message: string) => void;
     LingXiaBridge?: LingXiaBridgeInterface;
-    useLingXia?: typeof useLingXia;
     LingXiaProxy?: {
       supportsMessagePort: () => boolean;
       getPort: (name: string) => string;

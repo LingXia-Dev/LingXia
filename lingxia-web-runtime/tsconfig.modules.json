@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "declaration": false,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src/react.ts", "src/vue.ts"],
+  "exclude": ["node_modules", "dist"]
+}
