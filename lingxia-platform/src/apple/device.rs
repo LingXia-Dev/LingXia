@@ -234,46 +234,95 @@ impl Device for Platform {
     }
 }
 
-/// Get device model using system calls (like Swift version)
-/// Returns device model string like "iPhone14,2" or "MacBookPro18,1"
+/// Get device model identifier.
+///
+/// - iOS: `uname().machine` → e.g. "iPhone14,2", "iPad13,1"
+/// - macOS: `sysctl hw.model` → e.g. "MacBookPro16,2", "Mac14,7"
 fn get_device_model() -> String {
-    use std::ffi::CStr;
-    use std::mem;
-
-    // Define utsname structure manually to avoid libc dependency
-    #[repr(C)]
-    struct UtsName {
-        sysname: [i8; 256],
-        nodename: [i8; 256],
-        release: [i8; 256],
-        version: [i8; 256],
-        machine: [i8; 256],
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(model) = sysctl_string(b"hw.model\0") {
+            return model;
+        }
+        "Mac".to_string()
     }
 
+    #[cfg(target_os = "ios")]
+    {
+        use std::ffi::CStr;
+        use std::mem;
+
+        #[repr(C)]
+        struct UtsName {
+            sysname: [i8; 256],
+            nodename: [i8; 256],
+            release: [i8; 256],
+            version: [i8; 256],
+            machine: [i8; 256],
+        }
+
+        unsafe extern "C" {
+            fn uname(buf: *mut UtsName) -> i32;
+        }
+
+        unsafe {
+            let mut system_info: UtsName = mem::zeroed();
+            if uname(&mut system_info) == 0 {
+                let machine_ptr = system_info.machine.as_ptr();
+                let machine_cstr = CStr::from_ptr(machine_ptr);
+                if let Ok(machine_str) = machine_cstr.to_str() {
+                    return machine_str.to_string();
+                }
+            }
+            "iPhone".to_string()
+        }
+    }
+}
+
+/// Read a sysctl string value by name.
+#[cfg(target_os = "macos")]
+fn sysctl_string(name: &[u8]) -> Option<String> {
+    use std::ffi::CStr;
+
     unsafe extern "C" {
-        fn uname(buf: *mut UtsName) -> i32;
+        fn sysctlbyname(
+            name: *const i8,
+            oldp: *mut std::ffi::c_void,
+            oldlenp: *mut usize,
+            newp: *mut std::ffi::c_void,
+            newlen: usize,
+        ) -> i32;
     }
 
     unsafe {
-        let mut system_info: UtsName = mem::zeroed();
-        if uname(&mut system_info) == 0 {
-            // Convert machine field to String (like Swift version)
-            let machine_ptr = system_info.machine.as_ptr();
-            let machine_cstr = CStr::from_ptr(machine_ptr);
-            if let Ok(machine_str) = machine_cstr.to_str() {
-                return machine_str.to_string();
-            }
-        }
-
-        // Fallback if utsname fails
-        #[cfg(target_os = "ios")]
+        let mut size: usize = 0;
+        let name_ptr = name.as_ptr() as *const i8;
+        if sysctlbyname(
+            name_ptr,
+            std::ptr::null_mut(),
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        ) != 0
         {
-            "iPhone".to_string()
+            return None;
         }
-        #[cfg(target_os = "macos")]
+        if size == 0 {
+            return None;
+        }
+        let mut buf = vec![0u8; size];
+        if sysctlbyname(
+            name_ptr,
+            buf.as_mut_ptr() as *mut std::ffi::c_void,
+            &mut size,
+            std::ptr::null_mut(),
+            0,
+        ) != 0
         {
-            "Mac".to_string()
+            return None;
         }
+        let cstr = CStr::from_ptr(buf.as_ptr() as *const i8);
+        cstr.to_str().ok().map(|s| s.to_string())
     }
 }
 
