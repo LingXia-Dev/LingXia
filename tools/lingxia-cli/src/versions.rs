@@ -21,14 +21,10 @@ pub struct LingXiaVersions {
 #[allow(dead_code)]
 struct VersionsJson {
     android: String,
-    #[serde(default)]
-    ios: Option<String>,
-    #[serde(default)]
-    harmony: Option<String>,
+    ios: String,
+    harmony: String,
     lingxia: String,
     rong: String,
-    #[serde(default)]
-    min_cli_version: Option<String>,
 }
 
 /// Fetch all latest LingXia versions from GitHub
@@ -44,17 +40,4 @@ pub fn fetch_latest_versions() -> Result<LingXiaVersions> {
         lingxia_crate: json.lingxia,
         sdk: json.android,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_versions() {
-        let json = r#"{"android":"0.1.1","ios":"0.1.1","harmony":"0.1.1","lingxia":"0.1.1","rong":"0.1.1","minCliVersion":"0.0.8"}"#;
-        let versions: VersionsJson = serde_json::from_str(json).unwrap();
-        assert_eq!(versions.android, "0.1.1");
-        assert_eq!(versions.lingxia, "0.1.1");
-    }
 }

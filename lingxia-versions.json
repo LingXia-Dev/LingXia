@@ -1,8 +1,7 @@
 {
-  "android": "0.2.0",
-  "ios": "0.2.0",
-  "harmony": "0.2.0",
+  "android": "0.3.0",
+  "ios": "0.3.0",
+  "harmony": "0.3.0",
   "lingxia": "0.3.0",
-  "rong": "0.2.0",
-  "minCliVersion": "0.1.5"
+  "rong": "0.2.0"
 }
