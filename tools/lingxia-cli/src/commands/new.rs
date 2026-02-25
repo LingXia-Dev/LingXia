@@ -113,6 +113,7 @@ pub fn execute(
             &product_name,
             &framework,
             &versions,
+            &scaffold_versions.web_runtime,
             &scaffold_versions.types,
             &scaffold_versions.components,
         )?;
@@ -175,6 +176,7 @@ pub fn execute(
         &lxapp_dir_name,
         &lxapp_framework,
         &versions,
+        &scaffold_versions.web_runtime,
         &scaffold_versions.types,
         &scaffold_versions.components,
     )?;

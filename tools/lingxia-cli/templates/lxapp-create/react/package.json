@@ -18,6 +18,7 @@
     "@lingxia/components": "^{{LINGXIA_COMPONENTS_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
+    "@lingxia/web-runtime": "^{{LINGXIA_WEB_RUNTIME_VERSION}}",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

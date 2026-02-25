@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { Page, PageFiles } from "../../types/index.js";
-import { getFrameworkTemplates } from "./templates.js";
+import { getFrameworkTemplates } from "../framework-templates.js";
 
 /**
  * Abstract base class for framework processors

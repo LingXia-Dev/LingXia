@@ -18,7 +18,8 @@
     "@lingxia/components": "^{{LINGXIA_COMPONENTS_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
-    "vue": "^3.5.27"
+    "@lingxia/web-runtime": "^{{LINGXIA_WEB_RUNTIME_VERSION}}",
+    "vue": "^3.5.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

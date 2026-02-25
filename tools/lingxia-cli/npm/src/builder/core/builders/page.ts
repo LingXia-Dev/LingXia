@@ -213,7 +213,25 @@ export class PageProcessor {
       plugins,
       css,
       resolve: {
-        alias: config.alias,
+        alias: Object.entries(config.alias ?? {}).map(
+          ([find, replacement]) => {
+            // Bare "@" alias maps to "@/" prefix so it doesn't collide
+            // with scoped npm packages like @lingxia/*
+            if (find === "@") {
+              const normalized = replacement.endsWith("/")
+                ? replacement
+                : `${replacement}/`;
+              return {
+                find: /^@\//,
+                replacement: normalized,
+              };
+            }
+            return {
+              find,
+              replacement,
+            };
+          },
+        ),
       },
       esbuild: config.esbuild,
       build: {

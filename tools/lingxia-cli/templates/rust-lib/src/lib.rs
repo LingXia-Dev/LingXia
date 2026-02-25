@@ -24,12 +24,12 @@ fn do_register_extensions() {
 // Android: JNI export
 #[cfg(target_os = "android")]
 mod android {
-    use jni::JNIEnv;
+    use jni::EnvUnowned;
     use jni::objects::JClass;
 
     #[unsafe(no_mangle)]
     pub extern "system" fn Java_{{PACKAGE_ID_UNDERSCORE}}_MainActivity_registerNativeExtensions(
-        _env: JNIEnv,
+        _env: EnvUnowned,
         _class: JClass,
     ) {
         super::do_register_extensions();

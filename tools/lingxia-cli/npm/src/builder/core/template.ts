@@ -4,7 +4,7 @@ import { FrameworkRegistry } from "./registry.js";
 import {
   hasFrameworkTemplates,
   getFrameworkTemplates,
-} from "./templates/embedded.js";
+} from "./framework-templates.js";
 
 export class TemplateManager {
   copyFrameworkTemplates(framework: string, buildDir: string): void {

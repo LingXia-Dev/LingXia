@@ -1,10 +1,14 @@
-<script setup>
+<script setup lang="ts">
 import '../../app.css';
 import { LxNavigator } from '@lingxia/components/vue';
+import { useLingXia } from '@lingxia/web-runtime/vue';
 import { computed, ref } from 'vue';
 
-const { data, greet } = useLingXia();
-const state = computed(() => data.value ?? { greeting: '', greetCount: 0 });
+type PageState = { greeting?: string; greetCount?: number };
+type PageActions = { greet(payload: { name: string }): void };
+
+const { data, greet } = useLingXia<PageState, PageActions>();
+const state = computed(() => data ?? { greeting: '', greetCount: 0 });
 const inputName = ref('');
 const canSubmit = computed(() => inputName.value.trim().length > 0);
 

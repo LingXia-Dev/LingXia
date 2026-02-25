@@ -14,6 +14,7 @@ pub(super) fn create_lxapp_from_template(
     product_name: &str,
     framework: &str,
     versions: &LingXiaVersions,
+    lingxia_web_runtime_version: &str,
     lingxia_types_version: &str,
     lingxia_components_version: &str,
 ) -> Result<()> {
@@ -45,6 +46,10 @@ pub(super) fn create_lxapp_from_template(
 
     vars.insert("RONG_VERSION".to_string(), versions.rong.clone());
     vars.insert(
+        "LINGXIA_WEB_RUNTIME_VERSION".to_string(),
+        lingxia_web_runtime_version.to_string(),
+    );
+    vars.insert(
         "LINGXIA_TYPES_VERSION".to_string(),
         lingxia_types_version.to_string(),
     );
@@ -64,6 +69,7 @@ pub(super) fn create_lxapp_project(
     lxapp_dir_name: &str,
     framework: &str,
     versions: &LingXiaVersions,
+    lingxia_web_runtime_version: &str,
     lingxia_types_version: &str,
     lingxia_components_version: &str,
 ) -> Result<LxAppInfo> {
@@ -76,6 +82,7 @@ pub(super) fn create_lxapp_project(
         &config.product_name,
         framework,
         versions,
+        lingxia_web_runtime_version,
         lingxia_types_version,
         lingxia_components_version,
     )?;
