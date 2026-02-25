@@ -1,5 +1,6 @@
 use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
 use crate::commands::rust::run_cargo_build_for_target;
+use crate::sdk;
 use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -294,6 +295,9 @@ impl Platform for AndroidPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
+
+        // Ensure SDK artifacts are available in local Maven repo.
+        sdk::ensure_android_sdk_from_gradle(&config.project_root, &android_root)?;
 
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;

@@ -3,7 +3,7 @@
 //! Downloads LingXia SDK artifacts from GitHub releases and stages them locally.
 
 use crate::github;
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
@@ -40,6 +40,82 @@ pub fn ensure_sdk(project_root: &Path, platform: SdkPlatform, version: &str) -> 
         SdkPlatform::Apple => ensure_apple_sdk(project_root, version),
         SdkPlatform::Harmony => ensure_harmony_sdk(project_root, version),
     }
+}
+
+pub fn resolve_sdk_version_from_rust_manifest(
+    project_root: &Path,
+    rust_lib_name: &str,
+) -> Result<String> {
+    let manifest_path = project_root.join(rust_lib_name).join("Cargo.toml");
+    let content = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+
+    let mut section = "";
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if line.starts_with('[') && line.ends_with(']') {
+            section = &line[1..line.len() - 1];
+            continue;
+        }
+
+        if section != "dependencies" && !section.ends_with(".dependencies") {
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "lingxia" {
+            continue;
+        }
+
+        if let Some(version) = parse_dependency_version(value.trim()) {
+            return Ok(version);
+        }
+
+        return Err(anyhow!(
+            "Unable to parse 'lingxia' version from {}. Use a literal version, e.g. lingxia = {{ version = \"0.3.0\" }}.",
+            manifest_path.display()
+        ));
+    }
+
+    Err(anyhow!(
+        "Dependency 'lingxia' not found in {}",
+        manifest_path.display()
+    ))
+}
+
+pub fn ensure_android_sdk_from_gradle(project_root: &Path, android_root: &Path) -> Result<()> {
+    let gradle_kts = android_root.join("app/build.gradle.kts");
+    let gradle = android_root.join("app/build.gradle");
+    let gradle_path = if gradle_kts.exists() {
+        gradle_kts
+    } else if gradle.exists() {
+        gradle
+    } else {
+        return Err(anyhow!(
+            "Android Gradle file not found: expected {} or {}",
+            android_root.join("app/build.gradle.kts").display(),
+            android_root.join("app/build.gradle").display()
+        ));
+    };
+
+    let content = fs::read_to_string(&gradle_path)
+        .with_context(|| format!("Failed to read {}", gradle_path.display()))?;
+    let sdk_version = parse_android_sdk_version_from_gradle(&content).ok_or_else(|| {
+        anyhow!(
+            "Unable to resolve LingXia Android SDK version from {}.\n\
+Expected dependency format: implementation(\"com.lingxia:lingxia:<version>\")",
+            gradle_path.display()
+        )
+    })?;
+
+    ensure_sdk(project_root, SdkPlatform::Android, &sdk_version)?;
+    Ok(())
 }
 
 fn ensure_android_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
@@ -226,4 +302,83 @@ fn version_marker_matches(path: &Path, version: &str) -> Result<bool> {
 
 fn resolve_sdk_root(start: &Path) -> PathBuf {
     start.to_path_buf()
+}
+
+fn parse_dependency_version(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+
+    // `lingxia = "0.3.0"`
+    if let Some(first) = trimmed.chars().next()
+        && (first == '"' || first == '\'')
+    {
+        let inner = trimmed.trim_matches(first).trim();
+        if !inner.is_empty() {
+            return Some(inner.to_string());
+        }
+    }
+
+    // `lingxia = { version = "0.3.0", ... }`
+    let marker = "version";
+    let idx = trimmed.find(marker)?;
+    let tail = trimmed[idx + marker.len()..].trim_start();
+    let tail = tail.strip_prefix('=')?.trim_start();
+    let quote = tail.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &tail[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    let version = rest[..end].trim();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version.to_string())
+    }
+}
+
+fn parse_android_sdk_version_from_gradle(content: &str) -> Option<String> {
+    const MARKER: &str = "com.lingxia:lingxia:";
+    let start = content.find(MARKER)? + MARKER.len();
+    let tail = &content[start..];
+    let version: String = tail
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '+'))
+        .collect();
+    if version.is_empty() {
+        None
+    } else {
+        Some(version)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_android_sdk_version_from_gradle, parse_dependency_version};
+
+    #[test]
+    fn parse_android_sdk_version_from_kts_dependency() {
+        let content = r#"implementation("com.lingxia:lingxia:0.3.0")"#;
+        assert_eq!(
+            parse_android_sdk_version_from_gradle(content),
+            Some("0.3.0".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_android_sdk_version_returns_none_for_dynamic_expression() {
+        let content = r#"implementation("com.lingxia:lingxia:${versions.lingxia}")"#;
+        assert_eq!(parse_android_sdk_version_from_gradle(content), None);
+    }
+
+    #[test]
+    fn parse_dependency_version_from_table_style() {
+        let value = r#"{ version = "0.3.1", default-features = false }"#;
+        assert_eq!(parse_dependency_version(value), Some("0.3.1".to_string()));
+    }
+
+    #[test]
+    fn parse_dependency_version_from_string_style() {
+        let value = r#""0.3.2""#;
+        assert_eq!(parse_dependency_version(value), Some("0.3.2".to_string()));
+    }
 }

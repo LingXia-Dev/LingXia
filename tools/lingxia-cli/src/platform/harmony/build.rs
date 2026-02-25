@@ -1,6 +1,7 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_build_for_target;
 use crate::platform::{BuildArtifacts, BuildConfig, BuildProfile};
+use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
@@ -45,6 +46,8 @@ impl HarmonyPlatform {
         config: &BuildConfig,
         harmony_dir: &Path,
     ) -> Result<BuildArtifacts> {
+        self.ensure_harmony_sdk(config)?;
+
         if config.build_native {
             let so_path = self.build_rust_library(&config.project_root, config)?;
             self.stage_native_library(&so_path, harmony_dir)?;
@@ -59,6 +62,20 @@ impl HarmonyPlatform {
         let hap_path = self.build_hap(harmony_dir, config)?;
 
         Ok(BuildArtifacts::Harmony { hap_path })
+    }
+
+    fn ensure_harmony_sdk(&self, config: &BuildConfig) -> Result<()> {
+        let lingxia_config = config
+            .lingxia_config
+            .as_ref()
+            .ok_or_else(|| anyhow!("lingxia.config.json is required to resolve SDK version"))?;
+        let rust_lib_name = lingxia_config
+            .get_rust_lib_name()
+            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
+        let sdk_version =
+            sdk::resolve_sdk_version_from_rust_manifest(&config.project_root, &rust_lib_name)?;
+        sdk::ensure_sdk(&config.project_root, SdkPlatform::Harmony, &sdk_version)?;
+        Ok(())
     }
 
     fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<PathBuf> {
