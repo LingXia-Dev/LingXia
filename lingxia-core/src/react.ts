@@ -1,23 +1,32 @@
-import { reactive } from "vue";
-import { initBridge } from "./bridge";
+import * as React from "react";
+import type {} from "./types";
 
 type ActionMap = Record<string, (...args: unknown[]) => unknown>;
 type Snapshot = Record<string, unknown>;
+type Listener = () => void;
 
-const reactiveSnapshot = reactive<Snapshot>({});
+let snapshot: Snapshot = {};
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+const listeners = new Set<Listener>();
 
-function replaceReactiveSnapshot(next: unknown): void {
-  const normalized: Snapshot =
-    next && typeof next === "object" ? (next as Snapshot) : {};
-
-  for (const key of Object.keys(reactiveSnapshot)) {
-    if (!Object.prototype.hasOwnProperty.call(normalized, key)) {
-      delete reactiveSnapshot[key];
+function notifyListeners(): void {
+  listeners.forEach((listener) => {
+    try {
+      listener();
+    } catch {
+      // Ignore listener errors to avoid breaking state fanout.
     }
+  });
+}
+
+function updateSnapshot(next: unknown): void {
+  if (next && typeof next === "object") {
+    snapshot = next as Snapshot;
+  } else {
+    snapshot = {};
   }
-  Object.assign(reactiveSnapshot, normalized);
+  notifyListeners();
 }
 
 function scheduleSubscribeRetry(): void {
@@ -30,14 +39,13 @@ function scheduleSubscribeRetry(): void {
 
 function ensureBridgeSubscription(): void {
   if (subscribed) return;
-  initBridge();
   const bridge = window.LingXiaBridge;
   if (!bridge?.subscribe) {
     scheduleSubscribeRetry();
     return;
   }
   bridge.subscribe((next) => {
-    replaceReactiveSnapshot(next);
+    updateSnapshot(next);
   });
   subscribed = true;
 }
@@ -65,5 +73,17 @@ export function useLingXia<
   TActions extends ActionMap = ActionMap,
 >(): { data: TData } & TActions {
   ensureBridgeSubscription();
-  return { data: reactiveSnapshot as TData, ...resolveActions<TActions>() };
+  const [, setVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    ensureBridgeSubscription();
+    const listener: Listener = () => setVersion((v) => v + 1);
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
+  }, []);
+
+  const actions = React.useMemo(() => resolveActions<TActions>(), []);
+  return { data: snapshot as TData, ...actions };
 }

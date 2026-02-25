@@ -4,6 +4,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "declaration": false,
+    "declarationDir": null,
     "outDir": "dist",
     "rootDir": "src"
   },

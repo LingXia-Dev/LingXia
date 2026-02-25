@@ -18,7 +18,7 @@
     "@lingxia/components": "^{{LINGXIA_COMPONENTS_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
-    "@lingxia/web-runtime": "^{{LINGXIA_WEB_RUNTIME_VERSION}}",
+    "@lingxia/core": "^{{LINGXIA_CORE_VERSION}}",
     "vue": "^3.5.0"
   },
   "devDependencies": {

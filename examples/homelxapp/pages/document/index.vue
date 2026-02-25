@@ -106,7 +106,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/web-runtime/vue';
+import { useLingXia } from '@lingxia/core/vue';
 import '../../tailwind.css';
 
 const {

@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex, atomic::AtomicUsize};
 use tokio::sync::oneshot;
 
-// Error codes (must match lingxia-web-runtime/src/types.ts)
+// Error codes (must match lingxia-core/src/types.ts)
 pub const BRIDGE_NOT_READY: &str = "BRIDGE_NOT_READY";
 #[allow(dead_code)]
 pub const BRIDGE_TIMEOUT: &str = "BRIDGE_TIMEOUT";

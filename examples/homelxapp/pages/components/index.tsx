@@ -1,4 +1,4 @@
-import { useLingXia } from '@lingxia/web-runtime/react';
+import { useLingXia } from '@lingxia/core/react';
 import '../../tailwind.css';
 
 export default function ComponentsPage() {

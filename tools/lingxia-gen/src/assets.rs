@@ -10,8 +10,8 @@ pub struct AssetsConfig {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Path to runtime assets directory (lingxia-web-runtime/dist)
-    #[arg(long, default_value = "lingxia-web-runtime/dist")]
+    /// Path to runtime assets directory (lingxia-core/dist)
+    #[arg(long, default_value = "lingxia-core/dist")]
     pub runtime_input: PathBuf,
 
     /// Path to output Android assets (src/main/assets/lingxia-core)

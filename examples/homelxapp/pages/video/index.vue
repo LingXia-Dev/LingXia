@@ -135,8 +135,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useLingXia } from '@lingxia/web-runtime/vue';
-import { LxVideo } from 'lingxia-components/vue';
+import { useLingXia } from '@lingxia/core/vue';
+import { LxVideo } from '@lingxia/components/vue';
 import '../../tailwind.css';
 
 type VideoConfig = {

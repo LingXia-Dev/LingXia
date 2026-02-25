@@ -1,5 +1,5 @@
 import React from 'react';
-import { LxNavigator } from '@lingxia/web-runtime/react';
+import { LxNavigator } from '@lingxia/components/react';
 import '../../tailwind.css';
 
 export default function NavigatorPage() {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { LxNavigator } from '@lingxia/components/react';
-import { useLingXia } from '@lingxia/web-runtime/react';
+import { useLingXia } from '@lingxia/core/react';
 import '../../app.css';
 
 type PageState = { greeting: string; greetCount: number };

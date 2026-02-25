@@ -94,7 +94,7 @@ pub fn execute(
         versions.sdk.cyan(),
         versions.rong.cyan(),
         versions.lingxia_crate.cyan(),
-        scaffold_versions.web_runtime.cyan(),
+        scaffold_versions.core.cyan(),
         scaffold_versions.types.cyan(),
         scaffold_versions.components.cyan()
     );
@@ -113,7 +113,7 @@ pub fn execute(
             &product_name,
             &framework,
             &versions,
-            &scaffold_versions.web_runtime,
+            &scaffold_versions.core,
             &scaffold_versions.types,
             &scaffold_versions.components,
         )?;
@@ -176,11 +176,11 @@ pub fn execute(
         &lxapp_dir_name,
         &lxapp_framework,
         &versions,
-        &scaffold_versions.web_runtime,
+        &scaffold_versions.core,
         &scaffold_versions.types,
         &scaffold_versions.components,
     )?;
-    generate_config_file(&config, &lxapp_info, &scaffold_versions.web_runtime)?;
+    generate_config_file(&config, &lxapp_info, &scaffold_versions.core)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());

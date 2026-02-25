@@ -151,7 +151,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { LxPicker } from '@lingxia/web-runtime/vue';
+import { LxPicker } from '@lingxia/components/vue';
 import '../../tailwind.css';
 
 type ModeTab = 'selector' | 'multiSelector' | 'time' | 'date';

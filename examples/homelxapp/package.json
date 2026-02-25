@@ -17,11 +17,11 @@
   "license": "MIT",
   "dependencies": {
     "@lingxia/rong": "^0.0.1",
-    "@lingxia/web-runtime": "file:../../lingxia-web-runtime",
+    "@lingxia/core": "file:../../lingxia-core",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "lingxia-components": "file:../../lingxia-components",
+    "@lingxia/components": "file:../../lingxia-components",
     "lingxia-types": "file:../../lingxia-types",
     "lodash-es": "^4.17.21",
     "react": "^19.2.4",

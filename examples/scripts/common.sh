@@ -181,7 +181,7 @@ build_and_copy_runtime() {
     local target_dir="$1"
     local ecma_target="${2:-es2020}"
     local runtime_platform="${3:-all}"
-    local runtime_dir="$LINGXIA_ROOT/lingxia-web-runtime"
+    local runtime_dir="$LINGXIA_ROOT/lingxia-core"
     local dist_runtime=""
     local build_script="build"
 

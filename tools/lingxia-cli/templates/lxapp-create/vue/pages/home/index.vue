@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import '../../app.css';
 import { LxNavigator } from '@lingxia/components/vue';
-import { useLingXia } from '@lingxia/web-runtime/vue';
+import { useLingXia } from '@lingxia/core/vue';
 import { computed, ref } from 'vue';
 
 type PageState = { greeting?: string; greetCount?: number };

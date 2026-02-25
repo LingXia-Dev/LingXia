@@ -9,9 +9,9 @@ use anyhow::Result;
 pub(super) fn generate_config_file(
     config: &ProjectConfig,
     lxapp: &LxAppInfo,
-    web_runtime_version: &str,
+    core_version: &str,
 ) -> Result<()> {
-    let lingxia_config = build_lingxia_config(config, lxapp, web_runtime_version);
+    let lingxia_config = build_lingxia_config(config, lxapp, core_version);
 
     // Save config file
     lingxia_config.save(&config.target_dir)?;
@@ -22,7 +22,7 @@ pub(super) fn generate_config_file(
 fn build_lingxia_config(
     config: &ProjectConfig,
     lxapp: &LxAppInfo,
-    web_runtime_version: &str,
+    core_version: &str,
 ) -> LingXiaConfig {
     let swift_target_name = swift_target_name_from_project_name(&config.name);
 
@@ -95,7 +95,7 @@ fn build_lingxia_config(
         resources: Some(ResourcesConfig {
             i18n: None,
             icons: None,
-            runtime: Some(format!("npm:@lingxia/web-runtime@{web_runtime_version}")),
+            runtime: Some(format!("npm:@lingxia/core@{core_version}")),
         }),
     }
 }
@@ -128,7 +128,7 @@ mod tests {
         assert_eq!(app.cache_max_size_mb, Some(DEFAULT_CACHE_MAX_SIZE_MB));
         assert_eq!(
             resources.runtime.as_deref(),
-            Some("npm:@lingxia/web-runtime@0.2.0")
+            Some("npm:@lingxia/core@0.2.0")
         );
     }
 }
