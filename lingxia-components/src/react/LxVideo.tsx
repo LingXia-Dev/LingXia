@@ -70,6 +70,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
 
     let attrName = key;
     if (key === "playbackRates") attrName = "playback-rates";
+    if (key === "objectFit") attrName = "object-fit";
     if (key === "progressBar") {
       if (value === false) {
         domProps["progress-bar"] = "false";

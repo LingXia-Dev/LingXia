@@ -91,6 +91,7 @@ const domProps = computed(() => {
   if (props.controls) result.controls = true;
   if (props.live) result.live = true;
   if (props.volume !== undefined) result.volume = props.volume;
+  if (props.objectFit) result['object-fit'] = props.objectFit;
   if (props.progressBar === false) result['progress-bar'] = 'false';
   if (props.qualities?.length) result.qualities = JSON.stringify(props.qualities);
   if (props.playbackRates?.length) result['playback-rates'] = JSON.stringify(props.playbackRates);

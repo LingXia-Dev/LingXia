@@ -12,6 +12,7 @@ export type LxVideoAttributes = {
   id?: string;
   src?: string;
   poster?: string;
+  objectFit?: "cover" | "contain" | "fill" | "fit";
   autoplay?: boolean;
   loop?: boolean;
   muted?: boolean;
@@ -55,6 +56,7 @@ export class LxVideoElement extends HTMLElement {
       "id",
       "src",
       "poster",
+      "object-fit",
       "autoplay",
       "loop",
       "muted",
@@ -77,8 +79,6 @@ export class LxVideoElement extends HTMLElement {
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
-  private lastHarmonyQualities?: string;
-  private lastHarmonyPlaybackRates?: string;
   private iOSHelper?: iOSNativeComponentHelper;
 
   connectedCallback() {
@@ -240,6 +240,10 @@ export class LxVideoElement extends HTMLElement {
     const volumeAttr = this.getAttribute("volume");
     const volume =
       volumeAttr != null ? parseFloat(volumeAttr) : undefined;
+    const objectFit =
+      this.getAttribute("object-fit") ??
+      this.getAttribute("objectfit") ??
+      undefined;
 
     // JSON-encoded arrays (React wrapper sets these via JSON.stringify)
     const qualitiesAttr = this.getAttribute("qualities");
@@ -284,6 +288,7 @@ export class LxVideoElement extends HTMLElement {
       progressBar,
       live: isLive,
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
+      objectFit,
       qualities,
       playbackRates
     };
@@ -444,23 +449,6 @@ export class LxVideoElement extends HTMLElement {
     props: Record<string, unknown>,
     cornerRadius?: number
   ) {
-    const nextQualities = JSON.stringify((props as { qualities?: unknown }).qualities ?? []);
-    const nextPlaybackRates = JSON.stringify((props as { playbackRates?: unknown }).playbackRates ?? []);
-    const shouldRecreate =
-      this.harmonyEmbed &&
-      (nextQualities !== this.lastHarmonyQualities ||
-        nextPlaybackRates !== this.lastHarmonyPlaybackRates);
-
-    if (shouldRecreate && this.harmonyEmbed) {
-      if (this.contains(this.harmonyEmbed)) {
-        this.removeChild(this.harmonyEmbed);
-      }
-      this.harmonyEmbed = undefined;
-      this.lastHarmonyProps = undefined;
-    }
-    this.lastHarmonyQualities = nextQualities;
-    this.lastHarmonyPlaybackRates = nextPlaybackRates;
-
     // Create embed element only once - ArkWeb triggers DESTROY+CREATE on attribute changes
     if (!this.harmonyEmbed) {
       const embed = document.createElement("embed");
