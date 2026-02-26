@@ -399,7 +399,7 @@ async fn download_and_install_internal(
     let package = provider
         .check_update(target)
         .await
-        .map_err(|e| LxAppError::IoError(format!("Plugin update check failed: {}", e)))?
+        .map_err(|e| e.to_lxapp_error())?
         .ok_or_else(|| {
             LxAppError::IoError(format!(
                 "Plugin {} (lxPluginId: {}) not found on server",

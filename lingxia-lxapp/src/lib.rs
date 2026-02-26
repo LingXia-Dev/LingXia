@@ -40,8 +40,8 @@ pub use lxapp::{
 };
 pub use page::NavigationType;
 pub use provider::{
-    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdatePackageInfo,
-    UpdateProvider, UpdateTarget, register_provider,
+    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, ProviderErrorCode,
+    UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use stream_source::{

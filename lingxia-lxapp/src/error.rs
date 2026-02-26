@@ -1,5 +1,7 @@
 use lingxia_platform::PlatformError;
 use rong::RongJSError;
+use rong::error::{ErrorData, ErrorNumber};
+use serde_json::Value;
 use std::io;
 use thiserror::Error;
 
@@ -47,6 +49,14 @@ pub enum LxAppError {
     #[error("Rong Error: {0}")]
     RongJS(String),
 
+    /// Structured Rong host error that preserves code/data metadata
+    #[error("{code}: {message}")]
+    RongJSHost {
+        code: String,
+        message: String,
+        data: Option<Value>,
+    },
+
     /// Error when plugin is not configured in lxapp.json
     #[error("Plugin not configured: {0}")]
     PluginNotConfigured(String),
@@ -76,6 +86,14 @@ impl From<serde_json::Error> for LxAppError {
 
 impl From<RongJSError> for LxAppError {
     fn from(error: RongJSError) -> Self {
+        if let Some(host) = error.as_host_error() {
+            let data = host.data.as_ref().map(error_data_to_json);
+            return LxAppError::RongJSHost {
+                code: host.code.to_string(),
+                message: host.message.clone(),
+                data,
+            };
+        }
         LxAppError::RongJS(error.to_string())
     }
 }
@@ -83,5 +101,30 @@ impl From<RongJSError> for LxAppError {
 impl From<PlatformError> for LxAppError {
     fn from(error: PlatformError) -> Self {
         LxAppError::Runtime(error.to_string())
+    }
+}
+
+fn error_data_to_json(data: &ErrorData) -> Value {
+    match data {
+        ErrorData::Null => Value::Null,
+        ErrorData::Bool(v) => Value::Bool(*v),
+        ErrorData::String(v) => Value::String(v.clone()),
+        ErrorData::Number(n) => match n {
+            ErrorNumber::I64(v) => Value::Number(serde_json::Number::from(*v)),
+            ErrorNumber::U64(v) => Value::Number(serde_json::Number::from(*v)),
+            ErrorNumber::F64(bits) => {
+                let num = f64::from_bits(*bits);
+                match serde_json::Number::from_f64(num) {
+                    Some(value) => Value::Number(value),
+                    None => Value::String(num.to_string()),
+                }
+            }
+        },
+        ErrorData::Array(items) => Value::Array(items.iter().map(error_data_to_json).collect()),
+        ErrorData::Object(obj) => Value::Object(
+            obj.iter()
+                .map(|(k, v)| (k.clone(), error_data_to_json(v)))
+                .collect(),
+        ),
     }
 }

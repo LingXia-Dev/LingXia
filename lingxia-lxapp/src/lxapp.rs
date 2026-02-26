@@ -1460,12 +1460,12 @@ impl LxApp {
         let pending = crate::appservice::view_call::call_view(&page, method, params)?;
 
         match time::timeout(VIEW_CALL_TIMEOUT, pending.rx).await {
-            Ok(Ok(result)) => result.map_err(|rpc_err| {
-                LxAppError::Bridge(format!(
-                    "{}: {}",
-                    rpc_err.code,
-                    rpc_err.message.unwrap_or_default()
-                ))
+            Ok(Ok(result)) => result.map_err(|rpc_err| LxAppError::RongJSHost {
+                code: rpc_err.code,
+                message: rpc_err
+                    .message
+                    .unwrap_or_else(|| "View call failed".to_string()),
+                data: rpc_err.data,
             }),
             Ok(Err(_)) => Err(LxAppError::ChannelError(
                 "View call channel closed".to_string(),

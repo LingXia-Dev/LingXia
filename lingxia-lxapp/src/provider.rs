@@ -1,5 +1,6 @@
 //! Provider traits and registration.
 
+use crate::error::LxAppError;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -32,22 +33,115 @@ pub struct UpdatePackageInfo {
 }
 
 /// Error type for provider operations.
-#[derive(Debug, Clone)]
-pub struct ProviderError(pub String);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderErrorCode {
+    InvalidRequest,
+    NotFound,
+    Network,
+    Timeout,
+    Server,
+    PermissionDenied,
+    Internal,
+}
 
-impl ProviderError {
-    pub fn new(msg: impl Into<String>) -> Self {
-        Self(msg.into())
+impl ProviderErrorCode {
+    pub const fn biz_code(self) -> u32 {
+        match self {
+            Self::InvalidRequest => 1002,
+            Self::NotFound => 1003,
+            Self::Network => 5001,
+            Self::Timeout => 5002,
+            Self::Server => 5003,
+            Self::PermissionDenied => 3000,
+            Self::Internal => 1005,
+        }
     }
 
-    pub fn message(&self) -> &str {
-        &self.0
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidRequest => "invalid_request",
+            Self::NotFound => "not_found",
+            Self::Network => "network",
+            Self::Timeout => "timeout",
+            Self::Server => "server",
+            Self::PermissionDenied => "permission_denied",
+            Self::Internal => "internal",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ProviderError {
+    code: ProviderErrorCode,
+    detail: String,
+}
+
+impl ProviderError {
+    pub fn new(code: ProviderErrorCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn invalid_request(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::InvalidRequest, detail)
+    }
+
+    pub fn not_found(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::NotFound, detail)
+    }
+
+    pub fn network(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::Network, detail)
+    }
+
+    pub fn timeout(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::Timeout, detail)
+    }
+
+    pub fn server(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::Server, detail)
+    }
+
+    pub fn permission_denied(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::PermissionDenied, detail)
+    }
+
+    pub fn internal(detail: impl Into<String>) -> Self {
+        Self::new(ProviderErrorCode::Internal, detail)
+    }
+
+    pub const fn code(&self) -> ProviderErrorCode {
+        self.code
+    }
+
+    pub const fn biz_code(&self) -> u32 {
+        self.code.biz_code()
+    }
+
+    pub fn detail(&self) -> &str {
+        &self.detail
+    }
+
+    pub fn to_lxapp_error(&self) -> LxAppError {
+        let biz_code = self.biz_code();
+        let detail = self.detail().to_string();
+        LxAppError::RongJSHost {
+            code: biz_code.to_string(),
+            message: detail.clone(),
+            data: Some(serde_json::json!({
+                "bizCode": biz_code,
+                "providerCode": self.code().as_str(),
+                "detail": detail,
+            })),
+        }
     }
 }
 
 impl std::fmt::Display for ProviderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "[{}] {}", self.code.as_str(), self.detail)
     }
 }
 

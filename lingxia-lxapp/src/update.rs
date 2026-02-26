@@ -165,7 +165,7 @@ impl UpdateManager {
 
         provider.check_update(target).await.map_err(|e| {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
-            LxAppError::Runtime(e.to_string())
+            e.to_lxapp_error()
         })
     }
 
@@ -181,7 +181,7 @@ impl UpdateManager {
 
         provider.check_update(target).await.map_err(|e| {
             crate::error!("check_app_update failed: {}", e);
-            LxAppError::Runtime(e.to_string())
+            e.to_lxapp_error()
         })
     }
 
