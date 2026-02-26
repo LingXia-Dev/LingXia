@@ -1,0 +1,69 @@
+# Errors
+error:
+  unknown: "Unknown Error"
+  network_error: "Network Error"
+  timeout: "Request Timeout"
+  server_error: "Server Error"
+  unauthorized: "Unauthorized"
+  save_failed: "Save failed. Please check permissions or available space."
+  video_too_short: "Video too short"
+
+# Error Codes (4-digit: Xyyy where X=category, yyy=specific)
+# 1xxx: General errors
+# 2xxx: User actions
+# 3xxx: Permission errors
+# 4xxx: Service/System errors
+# 5xxx: Network errors
+# 6xxx: Feature limitations
+err_code:
+  # 1xxx - General errors
+  1000: "Unknown error"
+  1001: "Operation failed"
+  1002: "Invalid parameter"
+  1003: "Resource not found"
+  1004: "Initialization failed"
+  1005: "Internal error"
+
+  # 2xxx - User actions
+  2000: "User cancelled"
+  2001: "User declined"
+
+  # 3xxx - Permission errors
+  3000: "Permission denied"
+  3001: "Camera permission denied"
+  3002: "Location permission denied"
+  3003: "Microphone permission denied"
+  3004: "Photo library permission denied"
+  3005: "Storage permission denied"
+  3006: "Notification permission denied"
+  3007: "Bluetooth permission denied"
+
+  # 4xxx - Service/System errors
+  4000: "Service unavailable"
+  4001: "Location services disabled"
+  4002: "Bluetooth disabled"
+  4003: "NFC disabled"
+
+  # 5xxx - Network errors
+  5000: "Network error"
+  5001: "Network unavailable"
+  5002: "Request timeout"
+  5003: "Server error"
+  5004: "Connection failed"
+
+  # 6xxx - Feature limitations
+  6000: "Feature not supported"
+  6001: "Device not supported"
+  6002: "System version too low"
+  # 12xxx - WiFi errors
+  12000: "Not initialized (call startWifi first)"
+  12001: "System error (internal error)"
+  12002: "Password error (incorrect WiFi password)"
+  12003: "Connection timeout"
+  12004: "Duplicate connection request"
+  12005: "Requested WiFi capability is not supported on this platform"
+  12006: "Permission denied"
+  12007: "User did not respond"
+  12008: "User refused connection"
+  12009: "WiFi is disabled (Please enable WiFi in system settings)"
+  12010: "WiFi network not found"

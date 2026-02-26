@@ -1,0 +1,86 @@
+# Common UI
+common:
+  confirm: "Confirm"
+  cancel: "Cancel"
+  ok: "OK"
+  loading: "Loading..."
+  retry: "Retry"
+  back: "Back"
+  save: "Save"
+  delete: "Delete"
+  edit: "Edit"
+  settings: "Settings"
+  success: "Success"
+  warning: "Warning"
+  done: "Done"
+  close: "Close"
+  share: "Share"
+  home: "Home"
+  auto: "Auto"
+
+# Capsule Menu
+capsule:
+  clean_cache: "Clean cache"
+  restart: "Restart"
+  uninstall: "Uninstall"
+
+# Camera
+camera:
+  tap_to_capture: "Tap to capture"
+  long_press_to_record: "Long press to record"
+  release_to_stop: "Release to stop"
+  preparing: "Preparing camera..."
+  switching: "Switching camera..."
+  switch_to_back: "Switch to rear camera"
+  switch_to_front: "Switch to front camera"
+  switch_failed: "Failed to switch camera"
+  access_denied: "Cannot access camera"
+  init_failed: "Camera initialization failed"
+  tap_to_record: "Tap to record"
+  tap_to_stop: "Tap to stop"
+  cancelling: "Cancelling..."
+  max_duration_reached: "Maximum recording time reached"
+  record_video: "Record video"
+  audio_init_failed: "Audio session initialization failed"
+  video_input_failed: "Cannot add video input"
+  video_output_failed: "Cannot add video output"
+  label: "Camera"
+  switch: "Switch camera"
+
+# Album & Gallery
+album:
+  label: "Album"
+  all_videos: "All Videos"
+  all_photos: "All Photos"
+  all_media: "Photos & Videos"
+  add_more_media: "Add more\naccessible items"
+  add_more_videos: "Add more\naccessible videos"
+  add_more_photos: "Add more\naccessible photos"
+  selected: "Selected"
+  original_image: "Original"
+
+# Video Player
+video:
+  quality: "Quality"
+  speed: "Speed"
+
+# Document
+document:
+  pdf_page_preview: "PDF page preview"
+
+# Date Range Picker
+date:
+  last_7_days: "Last 7 Days"
+  last_30_days: "Last 30 Days"
+  this_week: "This Week"
+  last_week: "Last Week"
+  this_month: "This Month"
+  last_month: "Last Month"
+
+# App Update
+update:
+  title: "New Version Available"
+  message: "A new version is ready. Install now?"
+  confirm: "Download & Install"
+  downloading: "Downloading Update"
+  download_failed: "Download failed. Please try again."

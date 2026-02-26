@@ -1,0 +1,10 @@
+# Permission UI
+permission:
+  limited_access_warning: "You have limited photo access. Grant full access in settings."
+  limited_access_add_more_media: "Add more\naccessible items"
+  limited_access_add_more_videos: "Add more\naccessible videos"
+  limited_access_add_more_photos: "Add more\naccessible photos"
+  location_reason: "Location permission required to provide location-based services"
+  media_reason: "Media permission required to save images and videos to album"
+  wifi_reason: "WiFi permission required to scan and connect to WiFi networks"
+  network_reason: "Network permission required to detect network status"

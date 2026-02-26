@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LingXia Permission Locale Schema",
+  "description": "Schema for i18n/permission/cli/*.yaml",
+  "type": "object",
+  "minProperties": 1,
+  "patternProperties": {
+    "^apple\\.info_plist\\.[A-Za-z0-9_]+$": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

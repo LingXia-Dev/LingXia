@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LingXia UI Locale Schema",
+  "description": "Recursive schema for locale documents (i18n/ui/*.yaml).",
+  "type": "object",
+  "minProperties": 1,
+  "additionalProperties": {
+    "$ref": "#/definitions/node"
+  },
+  "definitions": {
+    "leaf": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "type": "string",
+          "minLength": 1
+        },
+        "android": {
+          "type": "string",
+          "minLength": 1
+        },
+        "apple": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ios": {
+          "type": "string",
+          "minLength": 1
+        },
+        "harmony": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rust": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "default"
+      ],
+      "additionalProperties": false
+    },
+    "node": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "$ref": "#/definitions/leaf"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/node"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,5 @@
+"apple.info_plist.NSCameraUsageDescription": "用于拍照和录制视频。"
+"apple.info_plist.NSMicrophoneUsageDescription": "用于在录制视频时采集音频。"
+"apple.info_plist.NSLocationWhenInUseUsageDescription": "用于读取 Wi-Fi 网络信息。"
+"apple.info_plist.NSPhotoLibraryUsageDescription": "用于访问相册中的图片和视频。"
+"apple.info_plist.NSPhotoLibraryAddUsageDescription": "用于保存图片和视频。"
