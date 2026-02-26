@@ -1,7 +1,0 @@
-{
-  "apple.info_plist.NSCameraUsageDescription": "Required to capture photos and videos.",
-  "apple.info_plist.NSMicrophoneUsageDescription": "Required to record audio when capturing videos.",
-  "apple.info_plist.NSLocationWhenInUseUsageDescription": "Required to read Wi-Fi network information.",
-  "apple.info_plist.NSPhotoLibraryUsageDescription": "Required to access photos and videos in your library.",
-  "apple.info_plist.NSPhotoLibraryAddUsageDescription": "Required to save photos and videos."
-}
