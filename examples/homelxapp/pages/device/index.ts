@@ -59,22 +59,24 @@ Page({
   },
 
   // Trigger short vibration
-  vibrateShort: function () {
+  vibrateShort: async function () {
     try {
-      lx.vibrateShort();
+      await lx.vibrateShort();
       console.log("Triggered short vibration");
     } catch (error) {
       console.error("Failed to trigger short vibration:", error);
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
   // Trigger long vibration
-  vibrateLong: function () {
+  vibrateLong: async function () {
     try {
-      lx.vibrateLong();
+      await lx.vibrateLong();
       console.log("Triggered long vibration");
     } catch (error) {
       console.error("Failed to trigger long vibration:", error);
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 

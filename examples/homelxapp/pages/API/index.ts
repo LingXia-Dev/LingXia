@@ -96,6 +96,7 @@ Page({
       });
     } catch (err) {
       console.error("navigateToLxApp failed", err);
+      lx.showToast({ title: err.message, icon: "none" });
     }
   },
 
