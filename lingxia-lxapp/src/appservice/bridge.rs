@@ -156,7 +156,7 @@ impl ResError {
             Value::String(code) => code.clone(),
             Value::Number(code) => code.to_string(),
             other => {
-                log::warn!("Unexpected bridge error code type in response: {}", other);
+                crate::warn!("Unexpected bridge error code type in response: {}", other);
                 BRIDGE_INTERNAL_ERROR.to_string()
             }
         }
