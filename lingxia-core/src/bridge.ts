@@ -62,6 +62,26 @@ function deepCopy<T>(data: T): T {
   }
 }
 
+function unknownToError(err: unknown, fallbackMsg: string): LxBridgeError {
+  if (err && typeof err === 'object') {
+    const source = err as { code?: unknown; message?: unknown; data?: unknown };
+    const hasValidCode =
+      (typeof source.code === 'string' && source.code.trim() !== '') ||
+      (typeof source.code === 'number' && Number.isFinite(source.code));
+    const code = hasValidCode ? source.code! : BRIDGE_ERROR.INTERNAL_ERROR;
+    const message =
+      typeof source.message === 'string' && source.message.trim() !== ''
+        ? source.message
+        : fallbackMsg;
+    const output: LxBridgeError = { code, message };
+    if ('data' in source) output.data = source.data;
+    return output;
+  }
+
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : fallbackMsg;
+  return { code: BRIDGE_ERROR.INTERNAL_ERROR, message };
+}
+
 const communicationMethod = getCommunicationMethod();
 
 // Transport
@@ -250,7 +270,12 @@ function send(msg: unknown, reqId?: string): void {
   if (!canSendAppMessages() && !isHandshake) {
     if (outbox.length >= OUTBOX_LIMIT) {
       error('Outbox full');
-      if (reqId) rejectPendingRequest(reqId, { code: BRIDGE_ERROR.OUTBOX_FULL });
+      if (reqId) {
+        rejectPendingRequest(reqId, {
+          code: BRIDGE_ERROR.OUTBOX_FULL,
+          message: "Bridge outbox is full",
+        });
+      }
       return;
     }
     outbox.push({ msg, reqId });
@@ -307,7 +332,12 @@ function startHandshake(): void {
       handshakeRetryCount = 0;
       while (outbox.length) {
         const item = outbox.shift();
-        if (item?.reqId) rejectPendingRequest(item.reqId, { code: BRIDGE_ERROR.HANDSHAKE_FAILED });
+        if (item?.reqId) {
+          rejectPendingRequest(item.reqId, {
+            code: BRIDGE_ERROR.HANDSHAKE_FAILED,
+            message: "Bridge handshake failed",
+          });
+        }
       }
     }
   }, HANDSHAKE_TIMEOUT_MS);
@@ -462,7 +492,7 @@ function handleIncomingMessage(msg: unknown): void {
         }
         info.resolve(message.result);
       } else {
-        info.reject(message.error || { code: BRIDGE_ERROR.INTERNAL_ERROR });
+        info.reject(message.error ?? { code: BRIDGE_ERROR.INTERNAL_ERROR, message: `Call '${info.method}' failed` });
       }
       return;
     }
@@ -511,8 +541,7 @@ function handleIncomingMessage(msg: unknown): void {
           send({ v: 2, kind: 'res', id: reqMsg.id, ok: true, result } as Res);
         })
         .catch((err) => {
-          const errObj = err && typeof err === 'object' ? err : {};
-          send({ v: 2, kind: 'res', id: reqMsg.id, ok: false, error: { code: errObj.code || BRIDGE_ERROR.INTERNAL_ERROR, message: errObj.message || String(err) } } as Res);
+          send({ v: 2, kind: 'res', id: reqMsg.id, ok: false, error: unknownToError(err, `View handler '${reqMsg.method}' failed`) } as Res);
         });
       return;
     }
@@ -558,7 +587,10 @@ function sendNativeComponentMessage(message: NativeComponentMessage): void {
 export const LingXiaBridge: LingXiaBridgeInterface = {
   call<M extends LxMethod>(method: M | string, params?: LxMethodParams<M> | unknown, options?: CallOptions): Promise<LxMethodResult<M> | unknown> {
     return new Promise((resolve, reject) => {
-      if (!method || typeof method !== 'string') { reject({ code: BRIDGE_ERROR.MALFORMED_MESSAGE }); return; }
+      if (!method || typeof method !== 'string') {
+        reject({ code: BRIDGE_ERROR.MALFORMED_MESSAGE, message: "Method name must be a non-empty string" });
+        return;
+      }
       if (!helloSent) startHandshake();
 
       const id = `c_${Date.now()}_${requestCounter++}`;
@@ -573,14 +605,20 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
       if (signal) {
         if (signal.aborted) {
           removeOutboxByReqId(id);
-          rejectPendingRequest(id, { code: BRIDGE_ERROR.CANCELED });
+          rejectPendingRequest(id, {
+            code: BRIDGE_ERROR.CANCELED,
+            message: "Bridge request aborted",
+          });
           if (handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
           return;
         }
         const onAbort = (): void => {
           signal.removeEventListener('abort', onAbort);
           const removed = removeOutboxByReqId(id);
-          rejectPendingRequest(id, { code: BRIDGE_ERROR.CANCELED });
+          rejectPendingRequest(id, {
+            code: BRIDGE_ERROR.CANCELED,
+            message: "Bridge request aborted",
+          });
           if (!removed && handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
         };
         signal.addEventListener('abort', onAbort);

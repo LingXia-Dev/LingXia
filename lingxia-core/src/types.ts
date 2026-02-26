@@ -30,10 +30,9 @@ export const BRIDGE_ERROR = {
 export type BridgeErrorCode = (typeof BRIDGE_ERROR)[keyof typeof BRIDGE_ERROR];
 
 export interface LxBridgeError {
-  code: string;
+  code: string | number;
   message?: string;
   data?: unknown;
-  retryable?: boolean;
 }
 
 export interface StateInfo {

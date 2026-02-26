@@ -8,8 +8,10 @@
 
 export type {
   BridgeConfig,
+  BridgeErrorCode,
   ErrorInfo,
   LingXiaBridgeInterface,
+  LxBridgeError,
   DataSubscriber,
   NativeComponentMessage,
 } from './types';
