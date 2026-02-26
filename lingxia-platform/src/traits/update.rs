@@ -32,7 +32,7 @@ pub trait UpdateService: Send + Sync + 'static {
         _callback_id: u64,
         _update_info_json: Option<&str>,
     ) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "show_update_prompt not implemented for this platform".to_string(),
         ))
     }
@@ -53,7 +53,7 @@ pub trait UpdateService: Send + Sync + 'static {
     /// - HarmonyOS: Not implemented (returns error).
     fn install_update(&self, package_path: &Path) -> Result<(), PlatformError> {
         let _ = package_path;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "install_update not implemented for this platform".to_string(),
         ))
     }

@@ -42,7 +42,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// - HarmonyOS: Requires ohos.permission.GET_WIFI_INFO
     fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
         let _ = callback_id;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "start_wifi not implemented".to_string(),
         ))
     }
@@ -50,7 +50,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// Stop Wi-Fi module (wx.stopWifi).
     fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
         let _ = callback_id;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "stop_wifi not implemented".to_string(),
         ))
     }
@@ -62,7 +62,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// - Android: May require location permissions on Android 6.0+
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         let _ = request;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "connect_wifi not implemented".to_string(),
         ))
     }
@@ -76,7 +76,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// Example: [{"ssid":"MyWiFi","bssid":"aa:bb:cc:dd:ee:ff","secure":true,"signalStrength":80,"frequency":2412}]
     fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
         let _ = callback_id;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "get_wifi_list not implemented".to_string(),
         ))
     }
@@ -86,7 +86,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// Always returns full WiFi information (SSID, BSSID, secure, signalStrength).
     fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
         let _ = request;
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "get_connected_wifi not implemented".to_string(),
         ))
     }
@@ -100,7 +100,7 @@ pub trait Wifi: Send + Sync + 'static {
     /// - iOS: Always returns true (WiFi state not accessible)
     /// - HarmonyOS: Checks OH_Wifi_IsWifiEnabled()
     fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "is_wifi_enabled not implemented".to_string(),
         ))
     }

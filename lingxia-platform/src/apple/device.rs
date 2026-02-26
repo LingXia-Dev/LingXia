@@ -146,7 +146,7 @@ impl Device for Platform {
     #[cfg(target_os = "macos")]
     fn vibrate(&self, _long: bool) -> Result<(), PlatformError> {
         // macOS doesn't have haptic feedback like iOS
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "Vibration not available on macOS".to_string(),
         ))
     }

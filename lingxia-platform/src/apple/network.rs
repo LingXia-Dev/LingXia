@@ -16,7 +16,7 @@ macro_rules! apple_only {
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         {
             let _ = $callback_id;
-            Err(PlatformError::Platform(
+            Err(PlatformError::NotSupported(
                 "Network APIs are only supported on iOS/macOS".to_string(),
             ))
         }

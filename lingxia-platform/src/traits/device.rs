@@ -11,7 +11,7 @@ pub trait Device: Send + Sync + 'static {
 pub trait DeviceSecureStore: Send + Sync + 'static {
     /// Read a persisted value from a secure, app-scoped store that survives reinstall where supported.
     fn secure_store_read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
-        Err(PlatformError::Platform(format!(
+        Err(PlatformError::NotSupported(format!(
             "secure_store_read not implemented for key {}",
             key
         )))
@@ -20,14 +20,14 @@ pub trait DeviceSecureStore: Send + Sync + 'static {
     /// Persist a value into the secure store.
     fn secure_store_write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
         let _ = (key, value);
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "secure_store_write not implemented".to_string(),
         ))
     }
 
     /// Delete a value from the secure store.
     fn secure_store_delete(&self, key: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(format!(
+        Err(PlatformError::NotSupported(format!(
             "secure_store_delete not implemented for key {}",
             key
         )))
@@ -37,7 +37,7 @@ pub trait DeviceSecureStore: Send + Sync + 'static {
 pub trait DeviceHardware: Send + Sync + 'static {
     /// Get total physical memory in bytes.
     fn get_memory_info(&self) -> Result<u64, PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "get_memory_info not implemented".to_string(),
         ))
     }
@@ -51,7 +51,7 @@ pub trait DeviceHardware: Send + Sync + 'static {
 
     /// Get total ROM storage in bytes.
     fn get_storage_total_bytes(&self) -> Result<u64, PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "get_storage_total_bytes not implemented".to_string(),
         ))
     }

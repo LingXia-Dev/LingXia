@@ -34,13 +34,13 @@ impl PullToRefresh for Platform {
 #[cfg(not(any(target_os = "ios", target_os = "macos")))]
 impl PullToRefresh for Platform {
     fn start_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "Pull-to-refresh not supported on this platform".to_string(),
         ))
     }
 
     fn stop_pull_down_refresh(&self, _app_id: &str, _path: &str) -> Result<(), PlatformError> {
-        Err(PlatformError::Platform(
+        Err(PlatformError::NotSupported(
             "Pull-to-refresh not supported on this platform".to_string(),
         ))
     }

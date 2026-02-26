@@ -6,6 +6,9 @@ pub enum PlatformError {
     #[error("Platform error: {0}")]
     Platform(String),
 
+    #[error("Not supported: {0}")]
+    NotSupported(String),
+
     #[error("Asset not found: {0}")]
     AssetNotFound(String),
 
