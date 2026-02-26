@@ -16,6 +16,9 @@ export * from './system';
 export * from './update';
 export * from './media';
 export * from './ui';
+export * from './error';
+export * from './generated/error';
+export * from './generated/i18n';
 
 import type {
   AppConfig,

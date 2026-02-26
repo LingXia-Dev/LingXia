@@ -75,6 +75,11 @@
       "types": "./dist/ui/index.d.ts",
       "import": "./dist/ui/index.js",
       "require": "./dist/ui/index.js"
+    },
+    "./error": {
+      "types": "./dist/error.d.ts",
+      "import": "./dist/error.js",
+      "require": "./dist/error.js"
     }
   },
   "files": [
@@ -82,7 +87,8 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "gen:i18n": "node scripts/gen-i18n.mjs",
+    "build": "npm run gen:i18n && tsc",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run clean && npm run build"
   },
