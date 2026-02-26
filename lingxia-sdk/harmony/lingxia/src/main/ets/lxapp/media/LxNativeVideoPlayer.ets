@@ -110,7 +110,7 @@ export class LxNativeVideoConfig {
   controls: boolean = true;
   progressBar: boolean = true;
   cornerRadius: number = 0;
-  objectFit: string = 'contain';
+  objectFit: string = 'cover';
   qualities: LxMediaQuality[] = []; // Available quality options
   playbackRates: number[] = [];     // Available playback rates
 }
@@ -1948,6 +1948,12 @@ export struct LxNativeVideoPlayer {
     return resolveLxUriForFileAccess(this.cachedPoster || this.config.poster || '');
   }
 
+  private getPosterFit(): ImageFit {
+    const fit = (this.config.objectFit || 'cover').toLowerCase();
+    // Harmony poster supports contain/cover directly; fill currently falls back to cover.
+    return (fit === 'contain' || fit === 'fit') ? ImageFit.Contain : ImageFit.Cover;
+  }
+
   private isStreamMode(): boolean {
     return !this.hasSource();
   }
@@ -1979,7 +1985,7 @@ export struct LxNativeVideoPlayer {
     // - If no poster is configured, black screen is unavoidable (XComponent limitation)
     if (this.getPosterUrl() && (!this.hasRenderedFirstFrame || (this.hasEnded && this.isFullscreen))) {
       Image(this.getPosterUrl())
-        .width('100%').height('100%').objectFit(ImageFit.Cover)
+        .width('100%').height('100%').objectFit(this.getPosterFit())
         .borderRadius(this.isFullscreen ? 0 : this.appliedCornerRadius)
         .zIndex(1).hitTestBehavior(HitTestMode.Transparent)
     }

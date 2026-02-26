@@ -174,7 +174,7 @@ public final class LxMediaPlayer: NSObject {
     private var showCloseButton = false // Only show in preview mode
     private var showFullscreenButton = true // Show fullscreen button
     private var loopEnabled = false // Loop playback when video ends
-    private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to fill for native components
+    private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to cover for native components
 
     // State
     private var shouldShowControlsOnFirstPlay = false // Show controls on first play (for preview mode)
@@ -502,15 +502,18 @@ public final class LxMediaPlayer: NSObject {
             shouldShowControlsOnFirstPlay = showControls
         }
 
-        // Video display mode: "fill" (resizeAspectFill) or "fit" (resizeAspect)
+        // Video display mode: cover/contain/fill/fit
         if let objectFit = config.objectFit {
             switch objectFit {
-            case .cover, .fill:
+            case .cover:
                 videoGravity = .resizeAspectFill
                 posterImageView.contentMode = .scaleAspectFill
             case .contain, .fit:
                 videoGravity = .resizeAspect
                 posterImageView.contentMode = .scaleAspectFit
+            case .fill:
+                videoGravity = .resize
+                posterImageView.contentMode = .scaleToFill
             }
             playerLayer.videoGravity = videoGravity
         }

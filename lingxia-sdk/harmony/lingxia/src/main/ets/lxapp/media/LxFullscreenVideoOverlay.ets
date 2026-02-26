@@ -339,11 +339,17 @@ export struct LxFullscreenVideoOverlay {
     return resolveLxUriForFileAccess(LxNativeVideoPlayer.getPoster(this.componentId));
   }
 
+  private getPosterFit(): ImageFit {
+    const fit = (LxNativeVideoPlayer.getConfig(this.componentId)?.objectFit || 'cover').toLowerCase();
+    // Harmony poster supports contain/cover directly; fill currently falls back to cover.
+    return (fit === 'contain' || fit === 'fit') ? ImageFit.Contain : ImageFit.Cover;
+  }
+
   @Builder
   private buildPoster(): void {
     if (this.getPosterUrl() && (!this.hasRenderedFirstFrame || this.hasEnded)) {
       Image(this.getPosterUrl())
-        .width('100%').height('100%').objectFit(ImageFit.Cover)
+        .width('100%').height('100%').objectFit(this.getPosterFit())
         .zIndex(1).hitTestBehavior(HitTestMode.Transparent)
     }
   }
