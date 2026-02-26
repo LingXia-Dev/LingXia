@@ -65,10 +65,12 @@ function deepCopy<T>(data: T): T {
 function unknownToError(err: unknown, fallbackMsg: string): LxBridgeError {
   if (err && typeof err === 'object') {
     const source = err as { code?: unknown; message?: unknown; data?: unknown };
-    const hasValidCode =
-      (typeof source.code === 'string' && source.code.trim() !== '') ||
-      (typeof source.code === 'number' && Number.isFinite(source.code));
-    const code = hasValidCode ? source.code! : BRIDGE_ERROR.INTERNAL_ERROR;
+    let code: string | number = BRIDGE_ERROR.INTERNAL_ERROR;
+    if (typeof source.code === 'string' && source.code.trim() !== '') {
+      code = source.code;
+    } else if (typeof source.code === 'number' && Number.isFinite(source.code)) {
+      code = source.code;
+    }
     const message =
       typeof source.message === 'string' && source.message.trim() !== ''
         ? source.message
