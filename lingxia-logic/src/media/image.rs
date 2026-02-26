@@ -1,6 +1,7 @@
+use crate::i18n::{js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error};
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -53,29 +54,22 @@ async fn get_image_info_api(
 
     let original_path = options.path;
     let trimmed_path = original_path.trim();
-    let resolved = lxapp.resolve_accessible_path(trimmed_path).map_err(|err| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("getImageInfo path error: {}", err),
-        )
-    })?;
+    let resolved = lxapp
+        .resolve_accessible_path(trimmed_path)
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
-    let response_path =
-        if trimmed_path.starts_with("lx://") || is_bundle_relative_path(trimmed_path) {
-            // Keep relative bundle paths unchanged (e.g. `images/1.png`) so WebView-relative usage works.
-            trimmed_path.to_string()
-        } else {
-            lxapp
-                .to_uri(&resolved)
-                .ok_or_else(|| {
-                    HostError::new(
-                        rong::error::E_INTERNAL,
-                        "getImageInfo failed to convert path to lx:// uri",
-                    )
-                })?
-                .into_string()
-        };
+    let response_path = if trimmed_path.starts_with("lx://")
+        || is_bundle_relative_path(trimmed_path)
+    {
+        // Keep relative bundle paths unchanged (e.g. `images/1.png`) so WebView-relative usage works.
+        trimmed_path.to_string()
+    } else {
+        lxapp
+            .to_uri(&resolved)
+            .ok_or_else(|| js_internal_error("getImageInfo failed to convert path to lx:// uri"))?
+            .into_string()
+    };
 
     runtime
         .get_image_info(&normalized_path)
@@ -92,13 +86,7 @@ async fn get_image_info_api(
                 path: response_path,
             }
         })
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("getImageInfo failed: {}", e),
-            )
-            .into()
-        })
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 async fn compress_image_api(
@@ -110,12 +98,7 @@ async fn compress_image_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("compressImage path error: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = generate_compress_output_path(&lxapp.user_cache_dir)?;
@@ -128,20 +111,14 @@ async fn compress_image_api(
         output_path,
     };
 
-    let path = runtime.compress_image(&request).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("compressImage failed: {}", e),
-        )
-    })?;
+    let path = runtime
+        .compress_image(&request)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     let uri = lxapp
         .to_uri(&path)
         .ok_or_else(|| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                "compressImage failed to convert output path to lx:// uri",
-            )
+            js_internal_error("compressImage failed to convert output path to lx:// uri")
         })?
         .into_string();
 
@@ -168,11 +145,11 @@ fn is_bundle_relative_path(value: &str) -> bool {
 
 fn ensure_dir(path: &Path) -> JSResult<()> {
     if let Err(err) = fs::create_dir_all(path) {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to prepare directory {}: {}", path.display(), err),
-        )
-        .into());
+        return Err(js_internal_error(format!(
+            "Failed to prepare directory {}: {}",
+            path.display(),
+            err
+        )));
     }
     Ok(())
 }

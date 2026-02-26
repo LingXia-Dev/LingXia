@@ -74,6 +74,7 @@ pub enum I18nKey {
     ErrCode12007,
     ErrCode12008,
     ErrCode12009,
+    ErrCode12010,
     ErrCode2000,
     ErrCode2001,
     ErrCode3000,
@@ -103,17 +104,13 @@ pub enum I18nKey {
     ErrorUnauthorized,
     ErrorUnknown,
     ErrorVideoTooShort,
-    PermissionCameraDenied,
     PermissionLimitedAccessAddMoreMedia,
     PermissionLimitedAccessAddMorePhotos,
     PermissionLimitedAccessAddMoreVideos,
     PermissionLimitedAccessWarning,
-    PermissionLocationDenied,
     PermissionLocationReason,
     PermissionMediaReason,
-    PermissionMicrophoneDenied,
     PermissionNetworkReason,
-    PermissionPhotoDenied,
     PermissionWifiReason,
     UpdateConfirm,
     UpdateDownloadFailed,
@@ -126,8 +123,12 @@ pub enum I18nKey {
 
 impl I18nKey {
     pub fn get(&self, locale: &str) -> &'static str {
-        let lang = locale.split('-').next().unwrap_or("en");
-        match (self, lang) {
+        let lang = locale
+            .split('-')
+            .next()
+            .unwrap_or(locale)
+            .to_ascii_lowercase();
+        match (self, lang.as_str()) {
             (I18nKey::AlbumAddMoreMedia, "en") => {
                 "Add more
 accessible items"
@@ -205,7 +206,7 @@ accessible videos"
             (I18nKey::ErrCode12003, "en") => "Connection timeout",
             (I18nKey::ErrCode12004, "en") => "Duplicate connection request",
             (I18nKey::ErrCode12005, "en") => {
-                "Not supported on this platform (e.g., iOS WiFi scanning)"
+                "Requested WiFi capability is not supported on this platform"
             }
             (I18nKey::ErrCode12006, "en") => "Permission denied",
             (I18nKey::ErrCode12007, "en") => "User did not respond",
@@ -213,6 +214,7 @@ accessible videos"
             (I18nKey::ErrCode12009, "en") => {
                 "WiFi is disabled (Please enable WiFi in system settings)"
             }
+            (I18nKey::ErrCode12010, "en") => "WiFi network not found",
             (I18nKey::ErrCode2000, "en") => "User cancelled",
             (I18nKey::ErrCode2001, "en") => "User declined",
             (I18nKey::ErrCode3000, "en") => "Permission denied",
@@ -244,24 +246,6 @@ accessible videos"
             (I18nKey::ErrorUnauthorized, "en") => "Unauthorized",
             (I18nKey::ErrorUnknown, "en") => "Unknown Error",
             (I18nKey::ErrorVideoTooShort, "en") => "Video too short",
-            (I18nKey::PermissionCameraDenied, "en") => {
-                if cfg!(target_os = "android") {
-                    "Camera permission required. Please enable in App Settings."
-                } else if cfg!(target_env = "ohos") {
-                    "Camera permission is required. Please enable it in system settings."
-                } else if cfg!(any(target_os = "ios", target_os = "macos")) {
-                    "Go to Settings > Privacy > Camera to enable access."
-                } else if cfg!(not(any(
-                    target_os = "android",
-                    target_env = "ohos",
-                    target_os = "ios",
-                    target_os = "macos"
-                ))) {
-                    "Camera access denied. Check your system's privacy settings."
-                } else {
-                    "Camera permission denied. Please enable it in System Settings."
-                }
-            }
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => {
                 "Add more
 accessible items"
@@ -277,23 +261,14 @@ accessible videos"
             (I18nKey::PermissionLimitedAccessWarning, "en") => {
                 "You have limited photo access. Grant full access in settings."
             }
-            (I18nKey::PermissionLocationDenied, "en") => {
-                "Location permission denied. Please enable it in System Settings."
-            }
             (I18nKey::PermissionLocationReason, "en") => {
                 "Location permission required to provide location-based services"
             }
             (I18nKey::PermissionMediaReason, "en") => {
                 "Media permission required to save images and videos to album"
             }
-            (I18nKey::PermissionMicrophoneDenied, "en") => {
-                "Microphone permission denied. Please enable it in System Settings."
-            }
             (I18nKey::PermissionNetworkReason, "en") => {
                 "Network permission required to detect network status"
-            }
-            (I18nKey::PermissionPhotoDenied, "en") => {
-                "Photo library access denied. Please enable it in System Settings."
             }
             (I18nKey::PermissionWifiReason, "en") => {
                 "WiFi permission required to scan and connect to WiFi networks"
@@ -381,11 +356,12 @@ accessible videos"
             (I18nKey::ErrCode12002, "zh") => "密码错误（WiFi 密码不正确）",
             (I18nKey::ErrCode12003, "zh") => "连接超时",
             (I18nKey::ErrCode12004, "zh") => "重复的连接请求",
-            (I18nKey::ErrCode12005, "zh") => "该平台不支持（例如 iOS 不支持扫描 WiFi）",
+            (I18nKey::ErrCode12005, "zh") => "当前平台不支持所请求的 WiFi 能力",
             (I18nKey::ErrCode12006, "zh") => "权限被拒绝",
             (I18nKey::ErrCode12007, "zh") => "用户未响应",
             (I18nKey::ErrCode12008, "zh") => "用户拒绝连接",
             (I18nKey::ErrCode12009, "zh") => "WiFi 已关闭（请在系统设置中开启 WiFi）",
+            (I18nKey::ErrCode12010, "zh") => "未找到 WiFi 网络",
             (I18nKey::ErrCode2000, "zh") => "用户取消",
             (I18nKey::ErrCode2001, "zh") => "用户拒绝",
             (I18nKey::ErrCode3000, "zh") => "权限被拒绝",
@@ -415,24 +391,6 @@ accessible videos"
             (I18nKey::ErrorUnauthorized, "zh") => "未授权",
             (I18nKey::ErrorUnknown, "zh") => "未知错误",
             (I18nKey::ErrorVideoTooShort, "zh") => "拍摄时间过短",
-            (I18nKey::PermissionCameraDenied, "zh") => {
-                if cfg!(target_os = "android") {
-                    "相机权限不足，请在应用设置中开启。"
-                } else if cfg!(target_env = "ohos") {
-                    "请在系统设置中允许应用访问相机。"
-                } else if cfg!(any(target_os = "ios", target_os = "macos")) {
-                    "请前往“设置”>“隐私”>“相机”开启权限。"
-                } else if cfg!(not(any(
-                    target_os = "android",
-                    target_env = "ohos",
-                    target_os = "ios",
-                    target_os = "macos"
-                ))) {
-                    "相机访问被拒绝。请检查系统的隐私设置。"
-                } else {
-                    "需要相机权限，请在系统设置中开启"
-                }
-            }
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => {
                 "添加更多
 可访问内容"
@@ -448,12 +406,9 @@ accessible videos"
             (I18nKey::PermissionLimitedAccessWarning, "zh") => {
                 "你仅开启有限访问相册权限，建议允许访问「所有照片」"
             }
-            (I18nKey::PermissionLocationDenied, "zh") => "需要定位权限，请在系统设置中开启",
             (I18nKey::PermissionLocationReason, "zh") => "LingXia需要位置权限为你提供服务",
             (I18nKey::PermissionMediaReason, "zh") => "LingXia需要相册权限保存图片和视频",
-            (I18nKey::PermissionMicrophoneDenied, "zh") => "需要麦克风权限，请在系统设置中开启",
             (I18nKey::PermissionNetworkReason, "zh") => "LingXia需要网络权限来检测网络状态",
-            (I18nKey::PermissionPhotoDenied, "zh") => "需要相册访问权限，请在系统设置中开启",
             (I18nKey::PermissionWifiReason, "zh") => "LingXia需要WiFi权限来扫描和连接WiFi网络",
             (I18nKey::UpdateConfirm, "zh") => "下载并安装",
             (I18nKey::UpdateDownloadFailed, "zh") => "下载失败，请重试",
@@ -462,225 +417,52 @@ accessible videos"
             (I18nKey::UpdateTitle, "zh") => "发现新版本",
             (I18nKey::VideoQuality, "zh") => "画质",
             (I18nKey::VideoSpeed, "zh") => "倍速",
-            (key, _) => match key {
-                I18nKey::AlbumAddMoreMedia => {
-                    "Add more
-accessible items"
-                }
-                I18nKey::AlbumAddMorePhotos => {
-                    "Add more
-accessible photos"
-                }
-                I18nKey::AlbumAddMoreVideos => {
-                    "Add more
-accessible videos"
-                }
-                I18nKey::AlbumAllMedia => "Photos & Videos",
-                I18nKey::AlbumAllPhotos => "All Photos",
-                I18nKey::AlbumAllVideos => "All Videos",
-                I18nKey::AlbumLabel => "Album",
-                I18nKey::AlbumOriginalImage => "Original",
-                I18nKey::AlbumSelected => "Selected",
-                I18nKey::CameraAccessDenied => "Cannot access camera",
-                I18nKey::CameraAudioInitFailed => "Audio session initialization failed",
-                I18nKey::CameraCancelling => "Cancelling...",
-                I18nKey::CameraInitFailed => "Camera initialization failed",
-                I18nKey::CameraLabel => "Camera",
-                I18nKey::CameraLongPressToRecord => "Long press to record",
-                I18nKey::CameraMaxDurationReached => "Maximum recording time reached",
-                I18nKey::CameraPreparing => "Preparing camera...",
-                I18nKey::CameraRecordVideo => "Record video",
-                I18nKey::CameraReleaseToStop => "Release to stop",
-                I18nKey::CameraSwitch => "Switch camera",
-                I18nKey::CameraSwitchFailed => "Failed to switch camera",
-                I18nKey::CameraSwitchToBack => "Switch to rear camera",
-                I18nKey::CameraSwitchToFront => "Switch to front camera",
-                I18nKey::CameraSwitching => "Switching camera...",
-                I18nKey::CameraTapToCapture => "Tap to capture",
-                I18nKey::CameraTapToRecord => "Tap to record",
-                I18nKey::CameraTapToStop => "Tap to stop",
-                I18nKey::CameraVideoInputFailed => "Cannot add video input",
-                I18nKey::CameraVideoOutputFailed => "Cannot add video output",
-                I18nKey::CapsuleCleanCache => "Clean cache",
-                I18nKey::CapsuleRestart => "Restart",
-                I18nKey::CapsuleUninstall => "Uninstall",
-                I18nKey::CommonAuto => "Auto",
-                I18nKey::CommonBack => "Back",
-                I18nKey::CommonCancel => "Cancel",
-                I18nKey::CommonClose => "Close",
-                I18nKey::CommonConfirm => "Confirm",
-                I18nKey::CommonDelete => "Delete",
-                I18nKey::CommonDone => "Done",
-                I18nKey::CommonEdit => "Edit",
-                I18nKey::CommonHome => "Home",
-                I18nKey::CommonLoading => "Loading...",
-                I18nKey::CommonOk => "OK",
-                I18nKey::CommonRetry => "Retry",
-                I18nKey::CommonSave => "Save",
-                I18nKey::CommonSettings => "Settings",
-                I18nKey::CommonShare => "Share",
-                I18nKey::CommonSuccess => "Success",
-                I18nKey::CommonWarning => "Warning",
-                I18nKey::DateLast30Days => "Last 30 Days",
-                I18nKey::DateLast7Days => "Last 7 Days",
-                I18nKey::DateLastMonth => "Last Month",
-                I18nKey::DateLastWeek => "Last Week",
-                I18nKey::DateThisMonth => "This Month",
-                I18nKey::DateThisWeek => "This Week",
-                I18nKey::DocumentPdfPagePreview => "PDF page preview",
-                I18nKey::ErrCode1000 => "Unknown error",
-                I18nKey::ErrCode1001 => "Operation failed",
-                I18nKey::ErrCode1002 => "Invalid parameter",
-                I18nKey::ErrCode1003 => "Resource not found",
-                I18nKey::ErrCode1004 => "Initialization failed",
-                I18nKey::ErrCode1005 => "Internal error",
-                I18nKey::ErrCode12000 => "Not initialized (call startWifi first)",
-                I18nKey::ErrCode12001 => "System error (internal error)",
-                I18nKey::ErrCode12002 => "Password error (incorrect WiFi password)",
-                I18nKey::ErrCode12003 => "Connection timeout",
-                I18nKey::ErrCode12004 => "Duplicate connection request",
-                I18nKey::ErrCode12005 => "Not supported on this platform (e.g., iOS WiFi scanning)",
-                I18nKey::ErrCode12006 => "Permission denied",
-                I18nKey::ErrCode12007 => "User did not respond",
-                I18nKey::ErrCode12008 => "User refused connection",
-                I18nKey::ErrCode12009 => "WiFi is disabled (Please enable WiFi in system settings)",
-                I18nKey::ErrCode2000 => "User cancelled",
-                I18nKey::ErrCode2001 => "User declined",
-                I18nKey::ErrCode3000 => "Permission denied",
-                I18nKey::ErrCode3001 => "Camera permission denied",
-                I18nKey::ErrCode3002 => "Location permission denied",
-                I18nKey::ErrCode3003 => "Microphone permission denied",
-                I18nKey::ErrCode3004 => "Photo library permission denied",
-                I18nKey::ErrCode3005 => "Storage permission denied",
-                I18nKey::ErrCode3006 => "Notification permission denied",
-                I18nKey::ErrCode3007 => "Bluetooth permission denied",
-                I18nKey::ErrCode4000 => "Service unavailable",
-                I18nKey::ErrCode4001 => "Location services disabled",
-                I18nKey::ErrCode4002 => "Bluetooth disabled",
-                I18nKey::ErrCode4003 => "NFC disabled",
-                I18nKey::ErrCode5000 => "Network error",
-                I18nKey::ErrCode5001 => "Network unavailable",
-                I18nKey::ErrCode5002 => "Request timeout",
-                I18nKey::ErrCode5003 => "Server error",
-                I18nKey::ErrCode5004 => "Connection failed",
-                I18nKey::ErrCode6000 => "Feature not supported",
-                I18nKey::ErrCode6001 => "Device not supported",
-                I18nKey::ErrCode6002 => "System version too low",
-                I18nKey::ErrorNetworkError => "Network Error",
-                I18nKey::ErrorSaveFailed => {
-                    "Save failed. Please check permissions or available space."
-                }
-                I18nKey::ErrorServerError => "Server Error",
-                I18nKey::ErrorTimeout => "Request Timeout",
-                I18nKey::ErrorUnauthorized => "Unauthorized",
-                I18nKey::ErrorUnknown => "Unknown Error",
-                I18nKey::ErrorVideoTooShort => "Video too short",
-                I18nKey::PermissionCameraDenied => {
-                    if cfg!(target_os = "android") {
-                        "Camera permission required. Please enable in App Settings."
-                    } else if cfg!(target_env = "ohos") {
-                        "Camera permission is required. Please enable it in system settings."
-                    } else if cfg!(any(target_os = "ios", target_os = "macos")) {
-                        "Go to Settings > Privacy > Camera to enable access."
-                    } else if cfg!(not(any(
-                        target_os = "android",
-                        target_env = "ohos",
-                        target_os = "ios",
-                        target_os = "macos"
-                    ))) {
-                        "Camera access denied. Check your system's privacy settings."
-                    } else {
-                        "Camera permission denied. Please enable it in System Settings."
-                    }
-                }
-                I18nKey::PermissionLimitedAccessAddMoreMedia => {
-                    "Add more
-accessible items"
-                }
-                I18nKey::PermissionLimitedAccessAddMorePhotos => {
-                    "Add more
-accessible photos"
-                }
-                I18nKey::PermissionLimitedAccessAddMoreVideos => {
-                    "Add more
-accessible videos"
-                }
-                I18nKey::PermissionLimitedAccessWarning => {
-                    "You have limited photo access. Grant full access in settings."
-                }
-                I18nKey::PermissionLocationDenied => {
-                    "Location permission denied. Please enable it in System Settings."
-                }
-                I18nKey::PermissionLocationReason => {
-                    "Location permission required to provide location-based services"
-                }
-                I18nKey::PermissionMediaReason => {
-                    "Media permission required to save images and videos to album"
-                }
-                I18nKey::PermissionMicrophoneDenied => {
-                    "Microphone permission denied. Please enable it in System Settings."
-                }
-                I18nKey::PermissionNetworkReason => {
-                    "Network permission required to detect network status"
-                }
-                I18nKey::PermissionPhotoDenied => {
-                    "Photo library access denied. Please enable it in System Settings."
-                }
-                I18nKey::PermissionWifiReason => {
-                    "WiFi permission required to scan and connect to WiFi networks"
-                }
-                I18nKey::UpdateConfirm => "Download & Install",
-                I18nKey::UpdateDownloadFailed => "Download failed. Please try again.",
-                I18nKey::UpdateDownloading => "Downloading Update",
-                I18nKey::UpdateMessage => "A new version is ready. Install now?",
-                I18nKey::UpdateTitle => "New Version Available",
-                I18nKey::VideoQuality => "Quality",
-                I18nKey::VideoSpeed => "Speed",
-            },
+            _ => self.get("en"),
         }
     }
+}
 
-    pub fn from_err_code(code: u32) -> Option<Self> {
-        match code {
-            1000 => Some(I18nKey::ErrCode1000),
-            1001 => Some(I18nKey::ErrCode1001),
-            1002 => Some(I18nKey::ErrCode1002),
-            1003 => Some(I18nKey::ErrCode1003),
-            1004 => Some(I18nKey::ErrCode1004),
-            1005 => Some(I18nKey::ErrCode1005),
-            2000 => Some(I18nKey::ErrCode2000),
-            2001 => Some(I18nKey::ErrCode2001),
-            3000 => Some(I18nKey::ErrCode3000),
-            3001 => Some(I18nKey::ErrCode3001),
-            3002 => Some(I18nKey::ErrCode3002),
-            3003 => Some(I18nKey::ErrCode3003),
-            3004 => Some(I18nKey::ErrCode3004),
-            3005 => Some(I18nKey::ErrCode3005),
-            3006 => Some(I18nKey::ErrCode3006),
-            3007 => Some(I18nKey::ErrCode3007),
-            4000 => Some(I18nKey::ErrCode4000),
-            4001 => Some(I18nKey::ErrCode4001),
-            4002 => Some(I18nKey::ErrCode4002),
-            4003 => Some(I18nKey::ErrCode4003),
-            5000 => Some(I18nKey::ErrCode5000),
-            5001 => Some(I18nKey::ErrCode5001),
-            5002 => Some(I18nKey::ErrCode5002),
-            5003 => Some(I18nKey::ErrCode5003),
-            5004 => Some(I18nKey::ErrCode5004),
-            6000 => Some(I18nKey::ErrCode6000),
-            6001 => Some(I18nKey::ErrCode6001),
-            6002 => Some(I18nKey::ErrCode6002),
-            12000 => Some(I18nKey::ErrCode12000),
-            12001 => Some(I18nKey::ErrCode12001),
-            12002 => Some(I18nKey::ErrCode12002),
-            12003 => Some(I18nKey::ErrCode12003),
-            12004 => Some(I18nKey::ErrCode12004),
-            12005 => Some(I18nKey::ErrCode12005),
-            12006 => Some(I18nKey::ErrCode12006),
-            12007 => Some(I18nKey::ErrCode12007),
-            12008 => Some(I18nKey::ErrCode12008),
-            12009 => Some(I18nKey::ErrCode12009),
-            _ => None,
-        }
+pub fn err_code_key(code: u32) -> Option<I18nKey> {
+    match code {
+        1000 => Some(I18nKey::ErrCode1000),
+        1001 => Some(I18nKey::ErrCode1001),
+        1002 => Some(I18nKey::ErrCode1002),
+        1003 => Some(I18nKey::ErrCode1003),
+        1004 => Some(I18nKey::ErrCode1004),
+        1005 => Some(I18nKey::ErrCode1005),
+        2000 => Some(I18nKey::ErrCode2000),
+        2001 => Some(I18nKey::ErrCode2001),
+        3000 => Some(I18nKey::ErrCode3000),
+        3001 => Some(I18nKey::ErrCode3001),
+        3002 => Some(I18nKey::ErrCode3002),
+        3003 => Some(I18nKey::ErrCode3003),
+        3004 => Some(I18nKey::ErrCode3004),
+        3005 => Some(I18nKey::ErrCode3005),
+        3006 => Some(I18nKey::ErrCode3006),
+        3007 => Some(I18nKey::ErrCode3007),
+        4000 => Some(I18nKey::ErrCode4000),
+        4001 => Some(I18nKey::ErrCode4001),
+        4002 => Some(I18nKey::ErrCode4002),
+        4003 => Some(I18nKey::ErrCode4003),
+        5000 => Some(I18nKey::ErrCode5000),
+        5001 => Some(I18nKey::ErrCode5001),
+        5002 => Some(I18nKey::ErrCode5002),
+        5003 => Some(I18nKey::ErrCode5003),
+        5004 => Some(I18nKey::ErrCode5004),
+        6000 => Some(I18nKey::ErrCode6000),
+        6001 => Some(I18nKey::ErrCode6001),
+        6002 => Some(I18nKey::ErrCode6002),
+        12000 => Some(I18nKey::ErrCode12000),
+        12001 => Some(I18nKey::ErrCode12001),
+        12002 => Some(I18nKey::ErrCode12002),
+        12003 => Some(I18nKey::ErrCode12003),
+        12004 => Some(I18nKey::ErrCode12004),
+        12005 => Some(I18nKey::ErrCode12005),
+        12006 => Some(I18nKey::ErrCode12006),
+        12007 => Some(I18nKey::ErrCode12007),
+        12008 => Some(I18nKey::ErrCode12008),
+        12009 => Some(I18nKey::ErrCode12009),
+        12010 => Some(I18nKey::ErrCode12010),
+        _ => None,
     }
 }

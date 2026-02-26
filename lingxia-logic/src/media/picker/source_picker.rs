@@ -1,7 +1,8 @@
+use crate::i18n::js_internal_error;
 use crate::ui::present_action_sheet;
 use lingxia_platform::traits::media_interaction::MediaSource;
 use lxapp::LxApp;
-use rong::{HostError, JSResult, RongJSError};
+use rong::JSResult;
 use std::sync::Arc;
 
 pub(super) async fn present_source_picker(
@@ -19,12 +20,7 @@ pub(super) async fn present_source_picker(
         Some(idx) => sources
             .get(idx)
             .copied()
-            .ok_or_else(|| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "chooseMedia source picker returned invalid index",
-                ))
-            })
+            .ok_or_else(|| js_internal_error("chooseMedia source picker returned invalid index"))
             .map(Some),
         None => Ok(None),
     }

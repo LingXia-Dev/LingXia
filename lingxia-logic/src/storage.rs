@@ -1,5 +1,6 @@
+use crate::i18n::js_service_unavailable_error;
 use lxapp::{LxApp, lx};
-use rong::{HostError, JSContext, JSContextService, JSFunc, JSResult};
+use rong::{JSContext, JSContextService, JSFunc, JSResult};
 use rong_storage::{Storage as RongStorage, StorageOptions};
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
@@ -38,11 +39,9 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     if lxapp.storage_file_path.as_os_str().is_empty() {
-        return Err(HostError::new(
-            rong::error::E_INVALID_STATE,
+        return Err(js_service_unavailable_error(
             "Storage path is not configured for this app",
-        )
-        .into());
+        ));
     }
 
     let options = storage_options();

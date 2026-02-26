@@ -1,6 +1,9 @@
+use crate::i18n::{
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
+};
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSObject, JSResult, RongJSError};
+use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -36,9 +39,9 @@ fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
 }
 
 fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
-    lxapp.ensure_page_exists(url).map_err(|e| {
-        HostError::new(rong::error::E_INTERNAL, format!("Invalid page url: {}", e)).into()
-    })
+    lxapp
+        .ensure_page_exists(url)
+        .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -114,21 +117,11 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| {
-            RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to ensure target page svc: {}", e),
-            ))
-        })?;
+        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Forward, false)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to navigate: {}", e),
-            )
-        })?;
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     let response = JSObject::new(&ctx);
     response.set("eventEmitter", page_svc.get_event_emitter())?;
@@ -140,13 +133,7 @@ async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> 
 fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    navigate_back_impl(&lxapp, options.delta).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to navigate back: {}", e),
-        )
-        .into()
-    })
+    navigate_back_impl(&lxapp, options.delta).map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 /// Redirect to a new page (replace current page)
@@ -155,22 +142,15 @@ async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
 
     ensure_page_exists_js(&lxapp, &options.url)?;
     if is_tabbar_page_url(&lxapp, &options.url) {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
+        return Err(js_error_from_business_code_with_detail(
+            1002,
             "redirectTo cannot navigate to a tabBar page",
-        )
-        .into());
+        ));
     }
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to redirect: {}", e),
-            )
-            .into()
-        })
+        .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 /// Switch to a tab page
@@ -182,22 +162,11 @@ async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
     let _page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to ensure target page svc: {}", e),
-            )
-        })?;
+        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::SwitchTab, false)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to switch tab: {}", e),
-            )
-            .into()
-        })
+        .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 /// Relaunch to a new page (clear page stack)
@@ -209,22 +178,11 @@ async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
     lxapp
         .get_or_create_page_in_ctx(&ctx, &options.url)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to ensure target page svc: {}", e),
-            )
-        })?;
+        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
     navigate_with_url(lxapp.clone(), options.url, NavigationType::Launch, false)
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to relaunch: {}", e),
-            )
-            .into()
-        })
+        .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

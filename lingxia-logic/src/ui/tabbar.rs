@@ -1,3 +1,4 @@
+use crate::i18n::js_internal_error;
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult};
@@ -71,8 +72,10 @@ fn show_tabbar_red_dot(ctx: JSContext, options: ShowTabBarRedDotOptions) -> JSRe
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -92,8 +95,10 @@ fn hide_tabbar_red_dot(ctx: JSContext, options: HideTabBarRedDotOptions) -> JSRe
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -113,8 +118,10 @@ fn set_tabbar_badge(ctx: JSContext, options: SetTabBarBadgeOptions) -> JSResult<
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -134,8 +141,10 @@ fn remove_tabbar_badge(ctx: JSContext, options: RemoveTabBarBadgeOptions) -> JSR
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -158,8 +167,10 @@ fn show_tabbar(ctx: JSContext) -> JSResult<bool> {
     if updated {
         // Always update UI for show/hide operations
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -182,8 +193,10 @@ fn hide_tabbar(ctx: JSContext) -> JSResult<bool> {
     if updated {
         // Always update UI for show/hide operations
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -217,8 +230,10 @@ fn set_tabbar_style(ctx: JSContext, options: SetTabBarStyleOptions) -> JSResult<
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {
@@ -253,8 +268,10 @@ fn set_tabbar_item(ctx: JSContext, options: SetTabBarItemOptions) -> JSResult<bo
     if updated && is_tabbar_visible(&lxapp) {
         // Notify UI to update only if TabBar is visible
         if let Err(e) = lxapp.runtime.update_tabbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update TabBar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update TabBar UI: {}",
+                e
+            )));
         }
         Ok(true)
     } else {

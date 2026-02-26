@@ -1,9 +1,10 @@
 //! Display and screen orientation APIs.
 
+use crate::i18n::{js_internal_error, js_invalid_parameter_error};
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::lx;
 use lxapp::{LxApp, OrientationConfig};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 
 /// App orientation status
 #[derive(Debug, Clone, IntoJSObj)]
@@ -32,16 +33,18 @@ fn get_app_orientation(ctx: JSContext) -> JSResult<AppOrientationInfo> {
 fn set_app_orientation(ctx: JSContext, options: SetAppOrientationOptions) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let config = OrientationConfig::from_label(&options.orientation).ok_or_else(|| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Invalid orientation value: {}", options.orientation),
-        )
+        js_invalid_parameter_error(format!(
+            "Invalid orientation value: {}",
+            options.orientation
+        ))
     })?;
     lxapp.set_app_orientation(config);
 
     if let Err(e) = lxapp.runtime.update_orientation_ui(lxapp.appid.clone()) {
-        eprintln!("Failed to update orientation UI: {}", e);
-        return Ok(false);
+        return Err(js_internal_error(format!(
+            "Failed to update orientation UI: {}",
+            e
+        )));
     }
 
     Ok(true)

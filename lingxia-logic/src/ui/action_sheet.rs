@@ -1,10 +1,17 @@
+#[cfg(not(target_os = "macos"))]
+use crate::i18n::js_error_from_platform_error;
+#[cfg(target_os = "macos")]
+use crate::i18n::js_internal_error;
+#[cfg(not(target_os = "macos"))]
+use crate::i18n::{js_error_from_business_code, js_timeout_error};
+use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(target_os = "macos"))]
 use lingxia_messaging::{CallbackResult, get_callback};
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -48,14 +55,12 @@ pub(crate) async fn present_action_sheet(
     item_color: Option<String>,
 ) -> Result<Option<usize>, RongJSError> {
     if !lxapp.is_opened() {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
+        return Err(js_service_unavailable_error(
             "LxApp is closed; actionSheet suppressed",
-        )
-        .into());
+        ));
     }
     if item_list.is_empty() {
-        return Err(HostError::new(rong::error::E_INTERNAL, "itemList cannot be empty").into());
+        return Err(js_invalid_parameter_error("itemList cannot be empty"));
     }
 
     let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));
@@ -92,12 +97,7 @@ async fn present_action_sheet_webview(
     let result = lxapp
         .call_current_page_view("ui.showActionSheet", Some(params))
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("WebView action sheet failed: {}", e),
-            )
-        })?;
+        .map_err(|e| js_internal_error(format!("WebView action sheet failed: {}", e)))?;
 
     let index = result.get("tapIndex").and_then(Value::as_i64).unwrap_or(-1);
 
@@ -127,23 +127,20 @@ async fn present_action_sheet_native(
     lxapp
         .runtime
         .show_action_sheet(item_list, cancel_text, item_color, callback_id)
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to show action sheet: {}", e),
-            )
-        })?;
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let result = receiver.await.map_err(|_| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            "Action sheet callback timeout or cancelled",
-        )
-    })?;
+    let result = receiver
+        .await
+        .map_err(|_| js_timeout_error("Action sheet callback timed out"))?;
 
     let data = match result {
         CallbackResult::Success(data) => data,
-        CallbackResult::Error(_) => return Ok(None),
+        CallbackResult::Error(code) => {
+            if code == 2000 {
+                return Ok(None);
+            }
+            return Err(js_error_from_business_code(code));
+        }
     };
 
     let index = serde_json::from_str::<Value>(&data)

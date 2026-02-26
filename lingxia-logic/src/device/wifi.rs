@@ -1,9 +1,11 @@
+use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
+use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lxapp::{LxApp, emit_app_event, lx, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 
 const WIFI_CONNECTED_EVENT: &str = "WifiConnected";
@@ -98,11 +100,7 @@ fn ensure_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
 
     if let Err(err) = lxapp.runtime.add_wifi_state_listener(callback_id) {
         remove_callback(callback_id);
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to add WiFi state listener: {}", err),
-        )
-        .into());
+        return Err(js_error_from_platform_error(&err));
     }
 
     info!(
@@ -122,12 +120,7 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
     lxapp
         .runtime
         .remove_wifi_state_listener(callback_id)
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to remove WiFi state listener: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_platform_error(&err))?;
     remove_callback(callback_id);
     info!(
         "WifiConnected callback cleared appid={} callback_id={}",
@@ -205,25 +198,15 @@ where
     let _lxapp = LxApp::from_ctx(ctx)?;
     let (callback_id, receiver) = get_callback();
 
-    platform_call(callback_id).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to {}: {}", operation_name, e),
-        )
-    })?;
+    platform_call(callback_id).map_err(|e| js_error_from_platform_error(&e))?;
 
     match receiver.await {
         Ok(CallbackResult::Success(_)) => Ok(()),
-        Ok(CallbackResult::Error(code)) => {
-            let message = crate::i18n::err_code_message(code)
-                .unwrap_or_else(|| format!("{} error: {}", operation_name, code));
-            Err(HostError::new(rong::error::E_INTERNAL, message).into())
-        }
-        Err(_) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("{} callback timeout or cancelled", operation_name),
-        )
-        .into()),
+        Ok(CallbackResult::Error(code)) => Err(js_error_from_business_code(code)),
+        Err(_) => Err(js_timeout_error(format!(
+            "{} callback timed out",
+            operation_name
+        ))),
     }
 }
 
@@ -241,40 +224,26 @@ where
     let _lxapp = LxApp::from_ctx(ctx)?;
     let (callback_id, receiver) = get_callback();
 
-    platform_call(callback_id).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to {}: {}", operation_name, e),
-        )
-    })?;
+    platform_call(callback_id).map_err(|e| js_error_from_platform_error(&e))?;
 
     match receiver.await {
         Ok(CallbackResult::Success(data)) => parser(data),
-        Ok(CallbackResult::Error(code)) => {
-            let message = crate::i18n::err_code_message(code)
-                .unwrap_or_else(|| format!("{} error: {}", operation_name, code));
-            Err(HostError::new(rong::error::E_INTERNAL, message).into())
-        }
-        Err(_) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("{} callback timeout or cancelled", operation_name),
-        )
-        .into()),
+        Ok(CallbackResult::Error(code)) => Err(js_error_from_business_code(code)),
+        Err(_) => Err(js_timeout_error(format!(
+            "{} callback timed out",
+            operation_name
+        ))),
     }
 }
 
 /// Parse WiFi list from callback result
 fn parse_wifi_list(data: String) -> Result<Vec<JSWifiInfo>, RongJSError> {
-    let parsed: Value = serde_json::from_str(&data).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to parse WiFi list: {}", e),
-        )
-    })?;
+    let parsed: Value = serde_json::from_str(&data)
+        .map_err(|e| js_internal_error(format!("Failed to parse WiFi list: {}", e)))?;
 
     let wifi_array = parsed
         .as_array()
-        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "WiFi list is not an array"))?;
+        .ok_or_else(|| js_internal_error("WiFi list is not an array"))?;
 
     let wifi_list = wifi_array
         .iter()
@@ -286,12 +255,8 @@ fn parse_wifi_list(data: String) -> Result<Vec<JSWifiInfo>, RongJSError> {
 
 /// Parse connected WiFi info from callback result
 fn parse_connected_wifi(data: String) -> Result<JSWifiInfo, RongJSError> {
-    let parsed: Value = serde_json::from_str(&data).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to parse WiFi info: {}", e),
-        )
-    })?;
+    let parsed: Value = serde_json::from_str(&data)
+        .map_err(|e| js_internal_error(format!("Failed to parse WiFi info: {}", e)))?;
 
     Ok(parse_wifi_info_from_json(&parsed, 100, true))
 }
@@ -304,14 +269,10 @@ async fn start_wifi(ctx: JSContext) -> JSResult<()> {
     let wifi_enabled = lxapp
         .runtime
         .is_wifi_enabled()
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     if !wifi_enabled {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            crate::i18n::err_code_message(12009).unwrap_or_else(|| "WiFi is disabled".to_string()),
-        )
-        .into());
+        return Err(js_error_from_business_code(12009));
     }
 
     handle_wifi_callback(&ctx, |id| lxapp.runtime.start_wifi(id), "start WiFi").await

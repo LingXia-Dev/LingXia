@@ -3,7 +3,11 @@ mod parser;
 mod source_picker;
 mod types;
 
-use crate::i18n::err_code_message;
+#[cfg(not(target_os = "macos"))]
+use crate::i18n::js_invalid_parameter_error;
+use crate::i18n::{
+    js_error_from_business_code, js_error_from_platform_error, js_internal_error, js_timeout_error,
+};
 use cache::ensure_cached_media_path;
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -14,7 +18,7 @@ use lingxia_platform::traits::media_interaction::{
 };
 use lxapp::{LxApp, lx};
 use parser::{parse_camera, parse_choose_mode, parse_sources};
-use rong::{HostError, JSContext, JSFunc, JSResult, RongJSError, function::Optional};
+use rong::{JSContext, JSFunc, JSResult, function::Optional};
 use serde_json::Value;
 use source_picker::present_source_picker;
 use std::fs;
@@ -48,7 +52,7 @@ async fn choose_media(
     let selected_source = if sources.len() > 1 {
         match present_source_picker(&lxapp, &sources).await? {
             Some(source) => source,
-            None => return Ok(Vec::new()),
+            None => return Err(js_error_from_business_code(2000)),
         }
     } else {
         sources.first().copied().unwrap_or(MediaSource::Album)
@@ -56,10 +60,9 @@ async fn choose_media(
 
     #[cfg(not(target_os = "macos"))]
     if matches!(selected_source, MediaSource::Camera) && matches!(mode, ChooseMediaMode::Mix) {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
+        return Err(js_invalid_parameter_error(
             "camera source does not support selecting both image and video; specify a single mediaType entry",
-        ).into());
+        ));
     }
 
     let (callback_id, receiver) = get_callback();
@@ -78,58 +81,43 @@ async fn choose_media(
         callback_id,
     };
 
-    lxapp.runtime.choose_media(request).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("chooseMedia failed to start: {}", e),
-        )
-    })?;
+    lxapp
+        .runtime
+        .choose_media(request)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let result = receiver.await.map_err(|_| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "chooseMedia cancelled or failed",
-        ))
-    })?;
+    let result = receiver
+        .await
+        .map_err(|_| js_timeout_error("chooseMedia callback timed out"))?;
 
     let data = match result {
         CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => {
-            // 2000 = user cancelled, return empty result
-            if code == 2000 {
-                return Ok(Vec::new());
-            }
-
-            let message =
-                err_code_message(code).unwrap_or_else(|| format!("chooseMedia error: {}", code));
-            return Err(HostError::new(rong::error::E_INTERNAL, message).into());
-        }
+        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
     };
 
-    let parsed: Value = serde_json::from_str(&data).map_err(|_| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "chooseMedia invalid payload",
-        ))
-    })?;
+    let parsed: Value = serde_json::from_str(&data)
+        .map_err(|e| js_internal_error(format!("chooseMedia invalid payload: {}", e)))?;
 
     if parsed.is_null() {
-        return Ok(Vec::new());
+        return Err(js_internal_error(
+            "chooseMedia invalid payload: expected array",
+        ));
     }
 
     if parsed.as_object().is_some() {
-        return Err(HostError::new(rong::error::E_INTERNAL, "chooseMedia invalid payload").into());
+        return Err(js_internal_error(
+            "chooseMedia invalid payload: expected array",
+        ));
     }
 
     if !parsed.is_array() {
-        return Err(HostError::new(rong::error::E_INTERNAL, "chooseMedia invalid payload").into());
+        return Err(js_internal_error(
+            "chooseMedia invalid payload: expected array",
+        ));
     }
 
-    let arr: Vec<MediaKey> = serde_json::from_str(&data).map_err(|_| {
-        RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "chooseMedia invalid payload",
-        ))
+    let arr: Vec<MediaKey> = serde_json::from_str(&data).map_err(|e| {
+        js_internal_error(format!("chooseMedia invalid media array payload: {}", e))
     })?;
 
     let mut out: Vec<ChosenMediaEntry> = Vec::new();
@@ -162,14 +150,11 @@ async fn choose_media(
                 Ok(path) if lxapp.to_uri(&path).is_some() => path,
                 _ => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
                     fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
-                        RongJSError::from(HostError::new(
-                            rong::error::E_INTERNAL,
-                            format!(
-                                "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
-                                source_path.display(),
-                                dest_path.display(),
-                                e
-                            ),
+                        js_internal_error(format!(
+                            "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
+                            source_path.display(),
+                            dest_path.display(),
+                            e
                         ))
                     })
                 })?,
@@ -184,22 +169,14 @@ async fn choose_media(
             };
             ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
-                    .map_err(|err| {
-                        RongJSError::from(HostError::new(
-                            rong::error::E_INTERNAL,
-                            format!("copyMedia failed: {}", err),
-                        ))
-                    })
+                    .map_err(|err| js_error_from_platform_error(&err))
             })?
         };
 
         let final_uri = lxapp
             .to_uri(&final_path)
             .ok_or_else(|| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "chooseMedia failed to convert output path to lx:// uri",
-                ))
+                js_internal_error("chooseMedia failed to convert output path to lx:// uri")
             })?
             .into_string();
 

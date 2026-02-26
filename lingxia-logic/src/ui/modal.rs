@@ -1,10 +1,15 @@
+#[cfg(not(target_os = "macos"))]
+use crate::i18n::js_error_from_platform_error;
+#[cfg(not(target_os = "macos"))]
+use crate::i18n::{js_error_from_business_code, js_timeout_error};
+use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(target_os = "macos"))]
 use lingxia_messaging::{CallbackResult, get_callback};
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -49,43 +54,15 @@ struct JSModalResult {
     cancel: bool,
 }
 
-#[cfg(not(target_os = "macos"))]
-impl From<CallbackResult> for JSModalResult {
-    fn from(result: CallbackResult) -> Self {
-        let data = match result {
-            CallbackResult::Success(data) => data,
-            // Error code 2000 = user cancelled
-            CallbackResult::Error(_) => {
-                return JSModalResult {
-                    confirm: false,
-                    cancel: true,
-                };
-            }
-        };
-
-        // Success callback contains confirm result
-        match serde_json::from_str::<Value>(&data) {
-            Ok(json) => JSModalResult {
-                confirm: json.get("confirm").and_then(Value::as_bool).unwrap_or(true),
-                cancel: false,
-            },
-            Err(_) => JSModalResult {
-                confirm: true,
-                cancel: false,
-            },
-        }
-    }
-}
-
 /// Show modal function (async)
 async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(
-            HostError::new(rong::error::E_INTERNAL, "LxApp is closed; modal suppressed").into(),
-        );
+        return Err(js_service_unavailable_error(
+            "LxApp is closed; modal suppressed",
+        ));
     }
 
     present_modal(&lxapp, options).await
@@ -125,17 +102,12 @@ async fn present_modal_webview(
     let result = lxapp
         .call_current_page_view("ui.showModal", Some(params))
         .await
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("WebView modal failed: {}", e),
-            )
-        })?;
+        .map_err(|e| js_internal_error(format!("WebView modal failed: {}", e)))?;
 
     let confirm = result
         .get("confirm")
         .and_then(Value::as_bool)
-        .unwrap_or(false);
+        .ok_or_else(|| js_internal_error("WebView modal payload missing boolean `confirm`"))?;
 
     Ok(JSModalResult {
         confirm,
@@ -155,21 +127,31 @@ async fn present_modal_native(
     lxapp
         .runtime
         .show_modal(modal_options, callback_id)
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to show modal: {}", e),
-            )
-        })?;
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let result = receiver.await.map_err(|_| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            "Modal callback timeout or cancelled",
-        )
-    })?;
+    let result = receiver
+        .await
+        .map_err(|_| js_timeout_error("Modal callback timed out"))?;
 
-    Ok(result.into())
+    match result {
+        CallbackResult::Success(data) => {
+            let json: Value = serde_json::from_str(&data)
+                .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
+            let confirm = json
+                .get("confirm")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| js_internal_error("Modal callback missing boolean `confirm`"))?;
+            Ok(JSModalResult {
+                confirm,
+                cancel: !confirm,
+            })
+        }
+        CallbackResult::Error(2000) => Ok(JSModalResult {
+            confirm: false,
+            cancel: true,
+        }),
+        CallbackResult::Error(code) => Err(js_error_from_business_code(code)),
+    }
 }
 
 /// Initialize modal functions

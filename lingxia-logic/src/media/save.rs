@@ -1,8 +1,11 @@
-use crate::i18n::err_code_message;
+use crate::i18n::{
+    js_error_from_business_code, js_error_from_lxapp_error, js_error_from_platform_error,
+    js_timeout_error,
+};
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::traits::media_interaction::{MediaInteraction, SaveMediaRequest};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 
 #[derive(FromJSObj)]
 struct JSSaveMediaOptions {
@@ -33,12 +36,7 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
 
     let resolved = lxapp
         .resolve_accessible_path(&options.file_path)
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("saveMedia path error: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
 
     let (callback_id, receiver) = get_callback();
     let request = SaveMediaRequest {
@@ -54,23 +52,15 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
 
     if let Err(e) = op {
         let _ = remove_callback(callback_id);
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("saveMedia failed to start: {}", e),
-        )
-        .into());
+        return Err(js_error_from_platform_error(&e));
     }
 
     let result = receiver
         .await
-        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "saveMedia cancelled or failed"))?;
+        .map_err(|_| js_timeout_error("saveMedia callback timed out"))?;
 
     match result {
         CallbackResult::Success(_) => Ok(()),
-        CallbackResult::Error(code) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            err_code_message(code).unwrap_or_else(|| format!("saveMedia error: {}", code)),
-        )
-        .into()),
+        CallbackResult::Error(code) => Err(js_error_from_business_code(code)),
     }
 }

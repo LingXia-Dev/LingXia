@@ -1,6 +1,10 @@
+use crate::i18n::{
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error,
+};
 use lingxia_platform::traits::document::{DocumentInteraction, OpenDocumentRequest};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 
 #[derive(FromJSObj)]
 struct JSOpenDocumentOptions {
@@ -42,20 +46,16 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
     let runtime = &lxapp.runtime;
 
     if options.file_path.is_empty() {
-        return Err(
-            HostError::new(rong::error::E_INVALID_ARG, "openDocument requires filePath").into(),
-        );
+        return Err(js_error_from_business_code_with_detail(
+            1002,
+            "openDocument requires filePath",
+        ));
     }
 
     // Resolve the file path to ensure it's accessible
     let resolved_path = lxapp
         .resolve_accessible_path(&options.file_path)
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_IO,
-                format!("openDocument path not accessible: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let normalized_path = resolved_path.to_string_lossy().into_owned();
 
     let mime_type = map_file_type_to_mime(options.file_type);
@@ -66,9 +66,9 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
         show_menu: options.show_menu,
     };
 
-    runtime.open_document(request).map_err(|e| {
-        HostError::new(rong::error::E_IO, format!("openDocument failed: {}", e)).into()
-    })
+    runtime
+        .open_document(request)
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {

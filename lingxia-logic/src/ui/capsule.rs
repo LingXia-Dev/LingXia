@@ -1,7 +1,10 @@
+use crate::i18n::{
+    js_error_from_business_code, js_error_from_platform_error, js_internal_error, js_timeout_error,
+};
 use lingxia_messaging::get_callback;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, lx};
-use rong::{HostError, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 
 /// Get capsule button bounding client rect
@@ -26,27 +29,14 @@ async fn get_capsule_rect(ctx: JSContext) -> JSResult<JSCapsuleRect> {
     match lxapp.runtime.get_capsule_rect(callback_id) {
         Ok(()) => match receiver.await {
             Ok(result) => match result.into_result() {
-                Ok(json_str) => {
-                    let rect: JSCapsuleRect = serde_json::from_str(&json_str).unwrap_or_default();
-                    Ok(rect)
-                }
-                Err(code) => Err(HostError::new(
-                    rong::error::E_INTERNAL,
-                    format!("Failed to get capsule rect: error code {}", code),
-                )
-                .into()),
+                Ok(json_str) => serde_json::from_str(&json_str).map_err(|e| {
+                    js_internal_error(format!("getCapsuleRect invalid payload: {}", e))
+                }),
+                Err(code) => Err(js_error_from_business_code(code)),
             },
-            Err(_) => Err(HostError::new(
-                rong::error::E_INTERNAL,
-                "getCapsuleRect callback timeout or cancelled",
-            )
-            .into()),
+            Err(_) => Err(js_timeout_error("getCapsuleRect callback timed out")),
         },
-        Err(e) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to get capsule rect: {}", e),
-        )
-        .into()),
+        Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }
 

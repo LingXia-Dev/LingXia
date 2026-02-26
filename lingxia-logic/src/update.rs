@@ -1,3 +1,7 @@
+use crate::i18n::{
+    err_code_message, js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_internal_error,
+};
 use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler};
 use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, js_class, js_export,
@@ -47,7 +51,7 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let ready_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
         let (ready_cb, _) = callbacks_from_state(&ctx);
         if let Some(cb) = ready_cb {
-            let _ = cb.call::<_, ()>(None, ());
+            let _ = cb.call::<_, ()>(None, (_payload,));
         }
         Ok(())
     })?;
@@ -56,7 +60,7 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let failed_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
         let (_, failed_cb) = callbacks_from_state(&ctx);
         if let Some(cb) = failed_cb {
-            let _ = cb.call::<_, ()>(None, ());
+            let _ = cb.call::<_, ()>(None, (_payload,));
         }
         Ok(())
     })?;
@@ -89,7 +93,10 @@ impl JSUpdateManager {
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
             rong::error::E_ILLEGAL_CONSTRUCTOR,
-            "UpdateManager cannot be directly constructed",
+            err_code_message(1002),
+        )
+        .with_data(
+            rong::err_data!({ bizCode: (1002), detail: ("UpdateManager cannot be directly constructed") }),
         )
         .into())
     }
@@ -98,8 +105,7 @@ impl JSUpdateManager {
     #[js_method(rename = "applyUpdate")]
     fn apply_update(&self, ctx: JSContext) -> JSResult<()> {
         let lxapp = LxApp::from_ctx(&ctx)?;
-        let _ = lxapp.restart();
-        Ok(())
+        lxapp.restart().map_err(|e| js_error_from_lxapp_error(&e))
     }
 
     #[js_method(rename = "onUpdateReady")]
@@ -160,7 +166,7 @@ pub async fn ensure_first_install(
 
     if manager
         .is_installed(target_appid, release_type)
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
+        .map_err(|e| js_internal_error(format!("first-install check failed: {}", e)))?
     {
         return Ok(());
     }
@@ -168,10 +174,15 @@ pub async fn ensure_first_install(
     let pkg = manager
         .check_update(target_appid, release_type, None)
         .await
-        .map_err(|e| HostError::new(rong::error::E_NETWORK, e.to_string()))?
+        .map_err(|e| {
+            js_error_from_business_code_with_detail(
+                5001,
+                format!("failed to query first-install package: {}", e),
+            )
+        })?
         .ok_or_else(|| {
-            HostError::new(
-                rong::error::E_NOT_FOUND,
+            js_error_from_business_code_with_detail(
+                1003,
                 format!("No package available for first install of {}", target_appid),
             )
         })?;
@@ -185,7 +196,12 @@ pub async fn ensure_first_install(
             &pkg.version,
         )
         .await
-        .map_err(|e| HostError::new(rong::error::E_NETWORK, e.to_string()))?;
+        .map_err(|e| {
+            js_error_from_business_code_with_detail(
+                5001,
+                format!("failed to download first-install package: {}", e),
+            )
+        })?;
 
     Ok(())
 }

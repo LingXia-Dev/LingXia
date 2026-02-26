@@ -1,6 +1,7 @@
+use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 use std::sync::Arc;
 
 /// Check if NavigationBar is currently visible for the current page
@@ -19,13 +20,15 @@ fn update_current_navbar(
     let lxapp = LxApp::from_ctx(&ctx)?;
     let current_path = lxapp
         .peek_current_page()
-        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
+        .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     let updated = mutator(&lxapp, &current_path);
     if updated && is_navbar_visible(&lxapp, &current_path) {
         if let Err(e) = lxapp.runtime.update_navbar_ui(lxapp.appid.clone()) {
-            eprintln!("Failed to update navbar UI: {}", e);
-            return Ok(false);
+            return Err(js_internal_error(format!(
+                "Failed to update navbar UI: {}",
+                e
+            )));
         }
     }
     Ok(updated)

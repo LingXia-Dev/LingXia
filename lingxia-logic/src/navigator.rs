@@ -1,7 +1,8 @@
+use crate::i18n::js_error_from_lxapp_error;
 use crate::update;
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -50,16 +51,15 @@ fn should_navigate_to_lxapp(
     Ok(true)
 }
 
-async fn do_navigate_to_lxapp(
-    lxapp: Arc<LxApp>,
-    options: NavigateToOptions,
-) -> Result<(), LxAppError> {
+async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> JSResult<()> {
     let (startup_options, release_type) = build_startup_options(&options);
     let target_appid = options.appid.clone();
 
     update::ensure_first_install(&lxapp, &target_appid, release_type).await?;
 
-    lxapp.navigate_to(target_appid.clone(), startup_options)?;
+    lxapp
+        .navigate_to(target_appid.clone(), startup_options)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     UpdateManager::spawn_background_update_check_for(target_appid, release_type);
     Ok(())
@@ -73,32 +73,17 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 async fn navigate_to_lxapp(ctx: JSContext, options: NavigateToOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    if !should_navigate_to_lxapp(&lxapp, &options).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to navigate to lxapp: {}", e),
-        )
-    })? {
+    if !should_navigate_to_lxapp(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
         return Ok(());
     }
 
-    do_navigate_to_lxapp(lxapp, options).await.map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to navigate to lxapp: {}", e),
-        )
-    })?;
+    do_navigate_to_lxapp(lxapp, options).await?;
     Ok(())
 }
 
 async fn navigate_back_lxapp(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    do_navigate_back_lxapp(&lxapp).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to navigate back: {}", e),
-        )
-    })?;
+    do_navigate_back_lxapp(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;
     Ok(())
 }
 

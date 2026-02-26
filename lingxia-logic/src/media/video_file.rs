@@ -1,9 +1,13 @@
+use crate::i18n::{
+    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error,
+    js_invalid_parameter_error,
+};
 use lingxia_platform::traits::media_runtime::{
     CompressVideoRequest, CompressedVideo as PlatformCompressedVideo, ExtractVideoThumbnailRequest,
     MediaRuntime, VideoCompressQuality, VideoInfo as PlatformVideoInfo,
 };
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -100,39 +104,26 @@ async fn get_video_info_api(
 
     let original_path = options.path;
     let trimmed_path = original_path.trim();
-    let resolved = lxapp.resolve_accessible_path(trimmed_path).map_err(|err| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("getVideoInfo path error: {}", err),
-        )
-    })?;
+    let resolved = lxapp
+        .resolve_accessible_path(trimmed_path)
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let normalized_path = resolved.to_string_lossy().into_owned();
 
-    let response_path =
-        if trimmed_path.starts_with("lx://") || is_bundle_relative_path(trimmed_path) {
-            trimmed_path.to_string()
-        } else {
-            lxapp
-                .to_uri(&resolved)
-                .ok_or_else(|| {
-                    HostError::new(
-                        rong::error::E_INTERNAL,
-                        "getVideoInfo failed to convert path to lx:// uri",
-                    )
-                })?
-                .into_string()
-        };
+    let response_path = if trimmed_path.starts_with("lx://")
+        || is_bundle_relative_path(trimmed_path)
+    {
+        trimmed_path.to_string()
+    } else {
+        lxapp
+            .to_uri(&resolved)
+            .ok_or_else(|| js_internal_error("getVideoInfo failed to convert path to lx:// uri"))?
+            .into_string()
+    };
 
     runtime
         .get_video_info(&normalized_path)
         .map(|info| platform_video_info_to_js(info, response_path))
-        .map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("getVideoInfo failed: {}", e),
-            )
-            .into()
-        })
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 async fn extract_video_thumbnail_api(
@@ -144,12 +135,7 @@ async fn extract_video_thumbnail_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("extractVideoThumbnail path error: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = resolve_thumbnail_output_path(&lxapp, options.output_path.as_deref())?;
@@ -162,20 +148,14 @@ async fn extract_video_thumbnail_api(
         quality: clamp_quality(options.quality),
     };
 
-    let thumbnail = runtime.extract_video_thumbnail(&request).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("extractVideoThumbnail failed: {}", e),
-        )
-    })?;
+    let thumbnail = runtime
+        .extract_video_thumbnail(&request)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     let uri = lxapp
         .to_uri(&thumbnail.path)
         .ok_or_else(|| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                "extractVideoThumbnail failed to convert output path to lx:// uri",
-            )
+            js_internal_error("extractVideoThumbnail failed to convert output path to lx:// uri")
         })?
         .into_string();
 
@@ -199,12 +179,7 @@ async fn compress_video_api(
 
     let resolved_source = lxapp
         .resolve_accessible_path(options.path.trim())
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("compressVideo path error: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
@@ -228,12 +203,9 @@ async fn compress_video_api(
         output_path,
     };
 
-    let compressed = runtime.compress_video(&request).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("compressVideo failed: {}", e),
-        )
-    })?;
+    let compressed = runtime
+        .compress_video(&request)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     compressed_video_to_js(&lxapp, compressed)
 }
@@ -242,43 +214,32 @@ fn resolve_thumbnail_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(
-        lxapp,
-        raw_output_path,
-        || generate_thumbnail_output_path(&lxapp.user_cache_dir),
-        "extractVideoThumbnail",
-    )
+    resolve_output_path(lxapp, raw_output_path, || {
+        generate_thumbnail_output_path(&lxapp.user_cache_dir)
+    })
 }
 
 fn resolve_compress_video_output_path(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
-    resolve_output_path(
-        lxapp,
-        raw_output_path,
-        || generate_compress_video_output_path(&lxapp.user_cache_dir),
-        "compressVideo",
-    )
+    resolve_output_path(lxapp, raw_output_path, || {
+        generate_compress_video_output_path(&lxapp.user_cache_dir)
+    })
 }
 
 fn resolve_output_path<F>(
     lxapp: &LxApp,
     raw_output_path: Option<&str>,
     default: F,
-    operation: &str,
 ) -> JSResult<PathBuf>
 where
     F: FnOnce() -> JSResult<PathBuf>,
 {
     match raw_output_path.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(path) => lxapp.resolve_accessible_path(path).map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("{} outputPath error: {}", operation, err),
-            )
-            .into()
-        }),
+        Some(path) => lxapp
+            .resolve_accessible_path(path)
+            .map_err(|err| js_error_from_lxapp_error(&err)),
         None => default(),
     }
 }
@@ -303,10 +264,7 @@ fn compressed_video_to_js(
     let temp_file_path = lxapp
         .to_uri(&compressed.path)
         .ok_or_else(|| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                "compressVideo failed to convert output path to lx:// uri",
-            )
+            js_internal_error("compressVideo failed to convert output path to lx:// uri")
         })?
         .into_string();
 
@@ -332,11 +290,9 @@ fn parse_video_quality(value: Option<&str>) -> JSResult<Option<VideoCompressQual
         "medium" => VideoCompressQuality::Medium,
         "high" => VideoCompressQuality::High,
         _ => {
-            return Err(HostError::new(
-                rong::error::E_INTERNAL,
+            return Err(js_invalid_parameter_error(
                 "compressVideo quality must be one of: low, medium, high",
-            )
-            .into());
+            ));
         }
     };
     Ok(Some(quality))
@@ -351,11 +307,9 @@ fn sanitize_resolution(value: Option<f64>) -> JSResult<Option<f32>> {
         return Ok(None);
     };
     if !v.is_finite() || v <= 0.0 || v > 1.0 {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
+        return Err(js_invalid_parameter_error(
             "compressVideo resolution must be in range (0, 1]",
-        )
-        .into());
+        ));
     }
     Ok(Some(v as f32))
 }
@@ -378,11 +332,11 @@ fn is_bundle_relative_path(value: &str) -> bool {
 
 fn ensure_dir(path: &Path) -> JSResult<()> {
     if let Err(err) = fs::create_dir_all(path) {
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to prepare directory {}: {}", path.display(), err),
-        )
-        .into());
+        return Err(js_internal_error(format!(
+            "Failed to prepare directory {}: {}",
+            path.display(),
+            err
+        )));
     }
     Ok(())
 }

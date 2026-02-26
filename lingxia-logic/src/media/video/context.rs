@@ -1,5 +1,6 @@
 use super::events::handle_player_event;
 use super::stream::seek_stream_session_sync_shared;
+use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
@@ -7,7 +8,7 @@ use lingxia_platform::traits::video_player::{VideoPlayerHandle, VideoPlayerManag
 use log::info;
 use lxapp::stream_source::StreamSession;
 use lxapp::{LxApp, lx};
-use rong::{HostError, JSContext, JSFunc, JSResult, js_export};
+use rong::{JSContext, JSFunc, JSResult, js_export};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -85,7 +86,7 @@ impl VideoContextSharedState {
             let guard = shared
                 .callback_id
                 .lock()
-                .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Callback lock poisoned"))?;
+                .map_err(|_| js_internal_error("Callback lock poisoned"))?;
             if let Some(id) = *guard {
                 return Ok(id);
             }
@@ -102,7 +103,7 @@ impl VideoContextSharedState {
         let mut guard = shared
             .callback_id
             .lock()
-            .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Callback lock poisoned"))?;
+            .map_err(|_| js_internal_error("Callback lock poisoned"))?;
         if let Some(existing) = *guard {
             remove_callback(new_callback_id);
             return Ok(existing);
@@ -147,7 +148,7 @@ fn shared_state_for(runtime: &Arc<Platform>, component_id: &str) -> Arc<VideoCon
 impl JSVideoContext {
     pub(super) fn create(ctx: &JSContext, component_id: String) -> JSResult<Self> {
         if component_id.trim().is_empty() {
-            return Err(HostError::new(rong::error::E_INTERNAL, "componentId required").into());
+            return Err(js_invalid_parameter_error("componentId required"));
         }
 
         let lxapp = LxApp::from_ctx(ctx)?;
@@ -156,10 +157,10 @@ impl JSVideoContext {
         let callback_id = VideoContextSharedState::register_callback(&shared, &component_id)?;
         runtime
             .set_player_callback(&component_id, callback_id)
-            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
+            .map_err(|e| js_error_from_platform_error(&e))?;
         let handle = runtime
             .bind_player(&component_id)
-            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
+            .map_err(|e| js_error_from_platform_error(&e))?;
 
         // Register stream seek callback so FFI layer can trigger seek without depending on logic layer.
         // Only register once per shared state to avoid callback being lost when JSVideoContext is GC'd.

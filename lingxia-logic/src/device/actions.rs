@@ -1,6 +1,7 @@
+use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::device::Device;
-use lxapp::{LxApp, LxAppError, lx};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use lxapp::{LxApp, lx};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 
 pub fn init(ctx: &JSContext) -> JSResult<()> {
@@ -18,24 +19,20 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
 
 fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp.runtime.vibrate(false).map(|_| true).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to vibrate short: {}", e),
-        )
-        .into()
-    })
+    lxapp
+        .runtime
+        .vibrate(false)
+        .map(|_| true)
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    lxapp.runtime.vibrate(true).map(|_| true).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to vibrate long: {}", e),
-        )
-        .into()
-    })
+    lxapp
+        .runtime
+        .vibrate(true)
+        .map(|_| true)
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 #[derive(FromJSObj, Deserialize)]
@@ -45,16 +42,11 @@ struct MakePhoneCallParams {
     phone_number: String,
 }
 
-fn make_phone_call_impl(lxapp: &LxApp, params: &MakePhoneCallParams) -> Result<(), LxAppError> {
+fn make_phone_call(ctx: JSContext, params: MakePhoneCallParams) -> JSResult<bool> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
         .runtime
         .make_phone_call(&params.phone_number)
-        .map_err(|e| LxAppError::Runtime(format!("Failed to make phone call: {}", e)))
-}
-
-fn make_phone_call(ctx: JSContext, params: MakePhoneCallParams) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    make_phone_call_impl(&lxapp, &params)
         .map(|_| true)
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
+        .map_err(|e| js_error_from_platform_error(&e))
 }

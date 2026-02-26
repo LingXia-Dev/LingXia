@@ -1,8 +1,11 @@
+use crate::i18n::js_error_from_business_code;
+use crate::i18n::js_error_from_platform_error;
+use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
 use lxapp::{LxApp, emit_app_event, info, lx, register_app_handler, unregister_app_handler, warn};
 use rong::function::Optional;
-use rong::{HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -49,13 +52,8 @@ fn normalize_network_type(raw: Option<&str>) -> &'static str {
 }
 
 fn parse_json_payload(data: &str, label: &str) -> Result<Value, RongJSError> {
-    serde_json::from_str(data).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to parse {}: {}", label, e),
-        )
-        .into()
-    })
+    serde_json::from_str(data)
+        .map_err(|e| js_internal_error(format!("Failed to parse {}: {}", label, e)))
 }
 
 fn parse_string_array(parsed: &Value, key: &str) -> Vec<String> {
@@ -153,25 +151,15 @@ async fn get_network_info(ctx: JSContext) -> JSResult<JSNetworkInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let (callback_id, receiver) = get_callback();
 
-    lxapp.runtime.get_network_info(callback_id).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to get network info: {}", e),
-        )
-    })?;
+    lxapp
+        .runtime
+        .get_network_info(callback_id)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     match receiver.await {
         Ok(CallbackResult::Success(data)) => parse_network_info(data),
-        Ok(CallbackResult::Error(code)) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("getNetworkInfo error: {}", code),
-        )
-        .into()),
-        Err(_) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            "getNetworkInfo callback timeout or cancelled",
-        )
-        .into()),
+        Ok(CallbackResult::Error(code)) => Err(js_error_from_business_code(code)),
+        Err(_) => Err(js_timeout_error("getNetworkInfo callback timed out")),
     }
 }
 
@@ -196,11 +184,7 @@ fn ensure_network_change_callback(ctx: &JSContext) -> JSResult<()> {
 
     if let Err(err) = lxapp.runtime.add_network_change_listener(callback_id) {
         remove_callback(callback_id);
-        return Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to add network change listener: {}", err),
-        )
-        .into());
+        return Err(js_error_from_platform_error(&err));
     }
 
     info!(
@@ -220,12 +204,7 @@ fn clear_network_change_callback(ctx: &JSContext) -> JSResult<()> {
     lxapp
         .runtime
         .remove_network_change_listener(callback_id)
-        .map_err(|err| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to remove network change listener: {}", err),
-            )
-        })?;
+        .map_err(|err| js_error_from_platform_error(&err))?;
     remove_callback(callback_id);
     set_network_callback_id(ctx, None);
     Ok(())

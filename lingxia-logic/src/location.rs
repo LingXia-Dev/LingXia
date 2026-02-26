@@ -1,17 +1,16 @@
-use crate::i18n::err_code_message;
+use crate::i18n::{
+    js_error_from_business_code, js_error_from_platform_error, js_internal_error,
+    js_invalid_parameter_error, js_timeout_error,
+};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::Value;
 
-fn location_error_message(code: u32) -> String {
-    err_code_message(code).unwrap_or_else(|| format!("Location error: {}", code))
-}
-
 fn handle_location_error(code: u32) -> RongJSError {
-    HostError::new(rong::error::E_INTERNAL, location_error_message(code)).into()
+    js_error_from_business_code(code)
 }
 
 /// Coordinate conversion: WGS84 to GCJ02 (Mars coordinate system)
@@ -108,54 +107,33 @@ pub struct LocationObj {
     horizontal_accuracy: Option<f64>,
 }
 
-impl From<CallbackResult> for LocationObj {
-    fn from(result: CallbackResult) -> Self {
-        let data = match result {
-            CallbackResult::Success(data) => data,
-            CallbackResult::Error(_) => return default_location(),
-        };
+fn parse_location_payload(data: &str) -> Result<LocationObj, RongJSError> {
+    let parsed: Value = serde_json::from_str(data)
+        .map_err(|e| js_internal_error(format!("getLocation invalid payload: {}", e)))?;
 
-        let parsed: Value = match serde_json::from_str(&data) {
-            Ok(value) => value,
-            Err(_) => return default_location(),
-        };
+    let latitude = parsed
+        .get("latitude")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| js_internal_error("getLocation payload missing numeric `latitude`"))?;
+    let longitude = parsed
+        .get("longitude")
+        .and_then(Value::as_f64)
+        .ok_or_else(|| js_internal_error("getLocation payload missing numeric `longitude`"))?;
+    let speed = parsed.get("speed").and_then(Value::as_f64);
+    let accuracy = parsed.get("accuracy").and_then(Value::as_f64);
+    let altitude = parsed.get("altitude").and_then(Value::as_f64);
+    let vertical_accuracy = parsed.get("vertical_accuracy").and_then(Value::as_f64);
+    let horizontal_accuracy = parsed.get("horizontal_accuracy").and_then(Value::as_f64);
 
-        let latitude = parsed
-            .get("latitude")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0);
-        let longitude = parsed
-            .get("longitude")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0);
-        let speed = parsed.get("speed").and_then(Value::as_f64);
-        let accuracy = parsed.get("accuracy").and_then(Value::as_f64);
-        let altitude = parsed.get("altitude").and_then(Value::as_f64);
-        let vertical_accuracy = parsed.get("vertical_accuracy").and_then(Value::as_f64);
-        let horizontal_accuracy = parsed.get("horizontal_accuracy").and_then(Value::as_f64);
-
-        LocationObj {
-            latitude,
-            longitude,
-            speed,
-            accuracy,
-            altitude,
-            vertical_accuracy,
-            horizontal_accuracy,
-        }
-    }
-}
-
-fn default_location() -> LocationObj {
-    LocationObj {
-        latitude: 0.0,
-        longitude: 0.0,
-        speed: None,
-        accuracy: None,
-        altitude: None,
-        vertical_accuracy: None,
-        horizontal_accuracy: None,
-    }
+    Ok(LocationObj {
+        latitude,
+        longitude,
+        speed,
+        accuracy,
+        altitude,
+        vertical_accuracy,
+        horizontal_accuracy,
+    })
 }
 
 /// Get location function
@@ -164,6 +142,16 @@ async fn get_location(
     options: Optional<JSLocationOptions>,
 ) -> JSResult<LocationObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let requested_type = options
+        .as_ref()
+        .and_then(|opts| opts.coordinate_type.as_deref())
+        .unwrap_or("wgs84");
+    if requested_type != "wgs84" && requested_type != "gcj02" {
+        return Err(js_invalid_parameter_error(format!(
+            "getLocation invalid type: {}",
+            requested_type
+        )));
+    }
 
     // Get callback ID and receiver for the actual location request
     let (callback_id, receiver) = get_callback();
@@ -190,12 +178,7 @@ async fn get_location(
                             return Err(handle_location_error(code));
                         }
                         CallbackResult::Success(data) => {
-                            let mut location = LocationObj::from(CallbackResult::Success(data));
-
-                            let requested_type = options
-                                .as_ref()
-                                .and_then(|opts| opts.coordinate_type.as_deref())
-                                .unwrap_or("wgs84");
+                            let mut location = parse_location_payload(&data)?;
 
                             // If GCJ02 coordinate system is requested, perform coordinate conversion
                             if requested_type == "gcj02" {
@@ -209,18 +192,10 @@ async fn get_location(
                         }
                     }
                 }
-                Err(_) => Err(HostError::new(
-                    rong::error::E_INTERNAL,
-                    "Location callback timeout or cancelled",
-                )
-                .into()),
+                Err(_) => Err(js_timeout_error("Location callback timed out")),
             }
         }
-        Err(e) => Err(HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Failed to get location: {}", e),
-        )
-        .into()),
+        Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }
 

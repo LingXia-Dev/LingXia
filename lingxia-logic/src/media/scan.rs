@@ -1,9 +1,11 @@
-use crate::i18n::err_code_message;
+use crate::i18n::{
+    js_error_from_business_code, js_error_from_platform_error, js_internal_error,
+    js_invalid_parameter_error, js_timeout_error,
+};
 use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::media_interaction::{MediaInteraction, ScanCodeRequest, ScanType};
-use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
+use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
 use serde_json::Value;
 
 #[derive(FromJSObj, Clone, Default)]
@@ -42,54 +44,34 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         callback_id,
     };
 
-    lxapp.runtime.scan_code(request).map_err(|e| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("scan failed to start: {}", e),
-        )
-    })?;
+    lxapp
+        .runtime
+        .scan_code(request)
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     let result = receiver
         .await
-        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "scan cancelled or failed"))?;
+        .map_err(|_| js_timeout_error("scanCode callback timed out"))?;
 
     let data = match result {
         CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => {
-            // 2000 = user cancelled, return empty result
-            if code == 2000 {
-                return Ok(ScanResultObj {
-                    scan_result: String::new(),
-                    scan_type: String::new(),
-                });
-            }
-
-            let message = err_code_message(code).unwrap_or_else(|| format!("Scan error: {}", code));
-            let _ = lxapp.runtime.show_toast(ToastOptions {
-                title: message.clone(),
-                icon: ToastIcon::Error,
-                image: None,
-                duration: 2.0,
-                mask: false,
-                position: ToastPosition::Center,
-            });
-            return Err(HostError::new(rong::error::E_INTERNAL, message).into());
-        }
+        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
     };
 
-    let payload: Value = serde_json::from_str(&data).unwrap_or(Value::Null);
+    let payload: Value = serde_json::from_str(&data)
+        .map_err(|e| js_internal_error(format!("scanCode invalid payload: {}", e)))?;
 
     let scan_result = payload
         .get("scanResult")
         .and_then(Value::as_str)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
+        .ok_or_else(|| js_internal_error("scanCode payload missing string `scanResult`"))?
+        .to_string();
 
     let scan_type = payload
         .get("scanType")
         .and_then(Value::as_str)
-        .map(|s| s.to_string())
-        .unwrap_or_default();
+        .ok_or_else(|| js_internal_error("scanCode payload missing string `scanType`"))?
+        .to_string();
 
     Ok(ScanResultObj {
         scan_result,
@@ -102,7 +84,7 @@ fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {
     if let Some(list) = value {
         for token in list {
             let t = parse_scan_type_token(token.as_str())
-                .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "invalid scanType token"))?;
+                .ok_or_else(|| js_invalid_parameter_error("invalid scanType token"))?;
             if !out.contains(&t) {
                 out.push(t);
             }

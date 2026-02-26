@@ -1,11 +1,12 @@
 use super::context::VideoContextSharedState;
+use crate::i18n::{js_error_from_platform_error, js_internal_error, js_resource_not_found_error};
 use lingxia_platform::traits::stream_decoder::{
     VideoStreamDecoderHandle, VideoStreamDecoderManager,
 };
 use lingxia_platform::traits::video_player::{VideoPlayerCommand, VideoPlayerManager};
 use log::{info, warn};
 use lxapp::stream_source::{FrameSink, get_stream_provider};
-use rong::{HostError, RongJSError};
+use rong::RongJSError;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
@@ -37,7 +38,7 @@ fn ensure_stream_decoder_shared(
     let mut guard = shared
         .stream_decoder
         .lock()
-        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned"))?;
+        .map_err(|_| js_internal_error("Stream decoder lock poisoned"))?;
     if let Some(decoder) = guard.as_ref() {
         return Ok(decoder.clone());
     }
@@ -45,7 +46,7 @@ fn ensure_stream_decoder_shared(
     let decoder = shared
         .runtime
         .create_stream_decoder(component_id)
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?;
+        .map_err(|e| js_error_from_platform_error(&e))?;
     let decoder: Arc<dyn VideoStreamDecoderHandle> = decoder.into();
     *guard = Some(decoder.clone());
     Ok(decoder)
@@ -58,7 +59,7 @@ pub(super) fn reset_decoder_soft_shared(
     let decoder = ensure_stream_decoder_shared(shared, component_id)?;
     decoder
         .reset_stream(false)
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 pub(super) fn reset_decoder_soft_if_present_shared(
@@ -68,14 +69,14 @@ pub(super) fn reset_decoder_soft_if_present_shared(
     let decoder = shared
         .stream_decoder
         .lock()
-        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream decoder lock poisoned"))?
+        .map_err(|_| js_internal_error("Stream decoder lock poisoned"))?
         .clone();
     let Some(decoder) = decoder else {
         return Ok(());
     };
     decoder
         .reset_stream(false)
-        .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()).into())
+        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 pub(super) fn stop_stream_session_async_shared(shared: &Arc<VideoContextSharedState>) {
@@ -123,7 +124,7 @@ pub(super) fn resume_stream_session_shared(
         let guard = shared
             .last_stream_source
             .lock()
-            .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream source lock poisoned"))?;
+            .map_err(|_| js_internal_error("Stream source lock poisoned"))?;
         guard.clone()
     };
 
@@ -132,10 +133,7 @@ pub(super) fn resume_stream_session_shared(
     };
 
     let provider = get_stream_provider(&source.provider).ok_or_else(|| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Stream provider not found: {}", source.provider),
-        )
+        js_resource_not_found_error(format!("Stream provider not found: {}", source.provider))
     })?;
 
     let epoch = shared.stream_epoch.fetch_add(1, Ordering::Relaxed) + 1;
@@ -215,17 +213,14 @@ pub(super) fn resume_stream_session_shared(
             }
         });
 
-    let session = provider.start(source.params, sink).map_err(|err| {
-        HostError::new(
-            rong::error::E_INTERNAL,
-            format!("Stream provider start failed: {}", err),
-        )
-    })?;
+    let session = provider
+        .start(source.params, sink)
+        .map_err(|err| js_internal_error(format!("Stream provider start failed: {}", err)))?;
 
     let mut guard = shared
         .stream_session
         .lock()
-        .map_err(|_| HostError::new(rong::error::E_INTERNAL, "Stream session lock poisoned"))?;
+        .map_err(|_| js_internal_error("Stream session lock poisoned"))?;
     *guard = Some(session);
 
     ensure_platform_stream_play(shared, component_id);

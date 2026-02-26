@@ -1,6 +1,7 @@
+use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use lxapp::{LxApp, lx};
-use rong::{HostError, JSContext, JSFunc, JSResult};
+use rong::{JSContext, JSFunc, JSResult};
 
 /// lx.startPullDownRefresh()
 ///
@@ -10,17 +11,14 @@ fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp
         .peek_current_page()
-        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
+        .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     lxapp
         .runtime
         .start_pull_down_refresh(&lxapp.appid, &path)
         .map_err(|e| {
             lxapp::error!("start_pull_down_refresh failed: {}", e);
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to start pull down refresh: {}", e),
-            )
+            js_error_from_platform_error(&e)
         })?;
 
     Ok(())
@@ -34,17 +32,14 @@ fn stop_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp
         .peek_current_page()
-        .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "No current page found"))?;
+        .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     lxapp
         .runtime
         .stop_pull_down_refresh(&lxapp.appid, &path)
         .map_err(|e| {
             lxapp::error!("stop_pull_down_refresh failed: {}", e);
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to stop pull down refresh: {}", e),
-            )
+            js_error_from_platform_error(&e)
         })?;
 
     Ok(())

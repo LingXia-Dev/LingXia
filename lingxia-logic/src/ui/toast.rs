@@ -1,7 +1,12 @@
 #[cfg(not(target_os = "macos"))]
+use crate::i18n::js_error_from_platform_error;
+#[cfg(target_os = "macos")]
+use crate::i18n::js_internal_error;
+use crate::i18n::js_service_unavailable_error;
+#[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, HostError, JSContext, JSFunc, JSResult};
+use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 
 /// Toast options from JavaScript
 #[derive(FromJSObj)]
@@ -60,9 +65,9 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
 
     // Do not show UI if app is not opened
     if !lxapp.is_opened() {
-        return Err(
-            HostError::new(rong::error::E_INTERNAL, "LxApp is closed; toast suppressed").into(),
-        );
+        return Err(js_service_unavailable_error(
+            "LxApp is closed; toast suppressed",
+        ));
     }
 
     #[cfg(target_os = "macos")]
@@ -79,12 +84,7 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
         lxapp
             .call_current_page_view("ui.showToast", Some(params))
             .await
-            .map_err(|e| {
-                HostError::new(
-                    rong::error::E_INTERNAL,
-                    format!("WebView toast failed: {}", e),
-                )
-            })?;
+            .map_err(|e| js_internal_error(format!("WebView toast failed: {}", e)))?;
 
         return Ok(());
     }
@@ -92,12 +92,10 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
     #[cfg(not(target_os = "macos"))]
     {
         let toast_options: ToastOptions = options.into();
-        lxapp.runtime.show_toast(toast_options).map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to show toast: {}", e),
-            )
-        })?;
+        lxapp
+            .runtime
+            .show_toast(toast_options)
+            .map_err(|e| js_error_from_platform_error(&e))?;
 
         Ok(())
     }
@@ -106,30 +104,28 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
 /// Hide toast function
 async fn hide_toast(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    if !lxapp.is_opened() {
+        return Err(js_service_unavailable_error(
+            "LxApp is closed; hideToast suppressed",
+        ));
+    }
 
     #[cfg(target_os = "macos")]
     {
         lxapp
             .call_current_page_view("ui.hideToast", None)
             .await
-            .map_err(|e| {
-                HostError::new(
-                    rong::error::E_INTERNAL,
-                    format!("WebView hideToast failed: {}", e),
-                )
-            })?;
+            .map_err(|e| js_internal_error(format!("WebView hideToast failed: {}", e)))?;
 
         return Ok(());
     }
 
     #[cfg(not(target_os = "macos"))]
     {
-        lxapp.runtime.hide_toast().map_err(|e| {
-            HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Failed to hide toast: {}", e),
-            )
-        })?;
+        lxapp
+            .runtime
+            .hide_toast()
+            .map_err(|e| js_error_from_platform_error(&e))?;
 
         Ok(())
     }
