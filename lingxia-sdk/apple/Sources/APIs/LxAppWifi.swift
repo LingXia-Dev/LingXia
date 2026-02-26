@@ -230,7 +230,7 @@ public class LxAppWifi {
                 network.ssid == ssidString
             }) else {
             os_log("Network not found: %{public}@", log: log, type: .error, ssidString)
-            let _ = onCallback(callback_id, false, "12004") // Network not found
+            let _ = onCallback(callback_id, false, "12010") // Network not found
             return
         }
 
