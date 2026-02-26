@@ -77,6 +77,17 @@ struct HandshakeState {
 pub struct RpcError {
     pub code: String,
     pub message: Option<String>,
+    pub data: Option<Value>,
+}
+
+impl RpcError {
+    pub fn new(code: impl Into<String>, message: Option<String>) -> Self {
+        Self {
+            code: code.into(),
+            message,
+            data: None,
+        }
+    }
 }
 
 // V2 Incoming message types
@@ -134,8 +145,22 @@ pub(crate) struct ResMsg {
 
 #[derive(Deserialize, Debug, Clone)]
 pub(crate) struct ResError {
-    pub code: String,
+    pub code: Value,
     pub message: Option<String>,
+    pub data: Option<Value>,
+}
+
+impl ResError {
+    fn normalized_code(&self) -> String {
+        match &self.code {
+            Value::String(code) => code.clone(),
+            Value::Number(code) => code.to_string(),
+            other => {
+                log::warn!("Unexpected bridge error code type in response: {}", other);
+                BRIDGE_INTERNAL_ERROR.to_string()
+            }
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -240,13 +265,11 @@ struct Ready {
 
 #[derive(Serialize)]
 struct BridgeError {
-    code: String,
+    code: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    retryable: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -369,7 +392,18 @@ impl Bridge {
         id: String,
         code: &str,
         message: Option<String>,
+        data: Option<Value>,
     ) -> Result<(), LxAppError> {
+        // If data contains a numeric bizCode, promote it to the wire-level code so JS
+        // receives the business error code directly (e.g. `{code: 1005}` instead of
+        // `{code: "E_INTERNAL", data: {bizCode: 1005}}`).
+        let wire_code = data
+            .as_ref()
+            .and_then(|d| d.get("bizCode"))
+            .and_then(|v| v.as_u64())
+            .map(|n| Value::Number(n.into()))
+            .unwrap_or_else(|| Value::String(code.to_string()));
+
         let msg = Res {
             v: 2,
             kind: "res",
@@ -377,10 +411,9 @@ impl Bridge {
             ok: false,
             result: None,
             error: Some(BridgeError {
-                code: code.to_string(),
+                code: wire_code,
                 message,
-                data: None,
-                retryable: None,
+                data,
             }),
         };
         self.send_json(transport, &msg)
@@ -515,6 +548,7 @@ impl Bridge {
                         msg.id.clone(),
                         BRIDGE_PROTOCOL_MISMATCH,
                         Some(format!("Unsupported protocol: {}", msg.v)),
+                        None,
                     );
                     return Ok(());
                 }
@@ -532,6 +566,7 @@ impl Bridge {
                         id.clone(),
                         BRIDGE_NOT_READY,
                         Some("Bridge not ready".to_string()),
+                        None,
                     );
                     return Ok(());
                 }
@@ -542,6 +577,7 @@ impl Bridge {
                         id.clone(),
                         BRIDGE_MALFORMED_MESSAGE,
                         Some("Missing cap".to_string()),
+                        None,
                     );
                     return Ok(());
                 }
@@ -551,12 +587,18 @@ impl Bridge {
                         id.clone(),
                         BRIDGE_MALFORMED_MESSAGE,
                         Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                        None,
                     );
                     return Ok(());
                 }
                 if !handler.is_cap_allowed(&required_cap) {
-                    let _ =
-                        self.send_res_err(transport, id.clone(), BRIDGE_CAPABILITY_DENIED, None);
+                    let _ = self.send_res_err(
+                        transport,
+                        id.clone(),
+                        BRIDGE_CAPABILITY_DENIED,
+                        None,
+                        None,
+                    );
                     return Ok(());
                 }
 
@@ -584,6 +626,7 @@ impl Bridge {
                                     id.clone(),
                                     BRIDGE_INTERNAL_ERROR,
                                     Some(e.to_string()),
+                                    None,
                                 );
                             }
                         }
@@ -611,6 +654,7 @@ impl Bridge {
                         id.clone(),
                         BRIDGE_METHOD_NOT_FOUND,
                         Some(format!("Method not found: {}", method)),
+                        None,
                     );
                     return Ok(());
                 }
@@ -635,7 +679,13 @@ impl Bridge {
                             let _ = bridge.send_res_ok(&transport, id.clone(), value);
                         }
                         Err(e) => {
-                            let _ = bridge.send_res_err(&transport, id.clone(), &e.code, e.message);
+                            let _ = bridge.send_res_err(
+                                &transport,
+                                id.clone(),
+                                &e.code,
+                                e.message,
+                                e.data,
+                            );
                         }
                     }
                 });
@@ -652,9 +702,10 @@ impl Bridge {
                     let err = msg.error.as_ref();
                     Err(RpcError {
                         code: err
-                            .map(|e| e.code.clone())
+                            .map(|e| e.normalized_code())
                             .unwrap_or_else(|| BRIDGE_INTERNAL_ERROR.to_string()),
                         message: err.and_then(|e| e.message.clone()),
+                        data: err.and_then(|e| e.data.clone()),
                     })
                 };
                 let page_path = handler.bridge_page_path();
@@ -727,7 +778,7 @@ impl Bridge {
                                 .or_else(|| Some("Unknown message".to_string())),
                         )
                     };
-                    let _ = self.send_res_err(transport, id.clone(), code, message);
+                    let _ = self.send_res_err(transport, id.clone(), code, message, None);
                 }
                 return Ok(());
             }

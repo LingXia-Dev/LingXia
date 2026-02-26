@@ -120,10 +120,7 @@ pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
     let reg = registry();
     let entry = reg.pending.lock().unwrap().remove(id);
     if let Some(entry) = entry {
-        let _ = entry.tx.send(Err(RpcError {
-            code: BRIDGE_CANCELED.to_string(),
-            message,
-        }));
+        let _ = entry.tx.send(Err(RpcError::new(BRIDGE_CANCELED, message)));
     }
 }
 
@@ -148,9 +145,9 @@ pub(crate) fn cancel_view_calls_for_pages(paths: &[String], reason: &str) {
     };
 
     for entry in entries {
-        let _ = entry.tx.send(Err(RpcError {
-            code: BRIDGE_CANCELED.to_string(),
-            message: Some(reason.to_string()),
-        }));
+        let _ = entry.tx.send(Err(RpcError::new(
+            BRIDGE_CANCELED,
+            Some(reason.to_string()),
+        )));
     }
 }

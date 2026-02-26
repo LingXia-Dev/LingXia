@@ -40,6 +40,27 @@ struct PageSvcState {
     init_data: Option<JSObject>,
 }
 
+fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
+    if let LxAppError::RongJSHost {
+        code,
+        message,
+        data,
+    } = err
+    {
+        return RpcError {
+            code: code.clone(),
+            message: Some(message.clone()),
+            data: data.clone(),
+        };
+    }
+    RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
+}
+
+fn rpc_error_from_rong(err: RongJSError) -> RpcError {
+    let lxapp_error: LxAppError = err.into();
+    rpc_error_from_lxapp_error(&lxapp_error)
+}
+
 impl MessageTransport for PageSvc {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.page.webview_controller() {
@@ -106,52 +127,37 @@ impl MessageHandler for PageSvc {
                 let b: bool = v
                     .into_value()
                     .try_into()
-                    .map_err(|e: RongJSError| RpcError {
-                        code: BRIDGE_INTERNAL_ERROR.to_string(),
-                        message: Some(e.to_string()),
-                    })?;
+                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
                 return Ok(Value::Bool(b));
             }
             if v.is_number() {
                 let n: f64 = v
                     .into_value()
                     .try_into()
-                    .map_err(|e: RongJSError| RpcError {
-                        code: BRIDGE_INTERNAL_ERROR.to_string(),
-                        message: Some(e.to_string()),
-                    })?;
+                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
                 return Ok(Value::Number(serde_json::Number::from_f64(n).ok_or_else(
-                    || RpcError {
-                        code: BRIDGE_INTERNAL_ERROR.to_string(),
-                        message: Some("Invalid number".to_string()),
-                    },
+                    || RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string())),
                 )?));
             }
             if v.is_string() {
                 let s: String = v
                     .into_value()
                     .try_into()
-                    .map_err(|e: RongJSError| RpcError {
-                        code: BRIDGE_INTERNAL_ERROR.to_string(),
-                        message: Some(e.to_string()),
-                    })?;
+                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
                 return Ok(Value::String(s));
             }
             if let Some(obj) = v.into_object() {
-                let s = obj.json_stringify().map_err(|e| RpcError {
-                    code: BRIDGE_INTERNAL_ERROR.to_string(),
-                    message: Some(e.to_string()),
-                })?;
-                return serde_json::from_str(&s).map_err(|e| RpcError {
-                    code: BRIDGE_INTERNAL_ERROR.to_string(),
-                    message: Some(e.to_string()),
-                });
+                let s = obj
+                    .json_stringify()
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+                return serde_json::from_str(&s)
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
             }
 
-            Err(RpcError {
-                code: BRIDGE_INTERNAL_ERROR.to_string(),
-                message: Some("Unsupported JS return type".to_string()),
-            })
+            Err(RpcError::new(
+                BRIDGE_INTERNAL_ERROR,
+                Some("Unsupported JS return type".to_string()),
+            ))
         };
 
         match service_type {
@@ -174,21 +180,19 @@ impl MessageHandler for PageSvc {
 
                 tokio::select! {
                     _ = &mut cancel_rx => {
-                        Err(RpcError { code: BRIDGE_CANCELED.to_string(), message: None })
+                        Err(RpcError::new(BRIDGE_CANCELED, None))
                     }
                     res = fut => {
                         match res {
                             Ok(v) => js_value_to_json(v),
-                            Err(e) => Err(RpcError { code: BRIDGE_INTERNAL_ERROR.to_string(), message: Some(e.to_string()) }),
+                            Err(e) => Err(rpc_error_from_rong(e)),
                         }
                     }
                 }
             }
             ServiceType::HostAPI(handler) => {
-                let lxapp = LxApp::from_ctx(&ctx).map_err(|e| RpcError {
-                    code: BRIDGE_INTERNAL_ERROR.to_string(),
-                    message: Some(e.to_string()),
-                })?;
+                let lxapp = LxApp::from_ctx(&ctx)
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
                 let input = params_json.map(|s| s.to_string());
 
                 // Allow immediate cancel response while still forwarding cancellation to Host.
@@ -208,16 +212,16 @@ impl MessageHandler for PageSvc {
                                 // observe `cancel`. Map that to BRIDGE_CANCELED so view callers
                                 // can handle it consistently.
                                 if matches!(&e, LxAppError::Bridge(msg) if msg == "Canceled") {
-                                    Err(RpcError { code: BRIDGE_CANCELED.to_string(), message: None })
+                                    Err(RpcError::new(BRIDGE_CANCELED, None))
                                 } else {
-                                    Err(RpcError { code: BRIDGE_INTERNAL_ERROR.to_string(), message: Some(e.to_string()) })
+                                    Err(rpc_error_from_lxapp_error(&e))
                                 }
                             }
                         }
                     }
                     _ = &mut cancel_rx => {
                         let _ = host_cancel_tx.send(());
-                        Err(RpcError { code: BRIDGE_CANCELED.to_string(), message: None })
+                        Err(RpcError::new(BRIDGE_CANCELED, None))
                     }
                 };
 
@@ -232,15 +236,13 @@ impl MessageHandler for PageSvc {
                 }
 
                 let json = json_result?;
-                serde_json::from_str(&json).map_err(|e| RpcError {
-                    code: BRIDGE_INTERNAL_ERROR.to_string(),
-                    message: Some(e.to_string()),
-                })
+                serde_json::from_str(&json)
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))
             }
-            ServiceType::None => Err(RpcError {
-                code: BRIDGE_METHOD_NOT_FOUND.to_string(),
-                message: Some(format!("Method not found: {}", method)),
-            }),
+            ServiceType::None => Err(RpcError::new(
+                BRIDGE_METHOD_NOT_FOUND,
+                Some(format!("Method not found: {}", method)),
+            )),
         }
     }
 
