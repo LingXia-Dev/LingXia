@@ -1,5 +1,7 @@
-use crate::i18n::js_error_from_lxapp_error;
+use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
+use crate::I18nKey;
+use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult};
@@ -56,6 +58,12 @@ async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> 
     let target_appid = options.appid.clone();
 
     update::ensure_first_install(&lxapp, &target_appid, release_type).await?;
+    if lxapp::is_force_update_downloading(&target_appid, release_type) {
+        show_force_update_downloading_toast(&lxapp);
+    }
+    lxapp::ensure_force_update_for_installed(&lxapp, &target_appid, release_type)
+        .await
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     lxapp
         .navigate_to(target_appid.clone(), startup_options)
@@ -63,6 +71,18 @@ async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> 
 
     UpdateManager::spawn_background_update_check_for(target_appid, release_type);
     Ok(())
+}
+
+fn show_force_update_downloading_toast(lxapp: &Arc<LxApp>) {
+    let title = t(I18nKey::UpdateDownloading);
+    let _ = lxapp.runtime.show_toast(ToastOptions {
+        title,
+        icon: ToastIcon::Loading,
+        image: None,
+        duration: 1.5,
+        mask: false,
+        position: ToastPosition::Center,
+    });
 }
 
 fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {

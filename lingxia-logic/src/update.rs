@@ -14,6 +14,8 @@ struct UpdateManagerState {
     manager: Option<JSObject>,
     on_ready: Option<JSFunc>,
     on_failed: Option<JSFunc>,
+    pending_ready: Option<JSObject>,
+    pending_failed: Option<JSObject>,
     handlers_registered: bool,
 }
 
@@ -37,6 +39,22 @@ fn callbacks_from_state(ctx: &JSContext) -> (Option<JSFunc>, Option<JSFunc>) {
         .unwrap_or((None, None))
 }
 
+fn take_pending_ready(ctx: &JSContext) -> Option<JSObject> {
+    let mut pending = None;
+    with_update_state(ctx, |state| {
+        pending = state.pending_ready.take();
+    });
+    pending
+}
+
+fn take_pending_failed(ctx: &JSContext) -> Option<JSObject> {
+    let mut pending = None;
+    with_update_state(ctx, |state| {
+        pending = state.pending_failed.take();
+    });
+    pending
+}
+
 // Register event handlers once per JSContext
 fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let already_registered = ctx
@@ -52,6 +70,8 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
         let (ready_cb, _) = callbacks_from_state(&ctx);
         if let Some(cb) = ready_cb {
             let _ = cb.call::<_, ()>(None, (_payload,));
+        } else {
+            with_update_state(&ctx, |state| state.pending_ready = Some(_payload));
         }
         Ok(())
     })?;
@@ -61,6 +81,8 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
         let (_, failed_cb) = callbacks_from_state(&ctx);
         if let Some(cb) = failed_cb {
             let _ = cb.call::<_, ()>(None, (_payload,));
+        } else {
+            with_update_state(&ctx, |state| state.pending_failed = Some(_payload));
         }
         Ok(())
     })?;
@@ -112,6 +134,11 @@ impl JSUpdateManager {
     fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_ready = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_ready = Some(cb));
+        if let Some(payload) = take_pending_ready(&ctx)
+            && let Some(ready_cb) = self.on_ready.as_ref()
+        {
+            let _ = ready_cb.call::<_, ()>(None, (payload,));
+        }
         Ok(())
     }
 
@@ -119,6 +146,11 @@ impl JSUpdateManager {
     fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_failed = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_failed = Some(cb));
+        if let Some(payload) = take_pending_failed(&ctx)
+            && let Some(failed_cb) = self.on_failed.as_ref()
+        {
+            let _ = failed_cb.call::<_, ()>(None, (payload,));
+        }
         Ok(())
     }
 
@@ -136,6 +168,9 @@ impl JSUpdateManager {
 // Register Update-related JS bindings
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSUpdateManager>()?;
+    // Register host event handlers early so UpdateReady/UpdateFailed are not lost
+    // before lx.getUpdateManager() is called by app logic.
+    ensure_update_handlers(ctx)?;
 
     // lx.getUpdateManager() -> returns singleton instance
     fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
