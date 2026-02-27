@@ -7,6 +7,7 @@ use crate::lxapp::{
     lxapp_fingermark, metadata, version::Version,
 };
 use crate::provider::{UpdatePackageInfo, UpdateTarget};
+use dashmap::DashMap;
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -15,8 +16,9 @@ use rong_http::{self as service_executor, BodySink};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::watch;
 
 /// Tracks download progress and reports to the UI layer
 struct ProgressSink {
@@ -80,6 +82,86 @@ pub struct UpdateManager {
 pub struct DownloadedUpdateInfo {
     pub version: String,
     pub archive_path: PathBuf,
+}
+
+/// Per-target forced-update package preparation state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ForceUpdateDownloadState {
+    Downloading { version: String },
+    Completed,
+    Failed(String),
+}
+
+struct ForceUpdateDownloadTracker {
+    downloads: DashMap<String, watch::Sender<ForceUpdateDownloadState>>,
+}
+
+impl ForceUpdateDownloadTracker {
+    fn new() -> Self {
+        Self {
+            downloads: DashMap::new(),
+        }
+    }
+
+    fn try_start_download(
+        &self,
+        key: &str,
+        version: &str,
+    ) -> Option<watch::Receiver<ForceUpdateDownloadState>> {
+        use dashmap::mapref::entry::Entry;
+
+        match self.downloads.entry(key.to_string()) {
+            Entry::Occupied(_) => None,
+            Entry::Vacant(entry) => {
+                let initial = ForceUpdateDownloadState::Downloading {
+                    version: version.to_string(),
+                };
+                let (tx, rx) = watch::channel(initial);
+                entry.insert(tx);
+                Some(rx)
+            }
+        }
+    }
+
+    fn mark_completed(&self, key: &str) {
+        if let Some(entry) = self.downloads.get(key) {
+            let _ = entry.send(ForceUpdateDownloadState::Completed);
+        }
+        self.downloads.remove(key);
+    }
+
+    fn mark_failed(&self, key: &str, error: String) {
+        if let Some(entry) = self.downloads.get(key) {
+            let _ = entry.send(ForceUpdateDownloadState::Failed(error));
+        }
+        self.downloads.remove(key);
+    }
+
+    fn wait_for_download(&self, key: &str) -> Option<watch::Receiver<ForceUpdateDownloadState>> {
+        self.downloads.get(key).map(|entry| entry.subscribe())
+    }
+
+    fn state(&self, key: &str) -> Option<ForceUpdateDownloadState> {
+        self.downloads.get(key).map(|entry| entry.borrow().clone())
+    }
+}
+
+static FORCE_UPDATE_DOWNLOAD_TRACKER: OnceLock<ForceUpdateDownloadTracker> = OnceLock::new();
+
+fn force_update_tracker() -> &'static ForceUpdateDownloadTracker {
+    FORCE_UPDATE_DOWNLOAD_TRACKER.get_or_init(ForceUpdateDownloadTracker::new)
+}
+
+fn force_update_download_key(lxappid: &str, release_type: ReleaseType) -> String {
+    format!("{}@{}", lxappid, release_type.as_str())
+}
+
+/// Returns whether a forced-update package is currently being prepared.
+pub fn is_force_update_downloading(lxappid: &str, release_type: ReleaseType) -> bool {
+    matches!(
+        force_update_tracker().state(&force_update_download_key(lxappid, release_type)),
+        Some(ForceUpdateDownloadState::Downloading { .. })
+    )
 }
 
 impl UpdateManager {
@@ -234,10 +316,22 @@ impl UpdateManager {
 
                     let already_downloaded_same = matches!(
                         manager.has_downloaded_update(&target_appid, release_type),
-                        Ok(Some(info)) if info.version == pkg.version
+                        Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
                     );
 
                     if already_downloaded_same {
+                        crate::info!(
+                            "Update package already downloaded; emitting UpdateReady directly (version={})",
+                            pkg.version
+                        )
+                        .with_appid(target_appid.clone());
+                        let payload = serde_json::json!({
+                            "version": pkg.version,
+                            "isForceUpdate": pkg.is_force_update,
+                            "releaseType": release_type.as_str(),
+                        });
+                        let _ =
+                            emit_app_event(&target_appid, "UpdateReady", Some(payload.to_string()));
                         return;
                     }
 
@@ -252,9 +346,25 @@ impl UpdateManager {
                         .await;
 
                     if download_res.is_ok() {
-                        let _ = emit_app_event(&target_appid, "UpdateReady", None);
+                        let payload = serde_json::json!({
+                            "version": pkg.version,
+                            "isForceUpdate": pkg.is_force_update,
+                            "releaseType": release_type.as_str(),
+                        });
+                        let _ =
+                            emit_app_event(&target_appid, "UpdateReady", Some(payload.to_string()));
                     } else {
-                        let _ = emit_app_event(&target_appid, "UpdateFailed", None);
+                        let payload = serde_json::json!({
+                            "version": pkg.version,
+                            "isForceUpdate": pkg.is_force_update,
+                            "releaseType": release_type.as_str(),
+                            "error": download_res.err().map(|e| e.to_string()).unwrap_or_else(|| "download failed".to_string()),
+                        });
+                        let _ = emit_app_event(
+                            &target_appid,
+                            "UpdateFailed",
+                            Some(payload.to_string()),
+                        );
                     }
                 }
                 Ok(None) => {}
@@ -264,6 +374,7 @@ impl UpdateManager {
     }
 
     /// Check for host app updates and install when user confirms.
+    /// Forced updates are non-skippable from UI perspective.
     pub async fn check_and_install_app_update(
         runtime: Arc<Platform>,
         current_version: Option<&str>,
@@ -283,10 +394,15 @@ impl UpdateManager {
             pkg.url
         );
 
-        // Build update info JSON for the UI
-        let update_info_json = if pkg.size.is_some() || pkg.release_notes.is_some() {
+        // Build update info JSON for the UI.
+        // `isForceUpdate` controls whether the dialog is dismissible on the SDK side.
+        let update_info_json = {
             let mut json_obj = serde_json::Map::new();
-            json_obj.insert("version".to_string(), serde_json::json!(pkg.version));
+            json_obj.insert("version".to_string(), serde_json::json!(&pkg.version));
+            json_obj.insert(
+                "isForceUpdate".to_string(),
+                serde_json::json!(pkg.is_force_update),
+            );
             if let Some(size) = pkg.size {
                 json_obj.insert("size".to_string(), serde_json::json!(size));
             }
@@ -294,8 +410,6 @@ impl UpdateManager {
                 json_obj.insert("releaseNotes".to_string(), serde_json::json!(notes));
             }
             Some(serde_json::to_string(&json_obj).unwrap_or_default())
-        } else {
-            None
         };
 
         let (callback_id, receiver) = get_callback();
@@ -315,6 +429,12 @@ impl UpdateManager {
             Ok(CallbackResult::Error(_)) => false,
             Err(_) => false,
         };
+
+        if !confirmed && pkg.is_force_update {
+            return Err(LxAppError::Runtime(
+                "Forced app update was not confirmed".to_string(),
+            ));
+        }
 
         if !confirmed {
             crate::info!("App update cancelled or deferred");
@@ -364,6 +484,15 @@ impl UpdateManager {
                 archive_path: PathBuf::from(rec.zip_path),
             }),
         )
+    }
+
+    /// Return installed version for a given lxapp variant.
+    pub fn installed_version(
+        &self,
+        lxappid: &str,
+        release_type: ReleaseType,
+    ) -> Result<Option<String>, LxAppError> {
+        Ok(metadata::get(lxappid, release_type)?.map(|rec| rec.version_string()))
     }
 
     /// Returns whether the given lxappid+release_type is already installed
@@ -634,20 +763,21 @@ impl UpdateManager {
                 }
                 // Persist pending downloaded update so it can be applied later.
                 // Uses current app context (appid + release_type) and explicit version.
-                let upsert_res = metadata::downloaded_upsert(lxappid, release_type, version, &dest);
-                if let Err(e) = &upsert_res {
-                    crate::error!("Failed to record downloaded update: {}", e).with_appid(lxappid);
-                } else {
-                    crate::info!(
-                        "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
-                        lxappid,
-                        release_type,
-                        version,
-                        dest.display()
-                    )
-                    .with_appid(lxappid);
+                if let Err(e) = metadata::downloaded_upsert(lxappid, release_type, version, &dest) {
+                    let _ = fs::remove_file(&dest);
+                    return Err(LxAppError::IoError(format!(
+                        "failed to record downloaded update: {}",
+                        e
+                    )));
                 }
-                let _ = upsert_res;
+                crate::info!(
+                    "Recorded downloaded update: appid={}, release_type={}, version={}, archive={}",
+                    lxappid,
+                    release_type,
+                    version,
+                    dest.display()
+                )
+                .with_appid(lxappid);
                 Ok(dest)
             }
             Err(err) => {
@@ -800,8 +930,8 @@ impl UpdateManager {
 
 /// Ensure the target app is installed at least once (first-launch preparation).
 ///
-/// If the target app is not installed, this checks for an available package and downloads it.
-/// The downloaded archive is recorded in metadata and will be applied on next app creation
+/// If the target lxapp is not installed, this checks for an available package and downloads it.
+/// Downloaded archives are recorded in metadata and applied when creating/opening the app
 /// (see `LxApps::get_or_init_lxapp`).
 pub(crate) async fn ensure_first_install(
     current_lxapp: &Arc<lxapp::LxApp>,
@@ -809,7 +939,6 @@ pub(crate) async fn ensure_first_install(
     release_type: ReleaseType,
 ) -> Result<(), LxAppError> {
     let manager = UpdateManager::new(current_lxapp.clone());
-
     if manager.is_installed(target_appid, release_type)? {
         return Ok(());
     }
@@ -835,6 +964,142 @@ pub(crate) async fn ensure_first_install(
         .await?;
 
     Ok(())
+}
+
+/// Ensure forced update package is prepared before opening an already-installed lxapp.
+///
+/// Policy:
+/// - Not installed: no-op (handled by `ensure_first_install`).
+/// - Installed + no update or non-forced update: no-op.
+/// - Installed + forced update available: ensure target package is downloaded before opening.
+///
+/// Note: update-check network/provider failures are fail-open here to avoid blocking app open
+/// on transient backend issues. Only confirmed forced-package download failures block navigation.
+pub async fn ensure_force_update_for_installed(
+    current_lxapp: &Arc<lxapp::LxApp>,
+    target_appid: &str,
+    release_type: ReleaseType,
+) -> Result<(), LxAppError> {
+    let manager = UpdateManager::new(current_lxapp.clone());
+    if !manager.is_installed(target_appid, release_type)? {
+        return Ok(());
+    }
+
+    let current_version = manager.installed_version(target_appid, release_type)?;
+    let Some(current_version) = current_version else {
+        crate::warn!("Installed lxapp has no recorded version; skip force-update gating")
+            .with_appid(target_appid.to_string());
+        return Ok(());
+    };
+
+    let update = match manager
+        .check_update(target_appid, release_type, Some(current_version.as_str()))
+        .await
+    {
+        Ok(update) => update,
+        Err(err) => {
+            crate::warn!("force-update check failed (fail-open): {}", err)
+                .with_appid(target_appid.to_string());
+            return Ok(());
+        }
+    };
+
+    let Some(pkg) = update else {
+        return Ok(());
+    };
+
+    if !pkg.is_force_update || pkg.version == current_version {
+        return Ok(());
+    }
+
+    let already_downloaded_same = matches!(
+        manager.has_downloaded_update(target_appid, release_type),
+        Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
+    );
+    if already_downloaded_same {
+        return Ok(());
+    }
+
+    let key = force_update_download_key(target_appid, release_type);
+    loop {
+        // Try to become the single downloader for this target.
+        if let Some(mut rx) = force_update_tracker().try_start_download(&key, &pkg.version) {
+            let manager_bg = manager.clone();
+            let key_bg = key.clone();
+            let target_appid_bg = target_appid.to_string();
+            let url_bg = pkg.url.clone();
+            let checksum_bg = pkg.checksum_sha256.clone();
+            let version_bg = pkg.version.clone();
+
+            let _ = rong::bg::spawn(async move {
+                let result = manager_bg
+                    .download_archive_with_checksum(
+                        &target_appid_bg,
+                        release_type,
+                        &url_bg,
+                        &checksum_bg,
+                        &version_bg,
+                    )
+                    .await;
+
+                match result {
+                    Ok(_) => force_update_tracker().mark_completed(&key_bg),
+                    Err(err) => force_update_tracker().mark_failed(&key_bg, err.to_string()),
+                }
+            });
+
+            loop {
+                let state = { rx.borrow().clone() };
+                match state {
+                    ForceUpdateDownloadState::Downloading { .. } => {
+                        if rx.changed().await.is_err() {
+                            break;
+                        }
+                    }
+                    ForceUpdateDownloadState::Completed => return Ok(()),
+                    ForceUpdateDownloadState::Failed(error) => {
+                        return Err(LxAppError::IoError(format!(
+                            "forced update package download failed: {}",
+                            error
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Another task is downloading; subscribe and wait for terminal state.
+        if let Some(mut rx) = force_update_tracker().wait_for_download(&key) {
+            loop {
+                let state = { rx.borrow().clone() };
+                match state {
+                    ForceUpdateDownloadState::Downloading { .. } => {
+                        if rx.changed().await.is_err() {
+                            break;
+                        }
+                    }
+                    ForceUpdateDownloadState::Completed => return Ok(()),
+                    ForceUpdateDownloadState::Failed(error) => {
+                        return Err(LxAppError::IoError(format!(
+                            "forced update package download failed: {}",
+                            error
+                        )));
+                    }
+                }
+            }
+        }
+
+        // No active tracker entry visible. If package is already prepared, we're done.
+        let prepared = matches!(
+            manager.has_downloaded_update(target_appid, release_type),
+            Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
+        );
+        if prepared {
+            return Ok(());
+        }
+
+        // Allow scheduler to make progress before retrying to acquire the downloader slot.
+        tokio::task::yield_now().await;
+    }
 }
 
 // Hashing for app data separation is provided by lxapp::lxapp_fingermark

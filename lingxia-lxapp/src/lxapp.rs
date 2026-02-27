@@ -8,7 +8,7 @@ use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
@@ -379,6 +379,7 @@ pub struct LxApp {
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
+    home_update_check_dispatched: AtomicBool,
 
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
@@ -469,6 +470,20 @@ impl LxApp {
     pub(crate) fn cas_status(&self, from: LxAppSessionStatus, to: LxAppSessionStatus) -> bool {
         self.session.cas_status(from, to)
     }
+
+    pub(crate) fn trigger_home_update_check_once(&self) {
+        if !self.is_home_lxapp {
+            return;
+        }
+        if self
+            .home_update_check_dispatched
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            UpdateManager::spawn_background_update_check_for(self.appid.clone(), self.release_type);
+        }
+    }
+
     // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
     /// Shutdown this LxApp completely. Idempotent.
     ///
@@ -541,6 +556,7 @@ impl LxApp {
             release_type,
             config: LxAppConfig::default(),
             executor,
+            home_update_check_dispatched: AtomicBool::new(false),
             session,
             state: Mutex::new(LxAppState::new()),
             cache: None,
@@ -1602,6 +1618,7 @@ pub fn init(runtime: Platform) -> Option<String> {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;
+
             let app_version = config.product_version.clone();
             let stored_app_version = match metadata::app_version_get() {
                 Ok(version) => version,
@@ -1614,31 +1631,7 @@ pub fn init(runtime: Platform) -> Option<String> {
                 .as_deref()
                 .map_or(true, |version| version != app_version);
 
-            // Check if installation is needed before creating LxApp
-            // This ensures lxapp.json is only loaded once
-            let installed_record = match metadata::get(&home_lxapp_appid, ReleaseType::Release) {
-                Ok(record) => record,
-                Err(e) => {
-                    warn!("Failed to read installed metadata for home lxapp: {}", e);
-                    None
-                }
-            };
-            let mut should_install_from_assets = app_version_changed;
-            if !should_install_from_assets {
-                match installed_record.as_ref() {
-                    None => {
-                        should_install_from_assets = true;
-                    }
-                    Some(record) => {
-                        let install_path = Path::new(&record.install_path);
-                        if record.install_path.is_empty() || !install_path.exists() {
-                            should_install_from_assets = true;
-                        }
-                    }
-                }
-            }
-
-            if should_install_from_assets {
+            if app_version_changed {
                 if let Err(e) = crate::update::UpdateManager::install_from_assets(
                     runtime_arc.clone(),
                     &home_lxapp_appid,
@@ -1646,6 +1639,27 @@ pub fn init(runtime: Platform) -> Option<String> {
                 ) {
                     error!("Failed to install home LxApp: {}", e);
                     return None;
+                }
+            } else {
+                let has_pending_home_update =
+                    metadata::downloaded_get(&home_lxapp_appid, ReleaseType::Release)
+                        .map(|record| record.is_some())
+                        .unwrap_or(false);
+                if has_pending_home_update {
+                    match crate::update::UpdateManager::apply_downloaded_update(
+                        runtime_arc.clone(),
+                        &home_lxapp_appid,
+                        ReleaseType::Release,
+                    ) {
+                        Ok(()) => {
+                            info!("Applied pending home lxapp update before startup")
+                                .with_appid(home_lxapp_appid.clone());
+                        }
+                        Err(e) => {
+                            warn!("Failed to apply pending home lxapp update: {}", e)
+                                .with_appid(home_lxapp_appid.clone());
+                        }
+                    }
                 }
             }
             if let Err(e) = metadata::app_version_set(&app_version) {
@@ -1688,11 +1702,6 @@ pub fn init(runtime: Platform) -> Option<String> {
                 error!("Failed to trigger home app service: {}", e)
                     .with_appid(home_lxapp_appid.clone());
             }
-
-            UpdateManager::spawn_background_update_check_for(
-                home_lxapp_appid.clone(),
-                ReleaseType::Release,
-            );
 
             info!("LxApps initialized successfully");
 

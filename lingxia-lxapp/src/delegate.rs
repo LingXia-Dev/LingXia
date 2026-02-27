@@ -154,6 +154,7 @@ impl LxAppDelegate for LxApp {
         }
         let args_str = serde_json::to_string(&args).ok();
         let _ = self.appservice_notify(AppServiceEvent::OnShow, args_str);
+        self.trigger_home_update_check_once();
 
         resolved_path
     }

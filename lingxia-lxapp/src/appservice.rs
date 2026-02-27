@@ -475,7 +475,11 @@ pub(crate) fn create_app_svc(
     instance_assignments.lock().unwrap().insert(key, worker_id);
 
     // Send message to create the runtime in the dedicated worker
-    sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
+    if let Err(e) = sender.send(ServiceMessage::CreateAppSvc { lxapp }) {
+        instance_assignments.lock().unwrap().remove(&key);
+        free_workers.lock().unwrap().push_front(worker_id);
+        return Err(e.into());
+    }
 
     info!("Assigned dedicated worker {} to app {}", worker_id, appid);
     Ok(())

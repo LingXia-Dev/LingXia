@@ -47,7 +47,10 @@ pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use stream_source::{
     FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
 };
-pub use update::{DownloadedUpdateInfo, UpdateManager};
+pub use update::{
+    DownloadedUpdateInfo, UpdateManager, ensure_force_update_for_installed,
+    is_force_update_downloading,
+};
 
 // Re-export for internal crate usage
 pub(crate) use provider::get_provider;

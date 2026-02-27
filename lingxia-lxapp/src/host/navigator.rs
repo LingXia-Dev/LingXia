@@ -45,14 +45,6 @@ fn should_navigate_to_lxapp(
     Ok(true)
 }
 
-async fn ensure_first_install(
-    current_lxapp: &Arc<LxApp>,
-    target_appid: &str,
-    release_type: ReleaseType,
-) -> Result<(), LxAppError> {
-    crate::update::ensure_first_install(current_lxapp, target_appid, release_type).await
-}
-
 async fn do_navigate_to_lxapp(
     lxapp: Arc<LxApp>,
     options: NavigateToLxAppOptions,
@@ -63,7 +55,12 @@ async fn do_navigate_to_lxapp(
 
     await_or_cancel(
         cancel,
-        ensure_first_install(&lxapp, &target_appid, release_type),
+        crate::update::ensure_first_install(&lxapp, &target_appid, release_type),
+    )
+    .await?;
+    await_or_cancel(
+        cancel,
+        crate::update::ensure_force_update_for_installed(&lxapp, &target_appid, release_type),
     )
     .await?;
 

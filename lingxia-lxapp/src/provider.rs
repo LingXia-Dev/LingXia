@@ -30,6 +30,7 @@ pub struct UpdatePackageInfo {
     pub checksum_sha256: String,
     pub size: Option<u64>,
     pub release_notes: Option<Vec<String>>,
+    pub is_force_update: bool,
 }
 
 /// Error type for provider operations.
