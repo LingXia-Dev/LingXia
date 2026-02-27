@@ -14,14 +14,14 @@ pub(crate) enum Scope {
 
 /// Envelope for a native -> JS event.
 #[derive(Clone, Debug)]
-pub(crate) struct BridgeEvent {
+pub(crate) struct AppBusEvent {
     pub scope: Scope,
     pub event_name: String,
     pub payload_json: Option<String>,
 }
 
 /// Registry stored on the JSRuntime for handler registrations.
-pub(crate) struct BridgeRegistry {
+pub(crate) struct EventBusRegistry {
     handlers: RefCell<HashMap<Scope, Vec<HandlerEntry>>>,
 }
 
@@ -31,9 +31,9 @@ struct HandlerEntry {
     callback: JSFunc,
 }
 
-impl JSRuntimeService for BridgeRegistry {}
+impl JSRuntimeService for EventBusRegistry {}
 
-impl Default for BridgeRegistry {
+impl Default for EventBusRegistry {
     fn default() -> Self {
         Self {
             handlers: RefCell::new(HashMap::new()),
@@ -43,12 +43,12 @@ impl Default for BridgeRegistry {
 
 /// Initialize the runtime registry (idempotent).
 pub(crate) fn init(ctx: &JSContext) {
-    ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    ctx.runtime().get_or_init_service::<EventBusRegistry>();
 }
 
 /// Remove all handler registrations for a page (e.g., on unload).
 pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry
         .handlers
         .borrow_mut()
@@ -72,7 +72,7 @@ pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc)
         callback,
     };
 
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry
         .handlers
         .borrow_mut()
@@ -93,7 +93,7 @@ pub fn unregister_app_handler(
     if event_name.trim().is_empty() {
         return 0;
     }
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     let mut remaining = 0usize;
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if !matches!(scope, Scope::App) {
@@ -138,7 +138,7 @@ pub fn register_page_handler(
         callback,
     };
 
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry
         .handlers
         .borrow_mut()
@@ -153,7 +153,7 @@ pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &st
     if page_path.trim().is_empty() || event_name.trim().is_empty() {
         return;
     }
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if let Scope::Page(path) = scope {
             if path == page_path {
@@ -165,8 +165,8 @@ pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &st
     });
 }
 
-/// Dispatch a bridge event into the correct JS handlers on the JS thread.
-pub(crate) async fn dispatch_bridge_event(ctx: &JSContext, event: &BridgeEvent) -> JSResult<()> {
+/// Dispatch an app bus event into the correct JS handlers on the JS thread.
+pub(crate) async fn dispatch_app_bus_event(ctx: &JSContext, event: &AppBusEvent) -> JSResult<()> {
     match &event.scope {
         Scope::App => {
             emit_to_handlers(
@@ -195,7 +195,7 @@ async fn emit_to_handlers(
     event_name: &str,
     payload_json: Option<&str>,
 ) -> JSResult<()> {
-    let registry = ctx.runtime().get_or_init_service::<BridgeRegistry>();
+    let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     let handlers = {
         let map = registry.handlers.borrow();
         map.get(&scope).cloned().unwrap_or_default()
@@ -233,13 +233,13 @@ pub fn emit_app_event(appid: &str, event_name: &str, payload_json: Option<String
         return false;
     };
 
-    let event = BridgeEvent {
+    let event = AppBusEvent {
         scope: Scope::App,
         event_name: event_name.to_string(),
         payload_json,
     };
 
-    if let Err(e) = lxapp.executor.dispatch_bridge_event(lxapp.clone(), event) {
+    if let Err(e) = lxapp.executor.dispatch_app_bus_event(lxapp.clone(), event) {
         error!("Failed to dispatch app event: {}", e).with_appid(appid.to_string());
         false
     } else {
@@ -264,13 +264,13 @@ pub fn emit_page_event(
         return false;
     };
 
-    let event = BridgeEvent {
+    let event = AppBusEvent {
         scope: Scope::Page(page_path.to_string()),
         event_name: event_name.to_string(),
         payload_json,
     };
 
-    if let Err(e) = lxapp.executor.dispatch_bridge_event(lxapp.clone(), event) {
+    if let Err(e) = lxapp.executor.dispatch_app_bus_event(lxapp.clone(), event) {
         error!("Failed to dispatch page event: {}", e).with_appid(appid.to_string());
         false
     } else {

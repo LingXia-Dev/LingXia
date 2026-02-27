@@ -4,10 +4,10 @@ mod archive;
 mod cache;
 mod delegate;
 mod error;
-pub mod event;
 mod executor;
 pub(crate) mod host;
 pub mod key_event;
+pub mod lifecycle;
 pub mod log;
 pub mod lx;
 mod lxapp;
@@ -21,14 +21,14 @@ mod update;
 
 pub use app::{app_config, product_name, product_version};
 pub use appservice::PageSvc;
-pub use appservice::bridge_events::{
+pub use appservice::event_bus::{
     emit_app_event, emit_page_event, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_page_handler,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, UiEventType};
 pub use error::LxAppError;
-pub use event::{
+pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
     LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent,
 };

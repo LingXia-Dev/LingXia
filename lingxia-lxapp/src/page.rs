@@ -1,5 +1,5 @@
 use crate::appservice::bridge::IncomingMessage;
-use crate::event::PageLifecycleEvent;
+use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{
     self,
     navbar::NavigationBarState,
@@ -330,13 +330,13 @@ impl Page {
 
             for (event, query) in events_to_fire {
                 let page_event = match event {
-                    PageLifecycleEvent::OnLoad => crate::event::PageServiceEvent::OnLoad,
-                    PageLifecycleEvent::OnShow => crate::event::PageServiceEvent::OnShow,
-                    PageLifecycleEvent::OnReady => crate::event::PageServiceEvent::OnReady,
-                    PageLifecycleEvent::OnHide => crate::event::PageServiceEvent::OnHide,
-                    PageLifecycleEvent::OnUnload => crate::event::PageServiceEvent::OnUnload,
+                    PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
+                    PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
+                    PageLifecycleEvent::OnReady => crate::lifecycle::PageServiceEvent::OnReady,
+                    PageLifecycleEvent::OnHide => crate::lifecycle::PageServiceEvent::OnHide,
+                    PageLifecycleEvent::OnUnload => crate::lifecycle::PageServiceEvent::OnUnload,
                     PageLifecycleEvent::OnPullDownRefresh => {
-                        crate::event::PageServiceEvent::OnPullDownRefresh
+                        crate::lifecycle::PageServiceEvent::OnPullDownRefresh
                     }
                     PageLifecycleEvent::Unknown => {
                         // Skip unknown

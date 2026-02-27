@@ -70,7 +70,7 @@ impl fmt::Display for AppServiceEvent {
     }
 }
 
-// App-level lifecycle events (kept for backwards-compatible helpers)
+// App-level lifecycle events used by app lifecycle helpers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LxAppLifecycleEvent {
     OnLaunch,

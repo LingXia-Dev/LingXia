@@ -1,7 +1,7 @@
-use crate::appservice::bridge_events::BridgeEvent;
+use crate::appservice::event_bus::AppBusEvent;
 use crate::appservice::{ServiceMessage, WorkerService, lxapp_service_handler};
-use crate::event::AppServiceEvent;
-use crate::event::PageServiceEvent;
+use crate::lifecycle::AppServiceEvent;
+use crate::lifecycle::PageServiceEvent;
 use crate::{LxAppError, error, info};
 
 use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};
@@ -216,7 +216,7 @@ impl LxAppExecutor {
             ServiceMessage::CallPageSvc { lxapp, .. } => &lxapp.appid,
             ServiceMessage::CreatePage { lxapp, .. } => &lxapp.appid,
             ServiceMessage::CallPageSvcEvent { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::DispatchBridgeEvent { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::DispatchAppBusEvent { lxapp, .. } => &lxapp.appid,
         };
 
         // Resolve target worker strictly from instance mapping (object identity)
@@ -228,7 +228,7 @@ impl LxAppExecutor {
             | ServiceMessage::CallPageSvc { lxapp, .. }
             | ServiceMessage::CreatePage { lxapp, .. }
             | ServiceMessage::CallPageSvcEvent { lxapp, .. }
-            | ServiceMessage::DispatchBridgeEvent { lxapp, .. } => {
+            | ServiceMessage::DispatchAppBusEvent { lxapp, .. } => {
                 Some(lxapp.as_ref() as *const _ as usize)
             }
         };
@@ -362,13 +362,13 @@ impl LxAppExecutor {
     }
 
     /// Dispatch a native -> JS event through the app worker.
-    pub(crate) fn dispatch_bridge_event(
+    pub(crate) fn dispatch_app_bus_event(
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
-        event: BridgeEvent,
+        event: AppBusEvent,
     ) -> Result<(), LxAppError> {
         self.sender
-            .send(ServiceMessage::DispatchBridgeEvent { lxapp, event })?;
+            .send(ServiceMessage::DispatchAppBusEvent { lxapp, event })?;
         Ok(())
     }
 }

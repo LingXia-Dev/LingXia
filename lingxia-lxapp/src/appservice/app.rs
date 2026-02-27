@@ -1,5 +1,5 @@
 use crate::appservice::set_app_svc_for_ctx;
-use crate::event::AppServiceEvent;
+use crate::lifecycle::AppServiceEvent;
 use rong::{
     JSContext, JSFunc, JSObject, JSResult, JSValue, Source, error::HostError, js_class, js_export,
     js_method,

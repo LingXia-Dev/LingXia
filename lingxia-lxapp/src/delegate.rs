@@ -1,5 +1,5 @@
 use crate::PageLifecycleEvent;
-use crate::event::AppServiceEvent;
+use crate::lifecycle::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::update::UpdateManager;
@@ -72,9 +72,9 @@ impl LxAppDelegate for LxApp {
         // When switching to this app, hide the previously active app (if any).
         if !previous_appid.is_empty() && previous_appid != self.appid {
             if let Some(previous) = lxapp::try_get(&previous_appid) {
-                let args = crate::event::AppServiceEventArgs {
-                    source: crate::event::AppServiceEventSource::Lxapp,
-                    reason: crate::event::AppServiceEventReason::SwitchAway,
+                let args = crate::lifecycle::AppServiceEventArgs {
+                    source: crate::lifecycle::AppServiceEventSource::Lxapp,
+                    reason: crate::lifecycle::AppServiceEventReason::SwitchAway,
                 }
                 .to_json_string();
                 let _ = previous.appservice_notify(AppServiceEvent::OnHide, Some(args));
@@ -139,15 +139,15 @@ impl LxAppDelegate for LxApp {
         if let serde_json::Value::Object(map) = &mut args {
             map.insert(
                 "source".to_string(),
-                serde_json::to_value(crate::event::AppServiceEventSource::Lxapp)
+                serde_json::to_value(crate::lifecycle::AppServiceEventSource::Lxapp)
                     .unwrap_or_else(|_| serde_json::Value::String("lxapp".to_string())),
             );
             map.insert(
                 "reason".to_string(),
                 serde_json::to_value(if was_already_opened {
-                    crate::event::AppServiceEventReason::SwitchBack
+                    crate::lifecycle::AppServiceEventReason::SwitchBack
                 } else {
-                    crate::event::AppServiceEventReason::Open
+                    crate::lifecycle::AppServiceEventReason::Open
                 })
                 .unwrap_or_else(|_| serde_json::Value::String("unknown".to_string())),
             );
@@ -172,9 +172,9 @@ impl LxAppDelegate for LxApp {
         }
 
         // Trigger onHide with reason so JS can distinguish lxapp close vs host background.
-        let args = crate::event::AppServiceEventArgs {
-            source: crate::event::AppServiceEventSource::Lxapp,
-            reason: crate::event::AppServiceEventReason::Close,
+        let args = crate::lifecycle::AppServiceEventArgs {
+            source: crate::lifecycle::AppServiceEventSource::Lxapp,
+            reason: crate::lifecycle::AppServiceEventReason::Close,
         }
         .to_json_string();
         if let Err(e) = self.appservice_notify(AppServiceEvent::OnHide, Some(args)) {

@@ -39,7 +39,7 @@ mod security;
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
-use crate::event::AppServiceEvent;
+use crate::lifecycle::AppServiceEvent;
 use lingxia_webview::{WebTag, destroy_webview};
 
 /// Constants for lxapp storage layout

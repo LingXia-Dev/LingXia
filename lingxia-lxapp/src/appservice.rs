@@ -15,16 +15,16 @@ use std::time::Duration;
 use tokio::sync::oneshot;
 
 mod app;
-use crate::event::AppServiceEvent;
+use crate::lifecycle::AppServiceEvent;
 
 pub mod bridge;
 
-pub(crate) mod bridge_events;
+pub(crate) mod event_bus;
 
 pub(crate) mod view_call;
 
 mod page;
-use crate::event::PageServiceEvent;
+use crate::lifecycle::PageServiceEvent;
 pub use page::PageSvc;
 
 mod plugin;
@@ -75,10 +75,10 @@ pub(crate) enum ServiceMessage {
         event: PageServiceEvent,
         args: Option<String>,
     },
-    // Native -> JS event dispatch (e.g., video context)
-    DispatchBridgeEvent {
+    // Native -> JS event dispatch via event bus (e.g., video context)
+    DispatchAppBusEvent {
         lxapp: Arc<LxApp>,
-        event: bridge_events::BridgeEvent,
+        event: event_bus::AppBusEvent,
     },
 }
 
@@ -188,7 +188,7 @@ pub(crate) async fn lxapp_service_handler(
             let _ = app::init(&ctx);
             let _ = page::init(&ctx);
             let _ = plugin::init(&ctx);
-            bridge_events::init(&ctx);
+            event_bus::init(&ctx);
 
             let app_ctx = LxAppCtx::new(lxapp.clone());
 
@@ -310,7 +310,7 @@ pub(crate) async fn lxapp_service_handler(
                 .unwrap_or(None);
 
                 if page_svc.is_some() {
-                    bridge_events::clear_page(ctx, &path);
+                    event_bus::clear_page(ctx, &path);
 
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(lxapp.appid.clone())
@@ -418,21 +418,24 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
         }
-        ServiceMessage::DispatchBridgeEvent { lxapp, event } => {
+        ServiceMessage::DispatchAppBusEvent { lxapp, event } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 let same_app = LxApp::from_ctx(ctx)
                     .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if same_app {
                     // Don't block the worker message pump on user JS event handlers. Like app/page
-                    // lifecycle events, bridge event handlers can await network/IO and would
+                    // lifecycle events, event bus handlers can await network/IO and would
                     // otherwise starve view messages (including handshake retries).
                     let ctx = ctx.clone();
                     let appid = lxapp.appid.clone();
                     rong::spawn(async move {
-                        if let Err(e) = bridge_events::dispatch_bridge_event(&ctx, &event).await {
-                            error!("[Worker {}] Dispatch bridge event failed: {}", worker_id, e)
-                                .with_appid(appid);
+                        if let Err(e) = event_bus::dispatch_app_bus_event(&ctx, &event).await {
+                            error!(
+                                "[Worker {}] Dispatch app bus event failed: {}",
+                                worker_id, e
+                            )
+                            .with_appid(appid);
                         }
                     });
                 }
