@@ -12,6 +12,7 @@ declare module 'liblingxia.so' {
   export interface LxAppInfo {
     appName: string;
     version: string;
+    releaseType: 'release' | 'preview' | 'developer';
     cacheDir: string;
   }
 

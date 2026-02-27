@@ -31,6 +31,7 @@ fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
 pub struct LxAppInfo {
     pub app_name: String,
     pub version: String,
+    pub release_type: String,
     pub cache_dir: String,
 }
 
@@ -205,6 +206,7 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
         LxAppInfo {
             app_name: rust_app_info.app_name,
             version: rust_app_info.version,
+            release_type: rust_app_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
         }
     })

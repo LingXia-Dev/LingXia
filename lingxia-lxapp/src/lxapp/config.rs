@@ -10,6 +10,8 @@ pub struct LxAppInfo {
     pub app_name: String,
     /// LxApp version
     pub version: String,
+    /// LxApp release type (release|preview|developer)
+    pub release_type: String,
 }
 
 /// Plugin definition embedded in `lxapp.json`.
@@ -74,10 +76,11 @@ impl LxAppConfig {
     }
 
     /// Get LxApp basic information for FFI
-    pub fn get_lxapp_info(&self) -> LxAppInfo {
+    pub fn get_lxapp_info(&self, release_type: &str) -> LxAppInfo {
         LxAppInfo {
             app_name: self.appName.clone(),
             version: self.version.clone(),
+            release_type: release_type.to_string(),
         }
     }
 }

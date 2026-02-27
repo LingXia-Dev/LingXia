@@ -488,15 +488,17 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppInfo<'a>(
         // Create Java strings
         let app_name_str = env.new_string(&lxapp_info.app_name)?;
         let version_str = env.new_string(&lxapp_info.version)?;
+        let release_type_str = env.new_string(&lxapp_info.release_type)?;
         let cache_dir_str = env.new_string(lxapp.user_cache_dir.to_string_lossy().into_owned())?;
 
-        // Create LxAppInfo object (appName, version, cacheDir)
+        // Create LxAppInfo object (appName, version, releaseType, cacheDir)
         let obj = env.new_object(
             lxapp_info_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
             &[
                 (&app_name_str).into(),
                 (&version_str).into(),
+                (&release_type_str).into(),
                 (&cache_dir_str).into(),
             ],
         )?;

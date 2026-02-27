@@ -1127,7 +1127,7 @@ impl LxApp {
     }
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
-        self.config.get_lxapp_info()
+        self.config.get_lxapp_info(self.release_type.as_str())
     }
 
     /// Find the actual configured page path that matches the given path.

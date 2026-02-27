@@ -24,6 +24,7 @@ mod bridge {
     pub struct LxAppInfo {
         pub app_name: String,
         pub version: String,
+        pub release_type: String,
         pub cache_dir: String,
     }
 
@@ -316,12 +317,14 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
         self::bridge::LxAppInfo {
             app_name: lxapp_info.app_name,
             version: lxapp_info.version,
+            release_type: lxapp_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
         }
     } else {
         self::bridge::LxAppInfo {
             app_name: String::new(),
             version: String::new(),
+            release_type: String::new(),
             cache_dir: String::new(),
         }
     }
