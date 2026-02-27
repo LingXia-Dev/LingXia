@@ -6,6 +6,7 @@ type PageData = {
   greeting?: string;
   imageUrl?: string;
   ipAddr?: string;
+  appVersion?: string;
 };
 
 type PageActions = {
@@ -20,6 +21,7 @@ export default function HomePage() {
   const greetingMessage = typeof data?.greeting === 'string' ? data.greeting : '';
   const ipAddress = typeof data?.ipAddr === 'string' ? data.ipAddr : '';
   const imageUrl = typeof data?.imageUrl === 'string' ? data.imageUrl : '';
+  const appVersion = typeof data?.appVersion === 'string' ? data.appVersion : '';
 
   React.useEffect(() => {
     if (isSending && greetingMessage) {
@@ -100,6 +102,12 @@ export default function HomePage() {
               </div>
             </div>
           )}
+
+          {appVersion && (
+            <div className="mt-1 text-left leading-none">
+              <span className="text-[10px] text-gray-500 font-medium">{appVersion}</span>
+            </div>
+          )}
         </div>
 
         {/* IP Address Badge - Below Card */}
@@ -113,6 +121,7 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

@@ -53,6 +53,10 @@
             </p>
           </div>
         </div>
+
+        <div v-if="appVersion" class="mt-1 text-left leading-none">
+          <span class="text-[10px] text-gray-500 font-medium">{{ appVersion }}</span>
+        </div>
       </div>
 
       <!-- IP Address Badge - Below Card -->
@@ -64,6 +68,7 @@
         </div>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -76,6 +81,7 @@ type PageData = {
   greeting?: string;
   imageUrl?: string;
   ipAddr?: string;
+  appVersion?: string;
 };
 
 type PageActions = {
@@ -90,6 +96,7 @@ const isSending = ref(false);
 const greetingMessage = computed(() => typeof data?.greeting === 'string' ? data.greeting : '');
 const ipAddress = computed(() => typeof data?.ipAddr === 'string' ? data.ipAddr : '');
 const imageUrl = computed(() => typeof data?.imageUrl === 'string' ? data.imageUrl : '');
+const appVersion = computed(() => typeof data?.appVersion === 'string' ? data.appVersion : '');
 
 watch(greetingMessage, (newVal) => {
   if (isSending.value && newVal) {

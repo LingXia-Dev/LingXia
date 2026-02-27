@@ -9,6 +9,7 @@ Page({
 
     ipAddr: globalData.ipAddr,
     greetCount: 0,
+    appVersion: "",
   },
 
   onReady: function () {
@@ -37,6 +38,19 @@ Page({
 
   onLoad: async function () {
     console.log("[Home] Page loaded");
+    try {
+      const info = lx.getLxAppInfo();
+      const suffix =
+        info.releaseType && info.releaseType !== "release"
+          ? ` (${info.releaseType})`
+          : "";
+      this.setData({
+        appVersion: `v${info.version}${suffix}`,
+      });
+    } catch (error) {
+      console.error("[Home] Failed to get app version:", error);
+    }
+
     console.log(lx.env.USER_CACHE_PATH);
     let testFile = `${lx.env.USER_CACHE_PATH}/testFile`;
     const testContent = "Hello, World!";
