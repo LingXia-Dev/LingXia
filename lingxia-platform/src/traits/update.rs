@@ -22,7 +22,8 @@ pub trait UpdateService: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `callback_id` - Callback ID for result
-    /// * `update_info_json` - Optional JSON string with update details: {"version":"1.2.0","size":15728640,"releaseNotes":["..."]}
+    /// * `update_info_json` - Optional JSON string with update details:
+    ///   {"version":"1.2.0","size":15728640,"releaseNotes":["..."],"isForceUpdate":true}
     ///
     /// # Callback behavior
     /// - Confirm: callback success with payload (e.g. {"confirm":true})

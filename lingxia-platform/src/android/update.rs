@@ -65,7 +65,8 @@ pub fn dismiss_download_progress() -> Result<(), PlatformError> {
 ///
 /// # Arguments
 /// * `callback_id` - Callback ID for result
-/// * `update_info_json` - Optional JSON string with update details: {"version":"1.2.0","size":15728640,"releaseNotes":["..."]}
+/// * `update_info_json` - Optional JSON string with update details:
+///   {"version":"1.2.0","size":15728640,"releaseNotes":["..."],"isForceUpdate":true}
 pub fn show_update_prompt(
     callback_id: u64,
     update_info_json: Option<&str>,

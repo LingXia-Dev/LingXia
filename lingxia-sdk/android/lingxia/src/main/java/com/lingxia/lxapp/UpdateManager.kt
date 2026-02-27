@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -187,14 +188,16 @@ object UpdateManager {
     data class UpdateInfo(
         val version: String,
         val sizeBytes: Long,
-        val releaseNotes: List<String>?
+        val releaseNotes: List<String>?,
+        val isForceUpdate: Boolean = false
     )
 
     /**
      * Prompt the user to confirm update installation.
      *
      * @param callbackId Callback ID for result
-     * @param updateInfoJson Optional JSON with update details: {"version":"1.2.0","size":15728640,"releaseNotes":["..."]}
+     * @param updateInfoJson Optional JSON with update details:
+     * {"version":"1.2.0","size":15728640,"releaseNotes":["..."],"isForceUpdate":true}
      */
     @JvmStatic
     fun showUpdatePrompt(callbackId: Long, updateInfoJson: String? = null) {
@@ -236,11 +239,12 @@ object UpdateManager {
             val version = obj.optString("version", "")
             val size = obj.optLong("size", 0L)
             val notesArray = obj.optJSONArray("releaseNotes")
+            val isForceUpdate = obj.optBoolean("isForceUpdate", false)
             val notes = if (notesArray != null) {
                 (0 until notesArray.length()).map { notesArray.getString(it) }
             } else null
 
-            UpdateInfo(version, size, notes)
+            UpdateInfo(version, size, notes, isForceUpdate)
         } catch (e: Exception) {
             Log.w(TAG, "Failed to parse update info JSON", e)
             null
@@ -277,6 +281,7 @@ object UpdateManager {
         callbackId: Long,
         updateInfo: UpdateInfo?
     ): Dialog {
+        val isForceUpdate = updateInfo?.isForceUpdate == true
         val dialog = Dialog(activity)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.setCancelable(false)
@@ -345,24 +350,28 @@ object UpdateManager {
         titleContainer.addView(titleView)
         titleContainer.addView(versionView)
 
-        // Close button (X)
-        val closeButton = TextView(activity).apply {
-            text = "✕"
-            setTextColor(Color.parseColor("#9CA3AF"))
-            textSize = 24f
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                dp(activity, 36),
-                dp(activity, 36)
-            )
-            setOnClickListener {
-                dialog.dismiss()
-                NativeApi.onCallback(callbackId, false, "2000")
-            }
-        }
-
         header.addView(titleContainer)
-        header.addView(closeButton)
+        if (!isForceUpdate) {
+            // Non-forced updates can be dismissed by user choice.
+            val closeButton = ImageView(activity).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    dp(activity, 36),
+                    dp(activity, 36)
+                )
+                setImageResource(R.drawable.icon_close_x)
+                setColorFilter(Color.parseColor("#9CA3AF"))
+                scaleType = ImageView.ScaleType.CENTER_INSIDE
+                setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 4))
+                contentDescription = activity.getString(R.string.lx_common_close)
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    NativeApi.onCallback(callbackId, false, "2000")
+                }
+            }
+            header.addView(closeButton)
+        }
         container.addView(header)
 
         // Release notes (if available)
