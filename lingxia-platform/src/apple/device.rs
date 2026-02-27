@@ -209,27 +209,10 @@ impl Device for Platform {
         }
         #[cfg(target_os = "macos")]
         {
-            // macOS can open tel: URLs but they'll be handled by default app (FaceTime, etc.)
-            use std::process::Command;
-
-            let tel_url = format!("tel:{}", phone_number);
-            let result = Command::new("open").arg(&tel_url).output();
-
-            match result {
-                Ok(output) => {
-                    if output.status.success() {
-                        Ok(())
-                    } else {
-                        Err(PlatformError::Platform(
-                            "Failed to open phone call URL".to_string(),
-                        ))
-                    }
-                }
-                Err(e) => Err(PlatformError::Platform(format!(
-                    "Failed to execute open command: {}",
-                    e
-                ))),
-            }
+            let _ = phone_number;
+            Err(PlatformError::NotSupported(
+                "makePhoneCall is not supported on macOS".to_string(),
+            ))
         }
     }
 }
