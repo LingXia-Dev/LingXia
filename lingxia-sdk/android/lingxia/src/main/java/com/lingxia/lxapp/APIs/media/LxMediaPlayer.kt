@@ -641,6 +641,10 @@ class LxMediaPlayer(
         controlsOverlay?.setShowFullscreenButton(show)
     }
 
+    fun setSuppressAutoShowControls(suppress: Boolean) {
+        controlsOverlay?.setSuppressAutoShow(suppress)
+    }
+
     fun setCloseRequestListener(listener: (() -> Unit)?) {
         closeRequestListener = listener
     }

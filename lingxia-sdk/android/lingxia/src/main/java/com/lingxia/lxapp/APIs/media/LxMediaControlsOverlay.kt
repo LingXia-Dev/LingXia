@@ -59,6 +59,7 @@ internal class LxMediaControlsOverlay(
     private var hideControlsRunnable: Runnable? = null
     private var controlsVisible = false
     private var isEnabled = true
+    private var suppressAutoShow = false  // Suppress automatic control showing (for preview mode)
     private var showCloseButton = false
     private var showFullscreenButton = true
     private var showSettingsButton = false
@@ -427,7 +428,7 @@ internal class LxMediaControlsOverlay(
     }
 
     fun showCenterPlayButton(show: Boolean) {
-        if (show) {
+        if (show && !suppressAutoShow) {
             setControlsVisible(true)
         }
     }
@@ -476,6 +477,10 @@ internal class LxMediaControlsOverlay(
         } else {
             cancelAutoHide()
         }
+    }
+
+    fun setSuppressAutoShow(suppress: Boolean) {
+        suppressAutoShow = suppress
     }
 
     private fun setControlsInteractionEnabled(enabled: Boolean) {
@@ -553,8 +558,10 @@ internal class LxMediaControlsOverlay(
 
     internal fun onFullscreenChanged(isFullscreen: Boolean) {
         dismissSettingsPopup()
-        if (showCloseButton) topBar.alpha = 1f
-        setControlsVisible(true)
+        if (!suppressAutoShow) {
+            if (showCloseButton) topBar.alpha = 1f
+            setControlsVisible(true)
+        }
         updateFullscreenButton()
     }
 

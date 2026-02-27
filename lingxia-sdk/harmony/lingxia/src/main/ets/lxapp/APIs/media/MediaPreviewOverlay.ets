@@ -254,7 +254,7 @@ struct MediaViewer {
   @State private imageScale: number = 1;
   // Video player state
   @State private videoState: LxNativeVideoState = new LxNativeVideoState();
-  @State private showControls: boolean = true;
+  @State private showControls: boolean = false;  // Hide controls initially, show on tap
   @State private isSeeking: boolean = false;
   @State private sliderValue: number = 0;
   @State private playerId: string = '';
@@ -372,12 +372,14 @@ struct MediaViewer {
   }
 
   private onVideoEvent(event: string, detail: object): void {
-    hilog.info(DOMAIN, TAG, `Video event: ${event}`);
+    // Skip logging frequent timeupdate events
+    if (event !== 'timeupdate') {
+      hilog.info(DOMAIN, TAG, `Video event: ${event}`);
+    }
     if (event === 'playing') {
       this.videoState.isPlaying = true;
       this.videoState.isPaused = false;
       this.startProgressTimer();
-      this.resetControlsTimer();
       // Detect video orientation when video starts playing (dimensions available)
       this.detectVideoOrientation();
     } else if (event === 'pause') {
@@ -400,10 +402,13 @@ struct MediaViewer {
       this.videoState.isPaused = !this.videoState.isPlaying;
       if (this.videoState.isPlaying) {
         this.startProgressTimer();
+        // Only reset timer (auto-hide) when playing, don't force show
+        if (this.showControls) {
+          this.resetControlsTimer();
+        }
       } else {
         this.stopProgressTimer();
       }
-      this.resetControlsTimer();
     }
   }
 
@@ -529,8 +534,10 @@ struct MediaViewer {
             this.buildCenterPlayButton()
           }
 
-          // Close button (always visible)
-          this.buildCloseButton()
+          // Close button (show with controls on tap)
+          if (this.showControls) {
+            this.buildCloseButton()
+          }
         }
         // For landscape videos: swap width/height so after 90° rotation, content fills screen
         .width(this.isLandscapeVideo ? this.screenHeightVp : '100%')

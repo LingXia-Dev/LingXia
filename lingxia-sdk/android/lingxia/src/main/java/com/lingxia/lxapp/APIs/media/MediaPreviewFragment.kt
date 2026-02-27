@@ -429,6 +429,7 @@ private class PreviewPagerAdapter(
             val mediaPlayer = LxMediaPlayer(context, eventSink = { /* events ignored in preview */ })
             mediaPlayer.setShowCloseButton(true)
             mediaPlayer.setShowFullscreenButton(false)
+            mediaPlayer.setSuppressAutoShowControls(true)  // Prevent auto-showing controls in preview mode
             mediaPlayer.setCloseRequestListener {
                 onDismiss()
             }

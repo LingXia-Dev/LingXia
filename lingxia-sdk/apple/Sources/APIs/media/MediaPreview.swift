@@ -99,7 +99,7 @@ private struct PreviewMediaItem {
 }
 
 
-private final class MediaPreviewViewController: UIViewController {
+private final class MediaPreviewViewController: UIViewController, UIGestureRecognizerDelegate {
     private let items: [PreviewMediaItem]
     private var currentIndex: Int
 
@@ -203,6 +203,22 @@ private final class MediaPreviewViewController: UIViewController {
         setPagerInteraction(enabled: true)
         updateIndicator()
         updateCloseButtonVisibility()
+
+        // Keep close button in sync with player controls via the same tap gesture.
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap))
+        tapGesture.delegate = self
+        tapGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(tapGesture)
+    }
+
+    @objc private func handlePreviewTap() {
+        guard items.indices.contains(currentIndex) else { return }
+        let currentItem = items[currentIndex]
+        if currentItem.type == .video {
+            UIView.animate(withDuration: 0.3) {
+                self.closeButton.alpha = self.closeButton.alpha > 0 ? 0 : 1
+            }
+        }
     }
 
 
@@ -239,10 +255,21 @@ private final class MediaPreviewViewController: UIViewController {
     }
 
     private func updateCloseButtonVisibility() {
-        // Hide close button for images (tap to dismiss), show for videos
+        // Hide close button for images (tap to dismiss)
+        // For videos, also hide initially (will show with controls on tap)
         guard items.indices.contains(currentIndex) else { return }
         let currentItem = items[currentIndex]
-        closeButton.isHidden = currentItem.type != .video
+        if currentItem.type == .video {
+            closeButton.isHidden = false
+            closeButton.alpha = 0
+        } else {
+            closeButton.isHidden = true
+            closeButton.alpha = 0
+        }
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
     }
 
     @objc private func closeTapped() {
@@ -402,7 +429,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             poster: item.coverURL,
             autoplay: true,
             controls: true,  // Show all controls
-            showControlsOnInit: true,
+            showControlsOnInit: false,  // Hide controls initially, show on tap
             objectFit: .cover  // Use cover to fill screen like native component fullscreen
         )
 
@@ -419,7 +446,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         })
 
         player.update(config: config)
-        // Don't show close button - MediaPreviewViewController already has one
+        // Don't show player's close button - using preview's custom close button
         player.setShowCloseButton(false)
         // Don't show fullscreen button - preview is already fullscreen
         player.setShowFullscreenButton(false)
