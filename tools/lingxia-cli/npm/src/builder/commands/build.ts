@@ -198,7 +198,12 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     console.log(` Completed in ${buildTime}s`);
     console.log(` Output directory: ${outputDir}`);
     if (buildOptions.package) {
-      const packageInfo = readPackageInfo(projectPath);
+      const packageInfo = resolvePackageInfo(
+        projectPath,
+        configManager,
+        isPluginMode,
+        pluginConfig,
+      );
       const packagePath = await packageDist(
         outputDir,
         projectPath,
@@ -287,20 +292,81 @@ type PackageInfo = {
   version?: string;
 };
 
-function readPackageInfo(projectPath: string): PackageInfo {
-  const pkgPath = path.join(projectPath, "package.json");
-  if (!fs.existsSync(pkgPath)) {
-    return {};
+function resolvePackageInfo(
+  projectPath: string,
+  configManager: ConfigManager,
+  isPluginMode: boolean,
+  pluginConfig: { lxPluginId: string; version: string } | null,
+): PackageInfo {
+  const packageJson = readOptionalJsonFile(
+    path.join(projectPath, "package.json"),
+  );
+  const rawPackageName = packageJson?.name;
+  const packageName =
+    typeof rawPackageName === "string" && rawPackageName.trim().length > 0
+      ? rawPackageName.trim()
+      : undefined;
+  const rawPackageVersion = packageJson?.version;
+  const packageVersion =
+    typeof rawPackageVersion === "string" && rawPackageVersion.trim().length > 0
+      ? rawPackageVersion.trim()
+      : undefined;
+
+  if (isPluginMode) {
+    const manifestVersion = pluginConfig?.version?.trim();
+    if (!manifestVersion) {
+      throw new Error('lxplugin.json is missing a valid "version".');
+    }
+    if (packageVersion && packageVersion !== manifestVersion) {
+      throw new Error(
+        `Version mismatch: lxplugin.json version "${manifestVersion}" does not match package.json version "${packageVersion}".`,
+      );
+    }
+
+    return {
+      name: packageName ?? pluginConfig?.lxPluginId,
+      version: manifestVersion,
+    };
   }
+
+  const lxappConfig = configManager.getLxappConfig();
+  const rawManifestVersion = lxappConfig.version;
+  const manifestVersion =
+    typeof rawManifestVersion === "string" &&
+    rawManifestVersion.trim().length > 0
+      ? rawManifestVersion.trim()
+      : undefined;
+  if (!manifestVersion) {
+    throw new Error('lxapp.json is missing a valid "version".');
+  }
+  if (packageVersion && packageVersion !== manifestVersion) {
+    throw new Error(
+      `Version mismatch: lxapp.json version "${manifestVersion}" does not match package.json version "${packageVersion}".`,
+    );
+  }
+
+  return {
+    name: packageName,
+    version: manifestVersion,
+  };
+}
+
+function readOptionalJsonFile(
+  filePath: string,
+): { name?: unknown; version?: unknown } | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
   try {
-    const raw = fs.readFileSync(pkgPath, "utf-8");
-    return JSON.parse(raw) as PackageInfo;
+    const raw = fs.readFileSync(filePath, "utf-8");
+    return JSON.parse(raw) as { name?: unknown; version?: unknown };
   } catch (error) {
     console.warn(
-      "⚠️ Failed to read package.json:",
+      `⚠️ Failed to read ${path.basename(filePath)}:`,
       error instanceof Error ? error.message : String(error),
     );
-    return {};
+    return null;
   }
 }
 
