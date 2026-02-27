@@ -82,8 +82,7 @@ export struct CapsuleMenuBottomSheetComponent {
     {
       iconPath: 'icons/icon_uninstall.svg',
       titleKey: 'lx_capsule_uninstall',
-      action: CAPSULE_ACTION_UNINSTALL,
-      isDestructive: true
+      action: CAPSULE_ACTION_UNINSTALL
     }
   ];
 

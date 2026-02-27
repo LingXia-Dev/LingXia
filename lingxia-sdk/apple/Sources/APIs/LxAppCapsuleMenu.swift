@@ -212,7 +212,7 @@ public class LxAppCapsuleMenu {
         let actions: [(icon: String, title: String, action: String, isDestructive: Bool)] = [
             ("icon_clean_cache", L10n.string("lx_capsule_clean_cache"), "clean_cache_restart", false),
             ("icon_restart", L10n.string("lx_capsule_restart"), "restart", false),
-            ("icon_uninstall", L10n.string("lx_capsule_uninstall"), "uninstall", true)
+            ("icon_uninstall", L10n.string("lx_capsule_uninstall"), "uninstall", false)
         ]
 
         let stackView = UIStackView()

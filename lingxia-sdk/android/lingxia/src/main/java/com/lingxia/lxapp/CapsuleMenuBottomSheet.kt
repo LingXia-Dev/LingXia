@@ -51,8 +51,7 @@ object CapsuleMenuBottomSheet {
             MenuItem(
                 iconResId = R.drawable.icon_uninstall,
                 titleResId = R.string.lx_capsule_uninstall,
-                action = NativeApi.CAPSULE_ACTION_UNINSTALL,
-                color = Color.parseColor("#FF3B30") // Red for destructive action
+                action = NativeApi.CAPSULE_ACTION_UNINSTALL
             )
         )
 
