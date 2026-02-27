@@ -1,6 +1,7 @@
 //! Provider traits and registration.
 
 use crate::error::LxAppError;
+use crate::lxapp::ReleaseType;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::OnceLock;
@@ -16,6 +17,7 @@ pub enum UpdateTarget {
     /// Miniapp.
     LxApp {
         id: String,
+        release_type: ReleaseType,
         current_version: Option<String>,
     },
     /// Plugin extension (specific version).

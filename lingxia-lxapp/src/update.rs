@@ -236,12 +236,13 @@ impl UpdateManager {
     pub async fn check_update(
         &self,
         lxappid: &str,
-        _release_type: ReleaseType,
+        release_type: ReleaseType,
         current_version: Option<&str>,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
         let target = UpdateTarget::LxApp {
             id: lxappid.to_string(),
+            release_type,
             current_version: current_version.map(|v| v.to_string()),
         };
 
