@@ -1,6 +1,7 @@
 use lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
+mod app;
 mod device;
 mod display;
 mod env;
@@ -24,6 +25,7 @@ pub struct LxLogicRuntime;
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
         env::init(ctx)?;
+        app::init(ctx)?;
         device::init(ctx)?;
         display::init(ctx)?;
         location::init(ctx)?;

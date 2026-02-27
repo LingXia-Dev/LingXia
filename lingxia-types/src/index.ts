@@ -23,6 +23,7 @@ export * from './generated/i18n';
 import type {
   AppConfig,
   AppInstance,
+  LxAppInfo,
   PageConfig,
   PageInstance,
 } from './app';
@@ -144,6 +145,7 @@ export interface Lx {
   navigateBackLxApp(): Promise<void>;
 
   getAppBaseInfo(): AppBaseInfo;
+  getLxAppInfo(): LxAppInfo;
   getSystemSetting(): SystemSettingInfo;
   openURL(options: OpenURLOptions): void;
 

@@ -15,6 +15,15 @@ export interface AppLifecycleEventArgs {
     | 'switch_away';
 }
 
+export type LxAppReleaseType = 'release' | 'preview' | 'developer';
+
+export interface LxAppInfo {
+  appId: string;
+  appName: string;
+  version: string;
+  releaseType: LxAppReleaseType;
+}
+
 export interface AppLaunchOptions {
   path?: string;
   query?: Record<string, string>;

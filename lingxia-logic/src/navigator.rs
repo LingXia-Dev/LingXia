@@ -1,6 +1,6 @@
+use crate::I18nKey;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
-use crate::I18nKey;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::lx;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType, UpdateManager};
