@@ -89,7 +89,7 @@ const domProps = computed(() => {
   if (props.loop) result.loop = true;
   if (props.muted) result.muted = true;
   if (props.controls) result.controls = true;
-  if (props.live) result.live = true;
+  if (props.live) result.live = '';
   if (props.volume !== undefined) result.volume = props.volume;
   if (props.objectFit) result['object-fit'] = props.objectFit;
   if (props.progressBar === false) result['progress-bar'] = 'false';

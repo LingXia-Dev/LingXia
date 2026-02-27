@@ -77,6 +77,12 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
       }
       continue;
     }
+    if (key === "live") {
+      if (value === true) {
+        domProps.live = "";
+      }
+      continue;
+    }
 
     domProps[attrName] = (key === "qualities" || key === "playbackRates") && Array.isArray(value)
       ? JSON.stringify(value)
