@@ -21,6 +21,12 @@ interface MenuAction {
   isDestructive?: boolean;
 }
 
+interface ReleaseBadge {
+  text: string;
+  textColor: string;
+  backgroundColor: string;
+}
+
 /**
  * Manager class to control the bottom sheet visibility from anywhere
  */
@@ -113,9 +119,23 @@ export struct CapsuleMenuBottomSheetComponent {
               .fontColor('#CCCCCC')
               .margin({ left: 4, right: 4 })
 
-            Text(this.appInfo.version)
-              .fontSize(14)
-              .fontColor('#999999')
+            Row() {
+              Text(this.appInfo.version)
+                .fontSize(14)
+                .fontColor('#999999')
+
+              if (this.releaseBadge()) {
+                Text(this.releaseBadge()?.text ?? '')
+                  .fontSize(10)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(this.releaseBadge()?.textColor ?? '#000000')
+                  .backgroundColor(this.releaseBadge()?.backgroundColor ?? '#FFFFFF')
+                  .borderRadius(8)
+                  .padding({ left: 6, right: 6, top: 2, bottom: 2 })
+                  .margin({ left: 4, top: -8 })
+              }
+            }
+            .alignItems(VerticalAlign.Center)
           }
           .width('100%')
           .padding({ left: 20, right: 20, top: 16, bottom: 12 })
@@ -202,5 +222,30 @@ export struct CapsuleMenuBottomSheetComponent {
 
     // Hide the menu
     this.hide();
+  }
+
+  private releaseBadge(): ReleaseBadge | null {
+    if (!this.appInfo) {
+      return null;
+    }
+
+    const releaseType: 'release' | 'preview' | 'developer' = this.appInfo.releaseType;
+    if (releaseType === 'release') {
+      return {
+        text: 'DEV',
+        textColor: '#1D4ED8',
+        backgroundColor: '#DBEAFE'
+      };
+    }
+
+    if (releaseType === 'preview') {
+      return {
+        text: 'PRE',
+        textColor: '#B45309',
+        backgroundColor: '#FFEDD5'
+      };
+    }
+
+    return null;
   }
 }

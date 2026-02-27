@@ -49,6 +49,7 @@ public class LxAppCapsuleMenu {
         // Extract info strings
         let appName = appInfo.app_name.toString()
         let version = appInfo.version.toString()
+        let releaseType = appInfo.release_type.toString()
 
         let backgroundView = UIView(frame: UIScreen.main.bounds)
         backgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
@@ -62,7 +63,7 @@ public class LxAppCapsuleMenu {
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         // Header: App name and version on one line
-        let headerView = createHeaderView(appName: appName, version: version)
+        let headerView = createHeaderView(appName: appName, version: version, releaseType: releaseType)
         containerView.addSubview(headerView)
 
         // Separator
@@ -121,9 +122,10 @@ public class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createHeaderView(appName: String, version: String) -> UIView {
+    private static func createHeaderView(appName: String, version: String, releaseType: String) -> UIView {
         let headerView = UIView()
         headerView.translatesAutoresizingMaskIntoConstraints = false
+        headerView.clipsToBounds = false
 
         // App name
         let nameLabel = UILabel()
@@ -150,7 +152,7 @@ public class LxAppCapsuleMenu {
         headerView.addSubview(dotLabel)
         headerView.addSubview(versionLabel)
 
-        NSLayoutConstraint.activate([
+        var constraints: [NSLayoutConstraint] = [
             nameLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor),
             nameLabel.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
 
@@ -162,9 +164,44 @@ public class LxAppCapsuleMenu {
             versionLabel.trailingAnchor.constraint(lessThanOrEqualTo: headerView.trailingAnchor),
 
             headerView.heightAnchor.constraint(equalToConstant: 24)
-        ])
+        ]
+
+        if let badge = releaseBadge(for: releaseType) {
+            let badgeLabel = UILabel()
+            badgeLabel.text = badge.text
+            badgeLabel.font = .systemFont(ofSize: 10, weight: .semibold)
+            badgeLabel.textColor = badge.textColor
+            badgeLabel.backgroundColor = badge.backgroundColor
+            badgeLabel.textAlignment = .center
+            badgeLabel.layer.cornerRadius = 8
+            badgeLabel.layer.masksToBounds = true
+            badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+
+            headerView.addSubview(badgeLabel)
+
+            constraints.append(contentsOf: [
+                badgeLabel.leadingAnchor.constraint(equalTo: versionLabel.trailingAnchor, constant: 4),
+                badgeLabel.bottomAnchor.constraint(equalTo: versionLabel.topAnchor, constant: 3),
+                badgeLabel.heightAnchor.constraint(equalToConstant: 16),
+                badgeLabel.trailingAnchor.constraint(lessThanOrEqualTo: headerView.trailingAnchor),
+                badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 34)
+            ])
+        }
+
+        NSLayoutConstraint.activate(constraints)
 
         return headerView
+    }
+
+    private static func releaseBadge(for releaseType: String) -> (text: String, textColor: UIColor, backgroundColor: UIColor)? {
+        switch releaseType.lowercased() {
+        case "developer":
+            return ("DEV", UIColor(red: 0.11, green: 0.31, blue: 0.85, alpha: 1.0), UIColor(red: 0.86, green: 0.92, blue: 0.99, alpha: 1.0))
+        case "preview":
+            return ("PRE", UIColor(red: 0.71, green: 0.33, blue: 0.03, alpha: 1.0), UIColor(red: 1.0, green: 0.93, blue: 0.84, alpha: 1.0))
+        default:
+            return nil
+        }
     }
 
     @MainActor

@@ -17,6 +17,12 @@ import com.lingxia.lxapp.util.ActivityInsets
  * Shows LxApp info and action options in horizontal layout.
  */
 object CapsuleMenuBottomSheet {
+    private data class ReleaseBadge(
+        val text: String,
+        val textColor: Int,
+        val backgroundColor: Int
+    )
+
 
     private data class MenuItem(
         val iconResId: Int,
@@ -99,6 +105,8 @@ object CapsuleMenuBottomSheet {
         val menuContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = createMenuBackground(context)
+            clipChildren = false
+            clipToPadding = false
         }
 
         // Add header with app info
@@ -128,6 +136,8 @@ object CapsuleMenuBottomSheet {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.BOTTOM
             )
+            clipChildren = false
+            clipToPadding = false
             addView(menuContainer)
         }
     }
@@ -138,6 +148,8 @@ object CapsuleMenuBottomSheet {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
             setPadding(
                 0,
                 0,
@@ -161,12 +173,73 @@ object CapsuleMenuBottomSheet {
                 setPadding((4 * density).toInt(), 0, (4 * density).toInt(), 0)
             })
 
-            // Version
-            addView(TextView(context).apply {
+            // Version + badge container (to position badge at top-right)
+            val versionContainer = FrameLayout(context).apply {
+                clipChildren = false
+                clipToPadding = false
+            }
+
+            // Version label with right padding for badge space
+            val versionLabel = TextView(context).apply {
                 text = lxappInfo.version
                 textSize = 14f
                 setTextColor(Color.parseColor("#999999"))
-            })
+                // Reserve space on right for badge
+                setPadding(0, 0, if (releaseBadgeFor(lxappInfo.releaseType) != null) (38 * density).toInt() else 0, 0)
+            }
+            versionContainer.addView(versionLabel)
+
+            // Optional release type badge (positioned at top-right of version)
+            releaseBadgeFor(lxappInfo.releaseType)?.let { badge ->
+                val badgeView = TextView(context).apply {
+                    text = badge.text
+                    textSize = 10f
+                    setTextColor(badge.textColor)
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    gravity = Gravity.CENTER
+                    setPadding(
+                        (6 * density).toInt(),
+                        (2 * density).toInt(),
+                        (6 * density).toInt(),
+                        (2 * density).toInt()
+                    )
+                    minWidth = (34 * density).toInt()
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = 8f * density
+                        setColor(badge.backgroundColor)
+                    }
+                }
+                val badgeParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    (16 * density).toInt(),
+                    Gravity.END or Gravity.TOP
+                )
+                badgeParams.topMargin = -(6 * density).toInt()
+                badgeParams.rightMargin = (2 * density).toInt()
+                badgeView.layoutParams = badgeParams
+                versionContainer.addView(badgeView)
+            }
+
+            addView(versionContainer)
+        }
+    }
+
+    private fun releaseBadgeFor(releaseType: String): ReleaseBadge? {
+        return when (releaseType.lowercase()) {
+            "developer" -> ReleaseBadge(
+                text = "DEV",
+                textColor = Color.parseColor("#1D4ED8"),
+                backgroundColor = Color.parseColor("#DBEAFE")
+            )
+
+            "preview" -> ReleaseBadge(
+                text = "PRE",
+                textColor = Color.parseColor("#B45309"),
+                backgroundColor = Color.parseColor("#FFEDD5")
+            )
+
+            else -> null
         }
     }
 
