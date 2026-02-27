@@ -42,7 +42,13 @@ App({
     }
 
     const um = lx.getUpdateManager();
-    um.onUpdateReady(async () => {
+    um.onUpdateReady(async (info) => {
+      if (info?.isForceUpdate) {
+        console.log("Force update ready; apply immediately");
+        um.applyUpdate();
+        return;
+      }
+
       console.log("Update ready; asking user to apply...");
       const { confirm } = await lx.showModal({
         title: "Update Available",
@@ -55,8 +61,8 @@ App({
         um.applyUpdate();
       }
     });
-    um.onUpdateFailed(() => {
-      console.warn("Update failed");
+    um.onUpdateFailed((info) => {
+      console.warn("Update failed", info);
     });
 
     // Call the registered callback function if available
