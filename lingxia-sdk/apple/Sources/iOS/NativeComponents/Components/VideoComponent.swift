@@ -217,6 +217,9 @@ final class VideoComponent: NSObject, LxNativeComponent {
         if let progressBar = props["progressBar"] as? Bool {
             config.progressBar = progressBar
         }
+        if let live = props["live"] as? Bool {
+            config.live = live
+        }
         if let cornerRadius = props["cornerRadius"] as? Double {
             config.cornerRadius = cornerRadius
         }

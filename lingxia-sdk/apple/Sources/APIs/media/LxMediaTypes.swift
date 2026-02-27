@@ -57,6 +57,7 @@ public struct LxMediaPlayerConfig {
     public var volume: Double?
     public var controls: Bool?
     public var progressBar: Bool?
+    public var live: Bool?
     public var cornerRadius: Double?
     public var qualities: [LxMediaQuality]?
     public var speeds: [Double]?
@@ -74,6 +75,7 @@ public struct LxMediaPlayerConfig {
         volume: Double? = nil,
         controls: Bool? = nil,
         progressBar: Bool? = nil,
+        live: Bool? = nil,
         cornerRadius: Double? = nil,
         qualities: [LxMediaQuality]? = nil,
         speeds: [Double]? = nil,
@@ -90,6 +92,7 @@ public struct LxMediaPlayerConfig {
         self.volume = volume
         self.controls = controls
         self.progressBar = progressBar
+        self.live = live
         self.cornerRadius = cornerRadius
         self.qualities = qualities
         self.speeds = speeds
@@ -111,6 +114,7 @@ public struct LxMediaPlayerConfig {
         if let volume { dict["volume"] = volume }
         if let controls { dict["controls"] = controls }
         if let progressBar { dict["progressBar"] = progressBar }
+        if let live { dict["live"] = live }
         if let cornerRadius { dict["cornerRadius"] = cornerRadius }
         if let qualities { dict["qualities"] = qualities.map { $0.bridgeValue } }
         if let speeds { dict["speeds"] = speeds }

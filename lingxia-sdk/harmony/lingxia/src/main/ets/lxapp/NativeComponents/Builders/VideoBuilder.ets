@@ -97,6 +97,9 @@ struct NativeVideoComponent {
     const progressBar = props.get('progressBar');
     if (typeof progressBar === 'boolean') config.progressBar = progressBar;
 
+    const live = props.get('live');
+    if (typeof live === 'boolean') config.live = live;
+
     const cornerRadius = props.get('cornerRadius');
     if (typeof cornerRadius === 'number') config.cornerRadius = cornerRadius;
 

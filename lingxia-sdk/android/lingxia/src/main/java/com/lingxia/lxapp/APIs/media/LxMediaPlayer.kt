@@ -96,6 +96,7 @@ data class LxMediaPlayerConfig(
     var volume: Double? = null,
     var controls: Boolean? = null,
     var progressBar: Boolean? = null,
+    var live: Boolean? = null,
     var cornerRadius: Double? = null,
     var qualities: List<LxMediaQuality>? = null,
     var speeds: List<Double>? = null,
@@ -210,6 +211,7 @@ class LxMediaPlayer(
 
     // Config state
     private var controlsEnabled = true
+    private var isLiveContent = false
     private var loopEnabled = false
     private var currentVolume = 1.0
     private var isMuted = false
@@ -395,7 +397,10 @@ class LxMediaPlayer(
         config.muted?.let { setMuted(it) }
         config.volume?.let { setVolume(it) }
         config.controls?.let { controlsEnabled = it; controlsOverlay?.setVisible(it) }
-        config.progressBar?.let { controlsOverlay?.setShowProgressBar(it) }
+        config.live?.let { isLiveContent = it }
+        if (isLiveContent || config.progressBar != null) {
+            controlsOverlay?.setShowProgressBar(!isLiveContent && (config.progressBar ?: true))
+        }
         config.cornerRadius?.let { setCornerRadius(it) }
         config.qualities?.let { qualities ->
             availableQualities = qualities
@@ -610,6 +615,10 @@ class LxMediaPlayer(
     }
 
     fun seek(time: Double) {
+        if (isLiveContent) {
+            Log.i(TAG, "seek ignored for live content")
+            return
+        }
         val positionMs = (time * 1000).toLong()
         if (hasEnded) {
             hasEnded = false

@@ -109,6 +109,7 @@ export class LxNativeVideoConfig {
   volume: number = 1.0;
   controls: boolean = true;
   progressBar: boolean = true;
+  live: boolean = false;
   cornerRadius: number = 0;
   objectFit: string = 'cover';
   qualities: LxMediaQuality[] = []; // Available quality options
@@ -1358,6 +1359,10 @@ export struct LxNativeVideoPlayer {
   }
 
   seek(time: number): void {
+    if (this.config.live) {
+      log(`[${this.componentId}] seek ignored: live content`);
+      return;
+    }
     if (isNaN(time) || time < 0) {
       log(`[${this.componentId}] seek ignored: invalid time=${time}`);
       return;
@@ -1868,9 +1873,10 @@ export struct LxNativeVideoPlayer {
       volume: this.config.volume,
       muted: this.config.muted,
       controlSize: VideoControlSize.COMPACT,
-      // Only show progress bar if explicitly enabled OR in stream mode with valid seekable duration
-      // Don't show for live streams (duration == 0 or not set)
-      showProgressBar: (this.config.progressBar && !(this.isStreamMode() && this.state.duration <= 0)) || (this.isStreamMode() && this.state.duration > 0),
+      // Live mode always hides progress; otherwise keep existing stream-duration rules.
+      showProgressBar: !this.config.live &&
+        ((this.config.progressBar && !(this.isStreamMode() && this.state.duration <= 0)) ||
+          (this.isStreamMode() && this.state.duration > 0)),
       showVolumeSlider: true,
       showFullscreenButton: !this.isFullscreen,
       showExitButton: this.isFullscreen,

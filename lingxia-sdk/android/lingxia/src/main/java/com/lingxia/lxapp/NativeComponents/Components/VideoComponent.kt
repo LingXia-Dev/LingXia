@@ -115,6 +115,7 @@ class VideoComponent(
             (props["volume"] as? Number)?.let { config.volume = it.toDouble() }
             (props["controls"] as? Boolean)?.let { config.controls = it }
             (props["progressBar"] as? Boolean)?.let { config.progressBar = it }
+            (props["live"] as? Boolean)?.let { config.live = it }
             (props["cornerRadius"] as? Number)?.let { config.cornerRadius = it.toDouble() }
 
             config.qualities = parseQualities(props["qualities"])

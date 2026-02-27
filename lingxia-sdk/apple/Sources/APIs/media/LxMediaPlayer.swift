@@ -171,6 +171,7 @@ public final class LxMediaPlayer: NSObject {
     // Config
     private var controlsEnabled = true  // HTML5 standard: show/hide all controls
     private var showProgressBar = true  // Show/hide progress bar
+    private var isLiveContent = false   // Live content hides progress and disables seek
     private var showCloseButton = false // Only show in preview mode
     private var showFullscreenButton = true // Show fullscreen button
     private var loopEnabled = false // Loop playback when video ends
@@ -459,6 +460,10 @@ public final class LxMediaPlayer: NSObject {
         var shouldUpdateControlsVisibility = false
         if let controls = config.controls {
             controlsEnabled = controls
+            shouldUpdateControlsVisibility = true
+        }
+        if let live = config.live {
+            isLiveContent = live
             shouldUpdateControlsVisibility = true
         }
         if let progressBar = config.progressBar {
@@ -1238,6 +1243,8 @@ public final class LxMediaPlayer: NSObject {
     }
 
     private func seek(to seconds: Double) {
+        guard !isLiveContent else { return }
+
         if streamDecoderActive {
             guard let duration = effectiveDurationSeconds() else { return }
             let clampedSeconds = max(0, min(seconds, duration))
@@ -1755,10 +1762,17 @@ public final class LxMediaPlayer: NSObject {
         progressSlider.value = Float(current / durationSeconds)
     }
 
+    private func canShowProgress(hasDuration: Bool) -> Bool {
+        if isLiveContent {
+            return false
+        }
+        let isLiveStream = streamDecoderActive && !hasDuration
+        return (showProgressBar && !isLiveStream) || (streamDecoderActive && hasDuration)
+    }
+
     private func updateSeekability() {
         let hasDuration = effectiveDurationSeconds() != nil
-        let isLiveStream = streamDecoderActive && !hasDuration
-        let canShowProgress = (showProgressBar && !isLiveStream) || (streamDecoderActive && hasDuration)
+        let canShowProgress = canShowProgress(hasDuration: hasDuration)
         let canSeek = hasDuration && controlsEnabled && canShowProgress
         progressSlider.isEnabled = canSeek
         progressSlider.isUserInteractionEnabled = canSeek
@@ -1774,8 +1788,7 @@ public final class LxMediaPlayer: NSObject {
             return
         }
         let hasDuration = effectiveDurationSeconds() != nil
-        let isLiveStream = !hasDuration
-        let canShowProgress = (showProgressBar && !isLiveStream) || hasDuration
+        let canShowProgress = canShowProgress(hasDuration: hasDuration)
         guard controlsEnabled, canShowProgress, hasDuration else {
             stopStreamProgressTimer()
             return
@@ -1856,10 +1869,8 @@ public final class LxMediaPlayer: NSObject {
 
     private func updateProgressBarVisibility() {
         let hasDuration = effectiveDurationSeconds() != nil
-        // Only show progress bar if explicitly enabled OR in stream mode with valid seekable duration
-        // Don't show for live streams (duration == nil)
-        let isLiveStream = streamDecoderActive && !hasDuration
-        let canShowProgress = (showProgressBar && !isLiveStream) || (streamDecoderActive && hasDuration)
+        // Hide progress in live mode; otherwise use existing stream-duration rules.
+        let canShowProgress = canShowProgress(hasDuration: hasDuration)
         let hideProgress = !controlsEnabled || !canShowProgress
         progressSlider.isHidden = hideProgress
         timeLabel.isHidden = hideProgress
