@@ -40,8 +40,24 @@ if [ "$SKIP_RUST" = false ]; then
     cd "$WORKSPACE_ROOT"
 
     TARGET="aarch64-apple-ios"
+    # `lingxia` only accepts TLS features; filter out extension features such as `cloud`
+    # that belong to `lingxia-lib`.
+    BRIDGE_LXAPP_FEATURES="$(
+        printf '%s' "$LXAPP_FEATURES" \
+            | tr ',' '\n' \
+            | sed 's/[[:space:]]//g' \
+            | awk '$0=="tls-ring" || $0=="tls-aws-lc"' \
+            | paste -sd, -
+    )"
+    if [ -n "$LXAPP_FEATURES" ] && [ "$BRIDGE_LXAPP_FEATURES" != "${LXAPP_FEATURES// /}" ]; then
+        echo "  → Bridge build features filtered for lingxia: ${BRIDGE_LXAPP_FEATURES:-<none>}"
+    fi
+
     BRIDGE_LOG="$(mktemp -t lingxia_ios_bridge.XXXXXX)"
-    if run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release >"$BRIDGE_LOG" 2>&1; then
+    if (
+        LXAPP_FEATURES="$BRIDGE_LXAPP_FEATURES"
+        run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release
+    ) >"$BRIDGE_LOG" 2>&1; then
         grep -E "Generated|warning:" "$BRIDGE_LOG" | head -5 || true
     else
         cat "$BRIDGE_LOG" >&2
