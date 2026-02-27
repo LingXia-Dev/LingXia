@@ -19,6 +19,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var tabView: LxAppTabView?
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
+    internal let panelManager = PanelLayoutManager()
 
     /// Get view controller for specific appId (needed for navigation)
     public func getViewController(for appId: String) -> macOSLxAppViewController? {
@@ -107,6 +108,18 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             tabBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             tabBar.heightAnchor.constraint(equalToConstant: Layout.tabBarHeight)
         ])
+
+        // Panel layout manager's root view fills the area below the tab bar
+        let panelRoot = panelManager.rootView
+        panelRoot.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(panelRoot)
+
+        NSLayoutConstraint.activate([
+            panelRoot.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
+            panelRoot.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            panelRoot.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            panelRoot.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        ])
     }
 
     private func setupInitialTab() {
@@ -147,21 +160,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         currentViewController?.view.removeFromSuperview()
         currentViewController = viewController
 
-        guard let window = self.window, let contentView = window.contentView else {
-            os_log("❌ updateContentView: window or contentView is nil", log: Self.log, type: .error)
-            return
-        }
+        let container = panelManager.contentContainer
 
         viewController.view.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(viewController.view)
-
-        let topOffset = Layout.tabBarHeight
+        container.addSubview(viewController.view)
 
         NSLayoutConstraint.activate([
-            viewController.view.topAnchor.constraint(equalTo: contentView.topAnchor, constant: topOffset),
-            viewController.view.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            viewController.view.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            viewController.view.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            viewController.view.topAnchor.constraint(equalTo: container.topAnchor),
+            viewController.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            viewController.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            viewController.view.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
 
         viewController.resumeNativeComponents()
@@ -182,6 +190,31 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
         }
+    }
+
+    // MARK: - Panel Control
+
+    /// Show a panel with WebView content. Registers the panel if not already registered.
+    public func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
+        if !panelManager.isPanelRegistered(id: id) {
+            let config = PanelConfig(id: id, position: position)
+            panelManager.registerPanel(config)
+        }
+
+        if let webView = WebViewManager.findWebView(appId: appId, path: path),
+           let container = panelManager.panelContainer(id: id) {
+            WebViewManager.attachWebViewToContainer(webView, container: container)
+        }
+
+        panelManager.showPanel(id: id)
+    }
+
+    public func hidePanel(id: String) {
+        panelManager.hidePanel(id: id)
+    }
+
+    public func togglePanel(id: String) {
+        panelManager.togglePanel(id: id)
     }
 
     private func closeTab(_ appId: String) {

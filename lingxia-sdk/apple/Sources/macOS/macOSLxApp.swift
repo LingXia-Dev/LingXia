@@ -200,6 +200,24 @@ extension macOSLxApp {
     }
 }
 
+// MARK: - Panel Control
+extension macOSLxApp {
+    /// Show a panel with WebView content at the given position
+    public static func showPanel(id: String, position: PanelPosition, appId: String, path: String) {
+        tabWindowController?.showPanelWithContent(id: id, position: position, appId: appId, path: path)
+    }
+
+    /// Hide a panel by ID
+    public static func hidePanel(id: String) {
+        tabWindowController?.hidePanel(id: id)
+    }
+
+    /// Toggle a panel's visibility
+    public static func togglePanel(id: String) {
+        tabWindowController?.togglePanel(id: id)
+    }
+}
+
 // MARK: - Pull-to-Refresh Bridge Functions
 extension LxApp {
     /// Start pull-to-refresh animation programmatically
