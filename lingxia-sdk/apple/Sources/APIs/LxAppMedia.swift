@@ -224,14 +224,14 @@ extension LxAppMedia {
 
     nonisolated static func compressVideo(
         source_uri: RustStr,
-        quality: RustStr,
+        quality: RustStr?,
         bitrate_kbps: UInt32,
         fps: UInt32,
         resolution_ratio: Float,
         output_path: RustStr
     ) -> SwiftCompressVideoResult {
         let source = source_uri.toString()
-        let qualityValue = quality.toString().lowercased()
+        let qualityValue = quality?.toString().lowercased() ?? ""
         let outputPath = output_path.toString()
 
         guard !source.isEmpty else {
@@ -910,14 +910,14 @@ extension LxAppMedia {
 
     nonisolated static func compressVideo(
         source_uri: RustStr,
-        quality: RustStr,
+        quality: RustStr?,
         bitrate_kbps: UInt32,
         fps: UInt32,
         resolution_ratio: Float,
         output_path: RustStr
     ) -> SwiftCompressVideoResult {
         let source = source_uri.toString()
-        let qualityValue = quality.toString().lowercased()
+        let qualityValue = quality?.toString().lowercased() ?? ""
         let outputPath = output_path.toString()
 
         guard !source.isEmpty else {

@@ -178,7 +178,7 @@ mod bridge {
             mode: &str,
             source_types_json: &str,
             camera_facing: &str,
-            max_duration: &str,
+            max_duration: Option<u32>,
             callback_id: u64,
         ) -> bool;
 
@@ -218,7 +218,7 @@ mod bridge {
         #[swift_bridge(swift_name = "LxAppMedia.compressVideo")]
         fn compress_video(
             source_uri: &str,
-            quality: &str,
+            quality: Option<&str>,
             bitrate_kbps: u32,
             fps: u32,
             resolution_ratio: f32,

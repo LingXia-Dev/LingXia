@@ -322,14 +322,11 @@ impl MediaRuntime for Platform {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
             let output_path = request.output_path.to_string_lossy();
-            let quality = request
-                .quality
-                .map(|v| match v {
-                    crate::traits::media_runtime::VideoCompressQuality::Low => "low",
-                    crate::traits::media_runtime::VideoCompressQuality::Medium => "medium",
-                    crate::traits::media_runtime::VideoCompressQuality::High => "high",
-                })
-                .unwrap_or("");
+            let quality = request.quality.map(|v| match v {
+                crate::traits::media_runtime::VideoCompressQuality::Low => "low",
+                crate::traits::media_runtime::VideoCompressQuality::Medium => "medium",
+                crate::traits::media_runtime::VideoCompressQuality::High => "high",
+            });
 
             let result = super::ffi::compress_video(
                 &request.source_uri,
@@ -388,16 +385,13 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
         .map_err(|e| PlatformError::Platform(format!("Failed to serialize source types: {}", e)))?;
 
     let camera_facing_str = camera_facing.unwrap_or("back");
-    let max_duration_str = max_duration
-        .map(|d| d.to_string())
-        .unwrap_or_else(|| "0".to_string());
 
     let success = choose_media(
         max_count,
         mode,
         &source_types_json,
         camera_facing_str,
-        &max_duration_str,
+        max_duration,
         callback_id,
     );
     if success {

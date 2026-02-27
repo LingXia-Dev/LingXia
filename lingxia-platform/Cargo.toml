@@ -35,13 +35,13 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-core-location = "0.3"
 dispatch2 = "0.3"
-swift-bridge = "0.1.57"
+swift-bridge = "0.1.59"
 log = { workspace = true }
 oslog = "0.2.0"
 serde_json = { workspace = true }
 base64 = { workspace = true }
 percent-encoding = "2.3"
-security-framework = "3.5.1"
+security-framework = "3.7.0"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2-photos = "0.3"
@@ -50,8 +50,8 @@ block2 = "0.6"
 # HarmonyOS-specific dependencies
 [target.'cfg(target_env = "ohos")'.dependencies]
 ohos_hilog = "0.1.3"
-napi-ohos = "1.1.0"
-napi-derive-ohos = "1.1.0"
+napi-ohos = "1.1.6"
+napi-derive-ohos = "1.1.6"
 ohos-raw-sys = "0.1.0"
 serde_json = { workspace = true }
 lingxia-webview = { workspace = true }
@@ -59,5 +59,5 @@ libc = "0.2"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 [build-dependencies]
-swift-bridge-build = "0.1.57"
-napi-build-ohos = "1.1.0"
+swift-bridge-build = "0.1.59"
+napi-build-ohos = "1.1.6"

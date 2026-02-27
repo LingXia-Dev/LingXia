@@ -11,13 +11,12 @@ extension LxAppMedia {
         mode: RustStr,
         source_types_json: RustStr,
         camera_facing: RustStr,
-        max_duration: RustStr,
+        max_duration: UInt32?,
         callback_id: UInt64
     ) -> Bool {
         let modeStr = mode.toString()
         let sourceTypesJson = source_types_json.toString()
         let cameraFacingStr = camera_facing.toString()
-        let maxDurationStr = max_duration.toString()
 
 
         DispatchQueue.main.async {
@@ -41,7 +40,7 @@ extension LxAppMedia {
                     presenter: presenter,
                     mode: modeStr,
                     cameraFacing: cameraFacingStr,
-                    maxDuration: maxDurationStr,
+                    maxDuration: max_duration,
                     callbackId: callback_id
                 )
             } else if allowAlbum {
@@ -65,7 +64,7 @@ extension LxAppMedia {
         presenter: UIViewController,
         mode: String,
         cameraFacing: String,
-        maxDuration: String,
+        maxDuration: UInt32?,
         callbackId: UInt64
     ) {
 
@@ -90,7 +89,7 @@ extension LxAppMedia {
                         return
                     }
 
-                    let maxDurationValue = Double(maxDuration).flatMap { $0 > 0 ? $0 : nil }
+                    let maxDurationValue = maxDuration.map(Double.init).flatMap { $0 > 0 ? $0 : nil }
                     let initialPosition: AVCaptureDevice.Position = desiredFacingFront ? .front : .back
 
                     let videoController = VideoCaptureViewController(

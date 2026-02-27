@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/ffi.rs");
+    println!("cargo:rerun-if-changed=src/apple/ffi.rs");
 
     let target = env::var("TARGET").unwrap_or_default();
 

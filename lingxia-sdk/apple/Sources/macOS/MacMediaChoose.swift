@@ -10,7 +10,7 @@ extension LxAppMedia {
         mode: RustStr,
         source_types_json: RustStr,
         camera_facing: RustStr,
-        max_duration: RustStr,
+        max_duration: UInt32?,
         callback_id: UInt64
     ) -> Bool {
         let modeStr = mode.toString().lowercased()
