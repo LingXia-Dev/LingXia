@@ -87,6 +87,7 @@ Page({
       console.log("Making phone call to:", options.phoneNumber);
     } catch (error) {
       console.error("Failed to make phone call:", error);
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
