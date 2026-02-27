@@ -1477,15 +1477,7 @@ class LxMediaPlayer(
         val containerH = view.height.toFloat()
         if (containerW <= 0f || containerH <= 0f) return
 
-        val rotate90 = degrees == 90 || degrees == 270
-        val scale = if (!rotate90) 1f else {
-            val ratio1 = containerW / containerH
-            val ratio2 = containerH / containerW
-            when (objectFit) {
-                LxMediaObjectFit.COVER -> max(ratio1, ratio2)
-                else -> min(ratio1, ratio2)
-            }
-        }
+        val scale = computeInlineRotationScale(degrees, containerW, containerH)
 
         fun apply(v: View?) {
             v ?: return
@@ -1500,6 +1492,55 @@ class LxMediaPlayer(
         apply(findFirstTextureView(playerView))
         apply(streamTextureView)
         apply(posterImageView)
+    }
+
+    private fun computeInlineRotationScale(
+        degrees: Int,
+        containerW: Float,
+        containerH: Float,
+    ): Float {
+        val rotate90 = degrees == 90 || degrees == 270
+        if (!rotate90) {
+            return 1f
+        }
+
+        val (sourceW, sourceH) = getDisplayVideoSize()
+        if (sourceW <= 0.0 || sourceH <= 0.0) {
+            // Fallback before metadata is ready.
+            val ratio1 = containerW / containerH
+            val ratio2 = containerH / containerW
+            return when (objectFit) {
+                LxMediaObjectFit.COVER -> max(ratio1, ratio2)
+                else -> min(ratio1, ratio2)
+            }
+        }
+
+        val baseScale = fitScale(sourceW, sourceH, containerW.toDouble(), containerH.toDouble())
+        val rotatedScale = fitScale(sourceH, sourceW, containerW.toDouble(), containerH.toDouble())
+        if (baseScale <= 0.0 || rotatedScale <= 0.0) {
+            return 1f
+        }
+
+        return (rotatedScale / baseScale).toFloat()
+    }
+
+    private fun fitScale(
+        sourceW: Double,
+        sourceH: Double,
+        containerW: Double,
+        containerH: Double,
+    ): Double {
+        if (sourceW <= 0.0 || sourceH <= 0.0 || containerW <= 0.0 || containerH <= 0.0) {
+            return 0.0
+        }
+
+        val scaleX = containerW / sourceW
+        val scaleY = containerH / sourceH
+        return when (objectFit) {
+            LxMediaObjectFit.COVER -> max(scaleX, scaleY)
+            LxMediaObjectFit.FILL -> max(scaleX, scaleY)
+            LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> min(scaleX, scaleY)
+        }
     }
 
     private fun setCornerRadius(radius: Double) {
