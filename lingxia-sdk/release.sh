@@ -39,6 +39,16 @@ die() { echo "❌ $*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CALLER_DIR="$(pwd)"
+
+to_abs_path() {
+  local p="$1"
+  if [[ "$p" == /* ]]; then
+    printf '%s\n' "$p"
+  else
+    printf '%s\n' "$CALLER_DIR/$p"
+  fi
+}
 
 VERSION=""
 PLATFORM="all"
@@ -66,6 +76,14 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown arg: $1 (try --help)" ;;
   esac
 done
+
+OUT_DIR="$(to_abs_path "$OUT_DIR")"
+if [[ -n "$ANDROID_MAVEN_DIR" ]]; then
+  ANDROID_MAVEN_DIR="$(to_abs_path "$ANDROID_MAVEN_DIR")"
+fi
+if [[ -n "$HARMONY_OHM_DIR" ]]; then
+  HARMONY_OHM_DIR="$(to_abs_path "$HARMONY_OHM_DIR")"
+fi
 
 workspace_version="$(awk '
   /^\[workspace\.package\]/ {in_section=1; next}
