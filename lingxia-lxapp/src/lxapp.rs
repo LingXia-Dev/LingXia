@@ -57,6 +57,25 @@ const LXAPP_STACK_MAX: usize = 5;
 const PAGE_STACK_MAX: usize = 10;
 const VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Configured worker/stack count override. Must be set before `init()`.
+static NUM_WORKERS: OnceLock<usize> = OnceLock::new();
+
+/// Set the number of JS workers (and lxapp navigation stack capacity).
+///
+/// Must be called **before** [`init()`]. Defaults to [`LXAPP_STACK_MAX`] (5) if not set.
+/// A value of 0 is clamped to 1.
+pub fn set_num_workers(n: usize) {
+    let n = n.max(1);
+    if NUM_WORKERS.set(n).is_err() {
+        warn!("set_num_workers: value already set, ignoring");
+    }
+}
+
+/// Read the configured worker count, falling back to `LXAPP_STACK_MAX`.
+fn get_num_workers() -> usize {
+    NUM_WORKERS.get().copied().unwrap_or(LXAPP_STACK_MAX)
+}
+
 /// Development path override for home lxapp (macOS only)
 #[cfg(target_os = "macos")]
 static HOME_LXAPP_DEV_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -136,14 +155,15 @@ pub struct LxApps {
 }
 
 impl LxApps {
-    fn new(runtime: Platform, executor: Arc<LxAppExecutor>) -> Self {
+    fn new(runtime: Platform, executor: Arc<LxAppExecutor>, capacity: usize) -> Self {
+        info!("LxApps manager initialized with {} workers", capacity);
         let runtime = Arc::new(runtime);
 
         Self {
             lxapps: DashMap::new(),
             runtime,
             executor,
-            lxapp_stack: Mutex::new(VecDeque::with_capacity(LXAPP_STACK_MAX)),
+            lxapp_stack: Mutex::new(VecDeque::with_capacity(capacity)),
             pending_destroy: Mutex::new(HashMap::new()),
         }
     }
@@ -278,13 +298,14 @@ impl LxApps {
     /// This signifies that it is the most recently used app.
     /// If the stack is already at full capacity, the operation is aborted and a warning is logged.
     pub(crate) fn push_lxapp_stack(&self, appid: String) {
+        let max = get_num_workers();
         if let Ok(mut stack) = self.lxapp_stack.lock() {
-            if stack.len() < LXAPP_STACK_MAX {
+            if stack.len() < max {
                 stack.push_back(appid);
             } else {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot push app: {}",
-                    LXAPP_STACK_MAX, appid
+                    max, appid
                 );
             }
         }
@@ -308,8 +329,9 @@ impl LxApps {
 
     /// Check if the navigation stack is full
     fn is_lxapp_stack_full(&self) -> bool {
+        let max = get_num_workers();
         if let Ok(stack) = self.lxapp_stack.lock() {
-            stack.len() >= LXAPP_STACK_MAX
+            stack.len() >= max
         } else {
             // If the lock is poisoned, it's safer to consider it full
             // to prevent further pushes.
@@ -1016,7 +1038,7 @@ impl LxApp {
             if manager.is_lxapp_stack_full() {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",
-                    LXAPP_STACK_MAX, appid
+                    get_num_workers(), appid
                 );
                 return Ok(());
             }
@@ -1666,11 +1688,12 @@ pub fn init(runtime: Platform) -> Option<String> {
                 warn!("Failed to persist host app version: {}", e);
             }
 
-            let executor = LxAppExecutor::init(LXAPP_STACK_MAX);
+            let num_workers = get_num_workers();
+            let executor = LxAppExecutor::init(num_workers);
 
             // Create LxApps manager BEFORE creating home_lxapp
             // This makes get_platform() available as early as possible
-            let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone()));
+            let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
 
             // Set global instance early so get_platform() works
             if LXAPPS_MANAGER.set(lxapps_manager.clone()).is_err() {
