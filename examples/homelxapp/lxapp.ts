@@ -29,18 +29,6 @@ interface MyAppInstance {
 
 App({
   onLaunch: async function (this: MyAppInstance) {
-    // Test cache file access time update
-    testCacheAccess();
-
-    try {
-      const response = await fetch("https://api64.ipify.org?format=json");
-      const data = (await response.json()) as { ip: string };
-      this.globalData.ipAddr = data.ip;
-      console.log("Got public address:", data.ip);
-    } catch (error) {
-      this.globalData.ipAddr = (error as Error).message;
-    }
-
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
       if (info?.isForceUpdate) {
@@ -64,6 +52,18 @@ App({
     um.onUpdateFailed((info) => {
       console.warn("Update failed", info);
     });
+
+    // Test cache file access time update
+    testCacheAccess();
+
+    try {
+      const response = await fetch("https://api64.ipify.org?format=json");
+      const data = (await response.json()) as { ip: string };
+      this.globalData.ipAddr = data.ip;
+      console.log("Got public address:", data.ip);
+    } catch (error) {
+      this.globalData.ipAddr = (error as Error).message;
+    }
 
     // Call the registered callback function if available
     if (this.ipReadyCallback) {
