@@ -33,6 +33,9 @@ pub struct UpdatePackageInfo {
     pub size: Option<u64>,
     pub release_notes: Option<Vec<String>>,
     pub is_force_update: bool,
+    /// Required SDK/runtime version from update metadata (semantic version string, e.g. "0.3.1").
+    /// When present, update must be rejected if current runtime version is lower.
+    pub required_runtime_version: Option<String>,
 }
 
 /// Error type for provider operations.

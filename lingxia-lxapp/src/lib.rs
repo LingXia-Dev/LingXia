@@ -19,6 +19,10 @@ pub mod startup;
 pub mod stream_source;
 mod update;
 
+/// SDK/runtime version of lingxia-lxapp.
+/// This is used for update compatibility checks and can be reported to update services.
+pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub use app::{app_config, product_name, product_version};
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{

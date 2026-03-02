@@ -44,7 +44,7 @@ fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
         language: locale.to_string(),
         product_name: app_cfg.product_name.clone(),
         version: app_cfg.product_version.clone(),
-        sdk_version: env!("CARGO_PKG_VERSION").to_string(),
+        sdk_version: lxapp::SDK_RUNTIME_VERSION.to_string(),
     })
 }
 

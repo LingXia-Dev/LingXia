@@ -156,6 +156,42 @@ fn force_update_download_key(lxappid: &str, release_type: ReleaseType) -> String
     format!("{}@{}", lxappid, release_type.as_str())
 }
 
+fn ensure_runtime_version_compatible(
+    lxappid: &str,
+    pkg: &UpdatePackageInfo,
+) -> Result<(), LxAppError> {
+    let Some(required_runtime_version) = pkg
+        .required_runtime_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let current = Version::parse(crate::SDK_RUNTIME_VERSION).map_err(|_| {
+        LxAppError::Runtime(format!(
+            "invalid SDK runtime version '{}'",
+            crate::SDK_RUNTIME_VERSION
+        ))
+    })?;
+    let required = Version::parse(required_runtime_version).map_err(|_| {
+        LxAppError::UnsupportedOperation(format!(
+            "invalid minRuntimeVersion '{}' from update metadata for {}@{}",
+            required_runtime_version, lxappid, pkg.version
+        ))
+    })?;
+
+    if current < required {
+        return Err(LxAppError::UnsupportedOperation(format!(
+            "LxApp '{}' update {} requires runtime >= {}, current SDK runtime is {}; update host app first",
+            lxappid, pkg.version, required, current
+        )));
+    }
+
+    Ok(())
+}
+
 /// Returns whether a forced-update package is currently being prepared.
 pub fn is_force_update_downloading(lxappid: &str, release_type: ReleaseType) -> bool {
     matches!(
@@ -312,6 +348,23 @@ impl UpdateManager {
             {
                 Ok(Some(pkg)) => {
                     if !manager.should_update(&pkg.version) {
+                        return;
+                    }
+
+                    if let Err(err) = ensure_runtime_version_compatible(&target_appid, &pkg) {
+                        let payload = serde_json::json!({
+                            "version": pkg.version,
+                            "isForceUpdate": pkg.is_force_update,
+                            "releaseType": release_type.as_str(),
+                            "minRuntimeVersion": pkg.required_runtime_version,
+                            "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
+                            "error": err.to_string(),
+                        });
+                        let _ = emit_app_event(
+                            &target_appid,
+                            "UpdateFailed",
+                            Some(payload.to_string()),
+                        );
                         return;
                     }
 
@@ -954,6 +1007,8 @@ pub(crate) async fn ensure_first_install(
             ))
         })?;
 
+    ensure_runtime_version_compatible(target_appid, &pkg)?;
+
     let _archive = manager
         .download_archive_with_checksum(
             target_appid,
@@ -1008,6 +1063,15 @@ pub async fn ensure_force_update_for_installed(
     let Some(pkg) = update else {
         return Ok(());
     };
+
+    if let Err(err) = ensure_runtime_version_compatible(target_appid, &pkg) {
+        if pkg.is_force_update {
+            return Err(err);
+        }
+        crate::warn!("optional update blocked by runtime version gate: {}", err)
+            .with_appid(target_appid.to_string());
+        return Ok(());
+    }
 
     if !pkg.is_force_update || pkg.version == current_version {
         return Ok(());
