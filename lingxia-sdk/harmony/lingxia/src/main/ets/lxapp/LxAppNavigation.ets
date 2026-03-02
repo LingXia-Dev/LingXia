@@ -284,10 +284,15 @@ export struct LxAppNavigation {
         this.isReady = true;
         hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}`);
 
-        // Auto-open home lxapp now that navigation instance is ready
-        // Pass empty string for path to let on_lxapp_opened resolve the initial route
+        // Auto-open home lxapp now that navigation instance is ready.
         hilog.info(DOMAIN, TAG, 'Auto-opening home lxapp');
-        this.openLxApp(homeAppId, "");
+        const sessionId: number = LxApp.getRuntimeSessionId(homeAppId);
+        if (!Number.isFinite(sessionId) || sessionId <= 0) {
+          this.errorMessage = `Invalid home app session: ${homeAppId}`;
+          hilog.error(DOMAIN, TAG, this.errorMessage);
+          return;
+        }
+        this.openLxAppWithSession(homeAppId, "", sessionId);
       } else {
         this.errorMessage = 'LxApp not initialized. Please call LxApp.initialize() in EntryAbility first.';
         hilog.error(DOMAIN, TAG, 'LxApp not initialized');
@@ -298,11 +303,24 @@ export struct LxAppNavigation {
     }
   }
 
-  public openLxApp(appId: string, path: string, sessionId: number = 0): void {
+  public openLxApp(appId: string, path: string): void {
+    const sessionId: number = LxApp.getRuntimeSessionId(appId);
+    this.openLxAppWithSession(appId, path, sessionId);
+  }
+
+  public openLxAppWithSession(appId: string, path: string, sessionId: number): void {
+    if (!Number.isFinite(sessionId) || sessionId <= 0) {
+      hilog.error(DOMAIN, TAG, `openLxAppWithSession requires valid sessionId for ${appId}`);
+      return;
+    }
     hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path} (session=${sessionId})`);
 
     try {
       const resolvedPath: string = onLxappOpened(appId, path, sessionId);
+      if (!resolvedPath || resolvedPath.length === 0) {
+        hilog.warn(DOMAIN, TAG, `onLxappOpened rejected open request (stale session?): ${appId} (session=${sessionId})`);
+        return;
+      }
 
       // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
@@ -324,19 +342,28 @@ export struct LxAppNavigation {
     }
   }
 
-  public closeLxApp(appId: string, sessionId: number = 0): void {
+  public closeLxApp(appId: string): void {
+    const sessionId: number = LxApp.getRuntimeSessionId(appId);
+    this.closeLxAppWithSession(appId, sessionId);
+  }
+
+  public closeLxAppWithSession(appId: string, sessionId: number): void {
+    if (!Number.isFinite(sessionId) || sessionId <= 0) {
+      hilog.warn(DOMAIN, TAG, `Ignoring close without valid session: ${appId}`);
+      return;
+    }
     hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId} (session=${sessionId})`);
 
     try {
-      // Pause native components (video players, etc.) before closing
-      pauseAllComponentsByAppId(appId);
-
       // Call native close handler first - this removes the app from Rust stack
       const accepted: boolean = onLxappClosed(appId, sessionId);
       if (!accepted) {
         hilog.warn(DOMAIN, TAG, `Ignoring stale close callback: ${appId} (session=${sessionId})`);
         return;
       }
+
+      // Pause native components (video players, etc.) after close is accepted.
+      pauseAllComponentsByAppId(appId);
 
       // UI cleanup: hide the closed app
       if (appId === this.homeAppId) {
@@ -353,7 +380,7 @@ export struct LxAppNavigation {
       // Get next LxApp from Rust stack and open it
       const currentLxApp: CurrentLxApp = getCurrentLxapp();
       if (currentLxApp.appid && currentLxApp.appid.length > 0) {
-        this.openLxApp(currentLxApp.appid, currentLxApp.path);
+        this.openLxAppWithSession(currentLxApp.appid, currentLxApp.path, currentLxApp.session_id);
       } else {
         hilog.info(DOMAIN, TAG, `No more LxApps in Rust stack - showing empty state`);
         // No apps left in stack - hide modal but keep home visible

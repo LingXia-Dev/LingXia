@@ -96,6 +96,7 @@ pub struct NavigationBarState {
 pub struct CurrentLxApp {
     pub appid: String,
     pub path: String,
+    pub session_id: i64,
 }
 
 #[napi]
@@ -305,35 +306,28 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
 
 /// Notify that LxApp was opened
 #[napi]
-pub fn on_lxapp_opened(appid: String, path: String, session_id: Option<i64>) -> String {
+pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
+    if session_id <= 0 {
+        log::warn!("on_lxapp_opened called without valid session_id for {}", appid);
+        return String::new();
+    }
     lxapp::try_get(&appid)
-        .map(|lxapp| {
-            let session_id = session_id.unwrap_or_default();
-            let session_id = if session_id <= 0 {
-                lxapp.session_id()
-            } else {
-                session_id as u64
-            };
-            lxapp.on_lxapp_opened(path, session_id)
-        })
+        .map(|lxapp| lxapp.on_lxapp_opened(path, session_id as u64))
         .unwrap_or_default()
 }
 
 /// Notify that LxApp was closed
 #[napi]
-pub fn on_lxapp_closed(appid: String, session_id: Option<i64>) -> bool {
+pub fn on_lxapp_closed(appid: String, session_id: i64) -> bool {
     if let Some(lxapp) = lxapp::try_get(&appid) {
-        let session_id = session_id.unwrap_or_default();
-        let callback_session = if session_id <= 0 {
-            lxapp.session_id()
-        } else {
-            session_id as u64
-        };
-        let current_session = lxapp.session_id();
-        if callback_session != current_session {
+        if session_id <= 0 {
+            log::warn!("on_lxapp_closed called without valid session_id for {}", appid);
             return false;
         }
-        lxapp.on_lxapp_closed(callback_session);
+        if session_id as u64 != lxapp.session_id() {
+            return false;
+        }
+        lxapp.on_lxapp_closed(session_id as u64);
         return true;
     }
     false
@@ -398,11 +392,20 @@ pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
 /// Get current active LxApp ID and path from Rust stack
 #[napi]
 fn get_current_lxapp() -> CurrentLxApp {
-    let (current_appid, current_path) = lxapp::get_current_lxapp();
+    let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
     CurrentLxApp {
         appid: current_appid,
         path: current_path,
+        session_id: current_session_id as i64,
     }
+}
+
+/// Get runtime session id for a specific lxapp.
+#[napi]
+fn get_lxapp_session_id(appid: String) -> i64 {
+    lxapp::try_get(&appid)
+        .map(|lxapp| lxapp.session_id() as i64)
+        .unwrap_or(0)
 }
 
 /// Callback from platform (called from ArkTS)

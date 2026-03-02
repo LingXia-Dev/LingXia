@@ -25,6 +25,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var pullToRefreshHelper: PullToRefreshHelper?
+    private var currentSessionId: UInt64 = 0
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
@@ -211,8 +212,13 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Opens a LxApp - creates new state if needed, switches if already exists
-    public func openLxApp(appId: String, path: String) {
+    public func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("Opening LxApp: %@ at path: %@", log: Self.log, type: .info, appId, path)
+        guard sessionId > 0 else {
+            os_log("openLxApp rejected invalid session for %@", log: Self.log, type: .error, appId)
+            return
+        }
+        currentSessionId = sessionId
 
         // Set current app state
         LxAppCore.setCurrentApp(appId: appId, path: path)
@@ -222,11 +228,22 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Closes a LxApp and removes its state
-    public func closeLxApp(appId: String, sessionId: UInt64 = 0) {
+    public func closeLxApp(appId: String, sessionId: UInt64) {
         os_log("Closing LxApp: %@", log: Self.log, type: .info, appId)
 
         guard LxAppCore.currentAppId == appId else {
             os_log("LxApp %@ not current app for closing", log: Self.log, type: .error, appId)
+            return
+        }
+        guard sessionId > 0 else {
+            os_log("closeLxApp rejected invalid session for %@", log: Self.log, type: .error, appId)
+            return
+        }
+
+        // Ask Rust to validate this close request against current runtime session.
+        let accepted = onLxappClosed(appId, sessionId)
+        guard accepted else {
+            os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
             return
         }
 
@@ -237,21 +254,20 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Clean up app state
         cleanupLxAppState(appId: appId)
+        LxAppCore.removeSessionId(for: appId)
 
         // Clear WebView constraint only, WebView is managed by WebViewManager
         currentWebViewTopConstraint = nil
-
-        // Call FFI close handler first
-        let _ = onLxappClosed(appId, sessionId)
 
         // Get next LxApp from Rust stack and open it
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
-        if !appidStr.isEmpty {
+        let nextSessionId = currentLxApp.session_id
+        if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
             // Use openLxApp instead of navigate since this is opening a new LxApp
-            iOSLxApp.openLxApp(appId: appidStr, path: pathStr)
+            iOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
         } else {
             os_log("No more LxApps in stack, view controller will remain empty", log: Self.log, type: .info)
         }
@@ -267,7 +283,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
             NativeBridge.notifyPageInactive(for: existingWebView)
         }
 
-        if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path) {
+        if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path, sessionId: currentSessionId) {
 
             // Handle navigation animations for all cases
             if let existingWebView = getCurrentWebView() {
@@ -693,7 +709,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
                   let appId = userInfo["appId"] as? String else { return }
 
             DispatchQueue.main.async {
-                self.closeLxApp(appId: appId)
+                let sessionId = LxAppCore.sessionId(for: appId) ?? self.currentSessionId
+                self.closeLxApp(appId: appId, sessionId: sessionId)
             }
         }
 

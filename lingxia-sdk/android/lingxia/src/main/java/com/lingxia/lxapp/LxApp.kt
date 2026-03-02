@@ -28,13 +28,14 @@ data class LxAppInfo(
  */
 data class CurrentLxApp(
     val appId: String,
-    val path: String
+    val path: String,
+    val sessionId: Long,
 ) {
     /**
      * Check if this represents a valid LxApp
      */
     fun isValid(): Boolean {
-        return appId.isNotEmpty()
+        return appId.isNotEmpty() && sessionId > 0L
     }
 
     /**
@@ -152,7 +153,29 @@ class LxApp private constructor(private val context: Context) {
          * @param path The initial path to navigate to within the mini app
          */
         @JvmStatic
-        fun openLxApp(appId: String, path: String, sessionId: Long = 0L) {
+        fun openLxApp(appId: String, path: String) {
+            val sessionId = NativeApi.getLxAppSessionId(appId)
+            if (sessionId <= 0L) {
+                Log.e(TAG, "Missing valid session for appId=$appId")
+                return
+            }
+            openLxAppWithSession(appId, path, sessionId)
+        }
+
+        /**
+         * Runtime bridge entry (called from Rust/JNI) with explicit session.
+         * Keep this overload for FFI signature stability.
+         */
+        @JvmStatic
+        fun openLxApp(appId: String, path: String, sessionId: Long) {
+            openLxAppWithSession(appId, path, sessionId)
+        }
+
+        /**
+         * Internal/runtime open entry with explicit session.
+         */
+        @JvmStatic
+        internal fun openLxAppWithSession(appId: String, path: String, sessionId: Long) {
             val instance = getInstance()
             instance.openInCurrentActivity(appId, path, sessionId)
         }
@@ -167,7 +190,14 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         internal fun openHomeLxApp() {
             if (HomeLxAppId != null) {
-                openLxApp(HomeLxAppId!!, "")
+                val current = NativeApi.getCurrentLxApp()
+                val sessionId = current?.takeIf { it.appId == HomeLxAppId }?.sessionId
+                    ?: NativeApi.getLxAppSessionId(HomeLxAppId!!)
+                if (sessionId <= 0L) {
+                    Log.e(TAG, "Missing valid session for home LxApp: ${HomeLxAppId}")
+                    return
+                }
+                openLxAppWithSession(HomeLxAppId!!, "", sessionId)
             } else {
                 Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
             }
@@ -180,7 +210,11 @@ class LxApp private constructor(private val context: Context) {
          * @param appId The ID of the mini app to close
          */
         @JvmStatic
-        fun closeLxApp(appId: String, sessionId: Long = 0L) {
+        internal fun closeLxAppWithSession(appId: String, sessionId: Long) {
+            if (sessionId <= 0L) {
+                Log.e(TAG, "Refusing to close LxApp without valid sessionId: appId=$appId")
+                return
+            }
             Log.d(TAG, "Closing LxApp with appId: $appId")
 
             // Notify the current activity to close the LxApp
@@ -192,6 +226,29 @@ class LxApp private constructor(private val context: Context) {
             } else {
                 Log.w(TAG, "No matching activity for appId: $appId")
             }
+        }
+
+        /**
+         * Public close entry without exposing session id.
+         */
+        @JvmStatic
+        fun closeLxApp(appId: String) {
+            val activity = currentActivity?.takeIf { it.getAppId() == appId }
+            val sessionId = activity?.getSessionId() ?: NativeApi.getLxAppSessionId(appId)
+            if (sessionId <= 0L) {
+                Log.e(TAG, "Missing valid session for close appId=$appId")
+                return
+            }
+            closeLxAppWithSession(appId, sessionId)
+        }
+
+        /**
+         * Runtime bridge entry (called from Rust/JNI) with explicit session.
+         * Keep this overload for FFI signature stability.
+         */
+        @JvmStatic
+        fun closeLxApp(appId: String, sessionId: Long) {
+            closeLxAppWithSession(appId, sessionId)
         }
 
         /**
@@ -411,9 +468,17 @@ class LxApp private constructor(private val context: Context) {
         }
     }
 
-    private fun openInCurrentActivity(appId: String, path: String, sessionId: Long = 0L) {
+    private fun openInCurrentActivity(appId: String, path: String, sessionId: Long) {
+        if (sessionId <= 0L) {
+            Log.e(TAG, "Refusing to open LxApp without valid sessionId: appId=$appId")
+            return
+        }
         try {
             val resolvedPath = NativeApi.onLxAppOpened(appId, path, sessionId)
+            if (resolvedPath.isBlank()) {
+                Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
+                return
+            }
 
             if (currentActivity != null) {
                 Log.d(TAG, "Opening app in current activity")
@@ -425,6 +490,7 @@ class LxApp private constructor(private val context: Context) {
                 val intent = Intent(context, LxAppActivity::class.java).apply {
                     putExtra(LxAppActivity.EXTRA_APP_ID, appId)
                     putExtra(LxAppActivity.EXTRA_PATH, resolvedPath)
+                    putExtra(LxAppActivity.EXTRA_SESSION_ID, sessionId)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(intent)

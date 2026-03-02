@@ -110,7 +110,7 @@ public class iOSLxApp {
     }
 
     /// Opens a lxapp
-    public static func openLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
+    public static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
         LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
@@ -121,11 +121,20 @@ public class iOSLxApp {
             os_log("Home app details not available", log: log, type: .error)
             return
         }
-        openLxApp(appId: homeLxAppId, path: "")
+        let current = getCurrentLxApp()
+        let currentAppId = current.appid.toString()
+        let sessionId: UInt64 = (currentAppId == homeLxAppId)
+            ? current.session_id
+            : (LxAppCore.sessionId(for: homeLxAppId) ?? 0)
+        guard sessionId > 0 else {
+            os_log("Invalid home app session for %@", log: log, type: .error, homeLxAppId)
+            return
+        }
+        openLxApp(appId: homeLxAppId, path: "", sessionId: sessionId)
     }
 
     /// Closes a mini app with the specified appId
-    public static func closeLxApp(appId: String, sessionId: UInt64 = 0) {
+    public static func closeLxApp(appId: String, sessionId: UInt64) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
         getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId)
     }
@@ -137,11 +146,11 @@ public class iOSLxApp {
     }
 
     /// Find WebView for the given appId and path
-    internal static func findWebView(appId: String, path: String, sessionId: UInt64 = 0) -> WKWebView? {
+    internal static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
         return WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
-    private func openLxAppInManager(appId: String, path: String) {
+    private func openLxAppInManager(appId: String, path: String, sessionId: UInt64) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = windowScene.windows.first else {
             os_log("Failed to get window for presenting LxAppManager", log: Self.log, type: .error)
@@ -157,7 +166,7 @@ public class iOSLxApp {
         }
 
         // Open LxApp in manager
-        lxAppManager?.openLxApp(appId: appId, path: actualPath)
+        lxAppManager?.openLxApp(appId: appId, path: actualPath, sessionId: sessionId)
     }
 
     /// Sets up the single LxAppManager for all lxapps
@@ -240,14 +249,14 @@ public class iOSLxApp {
 
 extension iOSLxApp {
     /// Direct openLxApp implementation (called from LxAppCore)
-    internal static func openLxAppDirect(appId: String, path: String) {
+    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) {
         let instance = getInstance()
 
         // Ensure LxAppManager exists for iOS
         instance.setupLxAppManagerIfNeeded()
 
         // Open LxApp in manager
-        instance.lxAppManager?.openLxApp(appId: appId, path: path)
+        instance.lxAppManager?.openLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Direct navigation implementation (called from LxAppCore)

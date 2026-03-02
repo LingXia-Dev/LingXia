@@ -27,7 +27,7 @@ public class macOSLxApp: ObservableObject {
     private init() {}
 
     /// Open specific LxApp
-    public static func openLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
+    public static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
         LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
@@ -43,16 +43,26 @@ public class macOSLxApp: ObservableObject {
     }
 
     internal static func handleAppClosing(appId: String) {
-        // Call FFI close handler first
-        let _ = onLxappClosed(appId, 0)
+        guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
+            os_log("handleAppClosing missing session for %@", log: log, type: .error, appId)
+            return
+        }
+        // Call FFI close handler first and ignore stale callbacks.
+        let accepted = onLxappClosed(appId, sessionId)
+        guard accepted else {
+            os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: log, type: .info, appId, sessionId)
+            return
+        }
+        LxAppCore.removeSessionId(for: appId)
 
         // Get next LxApp from Rust stack and open it
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
-        if !appidStr.isEmpty {
+        let nextSession = currentLxApp.session_id
+        if !appidStr.isEmpty && nextSession > 0 {
             os_log("Opening next LxApp from stack: %@:%@", log: log, type: .info, appidStr, pathStr)
-            openLxApp(appId: appidStr, path: pathStr)
+            openLxApp(appId: appidStr, path: pathStr, sessionId: nextSession)
         } else {
             os_log("No more LxApps in stack", log: log, type: .info)
         }
@@ -145,8 +155,8 @@ public class macOSLxApp: ObservableObject {
 // MARK: - Direct platform implementation
 extension macOSLxApp {
     /// Direct openLxApp implementation (called from LxAppCore)
-    internal static func openLxAppDirect(appId: String, path: String) {
-        shared.handleTabStyleOpenLxApp(appId: appId, path: path)
+    internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) {
+        shared.handleTabStyleOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Direct navigation implementation (called from LxAppCore)
@@ -177,13 +187,13 @@ extension macOSLxApp {
         }
     }
 
-    private func handleTabStyleOpenLxApp(appId: String, path: String) {
+    private func handleTabStyleOpenLxApp(appId: String, path: String, sessionId: UInt64) {
         if let tabController = Self.tabWindowController {
-            tabController.openLxApp(appId: appId, path: path)
+            tabController.openLxApp(appId: appId, path: path, sessionId: sessionId)
             tabController.window?.makeKeyAndOrderFront(nil)
         } else {
             Self.openTabStyleWindow()
-            Self.tabWindowController?.openLxApp(appId: appId, path: path)
+            Self.tabWindowController?.openLxApp(appId: appId, path: path, sessionId: sessionId)
         }
     }
 

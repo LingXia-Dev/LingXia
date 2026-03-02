@@ -60,13 +60,13 @@ function parseBoolean(value: Object | undefined, defaultValue: boolean): boolean
   return defaultValue;
 }
 
-function parseSessionId(value: Object | undefined): number {
+function parseSessionId(value: Object | undefined): number | null {
   if (value === undefined || value === null) {
-    return 0;
+    return null;
   }
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 0;
+    return null;
   }
   return Math.trunc(parsed);
 }
@@ -97,13 +97,21 @@ class NativeBridge {
     // Core LxApp functions
     this.register('openLxApp', (appId: string, path: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);
-      LxApp.openLxApp(appId, path, sessionId);
+      if (sessionId === null) {
+        hilog.error(DOMAIN, TAG, `openLxApp missing/invalid sessionId: appId=${appId}`);
+        return false;
+      }
+      LxApp.openLxAppWithSession(appId, path, sessionId);
       return true;
     });
 
     this.register('closeLxApp', (appId: string, sessionIdRaw?: Object) => {
       const sessionId = parseSessionId(sessionIdRaw);
-      LxApp.closeLxApp(appId, sessionId);
+      if (sessionId === null) {
+        hilog.error(DOMAIN, TAG, `closeLxApp missing/invalid sessionId: appId=${appId}`);
+        return false;
+      }
+      LxApp.closeLxAppWithSession(appId, sessionId);
       return true;
     });
 

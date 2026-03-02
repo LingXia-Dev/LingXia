@@ -1055,7 +1055,8 @@ impl LxApp {
             if manager.is_lxapp_stack_full() {
                 warn!(
                     "LxApp navigation stack is full (capacity: {}). Cannot navigate to app: {}",
-                    get_num_workers(), appid
+                    get_num_workers(),
+                    appid
                 );
                 return Ok(());
             }
@@ -1070,7 +1071,8 @@ impl LxApp {
     pub fn navigate_back(&self) -> Result<(), LxAppError> {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
-        self.runtime.hide_lxapp(self.appid.clone(), self.session.id)?;
+        self.runtime
+            .hide_lxapp(self.appid.clone(), self.session.id)?;
         Ok(())
     }
 
@@ -1101,8 +1103,7 @@ impl LxApp {
             }
             return Ok(());
         }
-        self.pending_restart_request
-            .store(false, Ordering::SeqCst);
+        self.pending_restart_request.store(false, Ordering::SeqCst);
 
         if let Err(e) = self.runtime.hide_lxapp(self.appid.clone(), from_session) {
             error!(
@@ -1872,18 +1873,22 @@ pub fn on_low_memory() {
     }
 }
 
-/// Get the current lxapp from the navigation stack and its current page path
-/// Returns (appid, current_page_path) or empty strings if not found
-pub fn get_current_lxapp() -> (String, String) {
+/// Get the current lxapp from the navigation stack and its current page path/session.
+/// Returns (appid, current_page_path, session_id) or empty/0 if not found.
+pub fn get_current_lxapp() -> (String, String, u64) {
     if let Some(manager) = LXAPPS_MANAGER.get()
         && let Some(current_appid) = manager.peek_lxapp_stack()
         && let Some(lxapp) = manager.lxapps.get(&current_appid)
     {
         let current_path = lxapp.peek_current_page().unwrap_or_default();
-        info!("Peek {}:{} from lxapp stack", current_appid, current_path);
-        return (current_appid, current_path);
+        let current_session = lxapp.session_id();
+        info!(
+            "Peek {}:{} (session={}) from lxapp stack",
+            current_appid, current_path, current_session
+        );
+        return (current_appid, current_path, current_session);
     }
-    (String::new(), String::new())
+    (String::new(), String::new(), 0)
 }
 
 /// Check if pull-to-refresh is enabled for a specific page

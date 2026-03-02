@@ -209,11 +209,14 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
 
-        let session = if session_id > 0 {
-            Some(session_id as u64)
-        } else {
-            lxapp::try_get(&appid).map(|app| app.session_id())
-        };
+        if session_id <= 0 {
+            warn!(
+                "findWebView called without valid session_id for {}:{}",
+                appid, path
+            );
+            return Ok(JObject::null());
+        }
+        let session = Some(session_id as u64);
         let webtag = lingxia_webview::WebTag::new(&appid, &path, session);
         if let Some(webview) = lingxia_webview::find_webview(&webtag) {
             // Get direct access to the WebView and create a new local reference to the Java WebView object
@@ -240,20 +243,23 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
     _class: JClass,
     appid: JString,
     session_id: jlong,
-) -> jint {
-    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let Some(lxapp) = lxapp::try_get(&appid) else {
             warn!("Received close event for unknown lxapp: {}", appid);
-            return Ok(0);
+            return Ok(false);
         };
-        let session_id = if session_id > 0 {
-            session_id as u64
-        } else {
-            lxapp.session_id()
-        };
+        if session_id <= 0 {
+            warn!("Ignoring close event with invalid session_id for {}", appid);
+            return Ok(false);
+        }
+        let session_id = session_id as u64;
+        if session_id != lxapp.session_id() {
+            return Ok(false);
+        }
         lxapp.on_lxapp_closed(session_id);
-        Ok(0)
+        Ok(true)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -460,15 +466,12 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
     env.with_env(|env| -> Result<JString, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
+        if session_id <= 0 {
+            warn!("onLxAppOpened called without valid session_id for {}", appid);
+            return env.new_string("");
+        }
         let resolved_path = lxapp::try_get(&appid)
-            .map(|lxapp| {
-                let session_id = if session_id > 0 {
-                    session_id as u64
-                } else {
-                    lxapp.session_id()
-                };
-                lxapp.on_lxapp_opened(path, session_id)
-            })
+            .map(|lxapp| lxapp.on_lxapp_opened(path, session_id as u64))
             .unwrap_or_default();
 
         match env.new_string(&resolved_path) {
@@ -715,7 +718,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
     _class: JClass<'a>,
 ) -> JObject<'a> {
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
-        let (current_appid, current_path) = lxapp::get_current_lxapp();
+        let (current_appid, current_path, current_session_id) = lxapp::get_current_lxapp();
 
         // Find the CurrentLxApp class (we'll need to create this)
         let current_lxapp_class = env.find_class(jni_str!("com/lingxia/lxapp/CurrentLxApp"))?;
@@ -727,10 +730,31 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getCurrentLxApp<'a>(
         // Create CurrentLxApp object
         let obj = env.new_object(
             current_lxapp_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
-            &[(&appid_str).into(), (&path_str).into()],
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
+            &[
+                (&appid_str).into(),
+                (&path_str).into(),
+                (current_session_id as jlong).into(),
+            ],
         )?;
         Ok(obj)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// Get runtime session id for a specific LxApp.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getLxAppSessionId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> jlong {
+    env.with_env(|env| -> Result<jlong, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let session_id = lxapp::try_get(&appid)
+            .map(|lxapp| lxapp.session_id() as jlong)
+            .unwrap_or(0);
+        Ok(session_id)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

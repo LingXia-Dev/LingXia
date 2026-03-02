@@ -103,6 +103,7 @@ class LxAppActivity : AppCompatActivity() {
         private const val TAG = "LingXia.WebView"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
+        const val EXTRA_SESSION_ID = "sessionId"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
 
         /**
@@ -297,6 +298,21 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
         val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
+        currentSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
+        if (currentSessionId <= 0L) {
+            val current = NativeApi.getCurrentLxApp()
+            if (current != null && current.appId == appId) {
+                currentSessionId = current.sessionId
+            }
+        }
+        if (currentSessionId <= 0L) {
+            currentSessionId = NativeApi.getLxAppSessionId(appId)
+        }
+        if (currentSessionId <= 0L) {
+            Log.e(TAG, "Missing valid sessionId for appId=$appId")
+            finish()
+            return
+        }
 
         // Initialize the new flag
         isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
@@ -638,6 +654,10 @@ class LxAppActivity : AppCompatActivity() {
 
     // Find WebView - ONLY find WebView, nothing else
     private fun findWebView(appId: String, path: String, sessionId: Long = currentSessionId): com.lingxia.lxapp.WebView? {
+        if (sessionId <= 0L) {
+            Log.w(TAG, "findWebView called with invalid sessionId for appId=$appId, path=$path")
+            return null
+        }
         val webView = com.lingxia.lxapp.WebView.findWebView(appId, path, sessionId)
         if (webView == null) {
             Log.w(TAG, "WebView not found for appId=$appId, path=$path")
@@ -989,10 +1009,10 @@ class LxAppActivity : AppCompatActivity() {
 
     /**
      * Notifies the native layer that a mini app is being closed
-     * Used only for state synchronization, doesn't affect closure decision
+     * Returns whether the close matches current runtime session.
      */
-    private fun notifyLxAppClosed(sessionId: Long = currentSessionId) {
-        NativeApi.onLxAppClosed(appId, sessionId)
+    private fun notifyLxAppClosed(sessionId: Long = currentSessionId): Boolean {
+        return NativeApi.onLxAppClosed(appId, sessionId)
     }
 
     override fun onDestroy() {
@@ -1673,7 +1693,10 @@ class LxAppActivity : AppCompatActivity() {
     // Close the current LxApp
     fun closeLxApp(sessionId: Long = currentSessionId) {
         // Notify native layer first
-        notifyLxAppClosed(sessionId)
+        if (!notifyLxAppClosed(sessionId)) {
+            Log.w(TAG, "Ignoring stale close callback for appId=$appId sessionId=$sessionId")
+            return
+        }
 
         // Pause and clean up current WebView
         currentWebView?.let { webView ->
@@ -1693,13 +1716,17 @@ class LxAppActivity : AppCompatActivity() {
         // Get next LxApp from Rust stack and open it
         val currentLxApp = NativeApi.getCurrentLxApp()
         if (currentLxApp != null && currentLxApp.isValid()) {
-            openLxApp(currentLxApp.appId, currentLxApp.path)
+            openLxApp(currentLxApp.appId, currentLxApp.path, currentLxApp.sessionId)
         } else {
         }
     }
 
     // Switch to a different LxApp in the current activity
-    fun openLxApp(appId: String, path: String, sessionId: Long = 0L) {
+    fun openLxApp(appId: String, path: String, sessionId: Long) {
+        if (sessionId <= 0L) {
+            Log.e(TAG, "Refusing to open app without valid sessionId: appId=$appId")
+            return
+        }
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
@@ -1784,6 +1811,7 @@ class LxAppActivity : AppCompatActivity() {
 
     // Get current app ID
     fun getAppId(): String = appId
+    fun getSessionId(): Long = currentSessionId
 
     // Get current WebView (internal access for LxApp)
     internal fun getCurrentWebView(): com.lingxia.lxapp.WebView? = currentWebView

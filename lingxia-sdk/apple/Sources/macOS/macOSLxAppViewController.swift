@@ -41,6 +41,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // Properties
     public var appId: String
     internal var currentPath: String
+    private var sessionId: UInt64
     private var webViewContainer: NSView!
     internal var tabBarView: NSView?
     public var tabBarConfig: TabBar?
@@ -51,9 +52,10 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
-    public init(appId: String, path: String) {
+    public init(appId: String, path: String, sessionId: UInt64) {
         self.appId = appId
         self.currentPath = path
+        self.sessionId = sessionId
         super.init(nibName: nil, bundle: nil)
 
         // Initialize top margin based on current page
@@ -227,7 +229,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func loadWebViewContent() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
             showWebViewToUser(webView, path: currentPath)
         }
     }
@@ -252,7 +254,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     internal func startPullDownRefreshProgrammatically() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
             setupPullToRefresh(for: webView)
         }
         pullToRefreshHelper?.startRefreshing()
@@ -298,7 +300,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
         updateNavigationBar(appId: appId, path: path)
 
-        if let webView = WebViewManager.findWebView(appId: appId, path: path) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
             showWebViewToUser(webView, path: path)
         }
 
@@ -307,6 +309,12 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     public func setSelectedTabIndex(_ index: Int) {
         selectedTabIndex = index
+    }
+
+    internal func updateSessionId(_ value: UInt64) {
+        if value > 0 {
+            sessionId = value
+        }
     }
 
 
@@ -326,21 +334,21 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     @MainActor
     func pauseNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
             MacNativeBridge.notifyPageInactive(for: webView)
         }
     }
 
     @MainActor
     func resumeNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
             MacNativeBridge.notifyPageActive(for: webView)
         }
     }
 
     @MainActor
     func destroyNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath) {
+        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
             MacNativeBridge.notifyPageDestroyed(for: webView)
         }
     }

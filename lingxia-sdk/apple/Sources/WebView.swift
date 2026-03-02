@@ -91,7 +91,11 @@ public class WebViewManager {
     private static var debuggingEnabled = false
 
     /// Find WebView from Rust layer
-    public static func findWebView(appId: String, path: String, sessionId: UInt64 = 0) -> WKWebView? {
+    public static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+        guard sessionId > 0 else {
+            os_log("findWebView rejected invalid session for %@", log: log, type: .error, appId)
+            return nil
+        }
         let webViewPtr = lingxia.findWebView(appId, path, sessionId)
         guard webViewPtr != 0 else { return nil }
 
@@ -116,6 +120,15 @@ public class WebViewManager {
         #endif
 
         return webView
+    }
+
+    /// Convenience lookup using stored runtime session for the app.
+    public static func findWebView(appId: String, path: String) -> WKWebView? {
+        guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
+            os_log("findWebView missing session for %@", log: log, type: .error, appId)
+            return nil
+        }
+        return findWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Switch between WebViews

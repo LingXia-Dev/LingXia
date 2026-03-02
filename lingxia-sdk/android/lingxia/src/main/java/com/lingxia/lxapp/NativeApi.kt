@@ -74,20 +74,20 @@ object NativeApi {
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app
      * @param path The initial path/route of the app
-     * @param sessionId Runtime session id (0 means use current session)
+     * @param sessionId Runtime session id
      * @return The resolved path that should be used
      */
     @JvmStatic
-    external fun onLxAppOpened(appId: String, path: String, sessionId: Long = 0L): String
+    external fun onLxAppOpened(appId: String, path: String, sessionId: Long): String
 
     /**
      * Notify native layer that an LxApp has been closed
      * @param appId The ID of the closed app
-     * @param sessionId Runtime session id (0 means use current session)
-     * @return Status code (0 = success)
+     * @param sessionId Runtime session id
+     * @return true if close event is accepted for current session, false if stale/rejected
      */
     @JvmStatic
-    external fun onLxAppClosed(appId: String, sessionId: Long = 0L): Int
+    external fun onLxAppClosed(appId: String, sessionId: Long): Boolean
 
     /**
      * Handle UI events from the UI layer
@@ -178,11 +178,11 @@ object NativeApi {
      * Find an existing WebView instance for the given app and path
      * @param appId The ID of the app
      * @param path The page path
-     * @param sessionId Runtime session id (0 means use current session)
+     * @param sessionId Runtime session id
      * @return WebView instance or null if not found
      */
     @JvmStatic
-    external fun findWebView(appId: String, path: String, sessionId: Long = 0L): com.lingxia.lxapp.WebView?
+    external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.lxapp.WebView?
 
     /**
      * Handle AppLink URL by passing the full URL to native layer
@@ -193,11 +193,18 @@ object NativeApi {
     external fun onAppLinkReceived(applinkUrl: String): Int
 
     /**
-     * Get current active LxApp ID and path from Rust stack
-     * @return CurrentLxApp with appId and path, or empty if no active LxApp
+     * Get current active LxApp info from Rust stack
+     * @return CurrentLxApp with appId, path and sessionId, or empty if no active LxApp
      */
     @JvmStatic
     external fun getCurrentLxApp(): CurrentLxApp?
+
+    /**
+     * Get runtime session id for a specific LxApp.
+     * @return session id, or 0 if unavailable
+     */
+    @JvmStatic
+    external fun getLxAppSessionId(appId: String): Long
 
     /**
      * Callback function for async operations

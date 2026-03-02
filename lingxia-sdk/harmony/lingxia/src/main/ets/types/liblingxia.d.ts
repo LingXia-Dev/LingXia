@@ -22,6 +22,7 @@ declare module 'liblingxia.so' {
   export interface CurrentLxApp {
     appid: string;
     path: string;
+    session_id: number;
   }
 
   /**
@@ -154,18 +155,18 @@ declare module 'liblingxia.so' {
    * Notify that LxApp was opened
    * @param appid - LxApp ID
    * @param path - Page path
-   * @param session_id - Optional session token used to guard stale callbacks
+   * @param session_id - Runtime session id used to guard stale callbacks
    * @returns Resolved route path
    */
-  export function onLxappOpened(appid: string, path: string, session_id?: number): string;
+  export function onLxappOpened(appid: string, path: string, session_id: number): string;
 
   /**
    * Notify that LxApp was closed
    * @param appid - LxApp ID
-   * @param session_id - Optional session token used to guard stale callbacks
+   * @param session_id - Runtime session id used to guard stale callbacks
    * @returns true when close event matches current session and is accepted
    */
-  export function onLxappClosed(appid: string, session_id?: number): boolean;
+  export function onLxappClosed(appid: string, session_id: number): boolean;
 
   /**
    * Notify that a page is being shown (WebView becomes visible)
@@ -196,6 +197,12 @@ declare module 'liblingxia.so' {
    * @returns Current LxApp information
    */
   export function getCurrentLxapp(): CurrentLxApp;
+
+  /**
+   * Get runtime session id for a specific LxApp.
+   * Returns 0 when not available.
+   */
+  export function getLxappSessionId(appid: string): number;
 
   /**
    * Callback function for async operations (modal, etc.)

@@ -19,6 +19,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var tabView: LxAppTabView?
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
+    private var appSessions: [String: UInt64] = [:]
     internal let panelManager = PanelLayoutManager()
 
     /// Get view controller for specific appId (needed for navigation)
@@ -73,7 +74,13 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
         // Tab mode cleanup
         for tab in tabManager.tabs {
-            let _ = onLxappClosed(tab.appId, 0)
+            if let sessionId = appSessions[tab.appId], sessionId > 0 {
+                let accepted = onLxappClosed(tab.appId, sessionId)
+                if !accepted {
+                    os_log("Ignoring stale close callback during cleanup for %@ (session=%{public}llu)", log: Self.log, type: .info, tab.appId, sessionId)
+                }
+            }
+            LxAppCore.removeSessionId(for: tab.appId)
         }
         macOSLxApp.removeTabWindowController(self)
     }
@@ -124,32 +131,56 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     private func setupInitialTab() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else { return }
+        let currentLxApp = getCurrentLxApp()
+        let currentAppId = currentLxApp.appid.toString()
+        let sessionId = currentLxApp.session_id
+        guard currentAppId == homeLxAppId, sessionId > 0 else {
+            os_log("setupInitialTab missing home session for %@", log: Self.log, type: .error, homeLxAppId)
+            return
+        }
 
         // Get resolved path from onLxappOpened (pass empty string to get initial route)
-        let resolvedPath = onLxappOpened(homeLxAppId, "", 0)
+        let resolvedPath = onLxappOpened(homeLxAppId, "", sessionId)
+        guard !resolvedPath.toString().isEmpty else {
+            os_log("setupInitialTab rejected by Rust (stale session?) for %@", log: Self.log, type: .info, homeLxAppId)
+            return
+        }
+        appSessions[homeLxAppId] = sessionId
+        LxAppCore.setSessionId(sessionId, for: homeLxAppId)
         LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath.toString())
         tabManager.addTab(appId: homeLxAppId)
     }
 
-    public func openLxApp(appId: String, path: String) {
+    public func openLxApp(appId: String, path: String, sessionId: UInt64) {
+        appSessions[appId] = sessionId
+        LxAppCore.setSessionId(sessionId, for: appId)
         LxAppCore.setCurrentApp(appId: appId, path: path)
         tabManager.addTab(appId: appId)
         macOSLxApp.navigate(appId: appId, path: path, animationType: .none)
     }
 
     private func switchToTab(_ appId: String) {
+        guard let sessionId = appSessions[appId], sessionId > 0 else {
+            os_log("switchToTab missing session for %@", log: Self.log, type: .error, appId)
+            return
+        }
         let isNewViewController = viewControllers[appId] == nil
 
         let viewController = viewControllers[appId] ?? {
             let currentPath = LxAppCore.getCurrentPath()
-            let vc = macOSLxAppViewController(appId: appId, path: currentPath)
+            let vc = macOSLxAppViewController(appId: appId, path: currentPath, sessionId: sessionId)
             viewControllers[appId] = vc
             return vc
         }()
+        viewController.updateSessionId(sessionId)
 
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath()
-            let _ = onLxappOpened(appId, currentPath, 0).toString()
+            let resolved = onLxappOpened(appId, currentPath, sessionId).toString()
+            if resolved.isEmpty {
+                os_log("switchToTab rejected by Rust (stale session?) for %@", log: Self.log, type: .info, appId)
+                return
+            }
         }
 
         updateContentView(with: viewController)
@@ -201,7 +232,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             panelManager.registerPanel(config)
         }
 
-        if let webView = WebViewManager.findWebView(appId: appId, path: path),
+        if let sessionId = appSessions[appId],
+           let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId),
            let container = panelManager.panelContainer(id: id) {
             WebViewManager.attachWebViewToContainer(webView, container: container)
         }
@@ -218,6 +250,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func closeTab(_ appId: String) {
+        guard let sessionId = appSessions[appId], sessionId > 0 else {
+            os_log("closeTab missing session for %@", log: Self.log, type: .error, appId)
+            return
+        }
+        let accepted = onLxappClosed(appId, sessionId)
+        guard accepted else {
+            os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
+            return
+        }
+
         if let viewController = viewControllers[appId] {
             viewController.destroyNativeComponents()
             viewController.view.removeFromSuperview()
@@ -225,14 +267,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         tabManager.closeTab(appId: appId)
-        let _ = onLxappClosed(appId, 0)
+        appSessions.removeValue(forKey: appId)
+        LxAppCore.removeSessionId(for: appId)
 
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
-        if !appidStr.isEmpty {
+        let sessionId = currentLxApp.session_id
+        if !appidStr.isEmpty && sessionId > 0 {
             os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
-            macOSLxApp.openLxApp(appId: appidStr, path: pathStr)
+            macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: sessionId)
         } else if !tabManager.hasTabs {
             window?.close()
         }

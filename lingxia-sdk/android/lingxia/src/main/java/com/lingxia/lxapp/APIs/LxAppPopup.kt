@@ -94,7 +94,16 @@ internal object LxAppPopup {
             return
         }
 
-        val webView = NativeApi.findWebView(appId, path)
+        val sessionId = if (activity.getAppId() == appId) {
+            activity.getSessionId()
+        } else {
+            NativeApi.getCurrentLxApp()?.takeIf { it.appId == appId }?.sessionId ?: 0L
+        }
+        if (sessionId <= 0L) {
+            Log.w(TAG, "showPopup: missing valid session for appId=$appId")
+            return
+        }
+        val webView = NativeApi.findWebView(appId, path, sessionId)
         if (webView == null) {
             Log.w(TAG, "showPopup: WebView not found for path=$path")
             return

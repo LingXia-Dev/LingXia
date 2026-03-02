@@ -12,7 +12,7 @@ class WebView(context: Context) : LingXiaWebView(context) {
     companion object {
         private const val TAG = "LingXia.WebView"
 
-        fun findWebView(appId: String, path: String, sessionId: Long = 0L): WebView? {
+        fun findWebView(appId: String, path: String, sessionId: Long): WebView? {
             Log.d(TAG, "Finding WebView for appId: $appId, path: $path")
             return NativeApi.findWebView(appId, path, sessionId)
         }

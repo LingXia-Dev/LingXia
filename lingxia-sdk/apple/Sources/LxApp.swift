@@ -158,6 +158,7 @@ public class LxAppCore {
     /// Global current app state - shared across iOS and macOS
     public private(set) static var currentAppId: String?
     private static var currentPath: String = ""
+    private static var appSessions: [String: UInt64] = [:]
 
     /// Current WebView - cached to avoid frequent findWebView calls
     private static var currentWebView: WKWebView?
@@ -165,11 +166,20 @@ public class LxAppCore {
     private init() {}
 
     /// Shared openLxApp logic - used by both iOS and macOS platforms
-    internal static func executeOpenLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
+    internal static func executeOpenLxApp(appId: String, path: String, sessionId: UInt64) {
+        guard sessionId > 0 else {
+            os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
+            return
+        }
 
         // Call onLxappOpened to get the resolved path
         let resolvedPath = onLxappOpened(appId, path, sessionId)
         let finalPath = resolvedPath.toString()
+        guard !finalPath.isEmpty else {
+            os_log("executeOpenLxApp rejected by Rust (stale session?) for %@ session=%{public}llu", log: log, type: .info, appId, sessionId)
+            return
+        }
+        appSessions[appId] = sessionId
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
         if let handler = openLxAppHandler, handler(appId, finalPath) {
@@ -178,9 +188,9 @@ public class LxAppCore {
 
         // Direct platform calls instead of using renderer protocol
         #if os(iOS)
-        iOSLxApp.openLxAppDirect(appId: appId, path: finalPath)
+        iOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
         #elseif os(macOS)
-        macOSLxApp.openLxAppDirect(appId: appId, path: finalPath)
+        macOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
         #endif
     }
 
@@ -285,7 +295,11 @@ public class LxAppCore {
         currentPath = path
 
         // Update WebView cache when app/path changes
-        currentWebView = WebViewManager.findWebView(appId: appId, path: path)
+        if let sessionId = appSessions[appId], sessionId > 0 {
+            currentWebView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+        } else {
+            currentWebView = nil
+        }
     }
 
     /// Get current path for active app - always returns definitive value, never nil
@@ -300,7 +314,11 @@ public class LxAppCore {
         currentPath = path
 
         // Update WebView cache when path changes
-        currentWebView = WebViewManager.findWebView(appId: appId, path: path)
+        if let sessionId = appSessions[appId], sessionId > 0 {
+            currentWebView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+        } else {
+            currentWebView = nil
+        }
     }
 
     /// Get current WebView - cached for efficiency
@@ -311,6 +329,20 @@ public class LxAppCore {
     /// Get home LxApp ID
     public static func getHomeLxAppId() -> String? {
         return homeLxAppId
+    }
+
+    internal static func sessionId(for appId: String) -> UInt64? {
+        return appSessions[appId]
+    }
+
+    internal static func setSessionId(_ sessionId: UInt64, for appId: String) {
+        if sessionId > 0 {
+            appSessions[appId] = sessionId
+        }
+    }
+
+    internal static func removeSessionId(for appId: String) {
+        appSessions.removeValue(forKey: appId)
     }
 }
 
@@ -412,6 +444,9 @@ extension LxApp {
     nonisolated public static func openLxApp(appid: RustStr, path: RustStr, session_id: UInt64) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
+        guard session_id > 0 else {
+            return false
+        }
 
         return executeOnMain {
             LxAppPlatform.openLxApp(appId: appIdString, path: pathString, sessionId: session_id)
@@ -422,6 +457,9 @@ extension LxApp {
     /// Close LxApp
     nonisolated public static func closeLxApp(appid: RustStr, session_id: UInt64) -> Bool {
         let appIdString = appid.toString()
+        guard session_id > 0 else {
+            return false
+        }
 
         return executeOnMain {
             #if os(iOS)
