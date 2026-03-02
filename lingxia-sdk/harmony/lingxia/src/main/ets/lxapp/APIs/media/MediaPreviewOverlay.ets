@@ -524,37 +524,65 @@ struct MediaViewer {
     if (event !== 'timeupdate') {
       hilog.info(DOMAIN, TAG, `Video event: ${event}`);
     }
-    if (event === 'playing') {
+    const isPlayIntent = event === 'playrequest' || event === 'play' || event === 'waiting';
+    const isStopped = event === 'pause' || event === 'ended' || event === 'stop' || event === 'error';
+
+    if (isPlayIntent || event === 'playing') {
       this.videoState.isPlaying = true;
       this.videoState.isPaused = false;
-      this.startProgressTimer();
-      // Detect video orientation when video starts playing (dimensions available)
-      this.detectVideoOrientation();
-    } else if (event === 'pause') {
+      this.videoState.isBuffering = event !== 'playing';
+      if (event === 'playing') {
+        this.startProgressTimer();
+        this.detectVideoOrientation();
+      } else {
+        this.stopProgressTimer();
+      }
+    } else if (isStopped) {
       this.videoState.isPlaying = false;
       this.videoState.isPaused = true;
+      this.videoState.isBuffering = false;
       this.stopProgressTimer();
-    } else if (event === 'prepared') {
-      // Also try to detect orientation when prepared
+      if (event === 'ended') {
+        this.sliderValue = 100;
+      } else if (event === 'error') {
+        hilog.error(DOMAIN, TAG, `Video error: ${(detail as VideoErrorDetail).message}`);
+      }
+    } else if (event === 'seeking') {
+      this.isSeeking = true;
+    } else if (event === 'seeked') {
+      this.isSeeking = false;
+      if (this.playerId) {
+        const current = LxNativeVideoPlayer.getCurrentTimeStatic(this.playerId);
+        if (current >= 0) {
+          this.videoState.currentTime = current;
+          if (this.videoState.duration > 0) {
+            this.sliderValue = (current / this.videoState.duration) * 100;
+          }
+        }
+      }
+    } else if (event === 'loadedmetadata' || event === 'prepared') {
       this.detectVideoOrientation();
-    } else if (event === 'error') {
-      const errorDetail = detail as VideoErrorDetail;
-      hilog.error(DOMAIN, TAG, `Video error: ${errorDetail.message}`);
     }
   }
 
   private togglePlayPause(): void {
     if (this.playerId) {
+      const shouldPlay = !this.videoState.isPlaying;
       LxNativeVideoPlayer.togglePlayPause(this.playerId);
-      this.videoState.isPlaying = !this.videoState.isPlaying;
-      this.videoState.isPaused = !this.videoState.isPlaying;
-      if (this.videoState.isPlaying) {
-        this.startProgressTimer();
+      if (shouldPlay) {
+        // Optimistically reflect "play intent"; native events will finalize state.
+        this.videoState.isPlaying = true;
+        this.videoState.isPaused = false;
+        this.videoState.isBuffering = true;
         // Only reset timer (auto-hide) when playing, don't force show
         if (this.showControls) {
           this.resetControlsTimer();
         }
       } else {
+        // Pause intent should be reflected immediately.
+        this.videoState.isPlaying = false;
+        this.videoState.isPaused = true;
+        this.videoState.isBuffering = false;
         this.stopProgressTimer();
       }
     }
