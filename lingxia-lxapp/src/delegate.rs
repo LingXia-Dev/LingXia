@@ -27,10 +27,10 @@ pub enum UiEventType {
 pub trait LxAppDelegate {
     /// Called when lxapp is opened
     /// Returns the resolved path that should be used
-    fn on_lxapp_opened(self: Arc<Self>, path: String) -> String;
+    fn on_lxapp_opened(self: Arc<Self>, path: String, session_id: u64) -> String;
 
     /// Called when lxapp is closed
-    fn on_lxapp_closed(self: &Arc<Self>);
+    fn on_lxapp_closed(self: &Arc<Self>, session_id: u64);
 
     /// Called when the page showed in the view
     fn on_page_show(self: &Arc<Self>, path: String);
@@ -41,7 +41,12 @@ pub trait LxAppDelegate {
 }
 
 impl LxAppDelegate for LxApp {
-    fn on_lxapp_opened(self: Arc<Self>, path: String) -> String {
+    fn on_lxapp_opened(self: Arc<Self>, path: String, session_id: u64) -> String {
+        let current_session = self.session_id();
+        if session_id != current_session {
+            return String::new();
+        }
+
         let previous_appid = lxapp::get_current_lxapp().0;
 
         let raw_url = if path.is_empty() {
@@ -64,10 +69,6 @@ impl LxAppDelegate for LxApp {
 
         let resolved_path = resolved.internal_path();
         let was_already_opened = self.is_opened();
-
-        info!("LxApp opened (already_opened: {})", was_already_opened)
-            .with_appid(self.appid.clone())
-            .with_path(resolved_path.clone());
 
         // When switching to this app, hide the previously active app (if any).
         if !previous_appid.is_empty() && previous_appid != self.appid {
@@ -156,10 +157,21 @@ impl LxAppDelegate for LxApp {
         let _ = self.appservice_notify(AppServiceEvent::OnShow, args_str);
         self.trigger_home_update_check_once();
 
+        if self.has_pending_restart_request() {
+            if let Err(e) = self.restart() {
+                error!("Deferred restart after open failed: {}", e).with_appid(self.appid.clone());
+            }
+        }
+
         resolved_path
     }
 
-    fn on_lxapp_closed(self: &Arc<Self>) {
+    fn on_lxapp_closed(self: &Arc<Self>, session_id: u64) {
+        let current_session = self.session_id();
+        if session_id != current_session {
+            return;
+        }
+
         self.set_status(LxAppSessionStatus::Closed);
 
         // Update last active time
@@ -181,8 +193,6 @@ impl LxAppDelegate for LxApp {
             error!("Failed to trigger onHide service: {}", e).with_appid(self.appid.clone());
         }
 
-        // Log the app closing event
-        info!("LxApp closed").with_appid(self.appid.clone());
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
@@ -270,7 +280,9 @@ impl LxApp {
                 }
 
                 // after SDK hides it, SDK should call get_current_lxapp to show another lxapp
-                let _ = self.runtime.hide_lxapp(self.appid.clone());
+                let _ = self
+                    .runtime
+                    .hide_lxapp(self.appid.clone(), self.session_id());
                 return true;
             }
             "minimize" => {
@@ -392,7 +404,9 @@ impl LxApp {
         if stack_size <= 1 {
             // If it's the last page, hide this LxApp (except home app)
             if !self.is_home_lxapp {
-                let _ = self.runtime.hide_lxapp(self.appid.clone());
+                let _ = self
+                    .runtime
+                    .hide_lxapp(self.appid.clone(), self.session_id());
             }
             return true;
         }

@@ -204,19 +204,24 @@ impl LxApps {
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
-    fn destroy_lxapp(&self, appid: &str) {
+    fn destroy_lxapp_with_options(&self, appid: &str, skip_hide: bool) {
         if let Some(app_arc) = self.lxapps.get(appid) {
-            let _ = app_arc.shutdown();
+            let _ = app_arc.shutdown_with_options(skip_hide);
         }
         self.remove_from_stack(appid);
         self.lxapps.remove(appid);
     }
 
+    /// Completely destroy an LxApp with normal hide behavior.
+    fn destroy_lxapp(&self, appid: &str) {
+        self.destroy_lxapp_with_options(appid, false);
+    }
+
     /// Recreate the LxApp instance for a given appid with a brand new instance.
     /// Used by restart to force a fresh session and runtime state.
     fn recreate_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
-        // Clean out old instance + stack entries before inserting a fresh one.
-        self.destroy_lxapp(&appid);
+        // Close handshake is handled by restart state machine; avoid a second hide while recreating.
+        self.destroy_lxapp_with_options(&appid, true);
 
         // Delegate to get_or_init_lxapp so pending downloaded updates are applied
         // consistently (same path as cold-start navigation).
@@ -402,6 +407,7 @@ pub struct LxApp {
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppExecutor>,
     home_update_check_dispatched: AtomicBool,
+    pending_restart_request: AtomicBool,
 
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
@@ -469,7 +475,7 @@ impl LxAppSession {
     }
 }
 
-/// Service identity of a LxApp, used for registry and comparisons.
+/// Session helpers and lifecycle utilities for LxApp.
 impl LxApp {
     /// Helper to clone Arc<Self> from within methods needing Arc
     pub(crate) fn clone_arc(&self) -> Arc<LxApp> {
@@ -506,6 +512,10 @@ impl LxApp {
         }
     }
 
+    pub(crate) fn has_pending_restart_request(&self) -> bool {
+        self.pending_restart_request.load(Ordering::SeqCst)
+    }
+
     // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
     /// Shutdown this LxApp completely. Idempotent.
     ///
@@ -516,16 +526,18 @@ impl LxApp {
     /// 4) Destroy platform WebViews
     /// 5) Clear page stack and popup
     /// 6) Send TerminateAppSvc (receiver handles teardown)
-    pub fn shutdown(&self) -> Result<(), LxAppError> {
+    pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
         self.set_status(LxAppSessionStatus::Closing);
         crate::key_event::clear(&self.appid, self.session.id);
 
         // Close UI window
-        let _ = self
-            .runtime
-            .hide_lxapp(self.appid.clone())
-            .map_err(LxAppError::from);
+        if !skip_hide {
+            let _ = self
+                .runtime
+                .hide_lxapp(self.appid.clone(), self.session.id)
+                .map_err(LxAppError::from);
+        }
 
         // Collect current pages
         let page_paths: Vec<String> = {
@@ -559,6 +571,10 @@ impl LxApp {
         Ok(())
     }
 
+    pub fn shutdown(&self) -> Result<(), LxAppError> {
+        self.shutdown_with_options(false)
+    }
+
     fn _new(
         appid: String,
         runtime: Arc<Platform>,
@@ -579,6 +595,7 @@ impl LxApp {
             config: LxAppConfig::default(),
             executor,
             home_update_check_dispatched: AtomicBool::new(false),
+            pending_restart_request: AtomicBool::new(false),
             session,
             state: Mutex::new(LxAppState::new()),
             cache: None,
@@ -1009,7 +1026,7 @@ impl LxApp {
 
         // Open UI
         self.runtime
-            .show_lxapp(self.appid.clone(), startup_options.path)?;
+            .show_lxapp(self.appid.clone(), startup_options.path, self.session.id)?;
         Ok(())
     }
 
@@ -1053,22 +1070,81 @@ impl LxApp {
     pub fn navigate_back(&self) -> Result<(), LxAppError> {
         // The on_lxapp_closed delegate will then handle removing it from the navigation stack.
         // The underlying UI framework should detect the app closure and automatically display the new app at the top of the stack.
-        self.runtime.hide_lxapp(self.appid.clone())?;
+        self.runtime.hide_lxapp(self.appid.clone(), self.session.id)?;
         Ok(())
     }
 
     /// Restarts the current LxApp with cleanup + reopen.
     /// This offloads the sequence to the service executor to avoid blocking JS worker.
     pub fn restart(&self) -> Result<(), LxAppError> {
-        // Prevent overlapping restarts
+        let from_session = self.session.id;
+        let current_status = self.status();
+
+        match current_status {
+            // If restart is requested during Opening (e.g. applyUpdate in onLaunch),
+            // queue it and consume once on_lxapp_opened finalizes status=Opened.
+            LxAppSessionStatus::Opening
+            | LxAppSessionStatus::Closed
+            | LxAppSessionStatus::Closing => {
+                self.pending_restart_request.store(true, Ordering::SeqCst);
+                return Ok(());
+            }
+            LxAppSessionStatus::Opened => {}
+            LxAppSessionStatus::Restarting => return Ok(()),
+        }
+
+        // Prevent overlapping restarts from races with other state transitions.
         if !self.cas_status(LxAppSessionStatus::Opened, LxAppSessionStatus::Restarting) {
+            let current = self.status();
+            if current == LxAppSessionStatus::Opening {
+                self.pending_restart_request.store(true, Ordering::SeqCst);
+            }
             return Ok(());
         }
-        // Always relaunch to initial route after restart
+        self.pending_restart_request
+            .store(false, Ordering::SeqCst);
+
+        if let Err(e) = self.runtime.hide_lxapp(self.appid.clone(), from_session) {
+            error!(
+                "Restart transition: failed to request close for session {}: {}",
+                from_session, e
+            )
+            .with_appid(self.appid.clone());
+        }
+
+        // Always relaunch to initial route after restart.
+        // Wait for the current session to report Closed (or timeout) before recreate+open,
+        // so close/open callbacks do not race on the same appid.
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
         let _ = rong::bg::spawn(async move {
+            let wait_deadline = Instant::now() + Duration::from_millis(1500);
+            loop {
+                let Some(current) = crate::lxapp::try_get(&appid) else {
+                    break;
+                };
+
+                if current.session_id() != from_session {
+                    return;
+                }
+
+                if current.status() == LxAppSessionStatus::Closed {
+                    break;
+                }
+
+                if Instant::now() >= wait_deadline {
+                    warn!(
+                        "Restart transition: close wait timeout for session {}, forcing recreate",
+                        from_session
+                    )
+                    .with_appid(appid.clone());
+                    break;
+                }
+
+                time::sleep(Duration::from_millis(20)).await;
+            }
+
             // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
                 let new_app = manager.recreate_lxapp(appid.clone(), release_type);
