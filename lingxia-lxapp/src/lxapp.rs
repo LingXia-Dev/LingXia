@@ -1677,6 +1677,8 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
 
 // Global instance of LxApps manager
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
+// Global runtime available as soon as init() starts.
+static RUNTIME: OnceLock<Arc<Platform>> = OnceLock::new();
 
 /// Initialize the LxApps singleton
 /// Returns an Option of home_app_id on success.
@@ -1706,6 +1708,7 @@ pub fn init(runtime: Platform) -> Option<String> {
     crate::host::register_all();
 
     let runtime_arc = Arc::new(runtime.clone());
+    let _ = RUNTIME.set(runtime_arc.clone());
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
@@ -1839,15 +1842,18 @@ pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
 /// Get the platform runtime instance.
 /// Returns None if the SDK has not been initialized.
 pub fn get_platform() -> Option<Arc<Platform>> {
-    LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone())
+    RUNTIME
+        .get()
+        .cloned()
+        .or_else(|| LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone()))
 }
 
 /// Get the system locale string.
 /// Returns "en-US" as default if the SDK has not been initialized.
 pub fn get_locale() -> String {
-    LXAPPS_MANAGER
+    RUNTIME
         .get()
-        .map(|manager| manager.runtime.get_system_locale().to_string())
+        .map(|runtime| runtime.get_system_locale().to_string())
         .unwrap_or_else(|| "en-US".to_string())
 }
 
