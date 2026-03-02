@@ -12,9 +12,9 @@ class WebView(context: Context) : LingXiaWebView(context) {
     companion object {
         private const val TAG = "LingXia.WebView"
 
-        fun findWebView(appId: String, path: String): WebView? {
+        fun findWebView(appId: String, path: String, sessionId: Long = 0L): WebView? {
             Log.d(TAG, "Finding WebView for appId: $appId, path: $path")
-            return NativeApi.findWebView(appId, path)
+            return NativeApi.findWebView(appId, path, sessionId)
         }
 
         /**
@@ -28,8 +28,8 @@ class WebView(context: Context) : LingXiaWebView(context) {
 
     var pullToRefreshCallback: ((MotionEvent) -> Boolean)? = null
 
-    override fun initializeWebView(appId: String, path: String) {
-        super.initializeWebView(appId, path)
+    override fun initializeWebView(appId: String, path: String, sessionId: Long) {
+        super.initializeWebView(appId, path, sessionId)
         // Register native bridge JavaScriptInterface right after WebView init, before content loads
         NativeBridge.registerJsInterface(this)
         // Disable overscroll glow effect - native components stay fixed at boundaries

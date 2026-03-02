@@ -60,6 +60,17 @@ function parseBoolean(value: Object | undefined, defaultValue: boolean): boolean
   return defaultValue;
 }
 
+function parseSessionId(value: Object | undefined): number {
+  if (value === undefined || value === null) {
+    return 0;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+  return Math.trunc(parsed);
+}
+
 /**
  * Native Bridge - Internal callback manager
  * Handles all native-to-ArkTS communication
@@ -84,13 +95,15 @@ class NativeBridge {
    */
   private registerDefaultCallbacks(): void {
     // Core LxApp functions
-    this.register('openLxApp', (appId: string, path: string) => {
-      LxApp.openLxApp(appId, path);
+    this.register('openLxApp', (appId: string, path: string, sessionIdRaw?: Object) => {
+      const sessionId = parseSessionId(sessionIdRaw);
+      LxApp.openLxApp(appId, path, sessionId);
       return true;
     });
 
-    this.register('closeLxApp', (appId: string) => {
-      LxApp.closeLxApp(appId);
+    this.register('closeLxApp', (appId: string, sessionIdRaw?: Object) => {
+      const sessionId = parseSessionId(sessionIdRaw);
+      LxApp.closeLxApp(appId, sessionId);
       return true;
     });
 

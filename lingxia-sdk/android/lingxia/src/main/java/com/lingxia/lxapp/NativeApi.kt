@@ -74,18 +74,20 @@ object NativeApi {
      * Notify native layer that an LxApp has been opened
      * @param appId The ID of the opened app
      * @param path The initial path/route of the app
+     * @param sessionId Runtime session id (0 means use current session)
      * @return The resolved path that should be used
      */
     @JvmStatic
-    external fun onLxAppOpened(appId: String, path: String): String
+    external fun onLxAppOpened(appId: String, path: String, sessionId: Long = 0L): String
 
     /**
      * Notify native layer that an LxApp has been closed
      * @param appId The ID of the closed app
+     * @param sessionId Runtime session id (0 means use current session)
      * @return Status code (0 = success)
      */
     @JvmStatic
-    external fun onLxAppClosed(appId: String): Int
+    external fun onLxAppClosed(appId: String, sessionId: Long = 0L): Int
 
     /**
      * Handle UI events from the UI layer
@@ -176,10 +178,11 @@ object NativeApi {
      * Find an existing WebView instance for the given app and path
      * @param appId The ID of the app
      * @param path The page path
+     * @param sessionId Runtime session id (0 means use current session)
      * @return WebView instance or null if not found
      */
     @JvmStatic
-    external fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView?
+    external fun findWebView(appId: String, path: String, sessionId: Long = 0L): com.lingxia.lxapp.WebView?
 
     /**
      * Handle AppLink URL by passing the full URL to native layer

@@ -152,9 +152,9 @@ class LxApp private constructor(private val context: Context) {
          * @param path The initial path to navigate to within the mini app
          */
         @JvmStatic
-        fun openLxApp(appId: String, path: String) {
+        fun openLxApp(appId: String, path: String, sessionId: Long = 0L) {
             val instance = getInstance()
-            instance.openInCurrentActivity(appId, path)
+            instance.openInCurrentActivity(appId, path, sessionId)
         }
 
         /**
@@ -180,14 +180,14 @@ class LxApp private constructor(private val context: Context) {
          * @param appId The ID of the mini app to close
          */
         @JvmStatic
-        fun closeLxApp(appId: String) {
+        fun closeLxApp(appId: String, sessionId: Long = 0L) {
             Log.d(TAG, "Closing LxApp with appId: $appId")
 
             // Notify the current activity to close the LxApp
             val activity = currentActivity?.takeIf { it.getAppId() == appId }
             if (activity != null) {
                 activity.runOnUiThread {
-                    activity.closeLxApp()
+                    activity.closeLxApp(sessionId)
                 }
             } else {
                 Log.w(TAG, "No matching activity for appId: $appId")
@@ -411,14 +411,14 @@ class LxApp private constructor(private val context: Context) {
         }
     }
 
-    private fun openInCurrentActivity(appId: String, path: String) {
+    private fun openInCurrentActivity(appId: String, path: String, sessionId: Long = 0L) {
         try {
-            val resolvedPath = NativeApi.onLxAppOpened(appId, path)
+            val resolvedPath = NativeApi.onLxAppOpened(appId, path, sessionId)
 
             if (currentActivity != null) {
                 Log.d(TAG, "Opening app in current activity")
                 currentActivity?.runOnUiThread {
-                    currentActivity?.openLxApp(appId, resolvedPath)
+                    currentActivity?.openLxApp(appId, resolvedPath, sessionId)
                 }
             } else {
                 Log.d(TAG, "Creating new activity")

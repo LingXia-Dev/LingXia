@@ -298,11 +298,11 @@ export struct LxAppNavigation {
     }
   }
 
-  public openLxApp(appId: string, path: string): void {
-    hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path}`);
+  public openLxApp(appId: string, path: string, sessionId: number = 0): void {
+    hilog.info(DOMAIN, TAG, `Opening lxapp: ${appId}:${path} (session=${sessionId})`);
 
     try {
-      const resolvedPath: string = onLxappOpened(appId, path);
+      const resolvedPath: string = onLxappOpened(appId, path, sessionId);
 
       // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
@@ -324,15 +324,19 @@ export struct LxAppNavigation {
     }
   }
 
-  public closeLxApp(appId: string): void {
-    hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId}`);
+  public closeLxApp(appId: string, sessionId: number = 0): void {
+    hilog.info(DOMAIN, TAG, `Closing lxapp: ${appId} (session=${sessionId})`);
 
     try {
       // Pause native components (video players, etc.) before closing
       pauseAllComponentsByAppId(appId);
 
       // Call native close handler first - this removes the app from Rust stack
-      onLxappClosed(appId);
+      const accepted: boolean = onLxappClosed(appId, sessionId);
+      if (!accepted) {
+        hilog.warn(DOMAIN, TAG, `Ignoring stale close callback: ${appId} (session=${sessionId})`);
+        return;
+      }
 
       // UI cleanup: hide the closed app
       if (appId === this.homeAppId) {

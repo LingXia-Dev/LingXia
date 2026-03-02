@@ -91,8 +91,8 @@ public class WebViewManager {
     private static var debuggingEnabled = false
 
     /// Find WebView from Rust layer
-    public static func findWebView(appId: String, path: String) -> WKWebView? {
-        let webViewPtr = lingxia.findWebView(appId, path)
+    public static func findWebView(appId: String, path: String, sessionId: UInt64 = 0) -> WKWebView? {
+        let webViewPtr = lingxia.findWebView(appId, path, sessionId)
         guard webViewPtr != 0 else { return nil }
 
         // Safely convert pointer to WebView with error handling

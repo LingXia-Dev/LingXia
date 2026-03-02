@@ -110,9 +110,9 @@ public class iOSLxApp {
     }
 
     /// Opens a lxapp
-    public static func openLxApp(appId: String, path: String) {
+    public static func openLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppCore.executeOpenLxApp(appId: appId, path: path)
+        LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Opens the home mini app
@@ -125,9 +125,9 @@ public class iOSLxApp {
     }
 
     /// Closes a mini app with the specified appId
-    public static func closeLxApp(appId: String) {
+    public static func closeLxApp(appId: String, sessionId: UInt64 = 0) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
-        getInstance().lxAppManager?.closeLxApp(appId: appId)
+        getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId)
     }
 
     /// Navigate to a page with specific animation type
@@ -137,8 +137,8 @@ public class iOSLxApp {
     }
 
     /// Find WebView for the given appId and path
-    internal static func findWebView(appId: String, path: String) -> WKWebView? {
-        return WebViewManager.findWebView(appId: appId, path: path)
+    internal static func findWebView(appId: String, path: String, sessionId: UInt64 = 0) -> WKWebView? {
+        return WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
     private func openLxAppInManager(appId: String, path: String) {

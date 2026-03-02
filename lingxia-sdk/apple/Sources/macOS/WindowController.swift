@@ -73,7 +73,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
         // Tab mode cleanup
         for tab in tabManager.tabs {
-            let _ = onLxappClosed(tab.appId)
+            let _ = onLxappClosed(tab.appId, 0)
         }
         macOSLxApp.removeTabWindowController(self)
     }
@@ -126,7 +126,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else { return }
 
         // Get resolved path from onLxappOpened (pass empty string to get initial route)
-        let resolvedPath = onLxappOpened(homeLxAppId, "")
+        let resolvedPath = onLxappOpened(homeLxAppId, "", 0)
         LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath.toString())
         tabManager.addTab(appId: homeLxAppId)
     }
@@ -149,7 +149,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath()
-            let _ = onLxappOpened(appId, currentPath).toString()
+            let _ = onLxappOpened(appId, currentPath, 0).toString()
         }
 
         updateContentView(with: viewController)
@@ -225,7 +225,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         tabManager.closeTab(appId: appId)
-        let _ = onLxappClosed(appId)
+        let _ = onLxappClosed(appId, 0)
 
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()

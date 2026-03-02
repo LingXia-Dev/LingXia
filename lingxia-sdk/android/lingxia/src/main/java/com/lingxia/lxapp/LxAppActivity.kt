@@ -269,6 +269,7 @@ class LxAppActivity : AppCompatActivity() {
     private var hasEnteredBackground = false
     private var pendingWebViewSetup = false
     private var isDisplayingHomeLxApp: Boolean = false
+    private var currentSessionId: Long = 0L
 
     // Tracks the currently visible WebView instance
     private var currentWebView: com.lingxia.lxapp.WebView? = null
@@ -636,8 +637,8 @@ class LxAppActivity : AppCompatActivity() {
 
 
     // Find WebView - ONLY find WebView, nothing else
-    private fun findWebView(appId: String, path: String): com.lingxia.lxapp.WebView? {
-        val webView = com.lingxia.lxapp.WebView.findWebView(appId, path)
+    private fun findWebView(appId: String, path: String, sessionId: Long = currentSessionId): com.lingxia.lxapp.WebView? {
+        val webView = com.lingxia.lxapp.WebView.findWebView(appId, path, sessionId)
         if (webView == null) {
             Log.w(TAG, "WebView not found for appId=$appId, path=$path")
         }
@@ -990,8 +991,8 @@ class LxAppActivity : AppCompatActivity() {
      * Notifies the native layer that a mini app is being closed
      * Used only for state synchronization, doesn't affect closure decision
      */
-    private fun notifyLxAppClosed() {
-        NativeApi.onLxAppClosed(appId)
+    private fun notifyLxAppClosed(sessionId: Long = currentSessionId) {
+        NativeApi.onLxAppClosed(appId, sessionId)
     }
 
     override fun onDestroy() {
@@ -1670,9 +1671,9 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Close the current LxApp
-    fun closeLxApp() {
+    fun closeLxApp(sessionId: Long = currentSessionId) {
         // Notify native layer first
-        notifyLxAppClosed()
+        notifyLxAppClosed(sessionId)
 
         // Pause and clean up current WebView
         currentWebView?.let { webView ->
@@ -1698,12 +1699,13 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     // Switch to a different LxApp in the current activity
-    fun openLxApp(appId: String, path: String) {
+    fun openLxApp(appId: String, path: String, sessionId: Long = 0L) {
 
         // Ensure all UI operations are on the main thread
         runOnUiThread {
             // Update app state (no intent extras needed - we're not switching activities)
             this.appId = appId
+            this.currentSessionId = sessionId
             this.isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
             // 1. Necessary preparation (build tabbar, etc.)

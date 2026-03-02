@@ -20,8 +20,8 @@ const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
 
 interface NavigationInstance {
-  openLxApp(appId: string, path: string): void;
-  closeLxApp(appId: string): void;
+  openLxApp(appId: string, path: string, sessionId?: number): void;
+  closeLxApp(appId: string, sessionId?: number): void;
   navigate(appId: string, path: string, animationType: AnimationType): boolean;
   isTabBarHidden(appId: string): boolean;
 }
@@ -151,9 +151,9 @@ export class LxApp {
    * Close an LxApp by appId
    * @param appId - The ID of the LxApp to close
    */
-  public static closeLxApp(appId: string): void {
+  public static closeLxApp(appId: string, sessionId: number = 0): void {
     if (LxApp.navigationInstance) {
-      LxApp.navigationInstance.closeLxApp(appId);
+      LxApp.navigationInstance.closeLxApp(appId, sessionId);
       return;
     }
 
@@ -165,13 +165,13 @@ export class LxApp {
    * @param appId - The ID of the LxApp to open
    * @param path - The path to open within the LxApp (empty string will use initial route)
    */
-  public static openLxApp(appId: string, path: string): void {
+  public static openLxApp(appId: string, path: string, sessionId: number = 0): void {
     hilog.info(DOMAIN, TAG, `openLxApp called: ${appId}:${path}`);
 
     // Use navigate with Launch type for unified architecture
     if (LxApp.navigationInstance) {
       hilog.info(DOMAIN, TAG, 'Using navigate for openLxApp with Launch type');
-      LxApp.navigationInstance.openLxApp(appId, path);
+      LxApp.navigationInstance.openLxApp(appId, path, sessionId);
       return;
     }
 
@@ -369,11 +369,11 @@ struct LxAppManager {
   /**
    * Open LxApp (unified method for both home and other lxapps)
    */
-  public doOpenLxApp(appId: string, path: string, isHomeLxApp: boolean = false): void {
+  public doOpenLxApp(appId: string, path: string, isHomeLxApp: boolean = false, sessionId: number = 0): void {
     hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
 
     try {
-      const resolvedPath: string = onLxappOpened(appId, path);
+      const resolvedPath: string = onLxappOpened(appId, path, sessionId);
 
       if (isHomeLxApp) {
         this.homeAppId = appId;

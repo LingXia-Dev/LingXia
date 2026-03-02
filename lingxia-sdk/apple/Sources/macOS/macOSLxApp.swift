@@ -27,9 +27,9 @@ public class macOSLxApp: ObservableObject {
     private init() {}
 
     /// Open specific LxApp
-    public static func openLxApp(appId: String, path: String) {
+    public static func openLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppCore.executeOpenLxApp(appId: appId, path: path)
+        LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     private static func openTabStyleWindow() {
@@ -44,7 +44,7 @@ public class macOSLxApp: ObservableObject {
 
     internal static func handleAppClosing(appId: String) {
         // Call FFI close handler first
-        let _ = onLxappClosed(appId)
+        let _ = onLxappClosed(appId, 0)
 
         // Get next LxApp from Rust stack and open it
         let currentLxApp = getCurrentLxApp()

@@ -222,7 +222,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Closes a LxApp and removes its state
-    public func closeLxApp(appId: String) {
+    public func closeLxApp(appId: String, sessionId: UInt64 = 0) {
         os_log("Closing LxApp: %@", log: Self.log, type: .info, appId)
 
         guard LxAppCore.currentAppId == appId else {
@@ -242,7 +242,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         currentWebViewTopConstraint = nil
 
         // Call FFI close handler first
-        let _ = onLxappClosed(appId)
+        let _ = onLxappClosed(appId, sessionId)
 
         // Get next LxApp from Rust stack and open it
         let currentLxApp = getCurrentLxApp()

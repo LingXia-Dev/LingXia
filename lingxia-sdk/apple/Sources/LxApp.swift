@@ -165,10 +165,10 @@ public class LxAppCore {
     private init() {}
 
     /// Shared openLxApp logic - used by both iOS and macOS platforms
-    internal static func executeOpenLxApp(appId: String, path: String) {
+    internal static func executeOpenLxApp(appId: String, path: String, sessionId: UInt64 = 0) {
 
         // Call onLxappOpened to get the resolved path
-        let resolvedPath = onLxappOpened(appId, path)
+        let resolvedPath = onLxappOpened(appId, path, sessionId)
         let finalPath = resolvedPath.toString()
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
@@ -409,23 +409,23 @@ public class LxApp {
 /// FFI interface for LxApp
 extension LxApp {
     /// Open specific LxApp
-    nonisolated public static func openLxApp(appid: RustStr, path: RustStr) -> Bool {
+    nonisolated public static func openLxApp(appid: RustStr, path: RustStr, session_id: UInt64) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
 
         return executeOnMain {
-            LxAppPlatform.openLxApp(appId: appIdString, path: pathString)
+            LxAppPlatform.openLxApp(appId: appIdString, path: pathString, sessionId: session_id)
             return true
         }
     }
 
     /// Close LxApp
-    nonisolated public static func closeLxApp(appid: RustStr) -> Bool {
+    nonisolated public static func closeLxApp(appid: RustStr, session_id: UInt64) -> Bool {
         let appIdString = appid.toString()
 
         return executeOnMain {
             #if os(iOS)
-            iOSLxApp.closeLxApp(appId: appIdString)
+            iOSLxApp.closeLxApp(appId: appIdString, sessionId: session_id)
             #endif
             // macOS: Tab mode handles closing via tab manager
             return true
