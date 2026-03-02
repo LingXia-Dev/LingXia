@@ -2,16 +2,18 @@ use crate::i18n::{
     err_code_message, js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_internal_error,
 };
-use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler};
+use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler, try_get, warn};
 use rong::{
-    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, js_class, js_export,
-    js_method,
+    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, JSValue, js_class,
+    js_export, js_method,
 };
+use std::cell::RefCell;
 use std::sync::Arc;
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 struct UpdateManagerState {
     manager: Option<JSObject>,
+    lxappid: Option<String>,
     on_ready: Option<JSFunc>,
     on_failed: Option<JSFunc>,
     pending_ready: Option<JSObject>,
@@ -19,24 +21,29 @@ struct UpdateManagerState {
     handlers_registered: bool,
 }
 
-fn with_update_state(ctx: &JSContext, update: impl FnOnce(&mut UpdateManagerState)) {
-    let mut state = ctx
-        .get_state::<UpdateManagerState>()
-        .cloned()
-        .unwrap_or_default();
-    update(&mut state);
-    ctx.set_state(state);
+#[derive(Default)]
+struct UpdateManagerRegistry {
+    state: RefCell<UpdateManagerState>,
 }
 
-fn manager_from_state(ctx: &JSContext) -> Option<JSObject> {
-    ctx.get_state::<UpdateManagerState>()
-        .and_then(|state| state.manager.clone())
+impl JSRuntimeService for UpdateManagerRegistry {}
+
+fn with_update_state(ctx: &JSContext, update: impl FnOnce(&mut UpdateManagerState)) {
+    let registry = ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
+    let mut state = registry.state.borrow_mut();
+    update(&mut state);
+}
+
+fn read_update_state<R>(ctx: &JSContext, read: impl FnOnce(&UpdateManagerState) -> R) -> R {
+    let registry = ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
+    let state = registry.state.borrow();
+    read(&state)
 }
 
 fn callbacks_from_state(ctx: &JSContext) -> (Option<JSFunc>, Option<JSFunc>) {
-    ctx.get_state::<UpdateManagerState>()
-        .map(|state| (state.on_ready.clone(), state.on_failed.clone()))
-        .unwrap_or((None, None))
+    read_update_state(ctx, |state| {
+        (state.on_ready.clone(), state.on_failed.clone())
+    })
 }
 
 fn take_pending_ready(ctx: &JSContext) -> Option<JSObject> {
@@ -57,10 +64,7 @@ fn take_pending_failed(ctx: &JSContext) -> Option<JSObject> {
 
 // Register event handlers once per JSContext
 fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
-    let already_registered = ctx
-        .get_state::<UpdateManagerState>()
-        .map(|state| state.handlers_registered)
-        .unwrap_or(false);
+    let already_registered = read_update_state(ctx, |state| state.handlers_registered);
 
     if already_registered {
         return Ok(());
@@ -69,7 +73,10 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let ready_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
         let (ready_cb, _) = callbacks_from_state(&ctx);
         if let Some(cb) = ready_cb {
-            let _ = cb.call::<_, ()>(None, (_payload,));
+            if cb.call::<_, ()>(None, (_payload.clone(),)).is_err() {
+                warn!("UpdateReady callback invocation failed; preserving as pending event");
+                with_update_state(&ctx, |state| state.pending_ready = Some(_payload));
+            }
         } else {
             with_update_state(&ctx, |state| state.pending_ready = Some(_payload));
         }
@@ -80,7 +87,10 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     let failed_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
         let (_, failed_cb) = callbacks_from_state(&ctx);
         if let Some(cb) = failed_cb {
-            let _ = cb.call::<_, ()>(None, (_payload,));
+            if cb.call::<_, ()>(None, (_payload.clone(),)).is_err() {
+                warn!("UpdateFailed callback invocation failed; preserving as pending event");
+                with_update_state(&ctx, |state| state.pending_failed = Some(_payload));
+            }
         } else {
             with_update_state(&ctx, |state| state.pending_failed = Some(_payload));
         }
@@ -96,13 +106,15 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
 /// JS Update Manager - simply restarts app to apply downloaded updates
 #[js_export]
 pub(crate) struct JSUpdateManager {
+    appid: String,
     on_ready: Option<JSFunc>,
     on_failed: Option<JSFunc>,
 }
 
 impl JSUpdateManager {
-    pub fn new() -> Self {
+    pub fn new(appid: String) -> Self {
         Self {
+            appid,
             on_ready: None,
             on_failed: None,
         }
@@ -126,7 +138,29 @@ impl JSUpdateManager {
     /// Apply update by restarting the app
     #[js_method(rename = "applyUpdate")]
     fn apply_update(&self, ctx: JSContext) -> JSResult<()> {
-        let lxapp = LxApp::from_ctx(&ctx)?;
+        let target_appid = if !self.appid.is_empty() {
+            self.appid.clone()
+        } else {
+            LxApp::from_ctx(&ctx)?.appid.clone()
+        };
+        if target_appid.is_empty() {
+            return Err(HostError::new(
+                rong::error::E_INTERNAL,
+                "UpdateManager has no bound appid for applyUpdate",
+            )
+            .into());
+        }
+
+        let lxapp = match try_get(&target_appid) {
+            Some(lxapp) => lxapp,
+            None => {
+                return Err(HostError::new(
+                    rong::error::E_INTERNAL,
+                    format!("LxApp '{}' not found for applyUpdate", target_appid),
+                )
+                .into());
+            }
+        };
         lxapp.restart().map_err(|e| js_error_from_lxapp_error(&e))
     }
 
@@ -134,10 +168,13 @@ impl JSUpdateManager {
     fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_ready = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_ready = Some(cb));
-        if let Some(payload) = take_pending_ready(&ctx)
-            && let Some(ready_cb) = self.on_ready.as_ref()
-        {
-            let _ = ready_cb.call::<_, ()>(None, (payload,));
+        if let Some(payload) = take_pending_ready(&ctx) {
+            if let Some(ready_cb) = self.on_ready.as_ref()
+                && ready_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+            {
+                warn!("Flushing pending UpdateReady failed; keeping event pending");
+                with_update_state(&ctx, |state| state.pending_ready = Some(payload));
+            }
         }
         Ok(())
     }
@@ -146,10 +183,13 @@ impl JSUpdateManager {
     fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
         self.on_failed = Some(cb.clone());
         with_update_state(&ctx, |state| state.on_failed = Some(cb));
-        if let Some(payload) = take_pending_failed(&ctx)
-            && let Some(failed_cb) = self.on_failed.as_ref()
-        {
-            let _ = failed_cb.call::<_, ()>(None, (payload,));
+        if let Some(payload) = take_pending_failed(&ctx) {
+            if let Some(failed_cb) = self.on_failed.as_ref()
+                && failed_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+            {
+                warn!("Flushing pending UpdateFailed failed; keeping event pending");
+                with_update_state(&ctx, |state| state.pending_failed = Some(payload));
+            }
         }
         Ok(())
     }
@@ -168,6 +208,7 @@ impl JSUpdateManager {
 // Register Update-related JS bindings
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_class::<JSUpdateManager>()?;
+    ctx.runtime().get_or_init_service::<UpdateManagerRegistry>();
     // Register host event handlers early so UpdateReady/UpdateFailed are not lost
     // before lx.getUpdateManager() is called by app logic.
     ensure_update_handlers(ctx)?;
@@ -176,13 +217,30 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
         ensure_update_handlers(&ctx)?;
 
-        if let Some(existing) = manager_from_state(&ctx) {
-            return Ok(existing);
+        let current_appid = LxApp::from_ctx(&ctx)?.appid.clone();
+
+        let existing = read_update_state(&ctx, |state| {
+            if state.lxappid.as_deref() == Some(current_appid.as_str()) {
+                state.manager.clone()
+            } else {
+                None
+            }
+        });
+        if let Some(manager) = existing {
+            return Ok(manager);
         }
 
         let class = Class::get::<JSUpdateManager>(&ctx)?;
-        let instance = class.instance(JSUpdateManager::new());
-        with_update_state(&ctx, |state| state.manager = Some(instance.clone()));
+        let instance = class.instance(JSUpdateManager::new(current_appid.clone()));
+        with_update_state(&ctx, |state| {
+            state.lxappid = Some(current_appid);
+            state.manager = Some(instance.clone());
+            // Drop callbacks/pending payload from any previous app binding.
+            state.on_ready = None;
+            state.on_failed = None;
+            state.pending_ready = None;
+            state.pending_failed = None;
+        });
         Ok(instance)
     }
 
