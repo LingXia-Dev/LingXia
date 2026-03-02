@@ -6,6 +6,7 @@ use log::warn;
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_char;
+use std::sync::Once;
 
 use super::Platform;
 
@@ -87,6 +88,15 @@ const ASSET_SUCCESS: i32 = 0;
 const ASSET_PERMISSION_DENIED: i32 = 201;
 const ASSET_NOT_FOUND: i32 = 24000002;
 const ASSET_DUPLICATED: i32 = 24000003;
+
+fn warn_non_persistent_asset_once() {
+    static WARN_ONCE: Once = Once::new();
+    WARN_ONCE.call_once(|| {
+        warn!(
+            "Asset persistent storage is not allowed (permission denied). Falling back to non-persistent mode; data may be cleared on uninstall."
+        );
+    });
+}
 
 #[repr(C)]
 #[allow(non_camel_case_types)]
@@ -383,9 +393,17 @@ impl DeviceSecureStore for Platform {
 
     fn secure_store_write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
         let query = [asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes())];
+        let mut used_non_persistent_mode = false;
+        let success_with_warning = |used_non_persistent_mode: bool| {
+            if used_non_persistent_mode {
+                warn_non_persistent_asset_once();
+            }
+            Ok(())
+        };
 
-        // 1) Try update with persistence
-        let update_attrs = asset_attrs_for_value(key, value, true, false, false);
+        // 1) Try update with minimal attrs allowed by update API.
+        // Keep update payload limited to SECRET to avoid parameter validation failures (401).
+        let update_attrs = [asset_attr_bytes(ASSET_TAG_SECRET, value)];
         let update_code = unsafe {
             OH_Asset_Update(
                 query.as_ptr(),
@@ -398,6 +416,7 @@ impl DeviceSecureStore for Platform {
         let mut persistence_allowed = true;
         if update_code == ASSET_PERMISSION_DENIED {
             persistence_allowed = false;
+            used_non_persistent_mode = true;
         }
 
         if update_code == ASSET_SUCCESS {
@@ -416,18 +435,18 @@ impl DeviceSecureStore for Platform {
 
         if add_code == ASSET_PERMISSION_DENIED && persistence_allowed {
             // Retry without persistence if permission denied
+            used_non_persistent_mode = true;
             add_attrs = asset_attrs_for_value(key, value, false, true, true);
             add_code = unsafe { OH_Asset_Add(add_attrs.as_ptr(), add_attrs.len() as u32) };
         }
 
         if add_code == ASSET_SUCCESS {
-            return Ok(());
+            return success_with_warning(used_non_persistent_mode);
         }
 
         if add_code == ASSET_DUPLICATED {
             // Duplicate: try update again (respecting persistence_allowed)
-            let update_attrs_retry =
-                asset_attrs_for_value(key, value, persistence_allowed, false, false);
+            let update_attrs_retry = [asset_attr_bytes(ASSET_TAG_SECRET, value)];
             let retry_code = unsafe {
                 OH_Asset_Update(
                     query.as_ptr(),
@@ -437,7 +456,7 @@ impl DeviceSecureStore for Platform {
                 )
             };
             if retry_code == ASSET_SUCCESS {
-                return Ok(());
+                return success_with_warning(used_non_persistent_mode);
             }
             return Err(PlatformError::Platform(format!(
                 "OH_Asset_Update after duplicate failed for key {}: code {}",

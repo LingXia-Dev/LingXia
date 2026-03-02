@@ -82,6 +82,9 @@
           ],
           "when": "inuse"
         }
+      },
+      {
+        "name": "ohos.permission.STORE_PERSISTENT_DATA"
       }
     ]
   }
