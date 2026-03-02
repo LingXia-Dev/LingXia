@@ -34,6 +34,7 @@ internal object JsEventMapper {
             is PlayerEvent.LoadedMetadata -> mapOf(
                 "width" to event.width,
                 "height" to event.height,
+                "rotation" to event.rotation,
                 "duration" to ((event.durationMs ?: 0L).toDouble() / 1000.0)
             )
             is PlayerEvent.Error -> buildMap {

@@ -154,17 +154,18 @@ declare module 'liblingxia.so' {
    * Notify that LxApp was opened
    * @param appid - LxApp ID
    * @param path - Page path
-   * @returns Status code (0 for success)
+   * @param session_id - Optional session token used to guard stale callbacks
+   * @returns Resolved route path
    */
-  // Returns resolved path string
-  export function onLxappOpened(appid: string, path: string): string;
+  export function onLxappOpened(appid: string, path: string, session_id?: number): string;
 
   /**
    * Notify that LxApp was closed
    * @param appid - LxApp ID
-   * @returns Status code (0 for success)
+   * @param session_id - Optional session token used to guard stale callbacks
+   * @returns true when close event matches current session and is accepted
    */
-  export function onLxappClosed(appid: string): number;
+  export function onLxappClosed(appid: string, session_id?: number): boolean;
 
   /**
    * Notify that a page is being shown (WebView becomes visible)

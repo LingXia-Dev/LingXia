@@ -24,6 +24,7 @@ import {
 import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
+import { updateNativeComponentProps } from './NativeComponents/NativeBridgeInternal';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -332,6 +333,15 @@ class NativeBridge {
       return LxNativeVideoPlayer.handleNativeEvent(componentId, event, payload);
     });
 
+    this.register('nativeComponentPropsUpdate', (webTag: string, componentId: string, propsJson: string): boolean => {
+      hilog.info(
+        DOMAIN,
+        TAG,
+        `nativeComponentPropsUpdate webTag=${webTag} componentId=${componentId} propsLen=${propsJson.length}`
+      );
+      return updateNativeComponentProps(webTag, componentId, propsJson);
+    });
+
 
     // Pull-to-Refresh APIs
     this.register('startPullDownRefresh', (appId: string, path: string): void => {
@@ -399,6 +409,9 @@ export function getNativeCallbackFunction(): (data: string) => Object | null {
         args = LxAppToast.normalizeNativeArgs(rawArgs) ?? rawArgs;
       } else if (functionName === 'showModal') {
         args = LxAppModal.normalizeNativeArgs(rawArgs) ?? rawArgs;
+      } else if (functionName === 'nativeComponentPropsUpdate' && rawArgs.length >= 3) {
+        // propsJson can contain '|', so rebuild arg3 from the remaining slices.
+        args = [rawArgs[0], rawArgs[1], rawArgs.slice(2).join('|')];
       }
 
       const result = NativeBridge.call(functionName, ...args);

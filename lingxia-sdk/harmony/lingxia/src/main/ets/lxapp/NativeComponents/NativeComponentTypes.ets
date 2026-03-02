@@ -25,6 +25,14 @@ export class NativeComponentRecord {
     return this.data.get(key);
   }
 
+  has(key: string): boolean {
+    return this.data.has(key);
+  }
+
+  delete(key: string): void {
+    this.data.delete(key);
+  }
+
   forEach(callback: (key: string, value: NativeComponentValue) => void): void {
     this.data.forEach((value, key) => {
       callback(key, value);

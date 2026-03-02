@@ -120,6 +120,19 @@ final class MacVideoComponent: NSObject, MacNativeComponent {
         return nil
     }
 
+    private static func clearProps(from value: Any?) -> Set<String> {
+        guard let array = value as? [Any] else { return [] }
+        return Set(array.compactMap { item in
+            if let key = item as? String {
+                return key
+            }
+            if let key = item as? NSString {
+                return key as String
+            }
+            return nil
+        })
+    }
+
     private static func parseSeekSeconds(from value: Any?, depth: Int = 0) -> Double? {
         if depth > 3 { return nil }
 
@@ -150,6 +163,8 @@ final class MacVideoComponent: NSObject, MacNativeComponent {
 
     private static func makeConfig(from props: [String: Any]) -> LxMediaPlayerConfig {
         var config = LxMediaPlayerConfig()
+        let clearProps = Self.clearProps(from: props["__clearProps"])
+        config.clearProps = clearProps
 
         if let source = props["source"] as? [String: Any],
            let type = source["type"] as? String,
@@ -208,9 +223,14 @@ final class MacVideoComponent: NSObject, MacNativeComponent {
         if let showControlsOnInit = props["showControlsOnInit"] as? Bool {
             config.showControlsOnInit = showControlsOnInit
         }
-        if let objectFitRaw = props["objectFit"] as? String,
+        if !clearProps.contains("objectFit"),
+           let objectFitRaw = props["objectFit"] as? String,
            let fit = LxMediaObjectFit(rawValue: objectFitRaw) {
             config.objectFit = fit
+        }
+        if !clearProps.contains("rotate"),
+           let rotation = Self.double(from: props["rotate"]) {
+            config.rotateDegrees = Int(rotation)
         }
 
         return config

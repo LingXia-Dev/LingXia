@@ -47,6 +47,13 @@ interface StreamVideoConfig {
   height?: number;
 }
 
+interface VideoLayoutFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 // Event detail types
 // NOTE: All time values in event details use SECONDS (not milliseconds) for cross-platform Rust callback contract.
 // Internal UI state (state.currentTime, sliderValue) uses milliseconds for precision.
@@ -112,6 +119,7 @@ export class LxNativeVideoConfig {
   live: boolean = false;
   cornerRadius: number = 0;
   objectFit: string = 'cover';
+  rotate?: number;
   qualities: LxMediaQuality[] = []; // Available quality options
   playbackRates: number[] = [];     // Available playback rates
 }
@@ -154,10 +162,13 @@ class LxNativeVideoRuntimeSnapshot {
 @Component
 export struct LxNativeVideoPlayer {
   @Prop playerId: string = '';
-  @Prop config: LxNativeVideoConfig = new LxNativeVideoConfig();
+  @Prop @Watch('onConfigChange') config: LxNativeVideoConfig = new LxNativeVideoConfig();
   @State state: LxNativeVideoState = new LxNativeVideoState();
   @State showControls: boolean = false;
   @State isFullscreen: boolean = false;
+  @State private layoutWidthVp: number = 0;
+  @State private layoutHeightVp: number = 0;
+  @State private appliedRotation: number = 0;
   @State private appliedCornerRadius: number = 0;
   @State private isSeeking: boolean = false;
   @State private sliderValue: number = 0;
@@ -204,6 +215,8 @@ export struct LxNativeVideoPlayer {
   private static runtimeState: Map<string, LxNativeVideoRuntimeSnapshot> = new Map();
   private static nativePlayerExists: Set<string> = new Set();
   private static rebindInstance: Map<string, LxNativeVideoPlayer> = new Map();
+  // Preserve latest explicit inline rotation while instance is temporarily absent.
+  private static pendingInlineRotation: Map<string, number> = new Map();
   private static originalSurfaceIds: Map<string, string> = new Map();
   private static streamVideoSizes: Map<string, StreamVideoSize> = new Map();
   private static nativeEventLastPayload: Map<string, string> = new Map();
@@ -242,6 +255,8 @@ export struct LxNativeVideoPlayer {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance) {
       instance.streamVideoSize = size;
+      instance.state.videoWidth = width;
+      instance.state.videoHeight = height;
     }
   }
 
@@ -251,6 +266,8 @@ export struct LxNativeVideoPlayer {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance) {
       instance.streamVideoSize = undefined;
+      instance.state.videoWidth = 0;
+      instance.state.videoHeight = 0;
     }
   }
 
@@ -326,6 +343,19 @@ export struct LxNativeVideoPlayer {
     LxNativeVideoPlayer.rebindInstance.get(componentId)?.togglePlayPause();
   }
 
+  static setRotationStatic(componentId: string, degrees: number | undefined): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    if (degrees === undefined) {
+      LxNativeVideoPlayer.pendingInlineRotation.delete(componentId);
+    } else {
+      LxNativeVideoPlayer.pendingInlineRotation.set(componentId, degrees);
+    }
+    log(`[${componentId}] setRotationStatic degrees=${degrees} hasInstance=${!!instance}`);
+    if (instance) {
+      instance.applyExternalRotation(degrees);
+    }
+  }
+
   static pauseStatic(componentId: string): void {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance) {
@@ -369,12 +399,14 @@ export struct LxNativeVideoPlayer {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
     if (instance) {
       instance.destroyPlayer();
+      LxNativeVideoPlayer.pendingInlineRotation.delete(componentId);
     } else if (LxNativeVideoPlayer.nativePlayerExists.has(componentId)) {
       videoPlayerDestroy(componentId);
       LxNativeVideoPlayer.nativePlayerExists.delete(componentId);
       LxNativeVideoPlayer.runtimeState.delete(componentId);
       LxNativeVideoPlayer.keepAliveIds.delete(componentId);
       LxNativeVideoPlayer.originalSurfaceIds.delete(componentId);
+      LxNativeVideoPlayer.pendingInlineRotation.delete(componentId);
       LxNativeVideoPlayer.clearNativeEventCache(componentId);
     }
   }
@@ -844,6 +876,13 @@ export struct LxNativeVideoPlayer {
 
     this.restoreRuntimeState();
     LxNativeVideoPlayer.rebindInstance.set(this.componentId, this);
+    const pendingRotation = LxNativeVideoPlayer.pendingInlineRotation.get(this.componentId);
+    if (pendingRotation !== undefined) {
+      this.config.rotate = pendingRotation;
+      log(
+        `[${this.componentId}] aboutToAppear applied pending inline rotation=${pendingRotation}`
+      );
+    }
     
     // CRITICAL: Final gate to prevent poster flash on component remount (e.g. fullscreen toggle).
     // If the video was already playing, has ended, or is at any position other than start,
@@ -853,11 +892,32 @@ export struct LxNativeVideoPlayer {
       this.markFirstFrameRendered();
     }
 
+    this.appliedRotation = this.computeNormalizedRotation();
+
     this.appliedCornerRadius = 0;
     if (this.config.cornerRadius > 0) {
       this.cornerRadiusTimer = setTimeout(() => {
         this.appliedCornerRadius = this.config.cornerRadius;
       }, 50);
+    }
+  }
+
+  private onConfigChange(): void {
+    log(`[${this.componentId}] onConfigChange rotate=${this.config.rotate} appliedRotation=${this.appliedRotation}`);
+    this.syncAppliedRotation();
+  }
+
+  applyExternalRotation(degrees: number | undefined): void {
+    const before = this.appliedRotation;
+    this.config.rotate = degrees;
+    this.syncAppliedRotation();
+    log(`[${this.componentId}] applyExternalRotation in=${degrees} before=${before} after=${this.appliedRotation} layoutW=${this.layoutWidthVp} layoutH=${this.layoutHeightVp}`);
+  }
+
+  private syncAppliedRotation(): void {
+    const rotation = this.computeNormalizedRotation();
+    if (rotation !== this.appliedRotation) {
+      this.appliedRotation = rotation;
     }
   }
 
@@ -871,14 +931,16 @@ export struct LxNativeVideoPlayer {
     this.cancelStreamSurfaceRefreshTimers();
     this.cancelStreamSurfaceWarmupTimer();
     this.appliedCornerRadius = 0;
-    if (LxNativeVideoPlayer.rebindInstance.get(this.componentId) === this) {
+    const isCurrentInstance = LxNativeVideoPlayer.rebindInstance.get(this.componentId) === this;
+    if (isCurrentInstance) {
       LxNativeVideoPlayer.rebindInstance.delete(this.componentId);
       LxNativeVideoPlayer.clearNativeEventCache(this.componentId);
       log(`[${this.componentId}] aboutToDisappear: removed instance from registry`);
     } else {
       log(`[${this.componentId}] aboutToDisappear: instance registry mismatch (already replaced?), skipping remove`);
     }
-    if (this.playerCreated) this.destroyPlayer();
+    // Critical: stale instances must never destroy the shared native player.
+    if (isCurrentInstance && this.playerCreated) this.destroyPlayer();
   }
 
   private lastCurrentTimeForPoster: number = -1;
@@ -1054,6 +1116,10 @@ export struct LxNativeVideoPlayer {
   }
 
   private onSurfaceCreated(surfaceId: string): void {
+    if (LxNativeVideoPlayer.rebindInstance.get(this.componentId) !== this) {
+      log(`[${this.componentId}] onSurfaceCreated ignored for stale instance: ${surfaceId}`);
+      return;
+    }
     // Cancel any pending surface clear operation since a new surface was created
     this.cancelPendingSurfaceClear();
     this.cancelStreamSurfaceRefreshTimers();
@@ -1075,6 +1141,10 @@ export struct LxNativeVideoPlayer {
   }
 
   private onSurfaceDestroyed(surfaceId: string): void {
+    if (LxNativeVideoPlayer.rebindInstance.get(this.componentId) !== this) {
+      log(`[${this.componentId}] onSurfaceDestroyed ignored for stale instance: ${surfaceId}`);
+      return;
+    }
     // Stream-only mode: surfaces are frequently detached/reattached by ArkUI. Clearing the stored
     // surface ID here is unsafe because onDestroy may fire for an old XComponent after a new one is
     // already created and bound, which would cause a black screen. Rebind on next onLoad instead.
@@ -1572,6 +1642,10 @@ export struct LxNativeVideoPlayer {
     const metadataDetail = new VideoMetadataDetail();
     metadataDetail.width = videoPlayerGetVideoWidth(this.componentId);
     metadataDetail.height = videoPlayerGetVideoHeight(this.componentId);
+    if (metadataDetail.width > 0 && metadataDetail.height > 0) {
+      this.state.videoWidth = metadataDetail.width;
+      this.state.videoHeight = metadataDetail.height;
+    }
     // For stream mode, only report duration if it has been set by onDuration callback.
     // Avoid reporting 0 or uninitialized values which may cause incorrect UI display.
     const durationMs = this.isStreamMode() ? (this.state.duration > 0 ? this.state.duration : 0) : this.getDuration();
@@ -1613,6 +1687,8 @@ export struct LxNativeVideoPlayer {
     // Reset poster state on stop so it shows again on cold start/fullscreen.
     this.hasRenderedFirstFrame = false;
     this.hasEverPlayed = false;
+    this.state.videoWidth = 0;
+    this.state.videoHeight = 0;
     LxNativeVideoPlayer.hasEverRenderedFrame.delete(this.componentId);
     this.hasEnded = false;
     this.pendingPlayEvent = false;
@@ -1956,8 +2032,138 @@ export struct LxNativeVideoPlayer {
 
   private getPosterFit(): ImageFit {
     const fit = (this.config.objectFit || 'cover').toLowerCase();
-    // Harmony poster supports contain/cover directly; fill currently falls back to cover.
+    if (fit === 'fill') {
+      return ImageFit.Fill;
+    }
     return (fit === 'contain' || fit === 'fit') ? ImageFit.Contain : ImageFit.Cover;
+  }
+
+  private getObjectFitMode(): string {
+    const fit = (this.config.objectFit || 'cover').toLowerCase();
+    if (fit === 'contain' || fit === 'fill' || fit === 'fit') {
+      return fit;
+    }
+    return 'cover';
+  }
+
+  private getVideoDimensionsForLayout(): StreamVideoSize | undefined {
+    if (this.state.videoWidth > 0 && this.state.videoHeight > 0) {
+      return new StreamVideoSize(this.state.videoWidth, this.state.videoHeight);
+    }
+    if (this.streamVideoSize && this.streamVideoSize.width > 0 && this.streamVideoSize.height > 0) {
+      return this.streamVideoSize;
+    }
+    let width = LxNativeVideoPlayer.getVideoWidth(this.componentId);
+    let height = LxNativeVideoPlayer.getVideoHeight(this.componentId);
+    if ((width <= 0 || height <= 0) && !this.hasSource()) {
+      const streamSize = LxNativeVideoPlayer.getStreamVideoSize(this.componentId);
+      if (streamSize) {
+        width = streamSize.width;
+        height = streamSize.height;
+      }
+    }
+    if (width > 0 && height > 0) {
+      return new StreamVideoSize(width, height);
+    }
+    return undefined;
+  }
+
+  private computeObjectFitFrame(containerW: number, containerH: number): VideoLayoutFrame {
+    const full: VideoLayoutFrame = { x: 0, y: 0, width: containerW, height: containerH };
+    if (containerW <= 0 || containerH <= 0) {
+      return full;
+    }
+
+    const fit = this.getObjectFitMode();
+    if (fit === 'fill') {
+      return full;
+    }
+
+    const size = this.getVideoDimensionsForLayout();
+    if (!size || size.width <= 0 || size.height <= 0) {
+      return full;
+    }
+
+    const contentAspect = size.width / size.height;
+    const containerAspect = containerW / containerH;
+    const useContain = fit === 'contain' || fit === 'fit';
+
+    let width = containerW;
+    let height = containerH;
+    if ((useContain && contentAspect > containerAspect) || (!useContain && contentAspect < containerAspect)) {
+      width = containerW;
+      height = containerW / contentAspect;
+    } else {
+      height = containerH;
+      width = containerH * contentAspect;
+    }
+
+    return {
+      x: (containerW - width) / 2,
+      y: (containerH - height) / 2,
+      width,
+      height
+    };
+  }
+
+  private computeVideoLayerFrame(): VideoLayoutFrame {
+    const containerW = this.layoutWidthVp;
+    const containerH = this.layoutHeightVp;
+    if (containerW <= 0 || containerH <= 0) {
+      return { x: 0, y: 0, width: containerW, height: containerH };
+    }
+
+    const fitFrame = this.computeObjectFitFrame(containerW, containerH);
+    if (!this.shouldSwapAxesForInlineRotation()) {
+      return fitFrame;
+    }
+
+    return {
+      x: fitFrame.x + (fitFrame.width - fitFrame.height) / 2,
+      y: fitFrame.y + (fitFrame.height - fitFrame.width) / 2,
+      width: fitFrame.height,
+      height: fitFrame.width
+    };
+  }
+
+  private computeNormalizedRotation(): number {
+    const raw = Number(this.config.rotate ?? 0);
+    if (!Number.isFinite(raw)) {
+      return 0;
+    }
+    let normalized = Math.trunc(raw) % 360;
+    if (normalized < 0) {
+      normalized += 360;
+    }
+    if (normalized === 0 || normalized === 90 || normalized === 180 || normalized === 270) {
+      return normalized;
+    }
+    return 0;
+  }
+
+  private shouldSwapAxesForInlineRotation(): boolean {
+    if (this.isFullscreen) {
+      return false;
+    }
+    return this.appliedRotation === 90 || this.appliedRotation === 270;
+  }
+
+  private getRotatedLayerWidth(): string | number {
+    const frame = this.computeVideoLayerFrame();
+    return frame.width > 0 ? frame.width : '100%';
+  }
+
+  private getRotatedLayerHeight(): string | number {
+    const frame = this.computeVideoLayerFrame();
+    return frame.height > 0 ? frame.height : '100%';
+  }
+
+  private getRotatedLayerPosition(): Position {
+    const frame = this.computeVideoLayerFrame();
+    if (frame.width > 0 && frame.height > 0) {
+      return { x: frame.x, y: frame.y };
+    }
+    return { x: 0, y: 0 };
   }
 
   private isStreamMode(): boolean {
@@ -2010,16 +2216,26 @@ export struct LxNativeVideoPlayer {
 
   build() {
     Stack() {
-      XComponent({ id: this.xComponentId, type: this.getXComponentType(), controller: this.xComponentController })
-        .onLoad(() => this.onSurfaceCreated(this.xComponentController.getXComponentSurfaceId()))
-        .onDestroy(() => this.onSurfaceDestroyed(this.surfaceId))
-        .width('100%').height('100%')
-        .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
-        .clip(!this.isFullscreen && !this.isStreamMode())
-        .hitTestBehavior(HitTestMode.Transparent).zIndex(0)
+      Stack() {
+        XComponent({ id: this.xComponentId, type: this.getXComponentType(), controller: this.xComponentController })
+          .onLoad(() => this.onSurfaceCreated(this.xComponentController.getXComponentSurfaceId()))
+          .onDestroy(() => this.onSurfaceDestroyed(this.surfaceId))
+          .width('100%').height('100%')
+          .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
+          .clip(!this.isFullscreen && !this.isStreamMode())
+          .hitTestBehavior(HitTestMode.Transparent).zIndex(0)
 
-      this.buildPoster()
-      this.buildBufferingIndicator()
+        this.buildPoster()
+        this.buildBufferingIndicator()
+      }
+      .width(this.getRotatedLayerWidth())
+      .height(this.getRotatedLayerHeight())
+      .position(this.getRotatedLayerPosition())
+      .rotate({
+        angle: this.appliedRotation,
+        centerX: '50%',
+        centerY: '50%'
+      })
 
       if (!this.showControls && this.config.controls) {
         Row().width('100%').height('100%').zIndex(5).hitTestBehavior(HitTestMode.Block)
@@ -2035,6 +2251,10 @@ export struct LxNativeVideoPlayer {
       }
     }
     .width('100%').height('100%')
+    .onAreaChange((_, newValue) => {
+      this.layoutWidthVp = Number(newValue.width) || 0;
+      this.layoutHeightVp = Number(newValue.height) || 0;
+    })
     .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
     .clip(this.isFullscreen ? false : !this.isStreamMode()) // Don't clip in fullscreen to allow settings overlay
     .backgroundColor(Color.Black).hitTestBehavior(HitTestMode.Transparent)

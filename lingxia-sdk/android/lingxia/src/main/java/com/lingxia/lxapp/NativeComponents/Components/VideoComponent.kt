@@ -26,7 +26,6 @@ class VideoComponent(
     private val initialProps: Map<String, Any?>,
     eventSink: (Map<String, Any>) -> Unit
 ) : LxNativeComponent {
-
     private var player: LxMediaPlayer? = null
     private var context: android.content.Context? = null
     private val eventSinkRef = eventSink
@@ -41,12 +40,14 @@ class VideoComponent(
                 lastFrame?.let { player?.setFrame(it.left, it.top, it.width(), it.height()) }
             }
         }, componentId = id)
-        player?.update(makeConfig(initialProps))
+        val initialConfig = makeConfig(initialProps)
+        player?.update(initialConfig)
         host.addView(player!!.view)
     }
 
     override fun update(props: Map<String, Any?>) {
-        player?.update(makeConfig(props))
+        val config = makeConfig(props)
+        player?.update(config)
     }
 
     override fun setFrame(frame: RectF) {
@@ -122,9 +123,24 @@ class VideoComponent(
             config.speeds = parseRates(props["playbackRates"])
 
             (props["showControlsOnInit"] as? Boolean)?.let { config.showControlsOnInit = it }
-            (props["objectFit"] as? String)?.let { config.objectFit = LxMediaObjectFit.fromString(it) }
-            // Rotate video content (0/90/180/270).
-            (props["rotate"] as? Number)?.let { config.rotateDegrees = it.toInt() }
+            val clearProps = (props["__clearProps"] as? List<*>)
+                ?.mapNotNull { it as? String }
+                ?.toSet()
+                ?: emptySet()
+            config.clearProps = clearProps
+
+            if ("objectFit" !in clearProps) {
+                (props["objectFit"] as? String)?.let { config.objectFit = LxMediaObjectFit.fromString(it) }
+            }
+            // Rotate video content (0/90/180/270). Accept numeric strings for bridge compatibility.
+            val rotateDegrees = when (val raw = props["rotate"]) {
+                is Number -> raw.toInt()
+                is String -> raw.toIntOrNull()
+                else -> null
+            }
+            if ("rotate" !in clearProps) {
+                rotateDegrees?.let { config.rotateDegrees = it }
+            }
 
             return config
         }

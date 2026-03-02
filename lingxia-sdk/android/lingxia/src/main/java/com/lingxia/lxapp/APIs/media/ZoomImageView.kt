@@ -35,6 +35,8 @@ class ZoomImageView @JvmOverloads constructor(
 
     private var minScale = 1f
     private var maxScale = 4f
+    private var fitMode = LxMediaObjectFit.CONTAIN
+    private var previewRotation = 0
 
     private var dismissListener: (() -> Unit)? = null
     private var scaleStateListener: ((Boolean) -> Unit)? = null
@@ -52,6 +54,23 @@ class ZoomImageView @JvmOverloads constructor(
     fun setOnScaleStateListener(listener: ((Boolean) -> Unit)?) {
         scaleStateListener = listener
         listener?.invoke(isZoomed())
+    }
+
+    fun setPreviewObjectFit(value: LxMediaObjectFit?) {
+        val next = value ?: LxMediaObjectFit.CONTAIN
+        if (fitMode == next) return
+        fitMode = next
+        configureMatrix()
+    }
+
+    fun setPreviewRotationDegrees(value: Int?) {
+        val next = when (value) {
+            0, 90, 180, 270 -> value
+            else -> 0
+        }
+        if (previewRotation == next) return
+        previewRotation = next
+        configureMatrix()
     }
 
     override fun setImageDrawable(drawable: Drawable?) {
@@ -90,15 +109,33 @@ class ZoomImageView @JvmOverloads constructor(
             return
         }
 
-        val scale = min(viewWidth / drawableWidth, viewHeight / drawableHeight)
-        val dx = (viewWidth - drawableWidth * scale) / 2f
-        val dy = (viewHeight - drawableHeight * scale) / 2f
+        val rotatedWidth = if (previewRotation == 90 || previewRotation == 270) drawableHeight else drawableWidth
+        val rotatedHeight = if (previewRotation == 90 || previewRotation == 270) drawableWidth else drawableHeight
+        val scaleXRatio = viewWidth / rotatedWidth
+        val scaleYRatio = viewHeight / rotatedHeight
+        val (baseScaleX, baseScaleY) = when (fitMode) {
+            LxMediaObjectFit.COVER -> {
+                val scale = max(scaleXRatio, scaleYRatio)
+                scale to scale
+            }
+            LxMediaObjectFit.FILL -> {
+                scaleXRatio to scaleYRatio
+            }
+            LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> {
+                val scale = min(scaleXRatio, scaleYRatio)
+                scale to scale
+            }
+        }
 
-        baseMatrix.postScale(scale, scale)
-        baseMatrix.postTranslate(dx, dy)
+        baseMatrix.postTranslate(-drawableWidth / 2f, -drawableHeight / 2f)
+        if (previewRotation != 0) {
+            baseMatrix.postRotate(previewRotation.toFloat())
+        }
+        baseMatrix.postScale(baseScaleX, baseScaleY)
+        baseMatrix.postTranslate(viewWidth / 2f, viewHeight / 2f)
 
-        minScale = scale
-        maxScale = max( minScale * 4f, minScale + 0.01f )
+        minScale = min(baseScaleX, baseScaleY).coerceAtLeast(0.01f)
+        maxScale = max(minScale * 4f, minScale + 0.01f)
 
         applyMatrix()
         notifyScaleState()

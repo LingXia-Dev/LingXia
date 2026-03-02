@@ -146,6 +146,29 @@ final class VideoComponent: NSObject, LxNativeComponent {
         return nil
     }
 
+    private static func int(from value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = Int(trimmed) { return parsed }
+        }
+        return nil
+    }
+
+    private static func clearProps(from value: Any?) -> Set<String> {
+        guard let array = value as? [Any] else { return [] }
+        return Set(array.compactMap { item in
+            if let key = item as? String {
+                return key
+            }
+            if let key = item as? NSString {
+                return key as String
+            }
+            return nil
+        })
+    }
+
     private enum CommandName: String {
         case play
         case pause
@@ -160,6 +183,8 @@ final class VideoComponent: NSObject, LxNativeComponent {
 
     private static func makeConfig(from props: [String: Any]) -> LxMediaPlayerConfig {
         var config = LxMediaPlayerConfig()
+        let clearProps = Self.clearProps(from: props["__clearProps"])
+        config.clearProps = clearProps
 
         if let source = props["source"] as? [String: Any],
            let type = source["type"] as? String,
@@ -236,9 +261,14 @@ final class VideoComponent: NSObject, LxNativeComponent {
         if let showControlsOnInit = props["showControlsOnInit"] as? Bool {
             config.showControlsOnInit = showControlsOnInit
         }
-        if let objectFitRaw = props["objectFit"] as? String,
+        if !clearProps.contains("objectFit"),
+           let objectFitRaw = props["objectFit"] as? String,
            let fit = LxMediaObjectFit(rawValue: objectFitRaw) {
             config.objectFit = fit
+        }
+        if !clearProps.contains("rotate"),
+           let rotation = Self.int(from: props["rotate"]) {
+            config.rotateDegrees = rotation
         }
 
         return config

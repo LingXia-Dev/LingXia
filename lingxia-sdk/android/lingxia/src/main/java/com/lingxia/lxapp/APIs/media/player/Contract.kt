@@ -7,7 +7,8 @@ enum class BackendKind(val value: String) {
 
 data class VideoSize(
     val width: Int,
-    val height: Int
+    val height: Int,
+    val rotationDegrees: Int = 0,
 )
 
 enum class StopReason(val value: String) {

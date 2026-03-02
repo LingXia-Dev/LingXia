@@ -5,6 +5,8 @@ pub struct PreviewMediaItem {
     pub path: String,
     pub media_type: MediaKind,
     pub cover_path: Option<String>,
+    pub rotate: Option<u16>,
+    pub object_fit: Option<MediaObjectFit>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -17,6 +19,14 @@ pub enum MediaKind {
     Image,
     Video,
     Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaObjectFit {
+    Cover,
+    Contain,
+    Fill,
+    Fit,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

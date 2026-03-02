@@ -30,7 +30,8 @@ sealed class PlayerEvent(val name: String) {
     data class LoadedMetadata(
         val durationMs: Long?,
         val width: Int,
-        val height: Int
+        val height: Int,
+        val rotation: Int = 0,
     ) : PlayerEvent("loadedmetadata")
 
     data class Ended(val currentTimeMs: Long? = null) : PlayerEvent("ended")

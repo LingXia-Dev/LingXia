@@ -3,8 +3,13 @@
  * This module provides the embed handlers for Web component
  */
 import { NodeRenderType } from '@kit.ArkUI';
-import { webview } from '@kit.ArkWeb';
-import { NativeComponentEmptyDetail, NativeComponentRecord, nativeComponentError, nativeComponentLog } from './NativeComponentTypes';
+import {
+  NativeComponentEmptyDetail,
+  NativeComponentRecord,
+  NativeComponentValue,
+  nativeComponentError,
+  nativeComponentLog
+} from './NativeComponentTypes';
 import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
 import { onCallback } from 'liblingxia.so';
 import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
@@ -85,6 +90,7 @@ export class NativeComponentEmbedManager {
       nativeComponentError('Embed lifecycle event missing component ID');
       return;
     }
+    nativeComponentLog(`lifecycle: componentId=${componentId} status=${embed.status} src=${embed.info?.src?.substring(0, 80) ?? 'null'}`);
 
     if (embed.status === NativeEmbedStatus.CREATE) {
       this.handleCreate(componentId, embed);
@@ -111,6 +117,12 @@ export class NativeComponentEmbedManager {
 
     // Get props from embed tag attribute
     const props = this.parseEmbedProps(embed);
+    if (componentType === 'video.native') {
+      this.applyVideoRotationFromProps(componentId, props);
+      nativeComponentLog(
+        `embed create(video props): componentId=${componentId} rotate=${String(props.get('rotate'))} clearRotate=${this.shouldClearProp(props, 'rotate')}`
+      );
+    }
     const eventSink = this.buildEventSink(componentId);
     if (eventSink) {
       props.set('__eventSink', eventSink as object);
@@ -158,11 +170,7 @@ export class NativeComponentEmbedManager {
     const nodeController = this.nodeControllerMap.get(componentId);
     if (!nodeController) return;
 
-    const props = this.parseEmbedProps(embed);
-    const eventSink = this.buildEventSink(componentId);
-    if (eventSink) {
-      props.set('__eventSink', eventSink as object);
-    }
+    const isVideoComponent = nodeController.getComponentType() === 'video.native';
 
     // Update layout sizes (vp) when embed dimensions change
     const widthPx = embed.info?.width || 0;
@@ -173,10 +181,18 @@ export class NativeComponentEmbedManager {
     const updateParams = new NodeControllerUpdateParams();
     updateParams.width = widthVp;
     updateParams.height = heightVp;
+    // Keep UPDATE props path enabled for all component types (including video).
+    // This provides a robust fallback when bridge-driven updates are delayed.
+    const props = this.parseEmbedProps(embed);
+    const eventSink = this.buildEventSink(componentId);
+    if (eventSink) {
+      props.set('__eventSink', eventSink as object);
+    }
     updateParams.props = props;
     nodeController.updateRenderOption(updateParams);
-    if (nodeController.getComponentType() === 'video.native') {
-      nativeComponentLog(`embed update(video): componentId=${componentId} embedId=${embed.embedId || ''} size=${widthVp}x${heightVp}`);
+    if (isVideoComponent) {
+      this.applyVideoRotationFromProps(componentId, props);
+      nativeComponentLog(`embed update(video): componentId=${componentId} size=${widthVp}x${heightVp}`);
     }
 
     // Notify listeners so NodeContainer layout refreshes
@@ -256,6 +272,83 @@ export class NativeComponentEmbedManager {
         nodeController.postEvent(touch.touchEvent);
       }
     });
+  }
+
+  /**
+   * Push fresh component props from Web -> native (primary Harmony path).
+   */
+  updateComponentProps(componentId: string, propsJson: string): boolean {
+    const nodeController = this.nodeControllerMap.get(componentId);
+    if (!nodeController) {
+      nativeComponentLog(`updateComponentProps: missing componentId=${componentId}`);
+      return false;
+    }
+
+    const freshProps = this.decodeProps(propsJson);
+    if (!freshProps) {
+      nativeComponentLog(
+        `updateComponentProps: decode failed componentId=${componentId} prefix=${propsJson.substring(0, 64)}`
+      );
+      return false;
+    }
+
+    const eventSink = this.buildEventSink(componentId);
+    if (eventSink) {
+      freshProps.set('__eventSink', eventSink as object);
+    }
+
+    const updateParams = new NodeControllerUpdateParams();
+    updateParams.props = freshProps;
+    nodeController.updateRenderOption(updateParams);
+
+    if (nodeController.getComponentType() === 'video.native') {
+      this.applyVideoRotationFromProps(componentId, freshProps);
+    }
+
+    this.onComponentsChanged?.();
+    return true;
+  }
+
+  private applyVideoRotationFromProps(componentId: string, freshProps: NativeComponentRecord): void {
+    const rawRotate = freshProps.get('rotate');
+    const finalRotate = this.parseRotateDegrees(rawRotate);
+    const shouldClearRotation = this.shouldClearProp(freshProps, 'rotate');
+    nativeComponentLog(
+      `updateComponentProps(video): componentId=${componentId} clearRotate=${shouldClearRotation} rotate=${finalRotate}`
+    );
+    if (shouldClearRotation) {
+      LxNativeVideoPlayer.setRotationStatic(componentId, undefined);
+    } else if (freshProps.has('rotate') && finalRotate !== undefined) {
+      LxNativeVideoPlayer.setRotationStatic(componentId, finalRotate);
+    }
+  }
+
+  private parseRotateDegrees(rawRotate: NativeComponentValue | undefined): number | undefined {
+    if (typeof rawRotate === 'number') {
+      return Number.isFinite(rawRotate) ? rawRotate : undefined;
+    }
+    if (typeof rawRotate === 'string') {
+      const parsed = Number.parseInt(rawRotate.trim(), 10);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    if (rawRotate !== null && rawRotate !== undefined) {
+      const coerced = Number(rawRotate);
+      return Number.isFinite(coerced) ? coerced : undefined;
+    }
+    return undefined;
+  }
+
+  private shouldClearProp(props: NativeComponentRecord, key: string): boolean {
+    const raw = props.get('__clearProps');
+    if (!Array.isArray(raw)) {
+      return false;
+    }
+    for (const item of raw as NativeComponentValue[]) {
+      if (typeof item === 'string' && item === key) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private parseComponentType(embedType: string): string {

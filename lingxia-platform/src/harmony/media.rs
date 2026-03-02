@@ -1,8 +1,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
-    PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
+    CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaInteraction, MediaKind, MediaObjectFit,
+    MediaSource, PreviewMediaRequest, SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
@@ -19,6 +19,8 @@ struct PreviewMediaPayload<'a> {
     path: &'a str,
     media_type: i32,
     cover_path: &'a str,
+    rotate: Option<u16>,
+    object_fit: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -50,6 +52,13 @@ impl MediaInteraction for Platform {
                     MediaKind::Unknown => -1,
                 },
                 cover_path: item.cover_path.as_deref().unwrap_or_default(),
+                rotate: item.rotate,
+                object_fit: item.object_fit.map(|fit| match fit {
+                    MediaObjectFit::Cover => "cover",
+                    MediaObjectFit::Contain => "contain",
+                    MediaObjectFit::Fill => "fill",
+                    MediaObjectFit::Fit => "fit",
+                }),
             })
             .collect();
 

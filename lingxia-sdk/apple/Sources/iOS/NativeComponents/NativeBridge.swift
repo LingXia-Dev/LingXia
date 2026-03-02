@@ -209,12 +209,6 @@ extension NativeBridge {
     private func sendEventToJavaScript(_ payload: [String: Any]) {
         guard let webView = webView else { return }
 
-        guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-              let eventPayloadJson = String(data: data, encoding: .utf8) else {
-            os_log("NativeBridge: failed to encode event payload", log: nativeComponentLog, type: .error)
-            return
-        }
-
         // Construct the full message object expected by __LingXiaRecvMessage
         let fullMessage: [String: Any] = [
             "type": "event",

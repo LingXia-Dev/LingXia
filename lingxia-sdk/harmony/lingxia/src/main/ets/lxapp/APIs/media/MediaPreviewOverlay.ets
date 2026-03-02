@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import {
   LxNativeVideoPlayer,
@@ -13,6 +14,8 @@ export interface MediaPreviewItem {
   id: string;
   uri: string;
   mediaType?: number; // 0 = image, 1 = video
+  rotate?: number;
+  objectFit?: string;
   width?: number;  // Video width (optional, will be detected)
   height?: number; // Video height (optional, will be detected)
 }
@@ -31,6 +34,7 @@ const TAG = 'LingXia.MediaPreviewOverlay';
 export class MediaPreviewOverlayManager {
   private static isShowing: boolean = false;
   private static overlayData: MediaPreviewPageParams | null = null;
+  private static activePreviewPlayers: Set<string> = new Set();
 
   private static listeners: Set<() => void> = new Set();
 
@@ -38,6 +42,8 @@ export class MediaPreviewOverlayManager {
    * Show media preview overlay
    */
   public static show(params: MediaPreviewPageParams): void {
+    // Defensive cleanup in case previous overlay exited abnormally.
+    MediaPreviewOverlayManager.destroyActivePlayers();
     MediaPreviewOverlayManager.overlayData = params;
     MediaPreviewOverlayManager.isShowing = true;
     hilog.info(DOMAIN, TAG, `Showing media preview overlay with ${params.items.length} items`);
@@ -48,6 +54,8 @@ export class MediaPreviewOverlayManager {
    * Hide media preview overlay
    */
   public static hide(): void {
+    // Close action must release all preview players immediately.
+    MediaPreviewOverlayManager.destroyActivePlayers();
     MediaPreviewOverlayManager.isShowing = false;
     MediaPreviewOverlayManager.overlayData = null;
     hilog.info(DOMAIN, TAG, 'Hiding media preview overlay');
@@ -76,6 +84,31 @@ export class MediaPreviewOverlayManager {
     MediaPreviewOverlayManager.listeners.delete(listener);
   }
 
+  public static registerPreviewPlayer(playerId: string): void {
+    if (!playerId) {
+      return;
+    }
+    MediaPreviewOverlayManager.activePreviewPlayers.add(playerId);
+  }
+
+  public static unregisterPreviewPlayer(playerId: string): void {
+    if (!playerId) {
+      return;
+    }
+    MediaPreviewOverlayManager.activePreviewPlayers.delete(playerId);
+  }
+
+  private static destroyActivePlayers(): void {
+    MediaPreviewOverlayManager.activePreviewPlayers.forEach((playerId) => {
+      try {
+        LxNativeVideoPlayer.destroyStatic(playerId);
+      } catch {
+        hilog.error(DOMAIN, TAG, `Failed to destroy preview player ${playerId}`);
+      }
+    });
+    MediaPreviewOverlayManager.activePreviewPlayers.clear();
+  }
+
   private static notifyListeners(): void {
     MediaPreviewOverlayManager.listeners.forEach(listener => listener());
   }
@@ -89,6 +122,7 @@ export class MediaPreviewOverlayManager {
 export struct MediaPreviewOverlay {
   @State private isShowing: boolean = MediaPreviewOverlayManager.isOverlayShowing();
   @State private overlayData: MediaPreviewPageParams | null = MediaPreviewOverlayManager.getOverlayData();
+  private windowOpVersion: number = 0;
   
   private stateChangeListener = () => {
     const newShowing = MediaPreviewOverlayManager.isOverlayShowing();
@@ -107,38 +141,88 @@ export struct MediaPreviewOverlay {
 
   aboutToAppear() {
     MediaPreviewOverlayManager.registerListener(this.stateChangeListener);
+    if (this.isShowing && this.overlayData) {
+      this.enterFullscreenMode(this.overlayData);
+    }
   }
 
   aboutToDisappear() {
     MediaPreviewOverlayManager.unregisterListener(this.stateChangeListener);
+    // Defensive restore: if overlay component is removed unexpectedly, put system bars back.
+    this.exitFullscreenMode();
   }
 
-  private async enterFullscreenMode(data: MediaPreviewPageParams): Promise<void> {
+  private enterFullscreenMode(_data: MediaPreviewPageParams): void {
+    const opVersion = ++this.windowOpVersion;
     try {
-      const windowClass = await window.getLastWindow(getContext(this));
-      // Hide system bars for immersive experience
-      await windowClass.setWindowSystemBarEnable([]);
-      // Video orientation will be set by MediaViewer based on video dimensions
-      hilog.info(DOMAIN, TAG, 'Entered fullscreen mode, waiting for video orientation detection');
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to enter fullscreen mode: ${error}`);
+      const context = getContext(this) as common.UIAbilityContext;
+      context.windowStage.getMainWindow().then((mainWindow) => {
+        if (opVersion !== this.windowOpVersion) {
+          return;
+        }
+        mainWindow.setWindowSystemBarEnable([])
+          .then(() => {
+            if (opVersion !== this.windowOpVersion) {
+              return;
+            }
+            hilog.info(DOMAIN, TAG, 'Entered fullscreen mode');
+          })
+          .catch(() => {
+            if (opVersion !== this.windowOpVersion) {
+              return;
+            }
+            hilog.error(DOMAIN, TAG, 'Failed to apply fullscreen bars');
+          });
+      }).catch(() => {
+        if (opVersion !== this.windowOpVersion) {
+          return;
+        }
+        hilog.error(DOMAIN, TAG, 'Failed to get main window for enter fullscreen');
+      });
+    } catch {
+      hilog.error(DOMAIN, TAG, 'Failed to enter fullscreen mode');
     }
   }
 
-  private async exitFullscreenMode(): Promise<void> {
+  private exitFullscreenMode(): void {
+    const opVersion = ++this.windowOpVersion;
     try {
-      const windowClass = await window.getLastWindow(getContext(this));
-      // Restore system bars and orientation
-      await windowClass.setWindowSystemBarEnable(['status', 'navigation']);
-      await windowClass.setPreferredOrientation(window.Orientation.UNSPECIFIED);
-      hilog.info(DOMAIN, TAG, 'Exited fullscreen mode, restored orientation');
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to exit fullscreen mode: ${error}`);
+      const context = getContext(this) as common.UIAbilityContext;
+      context.windowStage.getMainWindow().then((mainWindow) => {
+        if (opVersion !== this.windowOpVersion) {
+          return;
+        }
+        mainWindow.setWindowSystemBarEnable(['status', 'navigation'])
+          .then(() => {
+            if (opVersion !== this.windowOpVersion) {
+              return;
+            }
+            return mainWindow.setPreferredOrientation(window.Orientation.UNSPECIFIED);
+          })
+          .then(() => {
+            if (opVersion !== this.windowOpVersion) {
+              return;
+            }
+            hilog.info(DOMAIN, TAG, 'Exited fullscreen mode');
+          })
+          .catch(() => {
+            if (opVersion !== this.windowOpVersion) {
+              return;
+            }
+            hilog.error(DOMAIN, TAG, 'Failed to restore fullscreen bars/orientation');
+          });
+      }).catch(() => {
+        if (opVersion !== this.windowOpVersion) {
+          return;
+        }
+        hilog.error(DOMAIN, TAG, 'Failed to get main window for exit fullscreen');
+      });
+    } catch {
+      hilog.error(DOMAIN, TAG, 'Failed to exit fullscreen mode');
     }
   }
 
   private handleClose(): void {
-    this.exitFullscreenMode();
     MediaPreviewOverlayManager.hide();
   }
 
@@ -163,6 +247,7 @@ export struct MediaPreviewOverlay {
       .height('100%')
       .position({ x: 0, y: 0 })
       .zIndex(9999)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }
   }
 }
@@ -189,8 +274,8 @@ struct MediaPreviewContent {
       const windowClass: window.Window = await window.getLastWindow(getContext());
       const safeArea: window.AvoidArea = await windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.statusBarHeight = safeArea.topRect.height || 44;
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to get status bar height: ${error}`);
+    } catch {
+      hilog.error(DOMAIN, TAG, 'Failed to get status bar height');
     }
   }
 
@@ -263,6 +348,8 @@ struct MediaViewer {
   @State private screenWidthVp: number = 0;
   @State private screenHeightVp: number = 0;
   @State private isLandscapeVideo: boolean = false;
+  @State private explicitRotation: number = -1;
+  @State private effectiveRotation: number = 0;
   @State private orientationDetected: boolean = false;
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
@@ -278,6 +365,7 @@ struct MediaViewer {
     // Generate unique player ID and config for videos
     if (this.item.mediaType === 1) {
       this.playerId = `preview-video-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      MediaPreviewOverlayManager.registerPreviewPlayer(this.playerId);
       // Initialize video config once
       this.videoConfig.src = this.item.uri;
       this.videoConfig.autoplay = true;
@@ -286,9 +374,62 @@ struct MediaViewer {
       this.videoConfig.volume = 1.0;
       this.videoConfig.controls = false; // We use custom controls
       this.videoConfig.cornerRadius = 0;
-      this.videoConfig.objectFit = 'contain';
+      this.videoConfig.objectFit = this.normalizeObjectFit(this.item.objectFit);
+      const rotation = this.normalizeRotation(this.item.rotate);
+      this.explicitRotation = rotation !== undefined ? rotation : -1;
+      this.updateEffectiveRotation();
       hilog.info(DOMAIN, TAG, `Video player initialized: playerId=${this.playerId}, src=${this.videoConfig.src}`);
     }
+  }
+
+  private normalizeRotation(value: number | undefined): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return undefined;
+    }
+    const parsed = Math.trunc(value);
+    if (parsed === 0 || parsed === 90 || parsed === 180 || parsed === 270) {
+      return parsed;
+    }
+    return undefined;
+  }
+
+  private normalizeObjectFit(value: string | undefined): string {
+    if (typeof value !== 'string') {
+      return 'contain';
+    }
+    const fit = value.trim().toLowerCase();
+    if (fit === 'cover' || fit === 'contain' || fit === 'fill' || fit === 'fit') {
+      return fit;
+    }
+    return 'contain';
+  }
+
+  private resolveImageFit(value: string | undefined): ImageFit {
+    const fit = this.normalizeObjectFit(value);
+    if (fit === 'cover') {
+      return ImageFit.Cover;
+    }
+    if (fit === 'fill') {
+      return ImageFit.Fill;
+    }
+    return ImageFit.Contain;
+  }
+
+  private resolveImageRotation(): number {
+    const rotation = this.normalizeRotation(this.item.rotate);
+    return rotation ?? 0;
+  }
+
+  private isQuarterTurn(rotation: number): boolean {
+    return rotation === 90 || rotation === 270;
+  }
+
+  private updateEffectiveRotation(): void {
+    if (this.explicitRotation >= 0) {
+      this.effectiveRotation = this.explicitRotation;
+      return;
+    }
+    this.effectiveRotation = this.isLandscapeVideo ? 90 : 0;
   }
 
   private initScreenDimensions(): void {
@@ -298,8 +439,8 @@ struct MediaViewer {
       this.screenWidthVp = displayInfo.width / density;
       this.screenHeightVp = displayInfo.height / density;
       hilog.info(DOMAIN, TAG, `Screen dimensions: ${this.screenWidthVp}x${this.screenHeightVp} vp`);
-    } catch (error) {
-      hilog.error(DOMAIN, TAG, `Failed to get screen dimensions: ${error}`);
+    } catch {
+      hilog.error(DOMAIN, TAG, 'Failed to get screen dimensions');
       // Fallback to reasonable defaults
       this.screenWidthVp = 360;
       this.screenHeightVp = 800;
@@ -307,6 +448,11 @@ struct MediaViewer {
   }
 
   private detectVideoOrientation(): void {
+    if (this.explicitRotation >= 0) {
+      this.orientationDetected = true;
+      this.updateEffectiveRotation();
+      return;
+    }
     if (this.orientationDetected || !this.playerId) {
       return;
     }
@@ -314,6 +460,7 @@ struct MediaViewer {
     hilog.info(DOMAIN, TAG, `Video orientation detected: isLandscape=${isLandscape}`);
     this.isLandscapeVideo = isLandscape;
     this.orientationDetected = true;
+    this.updateEffectiveRotation();
   }
 
   aboutToDisappear() {
@@ -322,6 +469,7 @@ struct MediaViewer {
     this.stopProgressTimer();
     // Destroy the video player if it exists
     if (this.item.mediaType === 1 && this.playerId) {
+      MediaPreviewOverlayManager.unregisterPreviewPlayer(this.playerId);
       LxNativeVideoPlayer.destroyStatic(this.playerId);
     }
   }
@@ -539,16 +687,16 @@ struct MediaViewer {
             this.buildCloseButton()
           }
         }
-        // For landscape videos: swap width/height so after 90° rotation, content fills screen
-        .width(this.isLandscapeVideo ? this.screenHeightVp : '100%')
-        .height(this.isLandscapeVideo ? this.screenWidthVp : '100%')
+        // Swap dimensions for 90/270 rotation so content can fill screen.
+        .width(this.effectiveRotation === 90 || this.effectiveRotation === 270 ? this.screenHeightVp : '100%')
+        .height(this.effectiveRotation === 90 || this.effectiveRotation === 270 ? this.screenWidthVp : '100%')
         // Center the rotated content
-        .position(this.isLandscapeVideo ?
+        .position(this.effectiveRotation === 90 || this.effectiveRotation === 270 ?
           { x: (this.screenWidthVp - this.screenHeightVp) / 2, y: (this.screenHeightVp - this.screenWidthVp) / 2 } :
           { x: 0, y: 0 })
-        // Rotate the entire video content for landscape videos
+        // Rotate the entire video content (explicit value or auto-detected landscape fallback).
         .rotate({
-          angle: this.isLandscapeVideo ? 90 : 0,
+          angle: this.effectiveRotation,
           centerX: '50%',
           centerY: '50%'
         })
@@ -560,41 +708,52 @@ struct MediaViewer {
           }
         })
       } else {
-        // Image viewer (default) - use contain to maintain aspect ratio and fit screen
-        Image(this.item.uri)
-          .width('100%')
-          .height('100%')
-          .objectFit(ImageFit.Contain)
-          .scale({ x: this.imageScale, y: this.imageScale })
-          .gesture(
-            GestureGroup(GestureMode.Exclusive,
-              TapGesture({ count: 1 })
-                .onAction(() => {
-                  if (this.imageScale <= this.minScale + 0.1) {
-                    const now = Date.now();
-                    const timeSinceLastTap = now - this.lastTapTime;
+        Stack() {
+          Image(this.item.uri)
+            .width('100%')
+            .height('100%')
+            .objectFit(this.resolveImageFit(this.item.objectFit))
+            .scale({ x: this.imageScale, y: this.imageScale })
+            .gesture(
+              GestureGroup(GestureMode.Exclusive,
+                TapGesture({ count: 1 })
+                  .onAction(() => {
+                    if (this.imageScale <= this.minScale + 0.1) {
+                      const now = Date.now();
+                      const timeSinceLastTap = now - this.lastTapTime;
 
-                    if (timeSinceLastTap > 300) {
-                      this.lastTapTime = now;
-                      this.onDismiss();
+                      if (timeSinceLastTap > 300) {
+                        this.lastTapTime = now;
+                        this.onDismiss();
+                      }
                     }
-                  }
-                }),
+                  }),
 
-              PinchGesture({ fingers: 2, distance: 1 })
-                .onActionUpdate((event: GestureEvent) => {
-                  if (event.scale) {
-                    this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
-                    this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
-                  }
-                })
-                .onActionEnd(() => {
-                  if (this.imageScale <= this.minScale + 0.1) {
-                    this.resetZoom();
-                  }
-                })
+                PinchGesture({ fingers: 2, distance: 1 })
+                  .onActionUpdate((event: GestureEvent) => {
+                    if (event.scale) {
+                      this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                      this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
+                    }
+                  })
+                  .onActionEnd(() => {
+                    if (this.imageScale <= this.minScale + 0.1) {
+                      this.resetZoom();
+                    }
+                  })
+              )
             )
-          )
+        }
+        .width(this.isQuarterTurn(this.resolveImageRotation()) ? this.screenHeightVp : '100%')
+        .height(this.isQuarterTurn(this.resolveImageRotation()) ? this.screenWidthVp : '100%')
+        .position(this.isQuarterTurn(this.resolveImageRotation()) ?
+          { x: (this.screenWidthVp - this.screenHeightVp) / 2, y: (this.screenHeightVp - this.screenWidthVp) / 2 } :
+          { x: 0, y: 0 })
+        .rotate({
+          angle: this.resolveImageRotation(),
+          centerX: '50%',
+          centerY: '50%'
+        })
       }
     }
     .width('100%')

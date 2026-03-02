@@ -36,6 +36,7 @@ final class MacLxMediaPlayer: NSObject {
     private var controlsEnabled = true
     private var showProgressBar = true
     private var loopEnabled = false
+    private var displayRotationDegrees: Int = 0
 
     private var controlsVisible = false
     private var controlsHideWorkItem: DispatchWorkItem?
@@ -333,6 +334,7 @@ final class MacLxMediaPlayer: NSObject {
             gradient.frame = bottomBar.bounds
         }
 
+        applyDisplayRotationTransform()
         updateTrackingArea()
     }
 
@@ -616,7 +618,14 @@ final class MacLxMediaPlayer: NSObject {
             progressSlider.isHidden = !progressBar
         }
 
-        if let objectFit = config.objectFit {
+        let clearProps = config.clearProps ?? []
+
+        if clearProps.contains("objectFit") {
+            let gravity: AVLayerVideoGravity = .resizeAspectFill
+            core.setVideoGravity(gravity)
+            playerLayerView.playerLayer.videoGravity = gravity
+            applyDisplayRotationTransform()
+        } else if let objectFit = config.objectFit {
             let gravity: AVLayerVideoGravity
             switch objectFit {
             case .cover: gravity = .resizeAspectFill
@@ -625,6 +634,13 @@ final class MacLxMediaPlayer: NSObject {
             }
             core.setVideoGravity(gravity)
             playerLayerView.playerLayer.videoGravity = gravity
+            applyDisplayRotationTransform()
+        }
+
+        if clearProps.contains("rotate") {
+            setDisplayRotationDegrees(nil)
+        } else if let rotateDegrees = config.rotateDegrees {
+            setDisplayRotationDegrees(rotateDegrees)
         }
 
         if let volume = config.volume {
@@ -724,6 +740,55 @@ final class MacLxMediaPlayer: NSObject {
 
     func setExternalDurationSeconds(_ seconds: Double?) {
         core.setExternalDurationSeconds(seconds)
+    }
+
+    private func setDisplayRotationDegrees(_ degrees: Int?) {
+        let normalized = degrees.map(normalizeRotation)
+        if let normalized,
+           normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270 {
+            return
+        }
+        displayRotationDegrees = normalized ?? 0
+        applyDisplayRotationTransform()
+    }
+
+    private func normalizeRotation(_ rotation: Int) -> Int {
+        var normalized = rotation % 360
+        if normalized < 0 {
+            normalized += 360
+        }
+        return normalized
+    }
+
+    private func rotationScale(for degrees: Int) -> (x: CGFloat, y: CGFloat) {
+        guard degrees == 90 || degrees == 270 else {
+            return (1, 1)
+        }
+        let width = view.bounds.width
+        let height = view.bounds.height
+        guard width > 0, height > 0 else {
+            return (1, 1)
+        }
+        let ratio1 = width / height
+        let ratio2 = height / width
+        switch playerLayerView.playerLayer.videoGravity {
+        case .resizeAspectFill:
+            let scale = max(ratio1, ratio2)
+            return (scale, scale)
+        case .resize:
+            return (ratio1, ratio2)
+        default:
+            let scale = min(ratio1, ratio2)
+            return (scale, scale)
+        }
+    }
+
+    private func applyDisplayRotationTransform() {
+        let angle = CGFloat(displayRotationDegrees) * (.pi / 180)
+        let scale = rotationScale(for: displayRotationDegrees)
+        let transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale.x, y: scale.y)
+        playerLayerView.layer?.setAffineTransform(transform)
+        posterImageView.layer?.setAffineTransform(transform)
     }
 
     func currentVolume() -> Double {

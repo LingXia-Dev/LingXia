@@ -4,7 +4,7 @@
  */
 import { display, window } from '@kit.ArkUI';
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
-import { NativeComponentRecord, nativeComponentError } from '../NativeComponentTypes';
+import { NativeComponentRecord, NativeComponentValue, nativeComponentError } from '../NativeComponentTypes';
 import { getNodeControllerByComponentId } from '../NativeBridgeInternal';
 import {
   LxNativeVideoPlayer,
@@ -18,6 +18,14 @@ import { getComponentCallback } from '../NativeCallbackRegistry';
 interface QualityProp {
   label?: string;
   url?: string;
+}
+
+function clearPropsContains(props: NativeComponentRecord, key: string): boolean {
+  const raw = props.get('__clearProps');
+  if (!Array.isArray(raw)) {
+    return false;
+  }
+  return raw.some((item: NativeComponentValue): boolean => typeof item === 'string' && item === key);
 }
 
 /**
@@ -51,15 +59,13 @@ struct NativeVideoComponent {
     // Handle commands from updateNode
     const command = (this.params as ESObject)?.__command as string;
     if (command === 'pause') {
-      // Use static method to pause native player directly
       LxNativeVideoPlayer.pauseStatic(this.componentId);
     } else if (command === 'stop') {
-      // Stop playback and reset to initial state (show poster, reset progress)
       LxNativeVideoPlayer.stopStatic(this.componentId);
     } else if (command === 'resume') {
-      // Use static method to resume to previous state (only plays if was playing before)
       LxNativeVideoPlayer.resumeStatic(this.componentId);
     }
+
   }
 
   private buildConfig(): LxNativeVideoConfig {
@@ -104,7 +110,20 @@ struct NativeVideoComponent {
     if (typeof cornerRadius === 'number') config.cornerRadius = cornerRadius;
 
     const objectFit = props.get('objectFit');
-    if (typeof objectFit === 'string') config.objectFit = objectFit;
+    if (!clearPropsContains(props, 'objectFit') && typeof objectFit === 'string') {
+      config.objectFit = objectFit;
+    }
+    if (clearPropsContains(props, 'rotate')) {
+      config.rotate = undefined;
+    } else {
+      const rotate = props.get('rotate');
+      if (typeof rotate === 'number') {
+        config.rotate = rotate;
+      } else if (typeof rotate === 'string') {
+        const parsed = Number.parseInt(rotate, 10);
+        if (!Number.isNaN(parsed)) config.rotate = parsed;
+      }
+    }
 
     // Parse qualities
     const qualities = props.get('qualities');

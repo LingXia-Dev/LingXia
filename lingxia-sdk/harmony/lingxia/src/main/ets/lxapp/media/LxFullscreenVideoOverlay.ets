@@ -9,6 +9,23 @@ import { resolveLxUriForFileAccess } from './LxUri';
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.FullscreenOverlay';
 
+interface VideoLayoutFrame {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+class VideoSize {
+  width: number = 0;
+  height: number = 0;
+
+  constructor(width: number, height: number) {
+    this.width = width;
+    this.height = height;
+  }
+}
+
 @Component
 export struct LxFullscreenVideoOverlay {
   @Prop componentId: string;
@@ -341,8 +358,107 @@ export struct LxFullscreenVideoOverlay {
 
   private getPosterFit(): ImageFit {
     const fit = (LxNativeVideoPlayer.getConfig(this.componentId)?.objectFit || 'cover').toLowerCase();
-    // Harmony poster supports contain/cover directly; fill currently falls back to cover.
+    if (fit === 'fill') {
+      return ImageFit.Fill;
+    }
     return (fit === 'contain' || fit === 'fit') ? ImageFit.Contain : ImageFit.Cover;
+  }
+
+  private getObjectFitMode(): string {
+    const fit = (LxNativeVideoPlayer.getConfig(this.componentId)?.objectFit || 'cover').toLowerCase();
+    if (fit === 'contain' || fit === 'fill' || fit === 'fit') {
+      return fit;
+    }
+    return 'cover';
+  }
+
+  private getRootViewportWidth(): number {
+    const rotation = this.getEffectiveRotation();
+    return this.shouldSwapAxes(rotation) ? this.screenHeightVp : this.screenWidthVp;
+  }
+
+  private getRootViewportHeight(): number {
+    const rotation = this.getEffectiveRotation();
+    return this.shouldSwapAxes(rotation) ? this.screenWidthVp : this.screenHeightVp;
+  }
+
+  private getVideoDimensionsForLayout(): VideoSize | undefined {
+    let width = LxNativeVideoPlayer.getVideoWidth(this.componentId);
+    let height = LxNativeVideoPlayer.getVideoHeight(this.componentId);
+    if (width <= 0 || height <= 0) {
+      const stream = LxNativeVideoPlayer.getStreamVideoSize(this.componentId);
+      if (stream) {
+        width = stream.width;
+        height = stream.height;
+      }
+    }
+    if (width > 0 && height > 0) {
+      return new VideoSize(width, height);
+    }
+    return undefined;
+  }
+
+  private computeVideoLayerFrame(): VideoLayoutFrame {
+    const containerW = this.getRootViewportWidth();
+    const containerH = this.getRootViewportHeight();
+    const full: VideoLayoutFrame = { x: 0, y: 0, width: containerW, height: containerH };
+    if (containerW <= 0 || containerH <= 0) {
+      return full;
+    }
+
+    const fit = this.getObjectFitMode();
+    if (fit === 'fill') {
+      return full;
+    }
+
+    const size = this.getVideoDimensionsForLayout();
+    if (!size) {
+      return full;
+    }
+
+    const contentAspect = size.width / size.height;
+    const containerAspect = containerW / containerH;
+    const useContain = fit === 'contain' || fit === 'fit';
+    let width = containerW;
+    let height = containerH;
+
+    if ((useContain && contentAspect > containerAspect) || (!useContain && contentAspect < containerAspect)) {
+      width = containerW;
+      height = containerW / contentAspect;
+    } else {
+      height = containerH;
+      width = containerH * contentAspect;
+    }
+
+    return {
+      x: (containerW - width) / 2,
+      y: (containerH - height) / 2,
+      width,
+      height
+    };
+  }
+
+  private normalizeRotation(value: number | undefined): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return undefined;
+    }
+    const parsed = Math.trunc(value);
+    if (parsed === 0 || parsed === 90 || parsed === 180 || parsed === 270) {
+      return parsed;
+    }
+    return undefined;
+  }
+
+  private getEffectiveRotation(): number {
+    const configured = this.normalizeRotation(LxNativeVideoPlayer.getConfig(this.componentId)?.rotate);
+    if (configured !== undefined) {
+      return configured;
+    }
+    return this.isLandscape ? 90 : 0;
+  }
+
+  private shouldSwapAxes(rotation: number): boolean {
+    return rotation === 90 || rotation === 270;
   }
 
   @Builder
@@ -359,62 +475,67 @@ export struct LxFullscreenVideoOverlay {
     Stack() {
       Row().width('100%').height('100%').backgroundColor(Color.Black)
 
-      XComponent({
-        id: `fullscreen-${this.componentId}`,
-        type: XComponentType.TEXTURE,
-        controller: this.xComponentController
-      })
-        .onLoad(() => {
-          this.surfaceId = this.xComponentController.getXComponentSurfaceId();
-          this.xComponentReady = true;
+      Stack() {
+        XComponent({
+          id: `fullscreen-${this.componentId}`,
+          type: XComponentType.TEXTURE,
+          controller: this.xComponentController
+        })
+          .onLoad(() => {
+            this.surfaceId = this.xComponentController.getXComponentSurfaceId();
+            this.xComponentReady = true;
 
-          // Save state BEFORE switching surface to capture current playback state
-          LxNativeVideoPlayer.savePlaybackState(this.componentId);
-          const snapshot = LxNativeVideoPlayer.getPlaybackState(this.componentId);
-          this.wasPlayingOnEnter = snapshot?.isPlaying ?? false;
-          this.hasEnded = LxNativeVideoPlayer.hasEndedStatic(this.componentId);
-          hilog.info(DOMAIN, TAG, `onLoad: hasEnded=${this.hasEnded}, wasPlaying=${this.wasPlayingOnEnter}, isPlaying=${this.isPlaying}`);
+            // Save state BEFORE switching surface to capture current playback state
+            LxNativeVideoPlayer.savePlaybackState(this.componentId);
+            const snapshot = LxNativeVideoPlayer.getPlaybackState(this.componentId);
+            this.wasPlayingOnEnter = snapshot?.isPlaying ?? false;
+            this.hasEnded = LxNativeVideoPlayer.hasEndedStatic(this.componentId);
+            hilog.info(DOMAIN, TAG, `onLoad: hasEnded=${this.hasEnded}, wasPlaying=${this.wasPlayingOnEnter}, isPlaying=${this.isPlaying}`);
 
-          LxNativeVideoPlayer.switchToFullscreenSurface(this.componentId, this.surfaceId);
-          // Schedule surface refresh with delays to ensure decoder binds correctly
-          this.scheduleSurfaceRefresh();
+            LxNativeVideoPlayer.switchToFullscreenSurface(this.componentId, this.surfaceId);
+            // Schedule surface refresh with delays to ensure decoder binds correctly
+            this.scheduleSurfaceRefresh();
 
-          this.isLandscape = LxNativeVideoPlayer.isLandscapeVideo(this.componentId);
+            this.isLandscape = LxNativeVideoPlayer.isLandscapeVideo(this.componentId);
 
-          this.enterFullscreenMode();
-          this.initFullscreenState();
-          // Always start progress timer in fullscreen (even if ended, user might replay)
-          this.startProgressTimer();
-          this.resetControlsTimer();
+            this.enterFullscreenMode();
+            this.initFullscreenState();
+            // Always start progress timer in fullscreen (even if ended, user might replay)
+            this.startProgressTimer();
+            this.resetControlsTimer();
 
-          // For stream mode, explicitly resume playback if it was playing when entering fullscreen.
-          // The surface switch may have interrupted the decoder, so we need to ensure it resumes.
-          if (this.wasPlayingOnEnter) {
-            hilog.info(DOMAIN, TAG, `Resuming playback after fullscreen enter: componentId=${this.componentId}`);
-            LxNativeVideoPlayer.playStatic(this.componentId);
-            this.isPlaying = true;
+            // For stream mode, explicitly resume playback if it was playing when entering fullscreen.
+            // The surface switch may have interrupted the decoder, so we need to ensure it resumes.
+            if (this.wasPlayingOnEnter) {
+              hilog.info(DOMAIN, TAG, `Resuming playback after fullscreen enter: componentId=${this.componentId}`);
+              LxNativeVideoPlayer.playStatic(this.componentId);
+              this.isPlaying = true;
+            }
+          })
+          .onDestroy(() => {
+            this.xComponentReady = false;
+            this.surfaceId = '';
+            this.stopProgressTimer();
+            this.clearControlsTimer();
+            this.cancelSurfaceRefreshTimers();
+          })
+          .width('100%')
+          .height('100%')
+
+        this.buildPoster()
+
+        // Buffering indicator
+        if (this.isBuffering && this.isPlaying) {
+          Row() {
+            LoadingProgress().width(48).height(48).color(Color.White)
           }
-        })
-        .onDestroy(() => {
-          this.xComponentReady = false;
-          this.surfaceId = '';
-          this.stopProgressTimer();
-          this.clearControlsTimer();
-          this.cancelSurfaceRefreshTimers();
-        })
-        .width('100%')
-        .height('100%')
-
-      this.buildPoster()
-
-      // Buffering indicator
-      if (this.isBuffering && this.isPlaying) {
-        Row() {
-          LoadingProgress().width(48).height(48).color(Color.White)
+          .width('100%').height('100%').justifyContent(FlexAlign.Center)
+          .hitTestBehavior(HitTestMode.Transparent)
         }
-        .width('100%').height('100%').justifyContent(FlexAlign.Center)
-        .hitTestBehavior(HitTestMode.Transparent)
       }
+      .width(this.computeVideoLayerFrame().width)
+      .height(this.computeVideoLayerFrame().height)
+      .position({ x: this.computeVideoLayerFrame().x, y: this.computeVideoLayerFrame().y })
 
 
 
@@ -422,15 +543,15 @@ export struct LxFullscreenVideoOverlay {
         this.buildControls()
       }
     }
-    .width(this.isLandscape ? this.screenHeightVp : this.screenWidthVp)
-    .height(this.isLandscape ? this.screenWidthVp : this.screenHeightVp)
-    .position(this.isLandscape ?
+    .width(this.shouldSwapAxes(this.getEffectiveRotation()) ? this.screenHeightVp : this.screenWidthVp)
+    .height(this.shouldSwapAxes(this.getEffectiveRotation()) ? this.screenWidthVp : this.screenHeightVp)
+    .position(this.shouldSwapAxes(this.getEffectiveRotation()) ?
       { x: (this.screenWidthVp - this.screenHeightVp) / 2, y: (this.screenHeightVp - this.screenWidthVp) / 2 } :
       { x: 0, y: 0 })
     .zIndex(50000)
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     .rotate({
-      angle: this.isLandscape ? 90 : 0,
+      angle: this.getEffectiveRotation(),
       centerX: '50%',
       centerY: '50%'
     })

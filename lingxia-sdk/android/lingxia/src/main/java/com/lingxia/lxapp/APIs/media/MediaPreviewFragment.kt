@@ -23,12 +23,11 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.WindowCompat
+import androidx.exifinterface.media.ExifInterface
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
-import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.lang.ref.WeakReference
 import java.net.URL
@@ -42,8 +41,7 @@ class MediaPreviewFragment : Fragment() {
     private var indicatorText: TextView? = null
     private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
     private var totalItems: Int = 0
-    private var originalStatusBarColor: Int? = null
-    private var originalNavigationBarColor: Int? = null
+    private var windowUiSnapshot: ImmersiveWindowUi.Snapshot? = null
     private var dismissed = false
 
     private var previewItems: List<PreviewItem> = emptyList()
@@ -104,11 +102,11 @@ class MediaPreviewFragment : Fragment() {
         if (previewItems.isEmpty()) return
 
         val activity = requireActivity()
-        originalStatusBarColor = activity.window.statusBarColor
-        originalNavigationBarColor = activity.window.navigationBarColor
-        WindowCompat.setDecorFitsSystemWindows(activity.window, false)
-        activity.window.statusBarColor = Color.BLACK
-        activity.window.navigationBarColor = Color.BLACK
+        val window = activity.window
+        if (windowUiSnapshot == null) {
+            windowUiSnapshot = ImmersiveWindowUi.capture(window)
+        }
+        ImmersiveWindowUi.apply(window, keepScreenOn = false)
 
         activity.onBackPressedDispatcher.addCallback(
             viewLifecycleOwner,
@@ -121,21 +119,28 @@ class MediaPreviewFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        cleanupPreviewResources()
         super.onDestroyView()
+    }
+
+    private fun cleanupPreviewResources() {
         pageChangeCallback?.let { callback ->
             viewPager?.unregisterOnPageChangeCallback(callback)
         }
         pageChangeCallback = null
         previewAdapter?.release()
+        // Force ViewPager to detach/recycle pages so video players are destroyed immediately.
+        viewPager?.adapter = null
         previewAdapter = null
         viewPager = null
         indicatorText = null
 
-        activity?.let { host ->
-            originalStatusBarColor?.let { host.window.statusBarColor = it }
-            originalNavigationBarColor?.let { host.window.navigationBarColor = it }
-            WindowCompat.setDecorFitsSystemWindows(host.window, true)
+        activity?.window?.let { window ->
+            windowUiSnapshot?.let { snapshot ->
+                ImmersiveWindowUi.restore(window, snapshot)
+            }
         }
+        windowUiSnapshot = null
     }
 
     private fun createTopBar(context: Context, itemCount: Int): View {
@@ -196,7 +201,9 @@ class MediaPreviewFragment : Fragment() {
             PreviewItem(
                 uri = normalizedUri,
                 mediaType = MediaPreviewType.fromInt(payload.type),
-                coverUri = coverUri
+                coverUri = coverUri,
+                rotate = payload.rotate,
+                objectFit = payload.objectFit?.let { LxMediaObjectFit.fromString(it) }
             )
         }
     }
@@ -204,6 +211,8 @@ class MediaPreviewFragment : Fragment() {
     private fun dismissOverlay() {
         if (dismissed) return
         dismissed = true
+        // Explicit cleanup on close; don't rely only on lifecycle callbacks.
+        cleanupPreviewResources()
         parentFragmentManager.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
     }
 
@@ -239,7 +248,9 @@ class MediaPreviewFragment : Fragment() {
 private data class PreviewItem(
     val uri: Uri,
     val mediaType: MediaPreviewType,
-    val coverUri: Uri?
+    val coverUri: Uri?,
+    val rotate: Int?,
+    val objectFit: LxMediaObjectFit?
 )
 
 private enum class MediaPreviewType(val value: Int) {
@@ -362,13 +373,14 @@ private class PreviewPagerAdapter(
     ) : RecyclerView.ViewHolder(container) {
         private var currentLoader: Future<*>? = null
         private var currentMediaPlayer: LxMediaPlayer? = null
-        private var isVideoItem: Boolean = false
+        private var boundItem: PreviewItem? = null
 
         fun bind(item: PreviewItem) {
             reset()
             container.removeAllViews()
+            boundItem = item
             when (item.mediaType) {
-                MediaPreviewType.VIDEO -> bindVideo(item)
+                MediaPreviewType.VIDEO -> bindVideoPlaceholder(item)
                 MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> bindImage(item)
             }
         }
@@ -378,7 +390,9 @@ private class PreviewPagerAdapter(
             currentLoader = null
             currentMediaPlayer?.detach()
             currentMediaPlayer = null
-            isVideoItem = false
+            boundItem = null
+            clearImageReferences(container)
+            container.removeAllViews()
         }
 
         private fun bindImage(item: PreviewItem) {
@@ -393,6 +407,8 @@ private class PreviewPagerAdapter(
             container.addView(progressBar)
             zoomImageView.setDismissListener(onDismiss)
             zoomImageView.setOnScaleStateListener { zoomed -> onZoomStateChanged(zoomed) }
+            zoomImageView.setPreviewRotationDegrees(item.rotate)
+            zoomImageView.setPreviewObjectFit(item.objectFit)
 
             val uri = item.uri
 
@@ -410,20 +426,37 @@ private class PreviewPagerAdapter(
             }
         }
 
-        private fun bindVideo(item: PreviewItem) {
+        private fun bindVideoPlaceholder(item: PreviewItem) {
             val context = container.context
             val mediaUri = item.uri
 
             if (mediaUri == Uri.EMPTY) {
-                val errorView = ImageView(context).apply {
-                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                    setBackgroundColor(Color.BLACK)
-                    setImageResource(android.R.drawable.ic_dialog_alert)
-                    scaleType = ImageView.ScaleType.CENTER
-                }
-                container.addView(errorView)
+                showVideoError(context)
                 return
             }
+
+            // Keep non-visible pages lightweight. Player is created only when this page becomes visible.
+            container.addView(
+                View(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                    setBackgroundColor(Color.BLACK)
+                },
+                FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            )
+        }
+
+        private fun ensureVideoPlayer(item: PreviewItem) {
+            if (currentMediaPlayer != null) return
+            val context = container.context
+            val mediaUri = item.uri
+            if (mediaUri == Uri.EMPTY) {
+                container.removeAllViews()
+                showVideoError(context)
+                return
+            }
+
+            currentLoader?.cancel(true)
+            currentLoader = null
 
             // Create LxMediaPlayer for video playback
             val mediaPlayer = LxMediaPlayer(context, eventSink = { /* events ignored in preview */ })
@@ -441,38 +474,61 @@ private class PreviewPagerAdapter(
                 autoplay = false,
                 loop = true,
                 controls = true,
-                objectFit = LxMediaObjectFit.CONTAIN
+                objectFit = item.objectFit ?: LxMediaObjectFit.CONTAIN,
+                rotateDegrees = item.rotate
             )
             mediaPlayer.update(config)
 
             // Add player view to container
+            container.removeAllViews()
             container.addView(
                 mediaPlayer.view,
                 FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             )
 
             currentMediaPlayer = mediaPlayer
-            isVideoItem = true
+        }
 
-            // Auto-enter fullscreen to mirror video component fullscreen behavior in preview
-            container.post {
-                if (!mediaPlayer.isFullscreen()) {
-                    mediaPlayer.enterFullscreen()
+        private fun showVideoError(context: Context) {
+            val errorView = ImageView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                setBackgroundColor(Color.BLACK)
+                setImageResource(android.R.drawable.ic_dialog_alert)
+                scaleType = ImageView.ScaleType.CENTER
+            }
+            container.addView(errorView)
+        }
+
+        private fun clearImageReferences(view: View?) {
+            view ?: return
+            if (view is ImageView) {
+                view.setImageDrawable(null)
+            }
+            if (view is ViewGroup) {
+                for (index in 0 until view.childCount) {
+                    clearImageReferences(view.getChildAt(index))
                 }
             }
         }
 
         fun onVisible() {
-            if (isVideoItem) {
+            val item = boundItem
+            if (item?.mediaType == MediaPreviewType.VIDEO) {
+                ensureVideoPlayer(item)
                 currentMediaPlayer?.play()
             }
         }
 
         fun onHidden() {
-            if (isVideoItem) {
+            val item = boundItem
+            if (item?.mediaType == MediaPreviewType.VIDEO) {
                 currentMediaPlayer?.pause()
                 currentMediaPlayer?.seek(0.0)
                 currentMediaPlayer?.exitFullscreen()
+                currentMediaPlayer?.detach()
+                currentMediaPlayer = null
+                container.removeAllViews()
+                bindVideoPlaceholder(item)
             }
         }
     }

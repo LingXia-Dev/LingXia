@@ -784,6 +784,7 @@ pub struct NativeVideoPlayer {
     info_callback_data: *mut InfoCallbackData,
     pending_play: bool,
     source_set: bool,
+    current_source: Option<String>,
 }
 
 // SAFETY: Player accessed on main thread, protected by mutex
@@ -829,6 +830,7 @@ impl NativeVideoPlayer {
                 info_callback_data: ptr::null_mut(),
                 pending_play: false,
                 source_set: false,
+                current_source: None,
             });
         }
 
@@ -842,6 +844,7 @@ impl NativeVideoPlayer {
             info_callback_data: callback_data_ptr as *mut InfoCallbackData,
             pending_play: false,
             source_set: false,
+            current_source: None,
         })
     }
 
@@ -870,6 +873,15 @@ impl NativeVideoPlayer {
     }
 
     pub fn set_source(&mut self, source: &str) -> Result<(), PlatformError> {
+        // Same source can be sent again during component remount/rebind. In that case,
+        // skip resetting AVPlayer source to avoid invalid-state failures.
+        if self.source_set
+            && let Some(existing) = self.current_source.as_deref()
+            && existing == source
+        {
+            return Ok(());
+        }
+
         let result = if source.starts_with("http://") || source.starts_with("https://") {
             self.set_url_source(source)
         } else if source.starts_with("file://") {
@@ -883,6 +895,7 @@ impl NativeVideoPlayer {
         };
         if result.is_ok() {
             self.source_set = true;
+            self.current_source = Some(source.to_string());
         }
         result
     }
@@ -1016,6 +1029,13 @@ impl NativeVideoPlayer {
     }
 
     pub fn prepare(&mut self) -> Result<(), PlatformError> {
+        match self.current_state() {
+            AVPlayerState::Prepared
+            | AVPlayerState::Playing
+            | AVPlayerState::Paused
+            | AVPlayerState::Completed => return Ok(()),
+            _ => {}
+        }
         check_av_result(
             unsafe { OH_AVPlayer_Prepare(self.player) },
             "OH_AVPlayer_Prepare",
@@ -1193,6 +1213,8 @@ impl NativeVideoPlayer {
         // InfoCallbackData is intentionally leaked to keep callback pointers valid even if a late
         // callback arrives after release/switch.
         self.info_callback_data = ptr::null_mut();
+        self.source_set = false;
+        self.current_source = None;
         Ok(())
     }
 
@@ -3410,7 +3432,13 @@ pub fn set_video_surface_from_id(
         let window = create_native_window_from_surface_id(surface_id)?;
         match player.lock() {
             Ok(mut p) => {
-                result = p.set_video_surface(window);
+                if p.source_set {
+                    let position_ms = p.get_current_time().unwrap_or(0);
+                    let should_play = matches!(p.current_state(), AVPlayerState::Playing);
+                    result = p.rebind_surface_and_resume(window, position_ms.max(0), should_play);
+                } else {
+                    result = p.set_video_surface(window);
+                }
             }
             Err(_) => {
                 unsafe { OH_NativeWindow_DestroyNativeWindow(window) };

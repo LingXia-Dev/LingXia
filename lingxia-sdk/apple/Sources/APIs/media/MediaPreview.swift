@@ -1,6 +1,5 @@
 #if os(iOS)
 import UIKit
-import AVFoundation
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 import os.log
@@ -11,10 +10,37 @@ extension LxAppMedia {
     // Strong reference to keep preview window alive
     @MainActor fileprivate static var previewWindow: UIWindow?
 
-    struct PreviewMediaPayload: Codable {
+    struct PreviewMediaPayload: Decodable {
         let path: String
         let media_type: Int32
         let cover_path: String?
+        let rotate: Int?
+        let object_fit: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case path
+            case media_type
+            case mediaType
+            case cover_path
+            case coverPath
+            case rotate
+            case rotation
+            case object_fit
+            case objectFit
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            path = try container.decode(String.self, forKey: .path)
+            media_type = try (try? container.decode(Int32.self, forKey: .media_type))
+                ?? container.decode(Int32.self, forKey: .mediaType)
+            cover_path = (try? container.decodeIfPresent(String.self, forKey: .cover_path))
+                ?? (try? container.decodeIfPresent(String.self, forKey: .coverPath))
+            rotate = (try? container.decodeIfPresent(Int.self, forKey: .rotate))
+                ?? (try? container.decodeIfPresent(Int.self, forKey: .rotation))
+            object_fit = (try? container.decodeIfPresent(String.self, forKey: .object_fit))
+                ?? (try? container.decodeIfPresent(String.self, forKey: .objectFit))
+        }
     }
 
     nonisolated static func previewMedia(items_json: RustStr) -> Bool {
@@ -81,10 +107,16 @@ private struct PreviewMediaItem {
     let url: URL
     let type: MediaType
     let coverURL: URL?
+    let rotate: Int?
+    let objectFit: LxMediaObjectFit?
 
     init(payload: LxAppMedia.PreviewMediaPayload) {
         let pathString = payload.path
-        self.url = URL(fileURLWithPath: pathString)
+        if let parsed = URL(string: pathString), parsed.scheme != nil {
+            self.url = parsed
+        } else {
+            self.url = URL(fileURLWithPath: pathString)
+        }
 
         let coverString = payload.cover_path ?? ""
         if coverString.isEmpty {
@@ -95,6 +127,19 @@ private struct PreviewMediaItem {
             self.coverURL = URL(fileURLWithPath: coverString)
         }
         self.type = MediaType(rawValue: payload.media_type)
+        self.rotate = {
+            guard let value = payload.rotate else { return nil }
+            switch value {
+            case 0, 90, 180, 270:
+                return value
+            default:
+                return nil
+            }
+        }()
+        self.objectFit = {
+            guard let raw = payload.object_fit?.lowercased() else { return nil }
+            return LxMediaObjectFit(rawValue: raw)
+        }()
     }
 }
 
@@ -102,6 +147,7 @@ private struct PreviewMediaItem {
 private final class MediaPreviewViewController: UIViewController, UIGestureRecognizerDelegate {
     private let items: [PreviewMediaItem]
     private var currentIndex: Int
+    private var didCleanup = false
 
     private lazy var closeButton: UIButton = {
         let button = UIButton(type: .system)
@@ -139,6 +185,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        cleanupPreviewResources()
     }
 
     override var prefersStatusBarHidden: Bool {
@@ -275,10 +325,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     @objc private func closeTapped() {
         // Hide and clean up the dedicated window
         Task { @MainActor in
-            // Stop any active video players so playback and observers are torn down
-            pageViewController.viewControllers?.forEach { vc in
-                (vc as? MediaPreviewVideoController)?.teardownPlayer()
-            }
+            cleanupPreviewResources()
 
             // Find the main app window and restore it as key window before dismissing
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -289,6 +336,29 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             LxAppMedia.previewWindow?.isHidden = true
             LxAppMedia.previewWindow?.rootViewController = nil
             LxAppMedia.previewWindow = nil
+        }
+    }
+
+    private func cleanupPreviewResources() {
+        if didCleanup {
+            return
+        }
+        didCleanup = true
+
+        teardownPlayers(in: self)
+        pageViewController.dataSource = nil
+        pageViewController.delegate = nil
+    }
+
+    private func teardownPlayers(in controller: UIViewController) {
+        if let videoController = controller as? MediaPreviewVideoController {
+            videoController.teardownPlayer()
+        }
+        for child in controller.children {
+            teardownPlayers(in: child)
+        }
+        if let presented = controller.presentedViewController {
+            teardownPlayers(in: presented)
         }
     }
 }
@@ -325,7 +395,11 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
     private let dismissHandler: () -> Void
 
     private lazy var zoomView: ZoomableImageView = {
-        let view = ZoomableImageView(imageURL: item.url)
+        let view = ZoomableImageView(
+            imageURL: item.url,
+            rotateDegrees: item.rotate,
+            objectFit: item.objectFit
+        )
         view.translatesAutoresizingMaskIntoConstraints = false
         view.onZoomStateChanged = zoomStateChanged
         view.onDismiss = dismissHandler
@@ -365,7 +439,6 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
     private var player: LxMediaPlayer?
     private var hasStartedPlayback = false
-    private var isLandscapeVideo = false
 
     init(item: PreviewMediaItem, index: Int) {
         self.item = item
@@ -387,20 +460,8 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        // Update player frame on layout changes
-        guard let playerView = player?.view else { return }
-
-        if isLandscapeVideo {
-            // Keep landscape rotation for landscape videos using container bounds
-            let containerBounds = view.bounds
-            playerView.transform = CGAffineTransform(rotationAngle: .pi / 2)
-            playerView.frame = CGRect(x: 0, y: 0, width: containerBounds.height, height: containerBounds.width)
-            player?.setFrame(playerView.bounds)
-        } else {
-            // Portrait video uses normal bounds
-            playerView.frame = view.bounds
-            player?.setFrame(view.bounds)
-        }
+        // Let setFrame handle both view.frame and playerLayer.frame
+        player?.setFrame(view.bounds)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -430,7 +491,8 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             autoplay: true,
             controls: true,  // Show all controls
             showControlsOnInit: false,  // Hide controls initially, show on tap
-            objectFit: .cover  // Use cover to fill screen like native component fullscreen
+            objectFit: item.objectFit ?? .contain,
+            rotateDegrees: item.rotate
         )
 
         let player = LxMediaPlayer(eventHandler: { [weak self] event in
@@ -454,54 +516,8 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
         // Add player view
         let playerView = player.view
-        playerView.translatesAutoresizingMaskIntoConstraints = true  // Allow manual frame control for rotation
+        playerView.translatesAutoresizingMaskIntoConstraints = true
         view.addSubview(playerView)
-
-        // Detect video orientation and rotate if needed
-        detectVideoOrientation(for: item.url) { [weak self] isLandscape in
-            guard let self = self else { return }
-            self.isLandscapeVideo = isLandscape
-
-            if isLandscape {
-                // Rotate player view 90 degrees for landscape video (like native component fullscreen)
-                let containerBounds = self.view.bounds
-                playerView.transform = CGAffineTransform(rotationAngle: .pi / 2)
-                playerView.frame = CGRect(x: 0, y: 0, width: containerBounds.height, height: containerBounds.width)
-                player.setFrame(playerView.bounds)
-            } else {
-                // Portrait video, no rotation needed
-                playerView.frame = self.view.bounds
-                player.setFrame(self.view.bounds)
-            }
-        }
-    }
-
-    private func detectVideoOrientation(for url: URL, completion: @escaping (Bool) -> Void) {
-        Task {
-            let asset = AVURLAsset(url: url)
-            guard let track = try? await asset.loadTracks(withMediaType: .video).first else {
-                await MainActor.run { completion(false) }
-                return
-            }
-
-            let size = try? await track.load(.naturalSize)
-            let transform = try? await track.load(.preferredTransform)
-
-            await MainActor.run {
-                var videoSize = size ?? .zero
-
-                // Apply transform to get actual display size
-                if let transform = transform {
-                    videoSize = videoSize.applying(transform)
-                }
-
-                let width = abs(videoSize.width)
-                let height = abs(videoSize.height)
-                let isLandscape = width > height
-
-                completion(isLandscape)
-            }
-        }
     }
 
     private func startPlaybackIfNeeded() {
@@ -513,15 +529,20 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
 private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     let imageURL: URL
+    private let rotateDegrees: Int?
+    private let objectFit: LxMediaObjectFit?
     var onZoomStateChanged: ((Bool) -> Void)?
     var onDismiss: (() -> Void)?
 
     private let scrollView = UIScrollView()
+    private let zoomContentView = UIView()
     private let imageView = UIImageView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
 
-    init(imageURL: URL) {
+    init(imageURL: URL, rotateDegrees: Int?, objectFit: LxMediaObjectFit?) {
         self.imageURL = imageURL
+        self.rotateDegrees = rotateDegrees
+        self.objectFit = objectFit
         super.init(frame: .zero)
         configure()
         loadImage()
@@ -529,6 +550,12 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyImageRotationTransform()
+        centerImageView()
     }
 
     private func configure() {
@@ -546,9 +573,14 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
         scrollView.alwaysBounceHorizontal = false
         addSubview(scrollView)
 
+        zoomContentView.translatesAutoresizingMaskIntoConstraints = false
+        zoomContentView.backgroundColor = .clear
+        scrollView.addSubview(zoomContentView)
+
         imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.contentMode = .scaleAspectFit
-        scrollView.addSubview(imageView)
+        imageView.contentMode = resolveImageContentMode()
+        imageView.clipsToBounds = true
+        zoomContentView.addSubview(imageView)
 
         activityIndicator.translatesAutoresizingMaskIntoConstraints = false
         activityIndicator.hidesWhenStopped = true
@@ -560,11 +592,15 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
 
-            imageView.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
-            imageView.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
-            imageView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
-            imageView.heightAnchor.constraint(equalTo: scrollView.heightAnchor),
+            zoomContentView.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
+            zoomContentView.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
+            zoomContentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            zoomContentView.heightAnchor.constraint(equalTo: scrollView.heightAnchor),
 
+            imageView.leadingAnchor.constraint(equalTo: zoomContentView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: zoomContentView.trailingAnchor),
+            imageView.topAnchor.constraint(equalTo: zoomContentView.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: zoomContentView.bottomAnchor),
             activityIndicator.centerXAnchor.constraint(equalTo: centerXAnchor),
             activityIndicator.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
@@ -582,20 +618,84 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     private func loadImage() {
         activityIndicator.startAnimating()
         Task {
-            // Local-only preview: load from filesystem
-            let image = UIImage(contentsOfFile: imageURL.path)
+            let image: UIImage? = {
+                if imageURL.isFileURL {
+                    return UIImage(contentsOfFile: imageURL.path)
+                }
+                guard let data = try? Data(contentsOf: imageURL) else { return nil }
+                return UIImage(data: data)
+            }()
 
             await MainActor.run {
                 activityIndicator.stopAnimating()
                 if let image {
                     imageView.image = image
+                    self.applyImageRotationTransform()
                     resetZoom()
                 } else {
                     imageView.image = UIImage(systemName: "exclamationmark.triangle")
                     imageView.tintColor = .white
+                    self.applyImageRotationTransform()
                 }
             }
         }
+    }
+
+    private func resolveImageContentMode() -> UIView.ContentMode {
+        guard let objectFit else { return .scaleAspectFit }
+        switch objectFit {
+        case .cover:
+            return .scaleAspectFill
+        case .fill:
+            return .scaleToFill
+        case .contain, .fit:
+            return .scaleAspectFit
+        @unknown default:
+            return .scaleAspectFit
+        }
+    }
+
+    private func normalizedRotationDegrees() -> Int? {
+        guard let degrees = rotateDegrees else { return nil }
+        let normalized = ((degrees % 360) + 360) % 360
+        if normalized == 0 || normalized == 90 || normalized == 180 || normalized == 270 {
+            return normalized
+        }
+        return nil
+    }
+
+    private func rotationScale(for degrees: Int) -> (x: CGFloat, y: CGFloat) {
+        guard degrees == 90 || degrees == 270 else {
+            return (1, 1)
+        }
+        let width = zoomContentView.bounds.width
+        let height = zoomContentView.bounds.height
+        guard width > 0, height > 0 else {
+            return (1, 1)
+        }
+
+        let ratio1 = width / height
+        let ratio2 = height / width
+        switch objectFit ?? .contain {
+        case .cover:
+            let scale = max(ratio1, ratio2)
+            return (scale, scale)
+        case .fill:
+            return (ratio1, ratio2)
+        case .contain, .fit:
+            let scale = min(ratio1, ratio2)
+            return (scale, scale)
+        @unknown default:
+            let scale = min(ratio1, ratio2)
+            return (scale, scale)
+        }
+    }
+
+    private func applyImageRotationTransform() {
+        let degrees = normalizedRotationDegrees() ?? 0
+        let radians = CGFloat(degrees) * (.pi / 180)
+        let scale = rotationScale(for: degrees)
+        imageView.transform = CGAffineTransform(rotationAngle: radians).scaledBy(x: scale.x, y: scale.y)
     }
 
     private func resetZoom() {
@@ -619,8 +719,8 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
             targetScale = scrollView.maximumZoomScale
         }
 
-        let point = gesture.location(in: imageView)
-        zoom(to: targetScale, center: point)
+        let pointInZoomContent = gesture.location(in: zoomContentView)
+        zoom(to: targetScale, center: pointInZoomContent)
     }
 
     private func zoom(to scale: CGFloat, center: CGPoint) {
@@ -638,7 +738,7 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     }
 
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-        imageView
+        zoomContentView
     }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
@@ -658,8 +758,10 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     private func centerImageView() {
         let offsetX = max((scrollView.bounds.width - scrollView.contentSize.width) * 0.5, 0)
         let offsetY = max((scrollView.bounds.height - scrollView.contentSize.height) * 0.5, 0)
-        imageView.center = CGPoint(x: scrollView.contentSize.width * 0.5 + offsetX,
-                                   y: scrollView.contentSize.height * 0.5 + offsetY)
+        zoomContentView.center = CGPoint(
+            x: scrollView.contentSize.width * 0.5 + offsetX,
+            y: scrollView.contentSize.height * 0.5 + offsetY
+        )
     }
 
     private func notifyScaleState() {

@@ -221,6 +221,7 @@ internal class PlayerCore(
                         durationMs = lastKnownDurationMs,
                         width = size?.width ?: 0,
                         height = size?.height ?: 0,
+                        rotation = size?.rotationDegrees ?: 0,
                     )
                 )
             }

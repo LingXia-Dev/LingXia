@@ -161,7 +161,10 @@ internal class FeedEngine(
             "loadedmetadata" -> {
                 val w = (detail["width"] as? Number)?.toInt() ?: 0
                 val h = (detail["height"] as? Number)?.toInt() ?: 0
-                lastVideoSize = if (w > 0 && h > 0) VideoSize(w, h) else null
+                val rotation = ((detail["rotation"] as? Number)?.toInt()
+                    ?: (detail["rotate"] as? Number)?.toInt()
+                    ?: 0)
+                lastVideoSize = if (w > 0 && h > 0) VideoSize(w, h, rotation) else null
                 listener?.onEngineEvent(
                     EngineEvent.Prepared(
                         durationMs = durationMs,

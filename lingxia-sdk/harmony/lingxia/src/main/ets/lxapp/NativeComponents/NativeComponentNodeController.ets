@@ -127,7 +127,23 @@ export class NativeComponentNodeController extends NodeController {
       this.props.forEach((key: string, value: NativeComponentValue) => {
         nextProps.set(key, value);
       });
+
+      // __clearProps is an edge-trigger signal from web -> native.
+      // Consume it during merge and avoid persisting stale clear flags.
+      const clearRaw = incomingProps.get('__clearProps');
+      if (Array.isArray(clearRaw)) {
+        for (const item of clearRaw as NativeComponentValue[]) {
+          if (typeof item === 'string' && item.length > 0) {
+            nextProps.delete(item);
+          }
+        }
+      }
+      nextProps.delete('__clearProps');
+
       incomingProps.forEach((key: string, value: NativeComponentValue) => {
+        if (key === '__clearProps') {
+          return;
+        }
         nextProps.set(key, value);
       });
       this.props = nextProps;

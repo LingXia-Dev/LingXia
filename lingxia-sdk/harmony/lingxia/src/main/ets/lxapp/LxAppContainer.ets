@@ -51,6 +51,11 @@ interface RenderableWebEntry {
   controller: webview.WebviewController;
 }
 
+interface ApplyNodeLayoutsResult {
+  changed: boolean;
+  nextMap: Map<string, NodeLayoutState>;
+}
+
 // Layout snapshot for same-level NodeContainer
 interface NodeLayoutState {
   width: Length;
@@ -123,6 +128,9 @@ export struct LxAppContainer {
 
   // Layout cache keyed by webTag:componentId to drive NodeContainer attributes reactively
   @State private nodeLayoutCache: Map<string, NodeLayoutState> = new Map()
+  private pendingEmbedSyncTags: Set<string> = new Set()
+  private embedSyncScheduled: boolean = false
+  private embedSyncTimerId: number | null = null
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
@@ -227,6 +235,12 @@ export struct LxAppContainer {
     this.embedManagers.forEach((manager: NativeComponentEmbedManager) => {
       manager.pauseAll();
     });
+    if (this.embedSyncTimerId !== null) {
+      clearTimeout(this.embedSyncTimerId);
+      this.embedSyncTimerId = null;
+      this.embedSyncScheduled = false;
+      this.pendingEmbedSyncTags.clear();
+    }
 
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
@@ -1209,12 +1223,11 @@ export struct LxAppContainer {
 
     // Notify new page becoming active (resume native components)
     resumeWebViewComponents(newWebTag);
-    // Refresh NodeContainer layouts so properties like cornerRadius re-apply when returning
-    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
-      this.refreshNodeLayouts(manager, webTag);
-    });
-    // Force NodeContainer attribute refresh
-    this.fullscreenRefreshKey++;
+    // Refresh NodeContainer layouts in one batch to avoid extra recompose churn.
+    const layoutChanged = this.refreshAllNodeLayouts();
+    if (layoutChanged) {
+      this.fullscreenRefreshKey++;
+    }
 
     // Trigger onPageShow
     this.triggerOnPageShowIfNeeded(newWebTag);
@@ -1429,33 +1442,23 @@ export struct LxAppContainer {
    */
   private setupEmbedManager(webTag: string, controller: webview.WebviewController): void {
     const manager = getWebViewEmbedManager(webTag);
+    this.embedManagers.set(webTag, manager);
     manager.setUIContext(this.getUIContext());
     manager.setOnComponentsChanged(() => {
-      // Update component IDs array to trigger ForEach re-render
-      const newMap = new Map<string, string[]>(this.embedComponentIds);
-      newMap.set(webTag, manager.getComponentIds().slice());
-      this.embedComponentIds = newMap;
-
-      // Refresh layout cache so NodeContainer attributes react without recreating native view
-      this.refreshNodeLayouts(manager, webTag);
-
-      // Check for fullscreen state changes
-      this.updateFullscreenState();
-
-      // Increment refresh key to force NodeContainer attribute updates
-      this.fullscreenRefreshKey++;
+      // Defer and batch state writes to avoid mutating @State during render.
+      this.scheduleEmbedManagerSync(webTag);
     });
-    // Prime layout cache on setup
-    this.refreshNodeLayouts(manager, webTag);
-    this.embedManagers.set(webTag, manager);
+    this.scheduleEmbedManagerSync(webTag);
     setEmbedController(webTag, controller);
   }
 
   /**
    * Check all embed managers for fullscreen state and update accordingly
    */
-  private updateFullscreenState(): void {
+  private updateFullscreenState(): boolean {
     let foundFullscreen = false;
+    let nextFullscreenWebTag = '';
+    let nextFullscreenComponentId = '';
 
     this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
       if (foundFullscreen) return;
@@ -1465,17 +1468,27 @@ export struct LxAppContainer {
         const componentId = componentIds[i];
         const controller = manager.getNodeController(componentId);
         if (controller?.getIsFullscreen()) {
-          if (this.fullscreenComponentId !== componentId) {
-            this.fullscreenWebTag = webTag;
-            this.fullscreenComponentId = componentId;
-          }
+          nextFullscreenWebTag = webTag;
+          nextFullscreenComponentId = componentId;
           foundFullscreen = true;
           return;
         }
       }
     });
 
-    if (!foundFullscreen && this.fullscreenComponentId.length > 0) {
+    if (foundFullscreen) {
+      if (
+        this.fullscreenWebTag !== nextFullscreenWebTag ||
+        this.fullscreenComponentId !== nextFullscreenComponentId
+      ) {
+        this.fullscreenWebTag = nextFullscreenWebTag;
+        this.fullscreenComponentId = nextFullscreenComponentId;
+        return true;
+      }
+      return false;
+    }
+
+    if (this.fullscreenComponentId.length > 0) {
       // Switch player back to original surface before clearing fullscreen state
       LxNativeVideoPlayer.savePlaybackState(this.fullscreenComponentId);
       const success = LxNativeVideoPlayer.switchToOriginalSurface(this.fullscreenComponentId);
@@ -1483,7 +1496,9 @@ export struct LxAppContainer {
 
       this.fullscreenWebTag = '';
       this.fullscreenComponentId = '';
+      return true;
     }
+    return false;
   }
 
   /**
@@ -1494,22 +1509,104 @@ export struct LxAppContainer {
     if (!this.embedManagers.has(webTag)) {
       return; // Already cleaned up
     }
+    this.pendingEmbedSyncTags.delete(webTag);
     teardownEmbedManager(webTag);
     this.embedManagers.delete(webTag);
-    const newMap = new Map<string, string[]>(this.embedComponentIds);
-    newMap.delete(webTag);
-    this.embedComponentIds = newMap;
+    const previousIds = this.embedComponentIds.get(webTag);
+    if (previousIds !== undefined) {
+      const newMap = new Map<string, string[]>(this.embedComponentIds);
+      newMap.delete(webTag);
+      this.embedComponentIds = newMap;
+    }
 
     // Remove cached layouts for this WebView
     this.removeNodeLayoutsForWebTag(webTag);
+    const fullscreenChanged = this.updateFullscreenState();
+    if (fullscreenChanged) {
+      this.fullscreenRefreshKey++;
+    }
+  }
+
+  /**
+   * Batch and defer same-level state sync for a WebView.
+   * Avoids @State writes during render and reduces recompose churn while scrolling.
+   */
+  private scheduleEmbedManagerSync(webTag: string): void {
+    this.pendingEmbedSyncTags.add(webTag);
+    if (this.embedSyncScheduled) {
+      return;
+    }
+    this.embedSyncScheduled = true;
+    this.embedSyncTimerId = setTimeout(() => {
+      this.embedSyncTimerId = null;
+      this.embedSyncScheduled = false;
+      const tags = Array.from(this.pendingEmbedSyncTags);
+      this.pendingEmbedSyncTags.clear();
+
+      let idsMap = this.embedComponentIds;
+      let idsChanged = false;
+      let layoutMap = this.nodeLayoutCache;
+      let layoutChanged = false;
+
+      tags.forEach((tag: string) => {
+        const manager = this.embedManagers.get(tag);
+        if (!manager) {
+          return;
+        }
+        const nextIds = manager.getComponentIds().slice();
+        const currentIds = idsMap.get(tag) ?? [];
+        if (!this.areStringArraysEqual(currentIds, nextIds)) {
+          if (!idsChanged) {
+            idsMap = new Map<string, string[]>(idsMap);
+            idsChanged = true;
+          }
+          idsMap.set(tag, nextIds);
+        }
+
+        const applied = this.applyNodeLayoutsToMap(manager, tag, layoutMap);
+        if (applied.changed) {
+          layoutMap = applied.nextMap;
+          layoutChanged = true;
+        }
+      });
+
+      if (idsChanged) {
+        this.embedComponentIds = idsMap;
+      }
+      if (layoutChanged) {
+        this.nodeLayoutCache = layoutMap;
+      }
+
+      const fullscreenChanged = this.updateFullscreenState();
+      if (idsChanged || layoutChanged || fullscreenChanged) {
+        this.fullscreenRefreshKey++;
+      }
+    }, 0);
+  }
+
+  private areStringArraysEqual(left: string[], right: string[]): boolean {
+    if (left.length !== right.length) {
+      return false;
+    }
+    for (let i = 0; i < left.length; i++) {
+      if (left[i] !== right[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
    * Compute and cache layout state for all components of a WebView
    * This drives NodeContainer attributes without recreating native nodes
    */
-  private refreshNodeLayouts(manager: NativeComponentEmbedManager, webTag: string): void {
-    const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
+  private applyNodeLayoutsToMap(
+    manager: NativeComponentEmbedManager,
+    webTag: string,
+    source: Map<string, NodeLayoutState>
+  ): ApplyNodeLayoutsResult {
+    let changed = false;
+    const next = new Map<string, NodeLayoutState>(source);
     const componentIds = manager.getComponentIds();
     const prefix = `${webTag}:`;
 
@@ -1521,6 +1618,7 @@ export struct LxAppContainer {
         const id = key.substring(prefix.length);
         if (!componentIds.includes(id)) {
           next.delete(key);
+          changed = true;
         }
       }
     });
@@ -1540,10 +1638,48 @@ export struct LxAppContainer {
         safeAreaTypes: isFullscreen ? [SafeAreaType.SYSTEM] : [],
         safeAreaEdges: isFullscreen ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
       };
-      next.set(this.getLayoutKey(webTag, componentId), layout);
+      const layoutKey = this.getLayoutKey(webTag, componentId);
+      const prev = source.get(layoutKey);
+      const prevPos = prev?.position;
+      const nextPos = layout.position;
+      const samePosition = (
+        prevPos === undefined && nextPos === undefined
+      ) || (
+        prevPos !== undefined &&
+        nextPos !== undefined &&
+        prevPos.x === nextPos.x &&
+        prevPos.y === nextPos.y
+      );
+      const sameLayout = prev !== undefined &&
+        prev.width === layout.width &&
+        prev.height === layout.height &&
+        prev.zIndex === layout.zIndex &&
+        prev.cornerRadius === layout.cornerRadius &&
+        samePosition;
+      if (!sameLayout) {
+        next.set(layoutKey, layout);
+        changed = true;
+      }
     });
 
-    this.nodeLayoutCache = next;
+    const result: ApplyNodeLayoutsResult = { changed: changed, nextMap: next };
+    return result;
+  }
+
+  private refreshAllNodeLayouts(): boolean {
+    let changed = false;
+    let next = this.nodeLayoutCache;
+    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
+      const applied = this.applyNodeLayoutsToMap(manager, webTag, next);
+      if (applied.changed) {
+        next = applied.nextMap;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.nodeLayoutCache = next;
+    }
+    return changed;
   }
 
   /**
@@ -1552,13 +1688,17 @@ export struct LxAppContainer {
   private removeNodeLayoutsForWebTag(webTag: string): void {
     const prefix = `${webTag}:`;
     const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
+    let changed = false;
     // Use Array.from to get keys before iterating to safely modify map
     Array.from(next.keys()).forEach((key: string) => {
       if (key.startsWith(prefix)) {
         next.delete(key);
+        changed = true;
       }
     });
-    this.nodeLayoutCache = next;
+    if (changed) {
+      this.nodeLayoutCache = next;
+    }
   }
 
   private getLayoutKey(webTag: string, componentId: string): string {

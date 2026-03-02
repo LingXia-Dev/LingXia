@@ -45,7 +45,8 @@ final class NativeComponentManager {
     private var pageComponents: [String: Set<String>] = [:]
     // Monotonic generation per component id. Used to drop stale async events from old instances.
     private var componentEpochs: [String: UInt64] = [:]
-    private var componentWKChildScrollView: [String: UIScrollView] = [:]
+    private var lastAppliedViewportRect: [String: CGRect] = [:]
+    private let frameEpsilon: CGFloat = 0.5
     // Rust callback IDs for VideoContext event forwarding
     private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
@@ -138,29 +139,37 @@ final class NativeComponentManager {
         pageComponents[pageId, default: []].insert(id)
         ComponentRouter.shared.register(componentId: id, manager: self)
 
-        // True same-level rendering: mount in WKChildScrollView when available
-        var targetRect = rect
-        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any],
-           let wkChildScrollView = resolveWKChildScrollView(rectFrom(dict: scrollContainerRectDict)) {
-            componentWKChildScrollView[id] = wkChildScrollView
-            targetRect = wkChildScrollView.bounds
+        // Preferred path on iOS: mount into WKChildScrollView for same-level behavior.
+        var targetRect = viewportToContentRect(rect)
+        var mountedInChildScrollView = false
+        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
+            let scrollContainerRect = rectFrom(dict: scrollContainerRectDict)
+            if let wkChildScrollView = resolveWKChildScrollView(scrollContainerRect) {
+                targetRect = sameLevelContainerFrame(in: wkChildScrollView)
+                mountedInChildScrollView = true
 
-            // Disable scrolling on WKChildScrollView
-            wkChildScrollView.isScrollEnabled = false
-            wkChildScrollView.delaysContentTouches = false
-            wkChildScrollView.canCancelContentTouches = false
+                prepareSameLevelScrollView(wkChildScrollView)
 
-            component.mount(in: wkChildScrollView)
-
-            // Register for hit-test passthrough
-            WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
-        } else if let host = hostView {
-            component.mount(in: host)
-        } else {
-            os_log("Failed to mount component %{public}@ (no container)", log: nativeComponentLog, type: .error, id)
-            return
+                component.mount(in: wkChildScrollView)
+                WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
+                os_log("NativeComponent %{public}@ mounted in WKChildScrollView", log: nativeComponentLog, type: .info, id)
+            } else {
+                os_log("NativeComponent %{public}@ fallback to overlay (WKChildScrollView not found)", log: nativeComponentLog, type: .info, id)
+            }
         }
-        component.setFrame(pixelAligned(targetRect))
+
+        if !mountedInChildScrollView {
+            guard let host = hostView else {
+                os_log("Failed to mount component %{public}@ (no container)", log: nativeComponentLog, type: .error, id)
+                return
+            }
+            component.mount(in: host)
+            os_log("NativeComponent %{public}@ mounted in overlay", log: nativeComponentLog, type: .info, id)
+        }
+
+        let alignedTargetRect = stablePixelAligned(targetRect)
+        component.setFrame(alignedTargetRect)
+        lastAppliedViewportRect[id] = alignedTargetRect
         component.update(props: props)
         component.view.layer.cornerRadius = cornerRadius
         if #available(iOS 13.0, *) {
@@ -178,14 +187,25 @@ final class NativeComponentManager {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
 
+        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
+            let scrollContainerRect = rectFrom(dict: scrollContainerRectDict)
+            promoteToWKChildScrollViewIfAvailable(componentId: id, component: component, scrollContainerRect: scrollContainerRect)
+        }
+
         if let rectDict = parameters["rect"] as? [String: Any] {
+            let viewportRect = rectFrom(dict: rectDict)
             if let superview = component.view.superview,
                NSStringFromClass(type(of: superview)).contains("WKChildScrollView") {
-                // True same-level: WebKit auto-manages position
-                component.setFrame(superview.bounds)
+                // Same-level: container tracks scrolling; only keep bounds-sized frame.
+                let childBounds = stablePixelAligned(sameLevelContainerFrame(in: superview))
+                if let last = lastAppliedViewportRect[id], rectDistance(last, childBounds) <= frameEpsilon {
+                    // no-op
+                } else {
+                    component.setFrame(childBounds)
+                    lastAppliedViewportRect[id] = childBounds
+                }
             } else {
-                // Fallback overlay mode: use rect from JS
-                component.setFrame(pixelAligned(rectFrom(dict: rectDict)))
+                applyViewportFrame(componentId: id, component: component, rect: viewportRect)
             }
         }
         if let props = parameters["props"] as? [String: Any] {
@@ -199,6 +219,42 @@ final class NativeComponentManager {
             component.view.layer.masksToBounds = true
             component.update(props: ["cornerRadius": radius])
         }
+    }
+
+    private func promoteToWKChildScrollViewIfAvailable(
+        componentId: String,
+        component: LxNativeComponent,
+        scrollContainerRect: CGRect
+    ) {
+        guard let wkChildScrollView = resolveWKChildScrollView(scrollContainerRect) else {
+            return
+        }
+
+        if component.view.superview === wkChildScrollView {
+            return
+        }
+
+        if let currentSuperview = component.view.superview,
+           NSStringFromClass(type(of: currentSuperview)).contains("WKChildScrollView") {
+            // Once mounted in any WKChildScrollView, avoid reparent thrash caused by
+            // fluctuating candidate matches during scroll/layout.
+            return
+        }
+
+        if component.view.superview != nil {
+            WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
+            component.view.removeFromSuperview()
+        }
+
+        prepareSameLevelScrollView(wkChildScrollView)
+
+        component.mount(in: wkChildScrollView)
+        WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
+
+        let childBounds = stablePixelAligned(sameLevelContainerFrame(in: wkChildScrollView))
+        component.setFrame(childBounds)
+        lastAppliedViewportRect[componentId] = childBounds
+        os_log("NativeComponent %{public}@ promoted to WKChildScrollView", log: nativeComponentLog, type: .info, componentId)
     }
 
     private func handleUnmount(_ parameters: [String: Any]) {
@@ -315,13 +371,16 @@ final class NativeComponentManager {
                 _ = onCallback(callbackId, true, enrichedJson)
             }
         } else if componentCallbacks[componentId] == nil {
-            os_log(
-                "NativeComponent callback missing for componentId=%{public}@ event=%{public}@",
-                log: nativeComponentLog,
-                type: .debug,
-                componentId,
-                String(payload["event"] as? String ?? "")
-            )
+            let event = payload["event"] as? String ?? ""
+            if event != "timeupdate" {
+                os_log(
+                    "NativeComponent callback missing for componentId=%{public}@ event=%{public}@",
+                    log: nativeComponentLog,
+                    type: .debug,
+                    componentId,
+                    event
+                )
+            }
         }
     }
 
@@ -338,18 +397,6 @@ final class NativeComponentManager {
         let w = CGFloat((dict["width"] as? Double) ?? 0)
         let h = CGFloat((dict["height"] as? Double) ?? 0)
         return CGRect(x: x, y: y, width: w, height: h)
-    }
-
-    private func pixelAligned(_ rect: CGRect) -> CGRect {
-        let scale = UIScreen.main.scale
-        let midYpx = (rect.midY * scale).rounded()
-        let xpx = (rect.origin.x * scale).rounded()
-        let wpx = max(1, (rect.size.width * scale).rounded())
-        let hpxBase = max(1, (rect.size.height * scale).rounded())
-        let fudgePx: CGFloat = 2
-        let hpx = hpxBase + fudgePx
-        let ypx = midYpx - (hpx / 2.0)
-        return CGRect(x: xpx / scale, y: ypx / scale, width: wpx / scale, height: hpx / scale)
     }
 
     private func ensureVisible(_ rect: CGRect) {
@@ -402,7 +449,7 @@ final class NativeComponentManager {
         // Unregister from hit-test swizzler before unmount
         WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
         component.unmount()
-        componentWKChildScrollView.removeValue(forKey: id)
+        lastAppliedViewportRect.removeValue(forKey: id)
         if let pageId {
             var set = pageComponents[pageId] ?? []
             set.remove(id)
@@ -476,42 +523,114 @@ final class NativeComponentManager {
         scrollBounceRestore = nil
     }
 
-    /// Convert window-space rect to WKScrollView coords and locate matching WKChildScrollView.
-    private func resolveWKChildScrollView(_ rectInWindow: CGRect) -> UIScrollView? {
+    // Use edge rounding without extra height fudge to avoid visual jitter during continuous tracking.
+    private func stablePixelAligned(_ rect: CGRect) -> CGRect {
+        let scale = UIScreen.main.scale
+        let xpx = (rect.origin.x * scale).rounded()
+        let ypx = (rect.origin.y * scale).rounded()
+        let wpx = max(1, (rect.size.width * scale).rounded())
+        let hpx = max(1, (rect.size.height * scale).rounded())
+        return CGRect(x: xpx / scale, y: ypx / scale, width: wpx / scale, height: hpx / scale)
+    }
+
+    // Same-level container frame must stay in local coordinates.
+    // Using `bounds` origin directly is incorrect because UIScrollView bounds origin follows contentOffset.
+    private func sameLevelContainerFrame(in container: UIView) -> CGRect {
+        CGRect(origin: .zero, size: container.bounds.size)
+    }
+
+    private func prepareSameLevelScrollView(_ scrollView: UIScrollView) {
+        scrollView.isScrollEnabled = false
+        scrollView.delaysContentTouches = false
+        scrollView.canCancelContentTouches = false
+    }
+
+    private func applyViewportFrame(componentId: String, component: LxNativeComponent, rect: CGRect) {
+        let aligned = stablePixelAligned(viewportToContentRect(rect))
+        if let last = lastAppliedViewportRect[componentId],
+           rectDistance(last, aligned) <= frameEpsilon {
+            return
+        }
+        component.setFrame(aligned)
+        lastAppliedViewportRect[componentId] = aligned
+    }
+
+    private func rectDistance(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let dx = abs(lhs.origin.x - rhs.origin.x)
+        let dy = abs(lhs.origin.y - rhs.origin.y)
+        let dw = abs(lhs.size.width - rhs.size.width)
+        let dh = abs(lhs.size.height - rhs.size.height)
+        return max(max(dx, dy), max(dw, dh))
+    }
+
+    private func viewportToContentRect(_ rect: CGRect) -> CGRect {
+        guard let scrollView else { return rect }
+        let offset = scrollView.contentOffset
+        return CGRect(
+            x: rect.origin.x + offset.x,
+            y: rect.origin.y + offset.y,
+            width: rect.size.width,
+            height: rect.size.height
+        )
+    }
+
+    /// Convert viewport-space rect to WKScrollView coords and locate matching WKChildScrollView.
+    private func resolveWKChildScrollView(_ rectInViewport: CGRect) -> UIScrollView? {
         guard let webView = webView else { return nil }
         // Ensure subviews are laid out before matching
         webView.scrollView.layoutIfNeeded()
 
-        let rectInWebView = webView.convert(rectInWindow, from: nil)
-        let rectInScroll = webView.scrollView.convert(rectInWebView, from: webView)
-        return findChildScrollView(in: webView.scrollView, matching: rectInScroll)
+        // JS getBoundingClientRect() returns viewport-relative coordinates.
+        // Convert to scroll view content coordinates by adding scroll offset.
+        let scrollOffset = webView.scrollView.contentOffset
+        let rectInScroll = CGRect(
+            x: rectInViewport.origin.x + scrollOffset.x,
+            y: rectInViewport.origin.y + scrollOffset.y,
+            width: rectInViewport.size.width,
+            height: rectInViewport.size.height
+        )
+        var candidates: [(scrollView: UIScrollView, frame: CGRect)] = []
+        collectWKChildScrollViewsForMatch(in: webView.scrollView, root: webView.scrollView, result: &candidates)
+        guard !candidates.isEmpty else { return nil }
+
+        var best: (scrollView: UIScrollView, score: CGFloat)?
+        for candidate in candidates {
+            let frame = candidate.frame
+            let dx = abs(frame.origin.x - rectInScroll.origin.x)
+            let dy = abs(frame.origin.y - rectInScroll.origin.y)
+            let dw = abs(frame.size.width - rectInScroll.size.width)
+            let dh = abs(frame.size.height - rectInScroll.size.height)
+            let score = dx + dy + (dw * 0.5) + (dh * 0.5)
+            if let current = best {
+                if score < current.score {
+                    best = (candidate.scrollView, score)
+                }
+            } else {
+                best = (candidate.scrollView, score)
+            }
+        }
+
+        guard let best else { return nil }
+        // Guardrail: reject clearly unrelated candidates.
+        if best.score > 240 {
+            return nil
+        }
+        return best.scrollView
     }
 
-    private func findChildScrollView(in view: UIView,
-                                     matching rect: CGRect,
-                                     originTolerance: CGFloat = 64.0,
-                                     sizeTolerance: CGFloat = 24.0) -> UIScrollView? {
+    private func collectWKChildScrollViewsForMatch(
+        in view: UIView,
+        root: UIScrollView,
+        result: inout [(scrollView: UIScrollView, frame: CGRect)]
+    ) {
         let className = NSStringFromClass(type(of: view))
-        if className.contains("WKChildScrollView"),
-           let scrollView = view as? UIScrollView {
-            let frame = scrollView.frame
-            let originMatch = abs(frame.origin.x - rect.origin.x) < originTolerance &&
-                              abs(frame.origin.y - rect.origin.y) < originTolerance
-            let sizeMatch = abs(frame.size.width - rect.size.width) < sizeTolerance &&
-                            abs(frame.size.height - rect.size.height) < sizeTolerance
-            if originMatch && sizeMatch {
-                return scrollView
-            }
+        if className.contains("WKChildScrollView"), let scrollView = view as? UIScrollView {
+            let frameInRoot = root.convert(scrollView.bounds, from: scrollView)
+            result.append((scrollView: scrollView, frame: frameInRoot))
         }
         for subview in view.subviews {
-            if let found = findChildScrollView(in: subview,
-                                               matching: rect,
-                                               originTolerance: originTolerance,
-                                               sizeTolerance: sizeTolerance) {
-                return found
-            }
+            collectWKChildScrollViewsForMatch(in: subview, root: root, result: &result)
         }
-        return nil
     }
 }
 

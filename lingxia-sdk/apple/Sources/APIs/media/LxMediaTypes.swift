@@ -63,6 +63,8 @@ public struct LxMediaPlayerConfig {
     public var speeds: [Double]?
     public var showControlsOnInit: Bool?
     public var objectFit: LxMediaObjectFit?
+    public var rotateDegrees: Int?
+    public var clearProps: Set<String>?
 
     public init(
         source: LxMediaSource? = nil,
@@ -80,7 +82,9 @@ public struct LxMediaPlayerConfig {
         qualities: [LxMediaQuality]? = nil,
         speeds: [Double]? = nil,
         showControlsOnInit: Bool? = nil,
-        objectFit: LxMediaObjectFit? = nil
+        objectFit: LxMediaObjectFit? = nil,
+        rotateDegrees: Int? = nil,
+        clearProps: Set<String>? = nil
     ) {
         self.source = source
         self.src = src
@@ -98,6 +102,8 @@ public struct LxMediaPlayerConfig {
         self.speeds = speeds
         self.showControlsOnInit = showControlsOnInit
         self.objectFit = objectFit
+        self.rotateDegrees = rotateDegrees
+        self.clearProps = clearProps
     }
 
     var bridgeValue: [String: Any] {
@@ -120,6 +126,10 @@ public struct LxMediaPlayerConfig {
         if let speeds { dict["speeds"] = speeds }
         if let showControlsOnInit { dict["showControlsOnInit"] = showControlsOnInit }
         if let objectFit { dict["objectFit"] = objectFit.bridgeValue }
+        if let rotateDegrees { dict["rotate"] = rotateDegrees }
+        if let clearProps, !clearProps.isEmpty {
+            dict["__clearProps"] = Array(clearProps)
+        }
         return dict
     }
 }

@@ -23,6 +23,9 @@ interface PreviewMediaPayload {
   path: string;
   media_type: number;
   cover_path?: string;
+  rotate?: number;
+  object_fit?: string;
+  objectFit?: string;
 }
 
 interface SaveMediaPayload {
@@ -847,8 +850,32 @@ export class LxAppMedia {
     return {
       id: `${Date.now()}_${index}`,
       uri: uri,
-      mediaType: mediaType
+      mediaType: mediaType,
+      rotate: LxAppMedia.normalizeRotation(entry.rotate),
+      objectFit: LxAppMedia.normalizeObjectFit(entry.object_fit ?? entry.objectFit)
     };
+  }
+
+  private static normalizeRotation(raw: number | undefined): number | undefined {
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+      return undefined;
+    }
+    const value = Math.trunc(raw);
+    if (value === 0 || value === 90 || value === 180 || value === 270) {
+      return value;
+    }
+    return undefined;
+  }
+
+  private static normalizeObjectFit(raw: string | undefined): string | undefined {
+    if (typeof raw !== 'string') {
+      return undefined;
+    }
+    const fit = raw.trim().toLowerCase();
+    if (fit === 'cover' || fit === 'contain' || fit === 'fill' || fit === 'fit') {
+      return fit;
+    }
+    return undefined;
   }
 
   private static navigateToMediaPreview(items: MediaPreviewItem[]): boolean {

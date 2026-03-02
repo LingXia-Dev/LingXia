@@ -1,5 +1,6 @@
 package com.lingxia.lxapp.APIs.media.player
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import android.os.Handler
@@ -7,6 +8,7 @@ import android.os.Looper
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize as M3VideoSize
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 
@@ -14,7 +16,10 @@ internal class UrlEngine(
     context: Context,
     private val playerView: PlayerView,
 ) : PlayerEngine {
-    internal val exoPlayer: ExoPlayer = ExoPlayer.Builder(context).build()
+    private val memoryProfile = buildMemoryProfile(context)
+    internal val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
+        .setLoadControl(buildLoadControl(memoryProfile))
+        .build()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var listener: EngineListener? = null
     private var muted = false
@@ -114,6 +119,9 @@ internal class UrlEngine(
 
     override fun setSource(source: PlayerSource) {
         val url = (source as? PlayerSource.Url)?.url ?: return
+        // Drop previous queue/buffered samples early before binding the new source.
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(Uri.parse(url)))
         exoPlayer.prepare()
         updateCapabilities()
@@ -176,6 +184,8 @@ internal class UrlEngine(
         listener = null
         stopPolling()
         playerView.player = null
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         exoPlayer.release()
     }
 
@@ -194,7 +204,15 @@ internal class UrlEngine(
 
     private fun videoSizeOrNull(): VideoSize? {
         val s = exoPlayer.videoSize
-        return if (s.width > 0 && s.height > 0) VideoSize(s.width, s.height) else null
+        return if (s.width > 0 && s.height > 0) {
+            VideoSize(
+                width = s.width,
+                height = s.height,
+                rotationDegrees = s.unappliedRotationDegrees
+            )
+        } else {
+            null
+        }
     }
 
     private fun updateCapabilities() {
@@ -250,5 +268,57 @@ internal class UrlEngine(
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED -> ErrorCode.UNSUPPORTED
             else -> ErrorCode.UNKNOWN
         }
+    }
+
+    private data class MemoryProfile(
+        val minBufferMs: Int,
+        val maxBufferMs: Int,
+        val bufferForPlaybackMs: Int,
+        val bufferForPlaybackAfterRebufferMs: Int,
+        val targetBufferBytes: Int,
+    )
+
+    private fun buildMemoryProfile(context: Context): MemoryProfile {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val lowRam = am?.isLowRamDevice == true
+        val memoryClass = am?.memoryClass ?: 256
+
+        return when {
+            lowRam || memoryClass <= 256 -> MemoryProfile(
+                minBufferMs = 1200,
+                maxBufferMs = 2400,
+                bufferForPlaybackMs = 250,
+                bufferForPlaybackAfterRebufferMs = 500,
+                targetBufferBytes = 2 * 1024 * 1024,
+            )
+            memoryClass <= 384 -> MemoryProfile(
+                minBufferMs = 1800,
+                maxBufferMs = 3600,
+                bufferForPlaybackMs = 300,
+                bufferForPlaybackAfterRebufferMs = 600,
+                targetBufferBytes = 4 * 1024 * 1024,
+            )
+            else -> MemoryProfile(
+                minBufferMs = 2400,
+                maxBufferMs = 4800,
+                bufferForPlaybackMs = 350,
+                bufferForPlaybackAfterRebufferMs = 700,
+                targetBufferBytes = 6 * 1024 * 1024,
+            )
+        }
+    }
+
+    private fun buildLoadControl(profile: MemoryProfile): DefaultLoadControl {
+        return DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                profile.minBufferMs,
+                profile.maxBufferMs,
+                profile.bufferForPlaybackMs,
+                profile.bufferForPlaybackAfterRebufferMs
+            )
+            .setTargetBufferBytes(profile.targetBufferBytes)
+            .setPrioritizeTimeOverSizeThresholds(false)
+            .setBackBuffer(0, false)
+            .build()
     }
 }

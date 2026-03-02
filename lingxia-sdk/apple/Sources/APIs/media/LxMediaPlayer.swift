@@ -176,6 +176,8 @@ public final class LxMediaPlayer: NSObject {
     private var showFullscreenButton = true // Show fullscreen button
     private var loopEnabled = false // Loop playback when video ends
     private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to cover for native components
+    private var configuredCornerRadius: CGFloat = 0
+    private var displayRotationDegrees: Int = 0
 
     // State
     private var shouldShowControlsOnFirstPlay = false // Show controls on first play (for preview mode)
@@ -364,6 +366,8 @@ public final class LxMediaPlayer: NSObject {
     /// managed externally (e.g., MediaPreview)
     public func setFullscreenMode(_ fullscreen: Bool) {
         isFullscreen = fullscreen
+        applyDisplayRotationTransform()
+        applyCornerRadius()
         layoutOverlay()
         updateEndedPosterVisibility()
     }
@@ -385,6 +389,7 @@ public final class LxMediaPlayer: NSObject {
         CATransaction.setDisableActions(true)
         playerLayer.frame = view.bounds
         CATransaction.commit()
+        applyDisplayRotationTransform()
         layoutOverlay()
     }
 
@@ -476,9 +481,8 @@ public final class LxMediaPlayer: NSObject {
 
         if let radius = config.cornerRadius {
             let r = CGFloat(radius)
-            view.layer.cornerRadius = r
-            view.layer.masksToBounds = true
-            playerLayer.cornerRadius = r
+            configuredCornerRadius = r
+            applyCornerRadius()
         }
 
         // Quality and Speed configuration
@@ -507,8 +511,15 @@ public final class LxMediaPlayer: NSObject {
             shouldShowControlsOnFirstPlay = showControls
         }
 
+        let clearProps = config.clearProps ?? []
+
         // Video display mode: cover/contain/fill/fit
-        if let objectFit = config.objectFit {
+        if clearProps.contains("objectFit") {
+            videoGravity = .resizeAspectFill
+            posterImageView.contentMode = .scaleAspectFill
+            playerLayer.videoGravity = videoGravity
+            applyDisplayRotationTransform()
+        } else if let objectFit = config.objectFit {
             switch objectFit {
             case .cover:
                 videoGravity = .resizeAspectFill
@@ -521,11 +532,82 @@ public final class LxMediaPlayer: NSObject {
                 posterImageView.contentMode = .scaleToFill
             }
             playerLayer.videoGravity = videoGravity
+            applyDisplayRotationTransform()
+        }
+
+        if clearProps.contains("rotate") {
+            setDisplayRotationDegrees(nil)
+        } else if let rotateDegrees = config.rotateDegrees {
+            setDisplayRotationDegrees(rotateDegrees)
         }
 
         updateSettingsMenu()
         updateSeekability()
         startStreamProgressTimerIfNeeded()
+    }
+
+    private func setDisplayRotationDegrees(_ degrees: Int?) {
+        let normalized = degrees.map(normalizeRotation)
+        if let normalized,
+           normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270 {
+            return
+        }
+        displayRotationDegrees = normalized ?? 0
+        applyDisplayRotationTransform()
+    }
+
+    private func normalizeRotation(_ rotation: Int) -> Int {
+        var normalized = rotation % 360
+        if normalized < 0 {
+            normalized += 360
+        }
+        return normalized
+    }
+
+    private func rotationScale(for degrees: Int) -> (x: CGFloat, y: CGFloat) {
+        guard degrees == 90 || degrees == 270 else {
+            return (1, 1)
+        }
+        let width = view.bounds.width
+        let height = view.bounds.height
+        guard width > 0, height > 0 else {
+            return (1, 1)
+        }
+        let ratio1 = width / height
+        let ratio2 = height / width
+        switch videoGravity {
+        case .resizeAspectFill:
+            let scale = max(ratio1, ratio2)
+            return (scale, scale)
+        case .resize:
+            // `fill` should remain full-bleed after 90/270 rotation.
+            return (ratio1, ratio2)
+        default:
+            let scale = min(ratio1, ratio2)
+            return (scale, scale)
+        }
+    }
+
+    private func applyDisplayRotationTransform() {
+        let angle = CGFloat(displayRotationDegrees) * (.pi / 180)
+        let scale = rotationScale(for: displayRotationDegrees)
+        let transform = CGAffineTransform(rotationAngle: angle).scaledBy(x: scale.x, y: scale.y)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.frame = view.bounds
+        playerLayer.setAffineTransform(transform)
+        CATransaction.commit()
+
+        posterImageView.frame = view.bounds
+        posterImageView.transform = transform
+    }
+
+    private func applyCornerRadius() {
+        let radius = isFullscreen ? 0 : configuredCornerRadius
+        view.layer.cornerRadius = radius
+        view.layer.masksToBounds = radius > 0
+        playerLayer.cornerRadius = radius
     }
 
     public func setExternalDurationSeconds(_ seconds: Double?) {
@@ -2603,6 +2685,7 @@ public final class LxMediaPlayer: NSObject {
         guard !isFullscreen, let windowScene = view.window?.windowScene else { return }
 
         isFullscreen = true
+        applyCornerRadius()
 
         // Save original state
         originalSuperview = view.superview
@@ -2625,6 +2708,7 @@ public final class LxMediaPlayer: NSObject {
             CATransaction.setDisableActions(true)
             self.playerLayer.frame = self.view.bounds
             CATransaction.commit()
+            self.applyDisplayRotationTransform()
             self.layoutOverlay()
         }
         window.rootViewController = viewController
@@ -2654,6 +2738,7 @@ public final class LxMediaPlayer: NSObject {
             CATransaction.setDisableActions(true)
             self.playerLayer.frame = self.view.bounds
             CATransaction.commit()
+            self.applyDisplayRotationTransform()
             self.layoutOverlay()
         }
 
@@ -2707,6 +2792,8 @@ public final class LxMediaPlayer: NSObject {
         CATransaction.setDisableActions(true)
         playerLayer.frame = view.bounds
         CATransaction.commit()
+        applyDisplayRotationTransform()
+        applyCornerRadius()
         layoutOverlay()
 
         // Clean up fullscreen window AFTER view is restored

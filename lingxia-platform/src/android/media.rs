@@ -1,8 +1,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
 use crate::traits::media_interaction::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, PreviewMediaRequest, SaveMediaRequest,
-    ScanCodeRequest, ScanType,
+    ChooseMediaRequest, MediaInteraction, MediaKind, MediaObjectFit, PreviewMediaRequest,
+    SaveMediaRequest, ScanCodeRequest, ScanType,
 };
 use crate::traits::media_runtime::{
     CompressImageRequest, CompressVideoRequest, CompressedVideo, ExtractVideoThumbnailRequest,
@@ -85,13 +85,40 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
                 None => JObject::null(),
             };
 
+            let rotate_obj = match item.rotate {
+                Some(rotate) => env.new_object(
+                    jni_str!("java/lang/Integer"),
+                    jni_sig!("(I)V"),
+                    &[JValue::Int(rotate as jint)],
+                )?,
+                None => JObject::null(),
+            };
+
+            let object_fit_obj = match item.object_fit {
+                Some(fit) => {
+                    let value = match fit {
+                        MediaObjectFit::Cover => "cover",
+                        MediaObjectFit::Contain => "contain",
+                        MediaObjectFit::Fill => "fill",
+                        MediaObjectFit::Fit => "fit",
+                    };
+                    let fit_java: JString = env.new_string(value)?;
+                    fit_java.into()
+                }
+                None => JObject::null(),
+            };
+
             let payload_obj = env.new_object(
                 payload_class,
-                jni_sig!("(Ljava/lang/String;ILjava/lang/String;)V"),
+                jni_sig!(
+                    "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Integer;Ljava/lang/String;)V"
+                ),
                 &[
                     JValue::Object(&path_obj),
                     JValue::Int(media_type_value),
                     JValue::Object(&cover_obj),
+                    JValue::Object(&rotate_obj),
+                    JValue::Object(&object_fit_obj),
                 ],
             )?;
 

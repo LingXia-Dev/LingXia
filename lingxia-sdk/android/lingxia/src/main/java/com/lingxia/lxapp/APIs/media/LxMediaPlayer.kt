@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.SurfaceView
 import android.view.TextureView
 import android.view.WindowManager
 import android.widget.FrameLayout
@@ -104,6 +105,8 @@ data class LxMediaPlayerConfig(
     var objectFit: LxMediaObjectFit? = null,
     // Rotate video content inside the component (0/90/180/270). This does not rotate the overlay controls.
     var rotateDegrees: Int? = null,
+    // Internal bridge protocol: fields to clear/reset to defaults.
+    var clearProps: Set<String> = emptySet(),
 )
 
 // Commands that can be sent to the player
@@ -219,6 +222,7 @@ class LxMediaPlayer(
     private var objectFit = LxMediaObjectFit.COVER
     private var cornerRadius = 0.0
     private var displayRotationDegrees = 0
+    private var explicitDisplayRotationDegrees: Int? = null
 
     // Quality and Speed
     private var availableQualities: List<LxMediaQuality> = emptyList()
@@ -247,13 +251,7 @@ class LxMediaPlayer(
     private var fullscreenLayoutListener: View.OnLayoutChangeListener? = null
     private var inlineFullscreenParent: ViewGroup? = null
     private var inlineFullscreenLayoutListener: View.OnLayoutChangeListener? = null
-    private var originalSystemUiVisibility: Int? = null
-    private var originalWindowFlags: Int? = null
-    private var originalDecorFitsSystemWindows: Boolean? = null
-    private var originalStatusBarColor: Int? = null
-    private var originalNavigationBarColor: Int? = null
-    private var originalNavBarContrastEnforced: Boolean? = null
-    private var originalCutoutMode: Int? = null
+    private var inlineFullscreenWindowUiSnapshot: ImmersiveWindowUi.Snapshot? = null
     private var inlineFullscreenConsumesInsets: Boolean = false
     private var fallbackHiddenViews: MutableList<Pair<View, Int>>? = null
     private var fallbackOverlayLayoutParams: ViewGroup.LayoutParams? = null
@@ -308,7 +306,10 @@ class LxMediaPlayer(
         )
         playerCore = PlayerCore(
             createUrlEngine = {
-                UrlEngine(context.applicationContext, pv).also { engine ->
+                UrlEngine(
+                    context = context.applicationContext,
+                    playerView = pv
+                ).also { engine ->
                     activeUrlEngine = engine
                     player = engine.exoPlayer
                 }
@@ -352,7 +353,7 @@ class LxMediaPlayer(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            scaleType = ImageView.ScaleType.CENTER_CROP
+            scaleType = posterScaleTypeForObjectFit(objectFit)
             setBackgroundColor(Color.BLACK)
             visibility = View.GONE
         }
@@ -420,8 +421,16 @@ class LxMediaPlayer(
             playerCore?.setRate(currentPlaybackRate)
         }
         config.autoplay?.let { if (it) play() }
-        config.objectFit?.let { setObjectFit(it) }
-        config.rotateDegrees?.let { setDisplayRotationDegrees(it) }
+        if ("objectFit" in config.clearProps) {
+            setObjectFit(LxMediaObjectFit.COVER)
+        } else {
+            config.objectFit?.let { setObjectFit(it) }
+        }
+        if ("rotate" in config.clearProps) {
+            setDisplayRotationDegrees(null)
+        } else if (config.rotateDegrees != null) {
+            setDisplayRotationDegrees(config.rotateDegrees)
+        }
         controlsOverlay?.updateSettingsButton()
         applyInlineDisplayRotationTransform()
     }
@@ -470,9 +479,7 @@ class LxMediaPlayer(
         val poster = posterImageView ?: return
         val endedFullscreen = shouldShowEndedPoster()
         val shouldShow = shouldShowPoster()
-        val oldVisibility = poster.visibility
         poster.visibility = if (shouldShow) View.VISIBLE else View.GONE
-        Log.d(TAG, "updatePosterVisibility: shouldShow=$shouldShow, old=${if (oldVisibility == View.VISIBLE) "VISIBLE" else "GONE"}, new=${if (poster.visibility == View.VISIBLE) "VISIBLE" else "GONE"}")
         if (poster.visibility == View.VISIBLE) {
             poster.bringToFront()
             controlsOverlay?.view?.bringToFront()
@@ -1032,103 +1039,18 @@ class LxMediaPlayer(
 
     private fun applyInlineFullscreenUi(activity: android.app.Activity) {
         val window = activity.window ?: return
-        if (originalSystemUiVisibility == null) {
-            originalSystemUiVisibility = window.decorView.systemUiVisibility
+        if (inlineFullscreenWindowUiSnapshot == null) {
+            inlineFullscreenWindowUiSnapshot = ImmersiveWindowUi.capture(window)
         }
-        if (originalWindowFlags == null) {
-            originalWindowFlags = window.attributes.flags
-        }
-        if (originalDecorFitsSystemWindows == null) {
-            originalDecorFitsSystemWindows = ViewCompat.getFitsSystemWindows(window.decorView)
-        }
-        if (originalStatusBarColor == null) {
-            originalStatusBarColor = window.statusBarColor
-        }
-        if (originalNavigationBarColor == null) {
-            originalNavigationBarColor = window.navigationBarColor
-        }
-        if (originalNavBarContrastEnforced == null && android.os.Build.VERSION.SDK_INT >= 29) {
-            originalNavBarContrastEnforced = window.isNavigationBarContrastEnforced
-        }
-        if (originalCutoutMode == null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            originalCutoutMode = window.attributes.layoutInDisplayCutoutMode
-        }
-
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        val decorView = window.decorView
-        decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-            )
-
-        WindowInsetsControllerCompat(window, decorView).apply {
-            hide(WindowInsetsCompat.Type.systemBars())
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
-        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-        window.addFlags(
-            android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
-            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN or
-            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            window.attributes = window.attributes.apply {
-                layoutInDisplayCutoutMode =
-                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
-            }
-        }
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            window.isNavigationBarContrastEnforced = false
-        }
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.hide(
-                android.view.WindowInsets.Type.statusBars() or
-                    android.view.WindowInsets.Type.navigationBars()
-            )
-        }
-        decorView.post {
-            WindowInsetsControllerCompat(window, decorView).hide(WindowInsetsCompat.Type.systemBars())
-        }
+        ImmersiveWindowUi.apply(window, keepScreenOn = true)
     }
 
     private fun restoreInlineFullscreenUi(activity: android.app.Activity) {
         val window = activity.window ?: return
-        originalSystemUiVisibility?.let { window.decorView.systemUiVisibility = it }
-        originalSystemUiVisibility = null
-
-        originalDecorFitsSystemWindows?.let { WindowCompat.setDecorFitsSystemWindows(window, it) }
-        originalDecorFitsSystemWindows = null
-
-        originalWindowFlags?.let { flags ->
-            window.attributes = window.attributes.apply { this.flags = flags }
+        inlineFullscreenWindowUiSnapshot?.let { snapshot ->
+            ImmersiveWindowUi.restore(window, snapshot)
         }
-        originalWindowFlags = null
-        originalStatusBarColor?.let { window.statusBarColor = it }
-        originalStatusBarColor = null
-        originalNavigationBarColor?.let { window.navigationBarColor = it }
-        originalNavigationBarColor = null
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            originalNavBarContrastEnforced?.let { window.isNavigationBarContrastEnforced = it }
-        }
-        originalNavBarContrastEnforced = null
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-            originalCutoutMode?.let { mode ->
-                window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = mode }
-            }
-        }
-        originalCutoutMode = null
-
-        WindowInsetsControllerCompat(window, window.decorView).show(WindowInsetsCompat.Type.systemBars())
+        inlineFullscreenWindowUiSnapshot = null
     }
 
     private fun resetChildViewTransforms() {
@@ -1153,6 +1075,12 @@ class LxMediaPlayer(
             tv.scaleX = 1f
             tv.scaleY = 1f
         }
+        findFirstSurfaceView(playerView)?.let { sv ->
+            sv.rotation = 0f
+            sv.scaleX = 1f
+            sv.scaleY = 1f
+        }
+        resetView(streamTextureView)
         resetView(posterImageView)
         loadingIndicator?.let { loader ->
             loader.rotation = 0f
@@ -1211,15 +1139,20 @@ class LxMediaPlayer(
 
         val videoIsLandscape = isLandscapeVideo()
         val deviceLandscape = screenW >= screenH
-        val rotate = videoIsLandscape != deviceLandscape
-        val angle = when {
+        val autoAngle = when {
             videoIsLandscape && !deviceLandscape -> 90f
             !videoIsLandscape && deviceLandscape -> -90f
             else -> 0f
         }
+        val angle = explicitDisplayRotationDegrees
+            ?.toFloat()
+            ?.let { normalizeViewRotation(it) }
+            ?: autoAngle
+        val swapAxes = isQuarterTurnAngle(angle)
+        val hasRotation = normalizeRotation(Math.round(angle)) != 0
 
-        val targetWidth = if (rotate) screenH else screenW
-        val targetHeight = if (rotate) screenW else screenH
+        val targetWidth = if (swapAxes) screenH else screenW
+        val targetHeight = if (swapAxes) screenW else screenH
 
         view.layoutParams = FrameLayout.LayoutParams(
             targetWidth.toInt(),
@@ -1230,7 +1163,7 @@ class LxMediaPlayer(
         view.translationY = 0f
         view.pivotX = targetWidth / 2f
         view.pivotY = targetHeight / 2f
-        view.rotation = if (rotate) angle else 0f
+        view.rotation = if (hasRotation) angle else 0f
         view.scaleX = 1f
         view.scaleY = 1f
 
@@ -1252,6 +1185,12 @@ class LxMediaPlayer(
             tv.rotation = 0f
             tv.scaleX = 1f
             tv.scaleY = 1f
+        }
+        // Some device/decoder paths render URL video on SurfaceView.
+        findFirstSurfaceView(playerView)?.let { sv ->
+            sv.rotation = 0f
+            sv.scaleX = 1f
+            sv.scaleY = 1f
         }
         setMatchParent(posterImageView)
         controlsOverlay?.view?.let { setMatchParent(it) }
@@ -1462,12 +1401,34 @@ class LxMediaPlayer(
     private fun setObjectFit(fit: LxMediaObjectFit) {
         objectFit = fit
         playerView?.resizeMode = fit.toResizeMode()
+        posterImageView?.scaleType = posterScaleTypeForObjectFit(fit)
     }
 
-    private fun setDisplayRotationDegrees(degrees: Int) {
-        val normalized = normalizeRotation(degrees)
-        if (normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270) return
-        displayRotationDegrees = normalized
+    private fun posterScaleTypeForObjectFit(fit: LxMediaObjectFit): ImageView.ScaleType {
+        return when (fit) {
+            LxMediaObjectFit.COVER -> ImageView.ScaleType.CENTER_CROP
+            LxMediaObjectFit.FILL -> ImageView.ScaleType.FIT_XY
+            LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> ImageView.ScaleType.FIT_CENTER
+        }
+    }
+
+    private fun setDisplayRotationDegrees(degrees: Int?) {
+        val normalized = degrees?.let { normalizeRotation(it) }
+        if (normalized != null && normalized != 0 && normalized != 90 && normalized != 180 && normalized != 270) {
+            Log.w(TAG, "Ignoring invalid rotate value: input=$degrees normalized=$normalized")
+            return
+        }
+        explicitDisplayRotationDegrees = normalized
+        displayRotationDegrees = normalized ?: 0
+        if (isFullscreen) {
+            if (inlineFullscreenParent != null) {
+                applyInlineFullscreenTransform()
+            } else {
+                applyFullscreenTransform()
+            }
+        } else {
+            applyInlineDisplayRotationTransform()
+        }
     }
 
     private fun findFirstTextureView(root: View?): TextureView? {
@@ -1482,6 +1443,18 @@ class LxMediaPlayer(
         return null
     }
 
+    private fun findFirstSurfaceView(root: View?): SurfaceView? {
+        root ?: return null
+        if (root is SurfaceView) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) {
+                val found = findFirstSurfaceView(root.getChildAt(i))
+                if (found != null) return found
+            }
+        }
+        return null
+    }
+
     private fun applyInlineDisplayRotationTransform() {
         if (isFullscreen) return
 
@@ -1490,31 +1463,47 @@ class LxMediaPlayer(
         val containerH = view.height.toFloat()
         if (containerW <= 0f || containerH <= 0f) return
 
-        val scale = computeInlineRotationScale(degrees, containerW, containerH)
+        val (scaleX, scaleY) = computeInlineRotationScales(degrees, containerW, containerH)
 
         fun apply(v: View?) {
             v ?: return
             v.pivotX = v.width / 2f
             v.pivotY = v.height / 2f
             v.rotation = degrees.toFloat()
-            v.scaleX = scale
-            v.scaleY = scale
+            v.scaleX = scaleX
+            v.scaleY = scaleY
         }
 
-        // URL playback uses PlayerView's internal TextureView. Stream decoder uses streamTextureView.
-        apply(findFirstTextureView(playerView))
+        fun reset(v: View?) {
+            v ?: return
+            v.rotation = 0f
+            v.scaleX = 1f
+            v.scaleY = 1f
+        }
+
+        // Rotate URL playback at PlayerView level for stability across decoders.
+        // Some device pipelines override internal surface transforms every frame.
+        apply(playerView)
+        reset(findFirstTextureView(playerView))
+        reset(findFirstSurfaceView(playerView))
         apply(streamTextureView)
         apply(posterImageView)
     }
 
-    private fun computeInlineRotationScale(
+    private fun computeInlineRotationScales(
         degrees: Int,
         containerW: Float,
         containerH: Float,
-    ): Float {
+    ): Pair<Float, Float> {
         val rotate90 = degrees == 90 || degrees == 270
         if (!rotate90) {
-            return 1f
+            return 1f to 1f
+        }
+
+        if (objectFit == LxMediaObjectFit.FILL) {
+            val ratioX = containerW / containerH
+            val ratioY = containerH / containerW
+            return ratioX to ratioY
         }
 
         val (sourceW, sourceH) = getDisplayVideoSize()
@@ -1522,19 +1511,21 @@ class LxMediaPlayer(
             // Fallback before metadata is ready.
             val ratio1 = containerW / containerH
             val ratio2 = containerH / containerW
-            return when (objectFit) {
+            val uniform = when (objectFit) {
                 LxMediaObjectFit.COVER -> max(ratio1, ratio2)
                 else -> min(ratio1, ratio2)
             }
+            return uniform to uniform
         }
 
         val baseScale = fitScale(sourceW, sourceH, containerW.toDouble(), containerH.toDouble())
         val rotatedScale = fitScale(sourceH, sourceW, containerW.toDouble(), containerH.toDouble())
         if (baseScale <= 0.0 || rotatedScale <= 0.0) {
-            return 1f
+            return 1f to 1f
         }
 
-        return (rotatedScale / baseScale).toFloat()
+        val uniform = (rotatedScale / baseScale).toFloat()
+        return uniform to uniform
     }
 
     private fun fitScale(
@@ -1551,8 +1542,8 @@ class LxMediaPlayer(
         val scaleY = containerH / sourceH
         return when (objectFit) {
             LxMediaObjectFit.COVER -> max(scaleX, scaleY)
-            LxMediaObjectFit.FILL -> max(scaleX, scaleY)
             LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> min(scaleX, scaleY)
+            LxMediaObjectFit.FILL -> min(scaleX, scaleY)
         }
     }
 
@@ -1610,7 +1601,6 @@ class LxMediaPlayer(
     }
 
     private fun handleCoreEvent(event: CorePlayerEvent) {
-        logCoreEvent(event)
         when (event) {
             CorePlayerEvent.PlayRequest -> {
                 // Intent-only. UI feedback (e.g. spinner) is driven by `waiting`.
@@ -1673,7 +1663,8 @@ class LxMediaPlayer(
             is CorePlayerEvent.LoadedMetadata -> {
                 val width = event.width.toDouble()
                 val height = event.height.toDouble()
-                updatePreferredOrientation(width, height, videoRotationDegrees)
+                updatePreferredOrientation(width, height, event.rotation)
+                applyInlineDisplayRotationTransform()
             }
             is CorePlayerEvent.Ended -> {
                 loadingIndicator?.visibility = View.GONE
@@ -1705,28 +1696,6 @@ class LxMediaPlayer(
         }
 
         eventSink(JsEventMapper.toPayload(event))
-    }
-
-    private fun logCoreEvent(event: CorePlayerEvent) {
-        when (event) {
-            CorePlayerEvent.PlayRequest -> Log.i(TAG, "coreEvent=playrequest")
-            CorePlayerEvent.Play -> Log.i(TAG, "coreEvent=play")
-            is CorePlayerEvent.Playing ->
-                Log.i(TAG, "coreEvent=playing timeMs=${event.currentTimeMs ?: -1}")
-            is CorePlayerEvent.Pause ->
-                Log.i(TAG, "coreEvent=pause timeMs=${event.currentTimeMs ?: -1}")
-            is CorePlayerEvent.Waiting ->
-                Log.i(TAG, "coreEvent=waiting reason=${event.reason.value}")
-            is CorePlayerEvent.Seeking ->
-                Log.i(TAG, "coreEvent=seeking targetMs=${event.targetTimeMs}")
-            is CorePlayerEvent.Seeked ->
-                Log.i(TAG, "coreEvent=seeked timeMs=${event.currentTimeMs}")
-            is CorePlayerEvent.Ended ->
-                Log.i(TAG, "coreEvent=ended timeMs=${event.currentTimeMs ?: -1}")
-            is CorePlayerEvent.Stop ->
-                Log.i(TAG, "coreEvent=stop reason=${event.reason.value}")
-            else -> Unit
-        }
     }
 
     private fun emitEvent(event: LxMediaEvent) {
@@ -1798,5 +1767,17 @@ class LxMediaPlayer(
         var normalized = rotation % 360
         if (normalized < 0) normalized += 360
         return normalized
+    }
+
+    private fun normalizeViewRotation(rotation: Float): Float {
+        var normalized = rotation % 360f
+        if (normalized <= -180f) normalized += 360f
+        if (normalized > 180f) normalized -= 360f
+        return normalized
+    }
+
+    private fun isQuarterTurnAngle(rotation: Float): Boolean {
+        val normalized = normalizeRotation(Math.round(rotation))
+        return normalized == 90 || normalized == 270
     }
 }
