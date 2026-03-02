@@ -30,6 +30,7 @@ public class LingXiaWebView extends WebView {
 
     private String appId;
     private String currentPath;
+    private long sessionId;
     private boolean pageLoaded = false;
 
     public static class WebResourceResponseData {
@@ -75,6 +76,7 @@ public class LingXiaWebView extends WebView {
 
         this.appId = null;
         this.currentPath = null;
+        this.sessionId = 0L;
         this.pageLoaded = false;
     }
 
@@ -93,7 +95,7 @@ public class LingXiaWebView extends WebView {
      * Request WebView creation for Rust layer
      * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
      */
-    public static void requestWebView(final String appId, final String path) {
+    public static void requestWebView(final String appId, final String path, final long sessionId) {
         // WebView creation must happen on the main thread
         ensureMainThreadStatic(new Runnable() {
             @Override
@@ -112,16 +114,16 @@ public class LingXiaWebView extends WebView {
                         webView = (LingXiaWebView) uiWebViewClass
                             .getConstructor(android.content.Context.class)
                             .newInstance(sApplicationContext);
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
                         // Fallback to base LingXiaWebView if SDK class not available
                         webView = new LingXiaWebView(sApplicationContext);
                     }
 
-                    webView.initializeWebView(appId, path);
+                    webView.initializeWebView(appId, path, sessionId);
 
                     // Notify Rust that WebView is ready
-                    notifyWebViewReady(appId, path, webView);
-                } catch (Exception e) {
+                    notifyWebViewReady(appId, path, sessionId, webView);
+                } catch (Throwable e) {
                     Log.e(TAG, "Failed to create WebView: " + e.getMessage(), e);
                 }
             }
@@ -147,10 +149,11 @@ public class LingXiaWebView extends WebView {
         }
     }
 
-    public void initializeWebView(String appId, String path) {
+    public void initializeWebView(String appId, String path, long sessionId) {
         Log.d(TAG, "initializeWebView called, thread: " + Thread.currentThread().getName());
         this.appId = appId;
         this.currentPath = path;
+        this.sessionId = sessionId;
 
         ensureMainThread(new Runnable() {
             @Override
@@ -314,6 +317,7 @@ public class LingXiaWebView extends WebView {
                 handlePostMessage(
                     getAppId() != null ? getAppId() : "",
                     getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
                     message
                 );
             } catch (Exception e) {
@@ -455,6 +459,10 @@ public class LingXiaWebView extends WebView {
         return currentPath;
     }
 
+    public long getSessionId() {
+        return sessionId;
+    }
+
     public boolean isPageLoaded() {
         return pageLoaded;
     }
@@ -463,10 +471,10 @@ public class LingXiaWebView extends WebView {
         this.pageLoaded = loaded;
     }
 
-    native void onConsoleMessage(String appId, String path, int level, String message);
-    native void onPageStarted(String appId, String path);
-    native void onPageFinished(String appId, String path);
-    native WebResourceResponseData handleRequest(String appId, String path, String url, String method, String[] headerKeysAndValues);
-    native int handlePostMessage(String appId, String path, String message);
-    native static void notifyWebViewReady(String appId, String path, Object webView);
+    native void onConsoleMessage(String appId, String path, long sessionId, int level, String message);
+    native void onPageStarted(String appId, String path, long sessionId);
+    native void onPageFinished(String appId, String path, long sessionId);
+    native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
+    native int handlePostMessage(String appId, String path, long sessionId, String message);
+    native static void notifyWebViewReady(String appId, String path, long sessionId, Object webView);
 }

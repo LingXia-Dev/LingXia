@@ -25,6 +25,7 @@ public class LingXiaWebChromeClient extends WebChromeClient {
             webView.onConsoleMessage(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId(),
                 level,
                 message.message()
             );

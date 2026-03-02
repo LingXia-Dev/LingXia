@@ -3,7 +3,7 @@ use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use jni::objects::{JByteArray, JObject, JObjectArray, JString};
-use jni::sys::jint;
+use jni::sys::{jint, jlong};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use std::fs;
 use std::sync::Arc;
@@ -17,14 +17,20 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     _this: JObject,
     appid: JString,
     path: JString,
+    session_id: jlong,
     message: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
-        let webtag = WebTag::new(&appid, &path, None);
+        let webtag = WebTag::new(&appid, &path, session_id);
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.handle_post_message(message);
         }
@@ -39,12 +45,18 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     _this: JObject,
     appid: JString,
     path: JString,
+    session_id: jlong,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
-        let webtag = WebTag::new(&appid, &path, None);
+        let webtag = WebTag::new(&appid, &path, session_id);
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.on_page_started();
         }
@@ -59,12 +71,18 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     _this: JObject,
     appid: JString,
     path: JString,
+    session_id: jlong,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
-        let webtag = WebTag::new(&appid, &path, None);
+        let webtag = WebTag::new(&appid, &path, session_id);
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.on_page_finished();
         }
@@ -79,6 +97,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     _this: JObject<'a>,
     appid: JString<'a>,
     path: JString<'a>,
+    session_id: jlong,
     url: JString<'a>,
     method: JString<'a>,
     headers_array: jni::sys::jobjectArray,
@@ -89,6 +108,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
         let path: String = path.try_to_string(env)?;
         let url_str: String = url.try_to_string(env)?;
         let method_str: String = method.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
         // Parse headers from array: [key1, value1, key2, value2, ...]
         let mut http_headers = HeaderMap::new();
@@ -148,7 +172,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
         };
 
         // Handle request and convert response
-        let webtag = WebTag::new(&appid, &path, None);
+        let webtag = WebTag::new(&appid, &path, session_id);
         let response = if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.handle_request(request)
         } else {
@@ -267,6 +291,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     _this: JObject,
     appid: JString,
     path: JString,
+    session_id: jlong,
     level: jint,
     message: JString,
 ) -> jint {
@@ -274,8 +299,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
-        let webtag = WebTag::new(&appid, &path, None);
+        let webtag = WebTag::new(&appid, &path, session_id);
         let log_level = match level {
             2 => LogLevel::Verbose, // VERBOSE
             3 => LogLevel::Debug,   // DEBUG
@@ -299,15 +329,21 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
     _class: JObject,
     appid: JString,
     path: JString,
+    session_id: jlong,
     webview_obj: JObject,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
 
         // Retrieve the sender from our global map and send the WebView instance
         if let Some(senders) = WEBVIEW_SENDERS.get() {
-            let webtag = WebTag::new(&appid, &path, None);
+            let webtag = WebTag::new(&appid, &path, session_id);
 
             if let Ok(mut senders_map) = senders.lock()
                 && let Some(sender) = senders_map.remove(&webtag.to_string())

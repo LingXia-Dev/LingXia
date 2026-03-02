@@ -41,6 +41,7 @@ public final class AndroidMessagePortBridge {
                         webView.handlePostMessage(
                                 webView.getAppId() != null ? webView.getAppId() : "",
                                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                                webView.getSessionId(),
                                 messageData != null ? messageData : ""
                         );
                     } catch (Throwable t) {

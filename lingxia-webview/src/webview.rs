@@ -112,11 +112,8 @@ type WebViewInstancesMap = Arc<Mutex<HashMap<String, Arc<WebView>>>>;
 /// Global WebView instances storage
 static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 
-/// WebView identifier combining appid and path.
-/// Internally we allow an optional suffix after a `#` that encodes the
-/// LxApp session id (e.g. `appid-path#123`). The base form `appid-path`
-/// is used as the logical key for Rust-side lookups; the full string
-/// (with suffix) is used when talking to ArkTS/ArkWeb.
+/// WebView identifier combining appid, path, and optional session id.
+/// Example: `appid:path#123`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WebTag(String);
 
@@ -140,22 +137,30 @@ impl WebTag {
         &self.0
     }
 
-    /// Logical key for this tag (appid:path), with any `#instance` suffix stripped.
+    /// Storage key for this tag.
+    /// This intentionally preserves the optional `#session` suffix so WebView
+    /// instances are isolated per runtime session.
     pub fn key(&self) -> &str {
-        self.0.split('#').next().unwrap_or(&self.0)
+        &self.0
     }
 
     /// Extract appid from the webtag
     pub fn extract_appid(&self) -> String {
-        self.key().split(':').next().unwrap_or("").to_string()
+        self.0.split(':').next().unwrap_or("").to_string()
     }
 
     /// Extract appid and path from WebTag
     /// This will always succeed since WebTag is constructed with a valid format
     pub fn extract_parts(&self) -> (String, String) {
-        self.key()
+        self.0
             .split_once(':')
-            .map(|(appid, path)| (appid.to_string(), path.to_string()))
+            .map(|(appid, path_with_session)| {
+                let path = path_with_session
+                    .split('#')
+                    .next()
+                    .unwrap_or(path_with_session);
+                (appid.to_string(), path.to_string())
+            })
             .unwrap()
     }
 

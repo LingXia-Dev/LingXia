@@ -183,8 +183,13 @@ impl LingXiaNavigationDelegate {
             )
         }
     }
-    pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Retained<Self> {
-        let webtag = WebTag::new(&appid, &path, None);
+    pub fn new(
+        appid: String,
+        path: String,
+        session_id: Option<u64>,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let webtag = WebTag::new(&appid, &path, session_id);
         let delegate = mtm
             .alloc::<LingXiaNavigationDelegate>()
             .set_ivars(LingXiaNavigationDelegateIvars { webtag });
@@ -381,8 +386,12 @@ impl WebViewInner {
             let _: () = msg_send![webview, setHidden: true];
 
             // Create navigation delegate
-            let navigation_delegate =
-                LingXiaNavigationDelegate::new(appid.to_string(), path.to_string(), mtm);
+            let navigation_delegate = LingXiaNavigationDelegate::new(
+                appid.to_string(),
+                path.to_string(),
+                session_id,
+                mtm,
+            );
 
             // Set the navigation delegate on the WebView
             let proto_navigation_delegate: &ProtocolObject<dyn WKNavigationDelegate> =
@@ -390,7 +399,7 @@ impl WebViewInner {
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
             // Set up message handler for bridge communication
-            let message_handler = Self::setup_message_handler(webview, appid, path)?;
+            let message_handler = Self::setup_message_handler(webview, appid, path, session_id)?;
 
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {
@@ -475,6 +484,7 @@ impl WebViewInner {
         webview: *mut AnyObject,
         appid: &str,
         path: &str,
+        session_id: Option<u64>,
     ) -> Result<Retained<LingXiaMessageHandler>, WebViewError> {
         unsafe {
             // Get the configuration from the WebView
@@ -541,6 +551,7 @@ impl WebViewInner {
             let message_handler = LingXiaMessageHandler::new(
                 appid.to_string(),
                 path.to_string(),
+                session_id,
                 MainThreadMarker::new().unwrap(),
             )
             .ok_or_else(|| WebViewError::WebView("Failed to create message handler".to_string()))?;
@@ -849,6 +860,7 @@ use objc2_web_kit::WKScriptMessageHandler;
 pub struct LingXiaMessageHandlerIvars {
     appid: String,
     path: String,
+    session_id: Option<u64>,
 }
 
 define_class!(
@@ -950,10 +962,19 @@ define_class!(
 
 impl LingXiaMessageHandler {
     /// Create a new message handler
-    pub fn new(appid: String, path: String, mtm: MainThreadMarker) -> Option<Retained<Self>> {
+    pub fn new(
+        appid: String,
+        path: String,
+        session_id: Option<u64>,
+        mtm: MainThreadMarker,
+    ) -> Option<Retained<Self>> {
         unsafe {
             let instance = Self::alloc(mtm);
-            let instance = instance.set_ivars(LingXiaMessageHandlerIvars { appid, path });
+            let instance = instance.set_ivars(LingXiaMessageHandlerIvars {
+                appid,
+                path,
+                session_id,
+            });
             let instance: Retained<Self> = msg_send![super(instance), init];
             Some(instance)
         }
@@ -963,7 +984,7 @@ impl LingXiaMessageHandler {
     fn handle_bridge_message(&self, message: String) {
         let ivars = self.ivars();
 
-        let webtag = WebTag::new(&ivars.appid, &ivars.path, None);
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
         if let Some(delegate) = get_webview_delegate(&webtag) {
             delegate.handle_post_message(message);
         }
@@ -986,7 +1007,7 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let webtag = WebTag::new(&ivars.appid, &ivars.path, None);
+                let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
                 if let Some(delegate) = get_webview_delegate(&webtag) {
                     delegate.log(log_level, console_message);
                 }

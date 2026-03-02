@@ -36,7 +36,8 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.setPageLoaded(false);
             webView.onPageStarted(
                 webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : ""
+                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId()
             );
         }
     }
@@ -52,7 +53,8 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.resetViewport();
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : ""
+                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId()
             );
         }
     }
@@ -116,6 +118,7 @@ public class LingXiaWebViewClient extends WebViewClient {
             LingXiaWebView.WebResourceResponseData response = webView.handleRequest(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId(),
                 url,
                 method,
                 headerArray

@@ -29,11 +29,11 @@ impl WebViewInner {
     pub(crate) fn create(
         appid: &str,
         path: &str,
-        _session_id: Option<u64>,
+        session_id: Option<u64>,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         // Store sender in global map for callback
-        let webtag = WebTag::new(appid, path, None);
+        let webtag = WebTag::new(appid, path, session_id);
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {
@@ -61,13 +61,18 @@ impl WebViewInner {
             // Create Java strings
             let appid_jstring = env.new_string(&appid_owned)?;
             let path_jstring = env.new_string(&path_owned)?;
+            let session = session_id.unwrap_or_default() as i64;
 
             // Call Java static method to request WebView creation
             env.call_static_method(
                 webview_class,
                 jni_str!("requestWebView"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
-                &[(&appid_jstring).into(), (&path_jstring).into()],
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
+                &[
+                    (&appid_jstring).into(),
+                    (&path_jstring).into(),
+                    session.into(),
+                ],
             )?;
 
             log::info!(

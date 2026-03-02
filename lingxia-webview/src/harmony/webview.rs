@@ -13,11 +13,12 @@ use tokio::sync::oneshot::Sender;
 // Static C strings for proxy object and method names
 static LINGXIA_PROXY_NAME: &[u8] = b"LingXiaProxy\0";
 static LINGXIA_PROXY_GET_PORT: &[u8] = b"getPort\0";
+static LINGXIA_PROXY_NATIVE_COMPONENT_UPDATE: &[u8] = b"nativeComponentUpdate\0";
 
 // Keep proxy method array alive for WebView lifetime
 #[repr(C)]
 struct ProxyStorage {
-    method: Box<[ArkWeb_ProxyMethod; 1]>,
+    method: Box<[ArkWeb_ProxyMethod; 2]>,
 }
 
 /// Wrapper for API pointers to make them Send + Sync
@@ -84,8 +85,6 @@ pub struct WebViewInner {
     /// Condition variable for message port readiness (avoids busy-wait)
     port_ready_signal: (Mutex<bool>, Condvar),
     creation_sender: Mutex<Option<WebViewCreationSender>>,
-    // Store user_data pointers for cleanup
-    user_data_ptrs: RefCell<Vec<*mut c_void>>,
     // Keep proxy allocations alive for lifetime
     proxy_allocs: RefCell<Vec<*mut c_void>>,
     // Whether lifecycle callbacks have been registered with ArkWeb
@@ -142,6 +141,8 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
         // Old ports can silently drop messages after controller recreation; reset them here so
         // `getPort()` triggers a fresh port setup.
         webview.inner.cleanup_webmessage_ports();
+        // Proxy callback storage from previous controller must be dropped before re-registering.
+        webview.inner.cleanup_proxy_allocs();
     }
 
     // Register lifecycle callbacks now that controller is created
@@ -191,7 +192,7 @@ pub fn webview_controller_destroyed(webtag_str: &str) {
 
         // Idempotent cleanup of native resources tied to the old controller.
         webview.inner.cleanup_webmessage_ports();
-        webview.inner.cleanup_user_data();
+        webview.inner.cleanup_proxy_allocs();
         webview.inner.cleanup_scheme_handlers();
     }
 }
@@ -231,16 +232,19 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
             }
 
             // First-time allocation path
-            let webtag_string = webtag.as_str().to_string();
-            let proxy_data = Box::new(webtag_string);
-            let proxy_data_ptr = Box::into_raw(proxy_data) as *mut std::ffi::c_void;
-
             let storage = Box::new(ProxyStorage {
-                method: Box::new([ArkWeb_ProxyMethod {
-                    methodName: LINGXIA_PROXY_GET_PORT.as_ptr() as *const c_char,
-                    callback: Some(get_port_callback),
-                    userData: proxy_data_ptr,
-                }]),
+                method: Box::new([
+                    ArkWeb_ProxyMethod {
+                        methodName: LINGXIA_PROXY_GET_PORT.as_ptr() as *const c_char,
+                        callback: Some(get_port_callback),
+                        userData: std::ptr::null_mut(),
+                    },
+                    ArkWeb_ProxyMethod {
+                        methodName: LINGXIA_PROXY_NATIVE_COMPONENT_UPDATE.as_ptr() as *const c_char,
+                        callback: Some(native_component_update_callback),
+                        userData: std::ptr::null_mut(),
+                    },
+                ]),
             });
             let storage = Box::into_raw(storage);
 
@@ -258,11 +262,6 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
                     .proxy_allocs
                     .borrow_mut()
                     .push(storage as *mut c_void);
-                webview
-                    .inner
-                    .user_data_ptrs
-                    .borrow_mut()
-                    .push(proxy_data_ptr);
             }
             log::info!("Registered LingXiaProxy for {}", webtag.as_str());
             Ok(())
@@ -274,21 +273,104 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
     }
 }
 
-/// Get port callback - handles LingXiaProxy.getPort(type) calls
-unsafe extern "C" fn get_port_callback(
-    _web_tag: *const std::ffi::c_char,
+/// Native component props update callback -
+/// handles LingXiaProxy.nativeComponentUpdate(...)
+/// Accepts both:
+/// 1) nativeComponentUpdate(componentId, propsJson)
+/// 2) nativeComponentUpdate(propsJsonWithComponentId)
+unsafe extern "C" fn native_component_update_callback(
+    web_tag: *const std::ffi::c_char,
     bridge_data: *const ArkWeb_JavaScriptBridgeData,
     data_count: usize,
-    user_data: *mut std::ffi::c_void,
+    _user_data: *mut std::ffi::c_void,
 ) {
-    if user_data.is_null() || data_count < 1 || bridge_data.is_null() {
-        log::warn!("get_port_callback missing user_data or args");
+    if web_tag.is_null() || data_count < 1 || bridge_data.is_null() {
+        log::warn!(
+            "native_component_update_callback missing web_tag or args data_count={}",
+            data_count
+        );
         return;
     }
 
     unsafe {
-        let webtag_string = &*(user_data as *const String);
-        let webtag = WebTag::from(webtag_string.as_str());
+        let Ok(webtag_str) = CStr::from_ptr(web_tag).to_str() else {
+            log::warn!("native_component_update_callback invalid web_tag");
+            return;
+        };
+        let webtag = WebTag::from(webtag_str);
+        let mut component_id = String::new();
+        let props_json = if data_count >= 2 {
+            let component_data = &*bridge_data.offset(0);
+            let props_data = &*bridge_data.offset(1);
+            component_id = extract_string_from_bridge_data(component_data)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            extract_string_from_bridge_data(props_data).unwrap_or_default()
+        } else {
+            // Single-arg form: payload is expected to be JSON string containing componentId.
+            let payload_data = &*bridge_data.offset(0);
+            extract_string_from_bridge_data(payload_data).unwrap_or_default()
+        };
+
+        if component_id.is_empty() && !props_json.is_empty() {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&props_json) {
+                if let Some(id) = json.get("componentId").and_then(|v| v.as_str()) {
+                    component_id = id.trim().to_string();
+                }
+            }
+        }
+
+        if component_id.is_empty() || props_json.is_empty() {
+            log::warn!(
+                "native_component_update_callback empty component_or_props webtag={} component_id_len={} props_len={}",
+                webtag.as_str(),
+                component_id.len(),
+                props_json.len()
+            );
+            return;
+        }
+
+        log::debug!(
+            "native_component_update_callback recv webtag={} component_id={} props_len={} data_count={}",
+            webtag.as_str(),
+            component_id,
+            props_json.len(),
+            data_count
+        );
+
+        if let Err(e) = call_arkts(
+            "nativeComponentPropsUpdate",
+            &[webtag.as_str(), component_id.as_str(), props_json.as_str()],
+        ) {
+            log::error!(
+                "native_component_update_callback failed for {} {}: {}",
+                webtag.as_str(),
+                component_id,
+                e
+            );
+        }
+    }
+}
+
+/// Get port callback - handles LingXiaProxy.getPort(type) calls
+unsafe extern "C" fn get_port_callback(
+    web_tag: *const std::ffi::c_char,
+    bridge_data: *const ArkWeb_JavaScriptBridgeData,
+    data_count: usize,
+    _user_data: *mut std::ffi::c_void,
+) {
+    if web_tag.is_null() || data_count < 1 || bridge_data.is_null() {
+        log::warn!("get_port_callback missing web_tag or args");
+        return;
+    }
+
+    unsafe {
+        let Ok(webtag_str) = CStr::from_ptr(web_tag).to_str() else {
+            log::warn!("get_port_callback invalid web_tag");
+            return;
+        };
+        let webtag = WebTag::from(webtag_str);
         let type_data = &*bridge_data.offset(0);
 
         if let Some(port_type_str) = extract_string_from_bridge_data(type_data) {
@@ -422,7 +504,6 @@ impl WebViewInner {
             ports: Mutex::new(WebMessagePorts::default()),
             port_ready_signal: (Mutex::new(false), Condvar::new()),
             creation_sender: Mutex::new(Some(sender)),
-            user_data_ptrs: RefCell::new(Vec::new()),
             proxy_allocs: RefCell::new(Vec::new()),
             callbacks_registered: RefCell::new(false),
             scheme_handlers: RefCell::new(Vec::new()),
@@ -456,35 +537,23 @@ impl WebViewInner {
         }
     }
 
-    /// Add a user_data pointer for cleanup
-    fn track_user_data(&self, ptr: *mut c_void) {
-        self.user_data_ptrs.borrow_mut().push(ptr);
-        if log::log_enabled!(log::Level::Trace) {
-            log::trace!("Tracked user_data for {}: {:?}", self.webtag.as_str(), ptr);
-        }
-    }
-
     /// Track scheme handler for cleanup
     pub fn track_scheme_handler(&self, handler: *mut ohos_web_sys::ArkWeb_SchemeHandler) {
         self.scheme_handlers.borrow_mut().push(handler);
     }
 
-    /// Cleanup all tracked user_data
-    fn cleanup_user_data(&self) {
-        let ptrs = self
-            .user_data_ptrs
-            .borrow_mut()
-            .drain(..)
-            .collect::<Vec<_>>();
-        let count = ptrs.len();
-        for ptr in ptrs {
+    /// Cleanup all tracked proxy allocations (method arrays / callback metadata).
+    fn cleanup_proxy_allocs(&self) {
+        let proxies = self.proxy_allocs.borrow_mut().drain(..).collect::<Vec<_>>();
+        let count = proxies.len();
+        for p in proxies {
             unsafe {
-                let _cleanup = Box::from_raw(ptr as *mut String);
+                let _ = Box::from_raw(p as *mut ProxyStorage);
             }
         }
         if count > 0 {
             log::info!(
-                "Cleaned up {} user_data pointers for {}",
+                "Cleaned up {} proxy allocations for {}",
                 count,
                 self.webtag.as_str()
             );
@@ -873,17 +942,8 @@ impl Drop for WebViewInner {
         // Cleanup WebMessage ports
         self.cleanup_webmessage_ports();
 
-        // Cleanup all tracked user_data
-        self.cleanup_user_data();
-
         // Free proxy allocations
-        let proxies = self.proxy_allocs.borrow_mut().drain(..).collect::<Vec<_>>();
-        for p in proxies {
-            unsafe {
-                // Recreate to drop method array (ProxyStorage)
-                let _ = Box::from_raw(p as *mut ProxyStorage);
-            }
-        }
+        self.cleanup_proxy_allocs();
 
         // Ask ArkTS to destroy the controller; ArkTS will notify native via onWebviewControllerDestroyed
         if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
@@ -896,19 +956,10 @@ impl Drop for WebViewInner {
     }
 }
 
-/// Register WebView lifecycle callbacks with shared user_data pointer
+/// Register WebView lifecycle callbacks
 fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
     unsafe {
         let webtag_cstr = CString::new(webtag.as_str()).unwrap();
-
-        // Create a single shared user_data for all callbacks (like the original implementation)
-        let webtag_string = webtag.as_str().to_string();
-        let user_data = Box::into_raw(Box::new(webtag_string)) as *mut c_void;
-
-        // Track this user_data for cleanup (but don't double-cleanup in on_destroy_callback)
-        if let Some(webview) = find_webview(webtag) {
-            webview.inner.track_user_data(user_data);
-        }
 
         // Get the ArkWeb_ComponentAPI using the correct API
         let component_api =
@@ -921,12 +972,12 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
 
         let api = &*(component_api as *const ArkWeb_ComponentAPI);
 
-        // Register all callbacks with the same user_data pointer (critical for HarmonyOS)
+        // Register lifecycle callbacks. We use web_tag from callback args and do not rely on user_data.
         if let Some(on_controller_attached) = api.onControllerAttached {
             on_controller_attached(
                 webtag_cstr.as_ptr(),
                 Some(on_controller_attached_callback),
-                user_data,
+                std::ptr::null_mut(),
             );
         }
 
@@ -934,16 +985,24 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
             on_page_begin(
                 webtag_cstr.as_ptr(),
                 Some(on_page_begin_callback),
-                user_data,
+                std::ptr::null_mut(),
             );
         }
 
         if let Some(on_page_end) = api.onPageEnd {
-            on_page_end(webtag_cstr.as_ptr(), Some(on_page_end_callback), user_data);
+            on_page_end(
+                webtag_cstr.as_ptr(),
+                Some(on_page_end_callback),
+                std::ptr::null_mut(),
+            );
         }
 
         if let Some(on_destroy) = api.onDestroy {
-            on_destroy(webtag_cstr.as_ptr(), Some(on_destroy_callback), user_data);
+            on_destroy(
+                webtag_cstr.as_ptr(),
+                Some(on_destroy_callback),
+                std::ptr::null_mut(),
+            );
         }
 
         Ok(())
@@ -952,22 +1011,31 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
 
 // WebView lifecycle callback functions
 extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if web_tag.is_null() {
+        log::warn!("WebView controller attached callback received null web_tag");
+        return;
+    }
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("WebView controller attached: {}", webtag_str);
     }
 }
 
-extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_void) {
+extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if web_tag.is_null() {
+        log::warn!("on_page_begin_callback received null web_tag");
+        return;
+    }
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page begin loading: {}", webtag_str);
 
-        let webtag_string = unsafe { &*(user_data as *const String) };
-        let webtag = WebTag::from(webtag_string.as_str());
+        let webtag = WebTag::from(webtag_str);
+        if find_webview(&webtag).is_none() {
+            log::debug!("Ignoring page begin for stale webview {}", webtag_str);
+            return;
+        }
 
         // Only inject console interception script; port setup is deferred to get_port_callback
-        if !user_data.is_null()
-            && let Err(e) = inject_console_script(&webtag)
-        {
+        if let Err(e) = inject_console_script(&webtag) {
             log::error!("Failed to inject console script for {}: {}", webtag_str, e);
         }
 
@@ -978,6 +1046,10 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_v
 }
 
 extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if web_tag.is_null() {
+        log::warn!("on_page_end_callback received null web_tag");
+        return;
+    }
     if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page end loading: {}", webtag);
 
@@ -991,6 +1063,10 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
 }
 
 extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+    if web_tag.is_null() {
+        log::warn!("on_destroy_callback received null web_tag");
+        return;
+    }
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         // ArkWeb component level reports WebView is destroyed; only log here.
         // Resource cleanup is unified through ArkTS -> onWebviewControllerDestroyed(NAPI) -> webview_controller_destroyed,
@@ -1063,18 +1139,12 @@ fn setup_webmessage_port_for_webtag(
         });
 
         // Set message event handler
-        let webtag_string = webtag.as_str().to_string();
-        let user_data_ptr = Box::into_raw(Box::new(webtag_string)) as *mut c_void;
-
-        // Track this allocation for cleanup in the WebViewInner
-        webview_inner.track_user_data(user_data_ptr);
-
         if let Some(set_handler) = port_api_struct.setMessageEventHandler {
             set_handler(
                 port1,
                 webtag_cstr.as_ptr(),
                 Some(callback_fn),
-                user_data_ptr,
+                std::ptr::null_mut(),
             );
         }
 
@@ -1144,20 +1214,23 @@ extern "C" fn on_web_message_received(
     web_tag: *const c_char,
     port: *mut ArkWeb_WebMessagePort,
     message: *mut ArkWeb_WebMessage,
-    user_data: *mut c_void,
+    _user_data: *mut c_void,
 ) {
+    if web_tag.is_null() {
+        log::error!("on_web_message_received got null web_tag");
+        return;
+    }
     let Ok(webtag) = (unsafe { CStr::from_ptr(web_tag).to_str() }) else {
         log::error!("Failed to parse web_tag");
         return;
     };
 
-    if user_data.is_null() || message.is_null() {
-        log::error!("user_data or message is null for {}", webtag);
+    if message.is_null() {
+        log::error!("message is null for {}", webtag);
         return;
     }
 
-    let webtag_string = unsafe { &*(user_data as *const String) };
-    let full_webtag = WebTag::from(webtag_string.as_str());
+    let full_webtag = WebTag::from(webtag);
     let (appid, path) = full_webtag.extract_parts();
 
     // Keep native_port aligned with the port that delivered the message.
@@ -1250,6 +1323,9 @@ extern "C" fn on_console_message_received(
     message: *mut ArkWeb_WebMessage,
     _user_data: *mut c_void,
 ) {
+    if web_tag.is_null() {
+        return;
+    }
     let Ok(webtag) = (unsafe { CStr::from_ptr(web_tag).to_str() }) else {
         return;
     };
