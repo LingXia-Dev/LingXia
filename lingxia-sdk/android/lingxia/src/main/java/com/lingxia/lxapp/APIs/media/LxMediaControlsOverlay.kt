@@ -421,8 +421,8 @@ internal class LxMediaControlsOverlay(
     }
 
     fun updatePlayPauseButton() {
-        val isPlaying = player.isPlaying()
-        playPauseButton.setImageResource(if (isPlaying) R.drawable.icon_pause else R.drawable.icon_play)
+        val shouldShowPause = player.shouldShowPauseIconForUi()
+        playPauseButton.setImageResource(if (shouldShowPause) R.drawable.icon_pause else R.drawable.icon_play)
         updateFullscreenButton()
         updateSettingsButton()
     }

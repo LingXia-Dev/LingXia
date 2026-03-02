@@ -233,6 +233,7 @@ class LxMediaPlayer(
     private var currentSource: Uri? = null
     private var isFullscreen = false
     private var isPausedByUser = false  // Track if user explicitly paused (vs buffering)
+    private var isBufferingForUi = false
     private var firstFrameDisplayed = false
     private var hasEnded = false
     private var posterUrl: String? = null
@@ -596,6 +597,7 @@ class LxMediaPlayer(
 
     fun play() {
         isPausedByUser = false  // User wants to play
+        isBufferingForUi = true
         if (hasEnded) {
             hasEnded = false
             updatePosterVisibility()
@@ -609,11 +611,13 @@ class LxMediaPlayer(
 
     fun pause() {
         isPausedByUser = true  // User explicitly paused
+        isBufferingForUi = false
         playerCore?.pause()
     }
 
     fun stop() {
         isPausedByUser = true
+        isBufferingForUi = false
         if (hasEnded) {
             hasEnded = false
             updatePosterVisibility()
@@ -1604,8 +1608,13 @@ class LxMediaPlayer(
         when (event) {
             CorePlayerEvent.PlayRequest -> {
                 // Intent-only. UI feedback (e.g. spinner) is driven by `waiting`.
+                if (!isPausedByUser) {
+                    isBufferingForUi = true
+                }
+                controlsOverlay?.updatePlayPauseButton()
             }
             CorePlayerEvent.Play -> {
+                isBufferingForUi = false
                 if (hasEnded) {
                     hasEnded = false
                     updatePosterVisibility()
@@ -1613,6 +1622,7 @@ class LxMediaPlayer(
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Waiting -> {
+                isBufferingForUi = !isPausedByUser
                 if (!isPausedByUser) {
                     loadingIndicator?.visibility = View.VISIBLE
                     loadingIndicator?.bringToFront()
@@ -1621,6 +1631,7 @@ class LxMediaPlayer(
                 updatePosterVisibility()
             }
             is CorePlayerEvent.Playing -> {
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
                 firstFrameDisplayed = true
@@ -1632,6 +1643,7 @@ class LxMediaPlayer(
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Pause -> {
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
                 controlsOverlay?.updatePlayPauseButton()
@@ -1639,12 +1651,16 @@ class LxMediaPlayer(
             is CorePlayerEvent.Seeking -> {
                 uiSeeking = true
                 if (!isPausedByUser) {
+                    isBufferingForUi = true
+                }
+                if (!isPausedByUser) {
                     loadingIndicator?.visibility = View.VISIBLE
                 }
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Seeked -> {
                 uiSeeking = false
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 val durationMs = playerCore?.getLastKnownDurationMs()
                 val durationSeconds = (durationMs ?: 0L).toDouble() / 1000.0
@@ -1667,6 +1683,7 @@ class LxMediaPlayer(
                 applyInlineDisplayRotationTransform()
             }
             is CorePlayerEvent.Ended -> {
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
                 hasEnded = true
@@ -1675,6 +1692,7 @@ class LxMediaPlayer(
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Error -> {
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
             }
@@ -1683,6 +1701,7 @@ class LxMediaPlayer(
                 controlsOverlay?.updateVolumeState(event.muted, event.volume.toDouble())
             }
             is CorePlayerEvent.Stop -> {
+                isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
                 firstFrameDisplayed = false
@@ -1711,6 +1730,10 @@ class LxMediaPlayer(
             BackendKind.URL -> activeUrlEngine?.isPlaying() == true
             null -> false
         }
+    }
+
+    internal fun shouldShowPauseIconForUi(): Boolean {
+        return isPlaying() || (!isPausedByUser && isBufferingForUi)
     }
 
     internal fun handleStreamDecoderEvent(event: String, detail: Map<String, Any?>) {

@@ -285,25 +285,25 @@ internal class UrlEngine(
 
         return when {
             lowRam || memoryClass <= 256 -> MemoryProfile(
-                minBufferMs = 1200,
-                maxBufferMs = 2400,
-                bufferForPlaybackMs = 250,
-                bufferForPlaybackAfterRebufferMs = 500,
-                targetBufferBytes = 2 * 1024 * 1024,
+                minBufferMs = 3000,
+                maxBufferMs = 10000,
+                bufferForPlaybackMs = 500,
+                bufferForPlaybackAfterRebufferMs = 1500,
+                targetBufferBytes = 8 * 1024 * 1024,
             )
             memoryClass <= 384 -> MemoryProfile(
-                minBufferMs = 1800,
-                maxBufferMs = 3600,
-                bufferForPlaybackMs = 300,
-                bufferForPlaybackAfterRebufferMs = 600,
-                targetBufferBytes = 4 * 1024 * 1024,
+                minBufferMs = 5000,
+                maxBufferMs = 15000,
+                bufferForPlaybackMs = 700,
+                bufferForPlaybackAfterRebufferMs = 2000,
+                targetBufferBytes = 12 * 1024 * 1024,
             )
             else -> MemoryProfile(
-                minBufferMs = 2400,
-                maxBufferMs = 4800,
-                bufferForPlaybackMs = 350,
-                bufferForPlaybackAfterRebufferMs = 700,
-                targetBufferBytes = 6 * 1024 * 1024,
+                minBufferMs = 7000,
+                maxBufferMs = 20000,
+                bufferForPlaybackMs = 800,
+                bufferForPlaybackAfterRebufferMs = 2500,
+                targetBufferBytes = 16 * 1024 * 1024,
             )
         }
     }
@@ -317,7 +317,7 @@ internal class UrlEngine(
                 profile.bufferForPlaybackAfterRebufferMs
             )
             .setTargetBufferBytes(profile.targetBufferBytes)
-            .setPrioritizeTimeOverSizeThresholds(false)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(0, false)
             .build()
     }
