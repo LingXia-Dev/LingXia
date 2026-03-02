@@ -30,7 +30,7 @@ ensure_tls_feature_default "tls-ring"
 
 # Native library paths
 # Note: SDK HAR does NOT bundle .so; example app directly includes it
-RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia_lib.so"
+RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
 APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
 OHM_ROOT_DIR="$LINGXIA_ROOT/target/ohm"
 OHM_BUNDLE_DIR="$OHM_ROOT_DIR/lingxia"

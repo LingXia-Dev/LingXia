@@ -61,7 +61,7 @@ if [ "$SKIP_RUST" = false ]; then
     fi
 
     # Copy to expected name for compatibility
-    cp "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia_lib.a" "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"
+    cp "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a" "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"
 
     echo "✅ Rust build complete"
     echo "   .a location: $WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"

@@ -5,6 +5,7 @@ edition = "2024"
 description = "Native library for the example app (builds to .so/.a)"
 
 [lib]
+name = "lingxia"
 # cdylib for Android/Harmony (.so), staticlib for iOS (.a)
 crate-type = ["cdylib", "staticlib"]
 

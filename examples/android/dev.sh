@@ -169,14 +169,14 @@ if [ "$SKIP_RUST" = false ]; then
     if [ "$BUILD_ARM32" = true ]; then
         # Use API 21 for arm32 to support older devices (API 22+)
         build_rust_android "armv7-linux-androideabi" "armv7-a" "armv7a-linux-androideabi21-clang" "armv7a-linux-androideabi21-clang++"
-        echo "  → Copying liblingxia_lib.so to App jniLibs (armeabi-v7a)..."
+        echo "  → Copying liblingxia.so to App jniLibs (armeabi-v7a)..."
         mkdir -p "$APP_JNILIBS_DIR_ARMV7"
-        cp "$WORKSPACE_ROOT/target/armv7-linux-androideabi/release/liblingxia_lib.so" "$APP_JNILIBS_DIR_ARMV7/liblingxia.so"
+        cp "$WORKSPACE_ROOT/target/armv7-linux-androideabi/release/liblingxia.so" "$APP_JNILIBS_DIR_ARMV7/liblingxia.so"
     else
         build_rust_android "aarch64-linux-android" "aarch64" "aarch64-linux-android33-clang" "aarch64-linux-android33-clang++"
-        echo "  → Copying liblingxia_lib.so to App jniLibs (arm64-v8a)..."
+        echo "  → Copying liblingxia.so to App jniLibs (arm64-v8a)..."
         mkdir -p "$APP_JNILIBS_DIR_ARM64"
-        cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia_lib.so" "$APP_JNILIBS_DIR_ARM64/liblingxia.so"
+        cp "$WORKSPACE_ROOT/target/aarch64-linux-android/release/liblingxia.so" "$APP_JNILIBS_DIR_ARM64/liblingxia.so"
     fi
 
     echo "✅ Rust build complete"

@@ -90,7 +90,7 @@ if [ "$SKIP_RUST" = false ]; then
     run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
 
     # Copy to expected name (liblingxia.a) for Xcode project compatibility
-    cp "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia_lib.a" "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
+    cp "$WORKSPACE_ROOT/target/$TARGET/release/liblingxiab.a" "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
 
     echo "✅ Rust build complete"
     echo "   .a location: $WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
