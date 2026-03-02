@@ -81,6 +81,27 @@ onMounted(setupEventListeners);
 onBeforeUnmount(cleanupEventListeners);
 watch(elementRef, setupEventListeners);
 
+watch(
+  [elementRef, () => props.rotate, () => props.objectFit],
+  () => {
+    const el = elementRef.value;
+    if (!el) return;
+    const rotate = props.rotate;
+    if (rotate === undefined || rotate === null || rotate === '') {
+      el.removeAttribute('rotate');
+    } else {
+      el.setAttribute('rotate', String(rotate).trim());
+    }
+    const objectFit = props.objectFit;
+    if (objectFit === undefined || objectFit === null || objectFit === '') {
+      el.removeAttribute('object-fit');
+    } else {
+      el.setAttribute('object-fit', String(objectFit).trim().toLowerCase());
+    }
+  },
+  { immediate: true }
+);
+
 const domProps = computed(() => {
   const result: Record<string, any> = { id: resolvedId.value };
   if (props.src) result.src = props.src;
@@ -91,7 +112,6 @@ const domProps = computed(() => {
   if (props.controls) result.controls = true;
   if (props.live) result.live = '';
   if (props.volume !== undefined) result.volume = props.volume;
-  if (props.objectFit) result['object-fit'] = props.objectFit;
   if (props.progressBar === false) result['progress-bar'] = 'false';
   if (props.qualities?.length) result.qualities = JSON.stringify(props.qualities);
   if (props.playbackRates?.length) result['playback-rates'] = JSON.stringify(props.playbackRates);

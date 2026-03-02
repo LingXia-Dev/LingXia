@@ -62,6 +62,24 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
     };
   }, [props]);
 
+  // Force attribute sync for custom-element props that React may treat inconsistently.
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const rotate = props.rotate;
+    if (rotate === undefined || rotate === null) {
+      el.removeAttribute("rotate");
+    } else {
+      el.setAttribute("rotate", String(rotate).trim());
+    }
+    const objectFit = props.objectFit;
+    if (objectFit === undefined || objectFit === null) {
+      el.removeAttribute("object-fit");
+    } else {
+      el.setAttribute("object-fit", String(objectFit).trim().toLowerCase());
+    }
+  }, [props.rotate, props.objectFit]);
+
   // Filter out event props and React-only props before passing to the custom element
   const domProps: Record<string, any> = {};
   for (const [key, value] of Object.entries(props)) {
@@ -70,7 +88,14 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
 
     let attrName = key;
     if (key === "playbackRates") attrName = "playback-rates";
-    if (key === "objectFit") attrName = "object-fit";
+    if (key === "rotate") {
+      // Synchronized via effect to avoid duplicate custom-element updates.
+      continue;
+    }
+    if (key === "objectFit") {
+      // Synchronized via effect to avoid duplicate custom-element updates.
+      continue;
+    }
     if (key === "progressBar") {
       if (value === false) {
         domProps["progress-bar"] = "false";

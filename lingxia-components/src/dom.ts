@@ -13,6 +13,14 @@ export function measureElement(el: HTMLElement): MeasuredElement {
     return Number.isNaN(parsed) ? undefined : parsed;
   };
 
+  const isOverflowClipping = (style: CSSStyleDeclaration): boolean =>
+    style.overflow === "hidden" ||
+    style.overflow === "clip" ||
+    style.overflowX === "hidden" ||
+    style.overflowX === "clip" ||
+    style.overflowY === "hidden" ||
+    style.overflowY === "clip";
+
   let cornerRadius = parseRadius(getComputedStyle(el).borderRadius);
   if (cornerRadius === undefined) {
     const rectMatches = (a: DOMRect, b: DOMRect, epsilon = 0.5) =>
@@ -24,16 +32,35 @@ export function measureElement(el: HTMLElement): MeasuredElement {
     let parent = el.parentElement;
     while (parent) {
       const style = getComputedStyle(parent);
-      const overflowHidden =
-        style.overflow === "hidden" ||
-        style.overflow === "clip" ||
-        style.overflowX === "hidden" ||
-        style.overflowX === "clip" ||
-        style.overflowY === "hidden" ||
-        style.overflowY === "clip";
-      if (overflowHidden && rectMatches(parent.getBoundingClientRect(), rect)) {
+      if (isOverflowClipping(style) && rectMatches(parent.getBoundingClientRect(), rect)) {
         const parentRadius = parseRadius(style.borderRadius);
         if (parentRadius !== undefined) {
+          cornerRadius = parentRadius;
+          break;
+        }
+      }
+      parent = parent.parentElement;
+    }
+  }
+
+  if (cornerRadius === undefined) {
+    // Common card layout: native video is clipped by an overflow-hidden rounded ancestor
+    // that doesn't have exactly the same rect (e.g. header + media block).
+    const near = (a: number, b: number, epsilon = 0.75) => Math.abs(a - b) <= epsilon;
+    let parent = el.parentElement;
+    while (parent) {
+      const style = getComputedStyle(parent);
+      const parentRadius = parseRadius(style.borderRadius);
+      if (isOverflowClipping(style) && parentRadius !== undefined) {
+        const p = parent.getBoundingClientRect();
+        const contains =
+          rect.left >= p.left - 0.75 &&
+          rect.right <= p.right + 0.75 &&
+          rect.top >= p.top - 0.75 &&
+          rect.bottom <= p.bottom + 0.75;
+        const alignedLeftRight = near(rect.left, p.left) && near(rect.right, p.right);
+        const touchesTopOrBottom = near(rect.top, p.top) || near(rect.bottom, p.bottom);
+        if (contains && alignedLeftRight && touchesTopOrBottom) {
           cornerRadius = parentRadius;
           break;
         }

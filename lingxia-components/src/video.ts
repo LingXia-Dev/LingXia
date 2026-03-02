@@ -13,6 +13,7 @@ export type LxVideoAttributes = {
   src?: string;
   poster?: string;
   objectFit?: "cover" | "contain" | "fill" | "fit";
+  rotate?: 0 | 90 | 180 | 270;
   autoplay?: boolean;
   loop?: boolean;
   muted?: boolean;
@@ -41,6 +42,8 @@ export type LxVideoAttributes = {
   onRateChange?: (e: Event) => void;
 };
 
+type LxObjectFit = "cover" | "contain" | "fill" | "fit";
+
 declare global {
   namespace JSX {
     interface IntrinsicElements {
@@ -57,6 +60,7 @@ export class LxVideoElement extends HTMLElement {
       "src",
       "poster",
       "object-fit",
+      "rotate",
       "autoplay",
       "loop",
       "muted",
@@ -79,9 +83,71 @@ export class LxVideoElement extends HTMLElement {
   private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private harmonyEmbed?: HTMLEmbedElement;
   private lastHarmonyProps?: string;
+  private pendingHarmonyProps?: Record<string, unknown>;
+  private pendingHarmonyRetryTimer: number | null = null;
+  private pendingHarmonyRetryCount: number = 0;
+  private iOSBootstrapFrame: number | null = null;
+  private iOSBootstrapRemaining: number = 0;
   private iOSHelper?: iOSNativeComponentHelper;
+  private forceHarmonyEmbedRecreate: boolean = false;
+
+  private parseRotateValue(value: unknown): 0 | 90 | 180 | 270 | undefined {
+    const parsed = (() => {
+      if (typeof value === "number") {
+        return Number.isInteger(value) ? value : NaN;
+      }
+      if (typeof value === "string") {
+        const normalized = value.trim();
+        if (!/^(0|90|180|270)$/.test(normalized)) return NaN;
+        return Number(normalized);
+      }
+      return NaN;
+    })();
+    if (parsed === 0 || parsed === 90 || parsed === 180 || parsed === 270) {
+      return parsed;
+    }
+    return undefined;
+  }
+
+  private parseObjectFitValue(value: unknown): LxObjectFit | undefined {
+    if (typeof value !== "string") return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (
+      normalized === "cover" ||
+      normalized === "contain" ||
+      normalized === "fill" ||
+      normalized === "fit"
+    ) {
+      return normalized;
+    }
+    return undefined;
+  }
+
+  private upgradeProperty(propName: string): void {
+    const self = this as unknown as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(self, propName)) return;
+    const value = self[propName];
+    delete self[propName];
+    self[propName] = value;
+  }
+
+  set rotate(value: unknown) {
+    const normalized = this.parseRotateValue(value);
+    if (normalized === undefined) {
+      this.removeAttribute("rotate");
+      return;
+    }
+    this.setAttribute("rotate", String(normalized));
+  }
+
+  get rotate(): 0 | 90 | 180 | 270 | undefined {
+    return this.parseRotateValue(this.getAttribute("rotate"));
+  }
 
   connectedCallback() {
+    // React may set custom-element properties before upgrade; replay through setters.
+    this.upgradeProperty("rotate");
+
     this.componentId = ensureComponentId(this, "lx-video", this.componentId);
     if (!this.componentId) {
       return;
@@ -111,16 +177,12 @@ export class LxVideoElement extends HTMLElement {
     this.iOSHelper = new iOSNativeComponentHelper(this, this.componentId);
     this.iOSHelper.setup();
 
-    // On iOS, delay mount to allow WKWebView to create WKChildScrollView for the scroll container.
+    // iOS bootstrap:
+    // avoid hardcoded timeout; run an immediate mount plus a few frame-based refreshes.
     if (isIOS()) {
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          if (this.isConnected) {
-            this.mountOrUpdate();
-            this.startTracking();
-          }
-        }, 100);
-      });
+      this.mountOrUpdate(true);
+      this.startTracking();
+      this.scheduleIOSBootstrapFrames();
     } else {
       this.mountOrUpdate();
       this.startTracking();
@@ -168,7 +230,13 @@ export class LxVideoElement extends HTMLElement {
       }
     }
     if (!this.isConnected) return;
-    this.mountOrUpdate();
+    // Keep rotate/object-fit updates immediate across all native platforms.
+    const forcePropsUpdate = name === "rotate" || name === "object-fit" || name === "objectfit";
+    if (isHarmony() && forcePropsUpdate) {
+      // Bridge callbacks can race on Harmony; force a deterministic embed recreate for visual props.
+      this.forceHarmonyEmbedRecreate = true;
+    }
+    this.mountOrUpdate(forcePropsUpdate);
   }
 
   private setEventHandler(name: string, value: EventListenerOrEventListenerObject | null) {
@@ -240,10 +308,10 @@ export class LxVideoElement extends HTMLElement {
     const volumeAttr = this.getAttribute("volume");
     const volume =
       volumeAttr != null ? parseFloat(volumeAttr) : undefined;
-    const objectFit =
+    const rawObjectFit =
       this.getAttribute("object-fit") ??
-      this.getAttribute("objectfit") ??
-      undefined;
+      this.getAttribute("objectfit");
+    const objectFit = this.parseObjectFitValue(rawObjectFit);
 
     // JSON-encoded arrays (React wrapper sets these via JSON.stringify)
     const qualitiesAttr = this.getAttribute("qualities");
@@ -278,6 +346,16 @@ export class LxVideoElement extends HTMLElement {
       ? (progressBarAttr !== null && progressBarAttr !== "false")
       : (progressBarAttr !== "false");
 
+    const rawRotate = this.getAttribute("rotate");
+    const validRotate = this.parseRotateValue(rawRotate);
+    const clearProps: string[] = [];
+    if (rawRotate === null || validRotate === undefined) {
+      clearProps.push("rotate");
+    }
+    if (rawObjectFit == null || objectFit === undefined) {
+      clearProps.push("objectFit");
+    }
+
     return {
       src: this.getAttribute("src") || undefined,
       poster: this.getAttribute("poster") || undefined,
@@ -289,18 +367,37 @@ export class LxVideoElement extends HTMLElement {
       live: isLive,
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
       objectFit,
+      rotate: validRotate,
+      ...(clearProps.length > 0 ? { __clearProps: clearProps } : {}),
       qualities,
       playbackRates
     };
   }
 
-  private mountOrUpdate() {
+  private measureForNative() {
+    const measured = measureElement(this);
+    if (!isIOS()) {
+      return measured;
+    }
+    const rect = this.getBoundingClientRect();
+    return {
+      rect: {
+        x: rect.left,
+        y: rect.top,
+        width: rect.width,
+        height: rect.height
+      },
+      cornerRadius: measured.cornerRadius
+    };
+  }
+
+  private mountOrUpdate(forceUpdate = false) {
     if (isHarmony()) {
-      this.mountOrUpdateHarmony();
+      this.mountOrUpdateHarmony(forceUpdate);
       return;
     }
     if (!this.componentId) return;
-    const { rect, cornerRadius } = measureElement(this);
+    const { rect, cornerRadius } = this.measureForNative();
     const hasSize = rect.width > 0 && rect.height > 0;
     if (!hasSize) {
       // Defer and try again once layout stabilizes; only needed before first mount
@@ -314,7 +411,7 @@ export class LxVideoElement extends HTMLElement {
       (props as any).cornerRadius = cornerRadius;
     }
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
-    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted);
+    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted || forceUpdate);
     if (!decision.shouldSend) return;
 
     const payload: any = {
@@ -344,7 +441,7 @@ export class LxVideoElement extends HTMLElement {
       return;
     }
     if (!this.mounted || !this.componentId) return;
-    const { rect, cornerRadius } = measureElement(this);
+    const { rect, cornerRadius } = this.measureForNative();
     if (!rect.width || !rect.height) return;
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
     const decision = this.updateState.decide(rect, null, zIndex);
@@ -357,6 +454,10 @@ export class LxVideoElement extends HTMLElement {
       zIndex
     };
 
+    // Keep iOS scroll-container metadata on update so native side can still
+    // promote fallback overlay into WKChildScrollView when it becomes available.
+    this.iOSHelper?.enhancePayload(payload);
+
     if (cornerRadius !== undefined) {
       payload.cornerRadius = cornerRadius;
     }
@@ -366,29 +467,42 @@ export class LxVideoElement extends HTMLElement {
 
   /**
    * Start tracking component size changes.
-   *
-   * Scroll tracking is handled natively on all platforms:
-   * JS only needs to handle resize events and initial mount.
    */
   private startTracking() {
-    // Only listen for resize - scroll is handled natively on all platforms
     window.addEventListener("resize", this.boundUpdatePosition);
+    if (isIOS()) {
+      window.addEventListener("scroll", this.boundUpdatePosition, { passive: true });
+    }
     this.startSizeObserver();
     this.updatePosition();
   }
 
   private stopTracking() {
     window.removeEventListener("resize", this.boundUpdatePosition);
+    if (isIOS()) {
+      window.removeEventListener("scroll", this.boundUpdatePosition);
+    }
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);
       this.pendingLayoutFrame = null;
     }
+    if (this.pendingHarmonyRetryTimer !== null) {
+      clearTimeout(this.pendingHarmonyRetryTimer);
+      this.pendingHarmonyRetryTimer = null;
+    }
+    if (this.iOSBootstrapFrame !== null) {
+      cancelAnimationFrame(this.iOSBootstrapFrame);
+      this.iOSBootstrapFrame = null;
+    }
+    this.iOSBootstrapRemaining = 0;
+    this.pendingHarmonyProps = undefined;
+    this.pendingHarmonyRetryCount = 0;
   }
 
   private startSizeObserver() {
     if (typeof ResizeObserver === "undefined") {
-      // Fallback: rely on rAF retry
+      // ResizeObserver unavailable: retry mount on next frame.
       this.scheduleMountRetry();
       return;
     }
@@ -423,7 +537,29 @@ export class LxVideoElement extends HTMLElement {
     });
   }
 
-  private mountOrUpdateHarmony() {
+  private scheduleIOSBootstrapFrames(): void {
+    if (!isIOS()) return;
+    // Keep a short frame-based bootstrap window so late-created WKChildScrollView
+    // can still receive mount/update without relying on hardcoded millisecond delay.
+    this.iOSBootstrapRemaining = 8;
+    const tick = () => {
+      if (!this.isConnected) {
+        this.iOSBootstrapFrame = null;
+        this.iOSBootstrapRemaining = 0;
+        return;
+      }
+      this.mountOrUpdate(true);
+      this.iOSBootstrapRemaining -= 1;
+      if (this.iOSBootstrapRemaining <= 0) {
+        this.iOSBootstrapFrame = null;
+        return;
+      }
+      this.iOSBootstrapFrame = requestAnimationFrame(tick);
+    };
+    this.iOSBootstrapFrame = requestAnimationFrame(tick);
+  }
+
+  private mountOrUpdateHarmony(forceUpdate = false) {
     if (!this.componentId) return;
     const { rect, cornerRadius } = measureElement(this);
     const hasSize = rect.width > 0 && rect.height > 0;
@@ -438,19 +574,25 @@ export class LxVideoElement extends HTMLElement {
       (props as any).cornerRadius = cornerRadius;
     }
     const zIndex = parseFloat(this.style.zIndex || "0") || 0;
-    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted);
+    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted || forceUpdate);
     if (!decision.shouldSend) return;
-    this.ensureHarmonyEmbed(rect, props, cornerRadius);
+    this.ensureHarmonyEmbed(
+      rect,
+      props,
+      cornerRadius,
+      this.forceHarmonyEmbedRecreate
+    );
+    this.forceHarmonyEmbedRecreate = false;
     this.mounted = true;
   }
 
   private ensureHarmonyEmbed(
     rect: { width: number; height: number },
     props: Record<string, unknown>,
-    cornerRadius?: number
+    cornerRadius?: number,
+    forceRecreate = false
   ) {
-    // Create embed element only once - ArkWeb triggers DESTROY+CREATE on attribute changes
-    if (!this.harmonyEmbed) {
+    const createEmbed = (): HTMLEmbedElement => {
       const embed = document.createElement("embed");
       embed.setAttribute("type", "native/video");
       embed.setAttribute("width", `${rect.width}`);
@@ -465,23 +607,48 @@ export class LxVideoElement extends HTMLElement {
         embed.style.borderRadius = `${cornerRadius}px`;
         embed.style.overflow = "hidden";
       }
-
-      // Set initial props via src attribute
       const encodedProps = this.encodeHarmonyProps(props);
       embed.setAttribute("src", encodedProps);
       this.lastHarmonyProps = encodedProps;
+      return embed;
+    };
+
+    if (forceRecreate && this.harmonyEmbed) {
+      const oldEmbed = this.harmonyEmbed;
+      this.harmonyEmbed = undefined;
+      if (this.contains(oldEmbed)) {
+        this.removeChild(oldEmbed);
+      }
+      this.lastHarmonyProps = undefined;
+      const recreated = createEmbed();
+      this.appendChild(recreated);
+      this.harmonyEmbed = recreated;
+      this.pushHarmonyPropsUpdate(props);
+      this.pendingHarmonyRetryCount = 0;
+      return;
+    }
+
+    // Create embed element only once - ArkWeb triggers DESTROY+CREATE on attribute changes
+    if (!this.harmonyEmbed) {
+      const embed = createEmbed();
+      this.pushHarmonyPropsUpdate(props);
 
       this.appendChild(embed);
       this.harmonyEmbed = embed;
       return;
     }
 
-    // Only update props via src if they actually changed
-    // DO NOT modify type/id/width/height - it causes ArkWeb to recreate the component
+    // Only update props when they changed.
     const encodedProps = this.encodeHarmonyProps(props);
     if (encodedProps !== this.lastHarmonyProps) {
-      this.harmonyEmbed.setAttribute("src", encodedProps);
-      this.lastHarmonyProps = encodedProps;
+      const pushed = this.pushHarmonyPropsUpdate(props);
+      if (pushed) {
+        this.lastHarmonyProps = encodedProps;
+        this.pendingHarmonyProps = undefined;
+        this.pendingHarmonyRetryCount = 0;
+      } else {
+        this.scheduleHarmonyPropsRetry(props);
+      }
     }
 
     // Ensure embed element matches latest corner radius for clipping
@@ -501,6 +668,57 @@ export class LxVideoElement extends HTMLElement {
       return `${HARMONY_PROPS_PREFIX}%7B%7D`;
     }
   }
+
+  private pushHarmonyPropsUpdate(props: Record<string, unknown>): boolean {
+    if (!this.componentId || !isHarmony()) return false;
+    try {
+      const proxy = (window as unknown as Record<string, unknown>).LingXiaProxy as
+        | { nativeComponentUpdate?: ((componentId: string, payload: string) => void) | ((payload: string) => void) }
+        | undefined;
+      const updateFn = proxy?.nativeComponentUpdate;
+      if (typeof updateFn !== "function") {
+        return false;
+      }
+      const payload = JSON.stringify({ componentId: this.componentId, ...props });
+      // Prefer single-arg payload to avoid ArkWeb proxy arg-count compatibility issues.
+      try {
+        (updateFn as (payload: string) => void)(payload);
+        return true;
+      } catch {
+        // Fallback for older bridges that only support (componentId, payload).
+        (updateFn as (componentId: string, payload: string) => void)(this.componentId, payload);
+        return true;
+      }
+    } catch (error) {
+      return false;
+    }
+  }
+
+  private scheduleHarmonyPropsRetry(props: Record<string, unknown>): void {
+    this.pendingHarmonyProps = { ...props };
+    if (this.pendingHarmonyRetryTimer !== null) {
+      return;
+    }
+    this.pendingHarmonyRetryTimer = window.setTimeout(() => {
+      this.pendingHarmonyRetryTimer = null;
+      if (!this.isConnected || !this.pendingHarmonyProps) {
+        return;
+      }
+      const pendingProps = this.pendingHarmonyProps;
+      const pushed = this.pushHarmonyPropsUpdate(pendingProps);
+      if (pushed) {
+        this.lastHarmonyProps = this.encodeHarmonyProps(pendingProps);
+        this.pendingHarmonyProps = undefined;
+        this.pendingHarmonyRetryCount = 0;
+      } else {
+        this.pendingHarmonyRetryCount += 1;
+        if (this.pendingHarmonyRetryCount < 20) {
+          this.scheduleHarmonyPropsRetry(pendingProps);
+        }
+      }
+    }, 100);
+  }
+
 }
 
 export function registerVideoComponent() {
