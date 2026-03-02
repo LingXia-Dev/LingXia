@@ -39,9 +39,13 @@
                 <span class="text-sm text-gray-600">Product Name</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.productName || '--' }}</span>
               </div>
-              <div class="flex justify-between items-center py-3">
+              <div class="flex justify-between items-center py-3 border-b border-gray-200">
                 <span class="text-sm text-gray-600">Product Version</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.version || '--' }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3">
+                <span class="text-sm text-gray-600">SDK Version</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.SDKVersion || '--' }}</span>
               </div>
             </div>
           </div>

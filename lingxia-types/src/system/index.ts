@@ -7,6 +7,7 @@ export interface AppBaseInfo {
   language: string;
   productName: string;
   version: string;
+  SDKVersion: string;
 }
 
 export interface SystemSettingInfo {

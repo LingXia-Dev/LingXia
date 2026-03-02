@@ -42,6 +42,7 @@ export default function SystemPage() {
                     <InfoRow label="Language" value={appBaseInfo.language} />
                     <InfoRow label="Product Name" value={appBaseInfo.productName} />
                     <InfoRow label="Product Version" value={appBaseInfo.version} />
+                    <InfoRow label="SDK Version" value={appBaseInfo.SDKVersion} />
                   </div>
                 </div>
               )}
