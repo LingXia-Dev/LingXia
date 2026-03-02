@@ -179,10 +179,33 @@ export interface ChosenMediaEntry {
   isOriginal: boolean;
 }
 
+export type MediaRotation = 0 | 90 | 180 | 270;
+
+export type MediaObjectFit = 'cover' | 'contain' | 'fill' | 'fit';
+
 export interface PreviewMediaItem {
+  /**
+   * Media source path.
+   * Recommended: `lx://` path (for example `lx://usercache/...`) or a sandbox-local path
+   * that can be resolved by runtime access rules.
+   */
   path: string;
   type?: 'image' | 'video';
+  /**
+   * Optional poster image path for video preview.
+   * Uses the same path contract as `path`.
+   */
   coverPath?: string;
+  /**
+   * Optional clockwise rotation in degrees (`0 | 90 | 180 | 270`).
+   * Default: when omitted, runtime resolves orientation from media metadata.
+   */
+  rotate?: MediaRotation;
+  /**
+   * Optional display fit mode for video preview.
+   * Default: `contain`.
+   */
+  objectFit?: MediaObjectFit;
 }
 
 export interface PreviewMediaOptions {
