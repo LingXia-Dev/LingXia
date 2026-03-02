@@ -26,6 +26,22 @@ const DURATION_OPTIONS = [
   { key: "60", label: "60 seconds", value: 60 },
 ];
 
+const ROTATE_OPTIONS = [
+  { key: "meta", label: "Meta (Default)", value: undefined },
+  { key: "0", label: "0°", value: 0 },
+  { key: "90", label: "90°", value: 90 },
+  { key: "180", label: "180°", value: 180 },
+  { key: "270", label: "270°", value: 270 },
+];
+
+const OBJECT_FIT_OPTIONS = [
+  { key: "default", label: "Default (Optional)", value: undefined },
+  { key: "contain", label: "contain", value: "contain" },
+  { key: "cover", label: "cover", value: "cover" },
+  { key: "fill", label: "fill", value: "fill" },
+  { key: "fit", label: "fit", value: "fit" },
+];
+
 function extractInputValue(event) {
   if (!event) return "";
   if (typeof event === "string") return event;
@@ -72,6 +88,18 @@ function clampToSourceMax(value, maxValue) {
     return value;
   }
   return Math.min(value, maxValue);
+}
+
+function resolveRotateValue(key) {
+  const matched = ROTATE_OPTIONS.find((option) => option.key === key);
+  if (!matched) return undefined;
+  return typeof matched.value === "number" ? matched.value : undefined;
+}
+
+function resolveObjectFitValue(key, fallback = "contain") {
+  const matched = OBJECT_FIT_OPTIONS.find((option) => option.key === key);
+  if (!matched) return fallback;
+  return typeof matched.value === "string" ? matched.value : undefined;
 }
 
 const MODE_SETTINGS = {
@@ -166,8 +194,8 @@ function getModeCopy(mediaType) {
   return {
     headerSubtitle: "lx.chooseMedia / lx.previewMedia",
     emptyHint: "Tap + to pick photos.",
-    previewHint: "Tap a photo to preview.",
-    galleryHint: "Tap a photo to preview.",
+    previewHint: "Tap Preview to open media preview.",
+    galleryHint: "Tap Preview to open media preview.",
     addLabel: "Add Photo",
   };
 }
@@ -271,6 +299,56 @@ function collectSources(result, mediaType) {
     .filter(Boolean);
 }
 
+function normalizeRotationValue(value) {
+  const parsed = parseInt(String(value ?? "0"), 10);
+  if (!Number.isFinite(parsed)) return 0;
+  const normalized = ((parsed % 360) + 360) % 360;
+  return normalized;
+}
+
+function resolveVideoDisplaySize(info) {
+  const rawWidth = parseInt(String(info?.width ?? "0"), 10);
+  const rawHeight = parseInt(String(info?.height ?? "0"), 10);
+  if (!Number.isFinite(rawWidth) || !Number.isFinite(rawHeight) || rawWidth <= 0 || rawHeight <= 0) {
+    return null;
+  }
+  const rotation = normalizeRotationValue(info?.rotation);
+  // Some platforms return encoded size + rotation, others return display size directly.
+  // Swap axes only when rotation is 90/270 and dimensions still look landscape.
+  const swap = (rotation === 90 || rotation === 270) && rawWidth >= rawHeight;
+  const displayWidth = swap ? rawHeight : rawWidth;
+  const displayHeight = swap ? rawWidth : rawHeight;
+  return {
+    displayWidth,
+    displayHeight,
+    displayAspectRatio: `${displayWidth} / ${displayHeight}`,
+  };
+}
+
+async function enrichVideoItemsWithMetadata(items) {
+  if (!Array.isArray(items) || !items.length) return [];
+
+  return Promise.all(
+    items.map(async (item) => {
+      if (!item || item.type !== "video" || !item.path) {
+        return item;
+      }
+      try {
+        const info = await lx.getVideoInfo({ path: item.path });
+        const display = resolveVideoDisplaySize(info);
+        if (!display) return item;
+        return {
+          ...item,
+          ...display,
+        };
+      } catch (error) {
+        console.warn("[media-demo] getVideoInfo for layout failed:", item.path, error?.message || error);
+        return item;
+      }
+    }),
+  );
+}
+
 async function pickOption(options, currentKey) {
   if (!Array.isArray(options) || !options.length) {
     return null;
@@ -280,8 +358,18 @@ async function pickOption(options, currentKey) {
     const result = await lx.showActionSheet({
       itemList: options.map((option) => option.label),
     });
-    if (typeof result?.tapIndex === "number" && result.tapIndex >= 0 && result.tapIndex < options.length) {
-      return options[result.tapIndex];
+    const rawTapIndex =
+      result?.tapIndex ??
+      result?.index ??
+      result?.detail?.tapIndex ??
+      result?.detail?.index;
+    const tapIndex =
+      typeof rawTapIndex === "number"
+        ? rawTapIndex
+        : parseInt(String(rawTapIndex ?? ""), 10);
+
+    if (Number.isInteger(tapIndex) && tapIndex >= 0 && tapIndex < options.length) {
+      return options[tapIndex];
     }
   } catch (error) {
     // User cancelled or error
@@ -375,6 +463,10 @@ function createState(modeKey) {
     videoCompressBusy: false,
     videoCompressResult: null,
     videoCompressError: "",
+    previewRotateKey: "meta",
+    previewObjectFitKey: "default",
+    componentRotateKey: "meta",
+    componentObjectFitKey: "cover",
   };
 }
 
@@ -470,6 +562,30 @@ Page({
     });
   },
 
+  openPreviewRotatePicker: async function () {
+    const choice = await pickOption(ROTATE_OPTIONS, this.data.previewRotateKey || "meta");
+    if (!choice) return;
+    this.setData({ previewRotateKey: choice.key });
+  },
+
+  openPreviewObjectFitPicker: async function () {
+    const choice = await pickOption(OBJECT_FIT_OPTIONS, this.data.previewObjectFitKey || "default");
+    if (!choice) return;
+    this.setData({ previewObjectFitKey: choice.key });
+  },
+
+  openComponentRotatePicker: async function () {
+    const choice = await pickOption(ROTATE_OPTIONS, this.data.componentRotateKey || "meta");
+    if (!choice) return;
+    this.setData({ componentRotateKey: choice.key });
+  },
+
+  openComponentObjectFitPicker: async function () {
+    const choice = await pickOption(OBJECT_FIT_OPTIONS, this.data.componentObjectFitKey || "cover");
+    if (!choice) return;
+    this.setData({ componentObjectFitKey: choice.key });
+  },
+
   launchMediaDemo: async function () {
     if (this.data.mediaType === "scanCode") {
       this.startScan();
@@ -515,7 +631,11 @@ Page({
       // For video enforce single selection
       const finalList =
         this.data.mediaType === "video" ? mapped.slice(0, 1) : mapped;
-      this.setData({ selectedMedia: finalList });
+      const enrichedList =
+        this.data.mediaType === "video"
+          ? await enrichVideoItemsWithMetadata(finalList)
+          : finalList;
+      this.setData({ selectedMedia: enrichedList });
     } catch (error) {
       console.error("[media-demo] chooseMedia failed:", error);
       lx.showToast({
@@ -610,6 +730,18 @@ Page({
       path: target.path,
       type: target.type,
     };
+
+    const previewRotate = resolveRotateValue(this.data.previewRotateKey || "meta");
+    const previewObjectFit = resolveObjectFitValue(
+      this.data.previewObjectFitKey || "default",
+      "contain",
+    );
+    if (typeof previewRotate === "number") {
+      targetSource.rotate = previewRotate;
+    }
+    if (typeof previewObjectFit === "string") {
+      targetSource.objectFit = previewObjectFit;
+    }
 
     try {
       await lx.previewMedia({
@@ -905,8 +1037,23 @@ Page({
     }
 
     try {
+      const previewRotate = resolveRotateValue(this.data.previewRotateKey || "meta");
+      const previewObjectFit = resolveObjectFitValue(
+        this.data.previewObjectFitKey || "default",
+        "contain",
+      );
+      const source = {
+        path,
+        type: "video",
+      };
+      if (typeof previewObjectFit === "string") {
+        source.objectFit = previewObjectFit;
+      }
+      if (typeof previewRotate === "number") {
+        source.rotate = previewRotate;
+      }
       await lx.previewMedia({
-        sources: [{ path, type: "video" }],
+        sources: [source],
         current: 0,
       });
     } catch (error) {

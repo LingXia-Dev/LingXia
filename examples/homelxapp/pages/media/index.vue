@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-    <div class="px-4 py-6 space-y-5">
+    <div class="px-4 py-6 pb-16 space-y-5">
       <!-- Page Header -->
       <div class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
         <div class="space-y-3">
@@ -594,33 +594,74 @@
                 </div>
               </div>
 
-              <!-- Empty State -->
-              <div v-if="selectedMedia.length === 0" class="flex flex-col items-center justify-center py-12 text-center">
-                <p class="text-sm text-gray-500">{{ emptyHint }}</p>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="openPreviewRotatePicker"
+                >
+                  Preview Rotate: {{ previewRotateLabel }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="openPreviewObjectFitPicker"
+                >
+                  Preview Fit: {{ previewObjectFitLabel }}
+                </button>
+                <button
+                  v-if="!isPictureMode"
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="openComponentRotatePicker"
+                >
+                  Video Rotate: {{ componentRotateLabel }}
+                </button>
+                <button
+                  v-if="!isPictureMode"
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="openComponentObjectFitPicker"
+                >
+                  Video Fit: {{ componentObjectFitLabel }}
+                </button>
+              </div>
+              <div class="text-[11px] text-gray-500">
+                Preview Rotate/Fit applies to both images and videos.
+              </div>
+              <div v-if="!isPictureMode" class="text-[11px] text-gray-500">
+                Video Rotate/Fit applies to current and newly added videos.
               </div>
 
               <!-- Picture Tiles -->
-              <div v-else-if="isPictureMode" class="grid grid-cols-3 gap-3">
-                <button
+              <div v-if="selectedMedia.length > 0 && isPictureMode" class="grid grid-cols-2 gap-3">
+                <div
                   v-for="(item, index) in selectedMedia"
                   :key="`${item.path}-${index}`"
-                  type="button"
-                  class="group relative h-32 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 transition-all hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
-                  @click="previewSelectedMedia({ item })"
+                  class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
                 >
-                  <img :src="item.path" alt="" class="h-full w-full object-cover transition-transform group-hover:scale-110" />
-                  <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-                    <div class="text-[10px] text-white/90 truncate font-medium">Image {{ index + 1 }}</div>
+                  <div class="h-32 bg-gray-50">
+                    <img :src="item.path" alt="" class="h-full w-full object-cover" />
                   </div>
-                </button>
+                  <div class="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="text-xs font-medium text-gray-700">Image {{ index + 1 }}</div>
+                      <button
+                        @click="previewSelectedMedia({ item })"
+                        class="px-4 py-2 text-xs font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]"
+                      >
+                        Preview
+                      </button>
+                    </div>
+                  </div>
+                </div>
                 <!-- Add Button -->
                 <button
                   v-if="canAddMore"
                   type="button"
                   :disabled="isRunning"
                   :class="[
-                    'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-32',
+                    'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-24',
                     isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                   ]"
                   @click="launchMediaDemo"
@@ -631,19 +672,10 @@
               </div>
 
               <!-- Video Tiles -->
-              <div v-else class="space-y-4">
+              <div v-if="selectedMedia.length > 0 && !isPictureMode" class="space-y-4">
                 <div v-for="(item, index) in selectedMedia" :key="`video-${index}`" class="w-full bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                  <LxVideo
-                    :id="`media-video-${index}`"
-                    :src="item.path"
-                    controls
-                    autoplay
-                    muted
-                    loop
-                    :style="{ width: '100%', height: '224px', display: 'block', backgroundColor: 'black' }"
-                  />
                   <div class="px-5 py-4 bg-gradient-to-br from-gray-50 to-white">
-                    <div class="flex items-center justify-between gap-4">
+                    <div class="flex flex-col gap-3">
                       <div class="flex items-center gap-3 flex-1">
                         <div class="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
                           <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
@@ -652,17 +684,41 @@
                         </div>
                         <div>
                           <div class="text-sm font-semibold text-gray-800">Video {{ index + 1 }}</div>
-                          <div class="text-xs text-gray-500 mt-0.5">Tap to preview fullscreen</div>
+                          <div class="text-xs text-gray-500 mt-0.5">Tap Preview for fullscreen playback</div>
+                          <div
+                            v-if="item.displayWidth && item.displayHeight"
+                            class="text-[11px] text-gray-500 mt-0.5"
+                          >
+                            {{ item.displayWidth }} × {{ item.displayHeight }}
+                          </div>
                         </div>
                       </div>
                       <button
                         @click="previewSelectedMedia({ item })"
-                        class="px-5 py-3 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]"
+                        class="w-full px-5 py-3 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]"
                       >
                         Preview
                       </button>
                     </div>
                   </div>
+                  <LxVideo
+                    :id="`media-video-${index}`"
+                    :src="item.path"
+                    :rotate="componentRotateValue"
+                    :object-fit="componentObjectFitValue"
+                    controls
+                    autoplay
+                    muted
+                    loop
+                    :style="{
+                      width: '100%',
+                      display: 'block',
+                      backgroundColor: 'black',
+                      height: (item.displayWidth && item.displayHeight && item.displayHeight > item.displayWidth)
+                        ? '300px'
+                        : '220px'
+                    }"
+                  />
                 </div>
                 <!-- Add Video Button -->
                 <button
@@ -670,7 +726,7 @@
                   type="button"
                   :disabled="isRunning"
                   :class="[
-                    'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-48',
+                    'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all h-28',
                     isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                   ]"
                   @click="launchMediaDemo"
@@ -687,7 +743,7 @@
                 :disabled="isRunning"
                 :class="[
                   'group flex w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all',
-                  isPictureMode ? 'h-32' : 'h-48',
+                  isPictureMode ? 'h-24' : 'h-28',
                   isRunning ? 'cursor-not-allowed opacity-40 border-gray-200 bg-gray-50' : 'border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50 hover:border-blue-400 hover:from-blue-100 hover:to-indigo-100 active:scale-[0.98]'
                 ]"
                 @click="launchMediaDemo"
@@ -732,7 +788,29 @@ const DURATION_OPTIONS = [
   { key: '60', label: '60 seconds', value: 60 },
 ];
 
-type MediaItem = { path: string; type: 'image' | 'video' };
+const ROTATE_OPTIONS = [
+  { key: 'meta', label: 'Meta (Default)', value: undefined as number | undefined },
+  { key: '0', label: '0°', value: 0 },
+  { key: '90', label: '90°', value: 90 },
+  { key: '180', label: '180°', value: 180 },
+  { key: '270', label: '270°', value: 270 },
+];
+
+const OBJECT_FIT_OPTIONS = [
+  { key: 'default', label: 'Default (Optional)', value: undefined as string | undefined },
+  { key: 'contain', label: 'contain', value: 'contain' },
+  { key: 'cover', label: 'cover', value: 'cover' },
+  { key: 'fill', label: 'fill', value: 'fill' },
+  { key: 'fit', label: 'fit', value: 'fit' },
+];
+
+type MediaItem = {
+  path: string;
+  type: 'image' | 'video';
+  displayWidth?: number;
+  displayHeight?: number;
+  displayAspectRatio?: string;
+};
 type ImageInfoResult = { width?: number; height?: number; type?: string; path?: string; size?: number };
 type VideoInfoResult = {
   width?: number;
@@ -774,6 +852,10 @@ const {
   openCountPicker,
   openCameraPicker,
   openDurationPicker,
+  openPreviewRotatePicker,
+  openPreviewObjectFitPicker,
+  openComponentRotatePicker,
+  openComponentObjectFitPicker,
   openScanSourcePicker,
   openScanTypePicker,
   startScan,
@@ -831,7 +913,7 @@ const isScanMode = computed(() => mediaType.value === 'scanCode');
 const isVideoMode = computed(() => mediaType.value === 'video');
 
 const emptyHint = computed(() => data?.emptyHint || (isPictureMode.value ? 'Tap + to pick photos.' : 'Tap + to add a video.'));
-const previewHint = computed(() => data?.previewHint || (isPictureMode.value ? 'Tap a photo to preview.' : 'Tap the clip to preview.'));
+const previewHint = computed(() => data?.previewHint || 'Tap Preview to open media preview.');
 const headerSubtitle = computed(() => data?.headerSubtitle || 'choose/previewMedia');
 
 const scanResult = computed(() => typeof data?.scanResult === 'string' ? data.scanResult : '');
@@ -906,6 +988,20 @@ const videoCompressBusy = computed(() => Boolean(data?.videoCompressBusy));
 const videoCompressResult = computed<CompressVideoResult | null>(() => data?.videoCompressResult ?? null);
 const videoCompressError = computed(() => data?.videoCompressError || '');
 const saveToAlbumBusy = computed(() => Boolean(data?.saveToAlbumBusy));
+const previewRotateKey = computed(() => data?.previewRotateKey || ROTATE_OPTIONS[0].key);
+const previewObjectFitKey = computed(() => data?.previewObjectFitKey || OBJECT_FIT_OPTIONS[0].key);
+const componentRotateKey = computed(() => data?.componentRotateKey || ROTATE_OPTIONS[0].key);
+const componentObjectFitKey = computed(() => data?.componentObjectFitKey || 'cover');
+const previewRotateOption = computed(() => ROTATE_OPTIONS.find(o => o.key === previewRotateKey.value) || ROTATE_OPTIONS[0]);
+const previewObjectFitOption = computed(() => OBJECT_FIT_OPTIONS.find(o => o.key === previewObjectFitKey.value) || OBJECT_FIT_OPTIONS[0]);
+const componentRotateOption = computed(() => ROTATE_OPTIONS.find(o => o.key === componentRotateKey.value) || ROTATE_OPTIONS[0]);
+const componentObjectFitOption = computed(() => OBJECT_FIT_OPTIONS.find(o => o.key === componentObjectFitKey.value) || OBJECT_FIT_OPTIONS[0]);
+const previewRotateLabel = computed(() => previewRotateOption.value.label);
+const previewObjectFitLabel = computed(() => previewObjectFitOption.value.label);
+const componentRotateLabel = computed(() => componentRotateOption.value.label);
+const componentObjectFitLabel = computed(() => componentObjectFitOption.value.label);
+const componentRotateValue = computed(() => componentRotateOption.value.value);
+const componentObjectFitValue = computed(() => componentObjectFitOption.value.value);
 
 const settingRows = computed(() => {
   if (isScanMode.value || isImageInfoMode.value || isVideoToolsMode.value || isSaveToAlbumMode.value) return [];

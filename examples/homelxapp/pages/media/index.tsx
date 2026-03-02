@@ -29,9 +29,28 @@ const DURATION_OPTIONS = [
   { key: '60', label: '60 seconds', value: 60 },
 ];
 
+const ROTATE_OPTIONS = [
+  { key: 'meta', label: 'Meta (Default)', value: undefined as number | undefined },
+  { key: '0', label: '0°', value: 0 },
+  { key: '90', label: '90°', value: 90 },
+  { key: '180', label: '180°', value: 180 },
+  { key: '270', label: '270°', value: 270 },
+];
+
+const OBJECT_FIT_OPTIONS = [
+  { key: 'default', label: 'Default (Optional)', value: undefined as string | undefined },
+  { key: 'contain', label: 'contain', value: 'contain' },
+  { key: 'cover', label: 'cover', value: 'cover' },
+  { key: 'fill', label: 'fill', value: 'fill' },
+  { key: 'fit', label: 'fit', value: 'fit' },
+];
+
 type MediaItem = {
   path: string;
   type: 'image' | 'video';
+  displayWidth?: number;
+  displayHeight?: number;
+  displayAspectRatio?: string;
 };
 
 type ImageInfoResult = {
@@ -128,6 +147,10 @@ type PageData = {
   saveToAlbumBusy?: boolean;
   saveToAlbumResult?: string;
   saveToAlbumError?: string;
+  previewRotateKey?: string;
+  previewObjectFitKey?: string;
+  componentRotateKey?: string;
+  componentObjectFitKey?: string;
 };
 
 type PageActions = {
@@ -138,6 +161,10 @@ type PageActions = {
   openCountPicker?(): void;
   openCameraPicker?(): void;
   openDurationPicker?(): void;
+  openPreviewRotatePicker?(): void;
+  openPreviewObjectFitPicker?(): void;
+  openComponentRotatePicker?(): void;
+  openComponentObjectFitPicker?(): void;
   openScanSourcePicker?(): void;
   openScanTypePicker?(): void;
   startScan?(): void;
@@ -327,12 +354,6 @@ const Input: React.FC<{
   </div>
 );
 
-const EmptyState: React.FC<{ message: string }> = ({ message }) => (
-  <div className="flex flex-col items-center justify-center py-12 text-center">
-    <p className="text-sm text-gray-500">{message}</p>
-  </div>
-);
-
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -350,6 +371,10 @@ export default function MediaPage() {
     openCountPicker,
     openCameraPicker,
     openDurationPicker,
+    openPreviewRotatePicker,
+    openPreviewObjectFitPicker,
+    openComponentRotatePicker,
+    openComponentObjectFitPicker,
     openScanSourcePicker,
     openScanTypePicker,
     startScan,
@@ -410,7 +435,7 @@ export default function MediaPage() {
   const isScanMode = mediaType === 'scanCode';
 
   const emptyHint = data?.emptyHint || (isPictureMode ? 'Tap + to pick photos.' : 'Tap + to add a video.');
-  const previewHint = data?.previewHint || (isPictureMode ? 'Tap a photo to preview.' : 'Tap the clip to preview.');
+  const previewHint = data?.previewHint || 'Tap Preview to open media preview.';
   const headerSubtitle = data?.headerSubtitle || 'choose/previewMedia';
 
   const scanResult = (typeof data?.scanResult === 'string') ? data?.scanResult : '';
@@ -478,6 +503,16 @@ export default function MediaPage() {
   const compressResult = data?.compressResult || null;
   const compressError = data?.compressError || '';
   const saveToAlbumBusy = Boolean(data?.saveToAlbumBusy);
+  const previewRotateKey = data?.previewRotateKey || ROTATE_OPTIONS[0].key;
+  const previewObjectFitKey = data?.previewObjectFitKey || OBJECT_FIT_OPTIONS[0].key;
+  const componentRotateKey = data?.componentRotateKey || ROTATE_OPTIONS[0].key;
+  const componentObjectFitKey = data?.componentObjectFitKey || 'cover';
+  const previewRotateOption = ROTATE_OPTIONS.find((option) => option.key === previewRotateKey) || ROTATE_OPTIONS[0];
+  const previewObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === previewObjectFitKey) || OBJECT_FIT_OPTIONS[0];
+  const componentRotateOption = ROTATE_OPTIONS.find((option) => option.key === componentRotateKey) || ROTATE_OPTIONS[0];
+  const componentObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === componentObjectFitKey) || OBJECT_FIT_OPTIONS[0];
+  const componentRotateValue = componentRotateOption.value;
+  const componentObjectFitValue = componentObjectFitOption.value;
 
   const handleChoose = React.useCallback(() => {
     if (!isRunning && canAddMore) {
@@ -493,7 +528,7 @@ export default function MediaPage() {
   );
 
   const renderAddTile = () => {
-    const baseClass = isPictureMode ? 'h-32' : 'h-48';
+    const baseClass = isPictureMode ? 'h-24' : 'h-28';
     const disabled = isRunning || !canAddMore;
 
     return (
@@ -519,31 +554,34 @@ export default function MediaPage() {
 
   const renderPictureTiles = () => {
     const tiles: React.ReactNode[] = selectedMedia.map((item, index) => (
-      <button
-        type="button"
-        key={`${item.path}-${index}`}
-        className="group relative h-32 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 transition-all hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
-        onClick={() => handlePreview(item)}
-      >
-        <img
-          src={item.path}
-          alt=""
-          className="h-full w-full object-cover transition-transform group-hover:scale-110"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-3 py-2">
-          <div className="text-[10px] text-white/90 truncate font-medium">
-            Image {index + 1}
+      <Card key={`${item.path}-${index}`} noPadding className="overflow-hidden">
+        <div className="h-32 bg-gray-50">
+          <img
+            src={item.path}
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        </div>
+        <div className="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-gray-700">Image {index + 1}</div>
+            <Button
+              onClick={() => handlePreview(item)}
+              variant="primary"
+              size="sm"
+            >
+              Preview
+            </Button>
           </div>
         </div>
-      </button>
+      </Card>
     ));
 
     if (canAddMore) {
       tiles.push(<div key="add">{renderAddTile()}</div>);
     }
 
-    return <div className="grid grid-cols-3 gap-3">{tiles}</div>;
+    return <div className="grid grid-cols-2 gap-3">{tiles}</div>;
   };
 
   const renderVideoTiles = () => {
@@ -551,17 +589,8 @@ export default function MediaPage() {
       <div className="space-y-4">
         {selectedMedia.map((item, index) => (
           <Card key={`video-${index}`} noPadding className="overflow-hidden">
-            <LxVideo
-              id={`media-video-${index}`}
-              src={item.path}
-              controls
-              autoplay
-              muted
-              loop
-              style={{ width: '100%', height: '224px', display: 'block', backgroundColor: 'black' }}
-            />
             <div className="px-5 py-4 bg-gradient-to-br from-gray-50 to-white">
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-col gap-3">
                 <div className="flex items-center gap-3 flex-1">
                   <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50">
                     <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
@@ -570,18 +599,43 @@ export default function MediaPage() {
                   </div>
                   <div>
                     <div className="text-sm font-semibold text-gray-800">Video {index + 1}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Tap to preview fullscreen</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Tap Preview for fullscreen playback</div>
+                    {item.displayWidth && item.displayHeight ? (
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        {item.displayWidth} × {item.displayHeight}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <Button
                   onClick={() => handlePreview(item)}
                   variant="primary"
                   size="md"
+                  fullWidth
                 >
                   Preview
                 </Button>
               </div>
             </div>
+            <LxVideo
+              id={`media-video-${index}`}
+              src={item.path}
+              rotate={componentRotateValue}
+              objectFit={componentObjectFitValue}
+              controls
+              autoplay
+              muted
+              loop
+              style={{
+                width: '100%',
+                display: 'block',
+                backgroundColor: 'black',
+                height:
+                  item.displayWidth && item.displayHeight && item.displayHeight > item.displayWidth
+                    ? '300px'
+                    : '220px',
+              }}
+            />
           </Card>
         ))}
         {canAddMore ? renderAddTile() : null}
@@ -1089,7 +1143,7 @@ export default function MediaPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="px-4 py-6 space-y-5">
+      <div className="px-4 py-6 pb-16 space-y-5">
         <PageHeader
           title={pageInfo.title}
           subtitle={pageInfo.subtitle}
@@ -1130,9 +1184,50 @@ export default function MediaPage() {
                     )}
                   </div>
 
-                  {selectedMedia.length === 0 ? (
-                    <EmptyState message={emptyHint} />
-                  ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      onClick={() => openPreviewRotatePicker?.()}
+                    >
+                      Preview Rotate: {previewRotateOption.label}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      onClick={() => openPreviewObjectFitPicker?.()}
+                    >
+                      Preview Fit: {previewObjectFitOption.label}
+                    </button>
+                    {!isPictureMode && (
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                        onClick={() => openComponentRotatePicker?.()}
+                      >
+                        Video Rotate: {componentRotateOption.label}
+                      </button>
+                    )}
+                    {!isPictureMode && (
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                        onClick={() => openComponentObjectFitPicker?.()}
+                      >
+                        Video Fit: {componentObjectFitOption.label}
+                      </button>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Preview Rotate/Fit applies to both images and videos.
+                  </div>
+                  {!isPictureMode && (
+                    <div className="text-[11px] text-gray-500">
+                      Video Rotate/Fit applies to current and newly added videos.
+                    </div>
+                  )}
+
+                  {selectedMedia.length > 0 && (
                     isPictureMode ? renderPictureTiles() : renderVideoTiles()
                   )}
 
