@@ -305,19 +305,38 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
 
 /// Notify that LxApp was opened
 #[napi]
-pub fn on_lxapp_opened(appid: String, path: String) -> String {
+pub fn on_lxapp_opened(appid: String, path: String, session_id: Option<i64>) -> String {
     lxapp::try_get(&appid)
-        .map(|lxapp| lxapp.on_lxapp_opened(path))
+        .map(|lxapp| {
+            let session_id = session_id.unwrap_or_default();
+            let session_id = if session_id <= 0 {
+                lxapp.session_id()
+            } else {
+                session_id as u64
+            };
+            lxapp.on_lxapp_opened(path, session_id)
+        })
         .unwrap_or_default()
 }
 
 /// Notify that LxApp was closed
 #[napi]
-pub fn on_lxapp_closed(appid: String) -> i32 {
+pub fn on_lxapp_closed(appid: String, session_id: Option<i64>) -> bool {
     if let Some(lxapp) = lxapp::try_get(&appid) {
-        lxapp.on_lxapp_closed();
+        let session_id = session_id.unwrap_or_default();
+        let callback_session = if session_id <= 0 {
+            lxapp.session_id()
+        } else {
+            session_id as u64
+        };
+        let current_session = lxapp.session_id();
+        if callback_session != current_session {
+            return false;
+        }
+        lxapp.on_lxapp_closed(callback_session);
+        return true;
     }
-    0
+    false
 }
 
 /// Notify that a page is being shown

@@ -434,7 +434,12 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
+    fn show_lxapp(
+        &self,
+        appid: String,
+        path: String,
+        session_id: u64,
+    ) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
@@ -444,10 +449,11 @@ impl AppRuntime for Platform {
             env.call_static_method(
                 lxapp_class,
                 jni_str!("openLxApp"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
                 &[
                     JValue::Object(&appid_jstring),
                     JValue::Object(&path_jstring),
+                    JValue::Long(session_id as i64),
                 ],
             )?;
             Ok(())
@@ -455,7 +461,7 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
     }
 
-    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
@@ -463,8 +469,11 @@ impl AppRuntime for Platform {
             env.call_static_method(
                 lxapp_class,
                 jni_str!("closeLxApp"),
-                jni_sig!("(Ljava/lang/String;)V"),
-                &[JValue::Object(&appid_jstring)],
+                jni_sig!("(Ljava/lang/String;J)V"),
+                &[
+                    JValue::Object(&appid_jstring),
+                    JValue::Long(session_id as i64),
+                ],
             )?;
             Ok(())
         })

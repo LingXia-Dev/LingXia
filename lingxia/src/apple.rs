@@ -104,7 +104,7 @@ mod bridge {
         fn on_page_show(appid: &str, path: &str);
 
         #[swift_bridge(swift_name = "onLxappClosed")]
-        fn on_lxapp_closed(appid: &str) -> i32;
+        fn on_lxapp_closed(appid: &str, session_id: u64) -> i32;
 
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
@@ -122,10 +122,10 @@ mod bridge {
         fn on_ui_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
 
         #[swift_bridge(swift_name = "onLxappOpened")]
-        fn on_lxapp_opened(appid: &str, path: &str) -> String;
+        fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String;
 
         #[swift_bridge(swift_name = "findWebView")]
-        fn find_webview(appid: &str, path: &str) -> usize;
+        fn find_webview(appid: &str, path: &str, session_id: u64) -> usize;
 
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
@@ -256,9 +256,14 @@ pub fn resolve_lx_uri(appid: &str, input: &str) -> Option<String> {
 }
 
 /// Notify that LxApp was closed
-pub fn on_lxapp_closed(appid: &str) -> i32 {
+pub fn on_lxapp_closed(appid: &str, session_id: u64) -> i32 {
     if let Some(lxapp) = lxapp::try_get(appid) {
-        lxapp.on_lxapp_closed();
+        let session_id = if session_id == 0 {
+            lxapp.session_id()
+        } else {
+            session_id
+        };
+        lxapp.on_lxapp_closed(session_id);
     }
     0
 }
@@ -288,18 +293,30 @@ pub fn get_current_lxapp() -> self::bridge::CurrentLxApp {
 }
 
 /// Notify that LxApp was opened
-pub fn on_lxapp_opened(appid: &str, path: &str) -> String {
+pub fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String {
     lxapp::try_get(appid)
-        .map(|lxapp| lxapp.on_lxapp_opened(path.to_string()))
+        .map(|lxapp| {
+            let session_id = if session_id == 0 {
+                lxapp.session_id()
+            } else {
+                session_id
+            };
+            lxapp.on_lxapp_opened(path.to_string(), session_id)
+        })
         .unwrap_or_default()
 }
 
 /// Find a WebView for the specified app and path
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
-pub fn find_webview(appid: &str, path: &str) -> usize {
+pub fn find_webview(appid: &str, path: &str, session_id: u64) -> usize {
     // Create WebTag and use lingxia-webview's find_webview function
-    let webtag = lingxia_webview::WebTag::new(appid, path, None);
+    let session = if session_id == 0 {
+        lxapp::try_get(appid).map(|app| app.session_id())
+    } else {
+        Some(session_id)
+    };
+    let webtag = lingxia_webview::WebTag::new(appid, path, session);
     if let Some(webview) = lingxia_webview::find_webview(&webtag) {
         // WebView exists, return its pointer
         webview.get_swift_webview_ptr()

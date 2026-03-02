@@ -203,12 +203,18 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
+    session_id: jlong,
 ) -> JObject<'a> {
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
 
-        let webtag = lingxia_webview::WebTag::new(&appid, &path, None);
+        let session = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            lxapp::try_get(&appid).map(|app| app.session_id())
+        };
+        let webtag = lingxia_webview::WebTag::new(&appid, &path, session);
         if let Some(webview) = lingxia_webview::find_webview(&webtag) {
             // Get direct access to the WebView and create a new local reference to the Java WebView object
             match env.new_local_ref(webview.get_java_webview()) {
@@ -233,15 +239,20 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppClosed(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
+    session_id: jlong,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
-
         let Some(lxapp) = lxapp::try_get(&appid) else {
             warn!("Received close event for unknown lxapp: {}", appid);
             return Ok(0);
         };
-        lxapp.on_lxapp_closed();
+        let session_id = if session_id > 0 {
+            session_id as u64
+        } else {
+            lxapp.session_id()
+        };
+        lxapp.on_lxapp_closed(session_id);
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -444,13 +455,20 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
     _class: JClass<'a>,
     appid: JString<'a>,
     path: JString<'a>,
+    session_id: jlong,
 ) -> JString<'a> {
     env.with_env(|env| -> Result<JString, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
-
         let resolved_path = lxapp::try_get(&appid)
-            .map(|lxapp| lxapp.on_lxapp_opened(path))
+            .map(|lxapp| {
+                let session_id = if session_id > 0 {
+                    session_id as u64
+                } else {
+                    lxapp.session_id()
+                };
+                lxapp.on_lxapp_opened(path, session_id)
+            })
             .unwrap_or_default();
 
         match env.new_string(&resolved_path) {

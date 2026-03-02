@@ -83,24 +83,29 @@ impl AppRuntime for Platform {
         &self.locale
     }
 
-    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError> {
-        if ffi::open_lxapp(&appid, &path) {
+    fn show_lxapp(
+        &self,
+        appid: String,
+        path: String,
+        session_id: u64,
+    ) -> Result<(), PlatformError> {
+        if ffi::open_lxapp(&appid, &path, session_id) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to show lxapp: appid={}, path={}",
-                appid, path
+                "Failed to show lxapp: appid={}, path={}, session_id={}",
+                appid, path, session_id
             )))
         }
     }
 
-    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError> {
-        if ffi::close_lxapp(&appid) {
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
+        if ffi::close_lxapp(&appid, session_id) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to hide lxapp: appid={}",
-                appid
+                "Failed to hide lxapp: appid={}, session_id={}",
+                appid, session_id
             )))
         }
     }

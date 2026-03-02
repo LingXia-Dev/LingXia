@@ -81,10 +81,11 @@ pub trait AppRuntime:
     fn get_system_locale(&self) -> &str;
 
     /// Show the UI container for the given LxApp and route.
-    fn show_lxapp(&self, appid: String, path: String) -> Result<(), PlatformError>;
+    fn show_lxapp(&self, appid: String, path: String, session_id: u64)
+    -> Result<(), PlatformError>;
 
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
-    fn hide_lxapp(&self, appid: String) -> Result<(), PlatformError>;
+    fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;
 
     /// Navigates within the given LxApp using an animation.
     fn navigate(
