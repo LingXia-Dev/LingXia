@@ -77,6 +77,7 @@ enum SidebarGroupColor {
 private class SidebarGroupHeaderView: NSView {
     var closeButton: NSButton?
     var onHeaderClicked: (() -> Void)?
+    var onRightClick: ((NSEvent) -> Void)?
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         // point is in superview's coordinate system → check against frame, not bounds
@@ -91,6 +92,10 @@ private class SidebarGroupHeaderView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onHeaderClicked?()
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        onRightClick?(event)
     }
 }
 
@@ -108,7 +113,7 @@ class SidebarGroupView: NSView {
         static let groupInset: CGFloat = 8
         static let headerHPadding: CGFloat = 8
         static let chevronSize: CGFloat = 10
-        static let closeButtonSize: CGFloat = 14
+        static let closeButtonSize: CGFloat = 16
         static let connectorLineWidth: CGFloat = 1.5
         static let itemTopPadding: CGFloat = 4
     }
@@ -130,7 +135,9 @@ class SidebarGroupView: NSView {
     private var itemsHeightConstraint: NSLayoutConstraint?
     private var connectorHeightConstraint: NSLayoutConstraint?
     private var headerTrackingArea: NSTrackingArea?
+    private var closeButtonTrackingArea: NSTrackingArea?
     private var isHeaderHovered = false
+    private var isCloseHovered = false
 
     var onPageSelected: ((String, Int) -> Void)?
     var onCloseRequested: ((String) -> Void)?
@@ -180,6 +187,9 @@ class SidebarGroupView: NSView {
         headerView.onHeaderClicked = { [weak self] in
             self?.toggleExpanded()
         }
+        headerView.onRightClick = { [weak self] event in
+            self?.showContextMenu(with: event)
+        }
         addSubview(headerView)
 
         // App name (left-aligned in header)
@@ -201,6 +211,8 @@ class SidebarGroupView: NSView {
         closeButton.isBordered = false
         closeButton.bezelStyle = .regularSquare
         closeButton.imagePosition = .imageOnly
+        closeButton.wantsLayer = true
+        closeButton.layer?.cornerRadius = Layout.closeButtonSize / 2
         closeButton.target = self
         closeButton.action = #selector(closeClicked)
         closeButton.isHidden = true
@@ -388,31 +400,125 @@ class SidebarGroupView: NSView {
         if let existing = headerTrackingArea {
             headerView.removeTrackingArea(existing)
         }
-        let area = NSTrackingArea(
+        let headerArea = NSTrackingArea(
             rect: headerView.bounds,
             options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
             owner: self,
-            userInfo: ["isHeader": true]
+            userInfo: ["zone": "header"]
         )
-        headerView.addTrackingArea(area)
-        headerTrackingArea = area
+        headerView.addTrackingArea(headerArea)
+        headerTrackingArea = headerArea
+
+        if let existing = closeButtonTrackingArea {
+            closeButton.removeTrackingArea(existing)
+        }
+        let closeArea = NSTrackingArea(
+            rect: closeButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: ["zone": "close"]
+        )
+        closeButton.addTrackingArea(closeArea)
+        closeButtonTrackingArea = closeArea
     }
 
     override func mouseEntered(with event: NSEvent) {
-        if event.trackingArea?.userInfo?["isHeader"] as? Bool == true {
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "header" {
             isHeaderHovered = true
             let isHome = LxAppCore.isHomeLxApp(appId)
             if !isHome {
                 closeButton.isHidden = false
             }
+        } else if zone == "close" {
+            isCloseHovered = true
+            closeButton.layer?.backgroundColor = palette.headerText.withAlphaComponent(0.15).cgColor
         }
     }
 
     override func mouseExited(with event: NSEvent) {
-        if event.trackingArea?.userInfo?["isHeader"] as? Bool == true {
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "header" {
             isHeaderHovered = false
+            isCloseHovered = false
             closeButton.isHidden = true
+            closeButton.layer?.backgroundColor = nil
+        } else if zone == "close" {
+            isCloseHovered = false
+            closeButton.layer?.backgroundColor = nil
         }
+    }
+
+    // MARK: - Context menu
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        let info = getLxAppInfo(appId)
+        let appName = info.app_name.toString()
+        let version = info.version.toString()
+        let releaseType = info.release_type.toString()
+
+        // App info header (disabled item)
+        var headerTitle = "\(appName) v\(version)"
+        switch releaseType.lowercased() {
+        case "developer": headerTitle += " [DEV]"
+        case "preview": headerTitle += " [PRE]"
+        default: break
+        }
+        let headerItem = NSMenuItem(title: headerTitle, action: nil, keyEquivalent: "")
+        headerItem.isEnabled = false
+        menu.addItem(headerItem)
+        menu.addItem(NSMenuItem.separator())
+
+        // Restart
+        let restartItem = NSMenuItem(
+            title: L10n.string("lx_capsule_restart"),
+            action: #selector(contextMenuRestart),
+            keyEquivalent: ""
+        )
+        restartItem.target = self
+        menu.addItem(restartItem)
+
+        // Clean Cache & Restart
+        let cleanItem = NSMenuItem(
+            title: L10n.string("lx_capsule_clean_cache"),
+            action: #selector(contextMenuCleanCache),
+            keyEquivalent: ""
+        )
+        cleanItem.target = self
+        menu.addItem(cleanItem)
+
+        // Uninstall (only for non-home lxapps)
+        if !LxAppCore.isHomeLxApp(appId) {
+            menu.addItem(NSMenuItem.separator())
+            let uninstallItem = NSMenuItem(
+                title: L10n.string("lx_capsule_uninstall"),
+                action: #selector(contextMenuUninstall),
+                keyEquivalent: ""
+            )
+            uninstallItem.target = self
+            menu.addItem(uninstallItem)
+        }
+
+        return menu
+    }
+
+    private func showContextMenu(with event: NSEvent) {
+        let menu = buildContextMenu()
+        NSMenu.popUpContextMenu(menu, with: event, for: headerView)
+    }
+
+    @objc private func contextMenuRestart() {
+        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "restart")
+    }
+
+    @objc private func contextMenuCleanCache() {
+        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "clean_cache_restart")
+    }
+
+    @objc private func contextMenuUninstall() {
+        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "uninstall")
     }
 }
 
