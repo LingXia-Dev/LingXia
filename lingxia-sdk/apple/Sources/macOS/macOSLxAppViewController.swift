@@ -1,50 +1,16 @@
 #if os(macOS)
 import Foundation
 import WebKit
-import os.log
 import AppKit
-import SwiftUI
 import CLingXiaRustAPI
-
-private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppView")
 
 @MainActor
 public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
-    nonisolated private static let log = lxAppViewControllerLog
 
-    private var currentTopMargin: CGFloat = 0
-
-    private func getTopMargin() -> CGFloat {
-        return currentTopMargin
-    }
-
-    internal func updateTopMargin(_ newMargin: CGFloat) {
-        currentTopMargin = newMargin
-        refreshWebViewLayout()
-    }
-
-    private func refreshWebViewLayout() {
-        guard let webViewContainer = webViewContainer else { return }
-
-        view.removeConstraints(view.constraints.filter { constraint in
-            constraint.firstItem === webViewContainer && constraint.firstAttribute == .top
-        })
-
-        NSLayoutConstraint.activate([
-            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: currentTopMargin)
-        ])
-
-        view.needsLayout = true
-        view.layoutSubtreeIfNeeded()
-    }
-
-    // Properties
     public var appId: String
     internal var currentPath: String
     private var sessionId: UInt64
     private var webViewContainer: NSView!
-    internal var selectedTabIndex: Int = 0
-    public var isDestroyed: Bool = false
     private var pullToRefreshHelper: MacPullToRefreshHelper?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
@@ -54,14 +20,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         self.currentPath = path
         self.sessionId = sessionId
         super.init(nibName: nil, bundle: nil)
-
-        // Initialize top margin based on current page
-        self.currentTopMargin = calculateInitialTopMargin()
-    }
-
-    private func calculateInitialTopMargin() -> CGFloat {
-        // Tab style: 0pt - tab bar handles layout
-        return 0
     }
 
     required init?(coder: NSCoder) {
@@ -75,7 +33,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
     }
 
     public override func viewDidLoad() {
@@ -86,15 +44,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         loadWebViewContent()
     }
 
-    // UI Setup
+    // MARK: - UI Setup
+
     private func setupLayout() {
         view.wantsLayer = true
-        view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
 
         setupWebViewContainer()
 
         NSLayoutConstraint.activate([
-            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
+            webViewContainer.topAnchor.constraint(equalTo: view.topAnchor),
             webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -111,6 +70,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webViewContainer)
     }
+
+    // MARK: - WebView
 
     private func loadWebViewContent() {
         if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
@@ -149,6 +110,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         pullToRefreshHelper?.endRefreshing()
     }
 
+    // MARK: - Notifications
+
     private func setupNotificationObservers() {
         closeAppObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name(ACTION_CLOSE_LXAPP), object: nil, queue: .main
@@ -156,18 +119,18 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             let appId = notification.userInfo?["appId"] as? String
             Task { @MainActor in
                 guard let self = self, let targetAppId = appId, targetAppId == self.appId else { return }
-
                 self.view.window?.close()
             }
         }
     }
+
+    // MARK: - Navigation
 
     @MainActor
     public func navigate(appId: String, to path: String, with animationType: AnimationType) {
         guard !appId.isEmpty else { return }
 
         self.currentPath = path
-
         updateNavigationBar(appId: appId, path: path)
 
         if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
@@ -175,10 +138,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
 
         LxAppCore.setCurrentPath(path)
-    }
-
-    public func setSelectedTabIndex(_ index: Int) {
-        selectedTabIndex = index
     }
 
     internal func updateSessionId(_ value: UInt64) {
@@ -191,6 +150,8 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     public func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
+
+    // MARK: - Native Components
 
     @MainActor
     func pauseNativeComponents() {
@@ -213,6 +174,5 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 }
-
 
 #endif

@@ -14,13 +14,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public struct Layout {
         static let sidebarWidth: CGFloat = 240
         static let minSidebarWidth: CGFloat = 48
-        static let toolbarHeight: CGFloat = 38
     }
 
     private let tabManager = LxAppTabManager.shared
     private var sidebarView: SidebarView?
     private var navigationToolbar: MacNavigationToolbar?
-    private var rightContainer: NSView?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private var currentViewController: macOSLxAppViewController?
@@ -124,11 +122,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
-        // Create right container
+        // Create content container (right of sidebar)
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
-        rightContainer = right
         contentView.addSubview(right)
 
         // Create navigation toolbar
