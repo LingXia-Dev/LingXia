@@ -6,6 +6,10 @@ Page({
     networkInfo: null,
     networkChange: null,
     networkListening: false,
+    orientationListening: false,
+    deviceOrientationValue: "",
+    orientationEvents: [],
+    orientationLock: "",
   },
 
   onLoad: async function (options) {
@@ -24,10 +28,12 @@ Page({
   onHide: function () {
     console.log("Device page onHide");
     this.stopNetworkChangeListen();
+    this.stopDeviceOrientationListen();
   },
 
   onUnload: function () {
     this.stopNetworkChangeListen();
+    this.stopDeviceOrientationListen();
   },
 
   // Get device information
@@ -123,5 +129,79 @@ Page({
     lx.offNetworkChange(this._networkChangeHandler);
     this._networkChangeHandler = null;
     this.setData({ networkListening: false });
+  },
+
+  appendOrientationEvent: function (value) {
+    const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
+    const timestamp = new Date().toISOString();
+    const eventText = `${timestamp}  ${orientationValue}`;
+    const currentEvents = Array.isArray(this.data.orientationEvents) ? this.data.orientationEvents : [];
+    const nextEvents = [eventText, ...currentEvents].slice(0, 20);
+
+    this.setData({
+      orientationEvents: nextEvents,
+      deviceOrientationValue: orientationValue,
+    });
+  },
+
+  setOrientationPortrait: async function () {
+    try {
+      await lx.setDeviceOrientation("portrait");
+      this.setData({ orientationLock: "portrait" });
+    } catch (error) {
+      console.error("Failed to set portrait orientation:", error);
+      lx.showToast({ title: error.message, icon: "none" });
+    }
+  },
+
+  setOrientationLandscape: async function () {
+    try {
+      await lx.setDeviceOrientation("landscape");
+      this.setData({ orientationLock: "landscape" });
+    } catch (error) {
+      console.error("Failed to set landscape orientation:", error);
+      lx.showToast({ title: error.message, icon: "none" });
+    }
+  },
+
+  startDeviceOrientationListen: function () {
+    if (this._deviceOrientationHandler) {
+      return;
+    }
+
+    const handler = (event) => {
+      this.appendOrientationEvent(event?.value);
+    };
+
+    this._deviceOrientationHandler = handler;
+    try {
+      lx.onDeviceOrientationChange(handler);
+      this.setData({ orientationListening: true });
+    } catch (error) {
+      this._deviceOrientationHandler = null;
+      console.error("Failed to start device orientation listener:", error);
+      lx.showToast({ title: error.message, icon: "none" });
+    }
+  },
+
+  stopDeviceOrientationListen: function () {
+    if (!this._deviceOrientationHandler) {
+      return;
+    }
+
+    try {
+      lx.offDeviceOrientationChange(this._deviceOrientationHandler);
+    } catch (error) {
+      console.error("Failed to stop device orientation listener:", error);
+    }
+
+    this._deviceOrientationHandler = null;
+    this.setData({ orientationListening: false });
+  },
+
+  clearOrientationEvents: function () {
+    this.setData({
+      orientationEvents: [],
+    });
   },
 });

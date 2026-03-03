@@ -13,6 +13,11 @@ export default function DevicePage() {
     getNetworkInfo,
     startNetworkChangeListen,
     stopNetworkChangeListen,
+    setOrientationPortrait,
+    setOrientationLandscape,
+    startDeviceOrientationListen,
+    stopDeviceOrientationListen,
+    clearOrientationEvents,
   } = useLingXia();
 
   const {
@@ -22,7 +27,12 @@ export default function DevicePage() {
     networkInfo = null,
     networkChange = null,
     networkListening = false,
+    orientationListening = false,
+    deviceOrientationValue = '--',
+    orientationEvents = [],
+    orientationLock = '--',
   } = data;
+  const orientationEventLines = Array.isArray(orientationEvents) ? orientationEvents : [];
   const [phoneNumber, setPhoneNumber] = React.useState('');
 
   React.useEffect(() => {
@@ -311,6 +321,80 @@ export default function DevicePage() {
     </>
   );
 
+  const renderOrientationSection = () => (
+    <>
+      <div className="mb-6 text-center">
+        <h1 className="text-2xl font-light text-gray-800 mb-2">Device Orientation</h1>
+        <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
+      </div>
+
+      <div className="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-50 to-indigo-50">
+              <span className="text-xl">🧭</span>
+            </div>
+            <div>
+              <div className="text-sm text-gray-800 font-semibold">setDeviceOrientation / onDeviceOrientationChange</div>
+              <div className="text-xs text-gray-500 mt-0.5">Lock orientation and listen device orientation changes</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={setOrientationPortrait}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-violet-600 to-violet-500 hover:from-violet-500 hover:to-violet-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Lock Portrait
+            </button>
+            <button
+              onClick={setOrientationLandscape}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Lock Landscape
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={startDeviceOrientationListen}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Start Listen
+            </button>
+            <button
+              onClick={stopDeviceOrientationListen}
+              className="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Stop Listen
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <InfoRow label="Listening" value={orientationListening ? 'Yes' : 'No'} />
+            <InfoRow label="Lock Target" value={orientationLock || '--'} />
+            <InfoRow label="Current Value" value={deviceOrientationValue || '--'} />
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-semibold text-gray-700">Orientation Events</h4>
+              <button
+                onClick={clearOrientationEvents}
+                className="px-3 py-1.5 text-xs font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-lg shadow-sm active:scale-[0.98]"
+              >
+                Clear Logs
+              </button>
+            </div>
+            <div className="text-xs text-gray-700 bg-white border border-gray-200 rounded-lg p-3 max-h-56 overflow-auto whitespace-pre-wrap break-all">
+              {orientationEventLines.length ? orientationEventLines.join('\n') : '--'}
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="px-4 py-6">
@@ -321,8 +405,9 @@ export default function DevicePage() {
         {currentType === 'networkType' && renderNetworkTypeSection()}
         {currentType === 'localIP' && renderLocalIPSection()}
         {currentType === 'networkStatus' && renderNetworkStatusSection()}
+        {currentType === 'orientation' && renderOrientationSection()}
 
-        {!['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus'].includes(currentType) && renderDeviceInfoSection()}
+        {!['device', 'screen', 'vibrate', 'dial', 'networkType', 'localIP', 'networkStatus', 'orientation'].includes(currentType) && renderDeviceInfoSection()}
       </div>
     </div>
   );
