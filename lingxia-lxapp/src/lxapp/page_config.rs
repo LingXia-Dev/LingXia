@@ -2,6 +2,7 @@ use crate::lxapp::LxApp;
 use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState};
 use crate::warn;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 /// Page orientation configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -165,28 +166,55 @@ pub struct PageConfig {
     #[serde(default)]
     pub enable_pull_down_refresh: bool,
 
-    /// Legacy page orientation
+    /// Page orientation override
     #[serde(default)]
     pub page_orientation: Option<PageOrientation>,
-
-    /// Orientation overrides
-    #[serde(default)]
-    pub orientation: OrientationOverride,
 }
 
 impl PageConfig {
+    fn parse_page_orientation_value(value: &Value) -> Option<PageOrientation> {
+        let raw = value.as_str()?;
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "auto" => Some(PageOrientation::Auto),
+            "portrait" => Some(PageOrientation::Portrait),
+            "landscape" => Some(PageOrientation::Landscape),
+            _ => None,
+        }
+    }
+
+    fn sanitize_page_orientation(path: &str, json_value: &mut Value) {
+        let Some(obj) = json_value.as_object_mut() else {
+            return;
+        };
+
+        let Some(raw_orientation) = obj.get("pageOrientation").cloned() else {
+            return;
+        };
+
+        if Self::parse_page_orientation_value(&raw_orientation).is_none() {
+            warn!(
+                "Ignoring invalid pageOrientation for {}: {:?}",
+                path, raw_orientation
+            );
+            obj.remove("pageOrientation");
+        }
+    }
+
     /// Create PageConfig from JSON config file path
     /// This is the single entry point for loading page configuration.
     pub fn from_json(lxapp: &LxApp, path: &str) -> Self {
         let json_path = path_to_json_path(path);
         match lxapp.read_json(&json_path) {
-            Ok(json_value) => match serde_json::from_value::<PageConfig>(json_value) {
-                Ok(config) => config,
-                Err(e) => {
-                    warn!("Failed to parse page config for {}: {}", path, e);
-                    Self::default()
+            Ok(mut json_value) => {
+                Self::sanitize_page_orientation(path, &mut json_value);
+                match serde_json::from_value::<PageConfig>(json_value) {
+                    Ok(config) => config,
+                    Err(e) => {
+                        warn!("Failed to parse page config for {}: {}", path, e);
+                        Self::default()
+                    }
                 }
-            },
+            }
             Err(e) => {
                 warn!(
                     "Page config read failed for {} ({}); falling back to default",
@@ -211,9 +239,12 @@ impl PageConfig {
 
     /// Get page-level orientation overrides
     pub fn get_orientation_override(&self) -> OrientationOverride {
-        OrientationOverride {
-            mode: self.orientation.mode.or(self.page_orientation),
-            rotation: self.orientation.rotation,
+        match self.page_orientation {
+            Some(mode) => OrientationOverride {
+                mode: Some(mode),
+                rotation: Some(0),
+            },
+            None => OrientationOverride::default(),
         }
     }
 }
