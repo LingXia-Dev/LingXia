@@ -50,6 +50,8 @@ internal class LxMediaControlsOverlay(
         view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) = Unit
             override fun onViewDetachedFromWindow(v: View) {
+                cancelAutoHide()
+                cancelResumeAfterSeek()
                 dismissSettingsPopup(immediate = true)
             }
         })
@@ -66,6 +68,7 @@ internal class LxMediaControlsOverlay(
     private var showProgressBar = true
     private var isSeeking = false
     private var lockedSeekSeconds: Double? = null
+    private var pendingResumeAfterSeekRunnable: Runnable? = null
 
     companion object {
         val ACCENT_BLUE = Color.rgb(0, 122, 255)
@@ -260,6 +263,7 @@ internal class LxMediaControlsOverlay(
             }
 
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                cancelResumeAfterSeek()
                 isSeeking = true
                 lockedSeekSeconds = null
                 // Pause during drag for ALL modes (including stream) to prevent slider jumping
@@ -281,7 +285,7 @@ internal class LxMediaControlsOverlay(
                     // Defer play until after seek completes to avoid race condition
                     // where seek and play both trigger stream session creation
                     if (pausedPlaybackForScrub) {
-                        mainHandler.postDelayed({ player.play() }, 100)  // Small delay to let seek initiate first
+                        scheduleResumeAfterSeek()
                     }
                 } else {
                     isSeeking = false
@@ -483,6 +487,11 @@ internal class LxMediaControlsOverlay(
         suppressAutoShow = suppress
     }
 
+    internal fun cancelPendingDeferredActions() {
+        cancelAutoHide()
+        cancelResumeAfterSeek()
+    }
+
     private fun setControlsInteractionEnabled(enabled: Boolean) {
         // Top bar controls
         closeButton.isEnabled = enabled
@@ -516,6 +525,7 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun onPlayPauseClick() {
+        cancelResumeAfterSeek()
         if (player.isPlaying()) player.pause() else player.play()
         scheduleAutoHide()
     }
@@ -527,6 +537,7 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun onCloseClick() {
+        cancelResumeAfterSeek()
         dismissSettingsPopup()
         player.requestClose()
         scheduleAutoHide()
@@ -544,6 +555,21 @@ internal class LxMediaControlsOverlay(
         player.setMuted(false)
         player.setVolume(volume)
         updateVolumeButton(false)
+    }
+
+    private fun scheduleResumeAfterSeek() {
+        cancelResumeAfterSeek()
+        val task = Runnable {
+            pendingResumeAfterSeekRunnable = null
+            player.play()
+        }
+        pendingResumeAfterSeekRunnable = task
+        mainHandler.postDelayed(task, 100)
+    }
+
+    private fun cancelResumeAfterSeek() {
+        pendingResumeAfterSeekRunnable?.let { mainHandler.removeCallbacks(it) }
+        pendingResumeAfterSeekRunnable = null
     }
 
     private fun onSettingsClick() {

@@ -1,6 +1,8 @@
 package com.lingxia.lxapp.APIs.media
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.net.Uri
@@ -42,6 +44,9 @@ import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
 import com.lingxia.lxapp.TabBar
 import java.io.File
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import kotlin.math.max
 import kotlin.math.min
 
@@ -187,6 +192,13 @@ class LxMediaPlayer(
     private val typedEventSink: ((LxMediaEvent) -> Unit)? = null,
     private val componentId: String? = null
 ) {
+    private companion object {
+        private const val MAX_POSTER_DOWNLOAD_BYTES = 8 * 1024 * 1024
+        private val posterExecutor = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "LingXiaPosterLoader").apply { isDaemon = true }
+        }
+    }
+
     val view: FrameLayout = FrameLayout(context).apply {
         setBackgroundColor(Color.BLACK)
         clipToOutline = true
@@ -207,7 +219,7 @@ class LxMediaPlayer(
     private var loadingIndicator: ProgressBar? = null
     private var controlsOverlay: LxMediaControlsOverlay? = null
     private var defaultBackendInitialized = false
-    // CRITICAL: Permanent flag - once ANY frame is rendered, poster should NEVER show again.
+    // Once current source has rendered a frame, do not show poster again for that same source.
     private var hasEverRenderedFrame = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -237,6 +249,8 @@ class LxMediaPlayer(
     private var firstFrameDisplayed = false
     private var hasEnded = false
     private var posterUrl: String? = null
+    private var posterLoadFuture: Future<*>? = null
+    private var posterLoadToken: Long = 0L
     private var videoWidth = 0.0
     private var videoHeight = 0.0
     private var videoRotationDegrees = 0
@@ -539,6 +553,9 @@ class LxMediaPlayer(
     fun detach() {
         rectSyncRunnable?.let { mainHandler.removeCallbacks(it) }
         rectSyncRunnable = null
+        controlsOverlay?.cancelPendingDeferredActions()
+        cancelPosterLoad()
+        posterImageView?.setImageDrawable(null)
         playerCore?.release()
         playerCore = null
         activeUrlEngine = null
@@ -612,12 +629,14 @@ class LxMediaPlayer(
     fun pause() {
         isPausedByUser = true  // User explicitly paused
         isBufferingForUi = false
+        controlsOverlay?.cancelPendingDeferredActions()
         playerCore?.pause()
     }
 
     fun stop() {
         isPausedByUser = true
         isBufferingForUi = false
+        controlsOverlay?.cancelPendingDeferredActions()
         if (hasEnded) {
             hasEnded = false
             updatePosterVisibility()
@@ -1363,6 +1382,7 @@ class LxMediaPlayer(
         defaultBackendInitialized = true
         currentSource = uri
         firstFrameDisplayed = false
+        hasEverRenderedFrame = false
         hasEnded = false
         updatePosterVisibility()
         loadingIndicator?.visibility = View.VISIBLE
@@ -1373,33 +1393,180 @@ class LxMediaPlayer(
     }
 
     private fun loadPoster(url: String, show: Boolean) {
+        cancelPosterLoad()
+        val requestToken = posterLoadToken
         if (show) {
             updatePosterVisibility()
         }
         try {
             val uri = parseUri(url) ?: return
+            val (targetWidth, targetHeight) = resolvePosterTargetSize()
             if (uri.scheme == "http" || uri.scheme == "https") {
-                // Load network image in background thread
-                Thread {
+                posterLoadFuture = posterExecutor.submit {
                     try {
-                        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                        connection.doInput = true
-                        connection.connect()
-                        val input = connection.inputStream
-                        val bitmap = android.graphics.BitmapFactory.decodeStream(input)
+                        val bitmap = decodeNetworkPoster(url, targetWidth, targetHeight)
                         mainHandler.post {
-                            posterImageView?.setImageBitmap(bitmap)
+                            if (requestToken != posterLoadToken) return@post
+                            if (bitmap != null) {
+                                posterImageView?.setImageBitmap(bitmap)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.w(TAG, "Failed to load network poster: $url", e)
                     }
-                }.start()
+                }
             } else {
-                posterImageView?.setImageURI(uri)
+                posterLoadFuture = posterExecutor.submit {
+                    try {
+                        val bitmap = decodeLocalPoster(uri, targetWidth, targetHeight)
+                        mainHandler.post {
+                            if (requestToken != posterLoadToken) return@post
+                            if (bitmap != null) {
+                                posterImageView?.setImageBitmap(bitmap)
+                            } else {
+                                posterImageView?.setImageURI(uri)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to load local poster: $uri", e)
+                        mainHandler.post {
+                            if (requestToken == posterLoadToken) {
+                                posterImageView?.setImageURI(uri)
+                            }
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to load poster: $url", e)
         }
+    }
+
+    private fun cancelPosterLoad() {
+        posterLoadFuture?.cancel(true)
+        posterLoadFuture = null
+        posterLoadToken += 1L
+    }
+
+    private fun resolvePosterTargetSize(): Pair<Int, Int> {
+        val width = (posterImageView?.width ?: view.width).coerceAtLeast(360)
+        val height = (posterImageView?.height ?: view.height).coerceAtLeast(360)
+        return width to height
+    }
+
+    private fun decodeNetworkPoster(url: String, targetWidth: Int, targetHeight: Int): Bitmap? {
+        var connection: java.net.HttpURLConnection? = null
+        return try {
+            connection = (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                connectTimeout = 5_000
+                readTimeout = 10_000
+                doInput = true
+            }
+            connection.connect()
+            if (connection.responseCode !in 200..299) {
+                null
+            } else {
+                connection.inputStream.use { input ->
+                    val bytes = readBytesWithLimit(input, MAX_POSTER_DOWNLOAD_BYTES)
+                    if (bytes == null) {
+                        Log.w(TAG, "Poster too large, skipped: $url")
+                        return@use null
+                    }
+                    decodeSampledBitmap(bytes, targetWidth, targetHeight)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "decodeNetworkPoster failed: $url", e)
+            null
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private fun decodeSampledBitmap(data: ByteArray, targetWidth: Int, targetHeight: Int): Bitmap? {
+        if (data.isEmpty()) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return BitmapFactory.decodeByteArray(data, 0, data.size)
+        }
+
+        val sampleSize = calculateInSampleSize(
+            bounds.outWidth,
+            bounds.outHeight,
+            targetWidth,
+            targetHeight
+        )
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.RGB_565
+        }
+        return BitmapFactory.decodeByteArray(data, 0, data.size, options)
+    }
+
+    private fun decodeLocalPoster(uri: Uri, targetWidth: Int, targetHeight: Int): Bitmap? {
+        if (uri.scheme == "file") {
+            val path = uri.path ?: return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return BitmapFactory.decodeFile(
+                    path,
+                    BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                )
+            }
+            val sampleSize = calculateInSampleSize(
+                bounds.outWidth,
+                bounds.outHeight,
+                targetWidth,
+                targetHeight
+            )
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            return BitmapFactory.decodeFile(path, options)
+        }
+
+        return context.contentResolver.openInputStream(uri)?.use { input ->
+            val bytes = readBytesWithLimit(input, MAX_POSTER_DOWNLOAD_BYTES) ?: return@use null
+            decodeSampledBitmap(bytes, targetWidth, targetHeight)
+        }
+    }
+
+    private fun readBytesWithLimit(input: java.io.InputStream, limitBytes: Int): ByteArray? {
+        val output = ByteArrayOutputStream(min(limitBytes, 16 * 1024))
+        val buffer = ByteArray(8 * 1024)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            total += read
+            if (total > limitBytes) {
+                return null
+            }
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
+    }
+
+    private fun calculateInSampleSize(
+        width: Int,
+        height: Int,
+        targetWidth: Int,
+        targetHeight: Int
+    ): Int {
+        var sampleSize = 1
+        var currentWidth = width
+        var currentHeight = height
+        while (currentWidth / 2 >= targetWidth || currentHeight / 2 >= targetHeight) {
+            currentWidth /= 2
+            currentHeight /= 2
+            sampleSize *= 2
+        }
+        return sampleSize.coerceAtLeast(1)
     }
 
     private fun setObjectFit(fit: LxMediaObjectFit) {
@@ -1707,7 +1874,6 @@ class LxMediaPlayer(
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
                 firstFrameDisplayed = false
-                hasEverRenderedFrame = false
                 hasEnded = false
                 updatePosterVisibility()
                 controlsOverlay?.showCenterPlayButton(true)

@@ -27,6 +27,8 @@ internal class FeedEngine(
     private var endStallCount: Int = 0
     private val endToleranceMs: Long = 250
     private var hasDecoderClock: Boolean = false
+    private var decoderClockMissingPolls: Int = 0
+    private var decoderRecoveryRebindIssued: Boolean = false
 
     override fun setListener(listener: EngineListener?) {
         this.listener = listener
@@ -38,6 +40,8 @@ internal class FeedEngine(
         playing = false
         endStallCount = 0
         hasDecoderClock = false
+        decoderClockMissingPolls = 0
+        decoderRecoveryRebindIssued = false
         updateCapabilities()
         listener?.onEngineEvent(
             EngineEvent.Prepared(
@@ -60,6 +64,8 @@ internal class FeedEngine(
     override fun play() {
         playing = true
         endStallCount = 0
+        decoderClockMissingPolls = 0
+        decoderRecoveryRebindIssued = false
         startPolling()
         ComponentRouter.dispatchStreamDecoderCommand(componentId, "play", "{}")
     }
@@ -68,6 +74,8 @@ internal class FeedEngine(
         playing = false
         stopPolling()
         endStallCount = 0
+        decoderClockMissingPolls = 0
+        decoderRecoveryRebindIssued = false
         ComponentRouter.dispatchStreamDecoderCommand(componentId, "pause", """{"reason":"user"}""")
     }
 
@@ -78,6 +86,8 @@ internal class FeedEngine(
         stopPolling()
         endStallCount = 0
         hasDecoderClock = false
+        decoderClockMissingPolls = 0
+        decoderRecoveryRebindIssued = false
         ComponentRouter.dispatchStreamDecoderCommand(componentId, "stop", "{}")
     }
 
@@ -86,6 +96,8 @@ internal class FeedEngine(
         baseOffsetMs = positionMs.coerceAtLeast(0)
         lastTimeMs = baseOffsetMs
         endStallCount = 0
+        decoderClockMissingPolls = 0
+        decoderRecoveryRebindIssued = false
         if (wasPlaying) {
             listener?.onEngineEvent(
                 EngineEvent.BufferingChanged(
@@ -188,6 +200,8 @@ internal class FeedEngine(
             }
             "playing" -> {
                 playing = true
+                decoderClockMissingPolls = 0
+                decoderRecoveryRebindIssued = false
                 listener?.onEngineEvent(EngineEvent.PlayingChanged(true))
                 listener?.onEngineEvent(EngineEvent.FirstFrameRendered)
                 listener?.onEngineEvent(
@@ -200,18 +214,24 @@ internal class FeedEngine(
             }
             "pause" -> {
                 playing = false
+                decoderClockMissingPolls = 0
+                decoderRecoveryRebindIssued = false
                 listener?.onEngineEvent(EngineEvent.PlayingChanged(false))
                 stopPolling()
                 endStallCount = 0
             }
             "stop" -> {
                 playing = false
+                decoderClockMissingPolls = 0
+                decoderRecoveryRebindIssued = false
                 listener?.onEngineEvent(EngineEvent.PlayingChanged(false))
                 stopPolling()
                 endStallCount = 0
             }
             "ended" -> {
                 playing = false
+                decoderClockMissingPolls = 0
+                decoderRecoveryRebindIssued = false
                 stopPolling()
                 endStallCount = 0
                 listener?.onEngineEvent(EngineEvent.Ended)
@@ -244,17 +264,55 @@ internal class FeedEngine(
                 val relSeconds = ComponentRouter.streamPlaybackPositionSeconds(componentId)
                 if (relSeconds == null) {
                     if (hasDecoderClock) {
-                        playing = false
-                        stopPolling()
-                        endStallCount = 0
-                        listener?.onEngineEvent(EngineEvent.Ended)
-                        return
+                        decoderClockMissingPolls += 1
+                        if (!decoderRecoveryRebindIssued &&
+                            decoderClockMissingPolls >= MAX_DECODER_CLOCK_MISS_POLLS_BEFORE_REBIND
+                        ) {
+                            decoderRecoveryRebindIssued = true
+                            ComponentRouter.dispatchStreamDecoderCommand(componentId, "rebindSurface", "{}")
+                            listener?.onEngineEvent(
+                                EngineEvent.BufferingChanged(
+                                    isBuffering = true,
+                                    reason = WaitingReason.SURFACE_REBIND
+                                )
+                            )
+                        }
+                        val duration = durationMs
+                        val atEnd =
+                            duration != null && duration > 0 &&
+                                lastTimeMs >= (duration - endToleranceMs).coerceAtLeast(0)
+                        if (atEnd && decoderClockMissingPolls >= MAX_DECODER_CLOCK_MISS_POLLS_AT_END) {
+                            playing = false
+                            stopPolling()
+                            endStallCount = 0
+                            listener?.onEngineEvent(EngineEvent.Ended)
+                            return
+                        }
+                        if (decoderClockMissingPolls >= MAX_DECODER_CLOCK_MISS_POLLS_BEFORE_ERROR) {
+                            playing = false
+                            stopPolling()
+                            endStallCount = 0
+                            listener?.onEngineEvent(
+                                EngineEvent.Error(
+                                    EngineError(
+                                        code = ErrorCode.SURFACE,
+                                        message = "Playback stalled: decoder clock unavailable",
+                                        nativeCode = "decoder_clock_missing",
+                                        retryable = true,
+                                        backend = BackendKind.FEED
+                                    )
+                                )
+                            )
+                            return
+                        }
                     }
                     listener?.onEngineEvent(EngineEvent.BufferingChanged(isBuffering = true, reason = WaitingReason.DECODER))
                     mainHandler.postDelayed(this, 50L)
                     return
                 }
                 hasDecoderClock = true
+                decoderClockMissingPolls = 0
+                decoderRecoveryRebindIssued = false
                 val relMs = (relSeconds * 1000.0).toLong().coerceAtLeast(0)
                 val rawMs = baseOffsetMs + relMs
                 val duration = durationMs
@@ -328,5 +386,12 @@ internal class FeedEngine(
             "aborted" -> ErrorCode.ABORTED
             else -> ErrorCode.UNKNOWN
         }
+    }
+
+    private companion object {
+        // Avoid treating short decoder/surface rebind gaps as terminal playback end.
+        private const val MAX_DECODER_CLOCK_MISS_POLLS_BEFORE_REBIND = 12
+        private const val MAX_DECODER_CLOCK_MISS_POLLS_AT_END = 8
+        private const val MAX_DECODER_CLOCK_MISS_POLLS_BEFORE_ERROR = 120
     }
 }

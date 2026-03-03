@@ -41,11 +41,15 @@ object ComponentRouter {
         val ptsMs: Int,
     )
 
-    private const val MAX_PENDING_VIDEO_FRAMES = 90
-    private const val MAX_PENDING_AUDIO_FRAMES = 180
+    private const val MAX_PENDING_VIDEO_FRAMES = 45
+    private const val MAX_PENDING_AUDIO_FRAMES = 90
+    private const val MAX_PENDING_VIDEO_BYTES = 6 * 1024 * 1024
+    private const val MAX_PENDING_AUDIO_BYTES = 2 * 1024 * 1024
     private val pendingFrameLock = Any()
     private val pendingVideoFrames = ConcurrentHashMap<String, ArrayDeque<PendingVideoFrame>>()
     private val pendingAudioFrames = ConcurrentHashMap<String, ArrayDeque<PendingAudioFrame>>()
+    private val pendingVideoBytes = ConcurrentHashMap<String, Int>()
+    private val pendingAudioBytes = ConcurrentHashMap<String, Int>()
 
     private data class DesiredAudioState(val volume: Float, val muted: Boolean)
 
@@ -54,23 +58,38 @@ object ComponentRouter {
     private fun enqueuePendingVideoFrame(componentId: String, frame: PendingVideoFrame) {
         synchronized(pendingFrameLock) {
             val queue = pendingVideoFrames.getOrPut(componentId) { ArrayDeque() }
+            var bytes = pendingVideoBytes[componentId] ?: 0
             if (frame.keyframe) {
                 queue.clear()
+                bytes = 0
             }
             queue.addLast(frame)
-            while (queue.size > MAX_PENDING_VIDEO_FRAMES) {
-                queue.removeFirst()
+            bytes += frame.data.size
+            while (
+                (queue.size > MAX_PENDING_VIDEO_FRAMES || bytes > MAX_PENDING_VIDEO_BYTES) &&
+                    queue.size > 1
+            ) {
+                val removed = queue.removeFirst()
+                bytes -= removed.data.size
             }
+            pendingVideoBytes[componentId] = bytes.coerceAtLeast(0)
         }
     }
 
     private fun enqueuePendingAudioFrame(componentId: String, frame: PendingAudioFrame) {
         synchronized(pendingFrameLock) {
             val queue = pendingAudioFrames.getOrPut(componentId) { ArrayDeque() }
+            var bytes = pendingAudioBytes[componentId] ?: 0
             queue.addLast(frame)
-            while (queue.size > MAX_PENDING_AUDIO_FRAMES) {
-                queue.removeFirst()
+            bytes += frame.data.size
+            while (
+                (queue.size > MAX_PENDING_AUDIO_FRAMES || bytes > MAX_PENDING_AUDIO_BYTES) &&
+                    queue.size > 1
+            ) {
+                val removed = queue.removeFirst()
+                bytes -= removed.data.size
             }
+            pendingAudioBytes[componentId] = bytes.coerceAtLeast(0)
         }
     }
 
@@ -80,6 +99,8 @@ object ComponentRouter {
         synchronized(pendingFrameLock) {
             videoFrames = pendingVideoFrames.remove(componentId)?.toList().orEmpty()
             audioFrames = pendingAudioFrames.remove(componentId)?.toList().orEmpty()
+            pendingVideoBytes.remove(componentId)
+            pendingAudioBytes.remove(componentId)
         }
 
         val videoConfig = cachedVideoConfigJson[componentId]
@@ -96,14 +117,8 @@ object ComponentRouter {
                 session.pushVideo(frame.data, frame.dtsMs, frame.ptsMs, frame.keyframe)
             }
         } else if (videoFrames.isNotEmpty()) {
-            synchronized(pendingFrameLock) {
-                val queue = pendingVideoFrames.getOrPut(componentId) { ArrayDeque() }
-                for (frame in videoFrames) {
-                    queue.addLast(frame)
-                }
-                while (queue.size > MAX_PENDING_VIDEO_FRAMES) {
-                    queue.removeFirst()
-                }
+            for (frame in videoFrames) {
+                enqueuePendingVideoFrame(componentId, frame)
             }
         }
 
@@ -112,14 +127,8 @@ object ComponentRouter {
                 session.pushAudio(frame.data, frame.dtsMs, frame.ptsMs)
             }
         } else if (audioFrames.isNotEmpty()) {
-            synchronized(pendingFrameLock) {
-                val queue = pendingAudioFrames.getOrPut(componentId) { ArrayDeque() }
-                for (frame in audioFrames) {
-                    queue.addLast(frame)
-                }
-                while (queue.size > MAX_PENDING_AUDIO_FRAMES) {
-                    queue.removeFirst()
-                }
+            for (frame in audioFrames) {
+                enqueuePendingAudioFrame(componentId, frame)
             }
         }
     }
@@ -163,6 +172,8 @@ object ComponentRouter {
         synchronized(pendingFrameLock) {
             pendingVideoFrames.remove(componentId)
             pendingAudioFrames.remove(componentId)
+            pendingVideoBytes.remove(componentId)
+            pendingAudioBytes.remove(componentId)
         }
     }
 
@@ -415,6 +426,8 @@ object ComponentRouter {
         synchronized(pendingFrameLock) {
             pendingVideoFrames.remove(componentId)
             pendingAudioFrames.remove(componentId)
+            pendingVideoBytes.remove(componentId)
+            pendingAudioBytes.remove(componentId)
         }
         return true
     }

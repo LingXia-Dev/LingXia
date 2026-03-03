@@ -7,7 +7,6 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -29,7 +28,9 @@ import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import java.io.File
+import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -534,20 +535,31 @@ private class PreviewPagerAdapter(
     }
 
     companion object ImageLoader {
-        private val executor = Executors.newCachedThreadPool()
+        private const val MAX_REMOTE_IMAGE_BYTES = 12 * 1024 * 1024
+        private const val MAX_LOCAL_CONTENT_IMAGE_BYTES = 12 * 1024 * 1024
+
+        private val executor = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "LingXiaPreviewImage").apply { isDaemon = true }
+        }
 
         fun loadRemote(url: String, target: ImageView, progressBar: ProgressBar?): Future<*> {
             val imageRef = WeakReference(target)
             val progressRef = progressBar?.let { WeakReference(it) }
+            val metrics = target.context.resources.displayMetrics
+            val targetW = metrics?.widthPixels ?: 1080
+            val targetH = metrics?.heightPixels ?: 1920
             return executor.submit {
                 try {
-                    URL(url).openStream().use { stream ->
-                        val drawable = BitmapDrawable.createFromStream(stream, "media")
-                        val imageView = imageRef.get()
-                        if (imageView != null && drawable != null) {
-                            imageView.post {
-                                progressRef?.get()?.visibility = View.GONE
-                                imageView.setImageDrawable(drawable)
+                    val bytes = downloadBytesWithLimit(url, MAX_REMOTE_IMAGE_BYTES)
+                    val bitmap = bytes?.let { decodeSampledBitmap(it, targetW, targetH) }
+                    val imageView = imageRef.get()
+                    if (imageView != null) {
+                        imageView.post {
+                            progressRef?.get()?.visibility = View.GONE
+                            if (bitmap != null) {
+                                imageView.setImageBitmap(bitmap)
+                            } else {
+                                imageView.setImageResource(android.R.drawable.ic_dialog_alert)
                             }
                         }
                     }
@@ -607,11 +619,13 @@ private class PreviewPagerAdapter(
                             val height = max(1, info.size.height / sample)
                             decoder.setTargetSize(width, height)
                             decoder.isMutableRequired = false
+                            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                         }
                     }
                     else -> {
                         context.contentResolver.openInputStream(uri)?.use { stream ->
-                            BitmapFactory.decodeStream(stream)
+                            val bytes = readBytesWithLimit(stream, MAX_LOCAL_CONTENT_IMAGE_BYTES)
+                            bytes?.let { decodeSampledBitmap(it, targetWidth, targetHeight) }
                         }
                     }
                 }
@@ -624,13 +638,18 @@ private class PreviewPagerAdapter(
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, opts)
             if (opts.outWidth <= 0 || opts.outHeight <= 0) {
-                return BitmapFactory.decodeFile(path)
+                return BitmapFactory.decodeFile(
+                    path,
+                    BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                )
             }
 
             val sample = calculateSample(opts.outWidth, opts.outHeight, targetWidth, targetHeight)
             val decodeOpts = BitmapFactory.Options().apply {
                 inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.ARGB_8888
+                inPreferredConfig = Bitmap.Config.RGB_565
             }
 
             val decoded = BitmapFactory.decodeFile(path, decodeOpts) ?: return null
@@ -662,6 +681,66 @@ private class PreviewPagerAdapter(
             } else {
                 decoded
             }
+        }
+
+        private fun downloadBytesWithLimit(url: String, maxBytes: Int): ByteArray? {
+            var connection: HttpURLConnection? = null
+            return try {
+                connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5_000
+                    readTimeout = 10_000
+                    instanceFollowRedirects = true
+                    doInput = true
+                }
+                connection.connect()
+                if (connection.responseCode !in 200..299) {
+                    null
+                } else {
+                    connection.inputStream.use { readBytesWithLimit(it, maxBytes) }
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }
+
+        private fun readBytesWithLimit(input: java.io.InputStream, limitBytes: Int): ByteArray? {
+            val output = ByteArrayOutputStream(limitBytes.coerceAtMost(16 * 1024))
+            val buffer = ByteArray(8 * 1024)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                total += read
+                if (total > limitBytes) return null
+                output.write(buffer, 0, read)
+            }
+            return output.toByteArray()
+        }
+
+        private fun decodeSampledBitmap(
+            bytes: ByteArray,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Bitmap? {
+            if (bytes.isEmpty()) return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return BitmapFactory.decodeByteArray(
+                    bytes,
+                    0,
+                    bytes.size,
+                    BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.RGB_565
+                    }
+                )
+            }
+            val sample = calculateSample(bounds.outWidth, bounds.outHeight, targetWidth, targetHeight)
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
         }
 
         private fun calculateSample(

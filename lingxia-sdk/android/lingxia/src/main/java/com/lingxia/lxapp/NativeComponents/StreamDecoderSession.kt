@@ -1,6 +1,8 @@
 package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.SurfaceTexture
+import android.app.ActivityManager
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
@@ -33,9 +35,10 @@ internal class StreamDecoderSession(
     private val audioThread = HandlerThread("StreamDecoderAudio-$componentId").apply { start() }
     private val audioHandler = Handler(audioThread.looper)
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val queueProfile = buildQueueProfile(textureView.context)
 
-    private val videoQueue = ArrayBlockingQueue<VideoFrame>(MAX_VIDEO_QUEUE)
-    private val audioQueue = ArrayBlockingQueue<AudioFrame>(MAX_AUDIO_QUEUE)
+    private val videoQueue = ArrayBlockingQueue<VideoFrame>(queueProfile.maxVideoQueue)
+    private val audioQueue = ArrayBlockingQueue<AudioFrame>(queueProfile.maxAudioQueue)
 
     private var videoConfig: VideoConfig? = null
     @Volatile private var lastVideoConfigJson: String? = null
@@ -61,6 +64,7 @@ internal class StreamDecoderSession(
     @Volatile private var pendingVideoReconfigure = false
 
     private var audioDrainScheduled = false
+    private val audioDrainRunnable = Runnable { drainAudio() }
     private val audioBufferInfo = MediaCodec.BufferInfo()
     private var audioScratch = ByteArray(0)
 
@@ -83,6 +87,13 @@ internal class StreamDecoderSession(
         releaseVideoDecoder()
         videoSurface?.release()
         videoSurface = null
+    }
+    @Volatile private var rebindRequestPosted = false
+    @Volatile private var lastRebindRequestAtMs: Long = 0
+    private val rebindRunnable = Runnable {
+        rebindRequestPosted = false
+        lastRebindRequestAtMs = SystemClock.uptimeMillis()
+        attachTextureView()
     }
 
     @Volatile private var lastRectSyncAtMs: Long = 0
@@ -381,9 +392,12 @@ internal class StreamDecoderSession(
     }
 
     private fun requestSurfaceRebind() {
-        mainHandler.post {
-            attachTextureView()
-        }
+        if (rebindRequestPosted) return
+        val now = SystemClock.uptimeMillis()
+        val elapsed = now - lastRebindRequestAtMs
+        val delayMs = (REBIND_MIN_INTERVAL_MS - elapsed).coerceAtLeast(0L)
+        rebindRequestPosted = true
+        mainHandler.postDelayed(rebindRunnable, delayMs)
     }
 
     fun rebindSurface() {
@@ -394,12 +408,19 @@ internal class StreamDecoderSession(
         paused = true
         pendingPlay = false
         surfaceGeneration.incrementAndGet()
+        rebindRequestPosted = false
+        mainHandler.removeCallbacks(rebindRunnable)
 
         handler.post {
             releaseVideoDecoder()
             videoQueue.clear()
         }
         audioHandler.post {
+            try {
+                audioHandler.removeCallbacks(audioDrainRunnable)
+            } catch (_: Exception) {
+            }
+            audioDrainScheduled = false
             releaseAudioDecoder()
             releaseAudioTrack()
             audioQueue.clear()
@@ -409,6 +430,8 @@ internal class StreamDecoderSession(
     fun release() {
         stop()
         surfaceReady = false
+        rebindRequestPosted = false
+        mainHandler.removeCallbacks(rebindRunnable)
         handler.post {
             try {
                 handler.removeCallbacks(detachReleaseRunnable)
@@ -888,9 +911,10 @@ internal class StreamDecoderSession(
     }
 
     private fun drainAudio() {
-        if (paused) return
-
+        // Always clear scheduled flag first. If we return early (e.g. paused),
+        // future callers must be able to schedule a new drain tick.
         audioDrainScheduled = false
+        if (paused) return
 
         if (audioIsPcm) {
             val config = audioConfig ?: return
@@ -1005,7 +1029,7 @@ internal class StreamDecoderSession(
     private fun scheduleAudioDrain() {
         if (audioDrainScheduled) return
         audioDrainScheduled = true
-        audioHandler.postDelayed({ drainAudio() }, 5)
+        audioHandler.postDelayed(audioDrainRunnable, 5L)
     }
 
     private fun ensurePcmAudioTrack(config: AudioConfig) {
@@ -1131,6 +1155,11 @@ internal class StreamDecoderSession(
     }
 
     private fun releaseAudioDecoder() {
+        try {
+            audioHandler.removeCallbacks(audioDrainRunnable)
+        } catch (_: Exception) {
+        }
+        audioDrainScheduled = false
         try {
             audioDecoder?.stop()
         } catch (_: Exception) {
@@ -1283,15 +1312,41 @@ internal class StreamDecoderSession(
         val ptsMs: Int
     )
 
+    private data class QueueProfile(
+        val maxVideoQueue: Int,
+        val maxAudioQueue: Int,
+    )
+
+    private fun buildQueueProfile(context: Context): QueueProfile {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        val isLowRam = am?.isLowRamDevice == true
+        val memoryClass = am?.memoryClass ?: 256
+        val lowTier = isLowRam || memoryClass <= 256
+        return if (lowTier) {
+            QueueProfile(
+                maxVideoQueue = MAX_VIDEO_QUEUE_LOW_RAM,
+                maxAudioQueue = MAX_AUDIO_QUEUE_LOW_RAM,
+            )
+        } else {
+            QueueProfile(
+                maxVideoQueue = MAX_VIDEO_QUEUE_NORMAL,
+                maxAudioQueue = MAX_AUDIO_QUEUE_NORMAL,
+            )
+        }
+    }
+
     private companion object {
-        private const val RESUME_RECONFIGURE_THRESHOLD_MS = 1500L
+        private const val RESUME_RECONFIGURE_THRESHOLD_MS = 10_000L
+        private const val REBIND_MIN_INTERVAL_MS = 120L
         private const val VIDEO_PTS_RESET_THRESHOLD_US = 5_000_000L
         private const val VIDEO_START_BUFFER_NS = 500_000_000L
         private const val VIDEO_OUTPUT_MAX_LEAD_NS = 300_000_000L
         private const val VIDEO_INPUT_MAX_LEAD_NS = 2_000_000_000L
         private const val VIDEO_INPUT_MAX_LAG_NS = 2_000_000_000L
-        private const val MAX_VIDEO_QUEUE = 120
-        private const val MAX_AUDIO_QUEUE = 120
+        private const val MAX_VIDEO_QUEUE_LOW_RAM = 48
+        private const val MAX_VIDEO_QUEUE_NORMAL = 96
+        private const val MAX_AUDIO_QUEUE_LOW_RAM = 72
+        private const val MAX_AUDIO_QUEUE_NORMAL = 120
         private const val MIME_AVC = "video/avc"
         private const val MIME_HEVC = "video/hevc"
         private const val MIME_AAC = "audio/mp4a-latm"

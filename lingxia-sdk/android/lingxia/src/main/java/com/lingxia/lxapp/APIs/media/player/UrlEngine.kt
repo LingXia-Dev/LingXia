@@ -155,6 +155,7 @@ internal class UrlEngine(
     }
 
     override fun play() {
+        ensureSourcePreparedIfNeeded()
         val playerError = exoPlayer.playerError
         if (
             playerError != null &&
@@ -175,8 +176,8 @@ internal class UrlEngine(
 
     override fun stop() {
         exoPlayer.playWhenReady = false
-        exoPlayer.pause()
-        exoPlayer.seekTo(0)
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         stopPolling()
     }
 
@@ -298,6 +299,14 @@ internal class UrlEngine(
         }
     }
 
+    private fun ensureSourcePreparedIfNeeded() {
+        if (exoPlayer.currentMediaItem != null) return
+        val source = currentSourceUri ?: return
+        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(source))
+        exoPlayer.prepare()
+        updateCapabilities()
+    }
+
     private fun isRetryableError(error: PlaybackException): Boolean {
         return when (error.errorCode) {
             PlaybackException.ERROR_CODE_DECODING_FAILED,
@@ -339,27 +348,29 @@ internal class UrlEngine(
         val lowRam = am?.isLowRamDevice == true
         val memoryClass = am?.memoryClass ?: 256
 
+        // Keep a memory-class cap, but avoid overly small byte limits that cause
+        // high-bitrate streams/files to oscillate in buffering.
         return when {
             lowRam || memoryClass <= 256 -> MemoryProfile(
-                minBufferMs = 3000,
-                maxBufferMs = 10000,
-                bufferForPlaybackMs = 500,
-                bufferForPlaybackAfterRebufferMs = 1500,
-                targetBufferBytes = 8 * 1024 * 1024,
+                minBufferMs = 8000,
+                maxBufferMs = 25000,
+                bufferForPlaybackMs = 1200,
+                bufferForPlaybackAfterRebufferMs = 4000,
+                targetBufferBytes = 24 * 1024 * 1024,
             )
             memoryClass <= 384 -> MemoryProfile(
-                minBufferMs = 5000,
-                maxBufferMs = 15000,
-                bufferForPlaybackMs = 700,
-                bufferForPlaybackAfterRebufferMs = 2000,
-                targetBufferBytes = 12 * 1024 * 1024,
+                minBufferMs = 12000,
+                maxBufferMs = 35000,
+                bufferForPlaybackMs = 1500,
+                bufferForPlaybackAfterRebufferMs = 5000,
+                targetBufferBytes = 32 * 1024 * 1024,
             )
             else -> MemoryProfile(
-                minBufferMs = 7000,
-                maxBufferMs = 20000,
-                bufferForPlaybackMs = 800,
-                bufferForPlaybackAfterRebufferMs = 2500,
-                targetBufferBytes = 16 * 1024 * 1024,
+                minBufferMs = 15000,
+                maxBufferMs = 50000,
+                bufferForPlaybackMs = 1500,
+                bufferForPlaybackAfterRebufferMs = 6000,
+                targetBufferBytes = 48 * 1024 * 1024,
             )
         }
     }

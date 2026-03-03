@@ -29,6 +29,10 @@ class NativeComponentManager(
     private val eventSink: (Map<String, Any>) -> Unit,
     webView: LingXiaWebView? = null
 ) {
+    private companion object {
+        private const val INACTIVE_PAGE_STOP_DELAY_MS = 60_000L
+    }
+
     private val logTag = "NativeComponentManager"
     private val hostViewRef = WeakReference(hostView)
     private val webViewRef = webView?.let { WeakReference(it) }
@@ -55,6 +59,9 @@ class NativeComponentManager(
     // return 0-size. Keep retrying a few times so the native overlay catches the final layout.
     private val rectSyncRetries = mutableMapOf<String, Int>()
     private val rectSyncRetryRunnables = mutableMapOf<String, Runnable>()
+    private val pageInactiveStopRunnables = mutableMapOf<String, Runnable>()
+    private val componentPlaybackIntent = mutableMapOf<String, Boolean>()
+    private val componentsPendingAutoResume = mutableSetOf<String>()
 
     fun register(type: String, factory: LxNativeComponentFactory) {
         factories[type] = factory
@@ -189,6 +196,10 @@ class NativeComponentManager(
     private fun handleCommand(params: Map<String, Any?>) {
         val id = params["id"] as? String ?: return
         val name = params["name"] as? String ?: return
+        when (name) {
+            "play" -> componentPlaybackIntent[id] = true
+            "pause", "stop" -> componentPlaybackIntent[id] = false
+        }
         components[id]?.handleCommand(name, params["params"].asStringMap().ifEmpty { null })
     }
 
@@ -201,6 +212,10 @@ class NativeComponentManager(
     }
 
     fun teardownAll() {
+        pageInactiveStopRunnables.values.forEach { mainHandler.removeCallbacks(it) }
+        pageInactiveStopRunnables.clear()
+        componentsPendingAutoResume.clear()
+        componentPlaybackIntent.clear()
         val allIds = components.keys.toList()
         allIds.forEach { id ->
             unmountComponent(id, componentPage[id])
@@ -362,6 +377,7 @@ class NativeComponentManager(
         payload["action"] = "component.event"
         payload["id"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
+        updatePlaybackIntent(componentId, payload["event"] as? String)
         
         // Send to WebView via eventSink
         eventSink(payload)
@@ -386,6 +402,13 @@ class NativeComponentManager(
                 payload["componentId"] = componentId
                 NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
             }
+        }
+    }
+
+    private fun updatePlaybackIntent(componentId: String, eventName: String?) {
+        when (eventName) {
+            "play", "playrequest", "playing" -> componentPlaybackIntent[componentId] = true
+            "pause", "stop", "ended", "error" -> componentPlaybackIntent[componentId] = false
         }
     }
 
@@ -465,20 +488,28 @@ class NativeComponentManager(
     }
 
     private fun unmountPage(pageId: String) {
+        cancelInactivePageStop(pageId)
         pageComponents.remove(pageId)?.forEach { unmountComponent(it, pageId) }
     }
 
     private fun pausePage(pageId: String) {
         pageComponents[pageId]?.forEach { id ->
             components[id]?.apply {
+                if (componentPlaybackIntent[id] == true) {
+                    componentsPendingAutoResume.add(id)
+                } else {
+                    componentsPendingAutoResume.remove(id)
+                }
                 blur()
                 handleCommand("pause", null)
                 view.visibility = View.GONE
             }
         }
+        scheduleInactivePageStop(pageId)
     }
 
     private fun resumePage(pageId: String) {
+        cancelInactivePageStop(pageId)
         val host = hostViewRef.get() ?: return
         pageComponents[pageId]?.forEach { id ->
             components[id]?.apply {
@@ -488,12 +519,34 @@ class NativeComponentManager(
                 }
                 view.visibility = View.VISIBLE
                 focus()
+                if (componentsPendingAutoResume.remove(id)) {
+                    handleCommand("play", null)
+                }
             }
         }
     }
 
+    private fun scheduleInactivePageStop(pageId: String) {
+        cancelInactivePageStop(pageId)
+        val task = Runnable {
+            val ids = pageComponents[pageId]?.toList().orEmpty()
+            ids.forEach { id ->
+                components[id]?.handleCommand("stop", null)
+            }
+            pageInactiveStopRunnables.remove(pageId)
+        }
+        pageInactiveStopRunnables[pageId] = task
+        mainHandler.postDelayed(task, INACTIVE_PAGE_STOP_DELAY_MS)
+    }
+
+    private fun cancelInactivePageStop(pageId: String) {
+        pageInactiveStopRunnables.remove(pageId)?.let { mainHandler.removeCallbacks(it) }
+    }
+
     private fun unmountComponent(id: String, pageId: String?) {
         webOverlayCoverageRestore.remove(id)
+        componentsPendingAutoResume.remove(id)
+        componentPlaybackIntent.remove(id)
         // Unregister first to block any queued JNI command from being routed back into a component
         // that is in the middle of teardown.
         ComponentRouter.unregister(id)
@@ -509,7 +562,15 @@ class NativeComponentManager(
         componentContentRects.remove(id)
         componentScreenRects.remove(id)
         componentPage.remove(id)
-        pageId?.let { pageComponents[it]?.remove(id) }
+        pageId?.let { pid ->
+            pageComponents[pid]?.let { ids ->
+                ids.remove(id)
+                if (ids.isEmpty()) {
+                    pageComponents.remove(pid)
+                    cancelInactivePageStop(pid)
+                }
+            }
+        }
         callbackId?.let {
             val payload = JSONObject()
             payload.put("action", "component.event")
