@@ -39,6 +39,8 @@ export class NativeComponentEmbedManager {
   private onComponentsChanged?: () => void;
   private eventDispatcher?: (payload: NativeComponentRecord) => void;
   private pendingUnmountTimers: Map<string, number> = new Map();
+  private componentPlaybackIntent: Map<string, boolean> = new Map();
+  private componentsPendingAutoResume: Set<string> = new Set();
 
   constructor(webTag: string, eventDispatcher?: (payload: NativeComponentRecord) => void) {
     this.webTag = webTag;
@@ -215,6 +217,8 @@ export class NativeComponentEmbedManager {
     nodeController.rebuild();
 
     this.nodeControllerMap.delete(componentId);
+    this.componentPlaybackIntent.delete(componentId);
+    this.componentsPendingAutoResume.delete(componentId);
     const index = this.componentIdArr.indexOf(componentId);
     if (index > -1) {
       this.componentIdArr.splice(index, 1);
@@ -415,6 +419,7 @@ export class NativeComponentEmbedManager {
       return undefined;
     }
     return (event: NativeComponentRecord) => {
+      this.updatePlaybackIntent(componentId, event.get('event'));
       const payload = new NativeComponentRecord();
       event.forEach((key, value) => {
         payload.set(key, value);
@@ -434,6 +439,11 @@ export class NativeComponentEmbedManager {
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
       if (nodeController) {
+        if (this.componentPlaybackIntent.get(componentId) === true) {
+          this.componentsPendingAutoResume.add(componentId);
+        } else {
+          this.componentsPendingAutoResume.delete(componentId);
+        }
         // Send pause command via updateNode - component watches for __command
         nodeController.updateNode(new ComponentCommand('pause'));
       }
@@ -450,9 +460,25 @@ export class NativeComponentEmbedManager {
       if (nodeController) {
         // Send resume command to clear pending pause
         nodeController.updateNode(new ComponentCommand('resume'));
+        if (this.componentsPendingAutoResume.has(componentId)) {
+          this.componentsPendingAutoResume.delete(componentId);
+          nodeController.updateNode(new ComponentCommand('play'));
+        }
       }
     });
     // Intentionally quiet; managed by caller visibility handling
+  }
+
+  /**
+   * Stop all native components for this webtag to release decoder/runtime resources.
+   */
+  stopAll(): void {
+    this.componentIdArr.forEach((componentId) => {
+      const nodeController = this.nodeControllerMap.get(componentId);
+      if (nodeController) {
+        nodeController.updateNode(new ComponentCommand('stop'));
+      }
+    });
   }
 
   /**
@@ -463,6 +489,8 @@ export class NativeComponentEmbedManager {
       clearTimeout(timerId);
     });
     this.pendingUnmountTimers.clear();
+    this.componentPlaybackIntent.clear();
+    this.componentsPendingAutoResume.clear();
 
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
@@ -487,5 +515,18 @@ export class NativeComponentEmbedManager {
     });
     this.nodeControllerMap.clear();
     this.componentIdArr = [];
+  }
+
+  private updatePlaybackIntent(componentId: string, eventValue: NativeComponentValue | undefined): void {
+    if (typeof eventValue !== 'string') {
+      return;
+    }
+    if (eventValue === 'play' || eventValue === 'playrequest' || eventValue === 'playing') {
+      this.componentPlaybackIntent.set(componentId, true);
+      return;
+    }
+    if (eventValue === 'pause' || eventValue === 'stop' || eventValue === 'ended' || eventValue === 'error') {
+      this.componentPlaybackIntent.set(componentId, false);
+    }
   }
 }

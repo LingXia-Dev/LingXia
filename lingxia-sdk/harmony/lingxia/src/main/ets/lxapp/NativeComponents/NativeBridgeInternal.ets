@@ -26,6 +26,8 @@ const pendingPropsUpdates: Map<string, PendingPropsUpdate> = new Map();
 let pendingPropsFlushTimer: number | null = null;
 const PENDING_PROPS_RETRY_MS = 200;
 const MAX_PENDING_PROPS_RETRIES = 50;
+const INACTIVE_COMPONENT_STOP_DELAY_MS = 60_000;
+const pendingStopTimers: Map<string, number> = new Map();
 
 function pendingKey(webTag: string, componentId: string): string {
   return `${webTag}::${componentId}`;
@@ -109,6 +111,42 @@ function registerDefaultBuilders(): void {
   registerPickerBuilder();
 }
 
+function resolveLogicalWebTag(webTag: string): string {
+  const logicalTag = webTag.split('#')[0];
+  if (logicalTag && logicalTag.length > 0) {
+    return logicalTag;
+  }
+  return webTag;
+}
+
+function cancelDelayedStop(webTag: string): void {
+  const timer = pendingStopTimers.get(webTag);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    pendingStopTimers.delete(webTag);
+  }
+}
+
+function cancelDelayedStopForTag(webTag: string): void {
+  cancelDelayedStop(webTag);
+  const logicalTag = resolveLogicalWebTag(webTag);
+  if (logicalTag !== webTag) {
+    cancelDelayedStop(logicalTag);
+  }
+}
+
+function scheduleDelayedStop(webTag: string): void {
+  cancelDelayedStop(webTag);
+  const timer = setTimeout(() => {
+    pendingStopTimers.delete(webTag);
+    const manager = webViewEmbedManagers.get(webTag);
+    if (manager) {
+      manager.stopAll();
+    }
+  }, INACTIVE_COMPONENT_STOP_DELAY_MS);
+  pendingStopTimers.set(webTag, timer);
+}
+
 // ============================================================================
 // Embed Manager APIs
 // ============================================================================
@@ -139,36 +177,28 @@ export function getEmbedManager(webTag: string): NativeComponentEmbedManager | u
   return webViewEmbedManagers.get(webTag);
 }
 
-function resolveEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
-  const direct = webViewEmbedManagers.get(webTag);
-  if (direct) {
-    return direct;
+function resolveManagerKey(webTag: string): string | undefined {
+  if (webViewEmbedManagers.has(webTag)) {
+    return webTag;
   }
 
-  const logicalTag = webTag.split('#')[0] || webTag;
-  if (logicalTag === webTag) {
-    return undefined;
+  const logicalTag = resolveLogicalWebTag(webTag);
+  if (logicalTag !== webTag && webViewEmbedManagers.has(logicalTag)) {
+    return logicalTag;
   }
-  const logicalManager = webViewEmbedManagers.get(logicalTag);
-  if (!logicalManager) {
-    return undefined;
-  }
-  return logicalManager;
+  return undefined;
 }
 
-/**
- * Teardown EmbedManager for a webTag - cleanup all native components
- * Safe to call multiple times - will only teardown once
- */
-export function teardownEmbedManager(webTag: string): void {
-  const manager = webViewEmbedManagers.get(webTag);
-  if (manager) {
-    // Remove from maps first to prevent re-entry
-    webViewEmbedManagers.delete(webTag);
-    webViewControllers.delete(webTag);
-    // Then teardown
-    manager.teardown();
+function resolveEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
+  const key = resolveManagerKey(webTag);
+  if (!key) {
+    return undefined;
   }
+  return webViewEmbedManagers.get(key);
+}
+
+function removePendingPropsForTag(webTag: string): void {
+  const logicalTag = resolveLogicalWebTag(webTag);
   const keys: string[] = [];
   for (const key of pendingPropsUpdates.keys()) {
     keys.push(key);
@@ -177,8 +207,32 @@ export function teardownEmbedManager(webTag: string): void {
     const key = keys[i];
     if (key.startsWith(`${webTag}::`)) {
       pendingPropsUpdates.delete(key);
+      continue;
+    }
+    if (logicalTag !== webTag && key.startsWith(`${logicalTag}::`)) {
+      pendingPropsUpdates.delete(key);
     }
   }
+}
+
+/**
+ * Teardown EmbedManager for a webTag - cleanup all native components
+ * Safe to call multiple times - will only teardown once
+ */
+export function teardownEmbedManager(webTag: string): void {
+  cancelDelayedStopForTag(webTag);
+  const resolvedKey = resolveManagerKey(webTag);
+  if (resolvedKey) {
+    const manager = webViewEmbedManagers.get(resolvedKey);
+    if (manager) {
+      // Remove from maps first to prevent re-entry
+      webViewEmbedManagers.delete(resolvedKey);
+      webViewControllers.delete(resolvedKey);
+      // Then teardown
+      manager.teardown();
+    }
+  }
+  removePendingPropsForTag(webTag);
   if (pendingPropsUpdates.size === 0 && pendingPropsFlushTimer !== null) {
     clearTimeout(pendingPropsFlushTimer);
     pendingPropsFlushTimer = null;
@@ -246,7 +300,12 @@ export function updateNativeComponentProps(
   componentId: string,
   propsJson: string
 ): boolean {
-  const manager = resolveEmbedManager(webTag);
+  const resolvedKey = resolveManagerKey(webTag);
+  if (!resolvedKey) {
+    enqueuePendingPropsUpdate(webTag, componentId, propsJson);
+    return false;
+  }
+  const manager = webViewEmbedManagers.get(resolvedKey);
   if (!manager) {
     enqueuePendingPropsUpdate(webTag, componentId, propsJson);
     return false;
@@ -257,6 +316,9 @@ export function updateNativeComponentProps(
   const updated = manager.updateComponentProps(componentId, propsJson);
   if (updated) {
     pendingPropsUpdates.delete(pendingKey(webTag, componentId));
+    if (resolvedKey !== webTag) {
+      pendingPropsUpdates.delete(pendingKey(resolvedKey, componentId));
+    }
     return true;
   }
   enqueuePendingPropsUpdate(webTag, componentId, propsJson);
@@ -271,9 +333,14 @@ export function updateNativeComponentProps(
  * Pause all native components for a webTag (e.g., on page navigate away)
  */
 export function pauseAllComponents(webTag: string): void {
-  const manager = webViewEmbedManagers.get(webTag);
+  const resolvedKey = resolveManagerKey(webTag);
+  if (!resolvedKey) {
+    return;
+  }
+  const manager = webViewEmbedManagers.get(resolvedKey);
   if (manager) {
     manager.pauseAll();
+    scheduleDelayedStop(resolvedKey);
   }
 }
 
@@ -281,7 +348,8 @@ export function pauseAllComponents(webTag: string): void {
  * Resume all native components for a webTag (e.g., on page navigate back)
  */
 export function resumeAllComponents(webTag: string): void {
-  const manager = webViewEmbedManagers.get(webTag);
+  cancelDelayedStopForTag(webTag);
+  const manager = resolveEmbedManager(webTag);
   if (manager) {
     manager.resumeAll();
   }
