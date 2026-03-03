@@ -163,20 +163,8 @@ extension macOSLxApp {
         shared.handleRegularNavigation(appId: appId, path: path, animationType: animationType)
 
         // Update UI components based on Rust state
-        updateTabBarDirect(appId: appId, path: path)
         updateNavigationBarDirect(appId: appId, path: path)
         updateSidebarDirect(appId: appId, path: path)
-    }
-
-    /// Update TabBar based on Rust state
-    private static func updateTabBarDirect(appId: String, path: String) {
-        guard let tabController = Self.tabWindowController,
-              let vc = tabController.getViewController(for: appId) else { return }
-
-        // Tell TabBar to refresh its state from Rust
-        if let wrapper = vc.tabBarView as? LingXiaTabBar {
-            wrapper.refreshLayout()
-        }
     }
 
     /// Update NavigationBar based on Rust state

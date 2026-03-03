@@ -43,14 +43,11 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     internal var currentPath: String
     private var sessionId: UInt64
     private var webViewContainer: NSView!
-    internal var tabBarView: NSView?
-    public var tabBarConfig: TabBar?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
     private var pullToRefreshHelper: MacPullToRefreshHelper?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
-    nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
     public init(appId: String, path: String, sessionId: UInt64) {
         self.appId = appId
@@ -73,7 +70,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
-        tabBarObserver.map(NotificationCenter.default.removeObserver)
     }
 
     public override func loadView() {
@@ -95,112 +91,17 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         view.wantsLayer = true
         view.layer?.backgroundColor = AppKit.NSColor.windowBackgroundColor.cgColor
 
-        setupTabBar()
         setupWebViewContainer()
 
-        if let tabBar = tabBarView, let tabBarConfig = lingxia.getTabBar(appId) {
-            view.addSubview(tabBar)
-            setupTabBarConstraints(tabBar: tabBar, config: tabBarConfig)
-        } else {
-            setupWebViewConstraintsWithoutTabBar()
-        }
-
-        view.needsLayout = true
-        view.layoutSubtreeIfNeeded()
-    }
-
-    private func setupTabBarConstraints(tabBar: NSView, config: TabBar) {
-        let isTransparent = TabBarHelper.isTransparent(config.background_color)
-        let dimension = CGFloat(config.dimension)
-
-        // TabBar constraints
-        let tabBarConstraints = createTabBarConstraints(tabBar: tabBar, position: config.position, dimension: dimension)
-        NSLayoutConstraint.activate(tabBarConstraints)
-
-        // WebView constraints
-        let webViewConstraints = createWebViewConstraints(tabBar: tabBar, position: config.position, isTransparent: isTransparent)
-        NSLayoutConstraint.activate(webViewConstraints)
-
-        if isTransparent {
-            tabBar.wantsLayer = true
-            tabBar.layer?.backgroundColor = NSColor.clear.cgColor
-        }
-    }
-
-    private func createTabBarConstraints(tabBar: NSView, position: Int32, dimension: CGFloat) -> [NSLayoutConstraint] {
-        switch position {
-        case 0: // bottom
-            return [
-                tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                tabBar.heightAnchor.constraint(equalToConstant: dimension)
-            ]
-        case 1: // left
-            return [
-                tabBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
-                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                tabBar.widthAnchor.constraint(equalToConstant: dimension)
-            ]
-        case 2: // right
-            return [
-                tabBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                tabBar.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
-                tabBar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-                tabBar.widthAnchor.constraint(equalToConstant: dimension)
-            ]
-        default: // fallback to bottom
-            return createTabBarConstraints(tabBar: tabBar, position: 0, dimension: dimension)
-        }
-    }
-
-    private func createWebViewConstraints(tabBar: NSView, position: Int32, isTransparent: Bool) -> [NSLayoutConstraint] {
-        let topMargin = getTopMargin()
-
-        if isTransparent {
-            return [
-                webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: topMargin),
-                webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-            ]
-        }
-
-        switch position {
-        case 0: // bottom
-            return [
-                webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: topMargin),
-                webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                webViewContainer.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
-            ]
-        case 1: // left
-            return [
-                webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: topMargin),
-                webViewContainer.leadingAnchor.constraint(equalTo: tabBar.trailingAnchor),
-                webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-            ]
-        case 2: // right
-            return [
-                webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: topMargin),
-                webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                webViewContainer.trailingAnchor.constraint(equalTo: tabBar.leadingAnchor),
-                webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-            ]
-        default:
-            return createWebViewConstraints(tabBar: tabBar, position: 0, isTransparent: false)
-        }
-    }
-
-    private func setupWebViewConstraintsWithoutTabBar() {
         NSLayoutConstraint.activate([
             webViewContainer.topAnchor.constraint(equalTo: view.topAnchor, constant: getTopMargin()),
             webViewContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webViewContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
+
+        view.needsLayout = true
+        view.layoutSubtreeIfNeeded()
     }
 
     private func setupWebViewContainer() {
@@ -209,23 +110,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         webViewContainer.layer?.masksToBounds = true
         webViewContainer.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webViewContainer)
-    }
-
-    private func setupTabBar(config: TabBar? = nil) {
-        guard let tabBarConfig = lingxia.getTabBar(appId) else { return }
-        self.tabBarConfig = tabBarConfig
-
-        let tabBar = LingXiaTabBar()
-        tabBar.initialize(config: tabBarConfig, appId: appId)
-        tabBar.setOnTabSelectedListener { [weak self] index, _ in
-            guard let self = self else { return }
-            let _ = onUiEvent(self.appId, LxAppUIEvent.tabBarClick, String(index))
-        }
-        let initIndex = Int(tabBarConfig.selected_index)
-        tabBar.setSelectedIndex(initIndex, notifyListener: false)
-
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-        self.tabBarView = tabBar
     }
 
     private func loadWebViewContent() {
@@ -276,20 +160,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                 self.view.window?.close()
             }
         }
-
-        tabBarObserver = NotificationCenter.default.addObserver(
-            forName: .tabBarStateChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-
-            Task { @MainActor in
-                if let wrapper = self.tabBarView as? LingXiaTabBar {
-                    wrapper.refreshLayout()
-                }
-            }
-        }
     }
 
     @MainActor
@@ -314,16 +184,6 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     internal func updateSessionId(_ value: UInt64) {
         if value > 0 {
             sessionId = value
-        }
-    }
-
-
-
-    func updateLayoutForNavigationStyle(currentPath: String) {
-        self.currentPath = currentPath
-
-        if let wrapper = tabBarView as? LingXiaTabBar {
-            wrapper.refreshLayout()
         }
     }
 
