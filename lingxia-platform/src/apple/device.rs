@@ -609,7 +609,9 @@ fn keychain_read(key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
         Ok(data) => Ok(Some(data.to_vec())),
         Err(e) if e.code() == -25300 => Ok(None), // errSecItemNotFound
         Err(e) => Err(PlatformError::Platform(format!(
-            "Keychain read failed: {}",
+            "Keychain read failed (OSStatus {}: {}): {}",
+            e.code(),
+            keychain_status_name(e.code()),
             e
         ))),
     }
@@ -622,8 +624,14 @@ fn keychain_write(key: &str, value: &[u8]) -> Result<(), PlatformError> {
     // Delete existing item first (if any)
     let _ = delete_generic_password(KEYCHAIN_SERVICE, key);
 
-    set_generic_password(KEYCHAIN_SERVICE, key, value)
-        .map_err(|e| PlatformError::Platform(format!("Keychain write failed: {}", e)))
+    set_generic_password(KEYCHAIN_SERVICE, key, value).map_err(|e| {
+        PlatformError::Platform(format!(
+            "Keychain write failed (OSStatus {}: {}): {}",
+            e.code(),
+            keychain_status_name(e.code()),
+            e
+        ))
+    })
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
@@ -634,9 +642,23 @@ fn keychain_delete(key: &str) -> Result<(), PlatformError> {
         Ok(()) => Ok(()),
         Err(e) if e.code() == -25300 => Ok(()), // errSecItemNotFound - not an error
         Err(e) => Err(PlatformError::Platform(format!(
-            "Keychain delete failed: {}",
+            "Keychain delete failed (OSStatus {}: {}): {}",
+            e.code(),
+            keychain_status_name(e.code()),
             e
         ))),
+    }
+}
+
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+fn keychain_status_name(code: i32) -> &'static str {
+    match code {
+        -128 => "user_canceled",
+        -25300 => "item_not_found",
+        -25308 => "interaction_not_allowed",
+        -25293 => "auth_failed",
+        -34018 => "missing_entitlement",
+        _ => "unknown",
     }
 }
 
