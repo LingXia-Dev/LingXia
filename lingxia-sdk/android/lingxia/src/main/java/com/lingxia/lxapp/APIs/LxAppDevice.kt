@@ -1,12 +1,17 @@
 package com.lingxia.lxapp.APIs
 
 import android.app.Activity
+import android.Manifest
 import android.content.Context
 import android.util.Log
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import org.json.JSONObject
 import com.lingxia.lxapp.LxApp
+import androidx.core.content.ContextCompat
+import java.io.File
 
 /**
  * Device-related APIs shared by LxApp JNI surface on Android.
@@ -62,6 +67,38 @@ object LxAppDevice {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to make phone call", e)
             }
+        }
+    }
+
+    @JvmStatic
+    fun readExternalStorageText(storageKey: String): String? {
+        val file = resolveExternalFile(storageKey) ?: return null
+        if (!ensureExternalStorageAccess()) return null
+
+        return try {
+            if (!file.exists() || !file.isFile) {
+                null
+            } else {
+                file.readText(Charsets.UTF_8)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "readExternalStorageText failed: ${file.absolutePath}", e)
+            null
+        }
+    }
+
+    @JvmStatic
+    fun writeExternalStorageText(storageKey: String, value: String): Boolean {
+        val file = resolveExternalFile(storageKey) ?: return false
+        if (!ensureExternalStorageAccess()) return false
+
+        return try {
+            file.parentFile?.mkdirs()
+            file.writeText(value, Charsets.UTF_8)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "writeExternalStorageText failed: ${file.absolutePath}", e)
+            false
         }
     }
 
@@ -149,6 +186,70 @@ object LxAppDevice {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to make phone call", e)
             throw e
+        }
+    }
+
+    private fun resolveExternalFile(storageKey: String): File? {
+        val key = storageKey.trim()
+        if (key.isEmpty() || key.contains('/') || key.contains('\\') || key.contains("..")) {
+            Log.w(TAG, "Invalid external storage key: $storageKey")
+            return null
+        }
+
+        @Suppress("DEPRECATION")
+        val root = Environment.getExternalStorageDirectory()
+        if (root == null) {
+            Log.w(TAG, "External storage directory unavailable")
+            return null
+        }
+
+        val appId = resolveStorageAppId() ?: return null
+        return File(root, ".lingxia/$appId/$key")
+    }
+
+    private fun resolveStorageAppId(): String? {
+        val packageName = LxApp.applicationContext()?.packageName?.trim().orEmpty()
+        if (packageName.isNotEmpty()) {
+            return packageName
+        }
+
+        Log.w(TAG, "External storage appId unavailable")
+        return null
+    }
+
+    private fun ensureExternalStorageAccess(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: fingerprint path should use ANDROID_ID instead.
+            Log.w(TAG, "External storage access disabled on API ${Build.VERSION.SDK_INT} (use ANDROID_ID path)")
+            return false
+        }
+
+        // Android 5.x-6.x install-time permissions.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return true
+        }
+
+        val permissions = buildStoragePermissions()
+        val context = LxApp.applicationContext() ?: LxApp.getCurrentActivity()
+        if (context == null) {
+            Log.w(TAG, "External storage access denied: context unavailable")
+            return false
+        }
+        return hasAllPermissions(context, permissions)
+    }
+
+    private fun buildStoragePermissions(): Array<String> {
+        return buildList {
+            add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }.toTypedArray()
+    }
+
+    private fun hasAllPermissions(context: Context, permissions: Array<String>): Boolean {
+        return permissions.all { permission ->
+            ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
     }
 }

@@ -3,7 +3,7 @@
 use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
 use crate::{DeviceInfo, ScreenInfo};
-use jni::objects::{JObject, JValue};
+use jni::objects::{JObject, JString, JValue};
 use jni::{Env, jni_sig, jni_str};
 use lingxia_webview::with_env;
 use std::fs;
@@ -240,6 +240,63 @@ pub fn get_android_id() -> Option<String> {
             None
         }
     }
+}
+
+/// Read text from shared external storage via Android SDK bridge.
+///
+/// The SDK resolves `storage_key` to `/sdcard/.lingxia/<appid>/<storage_key>`.
+pub fn read_external_storage_text(storage_key: &str) -> Result<Option<String>, PlatformError> {
+    let device_class: &jni::objects::JClass =
+        super::get_cached_class(super::CachedClass::LxAppDevice)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+
+    with_env(
+        |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
+            let storage_key_jstring = env.new_string(storage_key)?;
+            let result = env.call_static_method(
+                device_class,
+                jni_str!("readExternalStorageText"),
+                jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+                &[JValue::Object(&storage_key_jstring)],
+            )?;
+
+            let obj = result.l()?;
+            if obj.is_null() {
+                return Ok(None);
+            }
+
+            let value = unsafe { JString::from_raw(env, obj.into_raw() as _) };
+            let text = value.try_to_string(env)?;
+            Ok(Some(text))
+        },
+    )
+    .map_err(|e| PlatformError::Platform(format!("Failed to read external storage text: {}", e)))
+}
+
+/// Write text to shared external storage via Android SDK bridge.
+///
+/// Returns `Ok(true)` on success, `Ok(false)` on denied/unavailable, and `Err` for JNI failure.
+pub fn write_external_storage_text(storage_key: &str, value: &str) -> Result<bool, PlatformError> {
+    let device_class: &jni::objects::JClass =
+        super::get_cached_class(super::CachedClass::LxAppDevice)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+
+    with_env(|env| -> Result<bool, Box<dyn std::error::Error>> {
+        let storage_key_jstring = env.new_string(storage_key)?;
+        let value_jstring = env.new_string(value)?;
+        let result = env.call_static_method(
+            device_class,
+            jni_str!("writeExternalStorageText"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Z"),
+            &[
+                JValue::Object(&storage_key_jstring),
+                JValue::Object(&value_jstring),
+            ],
+        )?;
+
+        Ok(result.z()?)
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to write external storage text: {}", e)))
 }
 
 impl DeviceHardware for Platform {

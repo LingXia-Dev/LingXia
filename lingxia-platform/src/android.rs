@@ -15,7 +15,10 @@ mod user_feedback;
 mod video_player;
 mod wifi;
 pub use app::Platform;
-pub use device::{get_android_id, get_api_level, has_telephony_feature};
+pub use device::{
+    get_android_id, get_api_level, has_telephony_feature, read_external_storage_text,
+    write_external_storage_text,
+};
 
 /// Enumerates the cacheable Java classes we keep as global references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
