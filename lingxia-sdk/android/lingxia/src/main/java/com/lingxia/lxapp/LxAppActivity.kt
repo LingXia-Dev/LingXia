@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.OrientationEventListener
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -281,6 +282,8 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingTabBarVisibility: Int? = null
     private var pendingNavBarVisibility: Int? = null
     private var shouldRestoreOverlayOrder = false
+    private var lastDispatchedDeviceOrientation: String? = null
+    private var deviceOrientationListener: OrientationEventListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -313,6 +316,8 @@ class LxAppActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        setupDeviceOrientationListener()
 
         // Initialize the new flag
         isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
@@ -993,10 +998,14 @@ class LxAppActivity : AppCompatActivity() {
                 hasEnteredBackground = false
             }
         }
+
+        deviceOrientationListener?.enable()
     }
 
     override fun onStop() {
         super.onStop()
+
+        deviceOrientationListener?.disable()
 
         // Avoid spurious background/foreground events during configuration changes (e.g. rotation).
         if (isChangingConfigurations) return
@@ -1017,6 +1026,8 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+        deviceOrientationListener?.disable()
+        deviceOrientationListener = null
 
         // Destroy native components before pausing WebView
         currentWebView?.let { NativeBridge.notifyPageDestroyed(it) }
@@ -1822,6 +1833,49 @@ class LxAppActivity : AppCompatActivity() {
 
         // Update layout to adapt to screen orientation changes
         updateLayoutMargins()
+    }
+
+    private fun setupDeviceOrientationListener() {
+        if (deviceOrientationListener != null) return
+        deviceOrientationListener = object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                val orientationValue = orientationToLabel(orientation) ?: return
+                dispatchDeviceOrientationValue(orientationValue)
+            }
+        }
+    }
+
+    private fun orientationToLabel(orientation: Int): String? {
+        if (orientation == OrientationEventListener.ORIENTATION_UNKNOWN) {
+            return null
+        }
+        val normalized = ((orientation % 360) + 360) % 360
+        return if ((normalized in 45..134) || (normalized in 225..314)) {
+            "landscape"
+        } else {
+            "portrait"
+        }
+    }
+
+    private fun dispatchDeviceOrientationValue(orientationValue: String) {
+        if (lastDispatchedDeviceOrientation == orientationValue) {
+            return
+        }
+        if (!::appId.isInitialized || appId.isBlank()) {
+            return
+        }
+        val sessionId = currentSessionId
+        if (sessionId <= 0L) {
+            return
+        }
+
+        try {
+            if (NativeApi.onDeviceOrientationChanged(appId, sessionId, orientationValue)) {
+                lastDispatchedDeviceOrientation = orientationValue
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "onDeviceOrientationChanged failed: ${error.message}")
+        }
     }
 
     override fun onRequestPermissionsResult(

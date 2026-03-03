@@ -454,6 +454,45 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onDeviceOrientationChanged(
+    mut env: EnvUnowned,
+    _class: JClass,
+    appid: JString,
+    session_id: jlong,
+    value: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let value: String = value.try_to_string(env)?;
+
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(false);
+        };
+
+        if session_id <= 0 {
+            return Ok(false);
+        }
+        if lxapp.session_id() != session_id as u64 {
+            return Ok(false);
+        }
+
+        let normalized = match value.as_str() {
+            "portrait" => "portrait",
+            "landscape" => "landscape",
+            _ => return Ok(false),
+        };
+
+        let payload = format!(r#"{{"value":"{}"}}"#, normalized);
+        if lxapp::emit_app_event(&appid, "DeviceOrientationChange", Some(payload)) {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 // Function to notify the Rust layer that a mini app has been opened
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(

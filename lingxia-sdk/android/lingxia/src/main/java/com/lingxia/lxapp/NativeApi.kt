@@ -110,6 +110,16 @@ object NativeApi {
     external fun onKeyEvent(appId: String, eventType: Int, payloadJson: String): Boolean
 
     /**
+     * Dispatch device orientation change event to native layer.
+     * @param appId The ID of the app
+     * @param sessionId Runtime session id
+     * @param value "portrait" or "landscape"
+     * @return true if event was dispatched, false otherwise
+     */
+    @JvmStatic
+    external fun onDeviceOrientationChanged(appId: String, sessionId: Long, value: String): Boolean
+
+    /**
      * Get LxApp information using typed API
      * @param appId The ID of the app
      * @return LxApp information or null if not found
