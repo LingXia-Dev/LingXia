@@ -43,6 +43,10 @@ final class MacNativeComponentManager {
     private var scrollOffsetX: CGFloat = 0
     private var scrollOffsetY: CGFloat = 0
     private var componentDocumentRects: [String: CGRect] = [:]
+    private let inactivePageStopDelayNs: UInt64 = 60_000_000_000
+    private var pageInactiveStopTasks: [String: Task<Void, Never>] = [:]
+    private var componentPlaybackIntent: [String: Bool] = [:]
+    private var componentsPendingAutoResume: Set<String> = []
 
     init(
         hostView: NSView,
@@ -176,6 +180,14 @@ final class MacNativeComponentManager {
         guard let id = parameters["id"] as? String,
               let name = parameters["name"] as? String,
               let component = components[id] else { return }
+        switch name {
+        case "play":
+            componentPlaybackIntent[id] = true
+        case "pause", "stop":
+            componentPlaybackIntent[id] = false
+        default:
+            break
+        }
         let params = parameters["params"] as? [String: Any]
         component.handleCommand(name: name, params: params)
     }
@@ -196,6 +208,9 @@ final class MacNativeComponentManager {
     }
 
     func teardownAll() {
+        cancelAllInactivePageStops()
+        componentsPendingAutoResume.removeAll()
+        componentPlaybackIntent.removeAll()
         let allIds = Array(components.keys)
         allIds.forEach { id in
             unmountComponent(id: id, pageId: componentPage[id])
@@ -205,6 +220,7 @@ final class MacNativeComponentManager {
 
     private func sendEventToWeb(componentId: String, event: [String: Any]) {
         var payload = event
+        updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
         payload["id"] = componentId
         if let pageId = componentPage[componentId] {
@@ -284,28 +300,68 @@ final class MacNativeComponentManager {
         guard let ids = pageComponents[pageId] else { return }
         for id in ids {
             guard let component = components[id] else { continue }
+            if componentPlaybackIntent[id] == true {
+                componentsPendingAutoResume.insert(id)
+            } else {
+                componentsPendingAutoResume.remove(id)
+            }
             component.blur()
             component.view.isHidden = true
+            component.handleCommand(name: "pause", params: nil)
         }
+        scheduleInactivePageStop(pageId)
     }
 
     private func resumePage(_ pageId: String) {
+        cancelInactivePageStop(pageId)
         guard let ids = pageComponents[pageId] else { return }
         for id in ids {
             guard let component = components[id] else { continue }
             component.view.isHidden = false
             component.focus()
+            if componentsPendingAutoResume.remove(id) != nil {
+                component.handleCommand(name: "play", params: nil)
+            }
         }
     }
 
     private func unmountPage(_ pageId: String) {
+        cancelInactivePageStop(pageId)
         guard let ids = pageComponents.removeValue(forKey: pageId) else { return }
         for id in ids {
             unmountComponent(id: id, pageId: pageId)
         }
     }
 
+    private func scheduleInactivePageStop(_ pageId: String) {
+        cancelInactivePageStop(pageId)
+        let delayNs = inactivePageStopDelayNs
+        pageInactiveStopTasks[pageId] = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delayNs)
+            await self?.applyInactivePageStop(pageId)
+        }
+    }
+
+    private func cancelInactivePageStop(_ pageId: String) {
+        pageInactiveStopTasks.removeValue(forKey: pageId)?.cancel()
+    }
+
+    private func cancelAllInactivePageStops() {
+        pageInactiveStopTasks.values.forEach { $0.cancel() }
+        pageInactiveStopTasks.removeAll()
+    }
+
+    private func applyInactivePageStop(_ pageId: String) {
+        pageInactiveStopTasks.removeValue(forKey: pageId)
+        guard let ids = pageComponents[pageId] else { return }
+        for id in ids {
+            components[id]?.handleCommand(name: "stop", params: nil)
+        }
+    }
+
     private func unmountComponent(id: String, pageId: String?) {
+        componentsPendingAutoResume.remove(id)
+        componentPlaybackIntent.removeValue(forKey: id)
         guard let component = components.removeValue(forKey: id) else { return }
         if let callbackId = componentCallbacks[id] {
             let payload: [String: Any] = [
@@ -326,6 +382,7 @@ final class MacNativeComponentManager {
             set.remove(id)
             if set.isEmpty {
                 pageComponents.removeValue(forKey: pageId)
+                cancelInactivePageStop(pageId)
             } else {
                 pageComponents[pageId] = set
             }
@@ -334,6 +391,17 @@ final class MacNativeComponentManager {
         componentCallbacks.removeValue(forKey: id)
         componentDocumentRects.removeValue(forKey: id)
         MacComponentRouter.shared.unregister(componentId: id)
+    }
+
+    private func updatePlaybackIntent(componentId: String, event: String?) {
+        switch event {
+        case "play", "playrequest", "playing":
+            componentPlaybackIntent[componentId] = true
+        case "pause", "stop", "ended", "error":
+            componentPlaybackIntent[componentId] = false
+        default:
+            break
+        }
     }
 }
 
