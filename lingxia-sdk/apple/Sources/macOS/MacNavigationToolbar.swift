@@ -25,6 +25,7 @@ public class MacNavigationToolbar: NSView {
     private var cancellables = Set<AnyCancellable>()
 
     private var showNavbar = false
+    private var forceHidden = false
 
     /// Called with "back" or "home" when user clicks a nav button
     var onNavigationAction: ((String) -> Void)?
@@ -169,12 +170,18 @@ public class MacNavigationToolbar: NSView {
         }
     }
 
+    /// Force-hide the toolbar (used when browser tab is active)
+    func forceHide(_ hidden: Bool) {
+        forceHidden = hidden
+        updateHeight()
+    }
+
     private func updateHeight() {
-        let targetHeight: CGFloat = showNavbar ? Layout.height : 0
+        let targetHeight: CGFloat = (showNavbar && !forceHidden) ? Layout.height : 0
         if heightConstraint.constant != targetHeight {
             heightConstraint.constant = targetHeight
         }
-        separator.isHidden = !showNavbar
+        separator.isHidden = !showNavbar || forceHidden
     }
 
     @objc private func backClicked() {

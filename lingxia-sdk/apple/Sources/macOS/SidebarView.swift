@@ -73,6 +73,19 @@ public class SidebarView: NSView {
 
     private var groupViews: [String: SidebarGroupView] = [:]
     private var dotViews: [(appId: String, dot: NSView)] = []
+    private var currentTabs: [LxAppTab] = []
+
+    // Browser tab views
+    private var browserItemViews: [UUID: SidebarBrowserItemView] = [:]
+    private var browserItemTopConstraints: [UUID: NSLayoutConstraint] = [:]
+    private var browserTabOrder: [UUID] = []
+    private let browserSeparator = NSView()
+    private var separatorTopConstraint: NSLayoutConstraint?
+    private let addButton = NSButton()
+    private var addButtonTopConstraint: NSLayoutConstraint?
+    private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
+    private var addButtonTrackingArea: NSTrackingArea?
+    private var isAddButtonHovered = false
 
     /// True when the sidebar is at minimized width (showing dots only)
     var isMinimized: Bool {
@@ -87,6 +100,12 @@ public class SidebarView: NSView {
     var onToggleRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
+    /// Called when "+" button is clicked to add a browser tab
+    var onAddBrowserTab: (() -> Void)?
+    /// Called when a browser tab is selected
+    var onBrowserTabSelected: ((UUID) -> Void)?
+    /// Called when a browser tab close is requested
+    var onBrowserTabCloseRequested: ((UUID) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -317,12 +336,15 @@ public class SidebarView: NSView {
     func updateForTabs(_ tabs: [LxAppTab], activeTab: LxAppTab?) {
         guard let docView = scrollView.documentView else { return }
 
+        currentTabs = tabs
+
         // Remove groups for apps no longer in tabs
         let currentAppIds = Set(tabs.map { $0.appId })
         for (appId, groupView) in groupViews {
             if !currentAppIds.contains(appId) {
                 groupView.removeFromSuperview()
                 groupViews.removeValue(forKey: appId)
+                groupTopConstraints.removeValue(forKey: appId)
             }
         }
 
@@ -330,10 +352,8 @@ public class SidebarView: NSView {
         var yOffset: CGFloat = 4
         for (tabIndex, tab) in tabs.enumerated() {
             let groupView: SidebarGroupView
-            let isNew: Bool
             if let existing = groupViews[tab.appId] {
                 groupView = existing
-                isNew = false
             } else {
                 groupView = SidebarGroupView(appId: tab.appId)
                 groupView.onPageSelected = { [weak self] appId, itemIndex in
@@ -342,32 +362,37 @@ public class SidebarView: NSView {
                 groupView.onCloseRequested = { [weak self] appId in
                     self?.onAppCloseRequested?(appId)
                 }
+                groupView.onLayoutChanged = { [weak self] in
+                    self?.relayoutAfterGroupToggle()
+                }
                 groupViews[tab.appId] = groupView
-                isNew = true
             }
 
             groupView.setColorIndex(tabIndex)
 
-            if isNew || groupView.superview !== docView {
+            if groupView.superview !== docView {
                 groupView.removeFromSuperview()
                 docView.addSubview(groupView)
+                NSLayoutConstraint.activate([
+                    groupView.leadingAnchor.constraint(equalTo: docView.leadingAnchor),
+                    groupView.trailingAnchor.constraint(equalTo: docView.trailingAnchor),
+                ])
             }
 
-            for constraint in docView.constraints {
-                if constraint.firstItem === groupView && constraint.firstAttribute == .top {
-                    constraint.isActive = false
-                }
+            if let tc = groupTopConstraints[tab.appId] {
+                tc.constant = yOffset
+            } else {
+                let tc = groupView.topAnchor.constraint(equalTo: docView.topAnchor, constant: yOffset)
+                tc.isActive = true
+                groupTopConstraints[tab.appId] = tc
             }
-
-            NSLayoutConstraint.activate([
-                groupView.topAnchor.constraint(equalTo: docView.topAnchor, constant: yOffset),
-                groupView.leadingAnchor.constraint(equalTo: docView.leadingAnchor),
-                groupView.trailingAnchor.constraint(equalTo: docView.trailingAnchor),
-            ])
 
             groupView.layoutSubtreeIfNeeded()
             yOffset += groupView.fittingSize.height + 8
         }
+
+        // Layout browser separator, browser items, and "+" button after groups
+        yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
 
         // Update document view height
         let docHeight = max(yOffset, scrollView.contentView.bounds.height)
@@ -389,6 +414,11 @@ public class SidebarView: NSView {
 
     /// Set active highlight on the appropriate group and item
     func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
+        // Clear browser selections when an lxapp is selected
+        for (_, itemView) in browserItemViews {
+            itemView.isSelected = false
+        }
+
         for (id, group) in groupViews {
             if id == appId {
                 if let idx = pageIndex {
@@ -404,8 +434,234 @@ public class SidebarView: NSView {
         }
     }
 
+    /// Clear all highlights (both lxapp and browser)
+    func clearAllHighlights() {
+        for (_, group) in groupViews {
+            group.clearHighlight()
+        }
+        for (_, itemView) in browserItemViews {
+            itemView.isSelected = false
+        }
+    }
+
+    // MARK: - Browser Items
+
+    /// Update browser tab items in the sidebar
+    func updateBrowserItems(_ items: [(id: UUID, title: String)], activeId: UUID?) {
+        guard let docView = scrollView.documentView else { return }
+
+        // Store ordering
+        browserTabOrder = items.map { $0.id }
+
+        // Remove browser items no longer present
+        let currentIds = Set(items.map { $0.id })
+        for (id, itemView) in browserItemViews {
+            if !currentIds.contains(id) {
+                if let topConstraint = browserItemTopConstraints[id] {
+                    topConstraint.isActive = false
+                    browserItemTopConstraints.removeValue(forKey: id)
+                }
+                itemView.removeFromSuperview()
+                browserItemViews.removeValue(forKey: id)
+            }
+        }
+
+        // Add/update browser items
+        for item in items {
+            if let existing = browserItemViews[item.id] {
+                existing.configure(title: item.title, isSelected: item.id == activeId)
+            } else {
+                let itemView = SidebarBrowserItemView(id: item.id)
+                itemView.translatesAutoresizingMaskIntoConstraints = false
+                itemView.onClick = { [weak self] id in
+                    self?.onBrowserTabSelected?(id)
+                }
+                itemView.onClose = { [weak self] id in
+                    self?.onBrowserTabCloseRequested?(id)
+                }
+                itemView.configure(title: item.title, isSelected: item.id == activeId)
+                browserItemViews[item.id] = itemView
+            }
+        }
+
+        // Re-layout browser section
+        relayoutBrowserSection(in: docView)
+    }
+
+    /// Layout browser separator, browser items, and add button after lxapp groups
+    private func layoutBrowserSection(in docView: NSView, yOffset startY: CGFloat) -> CGFloat {
+        let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
+        var yOffset = startY
+
+        // Separator — only show if there are browser items
+        let hasBrowserItems = !browserItemViews.isEmpty
+        if hasBrowserItems {
+            ensureSubview(browserSeparator, in: docView) {
+                browserSeparator.translatesAutoresizingMaskIntoConstraints = false
+                browserSeparator.wantsLayer = true
+                browserSeparator.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
+                NSLayoutConstraint.activate([
+                    browserSeparator.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
+                    browserSeparator.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
+                    browserSeparator.heightAnchor.constraint(equalToConstant: 1),
+                ])
+            }
+            browserSeparator.isHidden = false
+            updateOrCreate(&separatorTopConstraint, on: browserSeparator, in: docView, constant: yOffset)
+            yOffset += 1 + 8
+        } else {
+            browserSeparator.isHidden = true
+        }
+
+        // Browser item views (ordered by browserTabOrder)
+        for tabId in browserTabOrder {
+            guard let itemView = browserItemViews[tabId] else { continue }
+            ensureSubview(itemView, in: docView) {
+                NSLayoutConstraint.activate([
+                    itemView.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
+                    itemView.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
+                ])
+            }
+
+            if let tc = browserItemTopConstraints[tabId] {
+                tc.constant = yOffset
+            } else {
+                let tc = itemView.topAnchor.constraint(equalTo: docView.topAnchor, constant: yOffset)
+                tc.isActive = true
+                browserItemTopConstraints[tabId] = tc
+            }
+            yOffset += SidebarBrowserItemView.Layout.height + 2
+        }
+
+        // "+" button
+        ensureSubview(addButton, in: docView) {
+            setupAddButton()
+            NSLayoutConstraint.activate([
+                addButton.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
+                addButton.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
+                addButton.heightAnchor.constraint(equalToConstant: 28),
+            ])
+        }
+        updateOrCreate(&addButtonTopConstraint, on: addButton, in: docView, constant: yOffset)
+        yOffset += 28 + 8
+
+        return yOffset
+    }
+
+    /// Ensure a view is a subview of parent; run setup closure only on first add
+    private func ensureSubview(_ view: NSView, in parent: NSView, setup: () -> Void) {
+        if view.superview !== parent {
+            view.removeFromSuperview()
+            parent.addSubview(view)
+            setup()
+        }
+    }
+
+    /// Update an existing top constraint's constant, or create one
+    private func updateOrCreate(_ constraint: inout NSLayoutConstraint?, on view: NSView, in parent: NSView, constant: CGFloat) {
+        if let c = constraint {
+            c.constant = constant
+        } else {
+            let c = view.topAnchor.constraint(equalTo: parent.topAnchor, constant: constant)
+            c.isActive = true
+            constraint = c
+        }
+    }
+
+    /// Calculate Y offset after all groups (using tab order)
+    private func yOffsetAfterGroups() -> CGFloat {
+        var yOffset: CGFloat = 4
+        for tab in currentTabs {
+            if let groupView = groupViews[tab.appId] {
+                groupView.layoutSubtreeIfNeeded()
+                yOffset += groupView.fittingSize.height + 8
+            }
+        }
+        return yOffset
+    }
+
+    /// Re-layout after a group expands/collapses — repositions groups + browser section
+    private func relayoutAfterGroupToggle() {
+        guard let docView = scrollView.documentView else { return }
+
+        // Reposition all groups using stored top constraints
+        var yOffset: CGFloat = 4
+        for tab in currentTabs {
+            guard let groupView = groupViews[tab.appId] else { continue }
+            groupTopConstraints[tab.appId]?.constant = yOffset
+            groupView.layoutSubtreeIfNeeded()
+            yOffset += groupView.fittingSize.height + 8
+        }
+
+        // Re-layout browser section below groups
+        yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
+
+        let docHeight = max(yOffset, scrollView.contentView.bounds.height)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: docHeight)
+    }
+
+    /// Re-layout just the browser section (for title updates without full tab rebuild)
+    private func relayoutBrowserSection(in docView: NSView) {
+        let yOffset = layoutBrowserSection(in: docView, yOffset: yOffsetAfterGroups())
+
+        let docHeight = max(yOffset, scrollView.contentView.bounds.height)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: docHeight)
+    }
+
+    private func setupAddButton() {
+        addButton.translatesAutoresizingMaskIntoConstraints = false
+        addButton.title = ""
+        addButton.image = NSImage(systemSymbolName: "plus", accessibilityDescription: "Add browser tab")
+        addButton.isBordered = false
+        addButton.bezelStyle = .regularSquare
+        addButton.imagePosition = .imageOnly
+        addButton.contentTintColor = NSColor.white.withAlphaComponent(0.6)
+        addButton.wantsLayer = true
+        addButton.layer?.cornerRadius = 6
+        addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        addButton.target = self
+        addButton.action = #selector(addButtonClicked)
+    }
+
+    @objc private func addButtonClicked() {
+        onAddBrowserTab?()
+    }
+
     @objc private func toggleClicked() {
         onToggleRequested?()
+    }
+
+    // MARK: - Add button hover
+
+    override public func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let existing = addButtonTrackingArea {
+            addButton.removeTrackingArea(existing)
+        }
+        let area = NSTrackingArea(
+            rect: addButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: ["zone": "addButton"]
+        )
+        addButton.addTrackingArea(area)
+        addButtonTrackingArea = area
+    }
+
+    override public func mouseEntered(with event: NSEvent) {
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "addButton" {
+            isAddButtonHovered = true
+            addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
+        }
+    }
+
+    override public func mouseExited(with event: NSEvent) {
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "addButton" {
+            isAddButtonHovered = false
+            addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        }
     }
 }
 

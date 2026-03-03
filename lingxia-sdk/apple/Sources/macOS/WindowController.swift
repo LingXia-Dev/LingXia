@@ -27,6 +27,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal let panelManager = PanelLayoutManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
+    // Browser tab state
+    private var browserViewControllers: [UUID: BrowserViewController] = [:]
+    private var activeBrowserTabId: UUID?
+    private var browserTabs: [(id: UUID, title: String)] = []
+
     /// Get view controller for specific appId (needed for navigation)
     public func getViewController(for appId: String) -> macOSLxAppViewController? {
         return viewControllers[appId]
@@ -119,6 +124,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebar.onWidthChanged = { [weak self] width, animated in
             self?.updateSidebarWidth(width, animated: animated)
         }
+        sidebar.onAddBrowserTab = { [weak self] in
+            self?.addBrowserTab()
+        }
+        sidebar.onBrowserTabSelected = { [weak self] id in
+            self?.selectBrowserTab(id: id)
+        }
+        sidebar.onBrowserTabCloseRequested = { [weak self] id in
+            self?.closeBrowserTab(id: id)
+        }
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
@@ -197,8 +211,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Sidebar Actions
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
-        // Switch to the lxapp tab if not already active
-        if tabManager.activeTab?.appId != appId {
+        if activeBrowserTabId != nil {
+            // Coming from a browser tab — force switch back to lxapp
+            switchToTab(appId)
+        } else if tabManager.activeTab?.appId != appId {
             tabManager.selectTab(appId: appId)
         }
         // Always update sidebar highlight, even if Rust returns early for same index
@@ -289,6 +305,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             os_log("switchToTab missing session for %@", log: Self.log, type: .error, appId)
             return
         }
+
+        // Clear browser tab state if switching from a browser tab
+        if let browserId = activeBrowserTabId, let browserVC = browserViewControllers[browserId] {
+            browserVC.pause()
+            browserVC.view.removeFromSuperview()
+            activeBrowserTabId = nil
+            navigationToolbar?.forceHide(false)
+        }
+
         let isNewViewController = viewControllers[appId] == nil
 
         let viewController = viewControllers[appId] ?? {
@@ -310,7 +335,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         updateContentView(with: viewController)
 
-        // Update sidebar highlight
+        // Update sidebar highlight (also clears browser selection)
         sidebarView?.setActiveHighlight(appId: appId)
     }
 
@@ -375,6 +400,95 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     public func togglePanel(id: String) {
         panelManager.togglePanel(id: id)
+    }
+
+    // MARK: - Browser Tab Lifecycle
+
+    private func addBrowserTab() {
+        let id = UUID()
+        let browserVC = BrowserViewController(id: id)
+        browserVC.onTitleChanged = { [weak self] id, title in
+            self?.handleBrowserTitleChanged(id: id, title: title)
+        }
+        browserViewControllers[id] = browserVC
+        browserTabs.append((id: id, title: "New Tab"))
+
+        switchToBrowserTab(id: id)
+        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
+    }
+
+    private func selectBrowserTab(id: UUID) {
+        switchToBrowserTab(id: id)
+        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
+    }
+
+    private func switchToBrowserTab(id: UUID) {
+        guard let browserVC = browserViewControllers[id] else { return }
+
+        // Pause current lxapp VC if any
+        currentViewController?.pauseNativeComponents()
+        currentViewController?.view.removeFromSuperview()
+        currentViewController = nil
+
+        // Pause previous browser VC if switching between browser tabs
+        if let prevId = activeBrowserTabId, prevId != id, let prevVC = browserViewControllers[prevId] {
+            prevVC.pause()
+            prevVC.view.removeFromSuperview()
+        }
+
+        activeBrowserTabId = id
+
+        // Clear lxapp highlights, set browser highlight
+        sidebarView?.clearAllHighlights()
+        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
+
+        // Hide lxapp navigation toolbar (browser has its own)
+        navigationToolbar?.forceHide(true)
+
+        // Place browser VC view into content container
+        let container = panelManager.contentContainer
+        browserVC.view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(browserVC.view)
+
+        NSLayoutConstraint.activate([
+            browserVC.view.topAnchor.constraint(equalTo: container.topAnchor),
+            browserVC.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            browserVC.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            browserVC.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        browserVC.resume()
+    }
+
+    private func closeBrowserTab(id: UUID) {
+        if let browserVC = browserViewControllers[id] {
+            browserVC.view.removeFromSuperview()
+            browserViewControllers.removeValue(forKey: id)
+        }
+
+        browserTabs.removeAll { $0.id == id }
+
+        if activeBrowserTabId == id {
+            activeBrowserTabId = nil
+
+            // Switch to another browser tab or the last lxapp tab
+            if let lastBrowser = browserTabs.last {
+                switchToBrowserTab(id: lastBrowser.id)
+                sidebarView?.updateBrowserItems(browserTabs, activeId: lastBrowser.id)
+            } else if let activeTab = tabManager.activeTab {
+                navigationToolbar?.forceHide(false)
+                switchToTab(activeTab.appId)
+            }
+        }
+
+        sidebarView?.updateBrowserItems(browserTabs, activeId: activeBrowserTabId)
+    }
+
+    private func handleBrowserTitleChanged(id: UUID, title: String) {
+        if let index = browserTabs.firstIndex(where: { $0.id == id }) {
+            browserTabs[index] = (id: id, title: title)
+            sidebarView?.updateBrowserItems(browserTabs, activeId: activeBrowserTabId)
+        }
     }
 
     private func closeTab(_ appId: String) {

@@ -141,6 +141,7 @@ class SidebarGroupView: NSView {
 
     var onPageSelected: ((String, Int) -> Void)?
     var onCloseRequested: ((String) -> Void)?
+    var onLayoutChanged: (() -> Void)?
 
     init(appId: String) {
         self.appId = appId
@@ -368,9 +369,12 @@ class SidebarGroupView: NSView {
             itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
             connectorHeightConstraint?.animator().constant = connectorTarget
         }, completionHandler: { [weak self] in
-            guard let self, !self.isExpanded else { return }
-            self.itemsContainer.isHidden = true
-            self.itemsBackground.isHidden = true
+            guard let self else { return }
+            if !self.isExpanded {
+                self.itemsContainer.isHidden = true
+                self.itemsBackground.isHidden = true
+            }
+            self.onLayoutChanged?()
         })
 
         // Chevron: down = expanded, up = collapsed (like Chrome)
