@@ -26,7 +26,7 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use app::{app_config, product_name, product_version};
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
-    emit_app_event, emit_page_event, register_app_handler, register_page_handler,
+    publish_app_event, publish_page_event, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_page_handler,
 };
 pub use cache::{LxAppCache, ResolveResult};

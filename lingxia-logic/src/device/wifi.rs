@@ -2,7 +2,7 @@ use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
 use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
-use lxapp::{LxApp, emit_app_event, lx, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, lx, publish_app_event, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
 use rong::function::Optional;
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
@@ -91,9 +91,12 @@ fn ensure_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
         if let CallbackResult::Success(payload) = result {
             info!("WifiConnected native callback received: {}", payload);
             let payload_json = normalize_wifi_connected_payload(&payload);
-            let emitted = emit_app_event(&appid_for_cb, WIFI_CONNECTED_EVENT, payload_json);
+            let emitted = publish_app_event(&appid_for_cb, WIFI_CONNECTED_EVENT, payload_json);
             if !emitted {
-                warn!("WifiConnected emit_app_event failed appid={}", appid_for_cb);
+                warn!(
+                    "WifiConnected publish_app_event failed appid={}",
+                    appid_for_cb
+                );
             }
         }
     });

@@ -3,7 +3,9 @@ use crate::i18n::js_error_from_platform_error;
 use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
-use lxapp::{LxApp, emit_app_event, info, lx, register_app_handler, unregister_app_handler, warn};
+use lxapp::{
+    LxApp, info, lx, publish_app_event, register_app_handler, unregister_app_handler, warn,
+};
 use rong::function::Optional;
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
@@ -175,9 +177,12 @@ fn ensure_network_change_callback(ctx: &JSContext) -> JSResult<()> {
     let callback_id = register_handler(move |result| {
         if let CallbackResult::Success(payload) = result {
             let payload_json = normalize_network_change_payload(&payload);
-            let emitted = emit_app_event(&appid_for_cb, NETWORK_CHANGE_EVENT, payload_json);
+            let emitted = publish_app_event(&appid_for_cb, NETWORK_CHANGE_EVENT, payload_json);
             if !emitted {
-                warn!("NetworkChange emit_app_event failed appid={}", appid_for_cb);
+                warn!(
+                    "NetworkChange publish_app_event failed appid={}",
+                    appid_for_cb
+                );
             }
         }
     });

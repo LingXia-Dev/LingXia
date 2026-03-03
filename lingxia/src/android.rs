@@ -445,7 +445,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
         } else {
             "KeyUp"
         };
-        if lxapp::emit_app_event(&appid, event_name, Some(payload)) {
+        if lxapp::publish_app_event(&appid, event_name, Some(payload)) {
             Ok(true)
         } else {
             Ok(false)
@@ -484,7 +484,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onDeviceOrientationChanged(
         };
 
         let payload = format!(r#"{{"value":"{}"}}"#, normalized);
-        if lxapp::emit_app_event(&appid, "DeviceOrientationChange", Some(payload)) {
+        if lxapp::publish_app_event(&appid, "DeviceOrientationChange", Some(payload)) {
             Ok(true)
         } else {
             Ok(false)
@@ -506,7 +506,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         if session_id <= 0 {
-            warn!("onLxAppOpened called without valid session_id for {}", appid);
+            warn!(
+                "onLxAppOpened called without valid session_id for {}",
+                appid
+            );
             return env.new_string("");
         }
         let resolved_path = lxapp::try_get(&appid)

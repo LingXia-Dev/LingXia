@@ -227,9 +227,9 @@ async fn emit_to_handlers(
 }
 
 /// Emit an app-scoped event into JS.
-pub fn emit_app_event(appid: &str, event_name: &str, payload_json: Option<String>) -> bool {
+pub fn publish_app_event(appid: &str, event_name: &str, payload_json: Option<String>) -> bool {
     let Some(lxapp) = crate::try_get(appid) else {
-        warn!("emit_app_event: unknown appid {}", appid);
+        warn!("publish_app_event: unknown appid {}", appid);
         return false;
     };
 
@@ -248,19 +248,19 @@ pub fn emit_app_event(appid: &str, event_name: &str, payload_json: Option<String
 }
 
 /// Emit a page-scoped event into JS (page_path required).
-pub fn emit_page_event(
+pub fn publish_page_event(
     appid: &str,
     page_path: &str,
     event_name: &str,
     payload_json: Option<String>,
 ) -> bool {
     if page_path.trim().is_empty() {
-        warn!("emit_page_event: missing page_path");
+        warn!("publish_page_event: missing page_path");
         return false;
     }
 
     let Some(lxapp) = crate::try_get(appid) else {
-        warn!("emit_page_event: unknown appid {}", appid);
+        warn!("publish_page_event: unknown appid {}", appid);
         return false;
     };
 

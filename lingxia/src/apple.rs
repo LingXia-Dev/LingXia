@@ -297,7 +297,7 @@ pub fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) 
     };
 
     let payload = format!(r#"{{"value":"{}"}}"#, normalized);
-    lxapp::emit_app_event(appid, "DeviceOrientationChange", Some(payload))
+    lxapp::publish_app_event(appid, "DeviceOrientationChange", Some(payload))
 }
 
 /// Handle UI events from Swift

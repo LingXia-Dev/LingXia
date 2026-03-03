@@ -357,7 +357,7 @@ pub fn on_device_orientation_changed(appid: String, session_id: i64, value: Stri
     };
 
     let payload = format!(r#"{{"value":"{}"}}"#, normalized);
-    lxapp::emit_app_event(&appid, "DeviceOrientationChange", Some(payload))
+    lxapp::publish_app_event(&appid, "DeviceOrientationChange", Some(payload))
 }
 
 /// Get page orientation for a specific page path.

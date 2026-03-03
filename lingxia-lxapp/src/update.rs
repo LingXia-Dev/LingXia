@@ -1,5 +1,4 @@
 use crate::archive;
-use crate::emit_app_event;
 use crate::error::LxAppError;
 use crate::lxapp::metadata::{LxAppRecord, SemanticVersion};
 use crate::lxapp::{
@@ -7,6 +6,7 @@ use crate::lxapp::{
     lxapp_fingermark, metadata, version::Version,
 };
 use crate::provider::{UpdatePackageInfo, UpdateTarget};
+use crate::publish_app_event;
 use dashmap::DashMap;
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::Platform;
@@ -360,7 +360,7 @@ impl UpdateManager {
                             "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
                             "error": err.to_string(),
                         });
-                        let _ = emit_app_event(
+                        let _ = publish_app_event(
                             &target_appid,
                             "UpdateFailed",
                             Some(payload.to_string()),
@@ -384,8 +384,11 @@ impl UpdateManager {
                             "isForceUpdate": pkg.is_force_update,
                             "releaseType": release_type.as_str(),
                         });
-                        let _ =
-                            emit_app_event(&target_appid, "UpdateReady", Some(payload.to_string()));
+                        let _ = publish_app_event(
+                            &target_appid,
+                            "UpdateReady",
+                            Some(payload.to_string()),
+                        );
                         return;
                     }
 
@@ -405,8 +408,11 @@ impl UpdateManager {
                             "isForceUpdate": pkg.is_force_update,
                             "releaseType": release_type.as_str(),
                         });
-                        let _ =
-                            emit_app_event(&target_appid, "UpdateReady", Some(payload.to_string()));
+                        let _ = publish_app_event(
+                            &target_appid,
+                            "UpdateReady",
+                            Some(payload.to_string()),
+                        );
                     } else {
                         let payload = serde_json::json!({
                             "version": pkg.version,
@@ -414,7 +420,7 @@ impl UpdateManager {
                             "releaseType": release_type.as_str(),
                             "error": download_res.err().map(|e| e.to_string()).unwrap_or_else(|| "download failed".to_string()),
                         });
-                        let _ = emit_app_event(
+                        let _ = publish_app_event(
                             &target_appid,
                             "UpdateFailed",
                             Some(payload.to_string()),

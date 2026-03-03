@@ -4,7 +4,7 @@ use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::lx;
 use lxapp::{
-    LxApp, OrientationConfig, emit_app_event, register_app_handler, unregister_app_handler,
+    LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler,
 };
 use rong::function::Optional;
 use rong::{JSContext, JSFunc, JSObject, JSResult};
@@ -23,7 +23,7 @@ fn normalize_orientation_value(value: &str) -> Option<&'static str> {
 
 fn emit_orientation_change_event(appid: &str, value: &str) {
     let payload = format!(r#"{{"value":"{}"}}"#, value);
-    let _ = emit_app_event(appid, DEVICE_ORIENTATION_CHANGE_EVENT, Some(payload));
+    let _ = publish_app_event(appid, DEVICE_ORIENTATION_CHANGE_EVENT, Some(payload));
 }
 
 #[inline]
