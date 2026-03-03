@@ -55,46 +55,52 @@ class LxApp private constructor(private val context: Context) {
 
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
+        @Volatile
+        private var lifecycleCallbacksRegistered: Boolean = false
 
         @JvmStatic
         internal fun initialize(context: Context) {
-            if (instance != null && HomeLxAppId != null) {
-                Log.d(TAG, "LxApp already successfully initialized, skipping")
-                return
-            }
+            synchronized(this) {
+                if (instance != null && HomeLxAppId != null) {
+                    Log.d(TAG, "LxApp already successfully initialized, skipping")
+                    return
+                }
 
-            if (instance == null) {
-                instance = LxApp(context.applicationContext)
-            }
-            val appContext = context.applicationContext
+                if (instance == null) {
+                    instance = LxApp(context.applicationContext)
+                }
+                val appContext = context.applicationContext
 
-            // Handle DeepLink for the current activity if it's being initialized from an Activity
-            if (context is android.app.Activity) {
-                handleAppLink(context.intent)
-            }
+                // Handle DeepLink for the current activity if it's being initialized from an Activity
+                if (context is android.app.Activity) {
+                    handleAppLink(context.intent)
+                }
 
-            // Register global activity lifecycle callbacks to automatically handle DeepLinks
-            registerActivityLifecycleCallbacks(appContext)
+                // Register global activity lifecycle callbacks exactly once
+                if (!lifecycleCallbacksRegistered) {
+                    lifecycleCallbacksRegistered = registerActivityLifecycleCallbacks(appContext)
+                }
 
-            // Set application context for WebView creation
-            com.lingxia.webview.LingXiaWebView.setApplicationContext(appContext)
+                // Set application context for WebView creation
+                com.lingxia.webview.LingXiaWebView.setApplicationContext(appContext)
 
-            val initResultString = NativeApi.onLxAppInited(
-                appContext.filesDir.absolutePath,
-                appContext.cacheDir.absolutePath,
-                appContext.assets,
-                LxApp.getLocale()
-            )
+                val initResultString = NativeApi.onLxAppInited(
+                    appContext.filesDir.absolutePath,
+                    appContext.cacheDir.absolutePath,
+                    appContext.assets,
+                    LxApp.getLocale()
+                )
 
-            if (initResultString != null) {
-                HomeLxAppId = initResultString
-            } else {
-                Log.e(TAG, "Failed to get home LxApp details from native init.")
-            }
+                if (initResultString != null) {
+                    HomeLxAppId = initResultString
+                } else {
+                    Log.e(TAG, "Failed to get home LxApp details from native init.")
+                }
 
-            // Configure transparent system bars if we're in an Activity context
-            if (context is AppCompatActivity) {
-                LxAppActivity.configureTransparentSystemBars(context)
+                // Configure transparent system bars if we're in an Activity context
+                if (context is AppCompatActivity) {
+                    LxAppActivity.configureTransparentSystemBars(context)
+                }
             }
         }
 
@@ -301,7 +307,7 @@ class LxApp private constructor(private val context: Context) {
         /**
          * Register activity lifecycle callbacks to automatically handle DeepLinks
          */
-        private fun registerActivityLifecycleCallbacks(context: Context) {
+        private fun registerActivityLifecycleCallbacks(context: Context): Boolean {
             val application = context.applicationContext as? android.app.Application
             application?.registerActivityLifecycleCallbacks(object : android.app.Application.ActivityLifecycleCallbacks {
                 override fun onActivityCreated(activity: android.app.Activity, savedInstanceState: Bundle?) {
@@ -327,7 +333,11 @@ class LxApp private constructor(private val context: Context) {
                 override fun onActivityPaused(activity: Activity) {}
                 override fun onActivityStopped(activity: Activity) {}
                 override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
-            }) ?: Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
+            }) ?: run {
+                Log.w(TAG, "Failed to register ActivityLifecycleCallbacks: Application not found")
+                return false
+            }
+            return true
         }
 
         /**
@@ -473,30 +483,38 @@ class LxApp private constructor(private val context: Context) {
             Log.e(TAG, "Refusing to open LxApp without valid sessionId: appId=$appId")
             return
         }
-        try {
-            val resolvedPath = NativeApi.onLxAppOpened(appId, path, sessionId)
-            if (resolvedPath.isBlank()) {
-                Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
-                return
-            }
+        val openTask = Runnable {
+            try {
+                val resolvedPath = NativeApi.onLxAppOpened(appId, path, sessionId)
+                if (resolvedPath.isBlank()) {
+                    Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
+                    return@Runnable
+                }
 
-            if (currentActivity != null) {
-                Log.d(TAG, "Opening app in current activity")
-                currentActivity?.runOnUiThread {
-                    currentActivity?.openLxApp(appId, resolvedPath, sessionId)
+                val activity = currentActivity
+                if (activity != null) {
+                    Log.d(TAG, "Opening app in current activity")
+                    activity.openLxApp(appId, resolvedPath, sessionId)
+                } else {
+                    Log.d(TAG, "Creating new activity")
+                    val intent = Intent(context, LxAppActivity::class.java).apply {
+                        putExtra(LxAppActivity.EXTRA_APP_ID, appId)
+                        putExtra(LxAppActivity.EXTRA_PATH, resolvedPath)
+                        putExtra(LxAppActivity.EXTRA_SESSION_ID, sessionId)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
                 }
-            } else {
-                Log.d(TAG, "Creating new activity")
-                val intent = Intent(context, LxAppActivity::class.java).apply {
-                    putExtra(LxAppActivity.EXTRA_APP_ID, appId)
-                    putExtra(LxAppActivity.EXTRA_PATH, resolvedPath)
-                    putExtra(LxAppActivity.EXTRA_SESSION_ID, sessionId)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open LxApp: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to open LxApp: ${e.message}")
+        }
+
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            openTask.run()
+        } else {
+            currentActivity?.runOnUiThread(openTask)
+                ?: android.os.Handler(Looper.getMainLooper()).post(openTask)
         }
     }
 

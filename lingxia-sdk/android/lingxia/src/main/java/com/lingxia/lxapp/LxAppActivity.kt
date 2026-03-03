@@ -25,7 +25,6 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import android.provider.Settings
-import android.content.Intent
 import android.content.pm.ActivityInfo
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -269,8 +268,6 @@ class LxAppActivity : AppCompatActivity() {
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
     private var hasEnteredBackground = false
-    private var pendingWebViewSetup = false
-    private var isDisplayingHomeLxApp: Boolean = false
     private var currentSessionId: Long = 0L
 
     // Tracks the currently visible WebView instance
@@ -284,6 +281,55 @@ class LxAppActivity : AppCompatActivity() {
     private var shouldRestoreOverlayOrder = false
     private var lastDispatchedDeviceOrientation: String? = null
     private var deviceOrientationListener: OrientationEventListener? = null
+
+    private fun ensureRuntimeReady(
+        targetAppId: String,
+        requestedPath: String,
+        requestedSessionId: Long
+    ): Pair<String, Long>? {
+        if (LxApp.HomeLxAppId == null) {
+            Log.e(TAG, "LxApp runtime is not initialized before LxAppActivity creation")
+            return null
+        }
+
+        var sessionId = NativeApi.getLxAppSessionId(targetAppId)
+        if (sessionId <= 0L) {
+            sessionId = requestedSessionId
+        } else if (requestedSessionId > 0L && requestedSessionId != sessionId) {
+            Log.w(TAG, "Ignoring stale intent sessionId=$requestedSessionId for appId=$targetAppId, using runtime sessionId=$sessionId")
+        }
+
+        if (sessionId <= 0L) {
+            Log.e(TAG, "Missing valid runtime session for appId=$targetAppId")
+            return null
+        }
+
+        val current = NativeApi.getCurrentLxApp()
+        val currentMatches = current != null &&
+            current.isValid() &&
+            current.appId == targetAppId &&
+            current.sessionId == sessionId
+        val resolvedPath = if (currentMatches && !current.path.isNullOrBlank()) {
+            current.path
+        } else {
+            requestedPath
+        }
+
+        return Pair(resolvedPath, sessionId)
+    }
+
+    private fun shouldShowCapsuleButton(targetAppId: String, targetSessionId: Long): Boolean {
+        if (isMediaFullscreen) return false
+        if (targetAppId.isBlank() || targetSessionId <= 0L) return false
+
+        val homeAppId = LxApp.HomeLxAppId ?: return false
+        if (targetAppId == homeAppId) return false
+
+        val current = NativeApi.getCurrentLxApp() ?: return false
+        if (!current.isValid()) return false
+
+        return current.appId == targetAppId && current.sessionId == targetSessionId
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -300,27 +346,21 @@ class LxAppActivity : AppCompatActivity() {
             finish()
             return
         }
-        val initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
-        currentSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
-        if (currentSessionId <= 0L) {
-            val current = NativeApi.getCurrentLxApp()
-            if (current != null && current.appId == appId) {
-                currentSessionId = current.sessionId
-            }
+        var initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
+        val requestedSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
+        val resolvedEntry = ensureRuntimeReady(appId, initialPath, requestedSessionId) ?: run {
+            finish()
+            return
         }
+        initialPath = resolvedEntry.first
+        currentSessionId = resolvedEntry.second
         if (currentSessionId <= 0L) {
-            currentSessionId = NativeApi.getLxAppSessionId(appId)
-        }
-        if (currentSessionId <= 0L) {
-            Log.e(TAG, "Missing valid sessionId for appId=$appId")
+            Log.e(TAG, "Runtime returned invalid session for appId=$appId")
             finish()
             return
         }
 
         setupDeviceOrientationListener()
-
-        // Initialize the new flag
-        isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
         // Start WebView creation in parallel while setting up UI
         var webViewFuture: java.util.concurrent.Future<com.lingxia.lxapp.WebView?>? = null
@@ -728,10 +768,27 @@ class LxAppActivity : AppCompatActivity() {
     private fun setupWebViewContent(appId: String, path: String) {
         val initialWebView = findWebView(appId, path)
         if (initialWebView == null) {
-            Log.e(TAG, "Failed to find or create initial WebView for $path")
-            closeLxApp(); return
+            Log.e(TAG, "Initial WebView missing for appId=$appId, path=$path")
+            finishWithSessionClose("initial_webview_missing")
+            return
         }
         setupWebViewContentWithExisting(initialWebView)
+    }
+
+    private fun finishWithSessionClose(reason: String) {
+        if (::appId.isInitialized && appId.isNotBlank() && currentSessionId > 0L) {
+            val closed = runCatching { notifyLxAppClosed(currentSessionId) }.getOrElse { error ->
+                Log.w(TAG, "finishWithSessionClose notify failed (reason=$reason): ${error.message}")
+                false
+            }
+            if (!closed) {
+                Log.w(TAG, "finishWithSessionClose stale/ignored close (reason=$reason, appId=$appId, sessionId=$currentSessionId)")
+            }
+        }
+        // Prevent onStop() from dispatching onAppHide for a session that is already closed.
+        appId = ""
+        currentSessionId = 0L
+        finish()
     }
 
     // New method to setup WebView content with an existing WebView
@@ -830,7 +887,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun addCapsuleButton() {
-        if (isDisplayingHomeLxApp) return
+        if (!shouldShowCapsuleButton(appId, currentSessionId)) return
 
         val density = resources.displayMetrics.density
         val statusBarHeight = getStatusBarHeight(this)
@@ -861,7 +918,7 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     fun getCapsuleRectJSON(): String {
-        if (isDisplayingHomeLxApp) {
+        if (!shouldShowCapsuleButton(appId, currentSessionId)) {
             return "{}"
         }
 
@@ -911,10 +968,8 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!pendingWebViewSetup) {
-            webViewContainer.visibility = View.VISIBLE
-            attachWebViewToUI(currentWebView)
-        }
+        webViewContainer.visibility = View.VISIBLE
+        attachWebViewToUI(currentWebView)
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
     }
@@ -1722,7 +1777,6 @@ class LxAppActivity : AppCompatActivity() {
 
         // Clear current app state
         appId = ""
-        isDisplayingHomeLxApp = false
 
         // Get next LxApp from Rust stack and open it
         val currentLxApp = NativeApi.getCurrentLxApp()
@@ -1744,7 +1798,6 @@ class LxAppActivity : AppCompatActivity() {
             // Update app state (no intent extras needed - we're not switching activities)
             this.appId = appId
             this.currentSessionId = sessionId
-            this.isDisplayingHomeLxApp = (appId == LxApp.HomeLxAppId)
 
             // 1. Necessary preparation (build tabbar, etc.)
             prepareLxApp(appId)
@@ -1791,15 +1844,10 @@ class LxAppActivity : AppCompatActivity() {
      * Check whether to show capsule button (home=hide, others=show)
      */
     private fun updateCapsuleButtonVisibility(appId: String) {
-        val isHomeLxApp = (appId == LxApp.HomeLxAppId)
-
-        if (isHomeLxApp) {
-            // Home LxApp: hide capsule button
+        if (!shouldShowCapsuleButton(appId, currentSessionId)) {
             val capsuleButton = rootContainer.findViewWithTag<View>("capsule_button")
             capsuleButton?.visibility = View.GONE
-
         } else {
-            // Other LxApps: ensure capsule button exists and is visible
             updateCapsuleButton()
         }
     }
@@ -1808,7 +1856,7 @@ class LxAppActivity : AppCompatActivity() {
     private fun updateCapsuleButton() {
         rootContainer.post {
             val capsule = rootContainer.findViewWithTag<View>("capsule_button")
-            if (isDisplayingHomeLxApp || isMediaFullscreen) {
+            if (!shouldShowCapsuleButton(appId, currentSessionId)) {
                 capsule?.visibility = View.GONE
             } else {
                 if (capsule == null) {
