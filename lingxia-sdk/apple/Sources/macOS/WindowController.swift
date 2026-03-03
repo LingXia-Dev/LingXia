@@ -12,15 +12,22 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppWindowController")
 
     public struct Layout {
-        static let tabBarHeight: CGFloat = 32
+        static let sidebarWidth: CGFloat = 240
+        static let minSidebarWidth: CGFloat = 48
+        static let toolbarHeight: CGFloat = 38
     }
 
     private let tabManager = LxAppTabManager.shared
-    private var tabView: LxAppTabView?
+    private var sidebarView: SidebarView?
+    private var navigationToolbar: MacNavigationToolbar?
+    private var rightContainer: NSView?
+    private var sidebarWidthConstraint: NSLayoutConstraint?
+    private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     private var appSessions: [String: UInt64] = [:]
     internal let panelManager = PanelLayoutManager()
+    nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
     /// Get view controller for specific appId (needed for navigation)
     public func getViewController(for appId: String) -> macOSLxAppViewController? {
@@ -36,6 +43,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
     }
 
     private static func createWindow() -> LxAppWindow {
@@ -64,7 +75,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             self?.switchToTab(tab.appId)
         }
 
-        setupTabInterface()
+        tabManager.onTabsChanged = { [weak self] tabs in
+            self?.sidebarView?.updateForTabs(tabs, activeTab: self?.tabManager.activeTab)
+        }
+
+        setupSidebarInterface()
+        setupNotificationObservers()
         setupInitialTab()
     }
 
@@ -85,20 +101,40 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         macOSLxApp.removeTabWindowController(self)
     }
 
-    private func setupTabInterface() {
+    // MARK: - Sidebar Interface Setup
+
+    private func setupSidebarInterface() {
         guard let window = self.window, let contentView = window.contentView else { return }
 
-        tabView = LxAppTabView(tabManager: tabManager)
-        guard let tabBar = tabView else { return }
-
-        tabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBar.wantsLayer = true
-        tabBar.layer?.zPosition = 10
-        tabBar.onTabClosed = { [weak self] appId in
+        // Create sidebar
+        let sidebar = SidebarView()
+        sidebar.translatesAutoresizingMaskIntoConstraints = false
+        sidebar.onAppPageSelected = { [weak self] appId, itemIndex in
+            self?.handleSidebarPageSelection(appId: appId, itemIndex: itemIndex)
+        }
+        sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
         }
+        sidebar.onToggleRequested = { [weak self] in
+            self?.toggleSidebar()
+        }
+        sidebar.onWidthChanged = { [weak self] width, animated in
+            self?.updateSidebarWidth(width, animated: animated)
+        }
+        sidebarView = sidebar
+        contentView.addSubview(sidebar)
 
-        tabBar.onNavigationAction = { [weak self] action in
+        // Create right container
+        let right = NSView()
+        right.translatesAutoresizingMaskIntoConstraints = false
+        right.wantsLayer = true
+        rightContainer = right
+        contentView.addSubview(right)
+
+        // Create navigation toolbar
+        let toolbar = MacNavigationToolbar()
+        toolbar.translatesAutoresizingMaskIntoConstraints = false
+        toolbar.onNavigationAction = { [weak self] action in
             guard let appId = self?.tabManager.activeTab?.appId else { return }
             if action == "back" {
                 let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
@@ -106,35 +142,127 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
             }
         }
+        navigationToolbar = toolbar
+        right.addSubview(toolbar)
 
-        contentView.addSubview(tabBar)
-
-        NSLayoutConstraint.activate([
-            tabBar.topAnchor.constraint(equalTo: contentView.topAnchor),
-            tabBar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            tabBar.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            tabBar.heightAnchor.constraint(equalToConstant: Layout.tabBarHeight)
-        ])
-
-        // Panel layout manager's root view fills the area below the tab bar
+        // Panel layout manager's root view fills area below toolbar
         let panelRoot = panelManager.rootView
         panelRoot.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(panelRoot)
+        right.addSubview(panelRoot)
+
+        // Layout constraints
+        let sidebarWidth = sidebar.widthAnchor.constraint(equalToConstant: Layout.sidebarWidth)
+        sidebarWidthConstraint = sidebarWidth
 
         NSLayoutConstraint.activate([
-            panelRoot.topAnchor.constraint(equalTo: tabBar.bottomAnchor),
-            panelRoot.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            panelRoot.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            panelRoot.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            // Sidebar: left side, full height
+            sidebar.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarWidth,
+
+            // Right container: fills remaining space
+            right.topAnchor.constraint(equalTo: contentView.topAnchor),
+            right.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
+            right.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            right.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
+            // Navigation toolbar: top of right container
+            toolbar.topAnchor.constraint(equalTo: right.topAnchor),
+            toolbar.leadingAnchor.constraint(equalTo: right.leadingAnchor),
+            toolbar.trailingAnchor.constraint(equalTo: right.trailingAnchor),
+
+            // Panel root: below toolbar, fills rest
+            panelRoot.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            panelRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
+            panelRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
+            panelRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
         ])
     }
+
+    private func setupNotificationObservers() {
+        sidebarRefreshObserver = NotificationCenter.default.addObserver(
+            forName: .sidebarNeedsRefresh,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let appId = notification.object as? String
+            Task { @MainActor in
+                guard let self, let appId else { return }
+                self.sidebarView?.refreshAppGroup(appId: appId)
+                if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
+                    self.sidebarView?.setActiveHighlight(appId: appId)
+                }
+            }
+        }
+    }
+
+    // MARK: - Sidebar Actions
+
+    func handleSidebarPageSelection(appId: String, itemIndex: Int) {
+        // Switch to the lxapp tab if not already active
+        if tabManager.activeTab?.appId != appId {
+            tabManager.selectTab(appId: appId)
+        }
+        // Always update sidebar highlight, even if Rust returns early for same index
+        sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
+        // Notify Rust of page navigation via tabbar click
+        let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(itemIndex))
+    }
+
+    func toggleSidebar() {
+        guard let constraint = sidebarWidthConstraint else { return }
+
+        let isCollapsing = constraint.constant > Layout.minSidebarWidth
+        if isCollapsing {
+            lastExpandedSidebarWidth = constraint.constant
+        }
+        let targetWidth: CGFloat = isCollapsing ? Layout.minSidebarWidth : lastExpandedSidebarWidth
+
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.25
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            constraint.animator().constant = targetWidth
+        }, completionHandler: {
+            MainActor.assumeIsolated { [weak self] in
+                self?.sidebarView?.updateMinimizedState()
+            }
+        })
+    }
+
+    func updateSidebarWidth(_ width: CGFloat, animated: Bool) {
+        guard let constraint = sidebarWidthConstraint else { return }
+
+        if width > Layout.minSidebarWidth {
+            lastExpandedSidebarWidth = width
+        }
+
+        if animated {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                constraint.animator().constant = width
+            }, completionHandler: {
+                MainActor.assumeIsolated { [weak self] in
+                    self?.sidebarView?.updateMinimizedState()
+                }
+            })
+        } else {
+            constraint.constant = width
+            sidebarView?.updateMinimizedState()
+        }
+    }
+
+    // MARK: - Tab Lifecycle
 
     private func setupInitialTab() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else { return }
         let currentLxApp = getCurrentLxApp()
         let currentAppId = currentLxApp.appid.toString()
-        let sessionId = currentLxApp.session_id
-        guard currentAppId == homeLxAppId, sessionId > 0 else {
+        let sessionId: UInt64 = (currentAppId == homeLxAppId)
+            ? currentLxApp.session_id
+            : getLxAppSessionId(homeLxAppId)
+        guard sessionId > 0 else {
             os_log("setupInitialTab missing home session for %@", log: Self.log, type: .error, homeLxAppId)
             return
         }
@@ -184,6 +312,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         updateContentView(with: viewController)
+
+        // Update sidebar highlight
+        sidebarView?.setActiveHighlight(appId: appId)
     }
 
     private func updateContentView(with viewController: macOSLxAppViewController) {

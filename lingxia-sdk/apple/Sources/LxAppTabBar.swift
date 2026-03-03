@@ -11,6 +11,9 @@ import UIKit
 
 extension Notification.Name {
     static let tabBarStateChanged = Notification.Name("TabBarDataChanged")
+    #if os(macOS)
+    static let sidebarNeedsRefresh = Notification.Name("SidebarNeedsRefresh")
+    #endif
 }
 
 /// Extensions for TabBar

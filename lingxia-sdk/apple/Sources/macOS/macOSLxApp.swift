@@ -8,7 +8,6 @@ import AppKit
 /// Shared UI layout constants for macOS windows
 public struct LxAppWindowLayout {
     public static let titleBarHeight: CGFloat = 32        // SwiftUI custom title bar height
-    public static let macOSTabViewHeight: CGFloat = 32    // macOS window tab view height (for switching between LxApps)
 }
 
 /// macOS LxApp implementation
@@ -166,6 +165,7 @@ extension macOSLxApp {
         // Update UI components based on Rust state
         updateTabBarDirect(appId: appId, path: path)
         updateNavigationBarDirect(appId: appId, path: path)
+        updateSidebarDirect(appId: appId, path: path)
     }
 
     /// Update TabBar based on Rust state
@@ -185,6 +185,11 @@ extension macOSLxApp {
            let viewController = tabController.getViewController(for: appId) {
             viewController.updateNavigationBar(appId: appId, path: path)
         }
+    }
+
+    /// Notify sidebar to refresh for a specific app
+    private static func updateSidebarDirect(appId: String, path: String) {
+        NotificationCenter.default.post(name: .sidebarNeedsRefresh, object: appId)
     }
 
     private func handleTabStyleOpenLxApp(appId: String, path: String, sessionId: UInt64) {

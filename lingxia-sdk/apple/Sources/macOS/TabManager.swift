@@ -25,6 +25,7 @@ public class LxAppTabManager: ObservableObject {
     @Published public var tabs: [LxAppTab] = []
     @Published public var activeTab: LxAppTab?
     public var onTabChanged: ((LxAppTab) -> Void)?
+    public var onTabsChanged: (([LxAppTab]) -> Void)?
 
     private init() {}
 
@@ -40,6 +41,7 @@ public class LxAppTabManager: ObservableObject {
         tabs.append(newTab)
         activeTab = newTab
         onTabChanged?(newTab)
+        onTabsChanged?(tabs)
     }
 
     public func selectTab(appId: String) {
@@ -61,6 +63,7 @@ public class LxAppTabManager: ObservableObject {
                 onTabChanged?(newActive)
             }
         }
+        onTabsChanged?(tabs)
     }
 
     public func hasTab(for appId: String) -> Bool {
