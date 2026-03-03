@@ -70,9 +70,7 @@ internal object LxAppMedia {
         }
     }
 
-    /**
-     * Retrieve basic metadata for an image URI (width/height/mime), akin to wx.getImageInfo.
-     */
+    /** Retrieve basic metadata for an image URI (width/height/mime). */
     @JvmStatic
     fun getImageInfo(uri: String): String {
         val ctx = LxApp.applicationContext() ?: return JSONObject().apply {

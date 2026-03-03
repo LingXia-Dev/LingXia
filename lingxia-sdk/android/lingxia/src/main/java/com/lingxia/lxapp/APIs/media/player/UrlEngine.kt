@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize as M3VideoSize
@@ -16,6 +17,7 @@ internal class UrlEngine(
     context: Context,
     private val playerView: PlayerView,
 ) : PlayerEngine {
+    private val tag = "LingXia.UrlEngine"
     private val memoryProfile = buildMemoryProfile(context)
     internal val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setLoadControl(buildLoadControl(memoryProfile))
@@ -25,6 +27,8 @@ internal class UrlEngine(
     private var muted = false
     private var volume = 1.0f
     private var timePoll: Runnable? = null
+    private var currentSourceUri: Uri? = null
+    private var autoRecoverAttemptedForCurrentSource = false
 
     @Volatile
     override var capabilities: PlayerCapabilities = PlayerCapabilities(
@@ -98,12 +102,25 @@ internal class UrlEngine(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    val mappedCode = mapErrorCode(error)
+                    val retryable = isRetryableError(error)
+                    if (retryable && !autoRecoverAttemptedForCurrentSource && recoverFromError("onPlayerError", error)) {
+                        autoRecoverAttemptedForCurrentSource = true
+                        listener?.onEngineEvent(
+                            EngineEvent.BufferingChanged(
+                                isBuffering = true,
+                                reason = WaitingReason.DECODER
+                            )
+                        )
+                        return
+                    }
                     listener?.onEngineEvent(
                         EngineEvent.Error(
                             EngineError(
-                                code = mapErrorCode(error),
+                                code = mappedCode,
                                 message = error.message ?: "Playback error",
                                 nativeCode = error.errorCodeName,
+                                retryable = retryable,
                                 backend = BackendKind.URL
                             )
                         )
@@ -119,10 +136,12 @@ internal class UrlEngine(
 
     override fun setSource(source: PlayerSource) {
         val url = (source as? PlayerSource.Url)?.url ?: return
+        currentSourceUri = Uri.parse(url)
+        autoRecoverAttemptedForCurrentSource = false
         // Drop previous queue/buffered samples early before binding the new source.
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
-        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(Uri.parse(url)))
+        exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(currentSourceUri!!))
         exoPlayer.prepare()
         updateCapabilities()
     }
@@ -136,6 +155,15 @@ internal class UrlEngine(
     }
 
     override fun play() {
+        val playerError = exoPlayer.playerError
+        if (
+            playerError != null &&
+            isRetryableError(playerError) &&
+            !autoRecoverAttemptedForCurrentSource &&
+            recoverFromError("play", playerError)
+        ) {
+            autoRecoverAttemptedForCurrentSource = true
+        }
         exoPlayer.playWhenReady = true
         exoPlayer.play()
     }
@@ -267,6 +295,34 @@ internal class UrlEngine(
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED -> ErrorCode.UNSUPPORTED
             else -> ErrorCode.UNKNOWN
+        }
+    }
+
+    private fun isRetryableError(error: PlaybackException): Boolean {
+        return when (error.errorCode) {
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_UNSPECIFIED -> true
+            else -> false
+        }
+    }
+
+    private fun recoverFromError(trigger: String, error: PlaybackException?): Boolean {
+        val source = currentSourceUri ?: return false
+        return try {
+            Log.w(
+                tag,
+                "recoverFromError trigger=$trigger code=${error?.errorCodeName ?: "unknown"} source=$source"
+            )
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
+            exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(source))
+            exoPlayer.prepare()
+            true
+        } catch (t: Throwable) {
+            Log.e(tag, "recoverFromError failed: ${t.message}", t)
+            false
         }
     }
 

@@ -1695,6 +1695,8 @@ class LxMediaPlayer(
                 isBufferingForUi = false
                 loadingIndicator?.visibility = View.GONE
                 uiSeeking = false
+                controlsOverlay?.showCenterPlayButton(true)
+                controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.RateChange -> Unit
             is CorePlayerEvent.VolumeChange -> {
