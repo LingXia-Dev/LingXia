@@ -49,8 +49,8 @@ import type {
 import type { OpenDocumentOptions } from './document';
 
 import type {
-  AppOrientationInfo,
-  SetAppOrientationOptions,
+  DeviceOrientation,
+  DeviceOrientationChangeEvent,
 } from './display';
 
 import type {
@@ -132,8 +132,9 @@ export interface Lx {
   onNetworkChange(callback: NetworkChangeCallback): void;
   offNetworkChange(callback?: NetworkChangeCallback): void;
 
-  getAppOrientation(): AppOrientationInfo;
-  setAppOrientation(options: SetAppOrientationOptions): boolean;
+  setDeviceOrientation(orientation: DeviceOrientation): boolean;
+  onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): void;
+  offDeviceOrientationChange(callback?: (event: DeviceOrientationChangeEvent) => void): void;
 
   openDocument(options: OpenDocumentOptions): void;
 

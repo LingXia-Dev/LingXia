@@ -3,10 +3,8 @@
  * Corresponds to: lingxia-logic/src/display.rs
  */
 
-export interface AppOrientationInfo {
-  orientation: string;
-}
+export type DeviceOrientation = "portrait" | "landscape";
 
-export interface SetAppOrientationOptions {
-  orientation: string;
+export interface DeviceOrientationChangeEvent {
+  value: DeviceOrientation;
 }
