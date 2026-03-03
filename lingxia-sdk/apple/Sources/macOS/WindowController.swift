@@ -12,7 +12,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppWindowController")
 
     public struct Layout {
-        static let sidebarWidth: CGFloat = 240
+        static let sidebarWidth: CGFloat = 180
         static let minSidebarWidth: CGFloat = 48
     }
 

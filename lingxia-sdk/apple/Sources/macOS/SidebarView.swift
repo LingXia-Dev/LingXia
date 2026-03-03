@@ -52,7 +52,7 @@ private class SidebarResizeHandle: NSView {
 public class SidebarView: NSView {
 
     struct Layout {
-        static let expandedWidth: CGFloat = 240
+        static let expandedWidth: CGFloat = 180
         static let minCollapsedWidth: CGFloat = 48
         static let maxWidth: CGFloat = 400
         static let collapseThreshold: CGFloat = 80
