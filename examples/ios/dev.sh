@@ -89,11 +89,22 @@ if [ "$SKIP_RUST" = false ]; then
     fi
     run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
 
-    # Copy to expected name (liblingxia.a) for Xcode project compatibility
-    cp "$WORKSPACE_ROOT/target/$TARGET/release/liblingxiab.a" "$WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
+    LIB_DIR="$WORKSPACE_ROOT/target/$TARGET/release"
+    LIB_PATH="$LIB_DIR/liblingxia.a"
+    LEGACY_LIB_PATH="$LIB_DIR/liblingxiab.a"
+
+    # Current crate output already uses liblingxia.a; keep legacy fallback for older local artifacts.
+    if [ -f "$LIB_PATH" ]; then
+        :
+    elif [ -f "$LEGACY_LIB_PATH" ]; then
+        cp "$LEGACY_LIB_PATH" "$LIB_PATH"
+    else
+        echo "❌ Missing iOS static library: neither $LIB_PATH nor $LEGACY_LIB_PATH exists" >&2
+        exit 1
+    fi
 
     echo "✅ Rust build complete"
-    echo "   .a location: $WORKSPACE_ROOT/target/$TARGET/release/liblingxia.a"
+    echo "   .a location: $LIB_PATH"
 else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi

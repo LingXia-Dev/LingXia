@@ -160,15 +160,24 @@ public class iOSLxApp {
             os_log("Home app details not available", log: log, type: .error)
             return
         }
-        let current = getCurrentLxApp()
-        let currentAppId = current.appid.toString()
-        let sessionId: UInt64 = (currentAppId == homeLxAppId)
-            ? current.session_id
-            : (LxAppCore.sessionId(for: homeLxAppId) ?? 0)
+
+        // Runtime is the source of truth for app session; local cache may still be empty
+        // during early bootstrap.
+        var sessionId: UInt64 = getLxAppSessionId(homeLxAppId)
+        if sessionId == 0 {
+            let current = getCurrentLxApp()
+            let currentAppId = current.appid.toString()
+            if currentAppId == homeLxAppId && current.session_id > 0 {
+                sessionId = current.session_id
+            } else {
+                sessionId = LxAppCore.sessionId(for: homeLxAppId) ?? 0
+            }
+        }
         guard sessionId > 0 else {
             os_log("Invalid home app session for %@", log: log, type: .error, homeLxAppId)
             return
         }
+        LxAppCore.setSessionId(sessionId, for: homeLxAppId)
         openLxApp(appId: homeLxAppId, path: "", sessionId: sessionId)
     }
 
