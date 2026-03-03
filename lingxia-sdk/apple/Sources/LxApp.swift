@@ -514,6 +514,21 @@ extension LxApp {
         }
     }
 
+    nonisolated public static func updateOrientationUI(appid: RustStr) -> Bool {
+        let appIdString = appid.toString()
+        return executeOnMain {
+            #if os(iOS)
+            guard let instance = iOSLxApp.getInstanceUnsafe(),
+                  let manager = instance.currentLxAppManager else {
+                return false
+            }
+            return manager.applyOrientationFromRuntime(for: appIdString)
+            #else
+            return true
+            #endif
+        }
+    }
+
     nonisolated public static func launchWithUrl(url: RustStr) {
         let urlString = url.toString()
         guard let url = URL(string: urlString) else {

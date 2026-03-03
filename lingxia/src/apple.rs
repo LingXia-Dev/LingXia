@@ -1,6 +1,6 @@
 use lingxia_messaging::invoke_callback;
 use lxapp::log::LogLevel;
-use lxapp::{LxAppDelegate, UiEventType};
+use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
 fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
@@ -107,11 +107,17 @@ mod bridge {
         #[swift_bridge(swift_name = "onLxappClosed")]
         fn on_lxapp_closed(appid: &str, session_id: u64) -> bool;
 
+        #[swift_bridge(swift_name = "onDeviceOrientationChanged")]
+        fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) -> bool;
+
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
         #[swift_bridge(swift_name = "getNavigationBarState")]
         fn get_navigation_bar_state(appid: &str, path: &str) -> NavigationBarState;
+
+        #[swift_bridge(swift_name = "getPageOrientation")]
+        fn get_page_orientation(appid: &str, path: &str) -> i32;
 
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
@@ -274,6 +280,26 @@ pub fn on_lxapp_closed(appid: &str, session_id: u64) -> bool {
     false
 }
 
+/// Notify device orientation changes from host platform.
+pub fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) -> bool {
+    let Some(lxapp) = lxapp::try_get(appid) else {
+        return false;
+    };
+
+    if session_id == 0 || session_id != lxapp.session_id() {
+        return false;
+    }
+
+    let normalized = match value {
+        "portrait" => "portrait",
+        "landscape" => "landscape",
+        _ => return false,
+    };
+
+    let payload = format!(r#"{{"value":"{}"}}"#, normalized);
+    lxapp::emit_app_event(appid, "DeviceOrientationChange", Some(payload))
+}
+
 /// Handle UI events from Swift
 pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &str) -> bool {
     let ui_event_type = match event_type {
@@ -380,6 +406,27 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
             show_back_button: true,
             show_home_button: false,
         }
+    }
+}
+
+/// Get page orientation for a specific page path.
+/// Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
+pub fn get_page_orientation(appid: &str, path: &str) -> i32 {
+    let Some(lxapp_instance) = lxapp::try_get(appid) else {
+        return 0;
+    };
+
+    let orientation = lxapp_instance.get_page_orientation(path);
+    orientation_to_value(orientation)
+}
+
+fn orientation_to_value(orientation: OrientationConfig) -> i32 {
+    match (orientation.mode, orientation.rotation) {
+        (PageOrientation::Auto, _) => 0,
+        (PageOrientation::Portrait, 180) => 3,
+        (PageOrientation::Portrait, _) => 1,
+        (PageOrientation::Landscape, 180) => 4,
+        (PageOrientation::Landscape, _) => 2,
     }
 }
 

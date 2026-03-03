@@ -29,4 +29,16 @@ impl UIUpdate for Platform {
             )))
         }
     }
+
+    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+        let success = ffi::update_orientation_ui(&appid);
+        if success {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to update orientation UI for appId: {}",
+                appid
+            )))
+        }
+    }
 }

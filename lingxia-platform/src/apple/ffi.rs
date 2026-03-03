@@ -133,6 +133,10 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateNavBarUI")]
         fn update_navbar_ui(appid: &str) -> bool;
 
+        // Orientation UI update callback
+        #[swift_bridge(swift_name = "LxApp.updateOrientationUI")]
+        fn update_orientation_ui(appid: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
         fn launch_with_url(url: &str);
 
@@ -309,7 +313,7 @@ pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
     close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document, open_lxapp,
     preview_media, show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui,
-    update_tabbar_ui,
+    update_orientation_ui, update_tabbar_ui,
 };
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

@@ -26,6 +26,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var pullToRefreshHelper: PullToRefreshHelper?
     private var currentSessionId: UInt64 = 0
+    private var runtimeOrientationMask: UIInterfaceOrientationMask = .allButUpsideDown
+    private var runtimePreferredOrientation: UIInterfaceOrientation = .portrait
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
@@ -100,6 +102,14 @@ public class LxAppViewController: UIViewController, ObservableObject {
             NavigationBarStateManager.shared.updateState(appId: currentAppId, path: currentPath)
             applyAppStyling(for: currentAppId)
         }
+    }
+
+    public override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return runtimeOrientationMask
+    }
+
+    public override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        return runtimePreferredOrientation
     }
 
     private func configureEdgeToEdgeDisplay() {
@@ -201,6 +211,9 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Apply app styling to handle transparency and backgrounds
         applyAppStyling(for: appId, path: path)
 
+        // Apply orientation policy for the current page.
+        _ = applyOrientationFromRuntime(for: appId)
+
         // Setup or switch WebView
         handleNavigation(appId: appId, path: path, animationType: animationType)
 
@@ -209,6 +222,49 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Ensure UI elements are properly layered
         bringUIElementsToFront()
+    }
+
+    @discardableResult
+    public func applyOrientationFromRuntime(for appId: String) -> Bool {
+        guard !appId.isEmpty else { return false }
+
+        let currentPath = (LxAppCore.currentAppId == appId) ? LxAppCore.getCurrentPath() : ""
+        let runtimeOrientation = lingxia.getPageOrientation(appId, currentPath)
+        let mapped = mapRuntimeOrientation(runtimeOrientation)
+
+        runtimeOrientationMask = mapped.mask
+        runtimePreferredOrientation = mapped.preferred
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+
+        if #available(iOS 16.0, *) {
+            if let scene = view.window?.windowScene {
+                let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mapped.mask)
+                scene.requestGeometryUpdate(preferences) { error in
+                    os_log("requestGeometryUpdate failed: %@", log: Self.log, type: .error, error.localizedDescription)
+                }
+            } else {
+                UIViewController.attemptRotationToDeviceOrientation()
+            }
+        } else {
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+
+        return true
+    }
+
+    private func mapRuntimeOrientation(_ orientation: Int32) -> (mask: UIInterfaceOrientationMask, preferred: UIInterfaceOrientation) {
+        switch orientation {
+        case 1:
+            return (.portrait, .portrait)
+        case 2:
+            return (.landscape, .landscapeRight)
+        case 3:
+            return (.portraitUpsideDown, .portraitUpsideDown)
+        case 4:
+            return (.landscape, .landscapeLeft)
+        default:
+            return (.allButUpsideDown, .portrait)
+        }
     }
 
     /// Opens a LxApp - creates new state if needed, switches if already exists

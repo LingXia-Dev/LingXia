@@ -19,6 +19,7 @@ public class iOSLxApp {
 
     /// Lifecycle event observers
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var lastDeviceOrientationValue: String?
 
     private init(context: UIApplication) {
         self.context = context
@@ -57,6 +58,8 @@ public class iOSLxApp {
 
     /// Setup observers for app lifecycle events
     private func setupLifecycleObservers() {
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+
         // App entered foreground
         let foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
@@ -86,6 +89,16 @@ public class iOSLxApp {
             self?.handleUserCaptureScreen()
         }
         lifecycleObservers.append(screenshotObserver)
+
+        // Device orientation changed
+        let orientationObserver = NotificationCenter.default.addObserver(
+            forName: UIDevice.orientationDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleDeviceOrientationChange()
+        }
+        lifecycleObservers.append(orientationObserver)
     }
 
     /// Handle app entering foreground
@@ -107,6 +120,32 @@ public class iOSLxApp {
         guard let currentAppId = LxAppCore.currentAppId else { return }
         os_log("User captured screenshot, notifying appId: %@", log: Self.log, type: .info, currentAppId)
         lingxia.onUserCaptureScreen(currentAppId)
+    }
+
+    /// Handle device orientation changes and forward to runtime event bus.
+    private func handleDeviceOrientationChange() {
+        guard let currentAppId = LxAppCore.currentAppId else { return }
+        guard let sessionId = LxAppCore.sessionId(for: currentAppId), sessionId > 0 else { return }
+
+        let value: String?
+        switch UIDevice.current.orientation {
+        case .portrait, .portraitUpsideDown:
+            value = "portrait"
+        case .landscapeLeft, .landscapeRight:
+            value = "landscape"
+        default:
+            value = nil
+        }
+
+        guard let orientationValue = value else { return }
+        if lastDeviceOrientationValue == orientationValue {
+            return
+        }
+
+        let accepted = lingxia.onDeviceOrientationChanged(currentAppId, sessionId, orientationValue)
+        if accepted {
+            lastDeviceOrientationValue = orientationValue
+        }
     }
 
     /// Opens a lxapp
