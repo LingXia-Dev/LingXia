@@ -14,7 +14,7 @@ import { LxAppPush } from './APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
 
 // Import native functions from Rust
-import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, CurrentLxApp } from 'liblingxia.so';
+import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -233,6 +233,48 @@ export class LxApp {
       return sessionId;
     }
     return 0;
+  }
+
+  public static updateOrientationUI(appId: string): boolean {
+    if (!LxApp.windowStage) {
+      hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: windowStage unavailable (${appId})`);
+      return false;
+    }
+
+    let path: string = '';
+    try {
+      const current: CurrentLxApp = getCurrentLxapp();
+      if (current && current.appid === appId) {
+        path = current.path;
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `updateOrientationUI getCurrentLxapp failed: ${error}`);
+    }
+
+    const orientation: number = getPageOrientation(appId, path);
+    let targetOrientation: window.Orientation = window.Orientation.UNSPECIFIED;
+    if (orientation === 1 || orientation === 3) {
+      targetOrientation = window.Orientation.PORTRAIT;
+    } else if (orientation === 2 || orientation === 4) {
+      targetOrientation = window.Orientation.LANDSCAPE;
+    }
+
+    try {
+      const mainWindow = LxApp.windowStage.getMainWindowSync();
+      if (!mainWindow) {
+        hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: mainWindow unavailable (${appId})`);
+        return false;
+      }
+      mainWindow.setPreferredOrientation(targetOrientation)
+        .catch((error: Error) => {
+          const message: string = error?.message ?? String(error);
+          hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${message}`);
+        });
+      return true;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `updateOrientationUI failed: ${error}`);
+      return false;
+    }
   }
 
   public static openLxAppWithSession(appId: string, path: string, sessionId: number): void {

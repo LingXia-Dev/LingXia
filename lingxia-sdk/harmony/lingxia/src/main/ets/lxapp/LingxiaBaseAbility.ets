@@ -1,19 +1,35 @@
 import { AbilityConstant, UIAbility, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { window } from '@kit.ArkUI';
+import { window, display } from '@kit.ArkUI';
 import { LxApp } from './LxApp';
-import { getCurrentLxapp, onUiEvent, UiEventType, onAppShow, onAppHide, onUserCaptureScreen, CurrentLxApp } from 'liblingxia.so';
+import {
+  getCurrentLxapp,
+  onUiEvent,
+  UiEventType,
+  onAppShow,
+  onAppHide,
+  onUserCaptureScreen,
+  onDeviceOrientationChanged,
+  CurrentLxApp
+} from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Ability';
 const KEYCODE_BACK: number = 2;
 const BACK_PRESS_THROTTLE_MS: number = 200;
+const DEVICE_ORIENTATION_PORTRAIT: string = 'portrait';
+const DEVICE_ORIENTATION_LANDSCAPE: string = 'landscape';
 
 interface LingxiaWindowKeyEvent {
   readonly keyCode?: number;
   stopPropagation?: () => void;
   preventDefault?: () => void;
   handled?: boolean;
+}
+
+interface LingxiaWindowSizeChangeEvent {
+  readonly width?: number;
+  readonly height?: number;
 }
 
 interface WindowWithOn {
@@ -45,6 +61,30 @@ class WindowKeyEventTargetWrapper {
   }
 }
 
+interface WindowWithSizeOn {
+  on?: (type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void) => void;
+}
+
+class WindowSizeEventTargetWrapper {
+  private readonly window: window.Window;
+  private readonly windowWithOn: WindowWithSizeOn;
+
+  constructor(windowInstance: window.Window) {
+    this.window = windowInstance;
+    this.windowWithOn = windowInstance as WindowWithSizeOn;
+  }
+
+  public register(type: string, callback: (event: LingxiaWindowSizeChangeEvent) => void): boolean {
+    const listener = this.windowWithOn.on;
+    if (typeof listener === 'function') {
+      const typedListener = listener as (eventType: string, cb: (event: LingxiaWindowSizeChangeEvent) => void) => void;
+      typedListener(type, callback);
+      return true;
+    }
+    return false;
+  }
+}
+
 export class LingxiaBaseAbility extends UIAbility {
   private isBackHandling: boolean = false;
   private lastBackHandledAt: number = 0;
@@ -52,6 +92,8 @@ export class LingxiaBaseAbility extends UIAbility {
   private mainWindow: window.Window | null = null;
   private hasEnteredBackground: boolean = false;
   private gestureBackConfigInProgress: boolean = false;
+  private sizeChangeListenerRegistered: boolean = false;
+  private lastReportedDeviceOrientation: string = '';
 
   /**
    * Override to register custom native extensions.
@@ -194,6 +236,92 @@ export class LingxiaBaseAbility extends UIAbility {
     }
   }
 
+  private resolveOrientationFromSize(width: number, height: number): string | null {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+      return null;
+    }
+
+    if (width >= height) {
+      return DEVICE_ORIENTATION_LANDSCAPE;
+    }
+    return DEVICE_ORIENTATION_PORTRAIT;
+  }
+
+  private reportDeviceOrientation(orientationValue: string): void {
+    if (orientationValue !== DEVICE_ORIENTATION_PORTRAIT && orientationValue !== DEVICE_ORIENTATION_LANDSCAPE) {
+      return;
+    }
+
+    if (this.lastReportedDeviceOrientation === orientationValue) {
+      return;
+    }
+
+    try {
+      const current: CurrentLxApp = getCurrentLxapp();
+      if (!current || !current.appid || current.appid.length === 0) {
+        return;
+      }
+
+      const sessionId: number = Math.trunc(Number(current.session_id));
+      if (!Number.isFinite(sessionId) || sessionId <= 0) {
+        return;
+      }
+
+      const accepted: boolean = onDeviceOrientationChanged(current.appid, sessionId, orientationValue);
+      if (accepted) {
+        this.lastReportedDeviceOrientation = orientationValue;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to report device orientation: ${error}`);
+    }
+  }
+
+  private syncDeviceOrientationFromDisplay(): void {
+    try {
+      const defaultDisplay = display.getDefaultDisplaySync();
+      const orientationValue = this.resolveOrientationFromSize(defaultDisplay.width, defaultDisplay.height);
+      if (orientationValue) {
+        this.reportDeviceOrientation(orientationValue);
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, '%{public}s', `Failed to read display orientation: ${error}`);
+    }
+  }
+
+  private registerWindowSizeListener(windowStage: window.WindowStage): void {
+    if (this.sizeChangeListenerRegistered) {
+      return;
+    }
+
+    try {
+      const mainWindow = windowStage.getMainWindowSync();
+      if (!mainWindow) {
+        hilog.warn(DOMAIN, TAG, '%{public}s', 'Main window not available for orientation listener');
+        return;
+      }
+
+      const wrapper = new WindowSizeEventTargetWrapper(mainWindow);
+      const registered = wrapper.register('windowSizeChange', (event: LingxiaWindowSizeChangeEvent) => {
+        const width = Number(event?.width);
+        const height = Number(event?.height);
+        const orientationValue = this.resolveOrientationFromSize(width, height);
+        if (orientationValue) {
+          this.reportDeviceOrientation(orientationValue);
+        }
+      });
+
+      if (!registered) {
+        hilog.warn(DOMAIN, TAG, '%{public}s', 'Window does not expose windowSizeChange listener');
+        return;
+      }
+
+      this.sizeChangeListenerRegistered = true;
+      this.syncDeviceOrientationFromDisplay();
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, '%{public}s', `Failed to register orientation listener: ${error}`);
+    }
+  }
+
   onWindowStageCreate(windowStage: window.WindowStage): void {
     super.onWindowStageCreate(windowStage);
 
@@ -204,6 +332,7 @@ export class LingxiaBaseAbility extends UIAbility {
     }
     this.registerWindowBackInterceptor(windowStage);
     this.registerScreenshotListener();
+    this.registerWindowSizeListener(windowStage);
   }
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -226,6 +355,7 @@ export class LingxiaBaseAbility extends UIAbility {
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onForeground');
 
     this.disableSystemGestureBack();
+    this.syncDeviceOrientationFromDisplay();
 
     // Notify native layer that app entered foreground
     try {

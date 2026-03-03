@@ -258,6 +258,10 @@ class NativeBridge {
       return LxAppContainer.refreshNavBar(appId);
     });
 
+    this.register('updateOrientationUI', (appId: string): boolean => {
+      return LxApp.updateOrientationUI(appId);
+    });
+
     this.register('getScreenInfo', (callbackId: string): void => {
       LxAppDevice.getScreenInfo(callbackId);
     });

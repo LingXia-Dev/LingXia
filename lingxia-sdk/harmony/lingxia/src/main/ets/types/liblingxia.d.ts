@@ -31,6 +31,7 @@ declare module 'liblingxia.so' {
   export function onAppShow(lxappid: string): void;
   export function onAppHide(lxappid: string): void;
   export function onUserCaptureScreen(lxappid: string): void;
+  export function onDeviceOrientationChanged(appid: string, session_id: number, value: string): boolean;
 
   /**
    * TabBar position enum
@@ -203,6 +204,12 @@ declare module 'liblingxia.so' {
    * Returns 0 when not available.
    */
   export function getLxappSessionId(appid: string): number;
+
+  /**
+   * Get page orientation for a specific page.
+   * Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
+   */
+  export function getPageOrientation(appid: string, path: string): number;
 
   /**
    * Callback function for async operations (modal, etc.)

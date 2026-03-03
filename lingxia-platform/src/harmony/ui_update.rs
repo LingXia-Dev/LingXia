@@ -22,4 +22,13 @@ impl UIUpdate for Platform {
             ))
         })
     }
+
+    fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {
+        lingxia_webview::tsfn::call_arkts("updateOrientationUI", &[&appid]).map_err(|e| {
+            PlatformError::Platform(format!(
+                "Failed to update orientation UI for appId: {}: {}",
+                appid, e
+            ))
+        })
+    }
 }

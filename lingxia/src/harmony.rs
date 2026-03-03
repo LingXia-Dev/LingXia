@@ -4,7 +4,7 @@ use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::{tsfn, webview_controller_created, webview_controller_destroyed};
 use log::LevelFilter;
 use lxapp::log::LogLevel;
-use lxapp::{LxAppDelegate, UiEventType as LxAppUiEventType};
+use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType as LxAppUiEventType};
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
@@ -308,7 +308,10 @@ pub fn get_navigation_bar_state(appid: String, path: String) -> Option<Navigatio
 #[napi]
 pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
     if session_id <= 0 {
-        log::warn!("on_lxapp_opened called without valid session_id for {}", appid);
+        log::warn!(
+            "on_lxapp_opened called without valid session_id for {}",
+            appid
+        );
         return String::new();
     }
     lxapp::try_get(&appid)
@@ -321,7 +324,10 @@ pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
 pub fn on_lxapp_closed(appid: String, session_id: i64) -> bool {
     if let Some(lxapp) = lxapp::try_get(&appid) {
         if session_id <= 0 {
-            log::warn!("on_lxapp_closed called without valid session_id for {}", appid);
+            log::warn!(
+                "on_lxapp_closed called without valid session_id for {}",
+                appid
+            );
             return false;
         }
         if session_id as u64 != lxapp.session_id() {
@@ -331,6 +337,49 @@ pub fn on_lxapp_closed(appid: String, session_id: i64) -> bool {
         return true;
     }
     false
+}
+
+/// Notify device orientation changes from host platform.
+#[napi]
+pub fn on_device_orientation_changed(appid: String, session_id: i64, value: String) -> bool {
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return false;
+    };
+
+    if session_id <= 0 || lxapp.session_id() != session_id as u64 {
+        return false;
+    }
+
+    let normalized = match value.as_str() {
+        "portrait" => "portrait",
+        "landscape" => "landscape",
+        _ => return false,
+    };
+
+    let payload = format!(r#"{{"value":"{}"}}"#, normalized);
+    lxapp::emit_app_event(&appid, "DeviceOrientationChange", Some(payload))
+}
+
+/// Get page orientation for a specific page path.
+/// Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
+#[napi]
+pub fn get_page_orientation(appid: String, path: String) -> i32 {
+    let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+        return 0;
+    };
+
+    let orientation = lxapp_instance.get_page_orientation(&path);
+    orientation_to_value(orientation)
+}
+
+fn orientation_to_value(orientation: OrientationConfig) -> i32 {
+    match (orientation.mode, orientation.rotation) {
+        (PageOrientation::Auto, _) => 0,
+        (PageOrientation::Portrait, 180) => 3,
+        (PageOrientation::Portrait, _) => 1,
+        (PageOrientation::Landscape, 180) => 4,
+        (PageOrientation::Landscape, _) => 2,
+    }
 }
 
 /// Notify that a page is being shown
