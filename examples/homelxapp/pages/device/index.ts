@@ -170,7 +170,8 @@ Page({
     }
 
     const handler = (event) => {
-      this.appendOrientationEvent(event?.value);
+      const value = typeof event === "string" ? event : event?.value;
+      this.appendOrientationEvent(value);
     };
 
     this._deviceOrientationHandler = handler;
