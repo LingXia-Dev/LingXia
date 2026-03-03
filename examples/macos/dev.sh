@@ -60,9 +60,6 @@ if [ "$SKIP_RUST" = false ]; then
         cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib
     fi
 
-    # Copy to expected name for compatibility
-    cp "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a" "$WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"
-
     echo "✅ Rust build complete"
     echo "   .a location: $WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"
 else

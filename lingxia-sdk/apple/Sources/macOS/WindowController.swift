@@ -273,10 +273,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
-        let sessionId = currentLxApp.session_id
-        if !appidStr.isEmpty && sessionId > 0 {
+        let nextSessionId = currentLxApp.session_id
+        if !appidStr.isEmpty && nextSessionId > 0 {
             os_log("Opening next LxApp from stack as tab: %@:%@", log: Self.log, type: .info, appidStr, pathStr)
-            macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: sessionId)
+            macOSLxApp.openLxApp(appId: appidStr, path: pathStr, sessionId: nextSessionId)
         } else if !tabManager.hasTabs {
             window?.close()
         }
