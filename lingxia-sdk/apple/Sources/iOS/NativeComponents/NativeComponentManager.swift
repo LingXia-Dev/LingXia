@@ -57,8 +57,10 @@ final class NativeComponentManager {
     private var scrollBounceRestore: (bounces: Bool, alwaysBounceVertical: Bool)? = nil
     private let inactivePageStopDelayNs: UInt64 = 60_000_000_000
     private var pageInactiveStopTasks: [String: Task<Void, Never>] = [:]
+    private var pageInactiveStopGeneration: [String: UInt64] = [:]
     private var componentPlaybackIntent: [String: Bool] = [:]
     private var componentsPendingAutoResume: Set<String> = []
+    private var inactivePages: Set<String> = []
 
     init(
         scrollView: UIScrollView,
@@ -290,6 +292,7 @@ final class NativeComponentManager {
             componentPlaybackIntent[id] = true
         case "pause", "stop":
             componentPlaybackIntent[id] = false
+            componentsPendingAutoResume.remove(id)
         default:
             break
         }
@@ -326,10 +329,14 @@ final class NativeComponentManager {
         guard let state = parameters["state"] as? String else { return }
         switch state {
         case "inactive":
-            pausePage(pageId)
+            if inactivePages.insert(pageId).inserted {
+                pausePage(pageId)
+            }
         case "active":
+            inactivePages.remove(pageId)
             resumePage(pageId)
         case "destroyed":
+            inactivePages.remove(pageId)
             unmountPage(pageId)
         default:
             break
@@ -338,6 +345,7 @@ final class NativeComponentManager {
 
     func teardownAll() {
         cancelAllInactivePageStops()
+        inactivePages.removeAll()
         componentsPendingAutoResume.removeAll()
         componentPlaybackIntent.removeAll()
         let allIds = Array(components.keys)
@@ -432,7 +440,8 @@ final class NativeComponentManager {
         guard let ids = pageComponents[pageId] else { return }
         for id in ids {
             guard let component = components[id] else { continue }
-            if componentPlaybackIntent[id] == true {
+            let shouldAutoResume = componentsPendingAutoResume.contains(id) || componentPlaybackIntent[id] == true
+            if shouldAutoResume {
                 componentsPendingAutoResume.insert(id)
             } else {
                 componentsPendingAutoResume.remove(id)
@@ -460,13 +469,21 @@ final class NativeComponentManager {
     private func scheduleInactivePageStop(_ pageId: String) {
         cancelInactivePageStop(pageId)
         let delayNs = inactivePageStopDelayNs
+        let generation = (pageInactiveStopGeneration[pageId] ?? 0) + 1
+        pageInactiveStopGeneration[pageId] = generation
         pageInactiveStopTasks[pageId] = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: delayNs)
-            await self?.applyInactivePageStop(pageId)
+            do {
+                try await Task.sleep(nanoseconds: delayNs)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await self?.applyInactivePageStop(pageId, generation: generation)
         }
     }
 
     private func cancelInactivePageStop(_ pageId: String) {
+        pageInactiveStopGeneration[pageId] = (pageInactiveStopGeneration[pageId] ?? 0) + 1
         pageInactiveStopTasks.removeValue(forKey: pageId)?.cancel()
     }
 
@@ -475,7 +492,8 @@ final class NativeComponentManager {
         pageInactiveStopTasks.removeAll()
     }
 
-    private func applyInactivePageStop(_ pageId: String) {
+    private func applyInactivePageStop(_ pageId: String, generation: UInt64) {
+        guard pageInactiveStopGeneration[pageId] == generation else { return }
         pageInactiveStopTasks.removeValue(forKey: pageId)
         guard let ids = pageComponents[pageId] else { return }
         for id in ids {
@@ -510,6 +528,7 @@ final class NativeComponentManager {
             set.remove(id)
             if set.isEmpty {
                 pageComponents.removeValue(forKey: pageId)
+                inactivePages.remove(pageId)
                 cancelInactivePageStop(pageId)
             } else {
                 pageComponents[pageId] = set
