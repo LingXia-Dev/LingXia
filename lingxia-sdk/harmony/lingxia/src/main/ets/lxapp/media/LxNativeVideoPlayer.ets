@@ -153,6 +153,7 @@ class StreamVideoSize {
 class LxNativeVideoRuntimeSnapshot {
   isPlaying: boolean = false;
   isBuffering: boolean = false;
+  isPausedByUser: boolean = false;
   currentTime: number = 0;
   duration: number = 0;
   hasRenderedFirstFrame: boolean = false;
@@ -339,6 +340,21 @@ export struct LxNativeVideoPlayer {
     return LxNativeVideoPlayer.runtimeState.get(componentId);
   }
 
+  private static patchRuntimeState(
+    componentId: string,
+    isPlaying?: boolean,
+    isBuffering?: boolean,
+    isPausedByUser?: boolean,
+    currentTime?: number
+  ): void {
+    const state = LxNativeVideoPlayer.runtimeState.get(componentId);
+    if (!state) return;
+    if (isPlaying !== undefined) state.isPlaying = isPlaying;
+    if (isBuffering !== undefined) state.isBuffering = isBuffering;
+    if (isPausedByUser !== undefined) state.isPausedByUser = isPausedByUser;
+    if (currentTime !== undefined) state.currentTime = currentTime;
+  }
+
   static togglePlayPause(componentId: string): void {
     LxNativeVideoPlayer.rebindInstance.get(componentId)?.togglePlayPause();
   }
@@ -362,14 +378,18 @@ export struct LxNativeVideoPlayer {
       instance.pause();
     } else {
       videoPlayerPause(componentId);
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) state.isPlaying = false;
+      LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true);
     }
   }
 
   static playStatic(componentId: string): void {
     const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
-    instance ? instance.play() : videoPlayerPlay(componentId);
+    if (instance) {
+      instance.play();
+    } else {
+      videoPlayerPlay(componentId);
+      LxNativeVideoPlayer.patchRuntimeState(componentId, undefined, undefined, false);
+    }
   }
 
   static stopStatic(componentId: string): void {
@@ -378,17 +398,16 @@ export struct LxNativeVideoPlayer {
       instance.stop();
     } else {
       videoPlayerStop(componentId);
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) {
-        state.isPlaying = false;
-        state.currentTime = 0;
-      }
+      LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true, 0);
     }
   }
 
   static resumeStatic(componentId: string): void {
     const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-    if (state?.isPlaying) LxNativeVideoPlayer.playStatic(componentId);
+    const shouldResume =
+      state?.isPlaying === true ||
+      (state?.isBuffering === true && state?.isPausedByUser !== true);
+    if (shouldResume) LxNativeVideoPlayer.playStatic(componentId);
   }
 
   private static clearNativeEventCache(componentId: string): void {
@@ -520,6 +539,7 @@ export struct LxNativeVideoPlayer {
       }
       instance.handleBufferingChange(isBuffering);
     } else {
+      LxNativeVideoPlayer.patchRuntimeState(componentId, undefined, isBuffering);
       log(`[${componentId}] static onBufferingChange: no instance found`);
     }
   }
@@ -534,11 +554,7 @@ export struct LxNativeVideoPlayer {
     if (instance) {
       instance.handleStopped();
     } else {
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) {
-        state.isPlaying = false;
-        state.currentTime = 0;
-      }
+      LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true, 0);
     }
   }
 
@@ -547,10 +563,7 @@ export struct LxNativeVideoPlayer {
     if (instance) {
       instance.handlePlaying();
     } else {
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) {
-        state.isPlaying = true;
-      }
+      LxNativeVideoPlayer.patchRuntimeState(componentId, true, false, false);
     }
   }
 
@@ -559,10 +572,7 @@ export struct LxNativeVideoPlayer {
     if (instance) {
       instance.handlePaused();
     } else {
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) {
-        state.isPlaying = false;
-      }
+      LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true);
     }
   }
 
@@ -571,10 +581,7 @@ export struct LxNativeVideoPlayer {
     if (instance) {
       instance.onPlaybackEnded();
     } else {
-      const state = LxNativeVideoPlayer.runtimeState.get(componentId);
-      if (state) {
-        state.isPlaying = false;
-      }
+      LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true);
     }
   }
 
@@ -814,6 +821,8 @@ export struct LxNativeVideoPlayer {
     if (!this.componentId) return;
     const snapshot = new LxNativeVideoRuntimeSnapshot();
     snapshot.isPlaying = this.state.isPlaying;
+    snapshot.isBuffering = this.state.isBuffering;
+    snapshot.isPausedByUser = this.isPausedByUser;
     // Use state.currentTime which is the calculated effectiveTime in progress timer,
     // not native time (which doesn't account for stream mode time anchor)
     snapshot.currentTime = this.state.currentTime;
@@ -828,6 +837,8 @@ export struct LxNativeVideoPlayer {
     const snapshot = LxNativeVideoPlayer.runtimeState.get(this.componentId);
     if (snapshot) {
       this.state.isPlaying = snapshot.isPlaying;
+      this.state.isBuffering = snapshot.isBuffering;
+      this.isPausedByUser = snapshot.isPausedByUser;
       let restoredTime = snapshot.currentTime;
       // Sanitize restored time to prevent "poisoned" state loop
       if (!isFinite(restoredTime) || restoredTime < 0 || restoredTime > 3000000000000) {

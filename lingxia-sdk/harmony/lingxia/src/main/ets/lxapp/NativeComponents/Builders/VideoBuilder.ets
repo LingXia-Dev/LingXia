@@ -62,6 +62,8 @@ struct NativeVideoComponent {
       LxNativeVideoPlayer.pauseStatic(this.componentId);
     } else if (command === 'stop') {
       LxNativeVideoPlayer.stopStatic(this.componentId);
+    } else if (command === 'play') {
+      LxNativeVideoPlayer.playStatic(this.componentId);
     } else if (command === 'resume') {
       LxNativeVideoPlayer.resumeStatic(this.componentId);
     }

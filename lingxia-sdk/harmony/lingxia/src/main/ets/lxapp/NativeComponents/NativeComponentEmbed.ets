@@ -41,6 +41,7 @@ export class NativeComponentEmbedManager {
   private pendingUnmountTimers: Map<string, number> = new Map();
   private componentPlaybackIntent: Map<string, boolean> = new Map();
   private componentsPendingAutoResume: Set<string> = new Set();
+  private lifecyclePaused: boolean = false;
 
   constructor(webTag: string, eventDispatcher?: (payload: NativeComponentRecord) => void) {
     this.webTag = webTag;
@@ -436,10 +437,21 @@ export class NativeComponentEmbedManager {
    * Pause all native components (e.g., on page navigate away)
    */
   pauseAll(): void {
+    this.lifecyclePaused = true;
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
       if (nodeController) {
-        if (this.componentPlaybackIntent.get(componentId) === true) {
+        const intentPlaying = this.componentPlaybackIntent.get(componentId) === true;
+        // Prefer real runtime state for video components; event intent can be stale
+        // when page lifecycle changes race with bridge event delivery.
+        const snapshot = nodeController.getComponentType() === 'video.native'
+          ? LxNativeVideoPlayer.getPlaybackState(componentId)
+          : undefined;
+        const runtimeShouldResume =
+          snapshot?.isPlaying === true ||
+          (snapshot?.isBuffering === true && snapshot?.isPausedByUser !== true);
+        const shouldAutoResume = this.componentsPendingAutoResume.has(componentId) || intentPlaying || runtimeShouldResume;
+        if (shouldAutoResume) {
           this.componentsPendingAutoResume.add(componentId);
         } else {
           this.componentsPendingAutoResume.delete(componentId);
@@ -455,6 +467,10 @@ export class NativeComponentEmbedManager {
    * Resume all native components (e.g., on page navigate back)
    */
   resumeAll(): void {
+    if (!this.lifecyclePaused) {
+      return;
+    }
+    this.lifecyclePaused = false;
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
       if (nodeController) {
@@ -485,6 +501,7 @@ export class NativeComponentEmbedManager {
    * Cleanup all resources
    */
   teardown(): void {
+    this.lifecyclePaused = false;
     this.pendingUnmountTimers.forEach((timerId) => {
       clearTimeout(timerId);
     });
