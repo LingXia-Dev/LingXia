@@ -153,6 +153,23 @@ impl std::fmt::Display for ProviderError {
 
 impl std::error::Error for ProviderError {}
 
+/// Error type for fingerprint operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FingerprintError {
+    /// Device ID cannot be loaded/generated on current runtime.
+    DeviceIdUnavailable,
+}
+
+impl std::fmt::Display for FingerprintError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DeviceIdUnavailable => write!(f, "device_id_unavailable"),
+        }
+    }
+}
+
+impl std::error::Error for FingerprintError {}
+
 /// Trait for update checking.
 pub trait UpdateProvider: Send + Sync + 'static {
     /// Returns Some(package) when available, None when already up to date.
@@ -167,9 +184,8 @@ pub trait UpdateProvider: Send + Sync + 'static {
 /// Trait for device fingerprint.
 pub trait FingerprintProvider: Send + Sync + 'static {
     /// Get the device fingerprint ID.
-    /// Returns None if fingerprint is not available.
-    fn get_fingerprint(&self) -> Option<String> {
-        None
+    fn get_fingerprint(&self) -> Result<String, FingerprintError> {
+        Err(FingerprintError::DeviceIdUnavailable)
     }
 }
 

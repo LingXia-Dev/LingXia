@@ -1546,9 +1546,13 @@ impl LxApp {
 /// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
 pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> String {
     // Fingermark uses appid + release_type + device fingerprint (version excluded)
-    let device_fp = crate::provider::get_provider()
-        .get_fingerprint()
-        .unwrap_or_default();
+    let device_fp = match crate::provider::get_provider().get_fingerprint() {
+        Ok(fp) => fp,
+        Err(e) => {
+            warn!("Device Fingerprint unavailable: {}", e);
+            String::new()
+        }
+    };
     info!("Device Fingerprint: {}", device_fp);
     let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
     let mut hasher = DefaultHasher::new();
