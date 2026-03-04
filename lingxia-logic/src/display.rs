@@ -62,17 +62,23 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool>
 }
 
 fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let current_path = lxapp.peek_current_page().unwrap_or_default();
+    let current = if current_path.is_empty() {
+        lxapp.get_app_orientation()
+    } else {
+        lxapp.get_page_orientation(&current_path)
+    };
+
+    let value = normalize_orientation_value(current.to_label())
+        .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable".to_string()))?;
+
     let callback_for_initial = callback.clone();
     register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback)?;
 
-    if let Ok(lxapp) = LxApp::from_ctx(&ctx) {
-        let current = lxapp.get_app_orientation();
-        if let Some(value) = normalize_orientation_value(current.to_label()) {
-            let payload = JSObject::new(&ctx);
-            payload.set("value", value)?;
-            let _ = callback_for_initial.call::<_, ()>(None, (payload,));
-        }
-    }
+    let payload = JSObject::new(&ctx);
+    payload.set("value", value)?;
+    let _ = callback_for_initial.call::<_, ()>(None, (payload,));
 
     Ok(())
 }
