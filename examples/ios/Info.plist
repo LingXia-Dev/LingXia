@@ -34,14 +34,18 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>Allow LingXia to record audio when capturing videos.</string>
 
-    <!-- Disable rotation -->
+    <!-- Allow runtime orientation lock APIs to switch between portrait and landscape -->
     <key>UISupportedInterfaceOrientations</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
     <key>UISupportedInterfaceOrientations~ipad</key>
     <array>
         <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
 </dict>
 </plist>
