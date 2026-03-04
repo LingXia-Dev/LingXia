@@ -101,6 +101,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
             let currentPath = LxAppCore.getCurrentPath()
             NavigationBarStateManager.shared.updateState(appId: currentAppId, path: currentPath)
             applyAppStyling(for: currentAppId)
+            _ = applyOrientationFromRuntime(for: currentAppId)
         }
     }
 
@@ -446,6 +447,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
             // Update current app state AFTER successful attach/switch
             LxAppCore.setCurrentPath(path)
+            _ = applyOrientationFromRuntime(for: appId)
 
             // Always trigger onPageShow for page content changes, even if same WebView
             lingxia.onPageShow(appId, path)
@@ -495,6 +497,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
         // Update current app state AFTER successful attach/switch
         LxAppCore.setCurrentPath(path)
+        _ = applyOrientationFromRuntime(for: appId)
 
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
@@ -972,6 +975,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     private func finalizeWebViewAttachment(webView: WKWebView, appId: String, path: String) {
         // Update current app state first
         LxAppCore.setCurrentPath(path)
+        _ = applyOrientationFromRuntime(for: appId)
 
         // Always trigger onPageShow for navigation transitions
         lingxia.onPageShow(appId, path)

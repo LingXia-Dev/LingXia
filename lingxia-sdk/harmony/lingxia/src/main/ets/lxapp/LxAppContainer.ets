@@ -156,11 +156,13 @@ export struct LxAppContainer {
           setTimeout(() => {
             hilog.info(DOMAIN, TAG, `Triggering onPageShow for first page: ${appId}:${actualPath}`);
             onPageShow(appId, actualPath);
+            LxApp.updateOrientationUI(appId, actualPath);
           }, 100);
         } else {
           // Subsequent pages without delay
           hilog.info(DOMAIN, TAG, `Triggering onPageShow for: ${appId}:${actualPath}`);
           onPageShow(appId, actualPath);
+          LxApp.updateOrientationUI(appId, actualPath);
         }
       }
     } else {
@@ -1266,6 +1268,7 @@ export struct LxAppContainer {
 
     this.pageShowTriggered.add(pageKey);
     onPageShow(appId, path);
+    LxApp.updateOrientationUI(appId, path);
   }
 
   private handleNavigationBack(isHomeButton: boolean = false) {

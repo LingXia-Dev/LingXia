@@ -235,20 +235,24 @@ export class LxApp {
     return 0;
   }
 
-  public static updateOrientationUI(appId: string): boolean {
+  public static updateOrientationUI(appId: string, pathOverride?: string): boolean {
     if (!LxApp.windowStage) {
       hilog.warn(DOMAIN, TAG, `updateOrientationUI skipped: windowStage unavailable (${appId})`);
       return false;
     }
 
     let path: string = '';
-    try {
-      const current: CurrentLxApp = getCurrentLxapp();
-      if (current && current.appid === appId) {
-        path = current.path;
+    if (pathOverride && pathOverride.length > 0) {
+      path = pathOverride;
+    } else {
+      try {
+        const current: CurrentLxApp = getCurrentLxapp();
+        if (current && current.appid === appId) {
+          path = current.path;
+        }
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, `updateOrientationUI getCurrentLxapp failed: ${error}`);
       }
-    } catch (error) {
-      hilog.warn(DOMAIN, TAG, `updateOrientationUI getCurrentLxapp failed: ${error}`);
     }
 
     const orientation: number = getPageOrientation(appId, path);

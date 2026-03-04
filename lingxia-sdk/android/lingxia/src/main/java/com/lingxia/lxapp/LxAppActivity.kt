@@ -12,7 +12,6 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.OrientationEventListener
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -280,7 +279,6 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingNavBarVisibility: Int? = null
     private var shouldRestoreOverlayOrder = false
     private var lastDispatchedDeviceOrientation: String? = null
-    private var deviceOrientationListener: OrientationEventListener? = null
 
     private fun ensureRuntimeReady(
         targetAppId: String,
@@ -360,7 +358,14 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        setupDeviceOrientationListener()
+        // Apply initial page orientation before first frame to avoid visible startup rotation.
+        // Full orientation/immersive sync still happens later in setupWebViewContentWithExisting().
+        runCatching {
+            val initialOrientation = NativeApi.getPageOrientation(appId, normalizePath(initialPath))
+            updateRequestedOrientation(initialOrientation)
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to apply initial orientation before first frame: ${error.message}")
+        }
 
         // Start WebView creation in parallel while setting up UI
         var webViewFuture: java.util.concurrent.Future<com.lingxia.lxapp.WebView?>? = null
@@ -970,6 +975,10 @@ class LxAppActivity : AppCompatActivity() {
         super.onResume()
         webViewContainer.visibility = View.VISIBLE
         attachWebViewToUI(currentWebView)
+        val currentPath = currentWebView?.getCurrentPath()
+        if (!currentPath.isNullOrEmpty()) {
+            applyPageOrientation(currentPath)
+        }
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
     }
@@ -1054,13 +1063,10 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
-        deviceOrientationListener?.enable()
     }
 
     override fun onStop() {
         super.onStop()
-
-        deviceOrientationListener?.disable()
 
         // Avoid spurious background/foreground events during configuration changes (e.g. rotation).
         if (isChangingConfigurations) return
@@ -1081,8 +1087,6 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
-        deviceOrientationListener?.disable()
-        deviceOrientationListener = null
 
         // Destroy native components before pausing WebView
         currentWebView?.let { NativeBridge.notifyPageDestroyed(it) }
@@ -1415,7 +1419,9 @@ class LxAppActivity : AppCompatActivity() {
             try {
                 val webView = container.getChildAt(0) as? WebView
                 if (webView?.getAppId() != null && webView.getCurrentPath() != null) {
-                    NativeApi.onPageShow(webView.getAppId()!!, webView.getCurrentPath()!!)
+                    val pagePath = webView.getCurrentPath()!!
+                    NativeApi.onPageShow(webView.getAppId()!!, pagePath)
+                    applyPageOrientation(pagePath)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to call nativeOnPageShow in performWebViewTransition: ${e.message}")
@@ -1642,10 +1648,12 @@ class LxAppActivity : AppCompatActivity() {
      * Apply page orientation configuration
      */
     private fun applyPageOrientation(path: String) {
-        val orientation = NativeApi.getPageOrientation(appId, path)
+        val normalizedPath = normalizePath(path)
+        val orientation = NativeApi.getPageOrientation(appId, normalizedPath)
 
         updateRequestedOrientation(orientation)
-        updateImmersiveMode(orientation, path)
+        updateImmersiveMode(orientation, normalizedPath)
+        dispatchUiOrientationChangeIfNeeded()
     }
 
     private fun updateRequestedOrientation(orientation: Int) {
@@ -1880,32 +1888,22 @@ class LxAppActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
 
         // Update layout to adapt to screen orientation changes
-        updateLayoutMargins()
+        if (::webViewContainer.isInitialized) {
+            updateLayoutMargins()
+        }
+        dispatchUiOrientationChangeIfNeeded()
     }
 
-    private fun setupDeviceOrientationListener() {
-        if (deviceOrientationListener != null) return
-        deviceOrientationListener = object : OrientationEventListener(this) {
-            override fun onOrientationChanged(orientation: Int) {
-                val orientationValue = orientationToLabel(orientation) ?: return
-                dispatchDeviceOrientationValue(orientationValue)
-            }
+    private fun currentUiOrientationLabel(): String? {
+        return when (resources.configuration.orientation) {
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE -> "landscape"
+            android.content.res.Configuration.ORIENTATION_PORTRAIT -> "portrait"
+            else -> null
         }
     }
 
-    private fun orientationToLabel(orientation: Int): String? {
-        if (orientation == OrientationEventListener.ORIENTATION_UNKNOWN) {
-            return null
-        }
-        val normalized = ((orientation % 360) + 360) % 360
-        return if ((normalized in 45..134) || (normalized in 225..314)) {
-            "landscape"
-        } else {
-            "portrait"
-        }
-    }
-
-    private fun dispatchDeviceOrientationValue(orientationValue: String) {
+    private fun dispatchUiOrientationChangeIfNeeded() {
+        val orientationValue = currentUiOrientationLabel() ?: return
         if (lastDispatchedDeviceOrientation == orientationValue) {
             return
         }
