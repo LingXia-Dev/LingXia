@@ -398,7 +398,7 @@ export class LxNavigatorElement extends HTMLElement {
       if (!url) {
         throw new Error('openURL requires url');
       }
-      await caller('openURL', { url });
+      await caller('openURL', { url, target: 'external' });
       return;
     }
 
@@ -408,6 +408,14 @@ export class LxNavigatorElement extends HTMLElement {
       }
       const lxappPath = options.path || '';
       await caller('navigateToLxApp', { appId: options.lxAppId, path: lxappPath });
+      return;
+    }
+
+    if (options.target === 'self' && /^https?:\/\//i.test(url)) {
+      if (!url) {
+        throw new Error('openURL requires url');
+      }
+      await caller('openURL', { url, target: 'self' });
       return;
     }
 
@@ -429,7 +437,10 @@ export class LxNavigatorElement extends HTMLElement {
         await caller('reLaunch', { url });
         break;
       case 'openUrl':
-        await caller('openURL', { url });
+        await caller('openURL', {
+          url,
+          target: options.target === 'self' ? 'self' : 'external'
+        });
         break;
       default:
         throw new Error(`Unsupported openType: ${options.openType}`);
@@ -451,6 +462,8 @@ export class LxNavigatorElement extends HTMLElement {
       case 'navigate':
         if (target === 'browser') {
           console.log(`[LxNavigator] Open in browser: ${url}`);
+        } else if (target === 'self' && /^https?:\/\//i.test(url)) {
+          console.log(`[LxNavigator] Open in app: ${url}`);
         } else if (target === 'lxapp' && lxAppId) {
           console.log(`[LxNavigator] Open lxapp: ${lxAppId}, path: ${path || '/'}`);
         } else {
@@ -475,6 +488,8 @@ export class LxNavigatorElement extends HTMLElement {
       case 'openUrl':
         if (target === 'lxapp' && lxAppId) {
           console.log(`[LxNavigator] Open lxapp: ${lxAppId}, path: ${path || '/'}`);
+        } else if (target === 'self') {
+          console.log(`[LxNavigator] Open in app: ${url}`);
         } else {
           console.log(`[LxNavigator] Open in browser: ${url}`);
         }
