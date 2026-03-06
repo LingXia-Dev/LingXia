@@ -233,11 +233,34 @@ define_class!(
         ) -> *mut AnyObject {
             // Load target="_blank" / window.open() URLs in the same webview.
             unsafe {
-                let request: *mut AnyObject = msg_send![navigation_action, request];
-                if !request.is_null() {
-                    let _: () = msg_send![webview, loadRequest: request];
+                // Only hijack real new-window navigations from page content.
+                // This avoids swallowing internal WebKit windows (for example inspector UI).
+                let target_frame: *mut AnyObject = msg_send![navigation_action, targetFrame];
+                if target_frame.is_null() {
+                    let request: *mut AnyObject = msg_send![navigation_action, request];
+                    if !request.is_null() {
+                        let mut should_hijack = false;
+                        let url_obj: *mut AnyObject = msg_send![request, URL];
+                        if !url_obj.is_null() {
+                            let abs: *mut AnyObject = msg_send![url_obj, absoluteString];
+                            if !abs.is_null() {
+                                let cstr: *const std::ffi::c_char = msg_send![abs, UTF8String];
+                                if !cstr.is_null() {
+                                    let url = std::ffi::CStr::from_ptr(cstr)
+                                        .to_string_lossy()
+                                        .to_lowercase();
+                                    should_hijack =
+                                        url.starts_with("https://") || url.starts_with("lx://");
+                                }
+                            }
+                        }
+                        if should_hijack {
+                            let _: () = msg_send![webview, loadRequest: request];
+                        }
+                    }
                 }
             }
+            // For non-hijacked requests, return nil so WebKit can use its own behavior.
             std::ptr::null_mut()
         }
 
@@ -485,15 +508,24 @@ impl WebViewInner {
 
             // Access preferences to set security settings
             let prefs = config.preferences();
-            let is_browser_profile = effective_options.profile == SecurityProfile::BrowserRelaxed;
-            let is_browser = is_browser_profile && cfg!(target_os = "macos");
+            let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed
+                && cfg!(target_os = "macos");
             let is_strict = effective_options.profile == SecurityProfile::StrictDefault;
-            if is_browser_profile && !is_browser {
+            if effective_options.profile == SecurityProfile::BrowserRelaxed && !allow_new_windows {
                 log::warn!(
                     "BrowserRelaxed profile requested on non-macOS Apple target; browser-only features are disabled"
                 );
             }
-            prefs.setJavaScriptCanOpenWindowsAutomatically(is_browser);
+            prefs.setJavaScriptCanOpenWindowsAutomatically(allow_new_windows);
+
+            // Enable Web Inspector support for all webviews (lxapp pages + browser tabs).
+            {
+                let developer_extras_key = NSString::from_str("developerExtrasEnabled");
+                let ns_true: *mut AnyObject =
+                    msg_send![class!(NSNumber), numberWithBool: objc2::runtime::Bool::YES];
+                let prefs_obj: *mut AnyObject = Retained::as_ptr(&prefs).cast_mut().cast();
+                let _: () = msg_send![prefs_obj, setValue:ns_true, forKey:&*developer_extras_key];
+            }
 
             // Disable local file access for security
             let allow_file_access_key = NSString::from_str("allowFileAccessFromFileURLs");
@@ -579,6 +611,23 @@ impl WebViewInner {
                 ));
             }
 
+            // Make all webviews inspectable (lxapp pages + browser tabs).
+            {
+                let can_set_remote_inspection: objc2::runtime::Bool = msg_send![webview, respondsToSelector: objc2::sel!(_setAllowsRemoteInspection:)];
+                if can_set_remote_inspection.as_bool() {
+                    let _: () = msg_send![
+                        webview,
+                        _setAllowsRemoteInspection: objc2::runtime::Bool::YES
+                    ];
+                }
+
+                let can_set_inspectable: objc2::runtime::Bool =
+                    msg_send![webview, respondsToSelector: objc2::sel!(setInspectable:)];
+                if can_set_inspectable.as_bool() {
+                    let _: () = msg_send![webview, setInspectable: objc2::runtime::Bool::YES];
+                }
+            }
+
             // Immediately hide the webview. It will be made visible by Swift once it's sized and positioned.
             let _: () = msg_send![webview, setHidden: true];
 
@@ -599,8 +648,8 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
-            // Set UI delegate for browser mode (handles target="_blank" and window.open)
-            let ui_delegate = if is_browser {
+            // Set UI delegate when new windows are allowed (handles target="_blank" and window.open)
+            let ui_delegate = if allow_new_windows {
                 let delegate = LingXiaUIDelegate::new(mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
@@ -782,6 +831,32 @@ impl WebViewInner {
     /// Get the raw pointer to the WebView for Swift interop
     pub fn get_swift_webview_ptr(&self) -> usize {
         self.webview as usize
+    }
+
+    /// Toggle docked DevTools using WKWebView's private `_inspector` API.
+    /// `show` opens the inspector respecting `_setInspectorAttachmentView:` (docked).
+    /// `isInspectable` and `developerExtrasEnabled` are set at WebView creation time.
+    #[cfg(target_os = "macos")]
+    pub fn toggle_devtools(&self) {
+        let webview_ptr = self.webview as usize;
+        let exec = move || unsafe {
+            let webview = webview_ptr as *mut AnyObject;
+            let inspector: *mut AnyObject = msg_send![webview, _inspector];
+            if inspector.is_null() {
+                return;
+            }
+            let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
+            if visible.as_bool() {
+                let _: () = msg_send![inspector, close];
+            } else {
+                let _: () = msg_send![inspector, show];
+            }
+        };
+        if MainThreadMarker::new().is_some() {
+            exec();
+        } else {
+            DispatchQueue::main().exec_async(exec);
+        }
     }
 
     /// Helper method to load URL on main thread

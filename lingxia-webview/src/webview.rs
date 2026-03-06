@@ -118,6 +118,12 @@ impl WebView {
         }
     }
 
+    /// Toggle docked DevTools (macOS only, uses private _inspector API)
+    #[cfg(target_os = "macos")]
+    pub fn toggle_devtools(&self) {
+        self.inner.toggle_devtools();
+    }
+
     /// Get platform-specific pointer for interop (Apple platforms only)
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     pub fn get_swift_webview_ptr(&self) -> usize {
