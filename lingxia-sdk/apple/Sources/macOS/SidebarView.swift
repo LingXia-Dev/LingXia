@@ -79,8 +79,6 @@ public class SidebarView: NSView {
     private var browserItemViews: [UUID: SidebarBrowserItemView] = [:]
     private var browserItemTopConstraints: [UUID: NSLayoutConstraint] = [:]
     private var browserTabOrder: [UUID] = []
-    private let browserSeparator = NSView()
-    private var separatorTopConstraint: NSLayoutConstraint?
     private let addButton = NSButton()
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
@@ -488,30 +486,10 @@ public class SidebarView: NSView {
         relayoutBrowserSection(in: docView)
     }
 
-    /// Layout browser separator, browser items, and add button after lxapp groups
+    /// Layout browser items and add button after lxapp groups
     private func layoutBrowserSection(in docView: NSView, yOffset startY: CGFloat) -> CGFloat {
         let groupInset: CGFloat = SidebarGroupView.Layout.groupInset
         var yOffset = startY
-
-        // Separator — only show if there are browser items
-        let hasBrowserItems = !browserItemViews.isEmpty
-        if hasBrowserItems {
-            ensureSubview(browserSeparator, in: docView) {
-                browserSeparator.translatesAutoresizingMaskIntoConstraints = false
-                browserSeparator.wantsLayer = true
-                browserSeparator.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
-                NSLayoutConstraint.activate([
-                    browserSeparator.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
-                    browserSeparator.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
-                    browserSeparator.heightAnchor.constraint(equalToConstant: 1),
-                ])
-            }
-            browserSeparator.isHidden = false
-            updateOrCreate(&separatorTopConstraint, on: browserSeparator, in: docView, constant: yOffset)
-            yOffset += 1 + 8
-        } else {
-            browserSeparator.isHidden = true
-        }
 
         // Browser item views (ordered by browserTabOrder)
         for tabId in browserTabOrder {
@@ -615,10 +593,10 @@ public class SidebarView: NSView {
         addButton.isBordered = false
         addButton.bezelStyle = .regularSquare
         addButton.imagePosition = .imageOnly
-        addButton.contentTintColor = NSColor.white.withAlphaComponent(0.6)
+        addButton.contentTintColor = NSColor.secondaryLabelColor
         addButton.wantsLayer = true
         addButton.layer?.cornerRadius = 6
-        addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+        addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
         addButton.target = self
         addButton.action = #selector(addButtonClicked)
     }
@@ -652,7 +630,7 @@ public class SidebarView: NSView {
         let zone = event.trackingArea?.userInfo?["zone"] as? String
         if zone == "addButton" {
             isAddButtonHovered = true
-            addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
+            addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         }
     }
 
@@ -660,7 +638,7 @@ public class SidebarView: NSView {
         let zone = event.trackingArea?.userInfo?["zone"] as? String
         if zone == "addButton" {
             isAddButtonHovered = false
-            addButton.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.08).cgColor
+            addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
         }
     }
 }

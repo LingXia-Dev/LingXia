@@ -14,8 +14,12 @@ class SidebarItemView: NSView {
         static let trailingPadding: CGFloat = 8
         static let iconTitleSpacing: CGFloat = 8
         static let cornerRadius: CGFloat = 6
+        /// Inset from item leading edge so the selection background
+        /// aligns with the connector line (SidebarGroupView.Layout.groupInset + 14 - groupInset = 14).
+        static let selectionLeadingInset: CGFloat = 14
     }
 
+    private let selectionBackground = NSView()
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let badgeLabel = NSTextField(labelWithString: "")
@@ -43,7 +47,12 @@ class SidebarItemView: NSView {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.cornerRadius = Layout.cornerRadius
+
+        // Selection/hover background — inset to align with the connector line
+        selectionBackground.translatesAutoresizingMaskIntoConstraints = false
+        selectionBackground.wantsLayer = true
+        selectionBackground.layer?.cornerRadius = Layout.cornerRadius
+        addSubview(selectionBackground)
 
         // Icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -84,6 +93,12 @@ class SidebarItemView: NSView {
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Layout.height),
+
+            // Selection background: inset from item leading to align with connector line
+            selectionBackground.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.selectionLeadingInset),
+            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
+            selectionBackground.topAnchor.constraint(equalTo: topAnchor),
+            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.leadingPadding),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -173,15 +188,15 @@ class SidebarItemView: NSView {
 
     private func updateAppearance() {
         if isSelected {
-            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
             titleLabel.textColor = NSColor.controlAccentColor
             iconView.contentTintColor = NSColor.controlAccentColor
         } else if isHovered {
-            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         }

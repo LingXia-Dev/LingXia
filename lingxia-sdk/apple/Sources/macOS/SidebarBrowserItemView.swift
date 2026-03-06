@@ -16,12 +16,15 @@ class SidebarBrowserItemView: NSView {
         static let closeButtonSize: CGFloat = 16
     }
 
+    private let selectionBackground = NSView()
     private let iconView = NSImageView()
     private let titleLabel = NSTextField(labelWithString: "")
     private let closeButton = NSButton()
 
     private var trackingArea: NSTrackingArea?
+    private var closeTrackingArea: NSTrackingArea?
     private(set) var isHovered = false
+    private var isCloseHovered = false
     var isSelected = false { didSet { updateAppearance() } }
 
     let browserId: UUID
@@ -40,7 +43,12 @@ class SidebarBrowserItemView: NSView {
 
     private func setupViews() {
         wantsLayer = true
-        layer?.cornerRadius = Layout.cornerRadius
+
+        // Selection/hover background
+        selectionBackground.translatesAutoresizingMaskIntoConstraints = false
+        selectionBackground.wantsLayer = true
+        selectionBackground.layer?.cornerRadius = Layout.cornerRadius
+        addSubview(selectionBackground)
 
         // Globe icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
@@ -75,6 +83,11 @@ class SidebarBrowserItemView: NSView {
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Layout.height),
 
+            selectionBackground.leadingAnchor.constraint(equalTo: leadingAnchor),
+            selectionBackground.trailingAnchor.constraint(equalTo: trailingAnchor),
+            selectionBackground.topAnchor.constraint(equalTo: topAnchor),
+            selectionBackground.bottomAnchor.constraint(equalTo: bottomAnchor),
+
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Layout.leadingPadding),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
             iconView.widthAnchor.constraint(equalToConstant: Layout.iconSize),
@@ -100,15 +113,15 @@ class SidebarBrowserItemView: NSView {
 
     private func updateAppearance() {
         if isSelected {
-            layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
             titleLabel.textColor = NSColor.controlAccentColor
             iconView.contentTintColor = NSColor.controlAccentColor
         } else if isHovered {
-            layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         } else {
-            layer?.backgroundColor = NSColor.clear.cgColor
+            selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         }
@@ -145,24 +158,50 @@ class SidebarBrowserItemView: NSView {
         }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInActiveApp],
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
             owner: self,
-            userInfo: nil
+            userInfo: ["zone": "item"]
         )
         addTrackingArea(area)
         trackingArea = area
+
+        if let existing = closeTrackingArea {
+            closeButton.removeTrackingArea(existing)
+        }
+        let closeArea = NSTrackingArea(
+            rect: closeButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: ["zone": "close"]
+        )
+        closeButton.addTrackingArea(closeArea)
+        closeTrackingArea = closeArea
     }
 
     override func mouseEntered(with event: NSEvent) {
-        isHovered = true
-        closeButton.isHidden = false
-        updateAppearance()
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "item" {
+            isHovered = true
+            closeButton.isHidden = false
+            updateAppearance()
+        } else if zone == "close" {
+            isCloseHovered = true
+            closeButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
-        isHovered = false
-        closeButton.isHidden = true
-        updateAppearance()
+        let zone = event.trackingArea?.userInfo?["zone"] as? String
+        if zone == "item" {
+            isHovered = false
+            isCloseHovered = false
+            closeButton.isHidden = true
+            closeButton.layer?.backgroundColor = nil
+            updateAppearance()
+        } else if zone == "close" {
+            isCloseHovered = false
+            closeButton.layer?.backgroundColor = nil
+        }
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
