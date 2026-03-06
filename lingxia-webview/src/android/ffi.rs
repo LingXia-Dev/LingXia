@@ -344,10 +344,12 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
         // Retrieve the sender from our global map and send the WebView instance
         if let Some(senders) = WEBVIEW_SENDERS.get() {
             let webtag = WebTag::new(&appid, &path, session_id);
+            let mut matched_pending = false;
 
             if let Ok(mut senders_map) = senders.lock()
-                && let Some(sender) = senders_map.remove(&webtag.to_string())
+                && let Some(pending) = senders_map.remove(&webtag.to_string())
             {
+                matched_pending = true;
                 // Create global reference to the passed WebView object
                 match env.new_global_ref(webview_obj) {
                     Ok(global_ref) => {
@@ -356,22 +358,38 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                             WebViewInner::from_java_object(global_ref, webtag.clone());
 
                         // Create WebView wrapper
-                        let webview = Arc::new(crate::WebView::new(webview_inner));
+                        let webview = Arc::new(crate::WebView::new(
+                            webview_inner,
+                            pending.effective_options.clone(),
+                        ));
 
                         // Register the WebView instance for future lookups
                         register_webview(webview.clone());
 
                         // Send the WebView instance through the channel
-                        let _ = sender.send(Ok(webview));
+                        let _ = pending.sender.send(Ok(webview));
                     }
                     Err(e) => {
-                        let _ = sender.send(Err(WebViewError::WebView(format!(
+                        let _ = pending.sender.send(Err(WebViewError::WebView(format!(
                             "Failed to create global ref: {:?}",
                             e
                         ))));
                     }
                 }
             }
+
+            if !matched_pending {
+                log::warn!(
+                    "notifyWebViewReady without pending sender for {}",
+                    webtag.as_str()
+                );
+            }
+        } else {
+            log::warn!(
+                "notifyWebViewReady called before sender map initialization for {}:{}",
+                appid,
+                path
+            );
         }
         Ok(())
     })

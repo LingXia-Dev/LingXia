@@ -5,6 +5,9 @@ use thiserror::Error;
 pub enum WebViewError {
     #[error("WebView error: {0}")]
     WebView(String),
+
+    #[error("Invalid WebView create options: {0}")]
+    InvalidCreateOptions(String),
 }
 
 /// Log levels for WebView logging
@@ -35,8 +38,9 @@ pub use traits::{
     SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
 };
 pub use webview::{
-    WebTag, WebView, create_webview, destroy_webview, find_webview, get_webview_delegate,
-    init_webview_manager, set_webview_delegate,
+    WebTag, WebView, WebViewCreateOptions, create_webview, create_webview_with_options,
+    destroy_webview, find_webview, get_webview_delegate, init_webview_manager,
+    set_webview_delegate,
 };
 
 #[cfg(target_os = "android")]

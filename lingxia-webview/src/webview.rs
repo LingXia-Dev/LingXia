@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use tokio::sync::oneshot::Sender;
@@ -13,17 +14,68 @@ use crate::harmony::WebViewInner;
 
 use crate::{WebViewController, WebViewDelegate, WebViewError};
 
+/// Security profile for WebView creation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SecurityProfile {
+    StrictDefault,
+    BrowserRelaxed,
+}
+
+/// WebView creation options — choose a security profile preset.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebViewCreateOptions {
+    pub(crate) profile: SecurityProfile,
+}
+
+/// Effective, normalized options actually applied to a concrete WebView instance.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct EffectiveWebViewCreateOptions {
+    pub(crate) profile: SecurityProfile,
+}
+
+impl Default for WebViewCreateOptions {
+    fn default() -> Self {
+        Self::strict_default()
+    }
+}
+
+impl WebViewCreateOptions {
+    pub fn strict_default() -> Self {
+        Self {
+            profile: SecurityProfile::StrictDefault,
+        }
+    }
+
+    pub fn browser_relaxed() -> Self {
+        Self {
+            profile: SecurityProfile::BrowserRelaxed,
+        }
+    }
+
+    pub(crate) fn normalize(&self) -> EffectiveWebViewCreateOptions {
+        EffectiveWebViewCreateOptions {
+            profile: self.profile,
+        }
+    }
+}
+
 /// WebView type that includes inner implementation and delegate
 pub struct WebView {
     pub(crate) inner: WebViewInner,
+    effective_options: EffectiveWebViewCreateOptions,
     // Hold a strong reference to the delegate; PageInner::drop removes it to break cycles
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
 }
 
 impl WebView {
-    pub(crate) fn new(inner: WebViewInner) -> Self {
+    pub(crate) fn new(
+        inner: WebViewInner,
+        effective_options: EffectiveWebViewCreateOptions,
+    ) -> Self {
         Self {
             inner,
+            effective_options,
             delegate: RwLock::new(None),
         }
     }
@@ -41,6 +93,10 @@ impl WebView {
     /// Get the webtag (computed from appid and path)
     pub fn webtag(&self) -> WebTag {
         self.inner.webtag.clone()
+    }
+
+    pub(crate) fn effective_options(&self) -> &EffectiveWebViewCreateOptions {
+        &self.effective_options
     }
 
     /// Set delegate for this WebView
@@ -138,8 +194,8 @@ impl WebTag {
     }
 
     /// Storage key for this tag.
-    /// This intentionally preserves the optional `#session` suffix so WebView
-    /// instances are isolated per runtime session.
+    /// This preserves the optional `#session` suffix so instances are isolated
+    /// per runtime session.
     pub fn key(&self) -> &str {
         &self.0
     }
@@ -184,25 +240,55 @@ pub fn init_webview_manager() {
     let _ = WEBVIEW_INSTANCES.set(Arc::new(Mutex::new(HashMap::new())));
 }
 
-/// Create a WebView instance asynchronously with channel sender
+/// Create a WebView instance asynchronously with strict-default options.
 pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebViewError>>) {
+    create_webview_with_options(webtag, WebViewCreateOptions::strict_default(), sender);
+}
+
+/// Create a WebView instance asynchronously with explicit options.
+pub fn create_webview_with_options(
+    webtag: &WebTag,
+    options: WebViewCreateOptions,
+    sender: Sender<Result<Arc<WebView>, WebViewError>>,
+) {
     let (appid, path) = webtag.extract_parts();
-    log::info!("Creating WebView for webtag: {}", webtag.key());
+    let effective_options = options.normalize();
+
+    log::info!(
+        "Creating WebView for key={} profile={:?}",
+        webtag.key(),
+        effective_options.profile
+    );
 
     // Get or initialize the global instances map
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
-    // Check if WebView already exists
+    // Check if WebView already exists (first-create-wins by full webtag key)
     if let Ok(webviews) = instances.lock()
         && let Some(existing_webview) = webviews.get(webtag.key())
     {
-        log::info!("WebView already exists, reusing: {}", webtag.key());
+        if existing_webview.effective_options() != &effective_options {
+            log::warn!(
+                "WebView already exists with different options, reusing first-created instance: key={} existing={:?} requested={:?}",
+                webtag.key(),
+                existing_webview.effective_options(),
+                effective_options
+            );
+        } else {
+            log::info!("WebView already exists, reusing: {}", webtag.key());
+        }
         let _ = sender.send(Ok(existing_webview.clone()));
         return;
     }
 
     // Delegate WebView creation to the platform-specific implementation
-    WebViewInner::create(&appid, &path, webtag.session_id(), sender);
+    WebViewInner::create(
+        &appid,
+        &path,
+        webtag.session_id(),
+        effective_options,
+        sender,
+    );
 }
 
 pub(crate) fn register_webview(webview: Arc<WebView>) {

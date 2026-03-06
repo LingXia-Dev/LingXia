@@ -13,14 +13,14 @@ use objc2_foundation::{
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKContentRuleList, WKContentRuleListStore, WKNavigation,
-    WKNavigationDelegate, WKURLSchemeHandler, WKUserContentController, WKWebViewConfiguration,
-    WKWebsiteDataStore,
+    WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler, WKUserContentController,
+    WKWebViewConfiguration, WKWebsiteDataStore,
 };
 use std::ptr::NonNull;
 use std::sync::Arc;
 use tokio::sync::oneshot::Sender;
 
-use crate::webview::WebTag;
+use crate::webview::{EffectiveWebViewCreateOptions, SecurityProfile, WebTag};
 
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
 const HTTPS_BLOCK_RULE_JSON: &str = r#"
@@ -39,6 +39,7 @@ const HTTPS_BLOCK_RULE_JSON: &str = r#"
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
+    intercept_https_navigation: bool,
 }
 
 define_class!(
@@ -105,6 +106,11 @@ define_class!(
                     return;
                 }
             };
+
+            if !self.ivars().intercept_https_navigation {
+                allow_navigation();
+                return;
+            }
 
             // Only intercept HTTPS navigation requests
             if !url.starts_with("https://") {
@@ -187,13 +193,175 @@ impl LingXiaNavigationDelegate {
         appid: String,
         path: String,
         session_id: Option<u64>,
+        intercept_https_navigation: bool,
         mtm: MainThreadMarker,
     ) -> Retained<Self> {
         let webtag = WebTag::new(&appid, &path, session_id);
-        let delegate = mtm
-            .alloc::<LingXiaNavigationDelegate>()
-            .set_ivars(LingXiaNavigationDelegateIvars { webtag });
+        let delegate =
+            mtm.alloc::<LingXiaNavigationDelegate>()
+                .set_ivars(LingXiaNavigationDelegateIvars {
+                    webtag,
+                    intercept_https_navigation,
+                });
 
+        unsafe { msg_send![super(delegate), init] }
+    }
+}
+
+// UI Delegate for browser mode:
+// - Handles target="_blank" / window.open() by loading in the same webview
+// - Shows native NSAlert for JavaScript alert/confirm/prompt dialogs
+pub struct LingXiaUIDelegateIvars {}
+
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[name = "LingXiaUIDelegate"]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = LingXiaUIDelegateIvars]
+    pub struct LingXiaUIDelegate;
+
+    unsafe impl NSObjectProtocol for LingXiaUIDelegate {}
+
+    unsafe impl WKUIDelegate for LingXiaUIDelegate {
+        #[unsafe(method(webView:createWebViewWithConfiguration:forNavigationAction:windowFeatures:))]
+        fn create_web_view(
+            &self,
+            webview: *mut AnyObject,
+            _configuration: &WKWebViewConfiguration,
+            navigation_action: *mut AnyObject,
+            _window_features: *mut AnyObject,
+        ) -> *mut AnyObject {
+            // Load target="_blank" / window.open() URLs in the same webview.
+            unsafe {
+                let request: *mut AnyObject = msg_send![navigation_action, request];
+                if !request.is_null() {
+                    let _: () = msg_send![webview, loadRequest: request];
+                }
+            }
+            std::ptr::null_mut()
+        }
+
+        // JavaScript alert()
+        #[unsafe(method(webView:runJavaScriptAlertPanelWithMessage:initiatedByFrame:completionHandler:))]
+        fn run_javascript_alert(
+            &self,
+            _webview: *mut AnyObject,
+            message: &NSString,
+            _frame: *mut AnyObject,
+            completion_handler: *mut AnyObject,
+        ) {
+            #[cfg(target_os = "macos")]
+            unsafe {
+                let alert: *mut AnyObject = msg_send![class!(NSAlert), new];
+                let _: () = msg_send![alert, setMessageText: message];
+                let ok_title = NSString::from_str("OK");
+                let _: () = msg_send![alert, addButtonWithTitle: &*ok_title];
+                let _: i64 = msg_send![alert, runModal];
+                let _: () = msg_send![alert, release];
+            }
+            let handler: &Block<dyn Fn()> =
+                unsafe { &*(completion_handler as *const Block<dyn Fn()>) };
+            handler.call(());
+        }
+
+        // JavaScript confirm()
+        #[unsafe(method(webView:runJavaScriptConfirmPanelWithMessage:initiatedByFrame:completionHandler:))]
+        fn run_javascript_confirm(
+            &self,
+            _webview: *mut AnyObject,
+            message: &NSString,
+            _frame: *mut AnyObject,
+            completion_handler: *mut AnyObject,
+        ) {
+            let result;
+            #[cfg(target_os = "macos")]
+            unsafe {
+                let alert: *mut AnyObject = msg_send![class!(NSAlert), new];
+                let _: () = msg_send![alert, setMessageText: message];
+                let ok_title = NSString::from_str("OK");
+                let cancel_title = NSString::from_str("Cancel");
+                let _: () = msg_send![alert, addButtonWithTitle: &*ok_title];
+                let _: () = msg_send![alert, addButtonWithTitle: &*cancel_title];
+                let response: i64 = msg_send![alert, runModal];
+                let _: () = msg_send![alert, release];
+                // NSAlertFirstButtonReturn = 1000
+                result = response == 1000;
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                // Browser mode is desktop-only in phase-1; fail closed on non-macOS.
+                result = false;
+            }
+            let handler: &Block<dyn Fn(objc2::runtime::Bool)> =
+                unsafe { &*(completion_handler as *const Block<dyn Fn(objc2::runtime::Bool)>) };
+            handler.call((objc2::runtime::Bool::new(result),));
+        }
+
+        // JavaScript prompt()
+        #[unsafe(method(webView:runJavaScriptTextInputPanelWithPrompt:defaultText:initiatedByFrame:completionHandler:))]
+        fn run_javascript_prompt(
+            &self,
+            _webview: *mut AnyObject,
+            prompt: &NSString,
+            default_text: *mut AnyObject,
+            _frame: *mut AnyObject,
+            completion_handler: *mut AnyObject,
+        ) {
+            let input_value: *mut AnyObject;
+            #[cfg(target_os = "macos")]
+            unsafe {
+                let alert: *mut AnyObject = msg_send![class!(NSAlert), new];
+                let _: () = msg_send![alert, setMessageText: prompt];
+                let ok_title = NSString::from_str("OK");
+                let cancel_title = NSString::from_str("Cancel");
+                let _: () = msg_send![alert, addButtonWithTitle: &*ok_title];
+                let _: () = msg_send![alert, addButtonWithTitle: &*cancel_title];
+
+                // Add text input field
+                let input: *mut AnyObject = msg_send![class!(NSTextField), alloc];
+                let frame = NSRect {
+                    origin: NSPoint { x: 0.0, y: 0.0 },
+                    size: NSSize {
+                        width: 200.0,
+                        height: 24.0,
+                    },
+                };
+                let input: *mut AnyObject = msg_send![input, initWithFrame: frame];
+                if !default_text.is_null() {
+                    let _: () = msg_send![input, setStringValue: default_text];
+                }
+                let _: () = msg_send![alert, setAccessoryView: input];
+                // `input` is +1 from alloc/init; alert retains accessory view.
+                let _: () = msg_send![input, release];
+
+                let response: i64 = msg_send![alert, runModal];
+                // Read stringValue BEFORE releasing alert, because alert owns
+                // the accessory view (input) and release may deallocate it.
+                if response == 1000 {
+                    input_value = msg_send![input, stringValue];
+                } else {
+                    input_value = std::ptr::null_mut();
+                }
+                let _: () = msg_send![alert, release];
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                // Browser mode is desktop-only in phase-1; fail closed on non-macOS.
+                let _ = default_text;
+                input_value = std::ptr::null_mut();
+            }
+            let handler: &Block<dyn Fn(*mut AnyObject)> =
+                unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
+            handler.call((input_value,));
+        }
+    }
+);
+
+impl LingXiaUIDelegate {
+    pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let delegate = mtm
+            .alloc::<LingXiaUIDelegate>()
+            .set_ivars(LingXiaUIDelegateIvars {});
         unsafe { msg_send![super(delegate), init] }
     }
 }
@@ -201,6 +369,7 @@ impl LingXiaNavigationDelegate {
 pub struct WebViewInner {
     webview: *mut AnyObject,
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
+    _ui_delegate: Option<Retained<LingXiaUIDelegate>>,
     _message_handler: Retained<LingXiaMessageHandler>,
     pub(crate) webtag: WebTag,
 }
@@ -225,6 +394,7 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        effective_options: EffectiveWebViewCreateOptions,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         let appid_owned = appid.to_string();
@@ -233,16 +403,25 @@ impl WebViewInner {
         // Check if we're already on the main thread
         if let Some(mtm) = MainThreadMarker::new() {
             // Already on main thread, create directly
-            Self::create_and_register_sync(&appid_owned, &path_owned, session_id, mtm, sender);
+            Self::create_and_register_sync(
+                &appid_owned,
+                &path_owned,
+                session_id,
+                effective_options,
+                mtm,
+                sender,
+            );
         } else {
             // Not on main thread, dispatch to main thread
             let session_id_copy = session_id;
+            let options_copy = effective_options.clone();
             DispatchQueue::main().exec_async(move || match MainThreadMarker::new() {
                 Some(mtm) => {
                     Self::create_and_register_sync(
                         &appid_owned,
                         &path_owned,
                         session_id_copy,
+                        options_copy,
                         mtm,
                         sender,
                     );
@@ -268,15 +447,16 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        effective_options: EffectiveWebViewCreateOptions,
         mtm: MainThreadMarker,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
-        let result = Self::create_with_marker(appid, path, session_id, mtm);
+        let result = Self::create_with_marker(appid, path, session_id, &effective_options, mtm);
 
         match result {
             Ok(webview_inner) => {
                 // Wrap WebViewInner in WebView
-                let webview = Arc::new(crate::WebView::new(webview_inner));
+                let webview = Arc::new(crate::WebView::new(webview_inner, effective_options));
 
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
@@ -296,19 +476,24 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        effective_options: &EffectiveWebViewCreateOptions,
         mtm: MainThreadMarker,
     ) -> Result<Self, WebViewError> {
         unsafe {
             // Create WKWebViewConfiguration
             let config = WKWebViewConfiguration::new(mtm);
 
-            // Use a non-persistent data store to disable DOM Storage (localStorage, etc.)
-            let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
-            config.setWebsiteDataStore(&non_persistent_store);
-
             // Access preferences to set security settings
             let prefs = config.preferences();
-            prefs.setJavaScriptCanOpenWindowsAutomatically(false);
+            let is_browser_profile = effective_options.profile == SecurityProfile::BrowserRelaxed;
+            let is_browser = is_browser_profile && cfg!(target_os = "macos");
+            let is_strict = effective_options.profile == SecurityProfile::StrictDefault;
+            if is_browser_profile && !is_browser {
+                log::warn!(
+                    "BrowserRelaxed profile requested on non-macOS Apple target; browser-only features are disabled"
+                );
+            }
+            prefs.setJavaScriptCanOpenWindowsAutomatically(is_browser);
 
             // Disable local file access for security
             let allow_file_access_key = NSString::from_str("allowFileAccessFromFileURLs");
@@ -325,6 +510,14 @@ impl WebViewInner {
 
             // Disable HTTPS upgrade for local development
             config.setUpgradeKnownHostsToHTTPS(false);
+
+            // Profile policy on Apple data store:
+            // - StrictDefault: non-persistent (ephemeral DOM storage, cleared on destroy)
+            // - BrowserRelaxed: default (persistent localStorage / database)
+            if is_strict {
+                let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
+                config.setWebsiteDataStore(&non_persistent_store);
+            }
 
             // Register custom scheme handler for lx:// URLs bound to this WebView
             let webtag = WebTag::new(appid, path, session_id);
@@ -347,8 +540,12 @@ impl WebViewInner {
                 ));
             }
 
-            // Block all HTTPS subresource loads by default
-            Self::enable_https_resource_blocker(&config);
+            // Profile policy on Apple:
+            // - StrictDefault: block HTTPS subresources
+            // - BrowserRelaxed: allow HTTPS subresources (no blocker on fresh config)
+            if is_strict {
+                Self::enable_https_resource_blocker(&config);
+            }
 
             // Create frame with zero size and hide the webview initially to prevent flicker due to size change on macOS.
             // It will be resized and unhidden by the Swift layout code.
@@ -390,6 +587,10 @@ impl WebViewInner {
                 appid.to_string(),
                 path.to_string(),
                 session_id,
+                // Profile policy on Apple:
+                // - StrictDefault: intercept https:// top-level navigation
+                // - BrowserRelaxed: do not intercept
+                is_strict,
                 mtm,
             );
 
@@ -398,6 +599,17 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
+            // Set UI delegate for browser mode (handles target="_blank" and window.open)
+            let ui_delegate = if is_browser {
+                let delegate = LingXiaUIDelegate::new(mtm);
+                let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
+                    ProtocolObject::from_ref(&*delegate);
+                let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];
+                Some(delegate)
+            } else {
+                None
+            };
+
             // Set up message handler for bridge communication
             let message_handler = Self::setup_message_handler(webview, appid, path, session_id)?;
 
@@ -405,6 +617,7 @@ impl WebViewInner {
             let webview_inner = WebViewInner {
                 webview,
                 _navigation_delegate: navigation_delegate,
+                _ui_delegate: ui_delegate,
                 _message_handler: message_handler,
                 webtag,
             };
@@ -448,7 +661,7 @@ impl WebViewInner {
                         let controller = &*controller_raw;
                         controller.addContentRuleList(rule_list.as_ref());
                     }
-                    log::info!("HTTPS resource blocking enabled for WebView");
+                    log::info!("HTTPS subresource blocking is ON for WebView");
                 } else if let Some(error) = NonNull::new(error_ptr) {
                     let description = unsafe {
                         let description_ptr: *mut NSString =
@@ -798,7 +1011,17 @@ impl Drop for WebViewInner {
         // WebView cleanup - only cleanup the actual WebView resources
         // Runtime storage is managed separately
         if MainThreadMarker::new().is_some() {
-            self.cleanup_webview();
+            // Wrap in ObjC exception handler — WKWebView dealloc can throw
+            // ObjC exceptions that Rust's catch_unwind cannot handle.
+            let result =
+                objc2::exception::catch(std::panic::AssertUnwindSafe(|| self.cleanup_webview()));
+            if let Err(exception) = result {
+                log::error!(
+                    "[WebViewInner] ObjC exception during WebView cleanup ({}): {:?}",
+                    self.webtag.as_str(),
+                    exception
+                );
+            }
         } else {
             let webview_ptr_addr = self.webview as usize;
             DispatchQueue::main().exec_async(move || {
@@ -834,11 +1057,14 @@ impl WebViewInner {
             let _: () =
                 msg_send![self.webview, setUIDelegate: std::ptr::null::<*const AnyObject>()];
 
-            // Clear scroll view delegate if any
-            let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
-            if !scroll_view.is_null() {
-                let _: () =
-                    msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
+            // Clear scroll view delegate if any (iOS only — macOS WKWebView has no scrollView property)
+            #[cfg(target_os = "ios")]
+            {
+                let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
+                if !scroll_view.is_null() {
+                    let _: () =
+                        msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
+                }
             }
 
             // Release the WebView object

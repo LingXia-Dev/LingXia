@@ -1,3 +1,7 @@
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+use crate::webview::{EffectiveWebViewCreateOptions, WebTag};
 use crate::{WebViewController, WebViewError};
 use jni::objects::{Global, JObject};
 use jni::{jni_sig, jni_str};
@@ -8,12 +12,20 @@ use tokio::sync::oneshot::Sender;
 // Import JNI environment access from shared utils
 use super::jni_env::{get_lingxia_webview_class, with_env};
 
-// Import WebTag from the main webview module
-use crate::webview::WebTag;
+fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
+    let json = serde_json::to_vec(options).map_err(|e| {
+        WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
+    })?;
+    Ok(URL_SAFE_NO_PAD.encode(json))
+}
 
 // Type alias for WebView senders map to reduce complexity
-type WebViewSendersMap =
-    Arc<Mutex<HashMap<String, Sender<Result<Arc<crate::WebView>, WebViewError>>>>>;
+pub(crate) struct PendingWebViewCreation {
+    pub sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+    pub effective_options: EffectiveWebViewCreateOptions,
+}
+
+type WebViewSendersMap = Arc<Mutex<HashMap<String, PendingWebViewCreation>>>;
 
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
@@ -30,6 +42,7 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        effective_options: EffectiveWebViewCreateOptions,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         // Store sender in global map for callback
@@ -37,20 +50,33 @@ impl WebViewInner {
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {
-            senders_map.insert(webtag.to_string(), sender);
+            senders_map.insert(
+                webtag.to_string(),
+                PendingWebViewCreation {
+                    sender,
+                    effective_options: effective_options.clone(),
+                },
+            );
         }
 
         // Helper function to remove sender and send error
         let remove_and_send_error = |error_msg: String| {
             if let Ok(mut senders_map) = senders.lock()
-                && let Some(sender) = senders_map.remove(&webtag.to_string())
+                && let Some(pending) = senders_map.remove(&webtag.to_string())
             {
-                let _ = sender.send(Err(WebViewError::WebView(error_msg)));
+                let _ = pending.sender.send(Err(WebViewError::WebView(error_msg)));
             }
         };
 
         let appid_owned = appid.to_string();
         let path_owned = path.to_string();
+        let options_token = match encode_options_token(&effective_options) {
+            Ok(token) => token,
+            Err(e) => {
+                remove_and_send_error(format!("Failed to encode create options token: {e}"));
+                return;
+            }
+        };
 
         // Get JNI environment via closure
         let result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
@@ -62,16 +88,19 @@ impl WebViewInner {
             let appid_jstring = env.new_string(&appid_owned)?;
             let path_jstring = env.new_string(&path_owned)?;
             let session = session_id.unwrap_or_default() as i64;
+            let options_jstring = env.new_string(&options_token)?;
 
-            // Call Java static method to request WebView creation
+            // Require the new API with options token.
+            // If this fails, Java/Rust artifacts are mismatched and must be rebuilt together.
             env.call_static_method(
                 webview_class,
                 jni_str!("requestWebView"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;J)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JLjava/lang/String;)V"),
                 &[
                     (&appid_jstring).into(),
                     (&path_jstring).into(),
                     session.into(),
+                    (&options_jstring).into(),
                 ],
             )?;
 

@@ -307,7 +307,10 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 }
 
 /// Set scheme handler for a specific WebView (called in WebViewInner::create)
-pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
+pub fn set_webview_scheme_handler(
+    webtag: &WebTag,
+    register_https_scheme_handler: bool,
+) -> NapiResult<()> {
     // Get the WebView instance to track scheme handlers
     let webview = find_webview(webtag).ok_or_else(|| {
         napi_ohos::Error::new(
@@ -351,41 +354,52 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
         // Track the lx scheme handler for cleanup
         webview.inner.track_scheme_handler(lx_scheme_handler);
 
-        // Create scheme handler for https://
-        let mut https_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
-        OH_ArkWeb_CreateSchemeHandler(&mut https_scheme_handler);
+        let mut https_success = false;
+        if register_https_scheme_handler {
+            // Create scheme handler for https://
+            let mut https_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
+            OH_ArkWeb_CreateSchemeHandler(&mut https_scheme_handler);
 
-        // Store webtag as user data for https handler too
-        let webtag_cstr2 = CString::new(webtag.as_str()).unwrap();
-        let webtag_ptr2 = webtag_cstr2.into_raw(); // Transfer ownership to raw pointer
-        OH_ArkWebSchemeHandler_SetUserData(
-            https_scheme_handler,
-            webtag_ptr2 as *mut std::ffi::c_void,
-        );
+            // Store webtag as user data for https handler too
+            let webtag_cstr2 = CString::new(webtag.as_str()).unwrap();
+            let webtag_ptr2 = webtag_cstr2.into_raw(); // Transfer ownership to raw pointer
+            OH_ArkWebSchemeHandler_SetUserData(
+                https_scheme_handler,
+                webtag_ptr2 as *mut std::ffi::c_void,
+            );
 
-        // Set callbacks (same callbacks as lx://)
-        OH_ArkWebSchemeHandler_SetOnRequestStart(https_scheme_handler, Some(on_lx_request_start));
-        OH_ArkWebSchemeHandler_SetOnRequestStop(https_scheme_handler, Some(on_lx_request_stop));
+            // Set callbacks (same callbacks as lx://)
+            OH_ArkWebSchemeHandler_SetOnRequestStart(
+                https_scheme_handler,
+                Some(on_lx_request_start),
+            );
+            OH_ArkWebSchemeHandler_SetOnRequestStop(https_scheme_handler, Some(on_lx_request_stop));
 
-        // Register https:// handler for this WebView specifically
-        let https_scheme_cstr = CString::new("https").unwrap();
-        let https_success = OH_ArkWeb_SetSchemeHandler(
-            https_scheme_cstr.as_ptr(),
-            webtag_cstr.as_ptr(),
-            https_scheme_handler,
-        );
+            // Register https:// handler for this WebView specifically
+            let https_scheme_cstr = CString::new("https").unwrap();
+            https_success = OH_ArkWeb_SetSchemeHandler(
+                https_scheme_cstr.as_ptr(),
+                webtag_cstr.as_ptr(),
+                https_scheme_handler,
+            );
 
-        if !https_success {
-            log::error!(
-                "Failed to set https:// scheme handler for web_tag: {}",
+            if !https_success {
+                log::error!(
+                    "Failed to set https:// scheme handler for web_tag: {}",
+                    webtag
+                );
+                cleanup_scheme_handler(https_scheme_handler);
+                // Don't fail completely if https handler fails, lx:// is more critical
+                log::warn!("Continuing without https:// scheme handler");
+            } else {
+                // Track the https scheme handler for cleanup only if successful
+                webview.inner.track_scheme_handler(https_scheme_handler);
+            }
+        } else {
+            log::info!(
+                "Skip https:// scheme handler for web_tag={} due to create options",
                 webtag
             );
-            cleanup_scheme_handler(https_scheme_handler);
-            // Don't fail completely if https handler fails, lx:// is more critical
-            log::warn!("Continuing without https:// scheme handler");
-        } else {
-            // Track the https scheme handler for cleanup only if successful
-            webview.inner.track_scheme_handler(https_scheme_handler);
         }
 
         log::info!(

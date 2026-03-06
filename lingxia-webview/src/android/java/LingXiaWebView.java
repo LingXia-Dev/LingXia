@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,6 +33,7 @@ public class LingXiaWebView extends WebView {
     private String currentPath;
     private long sessionId;
     private boolean pageLoaded = false;
+    private CreateOptions createOptions = CreateOptions.strictDefault();
 
     public static class WebResourceResponseData {
         public final String mimeType;
@@ -67,6 +69,59 @@ public class LingXiaWebView extends WebView {
         }
     }
 
+    public static class CreateOptions {
+        public String profile;
+        public boolean domStorageEnabled;
+        public boolean databaseEnabled;
+
+        static CreateOptions strictDefault() {
+            CreateOptions options = new CreateOptions();
+            options.profile = "strict_default";
+            options.domStorageEnabled = false;
+            options.databaseEnabled = false;
+            return options;
+        }
+
+        static CreateOptions browserRelaxed() {
+            CreateOptions options = new CreateOptions();
+            options.profile = "browser_relaxed";
+            options.domStorageEnabled = true;
+            options.databaseEnabled = true;
+            return options;
+        }
+
+        static CreateOptions fromProfile(String profile) {
+            if ("browser_relaxed".equals(profile)) {
+                return browserRelaxed();
+            }
+            return strictDefault();
+        }
+
+        static CreateOptions fromToken(String optionsToken) {
+            if (optionsToken == null || optionsToken.isEmpty()) {
+                return strictDefault();
+            }
+
+            try {
+                byte[] decoded = Base64.decode(
+                        optionsToken,
+                        Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING
+                );
+                String json = new String(decoded, java.nio.charset.StandardCharsets.UTF_8);
+                JSONObject obj = new JSONObject(json);
+                String profile = obj.optString("profile", "strict_default");
+                if (!"strict_default".equals(profile) && !"browser_relaxed".equals(profile)) {
+                    Log.w(TAG, "Invalid profile in options token: " + profile + ", fallback to strict_default");
+                    profile = "strict_default";
+                }
+                return fromProfile(profile);
+            } catch (Throwable e) {
+                Log.w(TAG, "Failed to decode create options token, fallback to strict default", e);
+                return strictDefault();
+            }
+        }
+    }
+
     public LingXiaWebView(Context context) {
         super(context);
 
@@ -95,7 +150,7 @@ public class LingXiaWebView extends WebView {
      * Request WebView creation for Rust layer
      * Creates WebView asynchronously and notifies Rust via notifyWebViewReady callback
      */
-    public static void requestWebView(final String appId, final String path, final long sessionId) {
+    public static void requestWebView(final String appId, final String path, final long sessionId, final String optionsToken) {
         // WebView creation must happen on the main thread
         ensureMainThreadStatic(new Runnable() {
             @Override
@@ -119,6 +174,7 @@ public class LingXiaWebView extends WebView {
                         webView = new LingXiaWebView(sApplicationContext);
                     }
 
+                    webView.applyCreateOptionsToken(optionsToken);
                     webView.initializeWebView(appId, path, sessionId);
 
                     // Notify Rust that WebView is ready
@@ -166,6 +222,16 @@ public class LingXiaWebView extends WebView {
                 }
             }
         });
+    }
+
+    private void applyCreateOptionsToken(String optionsToken) {
+        this.createOptions = CreateOptions.fromToken(optionsToken);
+        Log.i(
+            TAG,
+            "Apply create options: profile=" + this.createOptions.profile
+                + ", domStorage=" + this.createOptions.domStorageEnabled
+                + ", database=" + this.createOptions.databaseEnabled
+        );
     }
 
     private void initializeWebViewInternal() {
@@ -221,10 +287,18 @@ public class LingXiaWebView extends WebView {
      */
     @SuppressWarnings("deprecation")
     public static void applyWebViewSettings(WebSettings settings) {
+        applyWebViewSettings(settings, CreateOptions.strictDefault());
+    }
+
+    @SuppressWarnings("deprecation")
+    public static void applyWebViewSettings(WebSettings settings, CreateOptions options) {
         try {
             // Enable JavaScript
             settings.setJavaScriptEnabled(true);
-            settings.setJavaScriptCanOpenWindowsAutomatically(false);
+            // Profile policy on Android:
+            // - strict_default: disable JS popup windows
+            // - browser_relaxed: enable JS popup windows
+            settings.setJavaScriptCanOpenWindowsAutomatically("browser_relaxed".equals(options.profile));
 
             // Disable media
             settings.setMediaPlaybackRequiresUserGesture(true);
@@ -243,17 +317,19 @@ public class LingXiaWebView extends WebView {
             // Caching - minimal caching for security
             settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
 
-            // Disable database and app cache
-            settings.setDatabaseEnabled(false);
+            settings.setDatabaseEnabled(options.databaseEnabled);
+            settings.setDomStorageEnabled(options.domStorageEnabled);
 
-            // Disable DOM Storage API
-            settings.setDomStorageEnabled(false);
-
-            // Disable all file access by default for security
+            // File access is always disabled (not profile-configurable).
             settings.setAllowFileAccess(false);
             settings.setAllowFileAccessFromFileURLs(false);
             settings.setAllowUniversalAccessFromFileURLs(false);
             settings.setAllowContentAccess(false);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                // HTTPS-only policy: mixed content is always blocked.
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            }
 
         } catch (Exception e) {
             Log.e(TAG, "Error applying WebView settings", e);
@@ -265,7 +341,7 @@ public class LingXiaWebView extends WebView {
      * Instance method wrapper for unified settings
      */
     private void applyWebViewSettings() {
-        applyWebViewSettings(getSettings());
+        applyWebViewSettings(getSettings(), this.createOptions);
     }
 
     private void setupJavaScriptInterface() {

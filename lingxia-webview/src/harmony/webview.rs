@@ -1,6 +1,12 @@
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
-use crate::webview::{WebTag, find_webview, get_webview_delegate, register_webview};
+use crate::webview::{
+    EffectiveWebViewCreateOptions, SecurityProfile, WebTag, find_webview, get_webview_delegate,
+    register_webview,
+};
 use crate::{LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
 
@@ -9,6 +15,13 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::oneshot::Sender;
+
+fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
+    let json = serde_json::to_vec(options).map_err(|e| {
+        WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
+    })?;
+    Ok(URL_SAFE_NO_PAD.encode(json))
+}
 
 // Static C strings for proxy object and method names
 static LINGXIA_PROXY_NAME: &[u8] = b"LingXiaProxy\0";
@@ -486,6 +499,7 @@ impl WebViewInner {
         appid: &str,
         path: &str,
         session_id: Option<u64>,
+        effective_options: EffectiveWebViewCreateOptions,
         sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
     ) {
         if session_id.is_none() {
@@ -496,6 +510,13 @@ impl WebViewInner {
             );
         }
         let webtag = WebTag::new(appid, path, session_id);
+        let options_token = match encode_options_token(&effective_options) {
+            Ok(token) => token,
+            Err(e) => {
+                let _ = sender.send(Err(e));
+                return;
+            }
+        };
 
         // Create WebView instance, storing the sender
         let webview_inner = WebViewInner {
@@ -510,13 +531,19 @@ impl WebViewInner {
         };
 
         // Create WebView wrapper and register it
-        let webview = Arc::new(crate::WebView::new(webview_inner));
+        let webview = Arc::new(crate::WebView::new(
+            webview_inner,
+            effective_options.clone(),
+        ));
         register_webview(webview.clone());
 
         // Call ArkTS to create the WebView controller via TSFN (no callback path).
         // ArkTS will notify native through onWebviewControllerCreated(webtag)
         // once the ArkUI Web component is actually attached (onAppear).
-        if let Err(e) = call_arkts("createWebViewController", &[webtag.as_str()]) {
+        if let Err(e) = call_arkts(
+            "createWebViewController",
+            &[webtag.as_str(), &options_token],
+        ) {
             log::error!("Failed to call createWebViewController: {}", e);
             if let Some(webview) = find_webview(&webtag)
                 && let Ok(mut sender_opt) = webview.inner.creation_sender.lock()
@@ -527,8 +554,14 @@ impl WebViewInner {
             return;
         }
 
+        // Profile policy on Harmony:
+        // - StrictDefault: register https:// scheme handler
+        // - BrowserRelaxed: skip https:// scheme handler
+        let register_https_scheme_handler =
+            effective_options.profile == SecurityProfile::StrictDefault;
+
         // Register scheme handler immediately using the Ark-facing tag (webtag)
-        if let Err(e) = set_webview_scheme_handler(&webtag) {
+        if let Err(e) = set_webview_scheme_handler(&webtag, register_https_scheme_handler) {
             log::error!(
                 "Failed to set scheme handler for {}: {}",
                 webtag.as_str(),

@@ -13,12 +13,14 @@ log = { workspace = true }
 thiserror =  { workspace = true }
 
 # Use workspace dependencies
+serde = { workspace = true }
 serde_json = { workspace = true }
 http = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
 
 # Android-specific dependencies
 [target.'cfg(target_os = "android")'.dependencies]
+base64 = { workspace = true }
 jni = "0.22.1"
 android_logger = "0.15.0"
 
@@ -26,7 +28,7 @@ android_logger = "0.15.0"
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 oslog = "0.2.0"
 # objc2 dependencies for direct WebView management
-objc2 = "0.6"
+objc2 = { version = "0.6", features = ["exception"] }
 objc2-web-kit = "0.3"
 objc2-foundation = "0.3"
 # block2 for Objective-C blocks and delegates
@@ -35,6 +37,7 @@ block2 = "0.6"
 dispatch2 = "0.3"
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
+base64 = { workspace = true }
 ohos_hilog = "0.1"
 napi-ohos = "1.1.4"
 napi-derive-ohos = "1.1.4"

@@ -12,6 +12,7 @@ import {
   removeWebViewUiCallback,
   WebViewInfo,
   getAllWebViewInfos,
+  getWebViewCreateOptions,
   getWebViewEmbedManager,
   pauseWebViewComponents,
   resumeWebViewComponents
@@ -1298,7 +1299,7 @@ export struct LxAppContainer {
   /**
    * Build individual WebView component for a specific webTag with animation support
    * Uses official ArkWeb same-level rendering with NodeController
-   */
+  */
   @Builder
   buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
     Column() {
@@ -1352,10 +1353,10 @@ export struct LxAppContainer {
           .zIndex(this.getRenderZIndex(webTag))
           .hitTestBehavior(this.getRenderHitTest(webTag))
           .backgroundColor(COLOR_TRANSPARENT)
-          .domStorageAccess(false)
-          .fileAccess(false)
-          .databaseAccess(false)
-          .mixedMode(MixedMode.None)
+          .domStorageAccess(this.resolveWebTagDomStorageAccess(webTag))
+          .fileAccess(this.resolveWebTagFileAccess(webTag))
+          .databaseAccess(this.resolveWebTagDatabaseAccess(webTag))
+          .mixedMode(this.resolveWebTagMixedMode(webTag))
       }
       .width(this.getStackWidth(webTag))
       .height(this.getStackHeight(webTag))
@@ -1366,6 +1367,35 @@ export struct LxAppContainer {
     .alignItems(this.getWrapperAlign(webTag))
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.getRenderZIndex(webTag))
+  }
+
+  private getWebTagProfile(webTag: string): string {
+    return getWebViewCreateOptions(webTag).profile;
+  }
+
+  private isBrowserRelaxedProfile(webTag: string): boolean {
+    return this.getWebTagProfile(webTag) === 'browser_relaxed';
+  }
+
+  // Profile policy on Harmony:
+  // - strict_default: DOM storage OFF, database OFF
+  // - browser_relaxed: DOM storage ON, database ON
+  private resolveWebTagDomStorageAccess(webTag: string): boolean {
+    return this.isBrowserRelaxedProfile(webTag);
+  }
+
+  private resolveWebTagDatabaseAccess(webTag: string): boolean {
+    return this.isBrowserRelaxedProfile(webTag);
+  }
+
+  // File access is always OFF (not profile-configurable).
+  private resolveWebTagFileAccess(_webTag: string): boolean {
+    return false;
+  }
+
+  // HTTPS-only policy: mixed content is always blocked.
+  private resolveWebTagMixedMode(_webTag: string): MixedMode {
+    return MixedMode.None;
   }
 
   @Builder

@@ -34,6 +34,7 @@ export const UI_EVENT_TABBAR_CLICK = 0;
 export const UI_EVENT_CAPSULE_CLICK = 1;
 export const UI_EVENT_NAVIGATION_CLICK = 2;
 export const UI_EVENT_BACK_PRESS = 3;
+export const UI_EVENT_PULL_DOWN_REFRESH = 4;
 
 // UI Event Data Constants
 export const CAPSULE_ACTION_CLOSE = "close";
@@ -136,8 +137,8 @@ class NativeBridge {
     });
 
     // WebView management
-    this.register('createWebViewController', (webtag: string) => {
-      return createWebViewController(webtag);
+    this.register('createWebViewController', (webtag: string, optionsToken?: string) => {
+      return createWebViewController(webtag, optionsToken);
     });
 
     this.register('destroyWebViewController', (webtag: string) => {

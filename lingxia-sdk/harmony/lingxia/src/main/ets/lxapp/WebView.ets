@@ -14,6 +14,91 @@ import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentE
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
 
+export interface EffectiveWebViewCreateOptions {
+  profile: string;
+}
+
+interface RawOptionsToken {
+  profile?: string;
+}
+
+const PROFILE_STRICT_DEFAULT = 'strict_default';
+const PROFILE_BROWSER_RELAXED = 'browser_relaxed';
+
+const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
+  profile: PROFILE_STRICT_DEFAULT
+};
+
+function strictDefaultOptions(): EffectiveWebViewCreateOptions {
+  return {
+    profile: STRICT_DEFAULT_OPTIONS.profile
+  };
+}
+
+function decodeBase64Url(token: string): string {
+  const normalized: string = token.replace(/-/g, '+').replace(/_/g, '/');
+  const padLen: number = normalized.length % 4 === 0 ? 0 : (4 - (normalized.length % 4));
+  const padded: string = normalized + '='.repeat(padLen);
+  const chars: string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let buffer: number = 0;
+  let bits: number = 0;
+  let output: string = '';
+
+  for (let i = 0; i < padded.length; i++) {
+    const ch: string = padded.charAt(i);
+    if (ch === '=') {
+      break;
+    }
+    const val: number = chars.indexOf(ch);
+    if (val < 0) {
+      throw new Error(`invalid base64 character: ${ch}`);
+    }
+    buffer = (buffer << 6) | val;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      output += String.fromCharCode((buffer >> bits) & 0xff);
+    }
+  }
+
+  return output;
+}
+
+function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
+  const data = raw as RawOptionsToken;
+  const normalized: EffectiveWebViewCreateOptions = strictDefaultOptions();
+
+  if (typeof data.profile === 'string') {
+    const profile = data.profile.toLowerCase();
+    if (profile === PROFILE_STRICT_DEFAULT || profile === PROFILE_BROWSER_RELAXED) {
+      normalized.profile = profile;
+    } else {
+      hilog.warn(DOMAIN, TAG, `Invalid profile=${profile}, fallback to strict_default`);
+    }
+  }
+
+  return normalized;
+}
+
+function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOptions {
+  if (!optionsToken || optionsToken.trim().length === 0) {
+    return strictDefaultOptions();
+  }
+
+  try {
+    const json = decodeBase64Url(optionsToken.trim());
+    const parsed = JSON.parse(json) as Object;
+    return normalizeDecodedOptions(parsed);
+  } catch (error) {
+    hilog.warn(DOMAIN, TAG, `Failed to decode options token, fallback strict: ${error}`);
+    return strictDefaultOptions();
+  }
+}
+
+function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreateOptions): boolean {
+  return a.profile === b.profile;
+}
+
 /**
  * WebView information for management
  */
@@ -21,6 +106,7 @@ export interface WebViewInfo {
   webtag: string;
   controller: webview.WebviewController;
   visible: boolean;
+  effectiveOptions: EffectiveWebViewCreateOptions;
 }
 
 /**
@@ -68,15 +154,25 @@ export class WebViewManager {
    * @param webtag - WebView tag
    * @returns true if created successfully, false if already exists or creation failed
    */
-  static createWebview(webtag: string): boolean {
+  static createWebview(webtag: string, optionsToken?: string): boolean {
     // Normalize to logical tag for registry keys (appid-path)
     // Normalize to logical tag for registry keys (appid:path)
     const extracted = extractWebTag(webtag);
     const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    const effectiveOptions = decodeOptionsToken(optionsToken);
 
     // Check if already exists for this logical page
     if (WebViewManager.controllers.has(logicalTag)) {
-      hilog.warn(DOMAIN, TAG, `WebView already exists for logical tag: ${logicalTag}`);
+      const existingInfo = WebViewManager.webViewInfos.get(logicalTag);
+      if (existingInfo && optionsEqual(existingInfo.effectiveOptions, effectiveOptions)) {
+        hilog.info(DOMAIN, TAG, `Reuse existing WebView for logical tag: ${logicalTag}`);
+        return true;
+      }
+      hilog.error(
+        DOMAIN,
+        TAG,
+        `WebView options conflict for logical tag=${logicalTag}, reject recreate`
+      );
       return false;
     }
 
@@ -91,7 +187,8 @@ export class WebViewManager {
       const webViewInfo: WebViewInfo = {
         webtag,
         controller,
-        visible: false
+        visible: false,
+        effectiveOptions
       };
       WebViewManager.webViewInfos.set(logicalTag, webViewInfo);
 
@@ -110,6 +207,12 @@ export class WebViewManager {
       hilog.error(DOMAIN, TAG, `Failed to create WebView ${webtag}: ${error}`);
       return false;
     }
+  }
+
+  static getEffectiveOptions(webtag: string): EffectiveWebViewCreateOptions {
+    const logicalTag = WebViewManager.resolveLogicalTag(webtag);
+    const info = WebViewManager.webViewInfos.get(logicalTag);
+    return info ? info.effectiveOptions : strictDefaultOptions();
   }
 
   /**
@@ -404,8 +507,8 @@ export function removeWebViewUiCallback(callback: (action: string, info: WebView
  * @param webtag - WebView tag
  * @returns true if created successfully, false otherwise
  */
-export function createWebViewController(webtag: string): boolean {
-  return WebViewManager.createWebview(webtag);
+export function createWebViewController(webtag: string, optionsToken?: string): boolean {
+  return WebViewManager.createWebview(webtag, optionsToken);
 }
 
 /**
@@ -433,6 +536,10 @@ export function destroyWebViewController(webtag: string): boolean {
  */
 export function getWebViewInfo(webtag: string): WebViewInfo | null {
   return WebViewManager.getWebViewInfo(webtag);
+}
+
+export function getWebViewCreateOptions(webtag: string): EffectiveWebViewCreateOptions {
+  return WebViewManager.getEffectiveOptions(webtag);
 }
 
 /**
