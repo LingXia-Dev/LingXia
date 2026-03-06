@@ -204,7 +204,7 @@ build_and_copy_homelxapp "$ASSETS_DIR"
 echo "[4/4] Building and installing Android example app (release)..."
 cd "$SCRIPT_DIR"
 # ./gradlew clean
-./gradlew assembleRelease \
+./gradlew --refresh-dependencies clean assembleRelease \
     -PLINGXIA_SDK_VERSION="$LINGXIA_SDK_VERSION" \
     -PMIN_SDK="$MIN_SDK"
 

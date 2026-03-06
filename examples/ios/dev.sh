@@ -105,6 +105,12 @@ if [ "$SKIP_RUST" = false ]; then
 
     echo "✅ Rust build complete"
     echo "   .a location: $LIB_PATH"
+
+    # SwiftPM may not detect updates to externally linked static libraries.
+    # Clean Swift package artifacts to force relink against the freshly built liblingxia.a.
+    echo "   ↻ Cleaning Swift package build artifacts to force relink..."
+    cd "$SCRIPT_DIR"
+    swift package clean
 else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi
