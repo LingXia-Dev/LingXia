@@ -28,7 +28,6 @@ internal class UrlEngine(
     private var volume = 1.0f
     private var timePoll: Runnable? = null
     private var currentSourceUri: Uri? = null
-    private var autoRecoverAttemptedForCurrentSource = false
 
     @Volatile
     override var capabilities: PlayerCapabilities = PlayerCapabilities(
@@ -102,18 +101,16 @@ internal class UrlEngine(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    val causeName = error.cause?.javaClass?.name ?: "-"
+                    val causeMsg = error.cause?.message ?: "-"
+                    Log.w(
+                        tag,
+                        "onPlayerError code=${error.errorCodeName} retryable=${isRetryableError(error)} " +
+                            "source=${currentSourceUri ?: "-"} msg=${error.message ?: ""} " +
+                            "cause=$causeName causeMsg=$causeMsg"
+                    )
                     val mappedCode = mapErrorCode(error)
                     val retryable = isRetryableError(error)
-                    if (retryable && !autoRecoverAttemptedForCurrentSource && recoverFromError("onPlayerError", error)) {
-                        autoRecoverAttemptedForCurrentSource = true
-                        listener?.onEngineEvent(
-                            EngineEvent.BufferingChanged(
-                                isBuffering = true,
-                                reason = WaitingReason.DECODER
-                            )
-                        )
-                        return
-                    }
                     listener?.onEngineEvent(
                         EngineEvent.Error(
                             EngineError(
@@ -137,7 +134,6 @@ internal class UrlEngine(
     override fun setSource(source: PlayerSource) {
         val url = (source as? PlayerSource.Url)?.url ?: return
         currentSourceUri = Uri.parse(url)
-        autoRecoverAttemptedForCurrentSource = false
         // Drop previous queue/buffered samples early before binding the new source.
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -156,15 +152,6 @@ internal class UrlEngine(
 
     override fun play() {
         ensureSourcePreparedIfNeeded()
-        val playerError = exoPlayer.playerError
-        if (
-            playerError != null &&
-            isRetryableError(playerError) &&
-            !autoRecoverAttemptedForCurrentSource &&
-            recoverFromError("play", playerError)
-        ) {
-            autoRecoverAttemptedForCurrentSource = true
-        }
         exoPlayer.playWhenReady = true
         exoPlayer.play()
     }
@@ -286,6 +273,8 @@ internal class UrlEngine(
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
             PlaybackException.ERROR_CODE_IO_UNSPECIFIED -> ErrorCode.NETWORK
+            PlaybackException.ERROR_CODE_TIMEOUT -> ErrorCode.TIMEOUT
+            PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK -> ErrorCode.INTERNAL
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED -> ErrorCode.DECODE
@@ -312,26 +301,9 @@ internal class UrlEngine(
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
             PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK,
             PlaybackException.ERROR_CODE_UNSPECIFIED -> true
             else -> false
-        }
-    }
-
-    private fun recoverFromError(trigger: String, error: PlaybackException?): Boolean {
-        val source = currentSourceUri ?: return false
-        return try {
-            Log.w(
-                tag,
-                "recoverFromError trigger=$trigger code=${error?.errorCodeName ?: "unknown"} source=$source"
-            )
-            exoPlayer.stop()
-            exoPlayer.clearMediaItems()
-            exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(source))
-            exoPlayer.prepare()
-            true
-        } catch (t: Throwable) {
-            Log.e(tag, "recoverFromError failed: ${t.message}", t)
-            false
         }
     }
 
