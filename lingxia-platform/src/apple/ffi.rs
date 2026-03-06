@@ -137,8 +137,8 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.updateOrientationUI")]
         fn update_orientation_ui(appid: &str) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.launchWithUrl")]
-        fn launch_with_url(url: &str);
+        #[swift_bridge(swift_name = "LxApp.openUrl")]
+        fn open_url(owner_appid: &str, owner_session_id: u64, url: &str, target: i32) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
@@ -311,7 +311,7 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
-    close_lxapp, hide_popup, hide_toast, launch_with_url, navigate, open_document, open_lxapp,
+    close_lxapp, hide_popup, hide_toast, navigate, open_document, open_lxapp, open_url,
     preview_media, show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui,
     update_orientation_ui, update_tabbar_ui,
 };

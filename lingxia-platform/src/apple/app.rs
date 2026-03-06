@@ -126,9 +126,23 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
-        ffi::launch_with_url(&url);
-        Ok(())
+    fn open_url(
+        &self,
+        req: crate::traits::app_runtime::OpenUrlRequest,
+    ) -> Result<(), PlatformError> {
+        if ffi::open_url(
+            &req.owner_appid,
+            req.owner_session_id,
+            &req.url,
+            req.target as i32,
+        ) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to open URL: owner_appid={}, owner_session_id={}, url={}, target={:?}",
+                req.owner_appid, req.owner_session_id, req.url, req.target
+            )))
+        }
     }
 
     fn get_capsule_rect(&self, _callback_id: u64) -> Result<(), PlatformError> {

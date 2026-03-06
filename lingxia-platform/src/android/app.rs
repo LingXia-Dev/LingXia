@@ -520,12 +520,17 @@ impl AppRuntime for Platform {
         })
     }
 
-    /// Launch external application with URL
-    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
+    fn open_url(
+        &self,
+        req: crate::traits::app_runtime::OpenUrlRequest,
+    ) -> Result<(), PlatformError> {
+        if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
+            log::warn!("openURL target='self' not supported on Android, falling back to external");
+        }
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
         with_env(|env| -> Result<(), PlatformError> {
-            let url_jstring = env.new_string(url)?;
+            let url_jstring = env.new_string(req.url)?;
             env.call_static_method(
                 lxapp_class,
                 jni_str!("launchWithUrl"),
@@ -534,7 +539,7 @@ impl AppRuntime for Platform {
             )?;
             Ok(())
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to launch_with_url: {}", e)))
+        .map_err(|e| PlatformError::Platform(format!("Failed to open_url: {}", e)))
     }
 
     fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {

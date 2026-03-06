@@ -21,6 +21,34 @@ pub enum AnimationType {
     Backward = 2,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OpenUrlTarget {
+    External = 0,
+    SelfTarget = 1,
+}
+
+impl OpenUrlTarget {
+    pub fn parse(raw: Option<&str>) -> Self {
+        match raw.map(|v| v.trim().to_ascii_lowercase()) {
+            Some(v) if v == "self" => Self::SelfTarget,
+            Some(v) if v == "external" => Self::External,
+            Some(v) => {
+                log::warn!("Invalid openURL target='{}', fallback to external", v);
+                Self::External
+            }
+            None => Self::External,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpenUrlRequest {
+    pub owner_appid: String,
+    pub owner_session_id: u64,
+    pub url: String,
+    pub target: OpenUrlTarget,
+}
+
 impl From<i32> for AnimationType {
     fn from(value: i32) -> Self {
         match value {
@@ -95,8 +123,8 @@ pub trait AppRuntime:
         animation_type: AnimationType,
     ) -> Result<(), PlatformError>;
 
-    /// Launches the given URL in the host environment.
-    fn launch_with_url(&self, url: String) -> Result<(), PlatformError>;
+    /// Opens the given URL according to the host policy for the requested target.
+    fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError>;
 
     /// Gets the capsule button bounding rect in screen coordinates.
     /// Returns result via callback with JSON string format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}

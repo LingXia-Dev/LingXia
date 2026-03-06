@@ -568,9 +568,15 @@ impl AppRuntime for Platform {
             })
     }
 
-    fn launch_with_url(&self, url: String) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&url])
-            .map_err(|e| PlatformError::Platform(format!("Failed to launch with url: {}", e)))
+    fn open_url(
+        &self,
+        req: crate::traits::app_runtime::OpenUrlRequest,
+    ) -> Result<(), PlatformError> {
+        if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
+            log::warn!("openURL target='self' not supported on Harmony, falling back to external");
+        }
+        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&req.url])
+            .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }
 
     fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
