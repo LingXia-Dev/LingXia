@@ -110,14 +110,9 @@ parse_common_arg() {
             EXPECT_LXAPP=true
             return 0
             ;;
-        --clean|clean)
+        --reinstall|reinstall)
             CLEAN_INSTALL=true
-            echo "🧹 Clean install enabled"
-            return 0
-            ;;
-        --skip-rust|skip-rust)
-            SKIP_RUST=true
-            echo "🚀 Skipping Rust compilation"
+            echo "🧹 Reinstalling app (uninstall → install)"
             return 0
             ;;
         *)
@@ -134,7 +129,7 @@ show_help() {
     echo "Options:"
     echo "  --framework react|vue   Specify framework (default: auto-detect)"
     echo "  --lxapp <name>          Specify home lxapp to build (default: homelxapp)"
-    echo "  --clean                 Uninstall app before install"
+    echo "  --reinstall             Uninstall app before install (clean install)"
     echo "  --skip-rust             Skip Rust compilation"
     if [ -n "$extra_options" ]; then
         echo "$extra_options"
