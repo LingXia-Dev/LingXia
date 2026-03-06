@@ -529,18 +529,62 @@ extension LxApp {
         }
     }
 
-    nonisolated public static func launchWithUrl(url: RustStr) {
-        let urlString = url.toString()
+    nonisolated private static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else {
-            os_log(.error, log: Self.log, "Invalid URL for launchWithUrl: %{public}@", urlString)
-            return
+            os_log(.error, log: Self.log, "Invalid URL: %{public}@", urlString)
+            return false
         }
         #if os(iOS)
         DispatchQueue.main.async {
             UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
+        return true
         #elseif os(macOS)
-        NSWorkspace.shared.open(url)
+        return NSWorkspace.shared.open(url)
+        #else
+        return false
+        #endif
+    }
+
+    nonisolated public static func openUrl(
+        owner_appid: RustStr,
+        owner_session_id: UInt64,
+        url: RustStr,
+        target: Int32
+    ) -> Bool {
+        let ownerAppId = owner_appid.toString()
+        let urlString = url.toString()
+        let selfTarget: Int32 = 1
+
+        guard target == selfTarget else {
+            return openExternalUrlString(urlString)
+        }
+
+        #if os(macOS)
+        guard !ownerAppId.isEmpty, owner_session_id > 0 else {
+            return false
+        }
+        guard let openedTab = openBrowserTab(ownerAppId, owner_session_id, urlString) else {
+            os_log(.error, log: Self.log, "openBrowserTab failed for %{public}@/%{public}llu url=%{public}@",
+                   ownerAppId, owner_session_id, urlString)
+            return false
+        }
+        let tabId = openedTab.toString()
+        guard !tabId.isEmpty else {
+            return false
+        }
+        return executeOnMain {
+            return macOSLxApp.presentInternalBrowserTab(
+                ownerAppId: ownerAppId,
+                ownerSessionId: owner_session_id,
+                tabId: tabId
+            )
+        }
+        #else
+        os_log(.info, log: Self.log, "openURL target=self is not supported on this Apple platform yet, falling back to external: %{public}@",
+               urlString)
+        let _ = (ownerAppId, owner_session_id)
+        return openExternalUrlString(urlString)
         #endif
     }
 

@@ -135,7 +135,7 @@ mod bridge {
         fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize;
 
         #[swift_bridge(swift_name = "openBrowserTab")]
-        fn open_browser_tab(appid: &str, session_id: u64) -> Option<String>;
+        fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
@@ -339,10 +339,10 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
         .unwrap_or(false)
 }
 
-pub fn open_browser_tab(appid: &str, session_id: u64) -> Option<String> {
+pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_browser_tab", None, || {
         match lxapp::resolve_owner_lxapp(appid, session_id) {
-            Ok(owner) => match lxapp::open_internal_browser_tab(&owner, "", None) {
+            Ok(owner) => match lxapp::open_internal_browser_tab(&owner, url, None) {
                 Ok(tab_id) => Some(tab_id),
                 Err(e) => {
                     log::error!("open_browser_tab failed: {}", e);

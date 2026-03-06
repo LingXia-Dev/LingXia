@@ -896,7 +896,7 @@ extension LxAppWindowController {
             return
         }
 
-        guard let openedTab = openBrowserTab(owner.appId, owner.sessionId) else {
+        guard let openedTab = openBrowserTab(owner.appId, owner.sessionId, "") else {
             os_log(
                 "openBrowserTab failed for %{public}@/%{public}llu",
                 log: Self.log,

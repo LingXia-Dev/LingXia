@@ -201,6 +201,25 @@ extension macOSLxApp {
     internal static func getViewController(for appId: String) -> macOSLxAppViewController? {
         return tabWindowController?.getViewController(for: appId)
     }
+
+    @MainActor
+    internal static func presentInternalBrowserTab(ownerAppId: String, ownerSessionId: UInt64, tabId: String) -> Bool {
+        guard ownerSessionId > 0 else { return false }
+        let normalized = tabId.lowercased()
+        guard let id = UUID(uuidString: normalized) else {
+            os_log("presentInternalBrowserTab invalid tab id: %{public}@", log: log, type: .error, tabId)
+            return false
+        }
+
+        if tabWindowController == nil {
+            openTabStyleWindow()
+        }
+
+        guard let controller = tabWindowController else { return false }
+        controller.presentInternalBrowserTab(id: id, ownerAppId: ownerAppId, ownerSessionId: ownerSessionId)
+        controller.window?.makeKeyAndOrderFront(nil)
+        return true
+    }
 }
 
 // MARK: - Panel Control
