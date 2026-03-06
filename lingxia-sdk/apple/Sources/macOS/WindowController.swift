@@ -10,11 +10,17 @@ import CLingXiaRustAPI
 public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppWindowController")
+    private static let browserAttachMaxRetry = 5
 
     public struct Layout {
         static let sidebarWidth: CGFloat = 180
         static let minSidebarWidth: CGFloat = 48
+        static let browserToolbarHeight: CGFloat = 38
+        static let browserButtonSize: CGFloat = 28
+        static let browserAddressBarHeight: CGFloat = 26
     }
+
+    // Browser tab IDs – ownership lives in Rust, titles cached locally from WKWebView KVO.
 
     private let tabManager = LxAppTabManager.shared
     private var sidebarView: SidebarView?
@@ -27,10 +33,23 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal let panelManager = PanelLayoutManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
-    // Browser tab state
-    private var browserViewControllers: [UUID: BrowserViewController] = [:]
+    // Browser tab state — tab ownership lives in Rust; only titles/owner-appid cached locally.
     private var activeBrowserTabId: UUID?
-    private var browserTabs: [(id: UUID, title: String)] = []
+    private var browserTabIds: [UUID] = []
+    private var browserTabTitles: [UUID: String] = [:]
+    private var browserTabOwners: [UUID: String] = [:]  // tab UUID → owner appId
+    private var browserHostView: NSView?
+    private let browserToolbar = NSView()
+    private let browserToolbarSeparator = NSView()
+    private let browserBackButton = NSButton()
+    private let browserRefreshButton = NSButton()
+    private let browserAddressBarContainer = NSView()
+    private let browserAddressField = NSTextField()
+    private let browserWebContainer = NSView()
+    private var activeBrowserWebView: WKWebView?
+    nonisolated(unsafe) private var browserTitleObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var browserUrlObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var browserCanGoBackObservation: NSKeyValueObservation?
 
     /// Get view controller for specific appId (needed for navigation)
     public func getViewController(for appId: String) -> macOSLxAppViewController? {
@@ -50,6 +69,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
+        browserTitleObservation?.invalidate()
+        browserUrlObservation?.invalidate()
+        browserCanGoBackObservation?.invalidate()
     }
 
     private static func createWindow() -> LxAppWindow {
@@ -91,6 +113,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         for (_, viewController) in viewControllers {
             viewController.destroyNativeComponents()
         }
+        closeAllBrowserTabs(notifyRust: false)
         // Tab mode cleanup
         for tab in tabManager.tabs {
             if let sessionId = appSessions[tab.appId], sessionId > 0 {
@@ -307,9 +330,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // Clear browser tab state if switching from a browser tab
-        if let browserId = activeBrowserTabId, let browserVC = browserViewControllers[browserId] {
-            browserVC.pause()
-            browserVC.view.removeFromSuperview()
+        if activeBrowserTabId != nil {
+            clearBrowserWebViewAttachment()
+            hideBrowserHostView()
             activeBrowserTabId = nil
             navigationToolbar?.forceHide(false)
         }
@@ -402,100 +425,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         panelManager.togglePanel(id: id)
     }
 
-    // MARK: - Browser Tab Lifecycle
-
-    private func addBrowserTab() {
-        let id = UUID()
-        let browserVC = BrowserViewController(id: id)
-        browserVC.onTitleChanged = { [weak self] id, title in
-            self?.handleBrowserTitleChanged(id: id, title: title)
-        }
-        browserViewControllers[id] = browserVC
-        browserTabs.append((id: id, title: "New Tab"))
-
-        switchToBrowserTab(id: id)
-        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
-    }
-
-    private func selectBrowserTab(id: UUID) {
-        switchToBrowserTab(id: id)
-        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
-    }
-
-    private func switchToBrowserTab(id: UUID) {
-        guard let browserVC = browserViewControllers[id] else { return }
-
-        // Pause current lxapp VC if any
-        currentViewController?.pauseNativeComponents()
-        currentViewController?.view.removeFromSuperview()
-        currentViewController = nil
-
-        // Pause previous browser VC if switching between browser tabs
-        if let prevId = activeBrowserTabId, prevId != id, let prevVC = browserViewControllers[prevId] {
-            prevVC.pause()
-            prevVC.view.removeFromSuperview()
-        }
-
-        activeBrowserTabId = id
-
-        // Clear lxapp highlights, set browser highlight
-        sidebarView?.clearAllHighlights()
-        sidebarView?.updateBrowserItems(browserTabs, activeId: id)
-
-        // Hide lxapp navigation toolbar (browser has its own)
-        navigationToolbar?.forceHide(true)
-
-        // Place browser VC view into content container
-        let container = panelManager.contentContainer
-        browserVC.view.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(browserVC.view)
-
-        NSLayoutConstraint.activate([
-            browserVC.view.topAnchor.constraint(equalTo: container.topAnchor),
-            browserVC.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            browserVC.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            browserVC.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-
-        browserVC.resume()
-    }
-
-    private func closeBrowserTab(id: UUID) {
-        if let browserVC = browserViewControllers[id] {
-            browserVC.view.removeFromSuperview()
-            browserViewControllers.removeValue(forKey: id)
-        }
-
-        browserTabs.removeAll { $0.id == id }
-
-        if activeBrowserTabId == id {
-            activeBrowserTabId = nil
-
-            // Switch to another browser tab or the last lxapp tab
-            if let lastBrowser = browserTabs.last {
-                switchToBrowserTab(id: lastBrowser.id)
-                sidebarView?.updateBrowserItems(browserTabs, activeId: lastBrowser.id)
-            } else if let activeTab = tabManager.activeTab {
-                navigationToolbar?.forceHide(false)
-                switchToTab(activeTab.appId)
-            }
-        }
-
-        sidebarView?.updateBrowserItems(browserTabs, activeId: activeBrowserTabId)
-    }
-
-    private func handleBrowserTitleChanged(id: UUID, title: String) {
-        if let index = browserTabs.firstIndex(where: { $0.id == id }) {
-            browserTabs[index] = (id: id, title: title)
-            sidebarView?.updateBrowserItems(browserTabs, activeId: activeBrowserTabId)
-        }
-    }
-
     private func closeTab(_ appId: String) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
             os_log("closeTab missing session for %@", log: Self.log, type: .error, appId)
             return
         }
+
+        // Close browser entries owned by this app while Rust owner state is still available.
+        closeBrowserTabsOwned(by: appId)
+
         let accepted = onLxappClosed(appId, sessionId)
         guard accepted else {
             os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
@@ -522,6 +460,452 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         } else if !tabManager.hasTabs {
             window?.close()
         }
+    }
+}
+
+// MARK: - Browser Tab Lifecycle
+
+extension LxAppWindowController {
+
+    private func browserTabIdString(_ id: UUID) -> String {
+        id.uuidString.lowercased()
+    }
+
+    /// Find the WKWebView for a browser tab via Rust's managed WebView registry.
+    private func findBrowserWKWebView(for id: UUID) -> WKWebView? {
+        let ptr = findBrowserWebView(browserTabIdString(id))
+        guard ptr != 0, let rawPointer = UnsafeRawPointer(bitPattern: ptr) else { return nil }
+        return Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+    }
+
+    private func browserSidebarItems() -> [(id: UUID, title: String)] {
+        browserTabIds.map { id in
+            (id, browserTabTitles[id] ?? "New Tab")
+        }
+    }
+
+    private func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
+        if let appId = tabManager.activeTab?.appId {
+            let sessionId = appSessions[appId] ?? getLxAppSessionId(appId)
+            if sessionId > 0 {
+                return (appId, sessionId)
+            }
+        }
+
+        let current = getCurrentLxApp()
+        let appId = current.appid.toString()
+        if !appId.isEmpty && current.session_id > 0 {
+            return (appId, current.session_id)
+        }
+        return nil
+    }
+
+    private func setupBrowserHostIfNeeded() {
+        guard browserHostView == nil else { return }
+
+        let host = NSView()
+        host.translatesAutoresizingMaskIntoConstraints = false
+        host.wantsLayer = true
+
+        browserToolbar.translatesAutoresizingMaskIntoConstraints = false
+        browserToolbar.wantsLayer = true
+        browserToolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        host.addSubview(browserToolbar)
+
+        browserBackButton.translatesAutoresizingMaskIntoConstraints = false
+        browserBackButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
+        browserBackButton.isBordered = false
+        browserBackButton.bezelStyle = .regularSquare
+        browserBackButton.imagePosition = .imageOnly
+        browserBackButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        browserBackButton.target = self
+        browserBackButton.action = #selector(browserBackClicked)
+        browserToolbar.addSubview(browserBackButton)
+
+        browserRefreshButton.translatesAutoresizingMaskIntoConstraints = false
+        browserRefreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+        browserRefreshButton.isBordered = false
+        browserRefreshButton.bezelStyle = .regularSquare
+        browserRefreshButton.imagePosition = .imageOnly
+        browserRefreshButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+        browserRefreshButton.target = self
+        browserRefreshButton.action = #selector(browserRefreshClicked)
+        browserToolbar.addSubview(browserRefreshButton)
+
+        browserAddressBarContainer.translatesAutoresizingMaskIntoConstraints = false
+        browserAddressBarContainer.wantsLayer = true
+        browserAddressBarContainer.layer?.cornerRadius = 6
+        browserAddressBarContainer.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        browserToolbar.addSubview(browserAddressBarContainer)
+
+        browserAddressField.translatesAutoresizingMaskIntoConstraints = false
+        browserAddressField.font = NSFont.systemFont(ofSize: 13)
+        browserAddressField.placeholderString = "Enter URL"
+        browserAddressField.isBordered = false
+        browserAddressField.drawsBackground = false
+        browserAddressField.focusRingType = .none
+        browserAddressField.usesSingleLineMode = true
+        browserAddressField.cell?.wraps = false
+        browserAddressField.cell?.isScrollable = true
+        browserAddressField.cell?.lineBreakMode = .byTruncatingTail
+        browserAddressField.target = self
+        browserAddressField.action = #selector(browserAddressSubmitted(_:))
+        browserAddressBarContainer.addSubview(browserAddressField)
+
+        browserToolbarSeparator.translatesAutoresizingMaskIntoConstraints = false
+        browserToolbarSeparator.wantsLayer = true
+        browserToolbarSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        host.addSubview(browserToolbarSeparator)
+
+        browserWebContainer.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(browserWebContainer)
+
+        NSLayoutConstraint.activate([
+            browserToolbar.topAnchor.constraint(equalTo: host.topAnchor),
+            browserToolbar.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            browserToolbar.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            browserToolbar.heightAnchor.constraint(equalToConstant: Layout.browserToolbarHeight),
+
+            browserBackButton.leadingAnchor.constraint(equalTo: browserToolbar.leadingAnchor, constant: 8),
+            browserBackButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserBackButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+            browserBackButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+
+            browserRefreshButton.leadingAnchor.constraint(equalTo: browserBackButton.trailingAnchor, constant: 4),
+            browserRefreshButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserRefreshButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+            browserRefreshButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+
+            browserAddressBarContainer.leadingAnchor.constraint(equalTo: browserRefreshButton.trailingAnchor, constant: 8),
+            browserAddressBarContainer.trailingAnchor.constraint(equalTo: browserToolbar.trailingAnchor, constant: -8),
+            browserAddressBarContainer.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserAddressBarContainer.heightAnchor.constraint(equalToConstant: Layout.browserAddressBarHeight),
+
+            browserAddressField.leadingAnchor.constraint(equalTo: browserAddressBarContainer.leadingAnchor, constant: 8),
+            browserAddressField.trailingAnchor.constraint(equalTo: browserAddressBarContainer.trailingAnchor, constant: -8),
+            browserAddressField.centerYAnchor.constraint(equalTo: browserAddressBarContainer.centerYAnchor),
+
+            browserToolbarSeparator.topAnchor.constraint(equalTo: browserToolbar.bottomAnchor),
+            browserToolbarSeparator.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            browserToolbarSeparator.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            browserToolbarSeparator.heightAnchor.constraint(equalToConstant: 1),
+
+            browserWebContainer.topAnchor.constraint(equalTo: browserToolbarSeparator.bottomAnchor),
+            browserWebContainer.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            browserWebContainer.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            browserWebContainer.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+        ])
+
+        browserHostView = host
+        updateBrowserBackButtonState(canGoBack: false)
+    }
+
+    private func showBrowserHostView() {
+        setupBrowserHostIfNeeded()
+        guard let host = browserHostView else { return }
+        let container = panelManager.contentContainer
+
+        if host.superview !== container {
+            container.addSubview(host)
+            NSLayoutConstraint.activate([
+                host.topAnchor.constraint(equalTo: container.topAnchor),
+                host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                host.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+    }
+
+    private func hideBrowserHostView() {
+        browserHostView?.removeFromSuperview()
+    }
+
+    private func updateBrowserBackButtonState(canGoBack: Bool) {
+        browserBackButton.isEnabled = canGoBack
+        browserBackButton.alphaValue = canGoBack ? 1.0 : 0.4
+    }
+
+    private func observeActiveBrowserWebView(_ webView: WKWebView) {
+        browserTitleObservation?.invalidate()
+        browserUrlObservation?.invalidate()
+        browserCanGoBackObservation?.invalidate()
+
+        browserTitleObservation = webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                guard let self, let activeId = self.activeBrowserTabId else { return }
+                let title = (webView.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !title.isEmpty {
+                    self.handleBrowserTitleChanged(id: activeId, title: title)
+                }
+            }
+        }
+
+        browserUrlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.browserAddressField.stringValue =
+                    self.displayableBrowserURL(webView.url?.absoluteString)
+            }
+        }
+
+        browserCanGoBackObservation = webView.observe(\.canGoBack, options: [.new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                self?.updateBrowserBackButtonState(canGoBack: webView.canGoBack)
+            }
+        }
+    }
+
+    private func displayableBrowserURL(_ raw: String?) -> String {
+        guard let raw else { return "" }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let lowered = trimmed.lowercased()
+        if lowered.hasPrefix("data:") || lowered.hasPrefix("lx:") || lowered == "about:blank" {
+            return ""
+        }
+        return trimmed
+    }
+
+    private func normalizeBrowserURLInput(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var candidate = trimmed
+        if !candidate.contains("://") {
+            candidate = "https://\(candidate)"
+        }
+        if let url = URL(string: candidate),
+           let scheme = url.scheme?.lowercased(),
+           scheme == "http" || scheme == "https",
+           url.host != nil {
+            return url.absoluteString
+        }
+        return nil
+    }
+
+    private func openAddressInActiveBrowserTab(_ urlString: String) {
+        guard let webView = activeBrowserWebView,
+              let url = URL(string: urlString) else { return }
+        browserAddressField.stringValue = urlString
+        webView.load(URLRequest(url: url))
+    }
+
+    @objc private func browserBackClicked() {
+        guard let webView = activeBrowserWebView, webView.canGoBack else { return }
+        webView.goBack()
+    }
+
+    @objc private func browserRefreshClicked() {
+        activeBrowserWebView?.reload()
+    }
+
+    @objc private func browserAddressSubmitted(_ sender: NSTextField) {
+        guard let urlString = normalizeBrowserURLInput(sender.stringValue) else { return }
+        openAddressInActiveBrowserTab(urlString)
+    }
+
+    private func clearBrowserWebViewAttachment() {
+        browserTitleObservation?.invalidate()
+        browserUrlObservation?.invalidate()
+        browserCanGoBackObservation?.invalidate()
+        browserTitleObservation = nil
+        browserUrlObservation = nil
+        browserCanGoBackObservation = nil
+        activeBrowserWebView?.removeFromSuperview()
+        activeBrowserWebView = nil
+        updateBrowserBackButtonState(canGoBack: false)
+    }
+
+    private func closeAllBrowserTabs(notifyRust: Bool = true) {
+        if notifyRust {
+            for id in browserTabIds {
+                _ = browserTabClose(browserTabIdString(id))
+            }
+        }
+        clearBrowserWebViewAttachment()
+        browserTabIds.removeAll()
+        browserTabTitles.removeAll()
+        browserTabOwners.removeAll()
+        activeBrowserTabId = nil
+        hideBrowserHostView()
+        sidebarView?.updateBrowserItems([], activeId: nil)
+    }
+
+    private func closeBrowserTabsOwned(by appId: String) {
+        let ownedTabIds = browserTabIds.filter { browserTabOwners[$0] == appId }
+        guard !ownedTabIds.isEmpty else { return }
+
+        for tabId in ownedTabIds {
+            _ = browserTabClose(browserTabIdString(tabId))
+        }
+
+        let ownedSet = Set(ownedTabIds)
+        browserTabIds.removeAll { ownedSet.contains($0) }
+        for id in ownedSet {
+            browserTabTitles.removeValue(forKey: id)
+            browserTabOwners.removeValue(forKey: id)
+        }
+        if let activeId = activeBrowserTabId,
+           !browserTabIds.contains(activeId) {
+            clearBrowserWebViewAttachment()
+            hideBrowserHostView()
+            activeBrowserTabId = nil
+            navigationToolbar?.forceHide(false)
+        }
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
+    }
+
+    private func addBrowserTab() {
+        guard let owner = browserOwnerForNewTab() else {
+            os_log("Cannot create browser tab without active lxapp session", log: Self.log, type: .error)
+            return
+        }
+
+        guard let openedTab = openBrowserTab(owner.appId, owner.sessionId) else {
+            os_log(
+                "openBrowserTab failed for %{public}@/%{public}llu",
+                log: Self.log,
+                type: .error,
+                owner.appId,
+                owner.sessionId
+            )
+            return
+        }
+
+        appSessions[owner.appId] = owner.sessionId
+        let tabId = openedTab.toString().lowercased()
+        guard let id = UUID(uuidString: tabId) else {
+            os_log(
+                "openBrowserTab returned invalid tab id=%{public}@ for %{public}@/%{public}llu",
+                log: Self.log,
+                type: .error,
+                tabId,
+                owner.appId,
+                owner.sessionId,
+            )
+            return
+        }
+        if browserTabIds.contains(id) {
+            switchToBrowserTab(id: id)
+            sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: id)
+            return
+        }
+
+        browserTabIds.append(id)
+        browserTabOwners[id] = owner.appId
+
+        switchToBrowserTab(id: id)
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: id)
+    }
+
+    private func selectBrowserTab(id: UUID) {
+        switchToBrowserTab(id: id)
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: id)
+    }
+
+    private func switchToBrowserTab(id: UUID) {
+        guard browserTabIds.contains(id) else { return }
+
+        // Pause current lxapp VC if any
+        currentViewController?.pauseNativeComponents()
+        currentViewController?.view.removeFromSuperview()
+        currentViewController = nil
+
+        clearBrowserWebViewAttachment()
+
+        activeBrowserTabId = id
+
+        // Clear lxapp highlights, set browser highlight
+        sidebarView?.clearAllHighlights()
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: id)
+
+        // Hide lxapp navigation toolbar when browser tab is active.
+        navigationToolbar?.forceHide(true)
+
+        showBrowserHostView()
+        browserAddressField.stringValue = ""
+        updateBrowserBackButtonState(canGoBack: false)
+
+        attachBrowserWebView(for: id, attempt: 0)
+    }
+
+    private func attachBrowserWebView(for tabId: UUID, attempt: Int) {
+        guard activeBrowserTabId == tabId else { return }
+
+        if let webView = findBrowserWKWebView(for: tabId) {
+            showBrowserHostView()
+            WebViewManager.attachWebViewToContainer(webView, container: browserWebContainer)
+            activeBrowserWebView = webView
+            observeActiveBrowserWebView(webView)
+            browserAddressField.stringValue = displayableBrowserURL(webView.url?.absoluteString)
+            updateBrowserBackButtonState(canGoBack: webView.canGoBack)
+            return
+        }
+
+        // WebView not ready yet — retry or give up.
+        guard attempt < Self.browserAttachMaxRetry else {
+            os_log("Failed to attach browser webview after %d retries for tab=%{public}@",
+                   log: Self.log, type: .error, attempt, browserTabIdString(tabId))
+            if activeBrowserTabId == tabId {
+                clearBrowserWebViewAttachment()
+                hideBrowserHostView()
+                activeBrowserTabId = nil
+                navigationToolbar?.forceHide(false)
+                sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: nil)
+                if let activeTab = tabManager.activeTab {
+                    switchToTab(activeTab.appId)
+                }
+            }
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.attachBrowserWebView(for: tabId, attempt: attempt + 1)
+        }
+    }
+
+    private func closeBrowserTab(id: UUID) {
+        guard let index = browserTabIds.firstIndex(of: id) else { return }
+
+        // Detach WebView from UI BEFORE Rust destroy to prevent ObjC exceptions
+        // during WebViewInner::Drop (removeFromSuperview/release on attached view).
+        if activeBrowserTabId == id {
+            clearBrowserWebViewAttachment()
+        }
+
+        // Remove from Swift state
+        browserTabTitles.removeValue(forKey: id)
+        browserTabOwners.removeValue(forKey: id)
+        browserTabIds.remove(at: index)
+
+        // Destroy Rust state (triggers WebView Drop — safe now that UI is detached)
+        _ = browserTabClose(browserTabIdString(id))
+
+        if activeBrowserTabId == id {
+            activeBrowserTabId = nil
+
+            // Switch to another browser tab or the last lxapp tab
+            if let lastBrowser = browserTabIds.last {
+                switchToBrowserTab(id: lastBrowser)
+                sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: lastBrowser)
+            } else if let activeTab = tabManager.activeTab {
+                navigationToolbar?.forceHide(false)
+                hideBrowserHostView()
+                switchToTab(activeTab.appId)
+            } else {
+                navigationToolbar?.forceHide(false)
+                hideBrowserHostView()
+            }
+        }
+
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
+    }
+
+    private func handleBrowserTitleChanged(id: UUID, title: String) {
+        guard browserTabIds.contains(id) else { return }
+        browserTabTitles[id] = title
+        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
     }
 }
 
