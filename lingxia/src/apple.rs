@@ -143,6 +143,9 @@ mod bridge {
         #[swift_bridge(swift_name = "findBrowserWebView")]
         fn find_browser_webview_ptr(tab_id: &str) -> usize;
 
+        #[swift_bridge(swift_name = "browserToggleDevtools")]
+        fn browser_toggle_devtools(tab_id: &str) -> bool;
+
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
@@ -339,15 +342,13 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
 pub fn open_browser_tab(appid: &str, session_id: u64) -> Option<String> {
     ffi_catch_unwind!("open_browser_tab", None, || {
         match lxapp::resolve_owner_lxapp(appid, session_id) {
-            Ok(owner) => {
-                match lxapp::open_internal_browser_tab(&owner, "", None) {
-                    Ok(tab_id) => Some(tab_id),
-                    Err(e) => {
-                        log::error!("open_browser_tab failed: {}", e);
-                        None
-                    }
+            Ok(owner) => match lxapp::open_internal_browser_tab(&owner, "", None) {
+                Ok(tab_id) => Some(tab_id),
+                Err(e) => {
+                    log::error!("open_browser_tab failed: {}", e);
+                    None
                 }
-            }
+            },
             Err(e) => {
                 log::error!("open_browser_tab owner resolve failed: {}", e);
                 None
@@ -367,6 +368,21 @@ pub fn find_browser_webview_ptr(tab_id: &str) -> usize {
         Some(webview) => webview.get_swift_webview_ptr(),
         None => 0,
     }
+}
+
+pub fn browser_toggle_devtools(tab_id: &str) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(webview) = lxapp::find_browser_webview(tab_id) {
+            webview.toggle_devtools();
+            return true;
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = tab_id;
+    }
+    false
 }
 
 /// Get current active LxApp ID and path from Rust stack
