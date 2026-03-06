@@ -1810,6 +1810,28 @@ pub fn init(runtime: Platform) -> Option<String> {
                     .with_appid(home_lxapp_appid.clone());
             }
 
+            // Register built-in browser LxApp — always install from assets to ensure
+            // the runtime directory is up-to-date (small static asset set).
+            {
+                let browser_appid = crate::browser::BUILTIN_BROWSER_APPID.to_string();
+                if let Err(e) = crate::update::UpdateManager::install_from_assets(
+                    runtime_arc.clone(),
+                    &browser_appid,
+                    crate::SDK_RUNTIME_VERSION,
+                ) {
+                    warn!("Built-in browser assets not available: {}", e);
+                }
+                let browser_lxapp = LxApp::new(
+                    browser_appid.clone(),
+                    runtime_arc.clone(),
+                    executor.clone(),
+                    ReleaseType::Release,
+                );
+                lxapps_manager
+                    .lxapps
+                    .insert(browser_appid, Arc::new(browser_lxapp));
+            }
+
             info!("LxApps initialized successfully");
 
             spawn_cache_cleanup(runtime_arc.clone());

@@ -134,6 +134,15 @@ mod bridge {
         #[swift_bridge(swift_name = "findWebView")]
         fn find_webview(appid: &str, path: &str, session_id: u64) -> usize;
 
+        #[swift_bridge(swift_name = "openBrowserTab")]
+        fn open_browser_tab(appid: &str, session_id: u64) -> Option<String>;
+
+        #[swift_bridge(swift_name = "browserTabClose")]
+        fn browser_tab_close(tab_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "findBrowserWebView")]
+        fn find_browser_webview_ptr(tab_id: &str) -> usize;
+
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
@@ -265,19 +274,31 @@ pub fn resolve_lx_uri(appid: &str, input: &str) -> Option<String> {
     Some(format!("file://{}", resolved.to_string_lossy()))
 }
 
+/// Catch panics at FFI boundary and return a default value on failure.
+macro_rules! ffi_catch_unwind {
+    ($name:expr, $default:expr, $body:expr) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe($body)) {
+            Ok(v) => v,
+            Err(_) => {
+                log::error!("panic in {}", $name);
+                $default
+            }
+        }
+    };
+}
+
 /// Notify that LxApp was closed
 pub fn on_lxapp_closed(appid: &str, session_id: u64) -> bool {
-    if let Some(lxapp) = lxapp::try_get(appid) {
-        if session_id == 0 {
-            return false;
+    ffi_catch_unwind!("on_lxapp_closed", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            if session_id == 0 || session_id != lxapp.session_id() {
+                return false;
+            }
+            lxapp.on_lxapp_closed(session_id);
+            return true;
         }
-        if session_id != lxapp.session_id() {
-            return false;
-        }
-        lxapp.on_lxapp_closed(session_id);
-        return true;
-    }
-    false
+        false
+    })
 }
 
 /// Notify device orientation changes from host platform.
@@ -313,6 +334,39 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
     lxapp::try_get(appid)
         .map(|lxapp| lxapp.on_ui_event(ui_event_type, data.to_string()))
         .unwrap_or(false)
+}
+
+pub fn open_browser_tab(appid: &str, session_id: u64) -> Option<String> {
+    ffi_catch_unwind!("open_browser_tab", None, || {
+        match lxapp::resolve_owner_lxapp(appid, session_id) {
+            Ok(owner) => {
+                match lxapp::open_internal_browser_tab(&owner, "", None) {
+                    Ok(tab_id) => Some(tab_id),
+                    Err(e) => {
+                        log::error!("open_browser_tab failed: {}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("open_browser_tab owner resolve failed: {}", e);
+                None
+            }
+        }
+    })
+}
+
+pub fn browser_tab_close(tab_id: &str) -> bool {
+    ffi_catch_unwind!("browser_tab_close", false, || {
+        lxapp::close_browser_tab(tab_id).is_ok()
+    })
+}
+
+pub fn find_browser_webview_ptr(tab_id: &str) -> usize {
+    match lxapp::find_browser_webview(tab_id) {
+        Some(webview) => webview.get_swift_webview_ptr(),
+        None => 0,
+    }
 }
 
 /// Get current active LxApp ID and path from Rust stack

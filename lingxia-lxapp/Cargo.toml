@@ -30,6 +30,7 @@ tar = "0.4.44"
 zstd = "0.13.3"
 ring = "0.17.14"
 filetime = "0.2"
+uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
 rong_modules = { workspace = true, features = ["timer", "navigator", "path", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }

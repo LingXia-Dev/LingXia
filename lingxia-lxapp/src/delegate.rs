@@ -3,7 +3,7 @@ use crate::lifecycle::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::update::UpdateManager;
-use crate::{LxApp, error, info, lxapp};
+use crate::{LxApp, error, info, lxapp, warn};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use std::sync::Arc;
@@ -174,8 +174,15 @@ impl LxAppDelegate for LxApp {
 
         self.set_status(LxAppSessionStatus::Closed);
 
-        // Update last active time
-        self.state.lock().unwrap().last_active_time = Instant::now();
+        // Update last active time. Recover from poisoned mutex instead of panicking.
+        self.state
+            .lock()
+            .unwrap_or_else(|e| {
+                warn!("Recovered poisoned lxapp state mutex during close")
+                    .with_appid(self.appid.clone());
+                e.into_inner()
+            })
+            .last_active_time = Instant::now();
 
         // Remove this LxApp from the navigation stack
         if let Some(manager) = lxapp::get_lxapps_manager() {
