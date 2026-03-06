@@ -229,7 +229,13 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
             }
         } else {
             // No WebView found for this appid/path
-            error!("💥 Not found webview for {}-{}", appid, path);
+            error!(
+                "💥 Not found webview for {}-{} (session={}, key={})",
+                appid,
+                path,
+                session_id,
+                webtag.key()
+            );
             Ok(JObject::null())
         }
     })
