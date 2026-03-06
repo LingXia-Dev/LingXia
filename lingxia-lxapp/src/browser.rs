@@ -1,9 +1,11 @@
 use crate::{LxApp, LxAppError};
 use lingxia_webview::{
-    WebTag, WebView, WebViewController, WebViewCreateOptions, create_webview_with_options,
-    destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
+    WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
+    create_webview_with_options, destroy_webview as destroy_managed_webview,
+    find_webview as find_managed_webview,
 };
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -15,9 +17,10 @@ const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 struct BrowserTabState {
     source_appid: String,
     session_id: u64,
-    /// URL queued for loading. Currently only used as a defensive mechanism for
-    /// potential async WebView creation races (e.g. Harmony platform). On macOS
-    /// creation is synchronous so pending_url is always consumed immediately.
+    /// Monotonic token to identify the current create lifecycle of this tab.
+    /// Used to ignore stale async callbacks when tab gets recreated quickly.
+    create_token: u64,
+    /// URL queued for loading while WebView creation is in-flight.
     pending_url: Option<String>,
 }
 
@@ -42,6 +45,7 @@ struct BrowserState {
 }
 
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
+static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 
 fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -68,6 +72,19 @@ fn generate_tab_id() -> String {
     Uuid::new_v4().to_string()
 }
 
+fn next_browser_create_token() -> u64 {
+    BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
+}
+
+fn latest_owner_tab_id(lxapp: &LxApp) -> Option<String> {
+    lock_state()
+        .tabs
+        .iter()
+        .filter(|(_, tab)| tab.source_appid == lxapp.appid && tab.session_id == lxapp.session_id())
+        .max_by_key(|(_, tab)| tab.create_token)
+        .map(|(tab_id, _)| tab_id.clone())
+}
+
 // ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
@@ -76,17 +93,140 @@ fn browser_webtag(path: &str, session_id: u64) -> WebTag {
     WebTag::new(BUILTIN_BROWSER_APPID, path, Some(session_id))
 }
 
-fn browser_create_webview(path: &str, session_id: u64) -> Result<Arc<WebView>, LxAppError> {
+fn browser_create_webview(
+    path: &str,
+    session_id: u64,
+    tab_id: &str,
+    create_token: u64,
+) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let (ready_tx, ready_rx) = oneshot::channel();
     create_webview_with_options(&webtag, WebViewCreateOptions::browser_relaxed(), ready_tx);
-    match ready_rx.blocking_recv() {
-        Ok(Ok(webview)) => Ok(webview),
-        Ok(Err(e)) => Err(LxAppError::WebView(e.to_string())),
-        Err(e) => Err(LxAppError::Runtime(format!(
-            "browser webview create channel closed: {}",
+    let path_owned = path.to_string();
+    let tab_id_owned = tab_id.to_string();
+
+    if let Err(e) = rong::bg::spawn(async move {
+        browser_on_webview_ready(path_owned, session_id, tab_id_owned, create_token, ready_rx)
+            .await;
+    }) {
+        return Err(LxAppError::Runtime(format!(
+            "failed to spawn browser webview ready task: {}",
             e
-        ))),
+        )));
+    }
+    Ok(())
+}
+
+async fn browser_on_webview_ready(
+    path: String,
+    session_id: u64,
+    tab_id: String,
+    create_token: u64,
+    ready_rx: oneshot::Receiver<Result<Arc<WebView>, WebViewError>>,
+) {
+    let webview = match ready_rx.await {
+        Ok(Ok(webview)) => webview,
+        Ok(Err(e)) => {
+            crate::warn!(
+                "[InternalBrowser] Failed to create webview for tab {}: {}",
+                tab_id,
+                e
+            );
+            browser_remove_tab_if_token_matches(&tab_id, session_id, create_token);
+            return;
+        }
+        Err(e) => {
+            crate::warn!(
+                "[InternalBrowser] WebView ready signal failed for tab {}: {}",
+                tab_id,
+                e
+            );
+            browser_remove_tab_if_token_matches(&tab_id, session_id, create_token);
+            return;
+        }
+    };
+
+    let tab_state = browser_tab_create_state(&tab_id, session_id, create_token);
+    match tab_state {
+        TabCreateState::Missing => {
+            // Tab was closed while creation was in-flight.
+            browser_destroy_webview(&path, session_id);
+            return;
+        }
+        TabCreateState::Stale => {
+            // A newer create lifecycle already took ownership of this tab id.
+            // Destroy the orphaned webview from this old create cycle.
+            browser_destroy_webview(&path, session_id);
+            return;
+        }
+        TabCreateState::Active { pending_url } => {
+            if let Some(url) = pending_url {
+                if let Err(e) = webview.load_url(url) {
+                    crate::warn!(
+                        "[InternalBrowser] Failed to load URL for tab {}: {}",
+                        tab_id,
+                        e
+                    );
+                }
+            } else {
+                let result = generate_browser_startup_html().and_then(|(html, base_url)| {
+                    let html_str = String::from_utf8_lossy(&html);
+                    webview
+                        .load_data(html_str.into_owned(), base_url, None)
+                        .map_err(|e| LxAppError::WebView(e.to_string()))
+                });
+                if let Err(e) = result {
+                    crate::warn!(
+                        "[InternalBrowser] Failed to load startup page for tab {}: {}",
+                        tab_id,
+                        e
+                    );
+                }
+            }
+            browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
+        }
+    }
+}
+
+#[derive(Debug)]
+enum TabCreateState {
+    Active { pending_url: Option<String> },
+    Missing,
+    Stale,
+}
+
+fn browser_tab_create_state(tab_id: &str, session_id: u64, create_token: u64) -> TabCreateState {
+    let state = lock_state();
+    match state.tabs.get(tab_id) {
+        Some(tab) if tab.session_id == session_id && tab.create_token == create_token => {
+            TabCreateState::Active {
+                pending_url: tab.pending_url.clone(),
+            }
+        }
+        Some(_) => TabCreateState::Stale,
+        None => TabCreateState::Missing,
+    }
+}
+
+fn browser_remove_tab_if_token_matches(tab_id: &str, session_id: u64, create_token: u64) {
+    let mut state = lock_state();
+    let should_remove = state
+        .tabs
+        .get(tab_id)
+        .map(|tab| tab.session_id == session_id && tab.create_token == create_token)
+        .unwrap_or(false);
+    if should_remove {
+        state.tabs.remove(tab_id);
+    }
+}
+
+fn browser_clear_pending_if_token_matches(tab_id: &str, session_id: u64, create_token: u64) {
+    let mut state = lock_state();
+    if let Some(tab) = state.tabs.get_mut(tab_id)
+        && tab.session_id == session_id
+        && tab.create_token == create_token
+    {
+        tab.pending_url = None;
     }
 }
 
@@ -215,9 +355,17 @@ pub fn open_internal_browser_tab(
     let tab_id = tab_id
         .map(sanitize_tab_id)
         .filter(|v| !v.is_empty())
+        .or_else(|| {
+            if has_target_url {
+                latest_owner_tab_id(lxapp)
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(generate_tab_id);
     let path = browser_tab_path_for_id(&tab_id);
     let session_id = lxapp.session_id();
+    let mut create_token: Option<u64> = None;
     let mut is_new_tab = false;
 
     {
@@ -229,11 +377,14 @@ pub fn open_internal_browser_tab(
             }
         } else {
             is_new_tab = true;
+            let token = next_browser_create_token();
+            create_token = Some(token);
             state.tabs.insert(
                 tab_id.clone(),
                 BrowserTabState {
                     source_appid: lxapp.appid.clone(),
                     session_id,
+                    create_token: token,
                     pending_url: if has_target_url {
                         Some(target_url.to_string())
                     } else {
@@ -245,45 +396,10 @@ pub fn open_internal_browser_tab(
     }
 
     if is_new_tab {
-        if let Err(e) = browser_create_webview(&path, session_id) {
+        let token = create_token.expect("create_token must exist for new tab");
+        if let Err(e) = browser_create_webview(&path, session_id, &tab_id, token) {
             lock_state().tabs.remove(&tab_id);
             return Err(e);
-        }
-
-        // Load content into the newly created webview.
-        let latest_pending = lock_state()
-            .tabs
-            .get(&tab_id)
-            .and_then(|s| s.pending_url.clone());
-        if let Some(ref url) = latest_pending {
-            // A target URL was requested (or updated by another thread during create).
-            if let Err(e) = browser_load_url(&path, session_id, url) {
-                crate::warn!(
-                    "[InternalBrowser] Failed to load URL for tab {}: {}",
-                    tab_id,
-                    e
-                );
-            }
-        } else {
-            // No URL requested — load the browser startup page (with bridge injection).
-            let result = generate_browser_startup_html().and_then(|(html, base_url)| {
-                let webview = browser_find_webview(&path, session_id)?;
-                let html_str = String::from_utf8_lossy(&html);
-                webview
-                    .load_data(html_str.into_owned(), base_url, None)
-                    .map_err(|e: lingxia_webview::WebViewError| LxAppError::WebView(e.to_string()))
-            });
-            if let Err(e) = result {
-                crate::warn!(
-                    "[InternalBrowser] Failed to load startup page for tab {}: {}",
-                    tab_id,
-                    e
-                );
-            }
-        }
-        // Clear pending_url — content has been loaded.
-        if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
-            s.pending_url = None;
         }
         return Ok(tab_id);
     }
