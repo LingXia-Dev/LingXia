@@ -18,5 +18,5 @@ export interface SystemSettingInfo {
 
 export interface OpenURLOptions {
   url: string;
-  openIn?: 'external' | 'internal';
+  target?: 'self' | 'external';
 }

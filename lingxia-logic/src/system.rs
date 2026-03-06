@@ -4,11 +4,10 @@ use crate::i18n::{
     host_error_from_platform_error, js_error_from_business_code_with_detail,
     js_error_from_platform_error, js_service_unavailable_error,
 };
-use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
-use lxapp::LxApp;
-use lxapp::lx;
+use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
 
@@ -67,31 +66,36 @@ fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
 }
 
 #[derive(FromJSObj, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct JSOpenURLOptions {
     #[serde(rename = "url")]
     #[rename = "url"]
     url: String,
-    /// Opens URL in external browser (default) or internal webview
-    /// - "external": Open in system browser (current behavior)
-    /// - "internal": Open in internal webview (future support)
-    #[serde(rename = "openIn")]
-    #[rename = "openIn"]
-    _open_in: Option<String>,
+    /// URL open target.
+    /// - "external": Open in system default browser
+    /// - "self": Open inside current app on macOS; other platforms currently fall back to external
+    #[serde(rename = "target")]
+    #[rename = "target"]
+    target: Option<String>,
 }
 
 fn open_url_impl(lxapp: &LxApp, options: &JSOpenURLOptions) -> JSResult<()> {
-    if options.url.is_empty() {
+    if options.url.trim().is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
             "openURL requires url",
         ));
     }
 
-    // TODO: Add support for openIn option in the future
-    // For now, always open in external browser (ignore openIn option)
+    let target = OpenUrlTarget::parse(options.target.as_deref());
     lxapp
         .runtime
-        .launch_with_url(options.url.clone())
+        .open_url(OpenUrlRequest {
+            owner_appid: lxapp.appid.clone(),
+            owner_session_id: lxapp.session_id(),
+            url: options.url.clone(),
+            target,
+        })
         .map_err(|e| js_error_from_platform_error(&e))?;
     Ok(())
 }
