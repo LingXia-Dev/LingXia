@@ -132,7 +132,7 @@ mod bridge {
         fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String;
 
         #[swift_bridge(swift_name = "findWebView")]
-        fn find_webview(appid: &str, path: &str, session_id: u64) -> usize;
+        fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize;
 
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64) -> Option<String>;
@@ -415,7 +415,7 @@ pub fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String {
 /// Find a WebView for the specified app and path
 /// This is called from Swift to get a WebView instance pointer managed by Rust
 /// Returns the usize pointer to the WebView, or 0 if not found
-pub fn find_webview(appid: &str, path: &str, session_id: u64) -> usize {
+pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
     if session_id == 0 {
         return 0;
     }
