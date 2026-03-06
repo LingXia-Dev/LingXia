@@ -266,9 +266,6 @@ generate_resources() {
 
 ensure_android_webview_jar() {
   mkdir -p "$ANDROID_WEBVIEW_JAR_DIR"
-  if [[ -f "$ANDROID_WEBVIEW_JAR" ]]; then
-    return
-  fi
   [[ -d "$ANDROID_WEBVIEW_JAVA_SRC" ]] || die "Missing Android webview java src: $ANDROID_WEBVIEW_JAVA_SRC"
   log "==> Building lingxia-webview.jar (Makefile)"
   (cd "$ANDROID_WEBVIEW_JAVA_SRC" && TARGET_DIR="$ANDROID_WEBVIEW_JAR_DIR" make 1>&2)
