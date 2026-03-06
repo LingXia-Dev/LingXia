@@ -1,7 +1,7 @@
 use super::register_host;
 use crate::LxApp;
 use crate::LxAppError;
-use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::device::Device;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -24,23 +24,31 @@ host_api!(MakePhoneCall, MakePhoneCallParams, (), |lxapp, params| {
 });
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct OpenUrlOptions {
     #[serde(rename = "url")]
     url: String,
-    #[serde(rename = "openIn")]
-    _open_in: Option<String>,
+    #[serde(rename = "target")]
+    target: Option<String>,
 }
 
 fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppError> {
-    if options.url.is_empty() {
+    if options.url.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "openURL requires url".to_string(),
         ));
     }
+
+    let target = OpenUrlTarget::parse(options.target.as_deref());
     lxapp
         .runtime
-        .launch_with_url(options.url.clone())
-        .map_err(|e| LxAppError::Runtime(format!("openURL failed: {}", e)))?;
+        .open_url(OpenUrlRequest {
+            owner_appid: lxapp.appid.clone(),
+            owner_session_id: lxapp.session_id(),
+            url: options.url.clone(),
+            target,
+        })
+        .map_err(|e| LxAppError::Runtime(format!("openURL failed (target={:?}): {}", target, e)))?;
     Ok(())
 }
 
