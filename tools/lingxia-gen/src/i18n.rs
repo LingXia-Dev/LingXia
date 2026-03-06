@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::Args;
 use inflector::Inflector;
 use jsonschema::{Draft, Validator};
@@ -110,10 +110,7 @@ pub fn run(config: I18nConfig) -> Result<()> {
             config.input.join(PERMISSION_RUNTIME_DIR),
             LocaleSourceKind::PermissionRuntime,
         ),
-        (
-            config.input.join(ERROR_DIR),
-            LocaleSourceKind::ErrorLocale,
-        ),
+        (config.input.join(ERROR_DIR), LocaleSourceKind::ErrorLocale),
     ];
     for (source_dir, _) in &locale_sources {
         if !source_dir.exists() {
@@ -1027,16 +1024,8 @@ mod tests {
         write_test_permissions(root);
         write_file(root, "ui/en-US.yaml", "common:\n  confirm: \"Confirm\"\n");
         write_file(root, "ui/zh-CN.yaml", "common:\n  confirm: \"确定\"\n");
-        write_file(
-            root,
-            "error/en-US.yaml",
-            "error:\n  unknown: \"Unknown\"\n",
-        );
-        write_file(
-            root,
-            "error/zh-CN.yaml",
-            "error:\n  unknown: \"未知\"\n",
-        );
+        write_file(root, "error/en-US.yaml", "error:\n  unknown: \"Unknown\"\n");
+        write_file(root, "error/zh-CN.yaml", "error:\n  unknown: \"未知\"\n");
 
         let error = run(base_config(root)).expect_err("expected missing err_code failure");
         assert!(error.to_string().contains("No `err_code_*` keys found"));
