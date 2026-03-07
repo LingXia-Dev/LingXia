@@ -455,6 +455,12 @@ class LxAppActivity : AppCompatActivity() {
             onBackPressedDispatcher.addCallback(object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     try {
+                        // Close browser overlay first if showing (aligned with Harmony behavior)
+                        if (LxAppBrowserOverlay.isShowing()) {
+                            Log.d(TAG, "BackPress: closing LxAppBrowserOverlay")
+                            LxAppBrowserOverlay.dismiss()
+                            return
+                        }
                         currentWebView?.visibility = View.VISIBLE
                         NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {

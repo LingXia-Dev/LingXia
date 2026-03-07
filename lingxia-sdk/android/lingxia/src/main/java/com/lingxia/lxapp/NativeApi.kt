@@ -136,6 +136,15 @@ object NativeApi {
     external fun resolveLxUri(appId: String, input: String): String?
 
     /**
+     * Run the shared browser address input handler.
+     *
+     * The input and output are JSON payloads so the schema can evolve without
+     * repeatedly changing platform FFI signatures.
+     */
+    @JvmStatic
+    external fun handleBrowserAddressInput(requestJson: String): String?
+
+    /**
      * Get complete TabBar state with items array (unified API)
      * @param appId The ID of the app
      * @return Complete TabBar state or null if not available

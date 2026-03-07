@@ -970,3 +970,25 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserAddressInput<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    request_json: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let request_json: String = match request_json.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+
+        let Some(response_json) = lxapp::handle_browser_address_input_json(&request_json) else {
+            return Ok(JString::null());
+        };
+
+        env.new_string(response_json)
+            .or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}

@@ -5,25 +5,28 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.Log
 import android.util.TypedValue
+import android.view.KeyEvent
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.text.InputType
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.TextView
 
 object LxAppBrowserOverlay {
     private const val TAG = "LingXia.BrowserOverlay"
 
     private var overlayContainer: FrameLayout? = null
     private var webView: WebView? = null
-    private var addressLabel: TextView? = null
+    private var addressField: EditText? = null
     private var backButton: ImageView? = null
     private var forwardButton: ImageView? = null
 
@@ -84,7 +87,7 @@ object LxAppBrowserOverlay {
         }
 
         // Address label
-        val addrLabel = TextView(activity).apply {
+        val addrField = EditText(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -92,15 +95,26 @@ object LxAppBrowserOverlay {
             )
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(Color.parseColor("#333333"))
+            setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_GO
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            background = null
+            setPadding(0, 0, 0, 0)
             maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
-            try {
-                text = android.net.Uri.parse(url).host ?: url
-            } catch (_: Exception) {
-                text = url
+            setText(url)
+            setOnEditorActionListener { _, actionId, event ->
+                val isSubmit = actionId == EditorInfo.IME_ACTION_GO ||
+                    actionId == EditorInfo.IME_ACTION_DONE ||
+                    (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+                if (isSubmit) {
+                    submitAddress()
+                    true
+                } else {
+                    false
+                }
             }
         }
-        addressPill.addView(addrLabel)
+        addressPill.addView(addrField)
 
         // Refresh button inside pill
         val refreshBtnSize = (36 * density).toInt()
@@ -124,40 +138,40 @@ object LxAppBrowserOverlay {
         container.addView(topBar)
 
         // === Bottom: Navigation Toolbar ===
-        // Get navigation bar height (bottom inset)
         val navBarHeight = getNavigationBarHeight(activity)
-        val toolbarContentHeight = (48 * density).toInt()
-        val bottomBarHeight = toolbarContentHeight + navBarHeight
+        val toolbarHeight = (44 * density).toInt()
+        val toolbarSideMargin = (12 * density).toInt()
+        val toolbarBottomMargin = navBarHeight + (8 * density).toInt()
 
-        val bottomBar = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+        val bottomBar = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                bottomBarHeight,
-                Gravity.BOTTOM
-            )
-            setBackgroundColor(Color.WHITE)
+                toolbarHeight
+            ).apply {
+                gravity = Gravity.BOTTOM
+                leftMargin = toolbarSideMargin
+                rightMargin = toolbarSideMargin
+                bottomMargin = toolbarBottomMargin
+            }
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F2FFFFFF"))
+                cornerRadius = 16f * density
+                setStroke(maxOf(1, (0.5f * density).toInt()), Color.parseColor("#1A000000"))
+            }
+            elevation = 10f * density
+            clipToPadding = false
+            clipChildren = false
         }
-
-        // Top border line
-        val borderLine = View(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                maxOf(1, (0.5f * density).toInt())
-            )
-            setBackgroundColor(Color.parseColor("#E0E0E0"))
-        }
-        bottomBar.addView(borderLine)
 
         // Button row
         val buttonRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
+            layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                toolbarContentHeight
+                ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setPadding((32 * density).toInt(), 0, (32 * density).toInt(), 0)
+            setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
         }
 
         // Back button
@@ -198,7 +212,6 @@ object LxAppBrowserOverlay {
                 ViewGroup.LayoutParams.MATCH_PARENT
             ).apply {
                 topMargin = topBarHeight
-                bottomMargin = bottomBarHeight
             }
             settings.apply {
                 javaScriptEnabled = true
@@ -235,7 +248,7 @@ object LxAppBrowserOverlay {
 
         overlayContainer = container
         webView = wv
-        addressLabel = addrLabel
+        addressField = addrField
         backButton = backBtn
         forwardButton = fwdBtn
 
@@ -253,7 +266,7 @@ object LxAppBrowserOverlay {
             (container.parent as? ViewGroup)?.removeView(container)
         }
         overlayContainer = null
-        addressLabel = null
+        addressField = null
         backButton = null
         forwardButton = null
 
@@ -264,12 +277,9 @@ object LxAppBrowserOverlay {
 
     private fun updateAddressBar(url: String?) {
         if (url == null) return
-        try {
-            val host = android.net.Uri.parse(url).host
-            addressLabel?.text = host ?: url
-        } catch (_: Exception) {
-            addressLabel?.text = url
-        }
+        val field = addressField ?: return
+        if (field.hasFocus()) return
+        field.setText(url)
     }
 
     private fun updateNavigationButtons() {
@@ -284,6 +294,14 @@ object LxAppBrowserOverlay {
             alpha = if (canGoForward) 1.0f else 0.3f
             isEnabled = canGoForward
         }
+    }
+
+    private fun submitAddress() {
+        val field = addressField ?: return
+        val result = handleBrowserAddressSubmission(field.text?.toString(), webView?.url) ?: return
+        field.setText(result.displayText)
+        field.clearFocus()
+        webView?.loadUrl(result.url)
     }
 
     private fun createNavButton(
