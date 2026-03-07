@@ -524,18 +524,26 @@ impl AppRuntime for Platform {
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
     ) -> Result<(), PlatformError> {
-        if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
-            log::warn!("openURL target='self' not supported on Android, falling back to external");
-        }
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
+
+        let target_str = if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
+            "self"
+        } else {
+            "external"
+        };
+
         with_env(|env| -> Result<(), PlatformError> {
             let url_jstring = env.new_string(req.url)?;
+            let target_jstring = env.new_string(target_str)?;
             env.call_static_method(
                 lxapp_class,
                 jni_str!("launchWithUrl"),
-                jni_sig!("(Ljava/lang/String;)V"),
-                &[JValue::Object(&url_jstring)],
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                &[
+                    JValue::Object(&url_jstring),
+                    JValue::Object(&target_jstring),
+                ],
             )?;
             Ok(())
         })

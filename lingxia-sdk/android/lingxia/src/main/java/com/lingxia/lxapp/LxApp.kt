@@ -136,8 +136,18 @@ class LxApp private constructor(private val context: Context) {
          * @param uri Complete URI to open the target app (e.g., "weixin://dl/scan")
          */
         @JvmStatic
-        fun launchWithUrl(uri: String) {
-            Log.d(TAG, "launchWithUrl called with URI: $uri")
+        fun launchWithUrl(uri: String, target: String = "external") {
+            Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
+            if (target == "self") {
+                val activity = currentActivity
+                if (activity != null) {
+                    activity.runOnUiThread {
+                        LxAppBrowserOverlay.show(activity, uri)
+                    }
+                    return
+                }
+                Log.w(TAG, "launchWithUrl target=self: no current activity, falling back to external")
+            }
             try {
                 val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
