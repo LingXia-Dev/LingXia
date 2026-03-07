@@ -560,7 +560,6 @@ extension LxApp {
             return openExternalUrlString(urlString)
         }
 
-        #if os(macOS)
         guard !ownerAppId.isEmpty, owner_session_id > 0 else {
             return false
         }
@@ -573,6 +572,8 @@ extension LxApp {
         guard !tabId.isEmpty else {
             return false
         }
+
+        #if os(macOS)
         return executeOnMain {
             return macOSLxApp.presentInternalBrowserTab(
                 ownerAppId: ownerAppId,
@@ -580,11 +581,16 @@ extension LxApp {
                 tabId: tabId
             )
         }
+        #elseif os(iOS)
+        return executeOnMain {
+            return LxAppBrowserOverlay.show(
+                tabId: tabId,
+                ownerAppId: ownerAppId,
+                ownerSessionId: owner_session_id
+            )
+        }
         #else
-        os_log(.info, log: Self.log, "openURL target=self is not supported on this Apple platform yet, falling back to external: %{public}@",
-               urlString)
-        let _ = (ownerAppId, owner_session_id)
-        return openExternalUrlString(urlString)
+        return false
         #endif
     }
 

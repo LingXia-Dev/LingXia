@@ -170,6 +170,9 @@ mod bridge {
         #[swift_bridge(swift_name = "resolveLxUri")]
         fn resolve_lx_uri(appid: &str, input: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "handleBrowserAddressInput")]
+        fn handle_browser_address_input(request_json: &str) -> Option<String>;
+
         #[swift_bridge(swift_name = "onAppShow")]
         fn on_app_show(lxappid: &str);
 
@@ -275,6 +278,10 @@ pub fn resolve_lx_uri(appid: &str, input: &str) -> Option<String> {
 
     let resolved = lxapp.resolve_accessible_path(trimmed).ok()?;
     Some(format!("file://{}", resolved.to_string_lossy()))
+}
+
+pub fn handle_browser_address_input(request_json: &str) -> Option<String> {
+    lxapp::handle_browser_address_input_json(request_json)
 }
 
 /// Catch panics at FFI boundary and return a default value on failure.

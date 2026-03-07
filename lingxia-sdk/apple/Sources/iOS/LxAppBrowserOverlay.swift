@@ -1,0 +1,492 @@
+#if os(iOS)
+import UIKit
+import WebKit
+import OSLog
+import CLingXiaRustAPI
+
+@MainActor
+public final class LxAppBrowserOverlay: NSObject {
+    private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlay")
+    private static var currentController: LxAppBrowserViewController?
+
+    public static func show(tabId: String, ownerAppId: String, ownerSessionId: UInt64) -> Bool {
+        let normalizedTabId = tabId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedTabId.isEmpty else {
+            os_log("show failed: empty tab id", log: log, type: .error)
+            return false
+        }
+
+        guard let manager = iOSLxApp.getInstance().currentLxAppManager,
+              let navController = manager.navigationController else {
+            os_log("show failed: no active navigation controller", log: log, type: .error)
+            return false
+        }
+
+        if let topController = navController.topViewController as? LxAppBrowserViewController,
+           topController.tabId == normalizedTabId {
+            topController.updateOwner(ownerAppId: ownerAppId, ownerSessionId: ownerSessionId)
+            currentController = topController
+            return true
+        }
+
+        let controller = LxAppBrowserViewController(
+            tabId: normalizedTabId,
+            ownerAppId: ownerAppId,
+            ownerSessionId: ownerSessionId
+        )
+        navController.pushViewController(controller, animated: true)
+        currentController = controller
+        os_log("Browser view controller pushed for tab=%{public}@", log: log, type: .info, normalizedTabId)
+        return true
+    }
+
+    @objc public static func dismiss() {
+        guard let controller = currentController else { return }
+
+        if controller.navigationController?.topViewController === controller {
+            controller.navigationController?.popViewController(animated: true)
+        } else {
+            controller.closeManagedTabIfNeeded()
+        }
+    }
+
+    public static func isShowing() -> Bool {
+        guard let controller = currentController else { return false }
+        return controller.navigationController?.topViewController === controller
+    }
+
+    fileprivate static func browserControllerDidClose(_ controller: LxAppBrowserViewController) {
+        if currentController === controller {
+            currentController = controller.navigationController?.topViewController as? LxAppBrowserViewController
+        }
+    }
+}
+
+@MainActor
+private final class LxAppBrowserViewController: UIViewController, UITextFieldDelegate, UIGestureRecognizerDelegate {
+    private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlayViewController")
+    private static let browserAppId = "app.lingxia.browser"
+    private static let browserTabPathPrefix = "/tabs/"
+    private static let attachRetryDelay: TimeInterval = 0.1
+    private static let maxAttachRetries = 8
+
+    let tabId: String
+    private var ownerAppId: String
+    private var ownerSessionId: UInt64
+
+    private let topBar = UIView()
+    private let addressPill = UIView()
+    private let addressField = UITextField()
+    private let refreshButton = UIButton(type: .system)
+    private let contentContainer = UIView()
+    private let bottomBar = UIView()
+    private let bottomBarBackground = UIVisualEffectView(effect: UIBlurEffect(style: .systemThinMaterial))
+    private let backButton = UIButton(type: .system)
+    private let forwardButton = UIButton(type: .system)
+    private let closeButton = UIButton(type: .system)
+
+    private var activeBrowserWebView: WKWebView?
+    private var urlObservation: NSKeyValueObservation?
+    private var canGoBackObservation: NSKeyValueObservation?
+    private var canGoForwardObservation: NSKeyValueObservation?
+    private var attachRetryWorkItem: DispatchWorkItem?
+    private var didCloseManagedTab = false
+    private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
+
+    init(tabId: String, ownerAppId: String, ownerSessionId: UInt64) {
+        self.tabId = tabId
+        self.ownerAppId = ownerAppId
+        self.ownerSessionId = ownerSessionId
+        super.init(nibName: nil, bundle: nil)
+        modalPresentationStyle = .fullScreen
+        hidesBottomBarWhenPushed = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+        setupUI()
+        setupBackGestureRecognizer()
+        attachManagedWebViewIfNeeded()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        navigationController?.interactivePopGestureRecognizer?.delegate = nil
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        attachManagedWebViewIfNeeded()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+
+        if isMovingFromParent || isBeingDismissed {
+            closeManagedTabIfNeeded()
+        }
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        .darkContent
+    }
+
+    deinit {
+        MainActor.assumeIsolated {
+            invalidateObservations()
+            attachRetryWorkItem?.cancel()
+        }
+    }
+
+    func updateOwner(ownerAppId: String, ownerSessionId: UInt64) {
+        self.ownerAppId = ownerAppId
+        self.ownerSessionId = ownerSessionId
+    }
+
+    fileprivate func closeManagedTabIfNeeded() {
+        guard !didCloseManagedTab else { return }
+        didCloseManagedTab = true
+
+        attachRetryWorkItem?.cancel()
+        attachRetryWorkItem = nil
+        invalidateObservations()
+
+        if let webView = activeBrowserWebView {
+            webView.removeFromSuperview()
+            webView.pauseWebView()
+        }
+        activeBrowserWebView = nil
+        backEdgePanGesture?.isEnabled = false
+
+        _ = browserTabClose(tabId)
+        LxAppBrowserOverlay.browserControllerDidClose(self)
+        os_log(
+            "Closed browser tab=%{public}@ owner=%{public}@/%{public}llu",
+            log: Self.log,
+            type: .info,
+            tabId,
+            ownerAppId,
+            ownerSessionId
+        )
+    }
+
+    private func setupUI() {
+        topBar.translatesAutoresizingMaskIntoConstraints = false
+        topBar.backgroundColor = .white
+        view.addSubview(topBar)
+
+        addressPill.translatesAutoresizingMaskIntoConstraints = false
+        addressPill.backgroundColor = UIColor(red: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
+        addressPill.layer.cornerRadius = 22
+        addressPill.clipsToBounds = true
+        topBar.addSubview(addressPill)
+
+        addressField.translatesAutoresizingMaskIntoConstraints = false
+        addressField.font = UIFont.systemFont(ofSize: 14)
+        addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
+        addressField.autocapitalizationType = .none
+        addressField.autocorrectionType = .no
+        addressField.clearButtonMode = .whileEditing
+        addressField.keyboardType = .URL
+        addressField.returnKeyType = .go
+        addressField.delegate = self
+        addressPill.addSubview(addressField)
+
+        configureIconButton(refreshButton, iconName: "icon_browser_refresh", iconSize: 18, tintColor: UIColor(white: 0.4, alpha: 1.0), action: #selector(refreshTapped))
+        addressPill.addSubview(refreshButton)
+
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        contentContainer.backgroundColor = .white
+        contentContainer.clipsToBounds = true
+        view.addSubview(contentContainer)
+
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.backgroundColor = .clear
+        view.addSubview(bottomBar)
+
+        bottomBarBackground.translatesAutoresizingMaskIntoConstraints = false
+        bottomBarBackground.clipsToBounds = true
+        bottomBarBackground.layer.cornerRadius = 16
+        bottomBar.addSubview(bottomBarBackground)
+
+        let borderLine = UIView()
+        borderLine.translatesAutoresizingMaskIntoConstraints = false
+        borderLine.backgroundColor = UIColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1.0)
+        bottomBarBackground.contentView.addSubview(borderLine)
+
+        let buttonRow = UIStackView()
+        buttonRow.translatesAutoresizingMaskIntoConstraints = false
+        buttonRow.axis = .horizontal
+        buttonRow.alignment = .center
+        buttonRow.spacing = 0
+        bottomBarBackground.contentView.addSubview(buttonRow)
+
+        configureIconButton(backButton, iconName: "icon_back", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(backTapped))
+        backButton.isEnabled = false
+        backButton.alpha = 0.3
+        buttonRow.addArrangedSubview(backButton)
+
+        configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(forwardTapped))
+        forwardButton.isEnabled = false
+        forwardButton.alpha = 0.3
+        buttonRow.addArrangedSubview(forwardButton)
+
+        let spacer = UIView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        buttonRow.addArrangedSubview(spacer)
+
+        configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(closeTapped))
+        buttonRow.addArrangedSubview(closeButton)
+
+        NSLayoutConstraint.activate([
+            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            topBar.topAnchor.constraint(equalTo: view.topAnchor),
+
+            addressPill.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 16),
+            addressPill.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -16),
+            addressPill.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            addressPill.heightAnchor.constraint(equalToConstant: 44),
+            addressPill.bottomAnchor.constraint(equalTo: topBar.bottomAnchor, constant: -8),
+
+            addressField.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 16),
+            addressField.trailingAnchor.constraint(equalTo: refreshButton.leadingAnchor, constant: -8),
+            addressField.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+
+            refreshButton.trailingAnchor.constraint(equalTo: addressPill.trailingAnchor, constant: -6),
+            refreshButton.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+            refreshButton.widthAnchor.constraint(equalToConstant: 36),
+            refreshButton.heightAnchor.constraint(equalToConstant: 36),
+
+            bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottomBar.heightAnchor.constraint(equalToConstant: 44),
+            bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+
+            bottomBarBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
+            bottomBarBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
+            bottomBarBackground.topAnchor.constraint(equalTo: bottomBar.topAnchor),
+            bottomBarBackground.bottomAnchor.constraint(equalTo: bottomBar.bottomAnchor),
+
+            borderLine.leadingAnchor.constraint(equalTo: bottomBarBackground.contentView.leadingAnchor),
+            borderLine.trailingAnchor.constraint(equalTo: bottomBarBackground.contentView.trailingAnchor),
+            borderLine.topAnchor.constraint(equalTo: bottomBarBackground.contentView.topAnchor),
+            borderLine.heightAnchor.constraint(equalToConstant: 0.5),
+
+            buttonRow.leadingAnchor.constraint(equalTo: bottomBarBackground.contentView.leadingAnchor, constant: 8),
+            buttonRow.trailingAnchor.constraint(equalTo: bottomBarBackground.contentView.trailingAnchor, constant: -8),
+            buttonRow.topAnchor.constraint(equalTo: bottomBarBackground.contentView.topAnchor),
+            buttonRow.bottomAnchor.constraint(equalTo: bottomBarBackground.contentView.bottomAnchor),
+
+            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: topBar.bottomAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
+    private func setupBackGestureRecognizer() {
+        let edgePan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleBackEdgePan(_:)))
+        edgePan.edges = .left
+        edgePan.delegate = self
+        edgePan.requiresExclusiveTouchType = false
+        edgePan.name = "LxAppBrowserBackEdgePan"
+        view.addGestureRecognizer(edgePan)
+        backEdgePanGesture = edgePan
+    }
+
+    private func attachManagedWebViewIfNeeded(attempt: Int = 0) {
+        attachRetryWorkItem?.cancel()
+        attachRetryWorkItem = nil
+
+        if let webView = findManagedBrowserWebView() {
+            if activeBrowserWebView !== webView || webView.superview !== contentContainer {
+                invalidateObservations()
+                activeBrowserWebView?.removeFromSuperview()
+                activeBrowserWebView = webView
+                WebViewManager.configureWebViewTransparency(webView, transparent: false)
+                WebViewManager.attachWebViewToContainer(webView, container: contentContainer)
+                observeManagedWebView(webView)
+            }
+
+            updateAddressBar(url: webView.url)
+            updateNavigationButtons()
+            return
+        }
+
+        guard attempt < Self.maxAttachRetries else {
+            os_log("Failed to attach browser webview for tab=%{public}@", log: Self.log, type: .error, tabId)
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.attachManagedWebViewIfNeeded(attempt: attempt + 1)
+        }
+        attachRetryWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.attachRetryDelay, execute: workItem)
+    }
+
+    private func findManagedBrowserWebView() -> WKWebView? {
+        let ptr = findBrowserWebView(tabId)
+        guard ptr != 0, let rawPointer = UnsafeRawPointer(bitPattern: ptr) else {
+            return nil
+        }
+
+        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        webView.setup(appId: Self.browserAppId, path: Self.browserTabPathPrefix + tabId)
+        NativeBridge.attachIfNeeded(to: webView)
+        return webView
+    }
+
+    private func observeManagedWebView(_ webView: WKWebView) {
+        urlObservation = webView.observe(\.url, options: [.initial, .new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                self?.updateAddressBar(url: webView.url)
+            }
+        }
+
+        canGoBackObservation = webView.observe(\.canGoBack, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.updateNavigationButtons()
+            }
+        }
+
+        canGoForwardObservation = webView.observe(\.canGoForward, options: [.initial, .new]) { [weak self] _, _ in
+            Task { @MainActor in
+                self?.updateNavigationButtons()
+            }
+        }
+    }
+
+    private func invalidateObservations() {
+        urlObservation?.invalidate()
+        canGoBackObservation?.invalidate()
+        canGoForwardObservation?.invalidate()
+        urlObservation = nil
+        canGoBackObservation = nil
+        canGoForwardObservation = nil
+    }
+
+    private func updateAddressBar(url: URL?) {
+        guard !addressField.isFirstResponder else { return }
+        addressField.text = url?.absoluteString ?? ""
+    }
+
+    private func updateNavigationButtons() {
+        let canGoBack = activeBrowserWebView?.canGoBack ?? false
+        backButton.isEnabled = canGoBack
+        backButton.alpha = canGoBack ? 1.0 : 0.3
+
+        let canGoForward = activeBrowserWebView?.canGoForward ?? false
+        forwardButton.isEnabled = canGoForward
+        forwardButton.alpha = canGoForward ? 1.0 : 0.3
+    }
+
+    private func submitAddressField() {
+        guard let result = handleBrowserAddressSubmission(
+            rawInput: addressField.text ?? "",
+            currentURL: activeBrowserWebView?.url?.absoluteString,
+            tabId: tabId
+        ),
+        let url = URL(string: result.url) else { return }
+        addressField.text = result.displayText
+        addressField.resignFirstResponder()
+        activeBrowserWebView?.load(URLRequest(url: url))
+    }
+
+    private func configureIconButton(
+        _ button: UIButton,
+        iconName: String,
+        iconSize: CGFloat,
+        tintColor: UIColor,
+        action: Selector
+    ) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.tintColor = tintColor
+        button.addTarget(self, action: action, for: .touchUpInside)
+
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: LxAppBrowserViewController.self)
+        #endif
+        if let pdfURL = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
+           let provider = CGDataProvider(url: pdfURL as CFURL),
+           let document = CGPDFDocument(provider),
+           let page = document.page(at: 1) {
+            let pageRect = page.getBoxRect(.mediaBox)
+            let targetSize = CGSize(width: iconSize, height: iconSize)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+            let image = renderer.image { ctx in
+                ctx.cgContext.translateBy(x: 0, y: targetSize.height)
+                ctx.cgContext.scaleBy(
+                    x: targetSize.width / pageRect.width,
+                    y: -targetSize.height / pageRect.height
+                )
+                ctx.cgContext.drawPDFPage(page)
+            }
+            button.setImage(image.withRenderingMode(.alwaysTemplate), for: .normal)
+        }
+
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 44),
+            button.heightAnchor.constraint(equalToConstant: 44),
+        ])
+    }
+
+    @objc private func closeTapped() {
+        if let navigationController {
+            navigationController.popViewController(animated: true)
+        } else {
+            closeManagedTabIfNeeded()
+            dismiss(animated: true)
+        }
+    }
+
+    @objc private func backTapped() {
+        guard let webView = activeBrowserWebView, webView.canGoBack else { return }
+        webView.goBack()
+    }
+
+    @objc private func forwardTapped() {
+        guard let webView = activeBrowserWebView, webView.canGoForward else { return }
+        webView.goForward()
+    }
+
+    @objc private func refreshTapped() {
+        activeBrowserWebView?.reload()
+    }
+
+    @objc private func handleBackEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard let containerView = gesture.view else { return }
+
+        switch gesture.state {
+        case .ended:
+            let translation = gesture.translation(in: containerView).x
+            let velocity = gesture.velocity(in: containerView).x
+            let threshold = max(containerView.bounds.width * 0.2, 80)
+            if translation > threshold || velocity > 700 {
+                navigationController?.popViewController(animated: true)
+            }
+        default:
+            break
+        }
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        submitAddressField()
+        return false
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === backEdgePanGesture
+    }
+}
+#endif

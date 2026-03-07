@@ -19,6 +19,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let minSidebarWidth: CGFloat = 48
         static let browserToolbarHeight: CGFloat = 38
         static let browserButtonSize: CGFloat = 28
+        static let browserToolbarIconSize: CGFloat = 14
         static let browserAddressBarHeight: CGFloat = 26
     }
 
@@ -44,6 +45,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private let browserToolbar = NSView()
     private let browserToolbarSeparator = NSView()
     private let browserBackButton = NSButton()
+    private let browserForwardButton = NSButton()
     private let browserRefreshButton = NSButton()
     private let browserAddressBarContainer = NSView()
     private let browserAddressField = NSTextField()
@@ -52,6 +54,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     nonisolated(unsafe) private var browserTitleObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var browserUrlObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var browserCanGoBackObservation: NSKeyValueObservation?
+    nonisolated(unsafe) private var browserCanGoForwardObservation: NSKeyValueObservation?
     private var browserDevToolsRequestToken: UInt64 = 0
 
     /// Get view controller for specific appId (needed for navigation)
@@ -75,6 +78,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
+        browserCanGoForwardObservation?.invalidate()
     }
 
     private static func createWindow() -> LxAppWindow {
@@ -640,24 +644,15 @@ extension LxAppWindowController {
         browserToolbar.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         host.addSubview(browserToolbar)
 
-        browserBackButton.translatesAutoresizingMaskIntoConstraints = false
-        browserBackButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
-        browserBackButton.isBordered = false
-        browserBackButton.bezelStyle = .regularSquare
-        browserBackButton.imagePosition = .imageOnly
-        browserBackButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
-        browserBackButton.target = self
-        browserBackButton.action = #selector(browserBackClicked)
+        configureBrowserButton(browserBackButton, iconName: "icon_back", action: #selector(browserBackClicked))
         browserToolbar.addSubview(browserBackButton)
 
-        browserRefreshButton.translatesAutoresizingMaskIntoConstraints = false
-        browserRefreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
-        browserRefreshButton.isBordered = false
-        browserRefreshButton.bezelStyle = .regularSquare
-        browserRefreshButton.imagePosition = .imageOnly
-        browserRefreshButton.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
-        browserRefreshButton.target = self
-        browserRefreshButton.action = #selector(browserRefreshClicked)
+        configureBrowserButton(browserForwardButton, iconName: "icon_forward", action: #selector(browserForwardClicked))
+        browserForwardButton.isEnabled = false
+        browserForwardButton.alphaValue = 0.4
+        browserToolbar.addSubview(browserForwardButton)
+
+        configureBrowserButton(browserRefreshButton, iconName: "icon_browser_refresh", action: #selector(browserRefreshClicked))
         browserToolbar.addSubview(browserRefreshButton)
 
         browserAddressBarContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -700,7 +695,12 @@ extension LxAppWindowController {
             browserBackButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserBackButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
 
-            browserRefreshButton.leadingAnchor.constraint(equalTo: browserBackButton.trailingAnchor, constant: 4),
+            browserForwardButton.leadingAnchor.constraint(equalTo: browserBackButton.trailingAnchor, constant: 4),
+            browserForwardButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserForwardButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+            browserForwardButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
+
+            browserRefreshButton.leadingAnchor.constraint(equalTo: browserForwardButton.trailingAnchor, constant: 4),
             browserRefreshButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
             browserRefreshButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserRefreshButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
@@ -756,10 +756,16 @@ extension LxAppWindowController {
         browserBackButton.alphaValue = canGoBack ? 1.0 : 0.4
     }
 
+    private func updateBrowserForwardButtonState(canGoForward: Bool) {
+        browserForwardButton.isEnabled = canGoForward
+        browserForwardButton.alphaValue = canGoForward ? 1.0 : 0.4
+    }
+
     private func observeActiveBrowserWebView(_ webView: WKWebView) {
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
+        browserCanGoForwardObservation?.invalidate()
 
         browserTitleObservation = webView.observe(\.title, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor in
@@ -784,6 +790,12 @@ extension LxAppWindowController {
                 self?.updateBrowserBackButtonState(canGoBack: webView.canGoBack)
             }
         }
+
+        browserCanGoForwardObservation = webView.observe(\.canGoForward, options: [.new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                self?.updateBrowserForwardButtonState(canGoForward: webView.canGoForward)
+            }
+        }
     }
 
     private func displayableBrowserURL(_ raw: String?) -> String {
@@ -798,23 +810,6 @@ extension LxAppWindowController {
         return trimmed
     }
 
-    private func normalizeBrowserURLInput(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        var candidate = trimmed
-        if !candidate.contains("://") {
-            candidate = "https://\(candidate)"
-        }
-        if let url = URL(string: candidate),
-           let scheme = url.scheme?.lowercased(),
-           scheme == "http" || scheme == "https",
-           url.host != nil {
-            return url.absoluteString
-        }
-        return nil
-    }
-
     private func openAddressInActiveBrowserTab(_ urlString: String) {
         guard let webView = activeBrowserWebView,
               let url = URL(string: urlString) else { return }
@@ -827,28 +822,40 @@ extension LxAppWindowController {
         webView.goBack()
     }
 
+    @objc private func browserForwardClicked() {
+        guard let webView = activeBrowserWebView, webView.canGoForward else { return }
+        webView.goForward()
+    }
+
     @objc private func browserRefreshClicked() {
         activeBrowserWebView?.reload()
     }
 
     @objc private func browserAddressSubmitted(_ sender: NSTextField) {
-        guard let urlString = normalizeBrowserURLInput(sender.stringValue) else { return }
-        openAddressInActiveBrowserTab(urlString)
+        guard let result = handleBrowserAddressSubmission(
+            rawInput: sender.stringValue,
+            currentURL: activeBrowserWebView?.url?.absoluteString,
+            tabId: activeBrowserTabId?.uuidString
+        ) else { return }
+        openAddressInActiveBrowserTab(result.url)
     }
 
     private func clearBrowserWebViewAttachment() {
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
+        browserCanGoForwardObservation?.invalidate()
         browserTitleObservation = nil
         browserUrlObservation = nil
         browserCanGoBackObservation = nil
+        browserCanGoForwardObservation = nil
         if let activeBrowserWebView {
             clearBrowserInspectorAttachment(activeBrowserWebView)
         }
         activeBrowserWebView?.removeFromSuperview()
         activeBrowserWebView = nil
         updateBrowserBackButtonState(canGoBack: false)
+        updateBrowserForwardButtonState(canGoForward: false)
     }
 
     private func closeAllBrowserTabs(notifyRust: Bool = true) {
@@ -1037,6 +1044,49 @@ extension LxAppWindowController {
         guard browserTabIds.contains(id) else { return }
         browserTabTitles[id] = title
         sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
+    }
+
+    private func configureBrowserButton(_ button: NSButton, iconName: String, action: Selector) {
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isBordered = false
+        button.bezelStyle = .regularSquare
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
+        button.target = self
+        button.action = action
+
+        button.image = loadBrowserToolbarIcon(named: iconName, size: Layout.browserToolbarIconSize)
+        button.contentTintColor = NSColor.labelColor.withAlphaComponent(0.8)
+    }
+
+    private func loadBrowserToolbarIcon(named iconName: String, size: CGFloat) -> NSImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: LxAppWindowController.self)
+        #endif
+
+        guard let url = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
+              let document = CGPDFDocument(url as CFURL),
+              let page = document.page(at: 1) else {
+            return nil
+        }
+
+        let pageRect = page.getBoxRect(.mediaBox)
+        let targetSize = CGSize(width: size, height: size)
+        let image = NSImage(size: targetSize, flipped: false) { rect in
+            guard let context = NSGraphicsContext.current?.cgContext else {
+                return false
+            }
+            context.saveGState()
+            context.translateBy(x: 0, y: rect.height)
+            context.scaleBy(x: rect.width / pageRect.width, y: -rect.height / pageRect.height)
+            context.drawPDFPage(page)
+            context.restoreGState()
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 
