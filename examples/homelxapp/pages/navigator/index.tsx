@@ -160,13 +160,28 @@ export default function NavigatorPage() {
 
               <LxNavigator
                 url="https://www.deepseek.com"
-                onSuccess={() => addLog('✓ Opening DeepSeek in browser')}
-                onFail={() => addLog('✗ Failed to open browser')}
+                target="self"
+                onSuccess={() => addLog('✓ Opening DeepSeek in-app')}
+                onFail={() => addLog('✗ Failed to open in-app browser')}
               >
                 <div className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                   <div className="flex items-center justify-center gap-2">
+                    <span>🔗</span>
+                    <span>Open DeepSeek</span>
+                  </div>
+                </div>
+              </LxNavigator>
+
+              <LxNavigator
+                url="https://www.deepseek.com"
+                target="browser"
+                onSuccess={() => addLog('✓ Opening DeepSeek in external browser')}
+                onFail={() => addLog('✗ Failed to open external browser')}
+              >
+                <div className="w-full py-2.5 px-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                  <div className="flex items-center justify-center gap-2">
                     <span>🌐</span>
-                    <span>Open DeepSeek in Browser</span>
+                    <span>Open DeepSeek in Default Browser</span>
                   </div>
                 </div>
               </LxNavigator>

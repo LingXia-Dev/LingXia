@@ -6,6 +6,8 @@ use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jni::objects::{JClass, JObject, JString, JValue};
+use jni::signature::MethodSignature;
+use jni::strings::JNIStr;
 use jni::{Env, jni_sig, jni_str};
 use lingxia_webview::with_env;
 use std::fs;
@@ -427,11 +429,16 @@ fn get_lxapp_device_class() -> Result<&'static JClass<'static>, PlatformError> {
         .map_err(|e| PlatformError::Platform(e.to_string()))
 }
 
-fn call_lxapp_device_string_method(
-    method_name: &str,
+fn call_lxapp_device_string_method<'sig, 'sig_args, N, S>(
+    method_name: N,
+    signature: S,
     error_context: &str,
     storage_key: &str,
-) -> Result<Option<String>, PlatformError> {
+) -> Result<Option<String>, PlatformError>
+where
+    N: AsRef<JNIStr>,
+    S: AsRef<MethodSignature<'sig, 'sig_args>>,
+{
     let device_class = get_lxapp_device_class()?;
 
     with_env(
@@ -440,7 +447,7 @@ fn call_lxapp_device_string_method(
             let result = env.call_static_method(
                 device_class,
                 method_name,
-                "(Ljava/lang/String;)Ljava/lang/String;",
+                signature,
                 &[JValue::Object(&storage_key_jstring)],
             )?;
 
@@ -457,13 +464,17 @@ fn call_lxapp_device_string_method(
     .map_err(|e| PlatformError::Platform(format!("Failed to {}: {}", error_context, e)))
 }
 
-fn call_lxapp_device_void_method(
-    method_name: &str,
-    signature: &str,
+fn call_lxapp_device_void_method<'sig, 'sig_args, N, S>(
+    method_name: N,
+    signature: S,
     error_context: &str,
     storage_key: &str,
     value_base64: Option<&str>,
-) -> Result<(), PlatformError> {
+) -> Result<(), PlatformError>
+where
+    N: AsRef<JNIStr>,
+    S: AsRef<MethodSignature<'sig, 'sig_args>>,
+{
     let device_class = get_lxapp_device_class()?;
 
     with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
@@ -483,7 +494,8 @@ fn call_lxapp_device_void_method(
 
 fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, PlatformError> {
     call_lxapp_device_string_method(
-        "readSecureStoreValueBase64",
+        jni_str!("readSecureStoreValueBase64"),
+        jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
         "read Android secure store",
         storage_key,
     )
@@ -491,8 +503,8 @@ fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, Platfor
 
 fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<(), PlatformError> {
     call_lxapp_device_void_method(
-        "writeSecureStoreValueBase64",
-        "(Ljava/lang/String;Ljava/lang/String;)V",
+        jni_str!("writeSecureStoreValueBase64"),
+        jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
         "write Android secure store",
         storage_key,
         Some(value_base64),
@@ -501,8 +513,8 @@ fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<()
 
 fn delete_secure_store_value(storage_key: &str) -> Result<(), PlatformError> {
     call_lxapp_device_void_method(
-        "deleteSecureStoreValue",
-        "(Ljava/lang/String;)V",
+        jni_str!("deleteSecureStoreValue"),
+        jni_sig!("(Ljava/lang/String;)V"),
         "delete Android secure store",
         storage_key,
         None,
