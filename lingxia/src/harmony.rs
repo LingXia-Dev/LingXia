@@ -241,6 +241,11 @@ pub fn resolve_lx_uri(appid: String, input: String) -> Option<String> {
     Some(format!("file://{}", resolved.to_string_lossy()))
 }
 
+#[napi]
+pub fn handle_browser_address_input(request_json: String) -> Option<String> {
+    lxapp::handle_browser_address_input_json(&request_json)
+}
+
 /// Get complete TabBar state with items array
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {

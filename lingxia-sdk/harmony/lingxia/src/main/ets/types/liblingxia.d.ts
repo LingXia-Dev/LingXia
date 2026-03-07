@@ -25,6 +25,59 @@ declare module 'liblingxia.so' {
     session_id: number;
   }
 
+  export type BrowserAddressInputTrigger = 'edit' | 'submit';
+  export type BrowserAddressAction = 'navigate' | 'suggest' | 'reject';
+  export type BrowserAddressValueKind = 'empty' | 'url' | 'search_query' | 'invalid';
+  export type BrowserNavigationTarget = 'current_tab' | 'new_tab';
+
+  export interface BrowserAddressInputContext {
+    preferred_scheme?: string | null;
+    current_url?: string | null;
+    tab_id?: string | null;
+    allow_search_fallback?: boolean;
+  }
+
+  export interface BrowserAddressInputRequest {
+    raw_input: string;
+    trigger?: BrowserAddressInputTrigger;
+    context?: BrowserAddressInputContext;
+  }
+
+  export interface BrowserAddressState {
+    raw_input: string;
+    normalized_input: string;
+    display_text: string;
+    value_kind: BrowserAddressValueKind;
+    canonical_url?: string | null;
+    inferred_scheme?: string | null;
+  }
+
+  export interface BrowserAddressNavigation {
+    url: string;
+    target: BrowserNavigationTarget;
+  }
+
+  export interface BrowserAddressSuggestion {
+    kind: string;
+    title: string;
+    subtitle?: string | null;
+    fill_text: string;
+    navigation?: BrowserAddressNavigation | null;
+  }
+
+  export interface BrowserAddressInputError {
+    code: string;
+    message: string;
+  }
+
+  export interface BrowserAddressInputResponse {
+    action: BrowserAddressAction;
+    state: BrowserAddressState;
+    navigation?: BrowserAddressNavigation | null;
+    suggestions?: BrowserAddressSuggestion[] | null;
+    error?: BrowserAddressInputError | null;
+  }
+
   /**
    * App lifecycle notifications from host UIAbility.
    */
@@ -136,6 +189,14 @@ declare module 'liblingxia.so' {
    * Passes through `http(s)://...` unchanged.
    */
   export function resolveLxUri(appid: string, input: string): string | null;
+
+  /**
+   * Run the shared browser address input handler.
+   *
+   * The input and output are JSON payloads so the schema can evolve without
+   * repeatedly changing the native ABI.
+   */
+  export function handleBrowserAddressInput(requestJson: string): string | null;
 
   /**
    * Get TabBar state for a specific LxApp with complete items array
