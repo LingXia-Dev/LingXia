@@ -508,14 +508,8 @@ impl WebViewInner {
 
             // Access preferences to set security settings
             let prefs = config.preferences();
-            let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed
-                && cfg!(target_os = "macos");
+            let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed;
             let is_strict = effective_options.profile == SecurityProfile::StrictDefault;
-            if effective_options.profile == SecurityProfile::BrowserRelaxed && !allow_new_windows {
-                log::warn!(
-                    "BrowserRelaxed profile requested on non-macOS Apple target; browser-only features are disabled"
-                );
-            }
             prefs.setJavaScriptCanOpenWindowsAutomatically(allow_new_windows);
 
             // Enable Web Inspector support for all webviews (lxapp pages + browser tabs).
