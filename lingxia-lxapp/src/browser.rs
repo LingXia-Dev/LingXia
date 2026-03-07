@@ -1,8 +1,9 @@
 use crate::{LxApp, LxAppError};
 use lingxia_webview::{
-    WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
-    create_webview, destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
+    WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError, create_webview,
+    destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -11,6 +12,309 @@ use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
+const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserAddressInputTrigger {
+    Edit,
+    #[default]
+    Submit,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserAddressAction {
+    Navigate,
+    Suggest,
+    Reject,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserAddressValueKind {
+    Empty,
+    Url,
+    SearchQuery,
+    Invalid,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserNavigationTarget {
+    CurrentTab,
+    NewTab,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BrowserAddressInputContext {
+    #[serde(default)]
+    pub preferred_scheme: Option<String>,
+    #[serde(default)]
+    pub current_url: Option<String>,
+    #[serde(default)]
+    pub tab_id: Option<String>,
+    #[serde(default)]
+    pub allow_search_fallback: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressInputRequest {
+    pub raw_input: String,
+    #[serde(default)]
+    pub trigger: BrowserAddressInputTrigger,
+    #[serde(default)]
+    pub context: BrowserAddressInputContext,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressState {
+    pub raw_input: String,
+    pub normalized_input: String,
+    pub display_text: String,
+    pub value_kind: BrowserAddressValueKind,
+    pub canonical_url: Option<String>,
+    pub inferred_scheme: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressNavigation {
+    pub url: String,
+    pub target: BrowserNavigationTarget,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressSuggestion {
+    pub kind: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub fill_text: String,
+    pub navigation: Option<BrowserAddressNavigation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressInputError {
+    pub code: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserAddressInputResponse {
+    pub action: BrowserAddressAction,
+    pub state: BrowserAddressState,
+    pub navigation: Option<BrowserAddressNavigation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggestions: Option<Vec<BrowserAddressSuggestion>>,
+    pub error: Option<BrowserAddressInputError>,
+}
+
+#[derive(Debug, Clone)]
+struct BrowserUrlResolution {
+    url: String,
+    inferred_scheme: Option<String>,
+}
+
+fn normalize_browser_preferred_scheme(raw: Option<&str>) -> String {
+    let candidate = raw
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(DEFAULT_BROWSER_PREFERRED_SCHEME);
+    let lowered = candidate.to_ascii_lowercase();
+    match lowered.as_str() {
+        "http" | "https" => lowered,
+        _ => DEFAULT_BROWSER_PREFERRED_SCHEME.to_string(),
+    }
+}
+
+fn extract_host_from_authority(authority: &str) -> Option<&str> {
+    let authority = authority.rsplit('@').next()?;
+    if authority.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = authority.strip_prefix('[') {
+        let end = rest.find(']')?;
+        let host = &rest[..end];
+        if host.is_empty() {
+            return None;
+        }
+        let suffix = &rest[end + 1..];
+        if suffix.is_empty() {
+            return Some(host);
+        }
+        if !suffix.starts_with(':') || suffix.len() == 1 {
+            return None;
+        }
+        if suffix[1..].chars().all(|c| c.is_ascii_digit()) {
+            return Some(host);
+        }
+        return None;
+    }
+
+    let host = match authority.rsplit_once(':') {
+        Some((host, port))
+            if !host.is_empty() && !port.is_empty() && port.chars().all(|c| c.is_ascii_digit()) =>
+        {
+            host
+        }
+        Some(_) => return None,
+        _ => authority,
+    };
+
+    if host.is_empty() { None } else { Some(host) }
+}
+
+fn resolve_browser_http_url(raw: &str, preferred_scheme: &str) -> Option<BrowserUrlResolution> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.chars().any(|c| c.is_whitespace()) {
+        return None;
+    }
+
+    let (candidate, inferred_scheme) = if trimmed.contains("://") {
+        (trimmed.to_string(), None)
+    } else {
+        (
+            format!("{preferred_scheme}://{trimmed}"),
+            Some(preferred_scheme.to_string()),
+        )
+    };
+
+    let (scheme_raw, rest) = candidate.split_once("://")?;
+    let scheme = scheme_raw.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https") {
+        return None;
+    }
+    if rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') || rest.starts_with('#') {
+        return None;
+    }
+
+    let authority = rest
+        .split(|c| matches!(c, '/' | '?' | '#'))
+        .next()
+        .unwrap_or_default();
+    let host = extract_host_from_authority(authority)?;
+    if host.trim().is_empty() || host.chars().any(|c| c.is_whitespace()) {
+        return None;
+    }
+
+    Some(BrowserUrlResolution {
+        url: format!("{scheme}://{rest}"),
+        inferred_scheme,
+    })
+}
+
+fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        BrowserAddressValueKind::Empty
+    } else if trimmed.contains(char::is_whitespace) || !trimmed.contains("://") {
+        BrowserAddressValueKind::SearchQuery
+    } else {
+        BrowserAddressValueKind::Invalid
+    }
+}
+
+/// Handle browser address-bar input with a minimal synchronous pipeline.
+///
+/// Current scope:
+/// - `submit` resolves navigable http/https-style input into a current-tab navigation target.
+/// - `edit` only returns the `Suggest` action shape; real autocomplete/search suggestions are not wired yet.
+/// - `new_tab`, async suggestion providers, and search fallback remain protocol-level extension points.
+pub fn handle_browser_address_input(request: BrowserAddressInputRequest) -> BrowserAddressInputResponse {
+    let preferred_scheme =
+        normalize_browser_preferred_scheme(request.context.preferred_scheme.as_deref());
+    let trimmed = request.raw_input.trim();
+
+    if let Some(resolved) = resolve_browser_http_url(trimmed, &preferred_scheme) {
+        let BrowserUrlResolution { url: resolved_url, inferred_scheme } = resolved;
+
+        let action = match request.trigger {
+            BrowserAddressInputTrigger::Submit => BrowserAddressAction::Navigate,
+            BrowserAddressInputTrigger::Edit => BrowserAddressAction::Suggest,
+        };
+
+        let display_text = resolved_url.clone();
+        let state = BrowserAddressState {
+            raw_input: request.raw_input,
+            normalized_input: display_text.clone(),
+            display_text,
+            value_kind: BrowserAddressValueKind::Url,
+            canonical_url: Some(resolved_url.clone()),
+            inferred_scheme,
+        };
+
+        let navigation = BrowserAddressNavigation {
+            url: resolved_url,
+            target: BrowserNavigationTarget::CurrentTab,
+        };
+
+        return BrowserAddressInputResponse {
+            action,
+            state,
+            navigation: matches!(action, BrowserAddressAction::Navigate).then_some(navigation),
+            suggestions: None,
+            error: None,
+        };
+    }
+
+    let value_kind = classify_browser_address_value(trimmed);
+    let normalized = trimmed.to_string();
+    let state = BrowserAddressState {
+        raw_input: request.raw_input,
+        display_text: normalized.clone(),
+        normalized_input: normalized,
+        value_kind,
+        canonical_url: None,
+        inferred_scheme: None,
+    };
+
+    let should_suggest = matches!(request.trigger, BrowserAddressInputTrigger::Edit)
+        || (matches!(value_kind, BrowserAddressValueKind::SearchQuery)
+            && request.context.allow_search_fallback);
+
+    if should_suggest {
+        return BrowserAddressInputResponse {
+            action: BrowserAddressAction::Suggest,
+            state,
+            navigation: None,
+            suggestions: None,
+            error: None,
+        };
+    }
+
+    let error = match value_kind {
+        BrowserAddressValueKind::Empty => BrowserAddressInputError {
+            code: "empty_input".to_string(),
+            message: "Address input is empty".to_string(),
+        },
+        BrowserAddressValueKind::SearchQuery => BrowserAddressInputError {
+            code: "search_fallback_unavailable".to_string(),
+            message: "Search fallback is not enabled for this browser input".to_string(),
+        },
+        BrowserAddressValueKind::Invalid | BrowserAddressValueKind::Url => {
+            BrowserAddressInputError {
+                code: "invalid_url".to_string(),
+                message: "Address input is not a supported URL".to_string(),
+            }
+        }
+    };
+
+    BrowserAddressInputResponse {
+        action: BrowserAddressAction::Reject,
+        state,
+        navigation: None,
+        suggestions: None,
+        error: Some(error),
+    }
+}
+
+pub fn handle_browser_address_input_json(request_json: &str) -> Option<String> {
+    let request: BrowserAddressInputRequest = serde_json::from_str(request_json).ok()?;
+    serde_json::to_string(&handle_browser_address_input(request)).ok()
+}
 
 #[derive(Clone)]
 struct BrowserTabState {
@@ -496,4 +800,92 @@ pub fn find_browser_webview(tab_id: &str) -> Option<Arc<WebView>> {
     let path = browser_tab_path_for_id(&normalized);
     let webtag = browser_webtag(&path, session_id);
     find_managed_webview(&webtag)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn submit_without_scheme_navigates_with_https() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "example.com/docs".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(
+            response.navigation.as_ref().map(|value| value.url.as_str()),
+            Some("https://example.com/docs")
+        );
+        assert_eq!(response.state.value_kind, BrowserAddressValueKind::Url);
+        assert_eq!(response.state.inferred_scheme.as_deref(), Some("https"));
+    }
+
+    #[test]
+    fn submit_keeps_http_fragments() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "http://example.com/path?q=1#frag".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(
+            response.navigation.as_ref().map(|value| value.url.as_str()),
+            Some("http://example.com/path?q=1#frag")
+        );
+        assert_eq!(response.state.inferred_scheme, None);
+    }
+
+    #[test]
+    fn submit_supports_localhost() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "localhost:3000".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(
+            response.navigation.as_ref().map(|value| value.url.as_str()),
+            Some("https://localhost:3000")
+        );
+    }
+
+    #[test]
+    fn edit_search_query_returns_suggest_action() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "openai docs".to_string(),
+            trigger: BrowserAddressInputTrigger::Edit,
+            context: BrowserAddressInputContext::default(),
+        });
+
+        assert_eq!(response.action, BrowserAddressAction::Suggest);
+        assert_eq!(
+            response.state.value_kind,
+            BrowserAddressValueKind::SearchQuery
+        );
+        assert!(response.navigation.is_none());
+    }
+
+    #[test]
+    fn submit_search_query_rejects_when_fallback_is_disabled() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "openai".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+
+        assert_eq!(response.action, BrowserAddressAction::Reject);
+        assert_eq!(
+            response.error.as_ref().map(|value| value.code.as_str()),
+            Some("search_fallback_unavailable")
+        );
+        assert_eq!(
+            response.state.value_kind,
+            BrowserAddressValueKind::SearchQuery
+        );
+    }
 }
