@@ -1,8 +1,7 @@
 use crate::{LxApp, LxAppError};
 use lingxia_webview::{
     WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
-    create_webview_with_options, destroy_webview as destroy_managed_webview,
-    find_webview as find_managed_webview,
+    create_webview, destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,7 +100,11 @@ fn browser_create_webview(
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let (ready_tx, ready_rx) = oneshot::channel();
-    create_webview_with_options(&webtag, WebViewCreateOptions::browser_relaxed(), ready_tx);
+    create_webview(
+        &webtag,
+        ready_tx,
+        Some(WebViewCreateOptions::browser_relaxed()),
+    );
     let path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
 

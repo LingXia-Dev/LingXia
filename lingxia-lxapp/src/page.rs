@@ -171,7 +171,7 @@ impl Page {
         // Initiate WebView creation asynchronously
         let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
         let (ready_tx, ready_rx) = oneshot::channel();
-        create_webview(&webtag, ready_tx);
+        create_webview(&webtag, ready_tx, None);
 
         // Spawn task to wait for WebView creation completion
         // Keep a strong reference to ensure page stays alive during WebView creation

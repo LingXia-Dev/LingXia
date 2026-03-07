@@ -246,19 +246,18 @@ pub fn init_webview_manager() {
     let _ = WEBVIEW_INSTANCES.set(Arc::new(Mutex::new(HashMap::new())));
 }
 
-/// Create a WebView instance asynchronously with strict-default options.
-pub fn create_webview(webtag: &WebTag, sender: Sender<Result<Arc<WebView>, WebViewError>>) {
-    create_webview_with_options(webtag, WebViewCreateOptions::strict_default(), sender);
-}
-
-/// Create a WebView instance asynchronously with explicit options.
-pub fn create_webview_with_options(
+/// Create a WebView instance asynchronously.
+///
+/// When `options` is `None`, strict-default options are used.
+pub fn create_webview(
     webtag: &WebTag,
-    options: WebViewCreateOptions,
     sender: Sender<Result<Arc<WebView>, WebViewError>>,
+    options: Option<WebViewCreateOptions>,
 ) {
     let (appid, path) = webtag.extract_parts();
-    let effective_options = options.normalize();
+    let effective_options = options
+        .unwrap_or_else(WebViewCreateOptions::strict_default)
+        .normalize();
 
     log::info!(
         "Creating WebView for key={} profile={:?}",
