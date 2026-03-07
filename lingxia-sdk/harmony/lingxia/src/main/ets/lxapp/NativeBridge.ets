@@ -10,6 +10,7 @@ import { LxAppMedia } from './APIs/LxAppMedia';
 import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
+import { BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
 import { LxAppDocument } from './APIs/LxAppDocument';
 import { LxAppWifi } from './APIs/LxAppWifi';
 import { LxAppNetwork } from './APIs/LxAppNetwork';
@@ -130,8 +131,11 @@ class NativeBridge {
       return LxApp.navigate(appId, path, animType);
     });
 
-    // Launch external URL
-    this.register('launchWithUrl', (url: string) => {
+    // Launch URL (external or in-app browser)
+    this.register('launchWithUrl', (url: string, target?: string) => {
+      if (target === 'self') {
+        return BrowserOverlayManager.show(url);
+      }
       LxApp.launchWithUrl(url);
       return true;
     });

@@ -572,10 +572,12 @@ impl AppRuntime for Platform {
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
     ) -> Result<(), PlatformError> {
-        if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
-            log::warn!("openURL target='self' not supported on Harmony, falling back to external");
-        }
-        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&req.url])
+        let target_str = if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
+            "self"
+        } else {
+            "external"
+        };
+        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&req.url, target_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }
 

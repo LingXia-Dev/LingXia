@@ -12,6 +12,7 @@ import { PopupManager } from './APIs/LxAppPopup';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
+import { BrowserOverlay, BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
 
 const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
@@ -79,6 +80,16 @@ export struct LxAppNavigation {
 
   private closeActiveOverlayIfAny(): boolean {
     // Keep ordering aligned with zIndex (topmost first).
+    try {
+      if (BrowserOverlayManager.isShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay BrowserOverlay');
+        BrowserOverlayManager.hide();
+        return true;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error closing overlay BrowserOverlay: ${error}`);
+    }
+
     try {
       if (PdfSingleViewerOverlayManager.isShowing()) {
         hilog.info(DOMAIN, TAG, 'BackPress: closing overlay PdfSinglePageViewerOverlay');
@@ -556,6 +567,10 @@ export struct LxAppNavigation {
       // Integrated PDF single-page viewer (closed, safe-area aware)
       PdfSinglePageViewerOverlay()
         .zIndex(10007)
+
+      // In-app browser overlay
+      BrowserOverlay()
+        .zIndex(10008)
 
       // Custom edge-swipe back gesture zone
       this.buildEdgeBackSwipeZone()
