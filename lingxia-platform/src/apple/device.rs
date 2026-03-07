@@ -1,7 +1,8 @@
 //! Apple platform device implementation
 use super::Platform;
 use crate::error::PlatformError;
-use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware};
+use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
 
 #[cfg(target_os = "ios")]
@@ -517,16 +518,16 @@ unsafe fn main_dispatch_queue() -> DispatchQueue {
     std::ptr::addr_of!(_dispatch_main_q) as *const _ as DispatchQueue
 }
 
-impl DeviceSecureStore for Platform {
-    fn secure_store_read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+impl SecureStore for Platform {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
         keychain_read(key)
     }
 
-    fn secure_store_write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
         keychain_write(key, value)
     }
 
-    fn secure_store_delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), PlatformError> {
         keychain_delete(key)
     }
 }

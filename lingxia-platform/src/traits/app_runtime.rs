@@ -4,12 +4,13 @@ use std::path::{Path, PathBuf};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 
-use super::device::{Device, DeviceHardware, DeviceSecureStore};
+use super::device::{Device, DeviceHardware};
 use super::document::DocumentInteraction;
 use super::location::Location;
 use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
 use super::network::Network;
+use super::secure_store::SecureStore;
 use super::ui::{PopupPresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
@@ -68,7 +69,7 @@ pub trait AppRuntime:
     + PopupPresenter
     + Device
     + DeviceHardware
-    + DeviceSecureStore
+    + SecureStore
     + DocumentInteraction
     + Location
     + UIUpdate

@@ -1,9 +1,11 @@
 //! Android platform device implementation
 
 use crate::error::PlatformError;
-use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware};
+use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
-use jni::objects::{JObject, JString, JValue};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+use jni::objects::{JClass, JObject, JString, JValue};
 use jni::{Env, jni_sig, jni_str};
 use lingxia_webview::with_env;
 use std::fs;
@@ -419,7 +421,116 @@ impl DeviceHardware for Platform {
     }
 }
 
-impl DeviceSecureStore for Platform {}
+fn get_lxapp_device_class() -> Result<&'static JClass<'static>, PlatformError> {
+    super::get_cached_class(super::CachedClass::LxAppDevice)
+        .map(|class| class.as_ref())
+        .map_err(|e| PlatformError::Platform(e.to_string()))
+}
+
+fn call_lxapp_device_string_method(
+    method_name: &str,
+    error_context: &str,
+    storage_key: &str,
+) -> Result<Option<String>, PlatformError> {
+    let device_class = get_lxapp_device_class()?;
+
+    with_env(
+        |env| -> Result<Option<String>, Box<dyn std::error::Error>> {
+            let storage_key_jstring = env.new_string(storage_key)?;
+            let result = env.call_static_method(
+                device_class,
+                method_name,
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[JValue::Object(&storage_key_jstring)],
+            )?;
+
+            let obj = result.l()?;
+            if obj.is_null() {
+                return Ok(None);
+            }
+
+            let value = unsafe { JString::from_raw(env, obj.into_raw() as _) };
+            let text = value.try_to_string(env)?;
+            Ok(Some(text))
+        },
+    )
+    .map_err(|e| PlatformError::Platform(format!("Failed to {}: {}", error_context, e)))
+}
+
+fn call_lxapp_device_void_method(
+    method_name: &str,
+    signature: &str,
+    error_context: &str,
+    storage_key: &str,
+    value_base64: Option<&str>,
+) -> Result<(), PlatformError> {
+    let device_class = get_lxapp_device_class()?;
+
+    with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let storage_key_jstring = env.new_string(storage_key)?;
+        let value_jstring = value_base64.map(|value| env.new_string(value)).transpose()?;
+
+        let mut args = vec![JValue::Object(&storage_key_jstring)];
+        if let Some(value_jstring) = value_jstring.as_ref() {
+            args.push(JValue::Object(value_jstring));
+        }
+
+        env.call_static_method(device_class, method_name, signature, &args)?;
+        Ok(())
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to {}: {}", error_context, e)))
+}
+
+fn read_secure_store_base64(storage_key: &str) -> Result<Option<String>, PlatformError> {
+    call_lxapp_device_string_method(
+        "readSecureStoreValueBase64",
+        "read Android secure store",
+        storage_key,
+    )
+}
+
+fn write_secure_store_base64(storage_key: &str, value_base64: &str) -> Result<(), PlatformError> {
+    call_lxapp_device_void_method(
+        "writeSecureStoreValueBase64",
+        "(Ljava/lang/String;Ljava/lang/String;)V",
+        "write Android secure store",
+        storage_key,
+        Some(value_base64),
+    )
+}
+
+fn delete_secure_store_value(storage_key: &str) -> Result<(), PlatformError> {
+    call_lxapp_device_void_method(
+        "deleteSecureStoreValue",
+        "(Ljava/lang/String;)V",
+        "delete Android secure store",
+        storage_key,
+        None,
+    )
+}
+
+impl SecureStore for Platform {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+        let Some(encoded) = read_secure_store_base64(key)? else {
+            return Ok(None);
+        };
+
+        STANDARD.decode(encoded).map(Some).map_err(|e| {
+            PlatformError::Platform(format!(
+                "Failed to decode Android secure store value for key {}: {}",
+                key, e
+            ))
+        })
+    }
+
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+        write_secure_store_base64(key, &STANDARD.encode(value))
+    }
+
+    fn delete(&self, key: &str) -> Result<(), PlatformError> {
+        delete_secure_store_value(key)
+    }
+}
 
 /// Get Android API level (SDK_INT).
 pub fn get_api_level() -> i32 {

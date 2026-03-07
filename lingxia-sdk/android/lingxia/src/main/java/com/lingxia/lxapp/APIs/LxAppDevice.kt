@@ -102,6 +102,21 @@ object LxAppDevice {
         }
     }
 
+    @JvmStatic
+    fun readSecureStoreValueBase64(storageKey: String): String? {
+        return AndroidSecureStore.readValueBase64(storageKey)
+    }
+
+    @JvmStatic
+    fun writeSecureStoreValueBase64(storageKey: String, valueBase64: String) {
+        AndroidSecureStore.writeValueBase64(storageKey, valueBase64)
+    }
+
+    @JvmStatic
+    fun deleteSecureStoreValue(storageKey: String) {
+        AndroidSecureStore.deleteValue(storageKey)
+    }
+
     fun getScreenInfo(activity: Activity, callbackId: Long) {
         try {
             val displayMetrics = activity.resources.displayMetrics
@@ -252,4 +267,5 @@ object LxAppDevice {
             ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
         }
     }
+
 }

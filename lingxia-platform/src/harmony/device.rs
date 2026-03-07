@@ -1,6 +1,7 @@
 //! Harmony platform device implementation
 use crate::error::PlatformError;
-use crate::traits::device::{Device, DeviceHardware, DeviceSecureStore};
+use crate::traits::device::{Device, DeviceHardware};
+use crate::traits::secure_store::SecureStore;
 use crate::{DeviceInfo, ScreenInfo};
 use log::warn;
 use std::ffi::CString;
@@ -344,8 +345,8 @@ impl Device for Platform {
     }
 }
 
-impl DeviceSecureStore for Platform {
-    fn secure_store_read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
+impl SecureStore for Platform {
+    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, PlatformError> {
         let alias_attr = asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes());
         let return_type_attr = asset_attr_u32(ASSET_TAG_RETURN_TYPE, ASSET_RETURN_ALL);
         let query = [alias_attr, return_type_attr];
@@ -391,7 +392,7 @@ impl DeviceSecureStore for Platform {
         Ok(Some(data.to_vec()))
     }
 
-    fn secure_store_write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
+    fn write(&self, key: &str, value: &[u8]) -> Result<(), PlatformError> {
         let query = [asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes())];
         let mut used_non_persistent_mode = false;
         let success_with_warning = |used_non_persistent_mode: bool| {
@@ -470,7 +471,7 @@ impl DeviceSecureStore for Platform {
         )))
     }
 
-    fn secure_store_delete(&self, key: &str) -> Result<(), PlatformError> {
+    fn delete(&self, key: &str) -> Result<(), PlatformError> {
         let query = [asset_attr_bytes(ASSET_TAG_ALIAS, key.as_bytes())];
         let code = unsafe { OH_Asset_Remove(query.as_ptr(), query.len() as u32) };
         if code == ASSET_SUCCESS || code == ASSET_NOT_FOUND {
