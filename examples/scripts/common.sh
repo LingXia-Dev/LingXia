@@ -115,6 +115,11 @@ parse_common_arg() {
             echo "🧹 Reinstalling app (uninstall → install)"
             return 0
             ;;
+        --skip-rust|skip-rust)
+            SKIP_RUST=true
+            echo "⏭️  Skipping Rust compilation"
+            return 0
+            ;;
         *)
             return 1
             ;;

@@ -36,7 +36,7 @@ echo "RESOURCES_DIR: $RESOURCES_DIR"
 # Generate Swift bridge bindings before staging the Apple SDK into target/spm/lingxia.
 # This creates/updates: lingxia-sdk/apple/Sources/generated/...
 if [ "$SKIP_RUST" = false ]; then
-    echo "[0/4] Generating Swift bridge bindings..."
+    echo "[0/5] Generating Swift bridge bindings..."
     cd "$WORKSPACE_ROOT"
 
     TARGET="aarch64-apple-ios"
@@ -67,7 +67,7 @@ if [ "$SKIP_RUST" = false ]; then
     rm -f "$BRIDGE_LOG"
 fi
 
-echo "[1/4] Preparing iOS SDK resources..."
+echo "[1/5] Preparing iOS SDK resources..."
 # For dev: generate SDK i18n/icons resources via the unified SDK script.
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
   --platform apple \
@@ -77,7 +77,7 @@ SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
 
 # Build Rust library for iOS unless skip-rust flag is set
 if [ "$SKIP_RUST" = false ]; then
-    echo "[2/4] Building Rust libraries..."
+    echo "[2/5] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"
 
     # Build lingxia-lib as staticlib for iOS (native library + user extensions)
@@ -106,15 +106,11 @@ if [ "$SKIP_RUST" = false ]; then
     echo "✅ Rust build complete"
     echo "   .a location: $LIB_PATH"
 
-    # SwiftPM may not detect updates to externally linked static libraries.
-    # Clean Swift package artifacts to force relink against the freshly built liblingxia.a.
-    echo "   ↻ Cleaning Swift package build artifacts to force relink..."
-    cd "$SCRIPT_DIR"
-    swift package clean
 else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi
 
+echo "[3/5] Preparing app resources..."
 mkdir -p "$RESOURCES_DIR"
 rm -rf "$RESOURCES_DIR"/*
 
@@ -122,6 +118,10 @@ generate_app_config "$RESOURCES_DIR"
 build_and_copy_runtime "$RESOURCES_DIR" "es2020" "mobile"
 build_and_copy_homelxapp "$RESOURCES_DIR"
 
-echo "Building and deploying iOS app..."
+echo "[4/5] Resetting SwiftPM build artifacts..."
+cd "$SCRIPT_DIR"
+rm -rf .build
+
+echo "[5/5] Building and deploying iOS app..."
 cd "$SCRIPT_DIR"
 env LINGXIA_PROJECT_ROOT=$LINGXIA_ROOT xtool dev

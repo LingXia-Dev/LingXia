@@ -40,7 +40,7 @@ else
     BUILD_DIR=".build/x86_64-apple-macosx/debug"
 fi
 
-echo "[0/4] Preparing macOS SDK resources..."
+echo "[0/5] Preparing macOS SDK resources..."
 SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
     --platform apple \
     --apple-no-zip \
@@ -48,7 +48,7 @@ SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
     --out "$LINGXIA_ROOT/target/sdk-dev"
 
 if [ "$SKIP_RUST" = false ]; then
-    echo "[1/4] Building Rust library for macOS ($ARCH)..."
+    echo "[1/5] Building Rust library for macOS ($ARCH)..."
     cd "$WORKSPACE_ROOT"
 
     # Build lingxia-lib as staticlib for macOS
@@ -62,17 +62,11 @@ if [ "$SKIP_RUST" = false ]; then
 
     echo "✅ Rust build complete"
     echo "   .a location: $WORKSPACE_ROOT/target/$RUST_TARGET/release/liblingxia.a"
-
-    # SwiftPM may not detect updates to externally linked static libraries.
-    # Clean Swift package artifacts to force relink against the freshly built liblingxia.a.
-    echo "   ↻ Cleaning Swift package build artifacts to force relink..."
-    cd "$SCRIPT_DIR"
-    swift package clean
 else
     echo "⏭️  Skipping Rust compilation (using existing libraries)"
 fi
 
-echo "[2/4] Preparing app resources..."
+echo "[2/5] Preparing app resources..."
 mkdir -p "$RESOURCES_DIR"
 rm -rf "$RESOURCES_DIR/homelxapp" 2>/dev/null || true
 
@@ -80,7 +74,11 @@ generate_app_config "$RESOURCES_DIR"
 build_and_copy_runtime "$RESOURCES_DIR" "es2020" "desktop"
 build_and_copy_homelxapp "$RESOURCES_DIR"
 
-echo "[3/4] Building Swift project..."
+echo "[3/5] Resetting SwiftPM build artifacts..."
+cd "$SCRIPT_DIR"
+rm -rf .build
+
+echo "[4/5] Building Swift project..."
 cd "$SCRIPT_DIR"
 
 # Set the project root environment variable for Package.swift
@@ -95,7 +93,7 @@ if [ ! -f "$BINARY_PATH" ]; then
     exit 1
 fi
 
-echo "[4/4] Creating app bundle and launching..."
+echo "[5/5] Creating app bundle and launching..."
 
 APP_BUNDLE="$BUILD_DIR/LingXiaDemo.app"
 rm -rf "$APP_BUNDLE"
