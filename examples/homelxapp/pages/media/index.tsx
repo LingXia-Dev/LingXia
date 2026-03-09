@@ -45,6 +45,12 @@ const OBJECT_FIT_OPTIONS = [
   { key: 'fit', label: 'fit', value: 'fit' },
 ];
 
+const PREVIEW_BEHAVIOR_OPTIONS = [
+  { key: 'manual', label: 'Manual Only' },
+  { key: 'next', label: 'Auto Next' },
+  { key: 'loop', label: 'Loop' },
+];
+
 type MediaItem = {
   path: string;
   type: 'image' | 'video';
@@ -87,6 +93,11 @@ type CompressVideoResult = {
   durationMs?: number;
   size?: number;
   type?: string;
+};
+
+type PreviewSessionResult = {
+  reason: string;
+  lastIndex: number;
 };
 
 type VideoThumbnailSourceInfo = {
@@ -149,6 +160,12 @@ type PageData = {
   saveToAlbumError?: string;
   previewRotateKey?: string;
   previewObjectFitKey?: string;
+  previewBehaviorKey?: string;
+  previewHideIndexIndicator?: boolean;
+  previewImageDurationMs?: string | number;
+  previewSessionBusy?: boolean;
+  previewSessionResult?: PreviewSessionResult | null;
+  previewSessionError?: string;
   componentRotateKey?: string;
   componentObjectFitKey?: string;
 };
@@ -156,13 +173,17 @@ type PageData = {
 type PageActions = {
   data: PageData;
   launchMediaDemo(): void;
-  previewSelectedMedia(payload: { index?: number; path?: string; item?: MediaItem }): void;
+  previewSelectedMedia(): void;
   openSourcePicker?(): void;
   openCountPicker?(): void;
   openCameraPicker?(): void;
   openDurationPicker?(): void;
   openPreviewRotatePicker?(): void;
   openPreviewObjectFitPicker?(): void;
+  openPreviewBehaviorPicker?(): void;
+  togglePreviewIndexIndicator?(): void;
+  onPreviewImageDurationInput?(event: any): void;
+  cancelPreviewSession?(): void;
   openComponentRotatePicker?(): void;
   openComponentObjectFitPicker?(): void;
   openScanSourcePicker?(): void;
@@ -373,6 +394,10 @@ export default function MediaPage() {
     openDurationPicker,
     openPreviewRotatePicker,
     openPreviewObjectFitPicker,
+    openPreviewBehaviorPicker,
+    togglePreviewIndexIndicator,
+    onPreviewImageDurationInput,
+    cancelPreviewSession,
     openComponentRotatePicker,
     openComponentObjectFitPicker,
     openScanSourcePicker,
@@ -427,7 +452,9 @@ export default function MediaPage() {
   const durationOption = DURATION_OPTIONS.find((option) => option.key === durationKey) || DURATION_OPTIONS[DURATION_OPTIONS.length - 1];
 
   const countLimit = typeof data?.countLimit === 'number' ? data.countLimit : countOption.value ?? 0;
-  const counterText = countLimit ? `${selectedMedia.length}/${countLimit}` : `${selectedMedia.length}`;
+  const cameraOnlySource = sourceKey === 'camera';
+  const effectiveCountLimit = cameraOnlySource ? 1 : countLimit;
+  const counterText = effectiveCountLimit ? `${selectedMedia.length}/${effectiveCountLimit}` : `${selectedMedia.length}`;
 
   const isPictureMode = mediaType === 'image'
     && !isImageInfoMode
@@ -442,7 +469,7 @@ export default function MediaPage() {
   const scanBusy = Boolean(data?.scanBusy);
 
   const addLabel = data?.addLabel || (isPictureMode ? 'Add Photo' : 'Add Video');
-  const enforceLimit = isPictureMode ? countLimit || Number.POSITIVE_INFINITY : 1;
+  const enforceLimit = effectiveCountLimit || Number.POSITIVE_INFINITY;
   const canAddMore = selectedMedia.length < enforceLimit;
 
   const imageInfoResult = data?.imageInfoResult || null;
@@ -505,10 +532,20 @@ export default function MediaPage() {
   const saveToAlbumBusy = Boolean(data?.saveToAlbumBusy);
   const previewRotateKey = data?.previewRotateKey || ROTATE_OPTIONS[0].key;
   const previewObjectFitKey = data?.previewObjectFitKey || OBJECT_FIT_OPTIONS[0].key;
+  const previewBehaviorKey = data?.previewBehaviorKey || PREVIEW_BEHAVIOR_OPTIONS[0].key;
+  const previewIndicatorLabel = data?.previewHideIndexIndicator ? 'Hidden' : 'Auto';
+  const rawPreviewImageDurationMs = data?.previewImageDurationMs ?? '2000';
+  const previewImageDurationMs = typeof rawPreviewImageDurationMs === 'number'
+    ? rawPreviewImageDurationMs.toString()
+    : rawPreviewImageDurationMs;
+  const previewSessionBusy = Boolean(data?.previewSessionBusy);
+  const previewSessionResult = data?.previewSessionResult || null;
+  const previewSessionError = data?.previewSessionError || '';
   const componentRotateKey = data?.componentRotateKey || ROTATE_OPTIONS[0].key;
   const componentObjectFitKey = data?.componentObjectFitKey || 'cover';
   const previewRotateOption = ROTATE_OPTIONS.find((option) => option.key === previewRotateKey) || ROTATE_OPTIONS[0];
   const previewObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === previewObjectFitKey) || OBJECT_FIT_OPTIONS[0];
+  const previewBehaviorOption = PREVIEW_BEHAVIOR_OPTIONS.find((option) => option.key === previewBehaviorKey) || PREVIEW_BEHAVIOR_OPTIONS[0];
   const componentRotateOption = ROTATE_OPTIONS.find((option) => option.key === componentRotateKey) || ROTATE_OPTIONS[0];
   const componentObjectFitOption = OBJECT_FIT_OPTIONS.find((option) => option.key === componentObjectFitKey) || OBJECT_FIT_OPTIONS[0];
   const componentRotateValue = componentRotateOption.value;
@@ -519,13 +556,6 @@ export default function MediaPage() {
       launchMediaDemo();
     }
   }, [isRunning, canAddMore, launchMediaDemo]);
-
-  const handlePreview = React.useCallback(
-    (item: MediaItem) => {
-      previewSelectedMedia({ item });
-    },
-    [previewSelectedMedia],
-  );
 
   const renderAddTile = () => {
     const baseClass = isPictureMode ? 'h-24' : 'h-28';
@@ -563,16 +593,7 @@ export default function MediaPage() {
           />
         </div>
         <div className="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-xs font-medium text-gray-700">Image {index + 1}</div>
-            <Button
-              onClick={() => handlePreview(item)}
-              variant="primary"
-              size="sm"
-            >
-              Preview
-            </Button>
-          </div>
+          <div className="text-xs font-medium text-gray-700">Image {index + 1}</div>
         </div>
       </Card>
     ));
@@ -607,14 +628,6 @@ export default function MediaPage() {
                     ) : null}
                   </div>
                 </div>
-                <Button
-                  onClick={() => handlePreview(item)}
-                  variant="primary"
-                  size="md"
-                  fullWidth
-                >
-                  Preview
-                </Button>
               </div>
             </div>
             <LxVideo
@@ -1095,10 +1108,11 @@ export default function MediaPage() {
       : isPictureMode
         ? [
           { label: 'Photo Source', value: sourceOption.label, action: openSourcePicker },
-          { label: 'Count Limit', value: countOption.label, action: openCountPicker },
+          { label: 'Count Limit', value: String(effectiveCountLimit || countOption.value), action: cameraOnlySource ? undefined : openCountPicker },
         ]
         : [
           { label: 'Video Source', value: sourceOption.label, action: openSourcePicker },
+          { label: 'Count Limit', value: String(effectiveCountLimit || countOption.value), action: cameraOnlySource ? undefined : openCountPicker },
           { label: 'Camera', value: cameraOption.label, action: openCameraPicker },
           { label: 'Duration', value: durationOption.label, action: openDurationPicker },
         ];
@@ -1177,7 +1191,7 @@ export default function MediaPage() {
                     <div className="text-sm text-gray-600">
                       {selectedMedia.length ? previewHint : emptyHint}
                     </div>
-                    {countLimit > 0 && (
+                    {effectiveCountLimit > 0 && (
                       <div className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
                         {counterText}
                       </div>
@@ -1185,6 +1199,13 @@ export default function MediaPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      onClick={() => openPreviewBehaviorPicker?.()}
+                    >
+                      Preview Flow: {previewBehaviorOption.label}
+                    </button>
                     <button
                       type="button"
                       className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
@@ -1198,6 +1219,13 @@ export default function MediaPage() {
                       onClick={() => openPreviewObjectFitPicker?.()}
                     >
                       Preview Fit: {previewObjectFitOption.label}
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                      onClick={() => togglePreviewIndexIndicator?.()}
+                    >
+                      Index Indicator: {previewIndicatorLabel}
                     </button>
                     {!isPictureMode && (
                       <button
@@ -1219,11 +1247,66 @@ export default function MediaPage() {
                     )}
                   </div>
                   <div className="text-[11px] text-gray-500">
+                    `next` advances to the next item and finishes on the last item. `loop` wraps back to the first item.
+                  </div>
+                  {isPictureMode && (
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs font-medium text-gray-600">Image Duration (ms)</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={previewImageDurationMs}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                        onInput={(event) =>
+                          onPreviewImageDurationInput?.({
+                            detail: {
+                              value: (event.target as HTMLInputElement | null)?.value ?? '',
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                  )}
+                  <Button
+                    onClick={() => previewSelectedMedia()}
+                    disabled={!selectedMedia.length || previewSessionBusy}
+                    loading={previewSessionBusy}
+                    fullWidth
+                  >
+                    Preview Selection
+                  </Button>
+                  <div className="text-[11px] text-gray-500">
                     Preview Rotate/Fit applies to both images and videos.
                   </div>
                   {!isPictureMode && (
                     <div className="text-[11px] text-gray-500">
                       Video Rotate/Fit applies to current and newly added videos.
+                    </div>
+                  )}
+                  {previewSessionBusy && (
+                    <Button
+                      onClick={() => cancelPreviewSession?.()}
+                      variant="danger"
+                      size="sm"
+                      fullWidth
+                    >
+                      Cancel Active Preview
+                    </Button>
+                  )}
+                  {previewSessionResult && (
+                    <InfoCard
+                      title="Last Preview Result"
+                      items={[
+                        { label: 'Reason', value: previewSessionResult.reason },
+                        { label: 'Last Index', value: previewSessionResult.lastIndex },
+                      ]}
+                    />
+                  )}
+                  {previewSessionError && (
+                    <div className="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                      <span>⚠️</span>
+                      <span>{previewSessionError}</span>
                     </div>
                   )}
 

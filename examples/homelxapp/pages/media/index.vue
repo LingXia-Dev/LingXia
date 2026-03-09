@@ -589,12 +589,19 @@
                 <div class="text-sm text-gray-600">
                   {{ selectedMedia.length ? previewHint : emptyHint }}
                 </div>
-                <div v-if="countLimit > 0" class="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
+                <div v-if="effectiveCountLimit > 0" class="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">
                   {{ counterText }}
                 </div>
               </div>
 
               <div class="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="openPreviewBehaviorPicker"
+                >
+                  Preview Flow: {{ previewBehaviorLabel }}
+                </button>
                 <button
                   type="button"
                   class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
@@ -608,6 +615,13 @@
                   @click="openPreviewObjectFitPicker"
                 >
                   Preview Fit: {{ previewObjectFitLabel }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium text-gray-700 transition-colors hover:border-blue-300 hover:text-blue-600"
+                  @click="togglePreviewIndexIndicator"
+                >
+                  Index Indicator: {{ previewIndicatorLabel }}
                 </button>
                 <button
                   v-if="!isPictureMode"
@@ -627,10 +641,63 @@
                 </button>
               </div>
               <div class="text-[11px] text-gray-500">
+                `next` advances to the next item and finishes on the last item. `loop` wraps back to the first item.
+              </div>
+              <label v-if="isPictureMode" class="flex flex-col gap-1">
+                  <span class="text-xs font-medium text-gray-600">Image Duration (ms)</span>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    pattern="[0-9]*"
+                    :value="previewImageDurationMs"
+                    class="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-200"
+                    @input="onPreviewImageDurationInput({ detail: { value: ($event?.target && 'value' in $event.target) ? $event.target.value : '' } })"
+                  />
+              </label>
+              <button
+                type="button"
+                :disabled="!selectedMedia.length || previewSessionBusy"
+                :class="[
+                  'w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]',
+                  (!selectedMedia.length || previewSessionBusy) ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white'
+                ]"
+                @click="previewSelectedMedia()"
+              >
+                {{ previewSessionBusy ? 'Previewing...' : 'Preview Selection' }}
+              </button>
+              <div class="text-[11px] text-gray-500">
                 Preview Rotate/Fit applies to both images and videos.
               </div>
               <div v-if="!isPictureMode" class="text-[11px] text-gray-500">
                 Video Rotate/Fit applies to current and newly added videos.
+              </div>
+              <button
+                v-if="previewSessionBusy"
+                type="button"
+                class="w-full px-5 py-3 text-sm font-medium rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98] bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-600 text-white"
+                @click="cancelPreviewSession"
+              >
+                Cancel Active Preview
+              </button>
+              <div v-if="previewSessionResult" class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-5 space-y-4">
+                <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
+                  Last Preview Result
+                </h3>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Reason</span>
+                    <span class="font-semibold text-gray-800">{{ previewSessionResult.reason }}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-sm">
+                    <span class="text-gray-600">Last Index</span>
+                    <span class="font-semibold text-gray-800">{{ previewSessionResult.lastIndex }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="previewSessionError" class="flex items-center gap-2 text-sm text-red-600 bg-red-50 px-4 py-3 rounded-xl">
+                <span>⚠️</span>
+                <span>{{ previewSessionError }}</span>
               </div>
 
               <!-- Picture Tiles -->
@@ -644,15 +711,7 @@
                     <img :src="item.path" alt="" class="h-full w-full object-cover" />
                   </div>
                   <div class="px-3 py-3 bg-gradient-to-br from-gray-50 to-white">
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="text-xs font-medium text-gray-700">Image {{ index + 1 }}</div>
-                      <button
-                        @click="previewSelectedMedia({ item })"
-                        class="px-4 py-2 text-xs font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]"
-                      >
-                        Preview
-                      </button>
-                    </div>
+                    <div class="text-xs font-medium text-gray-700">Image {{ index + 1 }}</div>
                   </div>
                 </div>
                 <!-- Add Button -->
@@ -682,9 +741,9 @@
                             <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm12.553 1.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
                           </svg>
                         </div>
-                        <div>
-                          <div class="text-sm font-semibold text-gray-800">Video {{ index + 1 }}</div>
-                          <div class="text-xs text-gray-500 mt-0.5">Tap Preview for fullscreen playback</div>
+                      <div>
+                        <div class="text-sm font-semibold text-gray-800">Video {{ index + 1 }}</div>
+                        <div class="text-xs text-gray-500 mt-0.5">Tap Preview for fullscreen playback</div>
                           <div
                             v-if="item.displayWidth && item.displayHeight"
                             class="text-[11px] text-gray-500 mt-0.5"
@@ -693,12 +752,6 @@
                           </div>
                         </div>
                       </div>
-                      <button
-                        @click="previewSelectedMedia({ item })"
-                        class="w-full px-5 py-3 text-sm font-medium bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm transition-all duration-200 active:scale-[0.98]"
-                      >
-                        Preview
-                      </button>
                     </div>
                   </div>
                   <LxVideo
@@ -804,6 +857,12 @@ const OBJECT_FIT_OPTIONS = [
   { key: 'fit', label: 'fit', value: 'fit' },
 ];
 
+const PREVIEW_BEHAVIOR_OPTIONS = [
+  { key: 'manual', label: 'Manual Only' },
+  { key: 'next', label: 'Auto Next' },
+  { key: 'loop', label: 'Loop' },
+];
+
 type MediaItem = {
   path: string;
   type: 'image' | 'video';
@@ -843,6 +902,10 @@ type CompressVideoResult = {
   size?: number;
   type?: string;
 };
+type PreviewSessionResult = {
+  reason: string;
+  lastIndex: number;
+};
 
 const {
   data,
@@ -854,6 +917,10 @@ const {
   openDurationPicker,
   openPreviewRotatePicker,
   openPreviewObjectFitPicker,
+  openPreviewBehaviorPicker,
+  togglePreviewIndexIndicator,
+  onPreviewImageDurationInput,
+  cancelPreviewSession,
   openComponentRotatePicker,
   openComponentObjectFitPicker,
   openScanSourcePicker,
@@ -906,15 +973,23 @@ const cameraOption = computed(() => CAMERA_OPTIONS.find(o => o.key === cameraKey
 const durationOption = computed(() => DURATION_OPTIONS.find(o => o.key === durationKey.value) || DURATION_OPTIONS[DURATION_OPTIONS.length - 1]);
 
 const countLimit = computed(() => typeof data?.countLimit === 'number' ? data.countLimit : (countOption.value.value ?? 0));
-const counterText = computed(() => countLimit.value ? `${selectedMedia.value.length}/${countLimit.value}` : `${selectedMedia.value.length}`);
+const counterText = computed(() => effectiveCountLimit.value ? `${selectedMedia.value.length}/${effectiveCountLimit.value}` : `${selectedMedia.value.length}`);
 
 const isPictureMode = computed(() => mediaType.value === 'image' && !isImageInfoMode.value && !isVideoToolsMode.value);
 const isScanMode = computed(() => mediaType.value === 'scanCode');
-const isVideoMode = computed(() => mediaType.value === 'video');
 
 const emptyHint = computed(() => data?.emptyHint || (isPictureMode.value ? 'Tap + to pick photos.' : 'Tap + to add a video.'));
-const previewHint = computed(() => data?.previewHint || 'Tap Preview to open media preview.');
+const previewHint = computed(() => data?.previewHint || 'Tap Preview to open the full selection.');
 const headerSubtitle = computed(() => data?.headerSubtitle || 'choose/previewMedia');
+const previewBehaviorKey = computed(() => data?.previewBehaviorKey || PREVIEW_BEHAVIOR_OPTIONS[0].key);
+const previewIndicatorLabel = computed(() => data?.previewHideIndexIndicator ? 'Hidden' : 'Auto');
+const previewImageDurationMs = computed(() => {
+  const raw = data?.previewImageDurationMs ?? '2000';
+  return typeof raw === 'number' ? String(raw) : raw;
+});
+const previewSessionBusy = computed(() => Boolean(data?.previewSessionBusy));
+const previewSessionResult = computed<PreviewSessionResult | null>(() => data?.previewSessionResult ?? null);
+const previewSessionError = computed(() => data?.previewSessionError || '');
 
 const scanResult = computed(() => typeof data?.scanResult === 'string' ? data.scanResult : '');
 const scanBusy = computed(() => Boolean(data?.scanBusy));
@@ -923,7 +998,9 @@ const scanTypeKey = computed(() => data?.scanTypeKey || 'all');
 const scanType = computed(() => typeof data?.scanType === 'string' ? data.scanType : '');
 
 const addLabel = computed(() => data?.addLabel || (isPictureMode.value ? 'Add Photo' : 'Add Video'));
-const enforceLimit = computed(() => isPictureMode.value ? (countLimit.value || Number.POSITIVE_INFINITY) : 1);
+const cameraOnlySource = computed(() => sourceKey.value === 'camera');
+const effectiveCountLimit = computed(() => cameraOnlySource.value ? 1 : countLimit.value);
+const enforceLimit = computed(() => effectiveCountLimit.value || Number.POSITIVE_INFINITY);
 const canAddMore = computed(() => selectedMedia.value.length < enforceLimit.value);
 
 const imageInfoResult = computed<ImageInfoResult | null>(() => data?.imageInfoResult ?? null);
@@ -994,10 +1071,12 @@ const componentRotateKey = computed(() => data?.componentRotateKey || ROTATE_OPT
 const componentObjectFitKey = computed(() => data?.componentObjectFitKey || 'cover');
 const previewRotateOption = computed(() => ROTATE_OPTIONS.find(o => o.key === previewRotateKey.value) || ROTATE_OPTIONS[0]);
 const previewObjectFitOption = computed(() => OBJECT_FIT_OPTIONS.find(o => o.key === previewObjectFitKey.value) || OBJECT_FIT_OPTIONS[0]);
+const previewBehaviorOption = computed(() => PREVIEW_BEHAVIOR_OPTIONS.find(o => o.key === previewBehaviorKey.value) || PREVIEW_BEHAVIOR_OPTIONS[0]);
 const componentRotateOption = computed(() => ROTATE_OPTIONS.find(o => o.key === componentRotateKey.value) || ROTATE_OPTIONS[0]);
 const componentObjectFitOption = computed(() => OBJECT_FIT_OPTIONS.find(o => o.key === componentObjectFitKey.value) || OBJECT_FIT_OPTIONS[0]);
 const previewRotateLabel = computed(() => previewRotateOption.value.label);
 const previewObjectFitLabel = computed(() => previewObjectFitOption.value.label);
+const previewBehaviorLabel = computed(() => previewBehaviorOption.value.label);
 const componentRotateLabel = computed(() => componentRotateOption.value.label);
 const componentObjectFitLabel = computed(() => componentObjectFitOption.value.label);
 const componentRotateValue = computed(() => componentRotateOption.value.value);
@@ -1008,11 +1087,12 @@ const settingRows = computed(() => {
   if (isPictureMode.value) {
     return [
       { label: 'Photo Source', value: sourceOption.value.label, action: openSourcePicker },
-      { label: 'Count Limit', value: countOption.value.label, action: openCountPicker },
+      { label: 'Count Limit', value: String(effectiveCountLimit.value || countOption.value.value), action: cameraOnlySource.value ? undefined : openCountPicker },
     ];
   }
   return [
     { label: 'Video Source', value: sourceOption.value.label, action: openSourcePicker },
+    { label: 'Count Limit', value: String(effectiveCountLimit.value || countOption.value.value), action: cameraOnlySource.value ? undefined : openCountPicker },
     { label: 'Camera', value: cameraOption.value.label, action: openCameraPicker },
     { label: 'Duration', value: durationOption.value.label, action: openDurationPicker },
   ];
