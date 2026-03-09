@@ -577,9 +577,8 @@ fn browser_destroy_webview(path: &str, session_id: u64) {
 /// config and CSS injection (same pipeline as normal lxapp pages), and returns
 /// the HTML bytes together with the `lx://` base URL for asset resolution.
 pub fn generate_browser_startup_html() -> Result<(Vec<u8>, String), LxAppError> {
-    let browser = crate::try_get(BUILTIN_BROWSER_APPID).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!("{} lxapp not registered", BUILTIN_BROWSER_APPID))
-    })?;
+    // Lazy-load browser lxapp on first use
+    let browser = ensure_browser_lxapp()?;
     let startup_page = browser.config.get_initial_route();
     if startup_page.is_empty() {
         return Err(LxAppError::InvalidParameter(format!(
@@ -630,6 +629,32 @@ pub fn resolve_owner_lxapp(
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Lazy-load browser lxapp on first use to avoid startup errors
+fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
+    if let Some(browser) = crate::try_get(BUILTIN_BROWSER_APPID) {
+        return Ok(browser);
+    }
+
+    let platform = crate::lxapp::get_platform()
+        .ok_or_else(|| LxAppError::Runtime("Platform not initialized".to_string()))?;
+    let manager = crate::lxapp::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+
+    // Install browser assets if needed
+    if let Err(e) = crate::update::UpdateManager::install_from_assets(
+        platform,
+        BUILTIN_BROWSER_APPID,
+        crate::SDK_RUNTIME_VERSION,
+    ) {
+        crate::warn!("Built-in browser assets not available: {}", e);
+    }
+
+    Ok(manager.ensure_lxapp(
+        BUILTIN_BROWSER_APPID.to_string(),
+        crate::lxapp::metadata::ReleaseType::Release,
+    ))
+}
+
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
     format!("{INTERNAL_TAB_PATH_PREFIX}{}", sanitize_tab_id(tab_id))
 }
@@ -662,6 +687,9 @@ pub fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
+    // Lazy-load browser lxapp on first use
+    ensure_browser_lxapp()?;
+
     let target_url = url.trim();
     let has_target_url = !target_url.is_empty();
     let tab_id = tab_id

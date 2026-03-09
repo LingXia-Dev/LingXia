@@ -168,8 +168,8 @@ impl LxApps {
         }
     }
 
-    /// Get or initialize a specific LxApp instance by appid
-    fn get_or_init_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
+    /// Ensure an LxApp instance exists for the given appid.
+    pub(crate) fn ensure_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
             .map(|opt| opt.is_some())
             .unwrap_or(false);
@@ -223,9 +223,9 @@ impl LxApps {
         // Close handshake is handled by restart state machine; avoid a second hide while recreating.
         self.destroy_lxapp_with_options(&appid, true);
 
-        // Delegate to get_or_init_lxapp so pending downloaded updates are applied
+        // Delegate to ensure_lxapp so pending downloaded updates are applied
         // consistently (same path as cold-start navigation).
-        self.get_or_init_lxapp(appid, release_type)
+        self.ensure_lxapp(appid, release_type)
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.
@@ -1061,7 +1061,7 @@ impl LxApp {
                 return Ok(());
             }
 
-            let app = manager.get_or_init_lxapp(appid.clone(), options.release_type);
+            let app = manager.ensure_lxapp(appid.clone(), options.release_type);
             app.open(options)?;
         }
         Ok(())
@@ -1808,28 +1808,6 @@ pub fn init(runtime: Platform) -> Option<String> {
             {
                 error!("Failed to trigger home app service: {}", e)
                     .with_appid(home_lxapp_appid.clone());
-            }
-
-            // Register built-in browser LxApp — always install from assets to ensure
-            // the runtime directory is up-to-date (small static asset set).
-            {
-                let browser_appid = crate::browser::BUILTIN_BROWSER_APPID.to_string();
-                if let Err(e) = crate::update::UpdateManager::install_from_assets(
-                    runtime_arc.clone(),
-                    &browser_appid,
-                    crate::SDK_RUNTIME_VERSION,
-                ) {
-                    warn!("Built-in browser assets not available: {}", e);
-                }
-                let browser_lxapp = LxApp::new(
-                    browser_appid.clone(),
-                    runtime_arc.clone(),
-                    executor.clone(),
-                    ReleaseType::Release,
-                );
-                lxapps_manager
-                    .lxapps
-                    .insert(browser_appid, Arc::new(browser_lxapp));
             }
 
             info!("LxApps initialized successfully");
