@@ -141,6 +141,63 @@ show_help() {
     fi
 }
 
+# Resolve lxapp appId from lxapp.json (strict mode).
+# Usage: resolve_lxapp_app_id "$SOURCE_DIR"
+resolve_lxapp_app_id() {
+    local source_dir="$1"
+    local app_id=""
+
+    if [ ! -f "$source_dir/lxapp.json" ]; then
+        echo "❌ Error: lxapp.json not found in $source_dir" >&2
+        return 1
+    fi
+    if ! command -v jq > /dev/null 2>&1; then
+        echo "❌ Error: jq is required to resolve appId from $source_dir/lxapp.json" >&2
+        return 1
+    fi
+
+    app_id="$(jq -r '.appId // empty' "$source_dir/lxapp.json")"
+    if [ -z "$app_id" ]; then
+        echo "❌ Error: appId missing in $source_dir/lxapp.json" >&2
+        return 1
+    fi
+    printf '%s\n' "$app_id"
+}
+
+# Copy an lxapp directory (built dist or static source) into target assets.
+# Usage: copy_static_lxapp_to_assets "$SOURCE_DIR" "$TARGET_DIR" [ASSET_APP_DIR]
+copy_static_lxapp_to_assets() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local asset_app_dir="${3:-}"
+
+    if [ -z "$source_dir" ] || [ -z "$target_dir" ]; then
+        echo "❌ Usage: copy_static_lxapp_to_assets <source_dir> <target_dir> [asset_app_dir]"
+        exit 1
+    fi
+
+    if [ ! -d "$source_dir" ]; then
+        echo "❌ Error: lxapp source directory not found: $source_dir"
+        exit 1
+    fi
+
+    if [ ! -f "$source_dir/lxapp.json" ]; then
+        echo "❌ Error: lxapp.json not found in $source_dir"
+        exit 1
+    fi
+
+    if [ -z "$asset_app_dir" ]; then
+        asset_app_dir="$(resolve_lxapp_app_id "$source_dir")" || exit 1
+    fi
+
+    mkdir -p "$target_dir"
+    rm -rf "$target_dir/$asset_app_dir"
+    mkdir -p "$target_dir/$asset_app_dir"
+    cp -R "$source_dir"/* "$target_dir/$asset_app_dir/"
+
+    echo "  ✅ lxapp copied: $source_dir -> $target_dir/$asset_app_dir"
+}
+
 # Build home lxapp and copy to target directory
 # Usage: build_and_copy_homelxapp "$TARGET_DIR"
 # Uses HOME_LXAPP variable (default: homelxapp)
@@ -148,9 +205,14 @@ build_and_copy_homelxapp() {
     local target_dir="$1"
     local lxapp_name="${HOME_LXAPP:-homelxapp}"
     local lxapp_dir="$LINGXIA_ROOT/examples/$lxapp_name"
+    local dist_dir="$lxapp_dir/dist"
 
     if [ ! -d "$lxapp_dir" ]; then
         echo "❌ Error: LxApp directory not found: $lxapp_dir"
+        exit 1
+    fi
+    if [ ! -f "$lxapp_dir/lxapp.json" ]; then
+        echo "❌ Error: lxapp.json not found: $lxapp_dir/lxapp.json"
         exit 1
     fi
 
@@ -165,14 +227,12 @@ build_and_copy_homelxapp() {
         npm run build
     fi
 
-    if [ -d "dist" ]; then
-        mkdir -p "$target_dir/homelxapp"
-        cp -R dist/* "$target_dir/homelxapp/"
-        echo "  ✅ $lxapp_name copied to $target_dir/homelxapp"
-    else
+    if [ ! -d "$dist_dir" ]; then
         echo "❌ Error: dist directory not found in $lxapp_dir"
         exit 1
     fi
+
+    copy_static_lxapp_to_assets "$dist_dir" "$target_dir"
 }
 
 # Build web runtime and copy runtime.js to target directory

@@ -45,20 +45,36 @@ generate_app_json() {
         return 1
     fi
 
-    local home_lxapp_id
-    home_lxapp_id=$(jq -r '.app.homeLxAppID // empty' "$config_file")
-    if [ -z "$home_lxapp_id" ]; then
-        echo "Error: app.homeLxAppID missing in $config_file" >&2
-        return 1
+    local selected_home_lxapp="${HOME_LXAPP:-}"
+    local home_lxapp_id=""
+    local home_lxapp_json=""
+    local home_lxapp_version=""
+
+    if [ -n "$selected_home_lxapp" ]; then
+        home_lxapp_json="$LINGXIA_ROOT/examples/$selected_home_lxapp/lxapp.json"
+        if [ ! -f "$home_lxapp_json" ]; then
+            echo "Error: HOME_LXAPP points to missing lxapp config: $home_lxapp_json" >&2
+            return 1
+        fi
+
+        home_lxapp_id=$(jq -r '.appId // empty' "$home_lxapp_json")
+        if [ -z "$home_lxapp_id" ]; then
+            echo "Error: appId missing in $home_lxapp_json" >&2
+            return 1
+        fi
+    else
+        home_lxapp_id=$(jq -r '.app.homeLxAppID // empty' "$config_file")
+        if [ -z "$home_lxapp_id" ]; then
+            echo "Error: app.homeLxAppID missing in $config_file" >&2
+            return 1
+        fi
+        home_lxapp_json="$LINGXIA_ROOT/examples/$home_lxapp_id/lxapp.json"
+        if [ ! -f "$home_lxapp_json" ]; then
+            echo "Error: home lxapp config not found: $home_lxapp_json" >&2
+            return 1
+        fi
     fi
 
-    local home_lxapp_json="$LINGXIA_ROOT/examples/$home_lxapp_id/lxapp.json"
-    if [ ! -f "$home_lxapp_json" ]; then
-        echo "Error: home lxapp config not found: $home_lxapp_json" >&2
-        return 1
-    fi
-
-    local home_lxapp_version
     home_lxapp_version=$(jq -r '.version // empty' "$home_lxapp_json")
     if [ -z "$home_lxapp_version" ]; then
         echo "Error: version missing in $home_lxapp_json" >&2
