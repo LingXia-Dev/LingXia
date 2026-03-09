@@ -1,4 +1,5 @@
 use super::app::Platform;
+use super::ffi::cancel_preview_media;
 use super::ffi::choose_media;
 use super::ffi::preview_media;
 use crate::error::PlatformError;
@@ -21,6 +22,18 @@ struct PreviewMediaPayload {
     cover_path: String,
     rotate: Option<u16>,
     object_fit: Option<String>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct PreviewMediaRequestPayload {
+    sources: Vec<PreviewMediaPayload>,
+    #[serde(rename = "startIndex")]
+    start_index: i32,
+    advance: &'static str,
+    #[serde(rename = "showIndexIndicator")]
+    show_index_indicator: bool,
 }
 
 impl MediaInteraction for Platform {
@@ -49,18 +62,36 @@ impl MediaInteraction for Platform {
                     MediaObjectFit::Fill => "fill".to_string(),
                     MediaObjectFit::Fit => "fit".to_string(),
                 }),
+                duration_ms: item.duration_ms,
             })
             .collect();
 
-        let items_json = serde_json::to_string(&payloads).map_err(|e| {
+        let request_payload = PreviewMediaRequestPayload {
+            sources: payloads,
+            start_index: request.start_index,
+            advance: request.advance.as_str(),
+            show_index_indicator: request.show_index_indicator,
+        };
+
+        let items_json = serde_json::to_string(&request_payload).map_err(|e| {
             PlatformError::Platform(format!("Failed to serialize media items: {}", e))
         })?;
 
-        if preview_media(&items_json) {
+        if preview_media(&items_json, request.callback_id) {
             Ok(())
         } else {
             Err(PlatformError::Platform(
                 "Failed to preview media on Apple platform".to_string(),
+            ))
+        }
+    }
+
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+        if cancel_preview_media(callback_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(
+                "Failed to cancel preview media on Apple platform".to_string(),
             ))
         }
     }

@@ -479,7 +479,9 @@ where
 
     with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let storage_key_jstring = env.new_string(storage_key)?;
-        let value_jstring = value_base64.map(|value| env.new_string(value)).transpose()?;
+        let value_jstring = value_base64
+            .map(|value| env.new_string(value))
+            .transpose()?;
 
         let mut args = vec![JValue::Object(&storage_key_jstring)];
         if let Some(value_jstring) = value_jstring.as_ref() {

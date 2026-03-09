@@ -7,11 +7,34 @@ pub struct PreviewMediaItem {
     pub cover_path: Option<String>,
     pub rotate: Option<u16>,
     pub object_fit: Option<MediaObjectFit>,
+    pub duration_ms: Option<u64>,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PreviewMediaAdvance {
+    #[default]
+    Manual,
+    Next,
+    Loop,
+}
+
+impl PreviewMediaAdvance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Manual => "manual",
+            Self::Next => "next",
+            Self::Loop => "loop",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PreviewMediaRequest {
     pub items: Vec<PreviewMediaItem>,
+    pub start_index: i32,
+    pub advance: PreviewMediaAdvance,
+    pub show_index_indicator: bool,
+    pub callback_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,6 +133,7 @@ pub struct SaveMediaRequest {
 
 pub trait MediaInteraction: Send + Sync + 'static {
     fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError>;
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError>;
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError>;
     fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError>;
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;

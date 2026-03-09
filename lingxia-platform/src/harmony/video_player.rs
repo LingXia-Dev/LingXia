@@ -767,6 +767,7 @@ extern "C" fn on_info_callback(
             }
             x if x == AVPlayerState::Playing as i32 => notify_arkts(component_id, "playing", None),
             x if x == AVPlayerState::Paused as i32 => notify_arkts(component_id, "pause", None),
+            x if x == AVPlayerState::Completed as i32 => notify_arkts(component_id, "ended", None),
             x if x == AVPlayerState::Stopped as i32 => notify_arkts(component_id, "stop", None),
             _ => {}
         }

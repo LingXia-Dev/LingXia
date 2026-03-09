@@ -10,7 +10,7 @@ use crate::traits::media_runtime::{
 };
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
-use jni::sys::{jint, jlong};
+use jni::sys::{jboolean, jint, jlong};
 use jni::{jni_sig, jni_str};
 use lingxia_webview::with_env;
 use serde::Deserialize;
@@ -25,6 +25,29 @@ impl MediaInteraction for Platform {
                 e
             ))),
         }
+    }
+
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+        let media_class_ref =
+            super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
+                PlatformError::Platform(format!(
+                    "Failed to get cached Java class LxAppMedia: {}",
+                    e
+                ))
+            })?;
+
+        with_env(|env| {
+            let class: &JClass = media_class_ref.as_ref();
+            env.call_static_method(
+                class,
+                jni_str!("closePreview"),
+                jni_sig!("(J)V"),
+                &[JValue::Long(callback_id as jlong)],
+            )?;
+
+            Ok::<(), jni::errors::Error>(())
+        })
+        .map_err(|err| PlatformError::Platform(format!("Failed to cancel previewMedia: {}", err)))
     }
 
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
@@ -61,6 +84,10 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
     let payload_class_ref = super::get_cached_class(super::CachedClass::PreviewMediaPayload)?;
 
     let item_count = request.items.len();
+    let start_index = request.start_index;
+    let advance = request.advance.as_str();
+    let show_index_indicator = request.show_index_indicator;
+    let callback_id = request.callback_id as jlong;
 
     with_env(|env| {
         let payload_class: &JClass = payload_class_ref.as_ref();
@@ -108,10 +135,19 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
                 None => JObject::null(),
             };
 
+            let duration_obj = match item.duration_ms {
+                Some(duration_ms) => env.new_object(
+                    jni_str!("java/lang/Long"),
+                    jni_sig!("(J)V"),
+                    &[JValue::Long(duration_ms.min(jlong::MAX as u64) as jlong)],
+                )?,
+                None => JObject::null(),
+            };
+
             let payload_obj = env.new_object(
                 payload_class,
                 jni_sig!(
-                    "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Integer;Ljava/lang/String;)V"
+                    "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Long;)V"
                 ),
                 &[
                     JValue::Object(&path_obj),
@@ -119,6 +155,7 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
                     JValue::Object(&cover_obj),
                     JValue::Object(&rotate_obj),
                     JValue::Object(&object_fit_obj),
+                    JValue::Object(&duration_obj),
                 ],
             )?;
 
@@ -126,11 +163,19 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
         }
 
         let class: &JClass = media_class_ref.as_ref();
+        let advance_java = env.new_string(advance)?;
+        let advance_obj: JObject = advance_java.into();
         env.call_static_method(
             class,
             jni_str!("previewMedia"),
-            jni_sig!("([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;)V"),
-            &[JValue::Object(&payload_array)],
+            jni_sig!("([Lcom/lingxia/lxapp/APIs/media/PreviewMediaPayload;ILjava/lang/String;ZJ)V"),
+            &[
+                JValue::Object(&payload_array),
+                JValue::Int(start_index),
+                JValue::Object(&advance_obj),
+                JValue::Bool(jboolean::from(show_index_indicator)),
+                JValue::Long(callback_id),
+            ],
         )?;
 
         Ok::<(), jni::errors::Error>(())

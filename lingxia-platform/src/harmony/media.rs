@@ -21,6 +21,20 @@ struct PreviewMediaPayload<'a> {
     cover_path: &'a str,
     rotate: Option<u16>,
     object_fit: Option<&'static str>,
+    #[serde(rename = "durationMs")]
+    duration_ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct PreviewMediaRequestPayload<'a> {
+    sources: Vec<PreviewMediaPayload<'a>>,
+    #[serde(rename = "startIndex")]
+    start_index: i32,
+    advance: &'static str,
+    #[serde(rename = "showIndexIndicator")]
+    show_index_indicator: bool,
+    #[serde(rename = "callbackId")]
+    callback_id: String,
 }
 
 #[derive(Serialize)]
@@ -59,10 +73,19 @@ impl MediaInteraction for Platform {
                     MediaObjectFit::Fill => "fill",
                     MediaObjectFit::Fit => "fit",
                 }),
+                duration_ms: item.duration_ms,
             })
             .collect();
 
-        let json = serde_json::to_string(&payloads).map_err(|e| {
+        let payload = PreviewMediaRequestPayload {
+            sources: payloads,
+            start_index: request.start_index,
+            advance: request.advance.as_str(),
+            show_index_indicator: request.show_index_indicator,
+            callback_id: request.callback_id.to_string(),
+        };
+
+        let json = serde_json::to_string(&payload).map_err(|e| {
             PlatformError::Platform(format!("Failed to serialize preview media payload: {}", e))
         })?;
 
@@ -70,6 +93,12 @@ impl MediaInteraction for Platform {
 
         lingxia_webview::tsfn::call_arkts("previewMedia", &[safe_json.as_str()])
             .map_err(|e| PlatformError::Platform(format!("Failed to preview media: {}", e)))
+    }
+
+    fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
+        let callback_id_str = callback_id.to_string();
+        lingxia_webview::tsfn::call_arkts("closePreview", &[callback_id_str.as_str()])
+            .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
     }
 
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
