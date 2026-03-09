@@ -1,4 +1,4 @@
-use rong::{FromJSObj, IntoJSObj};
+use rong::FromJSObj;
 use serde::{Deserialize, Serialize};
 
 #[derive(FromJSObj, Clone)]
@@ -14,13 +14,13 @@ pub(super) struct JSChooseMediaOptions {
     pub(super) max_duration: Option<f64>,
 }
 
-#[derive(Debug, Clone, IntoJSObj)]
+#[derive(Debug, Clone, Serialize)]
 pub(super) struct ChosenMediaEntry {
-    #[rename = "tempFilePath"]
+    #[serde(rename = "tempFilePath")]
     pub(super) path: String,
-    #[rename = "fileType"]
+    #[serde(rename = "fileType")]
     pub(super) kind: String,
-    #[rename = "isOriginal"]
+    #[serde(rename = "isOriginal")]
     pub(super) is_original: bool,
 }
 
@@ -31,6 +31,8 @@ pub(super) struct MediaKey {
     pub(super) kind: String,
     #[serde(rename = "isOriginal", default = "default_is_original")]
     pub(super) is_original: bool,
+    #[serde(rename = "fileExt", default)]
+    pub(super) file_ext: Option<String>,
 }
 
 fn default_kind() -> String {

@@ -274,10 +274,7 @@ fn compressed_video_to_js(
         height: compressed.height,
         duration_ms: compressed.duration_ms,
         size: compressed.size,
-        video_type: compressed
-            .mime_type
-            .filter(|m| !m.is_empty())
-            .unwrap_or_else(|| "video/mp4".to_string()),
+        video_type: "video/mp4".to_string(),
     })
 }
 

@@ -18,7 +18,7 @@ use lingxia_platform::traits::media_interaction::{
 };
 use lxapp::{LxApp, lx};
 use parser::{parse_camera, parse_choose_mode, parse_sources};
-use rong::{JSContext, JSFunc, JSResult, function::Optional};
+use rong::{JSContext, JSFunc, JSResult, JSValue, JsonToJSValue, function::Optional};
 use serde_json::Value;
 use source_picker::present_source_picker;
 use std::fs;
@@ -36,7 +36,7 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
 async fn choose_media(
     ctx: JSContext,
     options: Optional<JSChooseMediaOptions>,
-) -> JSResult<Vec<ChosenMediaEntry>> {
+) -> JSResult<JSValue> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
@@ -126,11 +126,13 @@ async fn choose_media(
         if uri.is_empty() {
             continue;
         }
+        if uri.eq_ignore_ascii_case("[object Object]") {
+            return Err(js_internal_error(
+                "chooseMedia invalid payload: media uri must be string path, got [object Object]",
+            ));
+        }
         let kind = key.kind.as_str();
-        let ext = match kind {
-            "video" => "mp4",
-            _ => "jpg",
-        };
+        let ext = cache_extension_for_media(kind, key.file_ext.as_deref(), uri);
         let is_original = key.is_original;
 
         // Only treat `file://...` URIs as local filesystem paths when the remainder is an absolute
@@ -148,7 +150,7 @@ async fn choose_media(
         let final_path: PathBuf = if let Some(source_path) = local_path {
             match lxapp.resolve_accessible_path(source_path.to_string_lossy().as_ref()) {
                 Ok(path) if lxapp.to_uri(&path).is_some() => path,
-                _ => ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
+                _ => ensure_cached_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
                     fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
                         js_internal_error(format!(
                             "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
@@ -167,7 +169,7 @@ async fn choose_media(
                 "image" => MediaKind::Image,
                 _ => MediaKind::Image,
             };
-            ensure_cached_media_path(lxapp.as_ref(), &key, ext, |dest_path| {
+            ensure_cached_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
                     .map_err(|err| js_error_from_platform_error(&err))
             })?
@@ -186,5 +188,48 @@ async fn choose_media(
             is_original,
         });
     }
-    Ok(out)
+    let json = serde_json::to_string(&out)
+        .map_err(|e| js_internal_error(format!("chooseMedia failed to serialize result: {}", e)))?;
+
+    json.as_str().json_to_js_value(&ctx).map_err(|e| {
+        js_internal_error(format!(
+            "chooseMedia failed to materialize JS result: {}",
+            e
+        ))
+    })
+}
+
+fn cache_extension_for_media(kind: &str, raw_ext: Option<&str>, uri: &str) -> String {
+    match kind {
+        "video" => normalize_video_extension(raw_ext).unwrap_or_else(|| {
+            infer_extension_from_uri(uri).unwrap_or_else(|| {
+                #[cfg(target_os = "ios")]
+                {
+                    "mov".to_string()
+                }
+                #[cfg(not(target_os = "ios"))]
+                {
+                    "mp4".to_string()
+                }
+            })
+        }),
+        _ => "jpg".to_string(),
+    }
+}
+
+fn normalize_video_extension(raw_ext: Option<&str>) -> Option<String> {
+    let ext = raw_ext?.trim().trim_start_matches('.').to_ascii_lowercase();
+    match ext.as_str() {
+        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "3gp" | "3gpp" => Some(ext),
+        _ => None,
+    }
+}
+
+fn infer_extension_from_uri(uri: &str) -> Option<String> {
+    let path = uri.split(['?', '#']).next().unwrap_or(uri);
+    let ext = Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())?;
+    if ext.is_empty() { None } else { Some(ext) }
 }

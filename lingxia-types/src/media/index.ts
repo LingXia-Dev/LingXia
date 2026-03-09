@@ -183,7 +183,7 @@ export type MediaRotation = 0 | 90 | 180 | 270;
 
 export type MediaObjectFit = 'cover' | 'contain' | 'fill' | 'fit';
 
-export interface PreviewMediaItem {
+export interface PreviewMediaSource {
   /**
    * Media source path.
    * Recommended: `lx://` path (for example `lx://usercache/...`) or a sandbox-local path
@@ -206,10 +206,94 @@ export interface PreviewMediaItem {
    * Default: `contain`.
    */
   objectFit?: MediaObjectFit;
+  /**
+   * Image display duration in milliseconds.
+   * Effective only for image items and only when preview `advance` is not `manual`.
+   */
+  durationMs?: number;
 }
 
-export interface PreviewMediaOptions {
-  sources: PreviewMediaItem[];
+export type PreviewMediaAdvance = 'manual' | 'next' | 'loop';
+
+export interface PreviewMediaSingleOptions extends PreviewMediaSource {
+  /**
+   * Auto behavior for the preview session.
+   *
+   * - `manual`: never auto-advance
+   * - `next`: advance to the next item; if already on the last item, close the session
+   * - `loop`: advance to the next item; if already on the last item, wrap to the first item
+   *
+   * Default: `manual`
+   */
+  advance?: PreviewMediaAdvance;
+  /**
+   * Optional cancellation signal for the preview request.
+   *
+   * Aborting rejects the returned promise with a cancellation error and requests the active
+   * native preview session to close immediately.
+   */
+  signal?: AbortSignal;
+  /**
+   * Whether to show the top `current/total` indicator.
+   *
+   * Default: `true` when previewing multiple items, otherwise `false`.
+   */
+  showIndexIndicator?: boolean;
+}
+
+export interface PreviewMediaSequenceOptions {
+  /**
+   * Preview list. Supports images, videos, or a mixed queue.
+   */
+  sources: PreviewMediaSource[];
+  /**
+   * Initial item index in `sources`.
+   * Must be an integer.
+   * Out-of-range values are clamped by runtime.
+   * Default: `0`.
+   */
+  startIndex?: number;
+  /**
+   * Auto behavior for the preview session.
+   *
+   * - `manual`: never auto-advance
+   * - `next`: advance to the next item; if already on the last item, close the session
+   * - `loop`: advance to the next item; if already on the last item, wrap to the first item
+   *
+   * Default: `manual`
+   */
+  advance?: PreviewMediaAdvance;
+  /**
+   * Optional cancellation signal for the preview request.
+   *
+   * Aborting rejects the returned promise with a cancellation error and requests the active
+   * native preview session to close immediately.
+   */
+  signal?: AbortSignal;
+  /**
+   * Whether to show the top `current/total` indicator.
+   *
+   * Default: `true` when previewing multiple items, otherwise `false`.
+   */
+  showIndexIndicator?: boolean;
+}
+
+export type PreviewMediaOptions =
+  | string
+  | PreviewMediaSingleOptions
+  | PreviewMediaSequenceOptions;
+
+export type PreviewMediaCloseReason = 'manual' | 'completed' | 'interrupted' | 'error';
+
+export interface PreviewMediaResult {
+  /**
+   * Why the preview session finished.
+   */
+  reason: PreviewMediaCloseReason;
+  /**
+   * Last active item index before close.
+   */
+  lastIndex: number;
 }
 
 export interface SaveMediaOptions {

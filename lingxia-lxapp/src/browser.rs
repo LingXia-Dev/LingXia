@@ -223,13 +223,18 @@ fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
 /// - `submit` resolves navigable http/https-style input into a current-tab navigation target.
 /// - `edit` only returns the `Suggest` action shape; real autocomplete/search suggestions are not wired yet.
 /// - `new_tab`, async suggestion providers, and search fallback remain protocol-level extension points.
-pub fn handle_browser_address_input(request: BrowserAddressInputRequest) -> BrowserAddressInputResponse {
+pub fn handle_browser_address_input(
+    request: BrowserAddressInputRequest,
+) -> BrowserAddressInputResponse {
     let preferred_scheme =
         normalize_browser_preferred_scheme(request.context.preferred_scheme.as_deref());
     let trimmed = request.raw_input.trim();
 
     if let Some(resolved) = resolve_browser_http_url(trimmed, &preferred_scheme) {
-        let BrowserUrlResolution { url: resolved_url, inferred_scheme } = resolved;
+        let BrowserUrlResolution {
+            url: resolved_url,
+            inferred_scheme,
+        } = resolved;
 
         let action = match request.trigger {
             BrowserAddressInputTrigger::Submit => BrowserAddressAction::Navigate,

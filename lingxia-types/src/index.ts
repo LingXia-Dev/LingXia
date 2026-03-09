@@ -82,6 +82,7 @@ import type {
   ChooseMediaOptions,
   ChosenMediaEntry,
   PreviewMediaOptions,
+  PreviewMediaResult,
   SaveMediaOptions,
   ScanCodeOptions,
   ScanCodeResult,
@@ -160,7 +161,19 @@ export interface Lx {
 
   chooseMedia(options?: ChooseMediaOptions): Promise<ChosenMediaEntry[]>;
 
-  previewMedia(options: PreviewMediaOptions): void;
+  /**
+   * Opens native media preview.
+   *
+   * Supports:
+   * - a single source path string for the simplest case
+   * - a single-item object for per-item options like `rotate`, `objectFit`, or `durationMs`
+   * - a sequence object for multi-item preview with `sources`, `startIndex`, and `advance`
+   *
+   * Resolves when preview session is closed (manual/auto/interrupted/error).
+   * Rejects with a cancellation error if `signal` is aborted, and abort also requests
+   * the active native preview session to close immediately.
+   */
+  previewMedia(options: PreviewMediaOptions): Promise<PreviewMediaResult>;
 
   saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
   saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
