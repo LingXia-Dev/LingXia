@@ -155,6 +155,7 @@ private final class TapOverlayView: UIView {
 @MainActor
 public final class LxMediaPlayer: NSObject {
     public let view: UIView
+    public var onScrubStateChanged: ((Bool) -> Void)?
     private let container: PlayerContainerView
     private let log = OSLog(subsystem: "LingXia", category: "Media")
 
@@ -324,6 +325,10 @@ public final class LxMediaPlayer: NSObject {
 
         // Find parent WKScrollView and configure its pan gesture to not interfere with slider
         configureParentScrollViewGestures(from: host)
+    }
+
+    public func refreshGestureInterference() {
+        configureParentScrollViewGestures(from: view)
     }
 
     /// Configure parent scroll view's gestures to allow slider interaction
@@ -542,8 +547,7 @@ public final class LxMediaPlayer: NSObject {
         }
 
         updateSettingsMenu()
-        updateSeekability()
-        startStreamProgressTimerIfNeeded()
+        refreshProgressControls()
     }
 
     private func setDisplayRotationDegrees(_ degrees: Int?) {
@@ -619,9 +623,7 @@ public final class LxMediaPlayer: NSObject {
             hasExternalDurationOverride = false
         }
         streamPlaybackBaseOffsetSeconds = 0
-        updateSeekability()
-        updateProgressBarVisibility()
-        startStreamProgressTimerIfNeeded()
+        refreshProgressControls()
     }
 
     public func handle(command: LxMediaCommand) {
@@ -700,8 +702,7 @@ public final class LxMediaPlayer: NSObject {
         } else if let vol = player?.volume {
             updateVolumeIcon(volume: vol)
         }
-        updateSeekability()
-        startStreamProgressTimerIfNeeded()
+        refreshProgressControls()
     }
 
     public func handleStreamDecoderEvent(_ event: String) {
@@ -966,6 +967,7 @@ public final class LxMediaPlayer: NSObject {
                 switch item.status {
                 case .readyToPlay:
                     os_log("MediaPlayer item ready to play seq=%llu", log: self.log, type: .info, currentSequence)
+                    self.refreshProgressControls()
 
                     // Send loadedmetadata event
                     let duration = item.duration.seconds
@@ -1075,6 +1077,7 @@ public final class LxMediaPlayer: NSObject {
                 guard let self = self else { return }
                 guard currentSequence == self.loadingSequence else { return }
 
+                self.refreshProgressControls()
                 self.sendProgress(time: time)
                 self.updateProgressUI(time: time)
             }
@@ -1557,7 +1560,10 @@ public final class LxMediaPlayer: NSObject {
         // Progress slider
         progressSlider.minimumTrackTintColor = UIColor(red: 0.0, green: 0.48, blue: 1.0, alpha: 1.0)
         progressSlider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.3)
-        progressSlider.setThumbImage(createThumbImage(), for: .normal)
+        let sliderThumbImage = createThumbImage()
+        progressSlider.setThumbImage(sliderThumbImage, for: .normal)
+        progressSlider.setThumbImage(sliderThumbImage, for: .highlighted)
+        progressSlider.setThumbImage(sliderThumbImage, for: .disabled)
         progressSlider.isEnabled = true
         progressSlider.isUserInteractionEnabled = true
         progressSlider.addTarget(self, action: #selector(handleSliderTouchDown), for: .touchDown)
@@ -1858,6 +1864,12 @@ public final class LxMediaPlayer: NSObject {
         let canSeek = hasDuration && controlsEnabled && canShowProgress
         progressSlider.isEnabled = canSeek
         progressSlider.isUserInteractionEnabled = canSeek
+    }
+
+    private func refreshProgressControls() {
+        updateSeekability()
+        updateProgressBarVisibility()
+        startStreamProgressTimerIfNeeded()
     }
 
     private func startStreamProgressTimerIfNeeded() {
@@ -2824,6 +2836,7 @@ public final class LxMediaPlayer: NSObject {
 
     @objc private func handleSliderTouchDown() {
         isScrubbing = true
+        onScrubStateChanged?(true)
         suppressWaitingUntil = .greatestFiniteMagnitude
         wasPlayingOnScrubStart = streamDecoderActive ? streamIsPlaying : (player?.timeControlStatus == .playing)
         wasEndedOnScrubStart = streamDecoderActive ? streamHasEnded : false
@@ -2862,6 +2875,7 @@ public final class LxMediaPlayer: NSObject {
     @objc private func handleSliderTouchUp() {
         guard isScrubbing else { return }
         isScrubbing = false
+        onScrubStateChanged?(false)
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
 
         guard let durationSeconds = effectiveDurationSeconds() else { return }
@@ -2886,6 +2900,7 @@ public final class LxMediaPlayer: NSObject {
 
     private func handleSliderScrubStart() {
         isScrubbing = true
+        onScrubStateChanged?(true)
         suppressWaitingUntil = .greatestFiniteMagnitude
         controlsHideWorkItem?.cancel()
         wasPlayingOnScrubStart = streamDecoderActive ? streamIsPlaying : (player?.timeControlStatus == .playing)
@@ -2927,6 +2942,7 @@ public final class LxMediaPlayer: NSObject {
 
     private func handleSliderScrubEnd() {
         isScrubbing = false
+        onScrubStateChanged?(false)
         suppressWaitingUntil = CACurrentMediaTime() + 1.5
 
         // Resume playback only if it was playing before the scrub started, or if we scrubbed from ended state.

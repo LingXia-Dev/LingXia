@@ -17,7 +17,7 @@ extension LxAppMedia {
         let _ = (source_types_json, camera_facing, max_duration)
 
         DispatchQueue.main.async {
-            let selectionLimit = modeStr == "video" ? 1 : max(1, Int(max_count))
+            let selectionLimit = max(1, Int(max_count))
             presentOpenPanel(
                 mode: modeStr,
                 selectionLimit: selectionLimit,

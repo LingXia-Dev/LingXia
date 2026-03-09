@@ -9,6 +9,7 @@ extension LxAppMedia {
 
     // Strong reference to keep preview window alive
     @MainActor fileprivate static var previewWindow: UIWindow?
+    @MainActor fileprivate static var activePreviewController: MediaPreviewViewController?
 
     struct PreviewMediaPayload: Decodable {
         let path: String
@@ -16,74 +17,153 @@ extension LxAppMedia {
         let cover_path: String?
         let rotate: Int?
         let object_fit: String?
-
-        private enum CodingKeys: String, CodingKey {
-            case path
-            case media_type
-            case mediaType
-            case cover_path
-            case coverPath
-            case rotate
-            case rotation
-            case object_fit
-            case objectFit
-        }
-
-        init(from decoder: Decoder) throws {
-            let container = try decoder.container(keyedBy: CodingKeys.self)
-            path = try container.decode(String.self, forKey: .path)
-            media_type = try (try? container.decode(Int32.self, forKey: .media_type))
-                ?? container.decode(Int32.self, forKey: .mediaType)
-            cover_path = (try? container.decodeIfPresent(String.self, forKey: .cover_path))
-                ?? (try? container.decodeIfPresent(String.self, forKey: .coverPath))
-            rotate = (try? container.decodeIfPresent(Int.self, forKey: .rotate))
-                ?? (try? container.decodeIfPresent(Int.self, forKey: .rotation))
-            object_fit = (try? container.decodeIfPresent(String.self, forKey: .object_fit))
-                ?? (try? container.decodeIfPresent(String.self, forKey: .objectFit))
-        }
+        let durationMs: UInt64?
     }
 
-    nonisolated static func previewMedia(items_json: RustStr) -> Bool {
+    struct PreviewMediaRequestPayload: Decodable {
+        let sources: [PreviewMediaPayload]
+        let startIndex: Int
+        let advance: String
+        let showIndexIndicator: Bool
+    }
+
+    nonisolated static func previewMedia(items_json: RustStr, callback_id: UInt64) -> Bool {
         let itemsJson = items_json.toString()
         guard let jsonData = itemsJson.data(using: .utf8) else {
             os_log(.error, log: previewLog, "Failed to convert items JSON to data")
             return false
         }
 
-        let items: [PreviewMediaPayload]
+        let request: PreviewMediaRequestPayload
         do {
-            items = try JSONDecoder().decode([PreviewMediaPayload].self, from: jsonData)
+            request = try JSONDecoder().decode(PreviewMediaRequestPayload.self, from: jsonData)
         } catch {
             os_log(.error, log: previewLog, "Failed to decode items JSON: %{public}@", error.localizedDescription)
             return false
         }
-        guard !items.isEmpty else {
+        guard !request.sources.isEmpty else {
             os_log(.error, log: previewLog, "previewMedia called with empty items")
             return false
         }
 
-        // Dispatch to main actor for UI operations
-        DispatchQueue.main.async {
-            let previewItems = items.map { PreviewMediaItem(payload: $0) }
-            let previewController = MediaPreviewViewController(items: previewItems)
-
-            // Create a dedicated window for preview to avoid affecting the main app's orientation
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                let window = UIWindow(windowScene: windowScene)
-                window.windowLevel = .statusBar + 1  // Above status bar, same as native component fullscreen
-                window.backgroundColor = .black
-                window.rootViewController = previewController
-
-                // Keep strong reference to prevent window from being deallocated
-                Task { @MainActor in
-                    Self.previewWindow = window
-                }
-
-                window.makeKeyAndVisible()
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                previewMediaOnMain(request: request, callbackId: callback_id)
             }
         }
+        var started = false
+        DispatchQueue.main.sync {
+            started = previewMediaOnMain(request: request, callbackId: callback_id)
+        }
+        return started
+    }
+
+    @MainActor
+    private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64) -> Bool {
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first
+        else {
+            os_log(.error, log: previewLog, "No active window scene for previewMedia")
+            return false
+        }
+
+        let previewItems = request.sources.map { PreviewMediaItem(payload: $0) }
+        let previewController = MediaPreviewViewController(
+            items: previewItems,
+            startIndex: request.startIndex,
+            callbackId: callbackId,
+            advance: PreviewMediaAdvance(rawValue: request.advance),
+            showIndexIndicator: request.showIndexIndicator
+        )
+
+        activePreviewController?.finishPreview(reason: .interrupted)
+
+        let window = UIWindow(windowScene: windowScene)
+        window.windowLevel = .statusBar + 1
+        window.backgroundColor = .black
+        window.rootViewController = previewController
+        previewWindow = window
+        activePreviewController = previewController
+        window.makeKeyAndVisible()
         return true
     }
+
+    nonisolated static func cancelPreview(callback_id: UInt64) -> Bool {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                cancelPreviewOnMain(callbackId: callback_id)
+            }
+        }
+        var cancelled = false
+        DispatchQueue.main.sync {
+            cancelled = cancelPreviewOnMain(callbackId: callback_id)
+        }
+        return cancelled
+    }
+
+    @MainActor
+    private static func cancelPreviewOnMain(callbackId: UInt64) -> Bool {
+        guard let controller = activePreviewController, controller.callbackId == callbackId else {
+            return false
+        }
+        controller.finishPreview(reason: .interrupted)
+        return true
+    }
+
+    @MainActor
+    fileprivate static func dismissPreviewWindow(for controller: MediaPreviewViewController) {
+        if activePreviewController === controller {
+            activePreviewController = nil
+        }
+        if previewWindow?.rootViewController === controller {
+            makeMainWindowKeyIfNeeded(excluding: previewWindow)
+            previewWindow?.isHidden = true
+            previewWindow?.rootViewController = nil
+            previewWindow = nil
+        }
+    }
+
+    @MainActor
+    private static func makeMainWindowKeyIfNeeded(excluding excludedWindow: UIWindow?) {
+        guard let windowScene = excludedWindow?.windowScene
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            return
+        }
+        if let mainWindow = windowScene.windows.first(where: { $0 !== excludedWindow }) {
+            mainWindow.makeKeyAndVisible()
+        }
+    }
+}
+
+private enum PreviewMediaAdvance {
+    case manual
+    case next
+    case loop
+
+    init(rawValue: String?) {
+        switch rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "next":
+            self = .next
+        case "loop":
+            self = .loop
+        default:
+            self = .manual
+        }
+    }
+}
+
+private enum PreviewMediaCloseReason: String {
+    case manual
+    case completed
+    case interrupted
+    case error
+}
+
+private enum PreviewSwipeDirection {
+    case previous
+    case next
 }
 
 private struct PreviewMediaItem {
@@ -109,6 +189,7 @@ private struct PreviewMediaItem {
     let coverURL: URL?
     let rotate: Int?
     let objectFit: LxMediaObjectFit?
+    let durationMs: UInt64?
 
     init(payload: LxAppMedia.PreviewMediaPayload) {
         let pathString = payload.path
@@ -140,14 +221,24 @@ private struct PreviewMediaItem {
             guard let raw = payload.object_fit?.lowercased() else { return nil }
             return LxMediaObjectFit(rawValue: raw)
         }()
+        self.durationMs = payload.durationMs
     }
 }
 
-
+@MainActor
 private final class MediaPreviewViewController: UIViewController, UIGestureRecognizerDelegate {
     private let items: [PreviewMediaItem]
+    fileprivate let callbackId: UInt64
+    private let advance: PreviewMediaAdvance
     private var currentIndex: Int
     private var didCleanup = false
+    private var didFinish = false
+    private var imageTimer: Timer?
+    private var suppressVideoEndedUntil: CFTimeInterval = 0
+    private var currentController: (UIViewController & IndexedPreviewController)?
+    private var isCurrentImageZoomed = false
+    private var isTransitioning = false
+    private let showIndexIndicator: Bool
 
     private lazy var closeButton: UIButton = {
         let button = UIButton(type: .system)
@@ -158,12 +249,12 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         return button
     }()
 
-    private lazy var pageViewController: UIPageViewController = {
-        let controller = UIPageViewController(transitionStyle: .scroll, navigationOrientation: .horizontal)
-        controller.dataSource = self
-        controller.delegate = self
-        controller.view.backgroundColor = .black
-        return controller
+    private let contentContainer: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .black
+        view.clipsToBounds = true
+        return view
     }()
 
     private let indicatorLabel: UILabel = {
@@ -177,9 +268,41 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         return label
     }()
 
-    init(items: [PreviewMediaItem], startIndex: Int = 0) {
+    private lazy var previewTapGesture: UITapGestureRecognizer = {
+        let gesture = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap))
+        gesture.delegate = self
+        gesture.cancelsTouchesInView = false
+        return gesture
+    }()
+
+    private lazy var previousEdgePanGesture: UIScreenEdgePanGestureRecognizer = {
+        let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+        gesture.edges = .left
+        gesture.delegate = self
+        gesture.cancelsTouchesInView = false
+        return gesture
+    }()
+
+    private lazy var nextEdgePanGesture: UIScreenEdgePanGestureRecognizer = {
+        let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleEdgePan(_:)))
+        gesture.edges = .right
+        gesture.delegate = self
+        gesture.cancelsTouchesInView = false
+        return gesture
+    }()
+
+    init(
+        items: [PreviewMediaItem],
+        startIndex: Int = 0,
+        callbackId: UInt64,
+        advance: PreviewMediaAdvance,
+        showIndexIndicator: Bool
+    ) {
         self.items = items
         self.currentIndex = max(0, min(startIndex, items.count - 1))
+        self.callbackId = callbackId
+        self.advance = advance
+        self.showIndexIndicator = showIndexIndicator
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -188,11 +311,24 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     }
 
     deinit {
-        cleanupPreviewResources()
+        if !didFinish {
+            didFinish = true
+            if callbackId > 0,
+               let jsonData = try? JSONSerialization.data(
+                withJSONObject: [
+                    "reason": PreviewMediaCloseReason.interrupted.rawValue,
+                    "lastIndex": currentIndex
+                ],
+                options: []
+               ),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                let _ = onCallback(callbackId, true, jsonString)
+            }
+        }
     }
 
     override var prefersStatusBarHidden: Bool {
-        return true  // Hide status bar like native component fullscreen
+        return true
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {
@@ -211,18 +347,15 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         super.viewDidLoad()
         view.backgroundColor = .black
         modalPresentationCapturesStatusBarAppearance = true
-        setNeedsStatusBarAppearanceUpdate()  // Force status bar update
+        setNeedsStatusBarAppearanceUpdate()
 
-        addChild(pageViewController)
-        pageViewController.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(pageViewController.view)
-        pageViewController.didMove(toParent: self)
+        view.addSubview(contentContainer)
 
         NSLayoutConstraint.activate([
-            pageViewController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            pageViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            pageViewController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            pageViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: view.topAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
 
         view.addSubview(indicatorLabel)
@@ -231,7 +364,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             indicatorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
 
-            if let backImage = LxIcon.image(named: "icon_close")?.withRenderingMode(.alwaysOriginal) {
+        if let backImage = LxIcon.image(named: "icon_close")?.withRenderingMode(.alwaysOriginal) {
             closeButton.setImage(backImage, for: .normal)
             closeButton.tintColor = .clear
         } else {
@@ -247,18 +380,22 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             closeButton.heightAnchor.constraint(equalToConstant: 44)
         ])
 
+        view.addGestureRecognizer(previewTapGesture)
+        view.addGestureRecognizer(previousEdgePanGesture)
+        view.addGestureRecognizer(nextEdgePanGesture)
+
         if let initial = viewController(for: currentIndex) {
-            pageViewController.setViewControllers([initial], direction: .forward, animated: false)
+            displayInitialController(initial)
         }
-        setPagerInteraction(enabled: true)
+        updateManualNavigationGestures()
         updateIndicator()
         updateCloseButtonVisibility()
+        scheduleBehaviorForCurrentItem()
+    }
 
-        // Keep close button in sync with player controls via the same tap gesture.
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handlePreviewTap))
-        tapGesture.delegate = self
-        tapGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(tapGesture)
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        currentController?.view.frame = contentContainer.bounds
     }
 
     @objc private func handlePreviewTap() {
@@ -271,32 +408,189 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         }
     }
 
-
-    private func viewController(for index: Int) -> UIViewController? {
+    private func viewController(for index: Int) -> (UIViewController & IndexedPreviewController)? {
         guard items.indices.contains(index) else { return nil }
         let item = items[index]
         switch item.type {
         case .video:
-            return MediaPreviewVideoController(item: item, index: index)
+            return MediaPreviewVideoController(
+                item: item,
+                index: index,
+                loopPlayback: shouldLoopCurrentVideo(at: index),
+                endedHandler: { [weak self] in
+                    guard let self, self.currentIndex == index else { return }
+                    self.handleVideoEnded()
+                },
+                errorHandler: { [weak self] in
+                    guard let self, self.currentIndex == index else { return }
+                    self.finishPreview(reason: .error)
+                },
+                scrubStateChanged: { [weak self] scrubbing in
+                    guard let self, self.currentIndex == index else { return }
+                    self.handleVideoScrubStateChanged(scrubbing)
+                }
+            )
         case .image, .unknown:
             return MediaPreviewImageController(item: item, index: index, zoomStateChanged: { [weak self] zoomed in
-                self?.setPagerInteraction(enabled: !zoomed)
-            }, dismissHandler: { [weak self] in self?.closeTapped() })
+                self?.isCurrentImageZoomed = zoomed
+                self?.updateManualNavigationGestures()
+            }, dismissHandler: { [weak self] in self?.finishPreview(reason: .manual) })
         }
     }
 
-    private func setPagerInteraction(enabled: Bool) {
-        pageViewController.dataSource = enabled ? self : nil
-        pageViewController.delegate = enabled ? self : nil
-        for subview in pageViewController.view.subviews {
-            if let scrollView = subview as? UIScrollView {
-                scrollView.isScrollEnabled = enabled
+    private func shouldLoopCurrentVideo(at index: Int) -> Bool {
+        return advance == .loop && items.count == 1 && items.indices.contains(index) && items[index].type == .video
+    }
+
+    private func displayInitialController(_ controller: UIViewController & IndexedPreviewController) {
+        controller.beginAppearanceTransition(true, animated: false)
+        addChild(controller)
+        controller.view.frame = contentContainer.bounds
+        controller.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentContainer.addSubview(controller.view)
+        controller.didMove(toParent: self)
+        controller.endAppearanceTransition()
+        currentController = controller
+        isCurrentImageZoomed = false
+    }
+
+    private func updateManualNavigationGestures() {
+        guard !isTransitioning, items.indices.contains(currentIndex), items.count > 1 else {
+            previousEdgePanGesture.isEnabled = false
+            nextEdgePanGesture.isEnabled = false
+            return
+        }
+        let item = items[currentIndex]
+        let enabled = item.type == .video || !isCurrentImageZoomed
+        previousEdgePanGesture.isEnabled = enabled
+        nextEdgePanGesture.isEnabled = enabled
+    }
+
+    private func showItem(
+        at index: Int,
+        direction: PreviewSwipeDirection,
+        animated: Bool
+    ) {
+        guard items.indices.contains(index) else { return }
+        guard let controller = viewController(for: index) else { return }
+        suppressVideoEndedUntil = 0
+        isCurrentImageZoomed = false
+        currentIndex = index
+        updateIndicator()
+        updateCloseButtonVisibility()
+        transition(to: controller, direction: direction, animated: animated)
+        scheduleBehaviorForCurrentItem()
+    }
+
+    private func transition(
+        to controller: UIViewController & IndexedPreviewController,
+        direction: PreviewSwipeDirection,
+        animated: Bool
+    ) {
+        let previousController = currentController
+        currentController = controller
+        updateManualNavigationGestures()
+
+        addChild(controller)
+        let bounds = contentContainer.bounds
+        controller.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+        guard animated, let previousController, previousController !== controller else {
+            previousController?.beginAppearanceTransition(false, animated: false)
+            controller.beginAppearanceTransition(true, animated: false)
+            previousController?.willMove(toParent: nil)
+            previousController?.view.removeFromSuperview()
+            previousController?.removeFromParent()
+            controller.view.frame = bounds
+            contentContainer.addSubview(controller.view)
+            controller.didMove(toParent: self)
+            previousController?.endAppearanceTransition()
+            controller.endAppearanceTransition()
+            if let previousController {
+                teardownPlayers(in: previousController)
             }
+            return
+        }
+
+        isTransitioning = true
+        updateManualNavigationGestures()
+
+        let width = max(bounds.width, 1)
+        let offset = direction == .next ? width : -width
+        let enteringFrame = bounds.offsetBy(dx: offset, dy: 0)
+        let exitingFrame = bounds.offsetBy(dx: -offset, dy: 0)
+
+        previousController.beginAppearanceTransition(false, animated: true)
+        controller.beginAppearanceTransition(true, animated: true)
+        controller.view.frame = enteringFrame
+        contentContainer.addSubview(controller.view)
+        previousController.willMove(toParent: nil)
+
+        UIView.animate(
+            withDuration: 0.28,
+            delay: 0,
+            options: [.curveEaseInOut, .allowUserInteraction]
+        ) {
+            previousController.view.frame = exitingFrame
+            controller.view.frame = bounds
+        } completion: { [weak self] _ in
+            guard let self else { return }
+            previousController.view.removeFromSuperview()
+            previousController.removeFromParent()
+            controller.didMove(toParent: self)
+            previousController.endAppearanceTransition()
+            controller.endAppearanceTransition()
+            self.teardownPlayers(in: previousController)
+            self.isTransitioning = false
+            self.updateManualNavigationGestures()
+        }
+    }
+
+    private func resolvedSwipeTargetIndex(for direction: PreviewSwipeDirection) -> Int? {
+        switch direction {
+        case .next:
+            let nextIndex = currentIndex + 1
+            if items.indices.contains(nextIndex) {
+                return nextIndex
+            }
+            return advance == .loop && items.count > 1 ? 0 : nil
+        case .previous:
+            let previousIndex = currentIndex - 1
+            if items.indices.contains(previousIndex) {
+                return previousIndex
+            }
+            return advance == .loop && items.count > 1 ? items.count - 1 : nil
+        }
+    }
+
+    @objc private func handleEdgePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+
+        let translation = gesture.translation(in: view)
+        let direction: PreviewSwipeDirection
+        switch gesture.edges {
+        case .left:
+            guard translation.x > 40 else { return }
+            direction = .previous
+        case .right:
+            guard translation.x < -40 else { return }
+            direction = .next
+        default:
+            return
+        }
+
+        guard let targetIndex = resolvedSwipeTargetIndex(for: direction) else { return }
+        showItem(at: targetIndex, direction: direction, animated: true)
+    }
+
+    private func handleVideoScrubStateChanged(_ scrubbing: Bool) {
+        if !scrubbing {
+            suppressVideoEndedUntil = CACurrentMediaTime() + 0.8
         }
     }
 
     private func updateIndicator() {
-        if items.count <= 1 {
+        if !showIndexIndicator || items.isEmpty {
             indicatorLabel.isHidden = true
         } else {
             indicatorLabel.isHidden = false
@@ -305,8 +599,6 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     }
 
     private func updateCloseButtonVisibility() {
-        // Hide close button for images (tap to dismiss)
-        // For videos, also hide initially (will show with controls on tap)
         guard items.indices.contains(currentIndex) else { return }
         let currentItem = items[currentIndex]
         if currentItem.type == .video {
@@ -322,21 +614,36 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         true
     }
 
-    @objc private func closeTapped() {
-        // Hide and clean up the dedicated window
-        Task { @MainActor in
-            cleanupPreviewResources()
-
-            // Find the main app window and restore it as key window before dismissing
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let mainWindow = windowScene.windows.first(where: { $0 != LxAppMedia.previewWindow && $0.isKeyWindow == false }) {
-                mainWindow.makeKeyAndVisible()
-            }
-
-            LxAppMedia.previewWindow?.isHidden = true
-            LxAppMedia.previewWindow?.rootViewController = nil
-            LxAppMedia.previewWindow = nil
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        if gestureRecognizer === previewTapGesture {
+            return !touchOriginatesFromControl(touch.view)
         }
+        if gestureRecognizer === previousEdgePanGesture || gestureRecognizer === nextEdgePanGesture {
+            guard !isTransitioning, items.indices.contains(currentIndex), items.count > 1 else { return false }
+            if items[currentIndex].type != .video && isCurrentImageZoomed {
+                return false
+            }
+            if let videoController = currentController as? MediaPreviewVideoController, videoController.isScrubbing {
+                return false
+            }
+            return true
+        }
+        return true
+    }
+
+    private func touchOriginatesFromControl(_ view: UIView?) -> Bool {
+        var current = view
+        while let candidate = current {
+            if candidate is UIControl {
+                return true
+            }
+            current = candidate.superview
+        }
+        return false
+    }
+
+    @objc private func closeTapped() {
+        finishPreview(reason: .manual)
     }
 
     private func cleanupPreviewResources() {
@@ -344,10 +651,9 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             return
         }
         didCleanup = true
+        clearTimers()
 
         teardownPlayers(in: self)
-        pageViewController.dataSource = nil
-        pageViewController.delegate = nil
     }
 
     private func teardownPlayers(in controller: UIViewController) {
@@ -361,26 +667,81 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             teardownPlayers(in: presented)
         }
     }
-}
 
-extension MediaPreviewViewController: UIPageViewControllerDataSource, UIPageViewControllerDelegate {
-    func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
-        guard let current = viewController as? IndexedPreviewController else { return nil }
-        let previous = current.index - 1
-        return self.viewController(for: previous)
+    private func clearTimers() {
+        imageTimer?.invalidate()
+        imageTimer = nil
     }
 
-    func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
-        guard let current = viewController as? IndexedPreviewController else { return nil }
-        let next = current.index + 1
-        return self.viewController(for: next)
+    private func scheduleBehaviorForCurrentItem() {
+        clearTimers()
+        guard advance != .manual, items.indices.contains(currentIndex) else { return }
+        let item = items[currentIndex]
+        guard item.type != .video, let durationMs = item.durationMs, durationMs > 0 else {
+            return
+        }
+        imageTimer = Timer.scheduledTimer(withTimeInterval: TimeInterval(durationMs) / 1000.0, repeats: false) { [weak self] _ in
+            self?.advanceFromCurrentItem()
+        }
     }
 
-    func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
-        guard completed, let current = pageViewController.viewControllers?.first as? IndexedPreviewController else { return }
-        currentIndex = current.index
-        updateIndicator()
-        updateCloseButtonVisibility()
+    private func handleVideoEnded() {
+        if CACurrentMediaTime() < suppressVideoEndedUntil {
+            return
+        }
+        // Suppress auto-advance while the user is scrubbing the progress bar.
+        if let controller = currentController as? MediaPreviewVideoController,
+           controller.index == currentIndex,
+           controller.isScrubbing {
+            return
+        }
+        clearTimers()
+        advanceFromCurrentItem()
+    }
+
+    private func advanceFromCurrentItem() {
+        switch advance {
+        case .manual:
+            return
+        case .next:
+            let nextIndex = currentIndex + 1
+            guard items.indices.contains(nextIndex) else {
+                finishPreview(reason: .completed)
+                return
+            }
+            showItem(at: nextIndex, direction: .next, animated: true)
+            return
+        case .loop:
+            guard !items.isEmpty else {
+                finishPreview(reason: .completed)
+                return
+            }
+            if items.count == 1 {
+                scheduleBehaviorForCurrentItem()
+                return
+            }
+            let nextIndex = currentIndex < items.count - 1 ? currentIndex + 1 : 0
+            showItem(at: nextIndex, direction: .next, animated: true)
+        }
+    }
+    fileprivate func finishPreview(reason: PreviewMediaCloseReason) {
+        if didFinish {
+            return
+        }
+        didFinish = true
+        if callbackId > 0,
+           let jsonData = try? JSONSerialization.data(
+            withJSONObject: [
+                "reason": reason.rawValue,
+                "lastIndex": currentIndex
+            ],
+            options: []
+           ),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            let _ = onCallback(callbackId, true, jsonString)
+        }
+        cleanupPreviewResources()
+        LxAppMedia.dismissPreviewWindow(for: self)
     }
 }
 
@@ -435,14 +796,30 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
 private final class MediaPreviewVideoController: UIViewController, IndexedPreviewController {
     let index: Int
     private let item: PreviewMediaItem
+    private let loopPlayback: Bool
+    private let endedHandler: () -> Void
+    private let errorHandler: () -> Void
+    private let scrubStateChanged: (Bool) -> Void
     private let log = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
     private var player: LxMediaPlayer?
     private var hasStartedPlayback = false
+    fileprivate private(set) var isScrubbing = false
 
-    init(item: PreviewMediaItem, index: Int) {
+    init(
+        item: PreviewMediaItem,
+        index: Int,
+        loopPlayback: Bool,
+        endedHandler: @escaping () -> Void,
+        errorHandler: @escaping () -> Void,
+        scrubStateChanged: @escaping (Bool) -> Void
+    ) {
         self.item = item
         self.index = index
+        self.loopPlayback = loopPlayback
+        self.endedHandler = endedHandler
+        self.errorHandler = errorHandler
+        self.scrubStateChanged = scrubStateChanged
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -453,8 +830,6 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-
-        // Embed LxMediaPlayer inline
         embedPlayerInline()
     }
 
@@ -472,6 +847,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        player?.refreshGestureInterference()
         // Resume playback when returning to this page
         if hasStartedPlayback {
             player?.handle(command: .play)
@@ -489,6 +865,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             src: item.url,
             poster: item.coverURL,
             autoplay: true,
+            loop: loopPlayback,
             controls: true,  // Show all controls
             showControlsOnInit: false,  // Hide controls initially, show on tap
             objectFit: item.objectFit ?? .contain,
@@ -500,8 +877,11 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             case .play:
                 self?.hasStartedPlayback = true
                 os_log("MediaPreview player event: play", log: self?.log ?? .default, type: .info)
+            case .ended:
+                self?.endedHandler()
             case .error(let code, let message):
                 os_log("Error: %{public}@ - %{public}@", log: self?.log ?? .default, type: .error, code, message)
+                self?.errorHandler()
             default:
                 break
             }
@@ -512,12 +892,13 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         player.setShowCloseButton(false)
         // Don't show fullscreen button - preview is already fullscreen
         player.setShowFullscreenButton(false)
+        player.onScrubStateChanged = { [weak self] scrubbing in
+            self?.isScrubbing = scrubbing
+            self?.scrubStateChanged(scrubbing)
+        }
         self.player = player
 
-        // Add player view
-        let playerView = player.view
-        playerView.translatesAutoresizingMaskIntoConstraints = true
-        view.addSubview(playerView)
+        player.attach(to: view)
     }
 
     private func startPlaybackIfNeeded() {

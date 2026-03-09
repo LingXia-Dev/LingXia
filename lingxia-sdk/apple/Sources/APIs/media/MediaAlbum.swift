@@ -1,14 +1,12 @@
 #if os(iOS)
 import UIKit
 import Photos
-import AVFoundation
 import CLingXiaRustAPI
 
 extension LxAppMedia {
-    // Copy album media to destination with normalized output format.
-    // Image → JPEG (.jpg/.jpeg), Video → MP4 (.mp4)
+    // Copy album media to destination.
+    // Images are normalized to JPEG; videos keep original playable bytes.
     // Supported URIs: phasset:<localIdentifier> only (album assets)
-    // Images are compressed to 80% quality by default
     nonisolated static func copyAlbumMediaToFile(
         uri: RustStr,
         destination_path: RustStr,
@@ -26,9 +24,7 @@ extension LxAppMedia {
 
         // Enforce destination extension contract
         let ext = destURL.pathExtension.lowercased()
-        if isVideo {
-            if ext != "mp4" { return false }
-        } else {
+        if !isVideo {
             if ext != "jpg" && ext != "jpeg" { return false }
         }
 
@@ -59,28 +55,39 @@ extension LxAppMedia {
         guard let asset = fetch.firstObject else { return false }
 
         if isVideo {
-            // Export AVAsset directly to MP4 at destination
-            let opt = PHVideoRequestOptions()
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "phasset_video_\(UUID().uuidString).\(ext.isEmpty ? "mov" : ext)"
+            )
+            let opt = PHAssetResourceRequestOptions()
             opt.isNetworkAccessAllowed = true
-            opt.deliveryMode = .highQualityFormat
+            let resources = PHAssetResource.assetResources(for: asset)
+            let preferred: [PHAssetResourceType] = [.video, .fullSizeVideo, .pairedVideo]
+            let res = resources.first { preferred.contains($0.type) } ?? resources.first
+            guard let assetRes = res else { return false }
             let sem = DispatchSemaphore(value: 0)
-            var ok = true
-            PHImageManager.default().requestAVAsset(forVideo: asset, options: opt) { avAsset, _, _ in
-                guard let avAsset = avAsset else { ok = false; sem.signal(); return }
-                let preset = AVAssetExportSession(asset: avAsset, presetName: AVAssetExportPresetHighestQuality) != nil ? AVAssetExportPresetHighestQuality : AVAssetExportPresetPassthrough
-                guard let exporter = AVAssetExportSession(asset: avAsset, presetName: preset) else { ok = false; sem.signal(); return }
-                if !exporter.supportedFileTypes.contains(.mp4) { ok = false; sem.signal(); return }
-                clearDest()
-                exporter.outputURL = destURL
-                exporter.outputFileType = .mp4
-                exporter.shouldOptimizeForNetworkUse = true
-                exporter.exportAsynchronously {
-                    ok = (exporter.status == .completed)
-                    sem.signal()
-                }
+            var ok = false
+            try? FileManager.default.removeItem(at: tmp)
+            PHAssetResourceManager.default().writeData(for: assetRes, toFile: tmp, options: opt) { error in
+                ok = (error == nil)
+                sem.signal()
             }
-            _ = sem.wait(timeout: .now() + 180)
-            return ok && FileManager.default.fileExists(atPath: destURL.path)
+            let waitResult = sem.wait(timeout: .now() + 180)
+            guard waitResult == .success, ok else {
+                try? FileManager.default.removeItem(at: tmp)
+                clearDest()
+                return false
+            }
+            clearDest()
+            do {
+                try FileManager.default.moveItem(at: tmp, to: destURL)
+                let size = (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? NSNumber)?
+                    .int64Value ?? 0
+                return size > 0
+            } catch {
+                try? FileManager.default.removeItem(at: tmp)
+                clearDest()
+                return false
+            }
         } else {
             // Export original bytes to a temp file, then transcode to JPEG
             let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("phasset_export_\(UUID().uuidString).dat")

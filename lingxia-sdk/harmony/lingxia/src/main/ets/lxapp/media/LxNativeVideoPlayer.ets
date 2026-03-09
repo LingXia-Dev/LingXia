@@ -162,7 +162,7 @@ class LxNativeVideoRuntimeSnapshot {
 
 @Component
 export struct LxNativeVideoPlayer {
-  @Prop playerId: string = '';
+  @Prop @Watch('onPlayerIdChange') playerId: string = '';
   @Prop @Watch('onConfigChange') config: LxNativeVideoConfig = new LxNativeVideoConfig();
   @State state: LxNativeVideoState = new LxNativeVideoState();
   @State showControls: boolean = false;
@@ -859,11 +859,102 @@ export struct LxNativeVideoPlayer {
 
   private cornerRadiusTimer: number = -1;
 
-  aboutToAppear(): void {
-    this.componentId = this.playerId?.length > 0 ? this.playerId : `native-video-${Date.now()}`;
-    // Generate unique XComponent ID to force recreation when component remounts
+  private resolvePlayerComponentId(explicitId?: string): string {
+    return explicitId && explicitId.length > 0 ? explicitId : `native-video-${Date.now()}`;
+  }
+
+  private assignComponentIdentity(nextComponentId?: string): void {
+    this.componentId = this.resolvePlayerComponentId(nextComponentId);
     LxNativeVideoPlayer.instanceCounter++;
     this.xComponentId = `${this.componentId}-xc-${LxNativeVideoPlayer.instanceCounter}`;
+  }
+
+  private resetStateForPlayerSwitch(): void {
+    this.state = new LxNativeVideoState();
+    this.showControls = false;
+    this.isFullscreen = false;
+    this.isSeeking = false;
+    this.sliderValue = 0;
+    this.hasRenderedFirstFrame = false;
+    this.hasEverPlayed = false;
+    this.hasEnded = false;
+    this.autoplaySuppressed = false;
+    this.isPausedByUser = false;
+    this.lastLoadingIndicatorShown = false;
+    this.lastSeekTimestamp = 0;
+    this.wasPlayingOnDragStart = false;
+    this.pendingSeekTime = -1;
+    this.pendingSeekStartTime = -1;
+    this.pendingPlayEvent = false;
+    this.lastTimeForPlayEvent = -1;
+    this.lastCurrentTimeForPoster = -1;
+    this.lastCurrentTimeForBuffering = -1;
+    this.streamState = 'idle';
+    this.streamTimeAnchorMs = -1;
+    this.streamTimeAnchorPositionMs = 0;
+    this.pendingQualitySwitchTime = -1;
+    this.pendingQualitySwitchPlaying = false;
+    this.surfaceId = '';
+    this.boundSurfaceId = '';
+    this.playerCreated = false;
+    this.streamVideoSize = undefined;
+    this.streamSurfaceWarmupDone = false;
+    this.lastSurfaceCreatedAt = 0;
+    this.appliedCornerRadius = 0;
+    this.cachedPoster = this.config.poster || '';
+    this.cachedAutoplay = !!this.config.autoplay;
+    if (this.config.qualities.length > 0) {
+      this.state.currentQuality = this.config.qualities[0].label;
+    }
+  }
+
+  private onPlayerIdChange(): void {
+    if (!this.componentId) {
+      return;
+    }
+    const nextComponentId = this.resolvePlayerComponentId(this.playerId);
+    if (nextComponentId === this.componentId) {
+      return;
+    }
+
+    const previousComponentId = this.componentId;
+    const isCurrentInstance = LxNativeVideoPlayer.rebindInstance.get(previousComponentId) === this;
+
+    this.clearControlsTimer();
+    this.stopProgressTimer();
+    this.clearCornerRadiusTimer();
+    this.clearSeekTimer();
+    this.clearSeekDebounceTimer();
+    this.cancelPendingSurfaceClear();
+    this.cancelStreamSurfaceRefreshTimers();
+    this.cancelStreamSurfaceWarmupTimer();
+
+    if (isCurrentInstance) {
+      LxNativeVideoPlayer.rebindInstance.delete(previousComponentId);
+      LxNativeVideoPlayer.clearNativeEventCache(previousComponentId);
+    }
+    if (isCurrentInstance && this.playerCreated) {
+      this.destroyPlayer();
+    }
+
+    this.resetStateForPlayerSwitch();
+    this.assignComponentIdentity(nextComponentId);
+    LxNativeVideoPlayer.setNativePlayerExists(this.componentId, false);
+    LxNativeVideoPlayer.setKeepAlive(this.componentId, false);
+    LxNativeVideoPlayer.runtimeState.delete(this.componentId);
+    LxNativeVideoPlayer.rebindInstance.set(this.componentId, this);
+
+    const pendingRotation = LxNativeVideoPlayer.pendingInlineRotation.get(this.componentId);
+    if (pendingRotation !== undefined) {
+      this.config.rotate = pendingRotation;
+    }
+    this.appliedRotation = this.computeNormalizedRotation();
+
+    log(`[${previousComponentId}] onPlayerIdChange -> ${this.componentId}, xComponentId=${this.xComponentId}`);
+  }
+
+  aboutToAppear(): void {
+    this.assignComponentIdentity(this.playerId);
     // Cache config values since @Prop config may be reset during rebuild
     if (this.config.poster && !this.cachedPoster) {
       this.cachedPoster = this.config.poster;

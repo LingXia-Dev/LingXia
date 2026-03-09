@@ -50,23 +50,53 @@ internal object LxAppMedia {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @JvmStatic
-    fun previewMedia(items: Array<PreviewMediaPayload>) {
+    fun previewMedia(
+        items: Array<PreviewMediaPayload>,
+        startIndex: Int,
+        advance: String,
+        showIndexIndicator: Boolean,
+        callbackId: Long
+    ) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
             Log.w(TAG, "previewMedia: current activity is null")
+            if (callbackId > 0L) {
+                NativeApi.onCallback(callbackId, false, "1000")
+            }
             return
         }
         if (items.isEmpty()) {
             Log.w(TAG, "previewMedia: invalid media payload")
+            if (callbackId > 0L) {
+                NativeApi.onCallback(callbackId, false, "1000")
+            }
             return
         }
         val appCompat = activity as? AppCompatActivity
         if (appCompat == null) {
             Log.w(TAG, "previewMedia: activity is not AppCompatActivity")
+            if (callbackId > 0L) {
+                NativeApi.onCallback(callbackId, false, "1000")
+            }
             return
         }
         appCompat.runOnUiThread {
-            MediaPreviewFragment.show(appCompat, items)
+            MediaPreviewFragment.show(
+                activity = appCompat,
+                payloads = items,
+                startIndex = startIndex,
+                advance = advance,
+                showIndexIndicator = showIndexIndicator,
+                callbackId = callbackId
+            )
+        }
+    }
+
+    @JvmStatic
+    fun closePreview(callbackId: Long) {
+        val activity = LxApp.getCurrentActivity() as? AppCompatActivity ?: return
+        activity.runOnUiThread {
+            MediaPreviewFragment.close(activity, callbackId)
         }
     }
 

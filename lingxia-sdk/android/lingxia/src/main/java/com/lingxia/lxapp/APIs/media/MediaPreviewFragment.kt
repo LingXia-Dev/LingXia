@@ -10,6 +10,8 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -27,6 +29,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
+import com.lingxia.lxapp.NativeApi
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
@@ -35,21 +38,47 @@ import java.net.URL
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import kotlin.math.max
+import org.json.JSONObject
 
 class MediaPreviewFragment : Fragment() {
+    private enum class PreviewAdvance {
+        MANUAL,
+        NEXT,
+        LOOP;
+
+        companion object {
+            fun fromRaw(value: String?): PreviewAdvance = when (value?.trim()?.lowercase()) {
+                "next" -> NEXT
+                "loop" -> LOOP
+                else -> MANUAL
+            }
+        }
+    }
+
     private var viewPager: ViewPager2? = null
     private var previewAdapter: PreviewPagerAdapter? = null
     private var indicatorText: TextView? = null
     private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
     private var totalItems: Int = 0
     private var windowUiSnapshot: ImmersiveWindowUi.Snapshot? = null
-    private var dismissed = false
-
     private var previewItems: List<PreviewItem> = emptyList()
+    private var callbackId: Long = 0L
+    private var currentIndex: Int = 0
+    private var currentPagerPosition: Int = 0
+    private var advance: PreviewAdvance = PreviewAdvance.MANUAL
+    private var showIndexIndicator: Boolean = false
+    private var finished = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var imageAutoRunnable: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         previewItems = readPreviewItems()
+        callbackId = arguments?.getLong(ARG_CALLBACK_ID, 0L) ?: 0L
+        advance = PreviewAdvance.fromRaw(arguments?.getString(ARG_ADVANCE))
+        currentIndex = clampIndex(arguments?.getInt(ARG_START_INDEX, 0) ?: 0)
+        currentPagerPosition = initialPagerPosition(currentIndex)
+        showIndexIndicator = arguments?.getBoolean(ARG_SHOW_INDEX_INDICATOR, false) ?: false
     }
 
     override fun onCreateView(
@@ -64,18 +93,25 @@ class MediaPreviewFragment : Fragment() {
         }
 
         if (previewItems.isEmpty()) {
-            root.post { dismissOverlay() }
+            root.post { finishPreview("error") }
             return root
         }
 
         totalItems = previewItems.size
 
-        val adapter = PreviewPagerAdapter(previewItems) { dismissOverlay() }
+        val adapter = PreviewPagerAdapter(
+            items = previewItems,
+            loopEnabled = shouldUseLoopPager(),
+            loopSingleItemVideo = shouldLoopSingleItemVideo(),
+            onDismiss = { finishPreview("manual") },
+            onVideoTerminal = { position, terminal -> onVideoTerminal(position, terminal) }
+        )
         previewAdapter = adapter
 
         val pager = ViewPager2(context).apply {
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             this.adapter = adapter
+            setCurrentItem(currentPagerPosition, false)
         }
         adapter.attachToViewPager(pager)
         viewPager = pager
@@ -84,16 +120,19 @@ class MediaPreviewFragment : Fragment() {
         val topBar = createTopBar(context, totalItems)
         root.addView(topBar)
 
-        updateIndicator(0)
-        adapter.onPageSelected(0)
+        updateIndicator(currentIndex)
         val callback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                updateIndicator(position)
-                adapter.onPageSelected(position)
+                handlePageSelected(position)
             }
         }
         pageChangeCallback = callback
         pager.registerOnPageChangeCallback(callback)
+        root.post {
+            if (!finished) {
+                handlePageSelected(currentPagerPosition)
+            }
+        }
 
         return root
     }
@@ -113,15 +152,28 @@ class MediaPreviewFragment : Fragment() {
             viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    dismissOverlay()
+                    finishPreview("manual")
                 }
             }
         )
     }
 
     override fun onDestroyView() {
+        if (!finished) {
+            finished = true
+            sendPreviewResult("interrupted")
+        }
+        clearAutoRunnables()
         cleanupPreviewResources()
         super.onDestroyView()
+    }
+
+    private fun sendPreviewResult(reason: String) {
+        if (callbackId <= 0L) return
+        val result = JSONObject()
+            .put("reason", reason)
+            .put("lastIndex", currentIndex)
+        NativeApi.onCallback(callbackId, true, result.toString())
     }
 
     private fun cleanupPreviewResources() {
@@ -142,6 +194,11 @@ class MediaPreviewFragment : Fragment() {
             }
         }
         windowUiSnapshot = null
+    }
+
+    private fun clearAutoRunnables() {
+        imageAutoRunnable?.let(mainHandler::removeCallbacks)
+        imageAutoRunnable = null
     }
 
     private fun createTopBar(context: Context, itemCount: Int): View {
@@ -167,7 +224,7 @@ class MediaPreviewFragment : Fragment() {
                 gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
                 setMargins(dpMargin, topOffset, dpMargin, dpMargin)
             }
-            visibility = if (itemCount > 1) View.VISIBLE else View.GONE
+            visibility = if (showIndexIndicator && itemCount > 0) View.VISIBLE else View.GONE
         }
 
         indicatorText?.let(topContainer::addView)
@@ -175,7 +232,7 @@ class MediaPreviewFragment : Fragment() {
     }
 
     private fun updateIndicator(position: Int) {
-        if (totalItems <= 1) {
+        if (!showIndexIndicator || totalItems <= 0) {
             indicatorText?.visibility = View.GONE
             return
         }
@@ -204,30 +261,139 @@ class MediaPreviewFragment : Fragment() {
                 mediaType = MediaPreviewType.fromInt(payload.type),
                 coverUri = coverUri,
                 rotate = payload.rotate,
-                objectFit = payload.objectFit?.let { LxMediaObjectFit.fromString(it) }
+                objectFit = payload.objectFit?.let { LxMediaObjectFit.fromString(it) },
+                durationMs = payload.durationMs?.takeIf { it > 0L }
             )
         }
     }
 
-    private fun dismissOverlay() {
-        if (dismissed) return
-        dismissed = true
-        // Explicit cleanup on close; don't rely only on lifecycle callbacks.
+    private fun handlePageSelected(position: Int) {
+        currentPagerPosition = position
+        currentIndex = realIndexFor(position)
+        updateIndicator(currentIndex)
+        previewAdapter?.onPageSelected(position)
+        scheduleCurrentItemBehavior()
+    }
+
+    private fun scheduleCurrentItemBehavior() {
+        clearAutoRunnables()
+        val item = previewItems.getOrNull(currentIndex) ?: return
+        if (item.mediaType == MediaPreviewType.VIDEO) {
+            return
+        }
+
+        val timeoutMs = item.durationMs
+        if (timeoutMs != null && timeoutMs > 0L && advance != PreviewAdvance.MANUAL) {
+            val runnable = Runnable {
+                imageAutoRunnable = null
+                advanceFromCurrentItem()
+            }
+            imageAutoRunnable = runnable
+            mainHandler.postDelayed(runnable, timeoutMs)
+        }
+    }
+
+    private fun onVideoTerminal(position: Int, terminal: String) {
+        if (finished || position != currentPagerPosition) return
+        clearAutoRunnables()
+        when (terminal) {
+            "error" -> finishPreview("error")
+            else -> advanceFromCurrentItem()
+        }
+    }
+
+    private fun advanceFromCurrentItem() {
+        when (advance) {
+            PreviewAdvance.MANUAL -> Unit
+            PreviewAdvance.NEXT -> {
+                if (currentIndex < previewItems.lastIndex) {
+                    viewPager?.setCurrentItem(currentPagerPosition + 1, true)
+                } else {
+                    finishPreview("completed")
+                }
+            }
+            PreviewAdvance.LOOP -> {
+                if (previewItems.isEmpty()) {
+                    finishPreview("completed")
+                    return
+                }
+                if (previewItems.size == 1) {
+                    scheduleCurrentItemBehavior()
+                    return
+                }
+                viewPager?.setCurrentItem(currentPagerPosition + 1, true)
+            }
+        }
+    }
+
+    private fun finishPreview(reason: String) {
+        if (finished) return
+        finished = true
+        clearAutoRunnables()
+        sendPreviewResult(reason)
         cleanupPreviewResources()
-        parentFragmentManager.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        if (isAdded) {
+            parentFragmentManager.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        }
+    }
+
+    private fun clampIndex(position: Int): Int {
+        if (previewItems.isEmpty()) return 0
+        return position.coerceIn(0, previewItems.lastIndex)
+    }
+
+    private fun shouldUseLoopPager(): Boolean {
+        return advance == PreviewAdvance.LOOP && previewItems.size > 1
+    }
+
+    private fun shouldLoopSingleItemVideo(): Boolean {
+        return advance == PreviewAdvance.LOOP && previewItems.size == 1
+    }
+
+    private fun realIndexFor(position: Int): Int {
+        if (previewItems.isEmpty()) return 0
+        if (!shouldUseLoopPager()) return clampIndex(position)
+        val size = previewItems.size
+        val normalized = position % size
+        return if (normalized >= 0) normalized else normalized + size
+    }
+
+    private fun initialPagerPosition(startIndex: Int): Int {
+        if (!shouldUseLoopPager()) {
+            return clampIndex(startIndex)
+        }
+        val size = previewItems.size
+        val midpoint = Int.MAX_VALUE / 2
+        val base = midpoint - (midpoint % size)
+        return base + clampIndex(startIndex)
     }
 
     companion object {
         private const val ARG_PAYLOADS = "arg_payloads"
+        private const val ARG_START_INDEX = "arg_start_index"
+        private const val ARG_ADVANCE = "arg_advance"
+        private const val ARG_SHOW_INDEX_INDICATOR = "arg_show_index_indicator"
+        private const val ARG_CALLBACK_ID = "arg_callback_id"
         private const val TAG = "MediaPreviewOverlay"
 
-        fun show(activity: AppCompatActivity, payloads: Array<PreviewMediaPayload>) {
+        fun show(
+            activity: AppCompatActivity,
+            payloads: Array<PreviewMediaPayload>,
+            startIndex: Int,
+            advance: String,
+            showIndexIndicator: Boolean,
+            callbackId: Long
+        ) {
             val fm = activity.supportFragmentManager
-            if (fm.findFragmentByTag(TAG) != null) return
+            (fm.findFragmentByTag(TAG) as? MediaPreviewFragment)?.finishPreview("interrupted")
 
             val fragment = MediaPreviewFragment().apply {
                 arguments = Bundle().apply {
                     putSerializable(ARG_PAYLOADS, ArrayList(payloads.toList()))
+                    putInt(ARG_START_INDEX, startIndex)
+                    putString(ARG_ADVANCE, advance)
+                    putBoolean(ARG_SHOW_INDEX_INDICATOR, showIndexIndicator)
+                    putLong(ARG_CALLBACK_ID, callbackId)
                 }
             }
 
@@ -243,6 +409,13 @@ class MediaPreviewFragment : Fragment() {
                 .commitAllowingStateLoss()
             fm.executePendingTransactions()
         }
+
+        fun close(activity: AppCompatActivity, callbackId: Long) {
+            val fragment = activity.supportFragmentManager.findFragmentByTag(TAG) as? MediaPreviewFragment
+            if (fragment != null && fragment.callbackId == callbackId) {
+                fragment.finishPreview("interrupted")
+            }
+        }
     }
 }
 
@@ -251,7 +424,8 @@ private data class PreviewItem(
     val mediaType: MediaPreviewType,
     val coverUri: Uri?,
     val rotate: Int?,
-    val objectFit: LxMediaObjectFit?
+    val objectFit: LxMediaObjectFit?,
+    val durationMs: Long?
 )
 
 private enum class MediaPreviewType(val value: Int) {
@@ -297,11 +471,14 @@ private fun isLocalUri(uri: Uri): Boolean {
 
 private class PreviewPagerAdapter(
     private val items: List<PreviewItem>,
-    private val onDismiss: () -> Unit
+    private val loopEnabled: Boolean,
+    private val loopSingleItemVideo: Boolean,
+    private val onDismiss: () -> Unit,
+    private val onVideoTerminal: (Int, String) -> Unit
 ) : RecyclerView.Adapter<PreviewPagerAdapter.MediaViewHolder>() {
 
     private var viewPager: ViewPager2? = null
-    private var currentPosition: Int = 0  // Start at 0 for initial page
+    private var currentPosition: Int = RecyclerView.NO_POSITION
 
     fun attachToViewPager(pager: ViewPager2) {
         viewPager = pager
@@ -349,17 +526,35 @@ private class PreviewPagerAdapter(
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             setBackgroundColor(Color.BLACK)
         }
-        return MediaViewHolder(container, { zoomed -> viewPager?.isUserInputEnabled = !zoomed }, onDismiss)
+        return MediaViewHolder(
+            container = container,
+            onZoomStateChanged = { zoomed -> viewPager?.isUserInputEnabled = !zoomed },
+            onDismiss = onDismiss,
+            onVideoTerminal = { _ -> }
+        )
     }
 
     override fun onBindViewHolder(holder: MediaViewHolder, position: Int) {
-        holder.bind(items[position])
+        holder.setVideoTerminalHandler { terminal ->
+            val adapterPosition = holder.bindingAdapterPosition
+            if (adapterPosition != RecyclerView.NO_POSITION) {
+                onVideoTerminal(adapterPosition, terminal)
+            }
+        }
+        holder.bind(items[realIndexFor(position)], loopSingleItemVideo)
         if (position == currentPosition) {
             holder.onVisible()
         }
     }
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int = if (loopEnabled) Int.MAX_VALUE else items.size
+
+    override fun onViewAttachedToWindow(holder: MediaViewHolder) {
+        super.onViewAttachedToWindow(holder)
+        if (holder.bindingAdapterPosition == currentPosition) {
+            holder.onVisible()
+        }
+    }
 
     override fun onViewRecycled(holder: MediaViewHolder) {
         holder.onHidden()
@@ -367,23 +562,37 @@ private class PreviewPagerAdapter(
         super.onViewRecycled(holder)
     }
 
+    private fun realIndexFor(position: Int): Int {
+        if (items.isEmpty()) return 0
+        if (!loopEnabled) return position.coerceIn(0, items.lastIndex)
+        val normalized = position % items.size
+        return if (normalized >= 0) normalized else normalized + items.size
+    }
+
     class MediaViewHolder(
         private val container: FrameLayout,
         private val onZoomStateChanged: (Boolean) -> Unit,
-        private val onDismiss: () -> Unit
+        private val onDismiss: () -> Unit,
+        private var onVideoTerminal: (String) -> Unit
     ) : RecyclerView.ViewHolder(container) {
         private var currentLoader: Future<*>? = null
         private var currentMediaPlayer: LxMediaPlayer? = null
         private var boundItem: PreviewItem? = null
+        private var loopVideoPlayback: Boolean = false
 
-        fun bind(item: PreviewItem) {
+        fun bind(item: PreviewItem, loopVideoPlayback: Boolean) {
             reset()
             container.removeAllViews()
             boundItem = item
+            this.loopVideoPlayback = loopVideoPlayback
             when (item.mediaType) {
                 MediaPreviewType.VIDEO -> bindVideoPlaceholder(item)
                 MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> bindImage(item)
             }
+        }
+
+        fun setVideoTerminalHandler(handler: (String) -> Unit) {
+            onVideoTerminal = handler
         }
 
         fun reset() {
@@ -406,6 +615,7 @@ private class PreviewPagerAdapter(
 
             container.addView(zoomImageView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             container.addView(progressBar)
+            zoomImageView.setTapToDismissEnabled(true)
             zoomImageView.setDismissListener(onDismiss)
             zoomImageView.setOnScaleStateListener { zoomed -> onZoomStateChanged(zoomed) }
             zoomImageView.setPreviewRotationDegrees(item.rotate)
@@ -453,6 +663,7 @@ private class PreviewPagerAdapter(
             if (mediaUri == Uri.EMPTY) {
                 container.removeAllViews()
                 showVideoError(context)
+                onVideoTerminal("error")
                 return
             }
 
@@ -460,7 +671,17 @@ private class PreviewPagerAdapter(
             currentLoader = null
 
             // Create LxMediaPlayer for video playback
-            val mediaPlayer = LxMediaPlayer(context, eventSink = { /* events ignored in preview */ })
+            val mediaPlayer = LxMediaPlayer(
+                context,
+                eventSink = { /* events ignored in preview */ },
+                typedEventSink = { event ->
+                    when (event) {
+                        is LxMediaEvent.Ended -> onVideoTerminal("ended")
+                        is LxMediaEvent.Error -> onVideoTerminal("error")
+                        else -> Unit
+                    }
+                }
+            )
             mediaPlayer.setShowCloseButton(true)
             mediaPlayer.setShowFullscreenButton(false)
             mediaPlayer.setSuppressAutoShowControls(true)  // Prevent auto-showing controls in preview mode
@@ -473,7 +694,7 @@ private class PreviewPagerAdapter(
                 src = mediaUri.toString(),
                 poster = item.coverUri?.toString(),
                 autoplay = false,
-                loop = true,
+                loop = loopVideoPlayback,
                 controls = true,
                 objectFit = item.objectFit ?: LxMediaObjectFit.CONTAIN,
                 rotateDegrees = item.rotate

@@ -8,7 +8,7 @@ import {
   VideoErrorDetail
 } from '../../media/LxNativeVideoPlayer';
 import { VideoControlsView, VideoControlSize } from '../../media/VideoControls';
-import { videoPlayerSetVolume } from 'liblingxia.so';
+import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {
   id: string;
@@ -16,14 +16,19 @@ export interface MediaPreviewItem {
   mediaType?: number; // 0 = image, 1 = video
   rotate?: number;
   objectFit?: string;
-  width?: number;  // Video width (optional, will be detected)
-  height?: number; // Video height (optional, will be detected)
+  durationMs?: number;
 }
 
 export interface MediaPreviewPageParams {
   items: MediaPreviewItem[];
   initialIndex?: number;
+  callbackId?: string;
+  advance?: MediaPreviewAdvance;
+  showIndexIndicator: boolean;
 }
+
+export type MediaPreviewCloseReason = 'manual' | 'completed' | 'interrupted' | 'error';
+export type MediaPreviewAdvance = 'manual' | 'next' | 'loop';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.MediaPreviewOverlay';
@@ -35,6 +40,8 @@ export class MediaPreviewOverlayManager {
   private static isShowing: boolean = false;
   private static overlayData: MediaPreviewPageParams | null = null;
   private static activePreviewPlayers: Set<string> = new Set();
+  private static currentIndex: number = 0;
+  private static callbackSent: boolean = false;
 
   private static listeners: Set<() => void> = new Set();
 
@@ -42,10 +49,22 @@ export class MediaPreviewOverlayManager {
    * Show media preview overlay
    */
   public static show(params: MediaPreviewPageParams): void {
+    if (MediaPreviewOverlayManager.isShowing) {
+      MediaPreviewOverlayManager.closeOverlay('interrupted');
+    }
     // Defensive cleanup in case previous overlay exited abnormally.
     MediaPreviewOverlayManager.destroyActivePlayers();
-    MediaPreviewOverlayManager.overlayData = params;
+    const clampedIndex = MediaPreviewOverlayManager.clampIndex(params.initialIndex ?? 0, params.items.length);
+    MediaPreviewOverlayManager.overlayData = {
+      items: params.items,
+      initialIndex: clampedIndex,
+      callbackId: params.callbackId,
+      advance: params.advance ?? 'manual',
+      showIndexIndicator: params.showIndexIndicator
+    };
     MediaPreviewOverlayManager.isShowing = true;
+    MediaPreviewOverlayManager.currentIndex = clampedIndex;
+    MediaPreviewOverlayManager.callbackSent = false;
     hilog.info(DOMAIN, TAG, `Showing media preview overlay with ${params.items.length} items`);
     MediaPreviewOverlayManager.notifyListeners();
   }
@@ -53,12 +72,14 @@ export class MediaPreviewOverlayManager {
   /**
    * Hide media preview overlay
    */
-  public static hide(): void {
+  public static closeOverlay(reason: MediaPreviewCloseReason = 'manual'): void {
+    MediaPreviewOverlayManager.emitSessionResult(reason);
     // Close action must release all preview players immediately.
     MediaPreviewOverlayManager.destroyActivePlayers();
     MediaPreviewOverlayManager.isShowing = false;
     MediaPreviewOverlayManager.overlayData = null;
-    hilog.info(DOMAIN, TAG, 'Hiding media preview overlay');
+    MediaPreviewOverlayManager.currentIndex = 0;
+    hilog.info(DOMAIN, TAG, `Hiding media preview overlay, reason=${reason}`);
     MediaPreviewOverlayManager.notifyListeners();
   }
 
@@ -74,6 +95,20 @@ export class MediaPreviewOverlayManager {
    */
   public static getOverlayData(): MediaPreviewPageParams | null {
     return MediaPreviewOverlayManager.overlayData;
+  }
+
+  public static cancelSession(callbackId: string): boolean {
+    const activeCallbackId = String(MediaPreviewOverlayManager.overlayData?.callbackId ?? '').trim();
+    if (!MediaPreviewOverlayManager.isShowing || !activeCallbackId || activeCallbackId !== callbackId) {
+      return false;
+    }
+    MediaPreviewOverlayManager.closeOverlay('interrupted');
+    return true;
+  }
+
+  public static updateCurrentIndex(index: number): void {
+    const total = MediaPreviewOverlayManager.overlayData?.items.length ?? 0;
+    MediaPreviewOverlayManager.currentIndex = MediaPreviewOverlayManager.clampIndex(index, total);
   }
 
   public static registerListener(listener: () => void): void {
@@ -112,6 +147,29 @@ export class MediaPreviewOverlayManager {
   private static notifyListeners(): void {
     MediaPreviewOverlayManager.listeners.forEach(listener => listener());
   }
+
+  private static emitSessionResult(reason: MediaPreviewCloseReason): void {
+    const callbackId = String(MediaPreviewOverlayManager.overlayData?.callbackId ?? '').trim();
+    if (!callbackId || MediaPreviewOverlayManager.callbackSent) {
+      return;
+    }
+    MediaPreviewOverlayManager.callbackSent = true;
+    const result = JSON.stringify({
+      reason: reason,
+      lastIndex: MediaPreviewOverlayManager.currentIndex
+    });
+    onCallback(callbackId, true, result);
+  }
+
+  private static clampIndex(index: number, length: number): number {
+    if (length <= 0) {
+      return 0;
+    }
+    if (!Number.isFinite(index)) {
+      return 0;
+    }
+    return Math.max(0, Math.min(length - 1, Math.trunc(index)));
+  }
 }
 
 /**
@@ -148,6 +206,9 @@ export struct MediaPreviewOverlay {
 
   aboutToDisappear() {
     MediaPreviewOverlayManager.unregisterListener(this.stateChangeListener);
+    if (MediaPreviewOverlayManager.isOverlayShowing()) {
+      MediaPreviewOverlayManager.closeOverlay('interrupted');
+    }
     // Defensive restore: if overlay component is removed unexpectedly, put system bars back.
     this.exitFullscreenMode();
   }
@@ -223,7 +284,7 @@ export struct MediaPreviewOverlay {
   }
 
   private handleClose(): void {
-    MediaPreviewOverlayManager.hide();
+    MediaPreviewOverlayManager.closeOverlay('manual');
   }
 
   build() {
@@ -263,10 +324,18 @@ struct MediaPreviewContent {
   @State private currentIndex: number = 0;
   @State private statusBarHeight: number = 44;
   @State private isZoomed: boolean = false;
+  private imageAutoTimer: number = -1;
+  private readonly swiperController: SwiperController = new SwiperController();
 
   aboutToAppear() {
-    this.currentIndex = this.params.initialIndex || 0;
+    this.currentIndex = this.clampIndex(this.params.initialIndex ?? 0);
+    MediaPreviewOverlayManager.updateCurrentIndex(this.currentIndex);
     this.initStatusBarHeight();
+    this.handleCurrentItemChanged();
+  }
+
+  aboutToDisappear() {
+    this.clearImageAutoTimer();
   }
 
   private async initStatusBarHeight(): Promise<void> {
@@ -281,13 +350,12 @@ struct MediaPreviewContent {
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
-      // Indicator - always show when there are multiple items
-      if (this.params.items.length > 1) {
+      if (this.shouldShowIndicator()) {
         Text(`${this.currentIndex + 1}/${this.params.items.length}`)
           .fontColor(Color.White)
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
-          .margin({ top: 60 })
+          .margin({ top: this.statusBarHeight + 16 })
           .width('100%')
           .textAlign(TextAlign.Center)
           .zIndex(10)
@@ -295,33 +363,151 @@ struct MediaPreviewContent {
 
       // Media display area (supports both images and videos)
       if (this.params.items.length > 0) {
-        Stack() {
-          MediaViewer({
-            item: this.params.items[this.currentIndex],
-            onZoomStateChanged: (zoomed: boolean) => this.isZoomed = zoomed,
-            onDismiss: this.onClose
+        Swiper(this.swiperController) {
+          ForEach(this.params.items, (item: MediaPreviewItem, index: number) => {
+            MediaViewer({
+              item: item,
+              isActive: this.currentIndex === index,
+              loopPlayback: this.shouldLoopCurrentItem(index),
+              onZoomStateChanged: (zoomed: boolean) => {
+                if (this.currentIndex === index) {
+                  this.isZoomed = zoomed;
+                }
+              },
+              onDismiss: this.onClose,
+              onVideoTerminal: (event: 'ended' | 'error') => {
+                if (this.currentIndex === index) {
+                  this.handleVideoTerminal(event);
+                }
+              }
+            })
+              .width('100%')
+              .height('100%')
           })
         }
         .width('100%')
         .height('100%')
-        .gesture(
-          PanGesture({ fingers: 1, direction: PanDirection.Horizontal })
-            .onActionEnd((event: GestureEvent) => {
-              // Disable swipe navigation when zoomed
-              if (!this.isZoomed) {
-                const offsetX = event.offsetX;
-                if (offsetX > 50 && this.currentIndex > 0) {
-                  this.currentIndex--;
-                  this.isZoomed = false; // Reset zoom state when changing items
-                } else if (offsetX < -50 && this.currentIndex < this.params.items.length - 1) {
-                  this.currentIndex++;
-                  this.isZoomed = false; // Reset zoom state when changing items
-                }
-              }
-            })
-        )
+        .index(this.currentIndex)
+        .indicator(false)
+        .loop(this.shouldUseLoopPager())
+        .disableSwipe(this.isZoomed)
+        .cachedCount(this.params.items.length > 1 ? 1 : 0)
+        .duration(360)
+        .curve(Curve.EaseInOut)
+        .onChange((index: number) => {
+          this.handleSwiperChange(index);
+        })
       }
     }
+  }
+
+  private clampIndex(value: number): number {
+    if (this.params.items.length <= 0) {
+      return 0;
+    }
+    if (!Number.isFinite(value)) {
+      return 0;
+    }
+    return Math.max(0, Math.min(this.params.items.length - 1, Math.trunc(value)));
+  }
+
+  private shouldShowIndicator(): boolean {
+    return !!this.params.showIndexIndicator && this.params.items.length > 0;
+  }
+
+  private clearImageAutoTimer(): void {
+    if (this.imageAutoTimer !== -1) {
+      clearTimeout(this.imageAutoTimer);
+      this.imageAutoTimer = -1;
+    }
+  }
+
+  private handleCurrentItemChanged(): void {
+    this.clearImageAutoTimer();
+    MediaPreviewOverlayManager.updateCurrentIndex(this.currentIndex);
+    const currentItem = this.params.items[this.currentIndex];
+    if (!currentItem) {
+      return;
+    }
+    hilog.info(DOMAIN, TAG, `Preview switched to index=${this.currentIndex}, mediaType=${currentItem.mediaType ?? 0}`);
+    if (currentItem.mediaType !== 1) {
+      this.scheduleImageAutoAction();
+    }
+  }
+
+  private shouldUseLoopPager(): boolean {
+    return (this.params.advance ?? 'manual') === 'loop' && this.params.items.length > 1;
+  }
+
+  private shouldLoopCurrentItem(index: number): boolean {
+    return (this.params.advance ?? 'manual') === 'loop'
+      && this.params.items.length === 1
+      && this.currentIndex === index;
+  }
+
+  private handleSwiperChange(index: number): void {
+    const normalizedIndex = this.clampIndex(index);
+    if (normalizedIndex === this.currentIndex) {
+      return;
+    }
+    this.currentIndex = normalizedIndex;
+    this.isZoomed = false;
+    this.handleCurrentItemChanged();
+  }
+
+  private changeToIndex(nextIndex: number, animated: boolean): void {
+    const normalizedIndex = this.clampIndex(nextIndex);
+    if (normalizedIndex === this.currentIndex) {
+      this.handleCurrentItemChanged();
+      return;
+    }
+    this.isZoomed = false;
+    this.swiperController.changeIndex(normalizedIndex, animated);
+  }
+
+  private scheduleImageAutoAction(): void {
+    const durationMs = this.params.items[this.currentIndex]?.durationMs;
+    const advance = this.params.advance ?? 'manual';
+    if (!durationMs || durationMs <= 0 || advance === 'manual') {
+      return;
+    }
+    this.imageAutoTimer = setTimeout(() => {
+      this.imageAutoTimer = -1;
+      this.advanceFromCurrentItem();
+    }, durationMs);
+  }
+
+  private handleVideoTerminal(event: 'ended' | 'error'): void {
+    if (event === 'error') {
+      MediaPreviewOverlayManager.closeOverlay('error');
+      return;
+    }
+    this.advanceFromCurrentItem();
+  }
+
+  private advanceFromCurrentItem(): void {
+    const advance = this.params.advance ?? 'manual';
+    if (advance === 'manual') {
+      return;
+    }
+    if (advance === 'next') {
+      if (this.currentIndex < this.params.items.length - 1) {
+        this.changeToIndex(this.currentIndex + 1, true);
+        return;
+      }
+      MediaPreviewOverlayManager.closeOverlay('completed');
+      return;
+    }
+    if (this.shouldUseLoopPager()) {
+      this.isZoomed = false;
+      this.swiperController.showNext();
+      return;
+    }
+    if (this.params.items.length > 0) {
+      this.handleCurrentItemChanged();
+      return;
+    }
+    MediaPreviewOverlayManager.closeOverlay('completed');
   }
 }
 
@@ -332,9 +518,12 @@ struct MediaPreviewContent {
  */
 @Component
 struct MediaViewer {
-  @Prop item: MediaPreviewItem;
+  @Prop @Watch('onItemChange') item: MediaPreviewItem;
+  @Prop @Watch('onActiveStateChange') isActive: boolean = false;
+  @Prop loopPlayback: boolean = false;
   onZoomStateChanged: (zoomed: boolean) => void = () => {};
   onDismiss: () => void = () => {};
+  onVideoTerminal: (event: 'ended' | 'error') => void = () => {};
 
   @State private imageScale: number = 1;
   // Video player state
@@ -353,33 +542,21 @@ struct MediaViewer {
   @State private orientationDetected: boolean = false;
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
-  private lastTapTime: number = 0;
+  private readonly tapDismissMoveThresholdPx: number = 16;
+  private readonly tapDismissMaxDurationMs: number = 280;
+  private readonly tapDismissDebounceMs: number = 220;
+  private tapTrackingFingerId: number = -1;
+  private tapStartX: number = 0;
+  private tapStartY: number = 0;
+  private tapStartAt: number = 0;
+  private tapMoved: boolean = false;
+  private lastTapDismissAt: number = 0;
   private controlsTimer: number = -1;
   private progressTimer: number = -1;
 
   aboutToAppear() {
-    // Reset zoom when a new item is displayed
-    this.resetZoom();
-    // Initialize screen dimensions for landscape rotation
     this.initScreenDimensions();
-    // Generate unique player ID and config for videos
-    if (this.item.mediaType === 1) {
-      this.playerId = `preview-video-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-      MediaPreviewOverlayManager.registerPreviewPlayer(this.playerId);
-      // Initialize video config once
-      this.videoConfig.src = this.item.uri;
-      this.videoConfig.autoplay = true;
-      this.videoConfig.loop = false;
-      this.videoConfig.muted = false;
-      this.videoConfig.volume = 1.0;
-      this.videoConfig.controls = false; // We use custom controls
-      this.videoConfig.cornerRadius = 0;
-      this.videoConfig.objectFit = this.normalizeObjectFit(this.item.objectFit);
-      const rotation = this.normalizeRotation(this.item.rotate);
-      this.explicitRotation = rotation !== undefined ? rotation : -1;
-      this.updateEffectiveRotation();
-      hilog.info(DOMAIN, TAG, `Video player initialized: playerId=${this.playerId}, src=${this.videoConfig.src}`);
-    }
+    this.applyCurrentItem();
   }
 
   private normalizeRotation(value: number | undefined): number | undefined {
@@ -467,11 +644,16 @@ struct MediaViewer {
     // Cleanup timers
     this.clearControlsTimer();
     this.stopProgressTimer();
-    // Destroy the video player if it exists
-    if (this.item.mediaType === 1 && this.playerId) {
-      MediaPreviewOverlayManager.unregisterPreviewPlayer(this.playerId);
-      LxNativeVideoPlayer.destroyStatic(this.playerId);
-    }
+    this.teardownVideoPlayer();
+    this.resetZoomState();
+  }
+
+  onItemChange(): void {
+    this.applyCurrentItem();
+  }
+
+  onActiveStateChange(): void {
+    this.applyCurrentItem();
   }
 
   private clearControlsTimer(): void {
@@ -519,7 +701,169 @@ struct MediaViewer {
     }
   }
 
+  private resetZoomState(): void {
+    this.imageScale = this.minScale;
+    this.onZoomStateChanged(false);
+  }
+
+  private resetTapTracking(): void {
+    this.tapTrackingFingerId = -1;
+    this.tapStartX = 0;
+    this.tapStartY = 0;
+    this.tapStartAt = 0;
+    this.tapMoved = false;
+  }
+
+  private getTrackingTouch(event: TouchEvent): TouchObject | null {
+    if (!event) {
+      return null;
+    }
+    const sources = [event.changedTouches, event.touches];
+    for (let i = 0; i < sources.length; i++) {
+      const list = sources[i];
+      if (!list || list.length === 0) {
+        continue;
+      }
+      for (let j = 0; j < list.length; j++) {
+        const touch = list[j];
+        if (touch.id === this.tapTrackingFingerId) {
+          return touch;
+        }
+      }
+    }
+    return null;
+  }
+
+  private handleImageTouch(event: TouchEvent): void {
+    if (!this.isActive || this.item.mediaType === 1) {
+      this.resetTapTracking();
+      return;
+    }
+    if (!event) {
+      this.resetTapTracking();
+      return;
+    }
+
+    if (event.type === TouchType.Cancel) {
+      this.resetTapTracking();
+      return;
+    }
+
+    if (event.type === TouchType.Down) {
+      if (!event.changedTouches || event.changedTouches.length !== 1) {
+        this.resetTapTracking();
+        return;
+      }
+      const touch = event.changedTouches[0];
+      this.tapTrackingFingerId = touch.id;
+      this.tapStartX = touch.windowX;
+      this.tapStartY = touch.windowY;
+      this.tapStartAt = Date.now();
+      this.tapMoved = false;
+      return;
+    }
+
+    if (this.tapTrackingFingerId < 0) {
+      return;
+    }
+
+    const trackingTouch = this.getTrackingTouch(event);
+    if (event.type === TouchType.Move) {
+      if (!trackingTouch) {
+        this.tapMoved = true;
+        return;
+      }
+      const deltaX = Math.abs(trackingTouch.windowX - this.tapStartX);
+      const deltaY = Math.abs(trackingTouch.windowY - this.tapStartY);
+      if (deltaX > this.tapDismissMoveThresholdPx || deltaY > this.tapDismissMoveThresholdPx) {
+        this.tapMoved = true;
+      }
+      return;
+    }
+
+    if (event.type === TouchType.Up) {
+      const now = Date.now();
+      const durationMs = now - this.tapStartAt;
+      if (!trackingTouch) {
+        this.resetTapTracking();
+        return;
+      }
+      const deltaX = Math.abs(trackingTouch.windowX - this.tapStartX);
+      const deltaY = Math.abs(trackingTouch.windowY - this.tapStartY);
+      const movedOnUp = deltaX > this.tapDismissMoveThresholdPx || deltaY > this.tapDismissMoveThresholdPx;
+      const shouldDismiss = !this.tapMoved
+        && !movedOnUp
+        && durationMs <= this.tapDismissMaxDurationMs
+        && (now - this.lastTapDismissAt) > this.tapDismissDebounceMs
+        && this.imageScale <= this.minScale + 0.1;
+      this.resetTapTracking();
+      if (shouldDismiss) {
+        this.lastTapDismissAt = now;
+        this.onDismiss();
+      }
+      return;
+    }
+  }
+
+  private applyCurrentItem(): void {
+    this.resetZoomState();
+    this.resetTapTracking();
+    this.clearControlsTimer();
+    this.stopProgressTimer();
+    this.teardownVideoPlayer();
+
+    this.showControls = false;
+    this.isSeeking = false;
+    this.sliderValue = 0;
+    this.videoState = new LxNativeVideoState();
+    this.isLandscapeVideo = false;
+    this.explicitRotation = -1;
+    this.effectiveRotation = 0;
+    this.orientationDetected = false;
+
+    if (!this.isActive) {
+      return;
+    }
+
+    if (this.item.mediaType !== 1) {
+      return;
+    }
+
+    const config = new LxNativeVideoConfig();
+    const nextPlayerId = `preview-video-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    config.src = this.item.uri;
+    config.autoplay = true;
+    config.loop = this.loopPlayback;
+    config.muted = false;
+    config.volume = 1.0;
+    config.controls = false;
+    config.cornerRadius = 0;
+    config.objectFit = this.normalizeObjectFit(this.item.objectFit);
+
+    this.playerId = nextPlayerId;
+    this.videoConfig = config;
+    MediaPreviewOverlayManager.registerPreviewPlayer(nextPlayerId);
+
+    const rotation = this.normalizeRotation(this.item.rotate);
+    this.explicitRotation = rotation !== undefined ? rotation : -1;
+    this.updateEffectiveRotation();
+    hilog.info(DOMAIN, TAG, `Video player initialized: playerId=${this.playerId}, src=${this.videoConfig.src}`);
+  }
+
+  private teardownVideoPlayer(): void {
+    if (!this.playerId) {
+      return;
+    }
+    const previousPlayerId = this.playerId;
+    this.playerId = '';
+    MediaPreviewOverlayManager.unregisterPreviewPlayer(previousPlayerId);
+    LxNativeVideoPlayer.destroyStatic(previousPlayerId);
+  }
+
   private onVideoEvent(event: string, detail: object): void {
+    if (!this.isActive || !this.playerId) {
+      return;
+    }
     // Skip logging frequent timeupdate events
     if (event !== 'timeupdate') {
       hilog.info(DOMAIN, TAG, `Video event: ${event}`);
@@ -544,8 +888,10 @@ struct MediaViewer {
       this.stopProgressTimer();
       if (event === 'ended') {
         this.sliderValue = 100;
+        this.onVideoTerminal('ended');
       } else if (event === 'error') {
         hilog.error(DOMAIN, TAG, `Video error: ${(detail as VideoErrorDetail).message}`);
+        this.onVideoTerminal('error');
       }
     } else if (event === 'seeking') {
       this.isSeeking = true;
@@ -690,28 +1036,35 @@ struct MediaViewer {
         // For landscape videos: rotate content 90 degrees and swap width/height
         // This avoids changing window orientation while properly displaying landscape videos
         Stack() {
-          LxNativeVideoPlayer({
-            playerId: this.playerId,
-            config: this.videoConfig,
-            onEvent: (event: string, detail: object) => {
-              this.onVideoEvent(event, detail);
-            }
-          })
-            .width('100%')
-            .height('100%')
+          if (this.isActive && this.playerId) {
+            LxNativeVideoPlayer({
+              playerId: this.playerId,
+              config: this.videoConfig,
+              onEvent: (event: string, detail: object) => {
+                this.onVideoEvent(event, detail);
+              }
+            })
+              .width('100%')
+              .height('100%')
+          } else {
+            Column()
+              .width('100%')
+              .height('100%')
+              .backgroundColor(Color.Black)
+          }
 
           // Video controls overlay
-          if (this.showControls) {
+          if (this.isActive && this.showControls) {
             this.buildVideoControls()
           }
 
           // Center play button when paused (rendered above controls for easy access)
-          if (!this.videoState.isPlaying) {
+          if (this.isActive && !this.videoState.isPlaying) {
             this.buildCenterPlayButton()
           }
 
           // Close button (show with controls on tap)
-          if (this.showControls) {
+          if (this.isActive && this.showControls) {
             this.buildCloseButton()
           }
         }
@@ -730,6 +1083,9 @@ struct MediaViewer {
         })
         .backgroundColor(Color.Black)
         .onClick(() => {
+          if (!this.isActive) {
+            return;
+          }
           this.showControls = !this.showControls;
           if (this.showControls) {
             this.resetControlsTimer();
@@ -743,33 +1099,18 @@ struct MediaViewer {
             .objectFit(this.resolveImageFit(this.item.objectFit))
             .scale({ x: this.imageScale, y: this.imageScale })
             .gesture(
-              GestureGroup(GestureMode.Exclusive,
-                TapGesture({ count: 1 })
-                  .onAction(() => {
-                    if (this.imageScale <= this.minScale + 0.1) {
-                      const now = Date.now();
-                      const timeSinceLastTap = now - this.lastTapTime;
-
-                      if (timeSinceLastTap > 300) {
-                        this.lastTapTime = now;
-                        this.onDismiss();
-                      }
-                    }
-                  }),
-
-                PinchGesture({ fingers: 2, distance: 1 })
-                  .onActionUpdate((event: GestureEvent) => {
-                    if (event.scale) {
-                      this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
-                      this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
-                    }
-                  })
-                  .onActionEnd(() => {
-                    if (this.imageScale <= this.minScale + 0.1) {
-                      this.resetZoom();
-                    }
-                  })
-              )
+              PinchGesture({ fingers: 2, distance: 1 })
+                .onActionUpdate((event: GestureEvent) => {
+                  if (event.scale) {
+                    this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                    this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
+                  }
+                })
+                .onActionEnd(() => {
+                  if (this.imageScale <= this.minScale + 0.1) {
+                    this.resetZoom();
+                  }
+                })
             )
         }
         .width(this.isQuarterTurn(this.resolveImageRotation()) ? this.screenHeightVp : '100%')
@@ -781,6 +1122,9 @@ struct MediaViewer {
           angle: this.resolveImageRotation(),
           centerX: '50%',
           centerY: '50%'
+        })
+        .onTouch((event: TouchEvent) => {
+          this.handleImageTouch(event);
         })
       }
     }

@@ -113,7 +113,7 @@ export struct LxAppNavigation {
     try {
       if (MediaPreviewOverlayManager.isOverlayShowing()) {
         hilog.info(DOMAIN, TAG, 'BackPress: closing overlay MediaPreviewOverlay');
-        MediaPreviewOverlayManager.hide();
+        MediaPreviewOverlayManager.closeOverlay();
         return true;
       }
     } catch (error) {

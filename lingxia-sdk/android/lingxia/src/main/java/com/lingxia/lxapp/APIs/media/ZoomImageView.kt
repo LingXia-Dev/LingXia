@@ -9,6 +9,7 @@ import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
+import android.view.ViewConfiguration
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.max
@@ -30,6 +31,8 @@ class ZoomImageView @JvmOverloads constructor(
 
     private var lastTouchX = 0f
     private var lastTouchY = 0f
+    private var downTouchX = 0f
+    private var downTouchY = 0f
     private var isDragging = false
     private var isScaling = false
 
@@ -40,6 +43,11 @@ class ZoomImageView @JvmOverloads constructor(
 
     private var dismissListener: (() -> Unit)? = null
     private var scaleStateListener: ((Boolean) -> Unit)? = null
+    private var tapToDismissEnabled = true
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val tapDismissMaxDurationMs = 280L
+    private var downEventTime = 0L
+    private var gestureExceededSlop = false
 
     init {
         scaleType = ScaleType.MATRIX
@@ -49,6 +57,10 @@ class ZoomImageView @JvmOverloads constructor(
 
     fun setDismissListener(listener: (() -> Unit)?) {
         dismissListener = listener
+    }
+
+    fun setTapToDismissEnabled(enabled: Boolean) {
+        tapToDismissEnabled = enabled
     }
 
     fun setOnScaleStateListener(listener: ((Boolean) -> Unit)?) {
@@ -158,11 +170,16 @@ class ZoomImageView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = event.x
                 lastTouchY = event.y
+                downTouchX = event.x
+                downTouchY = event.y
+                downEventTime = event.eventTime
+                gestureExceededSlop = false
                 isDragging = true
                 parent?.requestDisallowInterceptTouchEvent(shouldDisallow)
             }
             MotionEvent.ACTION_POINTER_DOWN -> {
                 isDragging = false
+                gestureExceededSlop = true
                 parent?.requestDisallowInterceptTouchEvent(true)
             }
             MotionEvent.ACTION_MOVE -> {
@@ -170,6 +187,9 @@ class ZoomImageView @JvmOverloads constructor(
                 if (isDragging && event.pointerCount == 1) {
                     val dx = event.x - lastTouchX
                     val dy = event.y - lastTouchY
+                    if (!gestureExceededSlop && (abs(event.x - downTouchX) > touchSlop || abs(event.y - downTouchY) > touchSlop)) {
+                        gestureExceededSlop = true
+                    }
                     if (abs(dx) > 1f || abs(dy) > 1f) {
                         suppMatrix.postTranslate(dx, dy)
                         constrain()
@@ -180,6 +200,9 @@ class ZoomImageView @JvmOverloads constructor(
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    gestureExceededSlop = true
+                }
                 isDragging = false
                 parent?.requestDisallowInterceptTouchEvent(false)
                 if (getCurrentScale() < minScale) {
@@ -275,6 +298,17 @@ class ZoomImageView @JvmOverloads constructor(
         }
 
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+            val deltaX = abs(e.x - downTouchX)
+            val deltaY = abs(e.y - downTouchY)
+            val tapDurationMs = e.eventTime - downEventTime
+            if (!tapToDismissEnabled
+                || gestureExceededSlop
+                || deltaX > touchSlop
+                || deltaY > touchSlop
+                || tapDurationMs > tapDismissMaxDurationMs
+            ) {
+                return false
+            }
             dismissListener?.invoke()
             return true
         }

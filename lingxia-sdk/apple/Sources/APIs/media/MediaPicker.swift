@@ -661,15 +661,17 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
             // Use callback ID for Rust FFI
             var arr: [[String: Any]] = []
             for id in selected {
-                let type: String
-                if let asset = assets.first(where: { $0.localIdentifier == id }) {
-                    type = (asset.mediaType == .video) ? "video" : "image"
-                } else { type = "image" }
-                arr.append([
+                let asset = assets.first(where: { $0.localIdentifier == id })
+                let type = asset?.mediaType == .video ? "video" : "image"
+                var item: [String: Any] = [
                     "uri": "phasset:\(id)",
                     "fileType": type,
                     "isOriginal": isOriginal
-                ])
+                ]
+                if type == "video", let ext = videoFileExtension(for: asset) {
+                    item["fileExt"] = ext
+                }
+                arr.append(item)
             }
             do {
                 let data = try JSONSerialization.data(withJSONObject: arr, options: [])
@@ -680,6 +682,20 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
             }
             dismiss(animated: true)
         }
+    }
+
+    private func videoFileExtension(for asset: PHAsset?) -> String? {
+        guard let asset, asset.mediaType == .video else { return nil }
+        let resources = PHAssetResource.assetResources(for: asset)
+        let preferred: [PHAssetResourceType] = [.video, .fullSizeVideo, .pairedVideo]
+        let resource = resources.first { preferred.contains($0.type) } ?? resources.first
+        guard let filename = resource?.originalFilename.trimmingCharacters(in: .whitespacesAndNewlines),
+              !filename.isEmpty
+        else {
+            return nil
+        }
+        let ext = URL(fileURLWithPath: filename).pathExtension.lowercased()
+        return ext.isEmpty ? nil : ext
     }
 
     func numberOfSections(in collectionView: UICollectionView) -> Int { 1 }

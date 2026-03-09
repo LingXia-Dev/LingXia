@@ -25,7 +25,15 @@ interface PreviewMediaPayload {
   cover_path?: string;
   rotate?: number;
   object_fit?: string;
-  objectFit?: string;
+  durationMs?: number;
+}
+
+interface PreviewMediaRequestPayload {
+  sources: PreviewMediaPayload[];
+  startIndex: number;
+  advance: string;
+  showIndexIndicator: boolean;
+  callbackId: string;
 }
 
 interface SaveMediaPayload {
@@ -36,6 +44,11 @@ interface SaveMediaPayload {
 interface PhotoAssetHandle {
   uri?: string;
   path?: string;
+}
+
+interface PickerUriHandle extends PhotoAssetHandle {
+  fileUri?: string;
+  photoUri?: string;
 }
 
 interface FileDescriptorHandle {
@@ -152,16 +165,47 @@ export class LxAppMedia {
   public static previewMedia(payload: string): boolean {
     try {
       const decoded = typeof payload === 'string' ? payload.replace(/%7C/g, '|') : '';
-      const parsed: PreviewMediaPayload[] = JSON.parse(decoded || '[]');
-      if (!Array.isArray(parsed) || parsed.length === 0) { return false; }
-      const items = parsed
-        .map((entry, index) => LxAppMedia.normalizeEntry(entry, index))
-        .filter((it) => it !== null) as MediaPreviewItem[];
-      if (items.length === 0) { return false; }
-      return LxAppMedia.navigateToMediaPreview(items);
+      const parsed: PreviewMediaRequestPayload = JSON.parse(decoded || '{}');
+      if (!parsed || typeof parsed.callbackId !== 'string' || parsed.callbackId.trim().length === 0) {
+        return false;
+      }
+      if (!Array.isArray(parsed.sources) || parsed.sources.length === 0) {
+        return false;
+      }
+      if (!Number.isFinite(parsed.startIndex)) {
+        return false;
+      }
+      if (Math.trunc(parsed.startIndex) !== parsed.startIndex) {
+        return false;
+      }
+      if (typeof parsed.advance !== 'string' || !LxAppMedia.isValidAdvance(parsed.advance)) {
+        return false;
+      }
+      if (typeof parsed.showIndexIndicator !== 'boolean') {
+        return false;
+      }
+
+      const items: MediaPreviewItem[] = [];
+      for (let index = 0; index < parsed.sources.length; index++) {
+        const normalized = LxAppMedia.normalizeEntry(parsed.sources[index], index);
+        if (!normalized) {
+          return false;
+        }
+        items.push(normalized);
+      }
+
+      return LxAppMedia.navigateToMediaPreview(parsed, items);
     } catch (_) {
       return false;
     }
+  }
+
+  public static closePreview(callbackId: string): boolean {
+    const normalized = String(callbackId ?? '').trim();
+    if (!normalized) {
+      return false;
+    }
+    return MediaPreviewOverlayManager.cancelSession(normalized);
   }
 
   public static chooseMedia(payload: string): boolean {
@@ -252,19 +296,24 @@ export class LxAppMedia {
             isOriginalSupported: true // Always enable original option, let user choose
           };
           const res: photoAccessHelper.PhotoSelectResult = await pv.select(opts);
-          const uris: string[] = Array.isArray(res && res.photoUris) ? res.photoUris : [];
+          const pickerItems: Array<string | PickerUriHandle> = Array.isArray(res && res.photoUris)
+            ? (res.photoUris as Array<string | PickerUriHandle>)
+            : [];
           const isOriginalPick: boolean = (res && (res as photoAccessHelper.PhotoSelectResult).isOriginalPhoto === true);
 
-          if (!uris || uris.length === 0) {
+          if (!pickerItems || pickerItems.length === 0) {
             onCallback(normalized.callbackId, false, '2000');
             return;
           }
 
           const results: ChooseMediaResult[] = [];
-          for (let i = 0; i < Math.min(uris.length, count); i++) {
-            const raw = String(uris[i] ?? '');
-            const uri = LxAppMedia.normalizeUri(raw);
-            if (!uri) { continue; }
+          for (let i = 0; i < Math.min(pickerItems.length, count); i++) {
+            const rawUri = LxAppMedia.extractPickerUri(pickerItems[i]);
+            const uri = LxAppMedia.normalizeUri(rawUri);
+            if (!uri) {
+              LxAppMedia.logError(`chooseMedia: skipped invalid picker entry at index=${i}, sample=${LxAppMedia.describePickerEntry(pickerItems[i])}`);
+              continue;
+            }
             const fileType = LxAppMedia.detectMediaTypeFromUri(uri);
             // Enforce mode-specific filtering as safeguard
             if (normalized.mode === 'images' && fileType !== 'image') { continue; }
@@ -832,14 +881,58 @@ export class LxAppMedia {
     return undefined;
   }
 
+  private static normalizePickerString(value: string | undefined | null): string {
+    if (typeof value !== 'string') {
+      return '';
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return '';
+    }
+    if (trimmed.toLowerCase() === '[object object]') {
+      return '';
+    }
+    return trimmed;
+  }
+
+  private static extractPickerUri(entry: string | PickerUriHandle | undefined | null): string {
+    if (typeof entry === 'string') {
+      return LxAppMedia.normalizePickerString(entry);
+    }
+    if (!entry || typeof entry !== 'object') {
+      return '';
+    }
+    const candidate = entry as PickerUriHandle;
+    const picked = [
+      LxAppMedia.normalizePickerString(candidate.uri),
+      LxAppMedia.normalizePickerString(candidate.path),
+      LxAppMedia.normalizePickerString(candidate.fileUri),
+      LxAppMedia.normalizePickerString(candidate.photoUri)
+    ].find((value: string) => value.length > 0);
+    if (picked) {
+      return picked;
+    }
+    return LxAppMedia.normalizePickerString(`${entry}`);
+  }
+
+  private static describePickerEntry(entry: string | PickerUriHandle | undefined | null): string {
+    if (typeof entry === 'string') {
+      return entry;
+    }
+    try {
+      return JSON.stringify(entry) ?? String(entry);
+    } catch (_error) {
+      return String(entry);
+    }
+  }
+
   private static normalizeEntry(entry: PreviewMediaPayload, index: number): MediaPreviewItem | null {
-    if (!entry || typeof entry.path !== 'string' || entry.path.length === 0) {
+    if (!entry || typeof entry.path !== 'string') {
+      LxAppMedia.logError(`previewMedia: invalid entry at index=${index}, pathType=${typeof entry?.path}, sample=${LxAppMedia.describePickerEntry(entry)}`);
       return null;
     }
-
-    const rawPath = entry.path.trim();
-    const uri = LxAppMedia.normalizeUri(rawPath);
-    if (!uri) {
+    if (entry.path.length === 0) {
+      LxAppMedia.logError(`previewMedia: empty path at index=${index}`);
       return null;
     }
 
@@ -847,13 +940,30 @@ export class LxAppMedia {
     const mediaType = typeof entry.media_type === 'number' ? entry.media_type : Number(entry.media_type ?? 0);
     if (mediaType !== 0 && mediaType !== 1) { return null; }
 
+    const rawPath = entry.path.trim();
+    if (rawPath.includes('[object Object]')) {
+      LxAppMedia.logError(`previewMedia: invalid marshaled path at index=${index}, path=${rawPath}`);
+      return null;
+    }
+    const uri = LxAppMedia.normalizeUri(rawPath);
+    if (!uri) {
+      LxAppMedia.logError(`previewMedia: failed to normalize path at index=${index}, path=${rawPath}`);
+      return null;
+    }
+
     return {
       id: `${Date.now()}_${index}`,
       uri: uri,
       mediaType: mediaType,
       rotate: LxAppMedia.normalizeRotation(entry.rotate),
-      objectFit: LxAppMedia.normalizeObjectFit(entry.object_fit ?? entry.objectFit)
+      objectFit: LxAppMedia.normalizeObjectFit(entry.object_fit),
+      durationMs: LxAppMedia.normalizePositiveMs(entry.durationMs)
     };
+  }
+
+  private static isValidAdvance(raw: string): boolean {
+    const value = raw.trim().toLowerCase();
+    return value === 'manual' || value === 'next' || value === 'loop';
   }
 
   private static normalizeRotation(raw: number | undefined): number | undefined {
@@ -878,11 +988,35 @@ export class LxAppMedia {
     return undefined;
   }
 
-  private static navigateToMediaPreview(items: MediaPreviewItem[]): boolean {
+  private static normalizeAdvance(raw: string | undefined): 'manual' | 'next' | 'loop' {
+    if (typeof raw !== 'string') {
+      return 'manual';
+    }
+    const value = raw.trim().toLowerCase();
+    if (value === 'next' || value === 'loop') {
+      return value;
+    }
+    return 'manual';
+  }
+
+  private static normalizePositiveMs(raw: number | undefined): number | undefined {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+      return undefined;
+    }
+    return Math.max(1, Math.trunc(raw));
+  }
+
+  private static navigateToMediaPreview(
+    request: PreviewMediaRequestPayload,
+    items: MediaPreviewItem[]
+  ): boolean {
     try {
       const params: MediaPreviewPageParams = {
         items: items,
-        initialIndex: 0
+        initialIndex: Math.trunc(request.startIndex),
+        callbackId: request.callbackId,
+        advance: LxAppMedia.normalizeAdvance(request.advance),
+        showIndexIndicator: request.showIndexIndicator
       };
 
       MediaPreviewOverlayManager.show(params);

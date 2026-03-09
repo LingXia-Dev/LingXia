@@ -5,5 +5,6 @@ data class PreviewMediaPayload(
     val type: Int,
     val coverPath: String?,
     val rotate: Int?,
-    val objectFit: String?
+    val objectFit: String?,
+    val durationMs: Long?
 ) : java.io.Serializable

@@ -1883,6 +1883,37 @@ class LxMediaPlayer(
         }
 
         eventSink(JsEventMapper.toPayload(event))
+        mapCoreEventToTypedEvent(event)?.let { typedEventSink?.invoke(it) }
+    }
+
+    private fun mapCoreEventToTypedEvent(event: CorePlayerEvent): LxMediaEvent? {
+        return when (event) {
+            CorePlayerEvent.PlayRequest,
+            CorePlayerEvent.Play,
+            is CorePlayerEvent.Playing -> LxMediaEvent.Play
+            is CorePlayerEvent.Pause -> LxMediaEvent.Pause
+            is CorePlayerEvent.Waiting -> LxMediaEvent.Waiting
+            is CorePlayerEvent.Seeking -> null
+            is CorePlayerEvent.Seeked -> LxMediaEvent.Seeked(event.currentTimeMs.toDouble() / 1000.0)
+            is CorePlayerEvent.TimeUpdate -> LxMediaEvent.TimeUpdate(
+                currentTime = event.currentTimeMs.toDouble() / 1000.0,
+                duration = (event.durationMs ?: 0L).toDouble() / 1000.0
+            )
+            is CorePlayerEvent.LoadedMetadata -> LxMediaEvent.LoadedMetadata(
+                width = event.width.toDouble(),
+                height = event.height.toDouble(),
+                duration = (event.durationMs ?: 0L).toDouble() / 1000.0
+            )
+            is CorePlayerEvent.Ended -> LxMediaEvent.Ended
+            is CorePlayerEvent.Error -> LxMediaEvent.Error(
+                code = event.code.value,
+                message = event.message
+            )
+            is CorePlayerEvent.RateChange -> LxMediaEvent.RateChange(event.rate.toDouble())
+            is CorePlayerEvent.VolumeChange -> LxMediaEvent.VolumeChange(event.volume.toDouble())
+            is CorePlayerEvent.Stop -> LxMediaEvent.Stop
+            is CorePlayerEvent.FullscreenChange -> null
+        }
     }
 
     private fun emitEvent(event: LxMediaEvent) {

@@ -275,13 +275,10 @@ extension LxAppMedia {
 
         session.outputURL = destinationURL
         let supportedTypes = session.supportedFileTypes
-        if supportedTypes.contains(.mp4) {
-            session.outputFileType = .mp4
-        } else if let first = supportedTypes.first {
-            session.outputFileType = first
-        } else {
-            return compressVideoFailure("No supported output type")
+        guard supportedTypes.contains(.mp4) else {
+            return compressVideoFailure("Export session does not support MP4 output")
         }
+        session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true
         let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
             .uint64Value ?? 0
@@ -961,13 +958,10 @@ extension LxAppMedia {
 
         session.outputURL = destinationURL
         let supportedTypes = session.supportedFileTypes
-        if supportedTypes.contains(.mp4) {
-            session.outputFileType = .mp4
-        } else if let first = supportedTypes.first {
-            session.outputFileType = first
-        } else {
-            return compressVideoFailureMac("No supported output type")
+        guard supportedTypes.contains(.mp4) else {
+            return compressVideoFailureMac("Export session does not support MP4 output")
         }
+        session.outputFileType = .mp4
         session.shouldOptimizeForNetworkUse = true
         let sourceFileSize = (try? FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?
             .uint64Value ?? 0

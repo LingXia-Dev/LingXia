@@ -104,11 +104,15 @@ extension LxAppMedia {
                             let _ = onCallback(callbackId, false, "1001")
                             sendDone(callbackId)
                         case .success(let fileURL):
-                            let jsonItem: [String: Any] = [
+                            let fileExt = fileURL.pathExtension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            var jsonItem: [String: Any] = [
                                 "uri": fileURL.path,
                                 "fileType": "video",
                                 "isOriginal": true
                             ]
+                            if !fileExt.isEmpty {
+                                jsonItem["fileExt"] = fileExt
+                            }
 
                             if let data = try? JSONSerialization.data(withJSONObject: [jsonItem], options: []),
                                let jsonString = String(data: data, encoding: .utf8) {
@@ -159,7 +163,7 @@ extension LxAppMedia {
 
     private static func openAlbum(presenter: UIViewController, mode: String, maxCount: UInt32, callbackId: UInt64) {
 
-        let selectionLimit = mode.lowercased() == "video" ? 1 : maxCount
+        let selectionLimit = max(1, maxCount)
 
         // Check if PHPickerViewController is available (iOS 14+)
         if #available(iOS 14.0, *) {

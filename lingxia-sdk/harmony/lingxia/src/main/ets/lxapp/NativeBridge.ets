@@ -324,6 +324,10 @@ class NativeBridge {
       return LxAppMedia.previewMedia(payload);
     });
 
+    this.register('closePreview', (callbackId: string): boolean => {
+      return LxAppMedia.closePreview(callbackId);
+    });
+
     this.register('chooseMedia', (payload: string): boolean => {
       return LxAppMedia.chooseMedia(payload);
     });
