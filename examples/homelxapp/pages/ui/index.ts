@@ -117,65 +117,31 @@ Page({
   },
 
   // Choose toast icon via action sheet
-  chooseToastIcon: function () {
-    const options = this.data.toastIconOptions || [];
-    if (!options.length) {
-      return;
-    }
-
-    lx.showActionSheet({
-      itemList: options.map((option) => option.label),
-      itemColor: "#007AFF",
-    })
-      .then((result) => {
-        if (
-          typeof result.tapIndex !== "number" ||
-          result.tapIndex < 0 ||
-          result.tapIndex >= options.length
-        ) {
-          return null;
-        }
-
-        const selected = options[result.tapIndex];
-        return this.setData({
-          toastIcon: selected.value,
-          toastIconLabel: selected.label,
-        });
-      })
-      .catch((error) => {
-        console.log("chooseToastIcon cancelled or failed:", error);
+  chooseToastIcon: async function () {
+    try {
+      const { tapIndex } = await lx.showActionSheet({
+        itemList: this.data.toastIconOptions.map((option) => option.label),
+        itemColor: "#007AFF",
       });
+      const selected = this.data.toastIconOptions[tapIndex];
+      this.setData({ toastIcon: selected.value, toastIconLabel: selected.label });
+    } catch (error) {
+      console.log("chooseToastIcon cancelled:", error);
+    }
   },
 
   // Choose toast position via action sheet
-  chooseToastPosition: function () {
-    const options = this.data.toastPositionOptions || [];
-    if (!options.length) {
-      return;
-    }
-
-    lx.showActionSheet({
-      itemList: options.map((option) => option.label),
-      itemColor: "#007AFF",
-    })
-      .then((result) => {
-        if (
-          typeof result.tapIndex !== "number" ||
-          result.tapIndex < 0 ||
-          result.tapIndex >= options.length
-        ) {
-          return null;
-        }
-
-        const selected = options[result.tapIndex];
-        return this.setData({
-          toastPosition: selected.value,
-          toastPositionLabel: selected.label,
-        });
-      })
-      .catch((error) => {
-        console.log("chooseToastPosition cancelled or failed:", error);
+  chooseToastPosition: async function () {
+    try {
+      const { tapIndex } = await lx.showActionSheet({
+        itemList: this.data.toastPositionOptions.map((option) => option.label),
+        itemColor: "#007AFF",
       });
+      const selected = this.data.toastPositionOptions[tapIndex];
+      this.setData({ toastPosition: selected.value, toastPositionLabel: selected.label });
+    } catch (error) {
+      console.log("chooseToastPosition cancelled:", error);
+    }
   },
 
   hideToast: function () {
@@ -184,28 +150,15 @@ Page({
 
   // Demo action sheet with mixed language options
   showDemoActionSheet: async function () {
-    const options = ["View Details", "查看日志", "Send Email", "删除"];
+    const items = ["View Details", "查看日志", "Send Email", "删除"];
     try {
       const { tapIndex } = await lx.showActionSheet({
-        itemList: options,
+        itemList: items,
         itemColor: "#007AFF",
       });
-
-      if (
-        typeof tapIndex !== "number" ||
-        tapIndex < 0 ||
-        tapIndex >= options.length
-      ) {
-        return;
-      }
-
-      lx.showToast({
-        title: `Selected: ${options[tapIndex]}`,
-        icon: "success",
-        duration: 2000,
-      });
+      lx.showToast({ title: `Selected: ${items[tapIndex]}`, icon: "success" });
     } catch (error) {
-      console.log("Action sheet dismissed or failed:", error);
+      console.log("Action sheet dismissed:", error);
     }
   },
 
@@ -218,35 +171,11 @@ Page({
 
     try {
       const cfg = config || {};
-      const clamp = (value, fallback) => {
-        const num = Number(value);
-        if (Number.isFinite(num)) {
-          return Math.min(1, Math.max(0.1, num));
-        }
-        return fallback;
-      };
-
-      const normalizedPosition =
-        typeof cfg.position === "string"
-          ? cfg.position.trim().toLowerCase()
-          : "";
-      const allowedPositions = new Set(["bottom", "center", "left", "right"]);
-      const position = allowedPositions.has(normalizedPosition)
-        ? normalizedPosition
-        : "bottom";
-
-      const fallbackWidth =
-        position === "left" || position === "right" ? 0.72 : 0.9;
-      const fallbackHeight =
-        position === "left" || position === "right" ? 0.85 : 0.6;
-      const widthRatio = clamp(cfg.widthRatio, fallbackWidth);
-      const heightRatio = clamp(cfg.heightRatio, fallbackHeight);
-
       const popup = await lx.showPopup({
         url: `pages/popup/index.tsx?${query}`,
-        position,
-        widthRatio,
-        heightRatio,
+        position: cfg.position || "bottom",
+        widthRatio: cfg.widthRatio || 0.9,
+        heightRatio: cfg.heightRatio || 0.6,
       });
 
       const handler = (payload) => {
@@ -281,38 +210,15 @@ Page({
 
   // Show modal with custom parameters
   showModalWithParams: async function (params) {
-    try {
-      const result = await lx.showModal({
-        title: params.title !== undefined ? params.title : "Alert",
-        content: params.content || "This is a modal dialog",
-        showCancel: params.showCancel !== undefined ? params.showCancel : true,
-        cancelText: params.cancelText || "Cancel",
-        confirmText: params.confirmText || "OK",
-      });
-
-      // Filter out content field from result
-      const filteredResult = {
-        confirm: result.confirm,
-        cancel: result.cancel,
-      };
-
-      // Update page data with filtered result
-      this.setData({
-        modalResult: filteredResult,
-      });
-
-      return result;
-    } catch (error) {
-      console.error("Modal error:", error);
-      const errorResult = { error: error.message };
-
-      // Update page data with error
-      this.setData({
-        modalResult: errorResult,
-      });
-
-      throw error;
-    }
+    const result = await lx.showModal({
+      title: params.title ?? "Alert",
+      content: params.content || "This is a modal dialog",
+      showCancel: params.showCancel ?? true,
+      cancelText: params.cancelText || "Cancel",
+      confirmText: params.confirmText || "OK",
+    });
+    this.setData({ modalResult: result });
+    return result;
   },
 
   // Clear modal result

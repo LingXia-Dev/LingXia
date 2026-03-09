@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "WiFi",
   "navigationBarBackgroundColor": "#ffffff",
-  "navigationBarTextStyle": "black"
+  "navigationBarTextStyle": "black",
+  "pageOrientation": "landscape"
 }

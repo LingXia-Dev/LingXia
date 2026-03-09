@@ -51,13 +51,7 @@ Page({
       this.setData({ wifiModuleEnabled: true });
     } catch (error) {
       console.error("Failed to start WiFi:", error);
-      // Show toast with error message
-      const errorMessage = error && error.message ? error.message : String(error);
-      lx.showToast({
-        title: errorMessage,
-        icon: "none",
-        duration: 2500,
-      });
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
@@ -82,78 +76,29 @@ Page({
 
   getWifiList: async function () {
     try {
-      if (!this.data.wifiModuleEnabled) {
-        console.warn("WiFi module not initialized");
-        return;
-      }
       const wifiList = await lx.getWifiList();
       console.log("WiFi list:", wifiList);
-      this.setData({ wifiList: wifiList });
+      this.setData({ wifiList });
     } catch (error) {
       console.error("Failed to get WiFi list:", error);
-      // Check if error is "not supported" - handle error code 12005, Chinese text, and English text
-      const errorMessage = error && (error.message || String(error));
-      const errorCode = error && error.errCode;
-      const isNotSupported =
-        errorCode === 12005 ||
-        (errorMessage &&
-          (errorMessage.includes("12005") ||
-            errorMessage.includes("不支持") ||
-            /not\s*supported/i.test(errorMessage)));
-      if (isNotSupported) {
-        lx.showToast({
-          title: "WiFi scanning not supported on this platform",
-          icon: "none",
-          duration: 2000,
-        });
-      }
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
   getConnectedWifi: async function () {
     try {
-      if (!this.data.wifiModuleEnabled) {
-        console.warn("WiFi module not initialized");
-        return;
-      }
       const connectedWifi = await lx.getConnectedWifi();
       console.log("Connected WiFi:", connectedWifi);
-      this.setData({ connectedWifi: connectedWifi });
+      this.setData({ connectedWifi });
     } catch (error) {
       console.error("Failed to get connected WiFi:", error);
     }
   },
 
-  connectWifi: async function (ssidOrOptions, password) {
+  connectWifi: async function (options) {
     try {
-      if (!this.data.wifiModuleEnabled) {
-        console.warn("WiFi module not initialized");
-        return;
-      }
-      let options = {};
-      if (ssidOrOptions && typeof ssidOrOptions === "object") {
-        options = { ...ssidOrOptions };
-      } else {
-        options = { SSID: ssidOrOptions, password: password };
-      }
-
-      if (!options.SSID && options.ssid) {
-        options.SSID = options.ssid;
-      }
-
-      const request = {
-        SSID: options.SSID,
-        password: options.password,
-      };
-
-      if (!request.SSID) {
-        console.warn("connectWifi requires SSID");
-        return;
-      }
-
-      await lx.connectWifi(request);
-      console.log("WiFi connection requested:", request.SSID);
-      console.log("Actual connection status will be reported via onWifiConnected event");
+      await lx.connectWifi(options);
+      console.log("WiFi connection requested:", options?.SSID);
     } catch (error) {
       console.error("Failed to connect to WiFi:", error);
     }
@@ -171,50 +116,24 @@ Page({
     if (this.data.wifiListenerEnabled) {
       return;
     }
-    if (typeof lx.onWifiConnected !== "function") {
-      console.warn("onWifiConnected not available");
-      return;
-    }
 
     const handler = (payload) => {
-      const value = payload && typeof payload === "object" ? payload : {};
-      const ssid = value.SSID || value.ssid || "";
-      const bssid = value.BSSID || value.bssid || "";
-      const secure = typeof value.secure === "boolean" ? value.secure : undefined;
-      const signalStrength =
-        typeof value.signalStrength === "number" ? value.signalStrength : undefined;
-      const frequency =
-        typeof value.frequency === "number" ? value.frequency : undefined;
-      const connected =
-        typeof value.connected === "boolean" ? value.connected : undefined;
-      const state = typeof value.state === "string" ? value.state : undefined;
       const event = {
         id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         time: new Date().toLocaleTimeString(),
-        ssid: String(ssid || ""),
-        bssid: bssid ? String(bssid) : "",
-        secure: secure,
-        signalStrength: signalStrength,
-        frequency: frequency,
-        connected: connected,
-        state: state,
+        ...payload,
       };
 
-      const nextEvents = [event, ...(this.data.wifiConnectedEvents || [])].slice(0, 5);
+      const nextEvents = [event, ...this.data.wifiConnectedEvents].slice(0, 5);
       this.setData({ wifiConnectedEvents: nextEvents });
     };
 
     this._wifiConnectedHandler = handler;
     try {
-      const result = lx.onWifiConnected(handler);
-      if (result && typeof result.then === "function") {
-        result.catch((error) => {
-          console.error("onWifiConnected failed:", error);
-        });
-      }
+      lx.onWifiConnected(handler);
       this.setData({ wifiListenerEnabled: true });
     } catch (error) {
-      console.error("onWifiConnected failed:", error);
+      console.error("Failed to register WiFi listener:", error);
       this._wifiConnectedHandler = null;
     }
   },
@@ -223,19 +142,10 @@ Page({
     if (!this.data.wifiListenerEnabled) {
       return;
     }
-    if (typeof lx.offWifiConnected !== "function") {
-      return;
-    }
-
     try {
-      const result = lx.offWifiConnected(this._wifiConnectedHandler);
-      if (result && typeof result.then === "function") {
-        result.catch((error) => {
-          console.error("offWifiConnected failed:", error);
-        });
-      }
+      lx.offWifiConnected(this._wifiConnectedHandler);
     } catch (error) {
-      console.error("offWifiConnected failed:", error);
+      console.error("Failed to unregister WiFi listener:", error);
     } finally {
       this._wifiConnectedHandler = null;
       this.setData({ wifiListenerEnabled: false });

@@ -104,25 +104,16 @@ Page({
     const targets: Array<"self" | "external"> = ["self", "external"];
 
     try {
-      const result = await lx.showActionSheet({
+      const { tapIndex } = await lx.showActionSheet({
         itemList: targets,
         itemColor: "#007AFF",
       });
-      const tapIndex =
-        typeof result?.tapIndex === "number"
-          ? result.tapIndex
-          : parseInt(String(result?.tapIndex ?? ""), 10);
-
-      if (!Number.isInteger(tapIndex) || tapIndex < 0 || tapIndex >= targets.length) {
-        return;
-      }
-
       lx.openURL({
         url: "https://www.deepseek.com/",
         target: targets[tapIndex],
       });
     } catch (error) {
-      console.log("openDeepSeek cancelled or failed:", error);
+      console.log("openDeepSeek cancelled:", error);
     }
   },
 
