@@ -13,6 +13,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static let browserAttachMaxRetry = 5
     private static let browserDevToolsMaxRetry = 30
     private static let browserDevToolsRetryDelay: TimeInterval = 0.05
+    private static let lxappDevToolsDetached = true
+    private static let lxappDevToolsMaxRetry = 30
+    private static let lxappDevToolsRetryDelay: TimeInterval = 0.05
+    private static let browserAppId = "app.lingxia.browser"
+    private static let browserTabPathPrefix = "/tabs/"
 
     public struct Layout {
         static let sidebarWidth: CGFloat = 180
@@ -61,6 +66,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     nonisolated(unsafe) private var browserCanGoBackObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var browserCanGoForwardObservation: NSKeyValueObservation?
     private var browserDevToolsRequestToken: UInt64 = 0
+    private var lxappDevToolsRequestToken: UInt64 = 0
 
     /// Get view controller for specific appId (needed for navigation)
     public func getViewController(for appId: String) -> macOSLxAppViewController? {
@@ -560,6 +566,14 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 // MARK: - Browser Tab Lifecycle
 
 extension LxAppWindowController {
+    func toggleActiveDevTools() -> Bool {
+        if let activeId = activeBrowserTabId {
+            browserDevToolsRequestToken &+= 1
+            let token = browserDevToolsRequestToken
+            return toggleBrowserDevToolsWhenReady(tabId: activeId, attempt: 0, token: token)
+        }
+        return toggleActiveLxAppDevTools()
+    }
 
     func presentInternalBrowserTab(id: UUID, ownerAppId: String, ownerSessionId: UInt64) {
         guard ownerSessionId > 0 else { return }
@@ -582,11 +596,64 @@ extension LxAppWindowController {
         id.uuidString.lowercased()
     }
 
-    func toggleActiveBrowserDevTools() -> Bool {
-        guard let activeId = activeBrowserTabId else { return false }
-        browserDevToolsRequestToken &+= 1
-        let token = browserDevToolsRequestToken
-        return toggleBrowserDevToolsWhenReady(tabId: activeId, attempt: 0, token: token)
+    private func toggleActiveLxAppDevTools() -> Bool {
+        guard activeBrowserTabId == nil else { return false }
+        let webView = currentViewController?.currentWebView() ?? LxAppCore.getCurrentWebView()
+        guard let webView else { return false }
+        lxappDevToolsRequestToken &+= 1
+        let token = lxappDevToolsRequestToken
+        return toggleLxAppDevToolsWhenReady(webView: webView, attempt: 0, token: token)
+    }
+
+    @discardableResult
+    private func toggleLxAppDevToolsWhenReady(webView: WKWebView, attempt: Int, token: UInt64) -> Bool {
+        guard token == lxappDevToolsRequestToken else { return false }
+        guard activeBrowserTabId == nil else { return false }
+
+        prepareLxAppWebViewForDevTools(webView, detached: Self.lxappDevToolsDetached)
+
+        guard isBrowserWebViewDisplayReady(webView) else {
+            return scheduleLxAppDevToolsRetry(webView: webView, attempt: attempt, token: token)
+        }
+
+        let ptr = swiftWebViewPointer(webView)
+        return toggleWebViewDevtoolsByPtr(ptr, Self.lxappDevToolsDetached)
+    }
+
+    private func prepareLxAppWebViewForDevTools(_ webView: WKWebView, detached: Bool) {
+        webView.isHidden = false
+        if let container = webView.superview {
+            // Keep layout stable for attached inspector (same workaround used by browser mode).
+            let constraintsToDeactivate = container.constraints.filter { constraint in
+                constraint.firstItem as AnyObject === webView || constraint.secondItem as AnyObject === webView
+            }
+            if !constraintsToDeactivate.isEmpty {
+                NSLayoutConstraint.deactivate(constraintsToDeactivate)
+            }
+            webView.translatesAutoresizingMaskIntoConstraints = true
+            webView.autoresizingMask = [.width, .height]
+            webView.frame = container.bounds
+            webView.setFrameSize(container.bounds.size)
+            container.needsLayout = true
+            container.layoutSubtreeIfNeeded()
+        }
+        webView.needsLayout = true
+        webView.layoutSubtreeIfNeeded()
+        if detached {
+            clearBrowserInspectorAttachment(webView)
+        } else {
+            configureBrowserInspectorAttachment(webView)
+        }
+        window?.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    private func scheduleLxAppDevToolsRetry(webView: WKWebView, attempt: Int, token: UInt64) -> Bool {
+        guard attempt < Self.lxappDevToolsMaxRetry else { return false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.lxappDevToolsRetryDelay) { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = self.toggleLxAppDevToolsWhenReady(webView: webView, attempt: attempt + 1, token: token)
+        }
+        return true
     }
 
     @discardableResult
@@ -602,8 +669,16 @@ extension LxAppWindowController {
             return scheduleBrowserDevToolsRetry(tabId: tabId, attempt: attempt, token: token, reason: "display-not-ready")
         }
 
-        let tabIdString = browserTabIdString(tabId)
-        return browserToggleDevtools(tabIdString)
+        let ptr = swiftWebViewPointer(webView)
+        let ok = toggleWebViewDevtoolsByPtr(ptr, false)
+        if ok {
+            scheduleBrowserDevToolsDetachedFallback(tabId: tabId, webView: webView, token: token)
+        }
+        return ok
+    }
+
+    private func swiftWebViewPointer(_ webView: WKWebView) -> UInt {
+        UInt(bitPattern: Unmanaged.passUnretained(webView).toOpaque())
     }
 
     private func scheduleBrowserDevToolsRetry(tabId: UUID, attempt: Int, token: UInt64, reason: String) -> Bool {
@@ -678,6 +753,34 @@ extension LxAppWindowController {
         _ = webView.perform(setSelector, with: nil)
     }
 
+    private func scheduleBrowserDevToolsDetachedFallback(tabId: UUID, webView: WKWebView, token: UInt64) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            guard token == self.browserDevToolsRequestToken else { return }
+            guard self.activeBrowserTabId == tabId else { return }
+            guard self.isBrowserWebViewDisplayReady(webView) else { return }
+            guard self.inspectorVisible(for: webView) == false else { return }
+            _ = toggleWebViewDevtoolsByPtr(self.swiftWebViewPointer(webView), true)
+        }
+    }
+
+    private func inspectorVisible(for webView: WKWebView) -> Bool? {
+        let inspectorSelector = NSSelectorFromString("_inspector")
+        guard webView.responds(to: inspectorSelector),
+              let inspectorObject = webView.perform(inspectorSelector)?.takeUnretainedValue() else {
+            return nil
+        }
+        let visibleSelector = NSSelectorFromString("isVisible")
+        guard inspectorObject.responds(to: visibleSelector),
+              let visibleObject = inspectorObject.perform(visibleSelector)?.takeUnretainedValue() else {
+            return nil
+        }
+        if let number = visibleObject as? NSNumber {
+            return number.boolValue
+        }
+        return nil
+    }
+
     private func isBrowserWebViewDisplayReady(_ webView: WKWebView) -> Bool {
         guard webView.superview != nil else { return false }
         guard let window = webView.window, window.isVisible else { return false }
@@ -690,11 +793,14 @@ extension LxAppWindowController {
         return true
     }
 
-    /// Find the WKWebView for a browser tab via Rust's managed WebView registry.
+    /// Find the WKWebView for a browser tab via the shared findWebView(appid,path,session) API.
     private func findBrowserWKWebView(for id: UUID) -> WKWebView? {
-        let ptr = findBrowserWebView(browserTabIdString(id))
-        guard ptr != 0, let rawPointer = UnsafeRawPointer(bitPattern: ptr) else { return nil }
-        return Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        guard let ownerAppId = browserTabOwners[id] else { return nil }
+        let sessionId = appSessions[ownerAppId] ?? getLxAppSessionId(ownerAppId)
+        guard sessionId > 0 else { return nil }
+
+        let path = Self.browserTabPathPrefix + browserTabIdString(id)
+        return WebViewManager.findWebView(appId: Self.browserAppId, path: path, sessionId: sessionId)
     }
 
     private func browserSidebarItems() -> [(id: UUID, title: String)] {

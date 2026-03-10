@@ -32,7 +32,7 @@ public class LxAppWindow: NSWindow {
             && (event.keyCode == 34 || event.charactersIgnoringModifiers?.lowercased() == "i")
         if isDevtoolsShortcut {
             if let controller = windowController as? LxAppWindowController,
-               controller.toggleActiveBrowserDevTools() {
+               controller.toggleActiveDevTools() {
                 return true
             }
         }

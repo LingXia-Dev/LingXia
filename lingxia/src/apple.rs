@@ -140,11 +140,8 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
-        #[swift_bridge(swift_name = "findBrowserWebView")]
-        fn find_browser_webview_ptr(tab_id: &str) -> usize;
-
-        #[swift_bridge(swift_name = "browserToggleDevtools")]
-        fn browser_toggle_devtools(tab_id: &str) -> bool;
+        #[swift_bridge(swift_name = "toggleWebViewDevtoolsByPtr")]
+        fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool;
 
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
@@ -370,26 +367,19 @@ pub fn browser_tab_close(tab_id: &str) -> bool {
     })
 }
 
-pub fn find_browser_webview_ptr(tab_id: &str) -> usize {
-    match lxapp::find_browser_webview(tab_id) {
-        Some(webview) => webview.get_swift_webview_ptr(),
-        None => 0,
+pub fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool {
+    if webview_ptr == 0 {
+        return false;
     }
-}
-
-pub fn browser_toggle_devtools(tab_id: &str) -> bool {
     #[cfg(target_os = "macos")]
     {
-        if let Some(webview) = lxapp::find_browser_webview(tab_id) {
-            webview.toggle_devtools();
-            return true;
-        }
+        lingxia_webview::apple::toggle_webview_devtools_by_swift_ptr(webview_ptr, detached)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = tab_id;
+        let _ = detached;
+        false
     }
-    false
 }
 
 /// Get current active LxApp ID and path from Rust stack

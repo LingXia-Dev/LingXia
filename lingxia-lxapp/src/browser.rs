@@ -1,17 +1,17 @@
 use crate::{LxApp, LxAppError};
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::{
     NewWindowPolicy, WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
-    create_webview,
-    destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
+    create_webview, destroy_webview as destroy_managed_webview,
+    find_webview as find_managed_webview,
 };
-use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
-use std::path::Path;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -21,9 +21,7 @@ const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
 
 fn normalize_browser_target_url(raw: &str) -> String {
     let trimmed = raw.trim();
-    if trimmed.len() >= "http://".len()
-        && trimmed[..7].eq_ignore_ascii_case("http://")
-    {
+    if trimmed.len() >= "http://".len() && trimmed[..7].eq_ignore_ascii_case("http://") {
         format!("https://{}", &trimmed[7..])
     } else {
         trimmed.to_string()
@@ -439,34 +437,33 @@ fn browser_create_webview(
         &webtag,
         ready_tx,
         Some(
-            WebViewCreateOptions::browser_relaxed()
-                .on_new_window(move |url| {
-                    if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
-                        let normalized = normalize_browser_target_url(url);
-                        match resolve_owner_lxapp(owner_appid, *owner_session_id) {
-                            Ok(owner) => {
-                                let _ = owner.runtime.open_url(OpenUrlRequest {
-                                    owner_appid: owner_appid.clone(),
-                                    owner_session_id: *owner_session_id,
-                                    url: normalized.clone(),
-                                    target: OpenUrlTarget::SelfTarget,
-                                });
-                            }
-                            Err(e) => {
-                                crate::warn!(
-                                    "[InternalBrowser] new-window resolve owner failed: {}",
-                                    e
-                                );
-                            }
+            WebViewCreateOptions::browser_relaxed().on_new_window(move |url| {
+                if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
+                    let normalized = normalize_browser_target_url(url);
+                    match resolve_owner_lxapp(owner_appid, *owner_session_id) {
+                        Ok(owner) => {
+                            let _ = owner.runtime.open_url(OpenUrlRequest {
+                                owner_appid: owner_appid.clone(),
+                                owner_session_id: *owner_session_id,
+                                url: normalized.clone(),
+                                target: OpenUrlTarget::SelfTarget,
+                            });
                         }
-                    } else {
-                        crate::warn!(
-                            "[InternalBrowser] new-window missing owner mapping for tab_id={}",
-                            tab_id_for_new_window
-                        );
+                        Err(e) => {
+                            crate::warn!(
+                                "[InternalBrowser] new-window resolve owner failed: {}",
+                                e
+                            );
+                        }
                     }
-                    NewWindowPolicy::Cancel
-                }),
+                } else {
+                    crate::warn!(
+                        "[InternalBrowser] new-window missing owner mapping for tab_id={}",
+                        tab_id_for_new_window
+                    );
+                }
+                NewWindowPolicy::Cancel
+            }),
         ),
     );
     let path_owned = path.to_string();
@@ -700,19 +697,17 @@ fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
 
     // Avoid expensive re-copy when assets are already installed and valid.
-    let is_installed = crate::lxapp::metadata::get(
-        BUILTIN_BROWSER_APPID,
-        crate::lxapp::ReleaseType::Release,
-    )
-    .ok()
-    .flatten()
-    .is_some_and(|record| {
-        let install_path_str = record.install_path.trim();
-        let install_path = Path::new(install_path_str);
-        !install_path_str.is_empty()
-            && install_path.is_dir()
-            && install_path.join("lxapp.json").is_file()
-    });
+    let is_installed =
+        crate::lxapp::metadata::get(BUILTIN_BROWSER_APPID, crate::lxapp::ReleaseType::Release)
+            .ok()
+            .flatten()
+            .is_some_and(|record| {
+                let install_path_str = record.install_path.trim();
+                let install_path = Path::new(install_path_str);
+                !install_path_str.is_empty()
+                    && install_path.is_dir()
+                    && install_path.join("lxapp.json").is_file()
+            });
     if !is_installed {
         let t_install = Instant::now();
         if let Err(e) = crate::update::UpdateManager::install_from_assets(
@@ -902,19 +897,6 @@ pub fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         Err(LxAppError::ResourceNotFound(_)) => Ok(()), // Already closed — idempotent
         Err(e) => Err(e),
     }
-}
-
-/// Look up the managed WebView for a browser tab by tab ID.
-/// Returns `None` if the tab doesn't exist or the WebView hasn't been created yet.
-pub fn find_browser_webview(tab_id: &str) -> Option<Arc<WebView>> {
-    let normalized = sanitize_tab_id(tab_id);
-    if normalized.is_empty() {
-        return None;
-    }
-    let session_id = lock_state().tabs.get(&normalized).map(|t| t.session_id)?;
-    let path = browser_tab_path_for_id(&normalized);
-    let webtag = browser_webtag(&path, session_id);
-    find_managed_webview(&webtag)
 }
 
 #[cfg(test)]

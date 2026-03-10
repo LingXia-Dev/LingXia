@@ -14,8 +14,8 @@ use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
 use lingxia_webview::{
-    LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewCreateOptions,
-    WebViewController, WebViewDelegate, create_webview, destroy_webview,
+    LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewController,
+    WebViewCreateOptions, WebViewDelegate, create_webview, destroy_webview,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 

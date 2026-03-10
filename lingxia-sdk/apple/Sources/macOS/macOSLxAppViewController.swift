@@ -12,6 +12,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private var sessionId: UInt64
     private var webViewContainer: NSView!
     private var pullToRefreshHelper: MacPullToRefreshHelper?
+    private weak var activeWebView: WKWebView?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -85,11 +86,16 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             old.pauseWebView()
         }
         oldWebView?.removeFromSuperview()
+        activeWebView = webView
 
         WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
         MacNativeBridge.attachIfNeeded(to: webView, in: webViewContainer)
         webView.resumeWebView()
         setupPullToRefresh(for: webView)
+    }
+
+    func currentWebView() -> WKWebView? {
+        activeWebView
     }
 
     private func setupPullToRefresh(for webView: WKWebView) {
