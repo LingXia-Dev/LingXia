@@ -7,7 +7,6 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.text.InputType
@@ -49,97 +48,9 @@ object LxAppBrowserOverlay {
             fitsSystemWindows = false
         }
 
-        val statusBarHeight = LxAppActivity.getStatusBarHeight(activity)
-
-        // === Top: Address Bar Area ===
-        val topBarHeight = statusBarHeight + (60 * density).toInt() // status bar + 8dp + 44dp pill + 8dp
-        val topBar = FrameLayout(activity).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                topBarHeight,
-                Gravity.TOP
-            )
-            setBackgroundColor(Color.WHITE)
-        }
-
-        // Address pill (rounded rectangle)
-        val pillHeight = (44 * density).toInt()
-        val pillMarginH = (12 * density).toInt()
-        val pillTop = statusBarHeight + (8 * density).toInt()
-
-        val addressPill = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                pillHeight
-            ).apply {
-                leftMargin = pillMarginH
-                rightMargin = pillMarginH
-                topMargin = pillTop
-            }
-            val bg = GradientDrawable().apply {
-                setColor(Color.parseColor("#F0F0F0"))
-                cornerRadius = pillHeight / 2f
-            }
-            background = bg
-            setPadding((16 * density).toInt(), 0, (6 * density).toInt(), 0)
-        }
-
-        // Address label
-        val addrField = EditText(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(Color.parseColor("#333333"))
-            setSingleLine(true)
-            imeOptions = EditorInfo.IME_ACTION_GO
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            background = null
-            setPadding(0, 0, 0, 0)
-            maxLines = 1
-            setText(url)
-            setOnEditorActionListener { _, actionId, event ->
-                val isSubmit = actionId == EditorInfo.IME_ACTION_GO ||
-                    actionId == EditorInfo.IME_ACTION_DONE ||
-                    (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
-                if (isSubmit) {
-                    submitAddress()
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-        addressPill.addView(addrField)
-
-        // Refresh button inside pill
-        val refreshBtnSize = (36 * density).toInt()
-        val refreshBtn = ImageView(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(refreshBtnSize, refreshBtnSize)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setImageResource(R.drawable.icon_browser_refresh)
-            setColorFilter(Color.parseColor("#666666"))
-            isClickable = true
-            isFocusable = true
-            val outValue = TypedValue()
-            activity.theme.resolveAttribute(
-                android.R.attr.selectableItemBackgroundBorderless, outValue, true
-            )
-            setBackgroundResource(outValue.resourceId)
-            setOnClickListener { webView?.reload() }
-        }
-        addressPill.addView(refreshBtn)
-
-        topBar.addView(addressPill)
-        container.addView(topBar)
-
         // === Bottom: Navigation Toolbar ===
         val navBarHeight = getNavigationBarHeight(activity)
-        val toolbarHeight = (44 * density).toInt()
+        val toolbarHeight = (52 * density).toInt()
         val toolbarSideMargin = (12 * density).toInt()
         val toolbarBottomMargin = navBarHeight + (8 * density).toInt()
 
@@ -171,11 +82,11 @@ object LxAppBrowserOverlay {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setPadding((8 * density).toInt(), 0, (8 * density).toInt(), 0)
+            setPadding((6 * density).toInt(), 0, (6 * density).toInt(), 0)
         }
 
         // Back button
-        val backBtn = createNavButton(activity, R.drawable.icon_back) {
+        val backBtn = createNavButton(activity, R.drawable.icon_back, sizeDp = 32) {
             webView?.goBack()
         }
         backBtn.alpha = 0.3f
@@ -183,18 +94,81 @@ object LxAppBrowserOverlay {
         buttonRow.addView(backBtn)
 
         // Forward button
-        val fwdBtn = createNavButton(activity, R.drawable.icon_forward) {
+        val fwdBtn = createNavButton(activity, R.drawable.icon_forward, sizeDp = 32) {
             webView?.goForward()
         }
         fwdBtn.alpha = 0.3f
         fwdBtn.isEnabled = false
         buttonRow.addView(fwdBtn)
 
-        // Spacer
-        val spacer = View(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        // Address pill in bottom bar
+        val pillHeight = (38 * density).toInt()
+        val pillMarginH = (4 * density).toInt()
+        val addressPill = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                pillHeight,
+                1f
+            ).apply {
+                leftMargin = pillMarginH
+                rightMargin = pillMarginH
+            }
+            val bg = GradientDrawable().apply {
+                setColor(Color.parseColor("#F0F0F0"))
+                cornerRadius = pillHeight / 2f
+            }
+            background = bg
+            setPadding((12 * density).toInt(), 0, (4 * density).toInt(), 0)
         }
-        buttonRow.addView(spacer)
+
+        val addrField = EditText(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                0,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                1f
+            )
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            setTextColor(Color.parseColor("#333333"))
+            setSingleLine(true)
+            imeOptions = EditorInfo.IME_ACTION_GO
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            background = null
+            setPadding(0, 0, 0, 0)
+            maxLines = 1
+            setText(url)
+            setOnEditorActionListener { _, actionId, event ->
+                val isSubmit = actionId == EditorInfo.IME_ACTION_GO ||
+                    actionId == EditorInfo.IME_ACTION_DONE ||
+                    (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+                if (isSubmit) {
+                    submitAddress()
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+        addressPill.addView(addrField)
+
+        val refreshBtnSize = (32 * density).toInt()
+        val refreshBtn = ImageView(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(refreshBtnSize, refreshBtnSize)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setImageResource(R.drawable.icon_browser_refresh)
+            setColorFilter(Color.parseColor("#666666"))
+            isClickable = true
+            isFocusable = true
+            val outValue = TypedValue()
+            activity.theme.resolveAttribute(
+                android.R.attr.selectableItemBackgroundBorderless, outValue, true
+            )
+            setBackgroundResource(outValue.resourceId)
+            setOnClickListener { webView?.reload() }
+        }
+        addressPill.addView(refreshBtn)
+        buttonRow.addView(addressPill)
 
         // Close button
         val closeBtn = createNavButton(activity, R.drawable.icon_close_x) {
@@ -210,9 +184,7 @@ object LxAppBrowserOverlay {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            ).apply {
-                topMargin = topBarHeight
-            }
+            )
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -307,10 +279,11 @@ object LxAppBrowserOverlay {
     private fun createNavButton(
         activity: Activity,
         iconResId: Int,
+        sizeDp: Int = 44,
         onClick: () -> Unit
     ): ImageView {
         val density = activity.resources.displayMetrics.density
-        val size = (44 * density).toInt()
+        val size = (sizeDp * density).toInt()
 
         return ImageView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(size, size)

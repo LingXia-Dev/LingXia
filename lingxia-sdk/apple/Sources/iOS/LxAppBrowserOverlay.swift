@@ -74,7 +74,6 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     private var ownerAppId: String
     private var ownerSessionId: UInt64
 
-    private let topBar = UIView()
     private let addressPill = UIView()
     private let addressField = UITextField()
     private let refreshButton = UIButton(type: .system)
@@ -178,35 +177,13 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     }
 
     private func setupUI() {
-        topBar.translatesAutoresizingMaskIntoConstraints = false
-        topBar.backgroundColor = .white
-        view.addSubview(topBar)
-
-        addressPill.translatesAutoresizingMaskIntoConstraints = false
-        addressPill.backgroundColor = UIColor(red: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
-        addressPill.layer.cornerRadius = 22
-        addressPill.clipsToBounds = true
-        topBar.addSubview(addressPill)
-
-        addressField.translatesAutoresizingMaskIntoConstraints = false
-        addressField.font = UIFont.systemFont(ofSize: 14)
-        addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        addressField.autocapitalizationType = .none
-        addressField.autocorrectionType = .no
-        addressField.clearButtonMode = .whileEditing
-        addressField.keyboardType = .URL
-        addressField.returnKeyType = .go
-        addressField.delegate = self
-        addressPill.addSubview(addressField)
-
-        configureIconButton(refreshButton, iconName: "icon_browser_refresh", iconSize: 18, tintColor: UIColor(white: 0.4, alpha: 1.0), action: #selector(refreshTapped))
-        addressPill.addSubview(refreshButton)
-
+        // Content container - full screen
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         contentContainer.backgroundColor = .white
         contentContainer.clipsToBounds = true
         view.addSubview(contentContainer)
 
+        // Bottom bar
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.backgroundColor = .clear
         view.addSubview(bottomBar)
@@ -221,54 +198,73 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         borderLine.backgroundColor = UIColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1.0)
         bottomBarBackground.contentView.addSubview(borderLine)
 
-        let buttonRow = UIStackView()
-        buttonRow.translatesAutoresizingMaskIntoConstraints = false
-        buttonRow.axis = .horizontal
-        buttonRow.alignment = .center
-        buttonRow.spacing = 0
-        bottomBarBackground.contentView.addSubview(buttonRow)
+        // Main control row
+        let controlRow = UIStackView()
+        controlRow.translatesAutoresizingMaskIntoConstraints = false
+        controlRow.axis = .horizontal
+        controlRow.alignment = .center
+        controlRow.spacing = 8
+        bottomBarBackground.contentView.addSubview(controlRow)
 
-        configureIconButton(backButton, iconName: "icon_back", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(backTapped))
+        // Navigation buttons group (back + forward)
+        let navButtonGroup = UIStackView()
+        navButtonGroup.translatesAutoresizingMaskIntoConstraints = false
+        navButtonGroup.axis = .horizontal
+        navButtonGroup.alignment = .center
+        navButtonGroup.spacing = -6
+        controlRow.addArrangedSubview(navButtonGroup)
+
+        // Back button
+        configureIconButton(backButton, iconName: "icon_back", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(backTapped))
         backButton.isEnabled = false
         backButton.alpha = 0.3
-        buttonRow.addArrangedSubview(backButton)
+        navButtonGroup.addArrangedSubview(backButton)
 
-        configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(forwardTapped))
+        // Forward button
+        configureIconButton(forwardButton, iconName: "icon_forward", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(forwardTapped))
         forwardButton.isEnabled = false
         forwardButton.alpha = 0.3
-        buttonRow.addArrangedSubview(forwardButton)
+        navButtonGroup.addArrangedSubview(forwardButton)
 
-        let spacer = UIView()
-        spacer.translatesAutoresizingMaskIntoConstraints = false
-        buttonRow.addArrangedSubview(spacer)
+        // Address pill (flexible)
+        addressPill.translatesAutoresizingMaskIntoConstraints = false
+        addressPill.backgroundColor = UIColor(red: 0.94, green: 0.94, blue: 0.94, alpha: 1.0)
+        addressPill.layer.cornerRadius = 18
+        addressPill.clipsToBounds = true
+        controlRow.addArrangedSubview(addressPill)
 
-        configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 22, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(closeTapped))
-        buttonRow.addArrangedSubview(closeButton)
+        addressField.translatesAutoresizingMaskIntoConstraints = false
+        addressField.font = UIFont.systemFont(ofSize: 13)
+        addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
+        addressField.autocapitalizationType = .none
+        addressField.autocorrectionType = .no
+        addressField.clearButtonMode = .whileEditing
+        addressField.keyboardType = .URL
+        addressField.returnKeyType = .go
+        addressField.delegate = self
+        addressPill.addSubview(addressField)
+
+        configureIconButton(refreshButton, iconName: "icon_browser_refresh", iconSize: 16, tintColor: UIColor(white: 0.4, alpha: 1.0), action: #selector(refreshTapped))
+        refreshButton.widthAnchor.constraint(equalToConstant: 32).isActive = true
+        refreshButton.heightAnchor.constraint(equalToConstant: 32).isActive = true
+        addressPill.addSubview(refreshButton)
+
+        // Close button
+        configureIconButton(closeButton, iconName: "icon_close_x", iconSize: 20, tintColor: UIColor(white: 0.2, alpha: 1.0), action: #selector(closeTapped))
+        controlRow.addArrangedSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            topBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            topBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            topBar.topAnchor.constraint(equalTo: view.topAnchor),
+            // Content container - from top to bottom bar
+            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            contentContainer.topAnchor.constraint(equalTo: view.topAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
-            addressPill.leadingAnchor.constraint(equalTo: topBar.leadingAnchor, constant: 16),
-            addressPill.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -16),
-            addressPill.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            addressPill.heightAnchor.constraint(equalToConstant: 44),
-            addressPill.bottomAnchor.constraint(equalTo: topBar.bottomAnchor, constant: -8),
-
-            addressField.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 16),
-            addressField.trailingAnchor.constraint(equalTo: refreshButton.leadingAnchor, constant: -8),
-            addressField.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
-
-            refreshButton.trailingAnchor.constraint(equalTo: addressPill.trailingAnchor, constant: -6),
-            refreshButton.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
-            refreshButton.widthAnchor.constraint(equalToConstant: 36),
-            refreshButton.heightAnchor.constraint(equalToConstant: 36),
-
+            // Bottom bar
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            bottomBar.heightAnchor.constraint(equalToConstant: 44),
-            bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            bottomBar.heightAnchor.constraint(equalToConstant: 48),
+            bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4),
 
             bottomBarBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             bottomBarBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
@@ -280,15 +276,20 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
             borderLine.topAnchor.constraint(equalTo: bottomBarBackground.contentView.topAnchor),
             borderLine.heightAnchor.constraint(equalToConstant: 0.5),
 
-            buttonRow.leadingAnchor.constraint(equalTo: bottomBarBackground.contentView.leadingAnchor, constant: 8),
-            buttonRow.trailingAnchor.constraint(equalTo: bottomBarBackground.contentView.trailingAnchor, constant: -8),
-            buttonRow.topAnchor.constraint(equalTo: bottomBarBackground.contentView.topAnchor),
-            buttonRow.bottomAnchor.constraint(equalTo: bottomBarBackground.contentView.bottomAnchor),
+            controlRow.leadingAnchor.constraint(equalTo: bottomBarBackground.contentView.leadingAnchor, constant: 8),
+            controlRow.trailingAnchor.constraint(equalTo: bottomBarBackground.contentView.trailingAnchor, constant: -8),
+            controlRow.topAnchor.constraint(equalTo: bottomBarBackground.contentView.topAnchor),
+            controlRow.bottomAnchor.constraint(equalTo: bottomBarBackground.contentView.bottomAnchor),
 
-            contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            contentContainer.topAnchor.constraint(equalTo: topBar.bottomAnchor),
-            contentContainer.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            // Address pill (flexible width)
+            addressPill.heightAnchor.constraint(equalToConstant: 36),
+
+            addressField.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 12),
+            addressField.trailingAnchor.constraint(equalTo: refreshButton.leadingAnchor, constant: -4),
+            addressField.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+
+            refreshButton.trailingAnchor.constraint(equalTo: addressPill.trailingAnchor, constant: -4),
+            refreshButton.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
         ])
     }
 
@@ -435,9 +436,10 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
             button.setImage(image.withRenderingMode(.alwaysTemplate), for: .normal)
         }
 
+        // Default button size (can be overridden after calling this method)
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 44),
-            button.heightAnchor.constraint(equalToConstant: 44),
+            button.widthAnchor.constraint(equalToConstant: 40),
+            button.heightAnchor.constraint(equalToConstant: 40),
         ])
     }
 

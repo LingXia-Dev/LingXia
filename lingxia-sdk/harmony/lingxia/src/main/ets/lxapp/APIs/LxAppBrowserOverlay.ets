@@ -61,9 +61,8 @@ export class BrowserOverlayManager {
 }
 
 /**
- * In-app browser overlay component — Safari-style layout
- * Top: pill-shaped address bar with refresh icon (below status bar)
- * Bottom: back / forward / close toolbar
+ * In-app browser overlay component
+ * Bottom floating toolbar: back / forward / address+refresh / close
  */
 @Component
 export struct BrowserOverlay {
@@ -72,7 +71,6 @@ export struct BrowserOverlay {
   @State private addressText: string = '';
   @State private canGoBack: boolean = false;
   @State private canGoForward: boolean = false;
-  @State private statusBarHeight: number = 44;
   @State private bottomSafeAreaHeight: number = 0;
   @State private isEditingAddress: boolean = false;
 
@@ -105,9 +103,8 @@ export struct BrowserOverlay {
     try {
       const windowClass: window.Window = await window.getLastWindow(getContext());
       const safeArea: window.AvoidArea = await windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      this.statusBarHeight = safeArea.topRect.height || 44;
       this.bottomSafeAreaHeight = safeArea.bottomRect.height || 0;
-      hilog.info(DOMAIN, TAG, `Safe area top=${this.statusBarHeight} bottom=${this.bottomSafeAreaHeight}`);
+      hilog.info(DOMAIN, TAG, `Safe area bottom=${this.bottomSafeAreaHeight}`);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get safe area insets: ${error}`);
     }
@@ -131,153 +128,137 @@ export struct BrowserOverlay {
 
   build() {
     if (this.isVisible && this.url) {
-      Column() {
-        // === Top: Status bar spacer + Address Bar ===
+      Stack({ alignContent: Alignment.Bottom }) {
+        Web({ src: this.url, controller: this.controller })
+          .width('100%')
+          .height('100%')
+          .javaScriptAccess(true)
+          .domStorageAccess(true)
+          .mixedMode(MixedMode.Compatible)
+          .onPageEnd(() => {
+            this.updateState();
+          })
+          .onProgressChange((event) => {
+            if (event && event.newProgress > 30) {
+              this.updateState();
+            }
+          })
+
         Column() {
-          // Spacer for status bar
-          Row()
-            .width('100%')
-            .height(px2vp(this.statusBarHeight))
-
-          // Address bar pill
           Row() {
-            TextInput({ text: this.addressText, placeholder: 'Enter URL' })
-              .layoutWeight(1)
-              .fontSize(14)
-              .fontColor('#333333')
-              .backgroundColor(Color.Transparent)
-              .border({ width: 0 })
-              .padding({ left: 0, right: 0, top: 0, bottom: 0 })
-              .caretColor('#333333')
-              .enterKeyType(EnterKeyType.Go)
-              .onChange((value: string) => {
-                this.addressText = value;
-              })
-              .onFocus(() => {
-                this.isEditingAddress = true;
-              })
-              .onBlur(() => {
-                this.isEditingAddress = false;
-              })
-              .onSubmit((_enterKey) => {
-                this.submitAddress(this.addressText);
-              })
-
-            // Refresh button
-            Image($rawfile('icons/icon_browser_refresh.svg'))
-              .width(18)
-              .height(18)
-              .fillColor('#666666')
-              .margin({ left: 8 })
+            // Back button
+            Image($rawfile('icons/icon_back.svg'))
+              .width(20)
+              .height(20)
+              .fillColor(this.canGoBack ? '#333333' : '#CCCCCC')
+              .padding(6)
+              .width(32)
+              .height(32)
+              .translate({ x: 6, y: 0 })
+              .enabled(this.canGoBack)
               .onClick(() => {
                 try {
-                  this.controller.refresh();
+                  this.controller.backward();
                 } catch (error) {
-                  hilog.warn(DOMAIN, TAG, `refresh failed: ${error}`);
+                  hilog.warn(DOMAIN, TAG, `backward failed: ${error}`);
                 }
+              })
+
+            // Forward button
+            Image($rawfile('icons/icon_forward.svg'))
+              .width(20)
+              .height(20)
+              .fillColor(this.canGoForward ? '#333333' : '#CCCCCC')
+              .padding(6)
+              .width(32)
+              .height(32)
+              .translate({ x: -6, y: 0 })
+              .enabled(this.canGoForward)
+              .onClick(() => {
+                try {
+                  this.controller.forward();
+                } catch (error) {
+                  hilog.warn(DOMAIN, TAG, `forward failed: ${error}`);
+                }
+              })
+
+            // Address input + refresh in bottom toolbar
+            Row() {
+              TextInput({ text: this.addressText, placeholder: 'Enter URL' })
+                .layoutWeight(1)
+                .fontSize(14)
+                .fontColor('#333333')
+                .backgroundColor(Color.Transparent)
+                .border({ width: 0 })
+                .padding({ left: 0, right: 0, top: 0, bottom: 0 })
+                .caretColor('#333333')
+                .enterKeyType(EnterKeyType.Go)
+                .onChange((value: string) => {
+                  this.addressText = value;
+                })
+                .onFocus(() => {
+                  this.isEditingAddress = true;
+                })
+                .onBlur(() => {
+                  this.isEditingAddress = false;
+                })
+                .onSubmit((_enterKey) => {
+                  this.submitAddress(this.addressText);
+                })
+
+              Image($rawfile('icons/icon_browser_refresh.svg'))
+                .width(18)
+                .height(18)
+                .fillColor('#666666')
+                .margin({ left: 8 })
+                .onClick(() => {
+                  try {
+                    this.controller.refresh();
+                  } catch (error) {
+                    hilog.warn(DOMAIN, TAG, `refresh failed: ${error}`);
+                  }
+                })
+            }
+            .layoutWeight(1)
+            .height(38)
+            .margin({ left: 4, right: 4 })
+            .padding({ left: 12, right: 8 })
+            .backgroundColor('#F0F0F0')
+            .borderRadius(19)
+            .alignItems(VerticalAlign.Center)
+
+            // Close button
+            Image($rawfile('icons/icon_close_x.svg'))
+              .width(22)
+              .height(22)
+              .fillColor('#333333')
+              .padding(11)
+              .width(44)
+              .height(44)
+              .onClick(() => {
+                BrowserOverlayManager.hide();
               })
           }
           .width('100%')
-          .height(44)
-          .padding({ left: 16, right: 14 })
-          .backgroundColor('#F0F0F0')
-          .borderRadius(22)
+          .height(52)
+          .padding({ left: 6, right: 6 })
           .alignItems(VerticalAlign.Center)
-        }
-        .width('100%')
-        .padding({ left: 24, right: 24, bottom: 12 })
-        .backgroundColor(Color.White)
-
-        // === Middle: Web Content + Bottom Toolbar Overlay ===
-        Stack({ alignContent: Alignment.Bottom }) {
-          Web({ src: this.url, controller: this.controller })
-            .width('100%')
-            .height('100%')
-            .javaScriptAccess(true)
-            .domStorageAccess(true)
-            .mixedMode(MixedMode.Compatible)
-            .onPageEnd(() => {
-              this.updateState();
-            })
-            .onProgressChange((event) => {
-              if (event && event.newProgress > 30) {
-                this.updateState();
-              }
-            })
-
-          Column() {
-            Row() {
-              // Back button
-              Image($rawfile('icons/icon_back.svg'))
-                .width(22)
-                .height(22)
-                .fillColor(this.canGoBack ? '#333333' : '#CCCCCC')
-                .padding(11)
-                .width(52)
-                .height(44)
-                .enabled(this.canGoBack)
-                .onClick(() => {
-                  try {
-                    this.controller.backward();
-                  } catch (error) {
-                    hilog.warn(DOMAIN, TAG, `backward failed: ${error}`);
-                  }
-                })
-
-              // Forward button
-              Image($rawfile('icons/icon_forward.svg'))
-                .width(22)
-                .height(22)
-                .fillColor(this.canGoForward ? '#333333' : '#CCCCCC')
-                .padding(11)
-                .width(52)
-                .height(44)
-                .enabled(this.canGoForward)
-                .onClick(() => {
-                  try {
-                    this.controller.forward();
-                  } catch (error) {
-                    hilog.warn(DOMAIN, TAG, `forward failed: ${error}`);
-                  }
-                })
-
-              Blank()
-
-              // Close button
-              Image($rawfile('icons/icon_close_x.svg'))
-                .width(22)
-                .height(22)
-                .fillColor('#333333')
-                .padding(11)
-                .width(52)
-                .height(44)
-                .onClick(() => {
-                  BrowserOverlayManager.hide();
-                })
-            }
-            .width('100%')
-            .height(44)
-            .padding({ left: 8, right: 8 })
-            .alignItems(VerticalAlign.Center)
-            .backgroundColor('#F2FFFFFF')
-            .borderRadius(16)
-            .border({ width: 0.5, color: '#14000000' })
-            .shadow({
-              radius: 18,
-              color: '#22000000',
-              offsetX: 0,
-              offsetY: 4
-            })
-          }
-          .width('100%')
-          .padding({
-            left: 24,
-            right: 24,
-            bottom: px2vp(this.bottomSafeAreaHeight) + 8
+          .backgroundColor('#F2FFFFFF')
+          .borderRadius(16)
+          .border({ width: 0.5, color: '#14000000' })
+          .shadow({
+            radius: 18,
+            color: '#22000000',
+            offsetX: 0,
+            offsetY: 4
           })
         }
         .width('100%')
-        .layoutWeight(1)
+        .padding({
+          left: 24,
+          right: 24,
+          bottom: px2vp(this.bottomSafeAreaHeight) + 8
+        })
       }
       .width('100%')
       .height('100%')
