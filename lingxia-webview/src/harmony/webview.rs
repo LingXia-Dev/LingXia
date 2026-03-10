@@ -5,22 +5,41 @@ use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
 use crate::traits::NavigationPolicy;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, WebTag, find_webview, get_webview_delegate, register_webview,
+    EffectiveWebViewCreateOptions, WebTag, WebViewCreateSender, WebViewCreateStage, find_webview,
+    get_webview_delegate, register_webview,
 };
-use crate::{LogLevel, WebViewController, WebViewError};
+use crate::{LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
-use tokio::sync::oneshot::Sender;
 
 fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
     let json = serde_json::to_vec(options).map_err(|e| {
         WebViewError::InvalidCreateOptions(format!("Serialize options failed: {e}"))
     })?;
     Ok(URL_SAFE_NO_PAD.encode(json))
+}
+
+fn cstring_from_str(field: &str, value: &str) -> Result<CString, WebViewError> {
+    CString::new(value).map_err(|_| {
+        WebViewError::WebView(format!(
+            "Failed to encode {} as CString: contains interior NUL byte",
+            field
+        ))
+    })
+}
+
+fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::error!("Mutex poisoned at {}, recovering inner value", name);
+            poisoned.into_inner()
+        }
+    }
 }
 
 // Static C strings for proxy object and method names
@@ -80,7 +99,7 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, WebViewError> {
     }
 }
 
-type WebViewCreationSender = Sender<Result<Arc<crate::WebView>, WebViewError>>;
+type WebViewCreationSender = WebViewCreateSender;
 
 #[derive(Debug, Default, Clone, Copy)]
 struct WebMessagePorts {
@@ -187,7 +206,7 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
     if let Ok(mut sender_opt) = webview.inner.creation_sender.lock()
         && let Some(sender) = sender_opt.take()
     {
-        let _ = sender.send(Ok(webview.clone()));
+        sender.succeed(webview.clone());
         log::info!("WebView creation acknowledged for {}", webtag_str);
     }
 
@@ -213,7 +232,7 @@ pub fn webview_controller_destroyed(webtag_str: &str) {
 /// Register LingXiaProxy for a specific webtag
 fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
     unsafe {
-        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
+        let webtag_cstr = cstring_from_str("webtag", webtag.as_str())?;
 
         let controller_api =
             OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
@@ -500,7 +519,7 @@ impl WebViewInner {
         path: &str,
         session_id: Option<u64>,
         effective_options: EffectiveWebViewCreateOptions,
-        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+        sender: WebViewCreateSender,
     ) {
         if session_id.is_none() {
             log::warn!(
@@ -513,7 +532,7 @@ impl WebViewInner {
         let options_token = match encode_options_token(&effective_options) {
             Ok(token) => token,
             Err(e) => {
-                let _ = sender.send(Err(e));
+                sender.fail(WebViewCreateStage::Requested, e);
                 return;
             }
         };
@@ -549,7 +568,7 @@ impl WebViewInner {
                 && let Ok(mut sender_opt) = webview.inner.creation_sender.lock()
                 && let Some(s) = sender_opt.take()
             {
-                let _ = s.send(Err(e));
+                s.fail(WebViewCreateStage::NativeCreated, e);
             }
             return;
         }
@@ -616,7 +635,18 @@ impl WebViewInner {
             // Get port API if available
             if let Ok(port_api) = get_port_api() {
                 let mut cleanup_count = 0;
-                let webtag_cstr = CString::new(self.ark_webtag_string()).unwrap();
+                let ark_webtag = self.ark_webtag_string();
+                let webtag_cstr = match cstring_from_str("ark_webtag", &ark_webtag) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        log::error!(
+                            "Skip WebMessage port cleanup for {}: {}",
+                            self.webtag.as_str(),
+                            e
+                        );
+                        return;
+                    }
+                };
                 self.with_ports(|ports| {
                     // Cleanup native message port
                     if let Some(port) = ports.native_port.take()
@@ -666,7 +696,8 @@ impl WebViewInner {
     pub fn send_port(&self, port_type: PortType) -> Result<(), WebViewError> {
         unsafe {
             // Use the Ark-facing tag when talking to ArkWeb
-            let webtag_cstr = CString::new(self.ark_webtag_string()).unwrap();
+            let ark_webtag = self.ark_webtag_string();
+            let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
             let controller_api =
                 OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
             if controller_api.is_null() {
@@ -689,8 +720,8 @@ impl WebViewInner {
 
             if let Some(webview_port) = port_opt {
                 // Prepare stable CStrings for the call duration
-                let msg_cstr = CString::new(message).unwrap();
-                let target_cstr = CString::new("*").unwrap();
+                let msg_cstr = cstring_from_str("port_init_message", message)?;
+                let target_cstr = cstring_from_str("port_target", "*")?;
 
                 // Create a mutable copy of the port pointer for the API call
                 let mut port_array = [webview_port];
@@ -729,32 +760,28 @@ impl WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), WebViewError> {
+    fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         let ark_tag = self.ark_webtag_string();
         call_arkts("loadUrl", &[&ark_tag, &url])
     }
 
-    fn load_data(
-        &self,
-        data: String,
-        base_url: String,
-        history_url: Option<String>,
-    ) -> Result<(), WebViewError> {
+    fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
         unsafe {
-            let webtag_cstr = CString::new(self.ark_webtag_string()).unwrap();
-            let data_cstr = CString::new(data.clone()).unwrap();
-            let base_url_cstr = CString::new(base_url.clone()).unwrap();
+            let ark_webtag = self.ark_webtag_string();
+            let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
+            let data_cstr = cstring_from_str("load_data.data", request.data)?;
+            let base_url_cstr = cstring_from_str("load_data.base_url", request.base_url)?;
 
             // Use history_url if provided, otherwise use base_url
-            let history_url_str = history_url.unwrap_or(base_url.clone());
-            let history_url_cstr = CString::new(history_url_str).unwrap();
+            let history_url_str = request.history_url.unwrap_or(request.base_url);
+            let history_url_cstr = cstring_from_str("load_data.history_url", history_url_str)?;
 
             // Use the native HarmonyOS OH_NativeArkWeb_LoadData function
             let result = OH_NativeArkWeb_LoadData(
                 webtag_cstr.as_ptr(),
                 data_cstr.as_ptr(),
-                CString::new("text/html").unwrap().as_ptr(), // MIME type: text/html
-                CString::new("UTF-8").unwrap().as_ptr(),     // Encoding: UTF-8
+                b"text/html\0".as_ptr().cast::<c_char>(), // MIME type: text/html
+                b"UTF-8\0".as_ptr().cast::<c_char>(),     // Encoding: UTF-8
                 base_url_cstr.as_ptr(),
                 history_url_cstr.as_ptr(),
             );
@@ -763,7 +790,7 @@ impl WebViewController for WebViewInner {
                 log::info!(
                     "Successfully loaded data into WebView {} with base URL: {}",
                     self.webtag.as_str(),
-                    base_url
+                    request.base_url
                 );
                 Ok(())
             } else {
@@ -775,10 +802,11 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
+    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
         // Evaluate JS via ArkWeb controller API directly.
         unsafe {
-            let web_tag_cstr = CString::new(self.ark_webtag_string()).unwrap();
+            let ark_webtag = self.ark_webtag_string();
+            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
 
             // Get Controller API
             let controller_api =
@@ -791,7 +819,7 @@ impl WebViewController for WebViewInner {
             let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
 
             // Execute the actual JavaScript
-            let js_cstr = CString::new(js.clone()).unwrap();
+            let js_cstr = cstring_from_str("evaluate_javascript.js", js)?;
             let js_object = ArkWeb_JavaScriptObject {
                 buffer: js_cstr.as_ptr() as *mut u8,
                 size: js.len(),
@@ -815,13 +843,13 @@ impl WebViewController for WebViewInner {
         call_arkts("clearBrowsingData", &[&ark_tag])
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
+    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         let ark_tag = self.ark_webtag_string();
         call_arkts("setUserAgent", &[&ark_tag, &ua])
     }
 
-    fn post_message(&self, message: String) -> Result<(), WebViewError> {
-        self.post_message_internal(&message)
+    fn post_message(&self, message: &str) -> Result<(), WebViewError> {
+        self.post_message_internal(message)
     }
 }
 
@@ -829,7 +857,7 @@ impl WebViewInner {
     /// Set port ready state and notify waiters
     fn set_port_ready(&self, ready: bool) {
         let (lock, cvar) = &self.port_ready_signal;
-        let mut is_ready = lock.lock().unwrap();
+        let mut is_ready = lock_or_recover(lock, "harmony.port_ready_signal.set");
         *is_ready = ready;
         if ready {
             cvar.notify_all();
@@ -839,7 +867,7 @@ impl WebViewInner {
     /// Check if port is ready (non-blocking)
     fn is_port_ready(&self) -> bool {
         let (lock, _) = &self.port_ready_signal;
-        *lock.lock().unwrap()
+        *lock_or_recover(lock, "harmony.port_ready_signal.get")
     }
 
     fn refresh_message_port(&self) -> Result<(), WebViewError> {
@@ -853,15 +881,20 @@ impl WebViewInner {
     /// Wait for message port to become ready (non-busy, uses Condvar)
     fn wait_for_message_port_ready(&self, timeout: Duration) -> bool {
         let (lock, cvar) = &self.port_ready_signal;
-        let guard = lock.lock().unwrap();
-        let result = cvar
-            .wait_timeout_while(guard, timeout, |ready| !*ready)
-            .unwrap();
+        let guard = lock_or_recover(lock, "harmony.port_ready_signal.wait");
+        let result = match cvar.wait_timeout_while(guard, timeout, |ready| !*ready) {
+            Ok(value) => value,
+            Err(poisoned) => {
+                log::error!("Condvar wait poisoned at harmony.port_ready_signal.wait, recovering");
+                poisoned.into_inner()
+            }
+        };
         !result.1.timed_out()
     }
 
     fn post_message_internal(&self, message: &str) -> Result<(), WebViewError> {
-        let webtag_cstr = CString::new(self.ark_webtag_string()).unwrap();
+        let ark_webtag = self.ark_webtag_string();
+        let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
 
         let message_api = get_message_api()
             .map_err(|_| WebViewError::WebView("WebMessage API not available".to_string()))?;
@@ -986,7 +1019,7 @@ impl Drop for WebViewInner {
 /// Register WebView lifecycle callbacks
 fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
     unsafe {
-        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
+        let webtag_cstr = cstring_from_str("webtag", webtag.as_str())?;
 
         // Get the ArkWeb_ComponentAPI using the correct API
         let component_api =
@@ -1126,7 +1159,8 @@ fn setup_webmessage_port_for_webtag(
         // Use the current Ark tag to avoid stale controller state.
         let webview = crate::find_webview(webtag)
             .ok_or_else(|| WebViewError::WebView("WebView not found".to_string()))?;
-        let webtag_cstr = CString::new(webview.inner.ark_webtag_string()).unwrap();
+        let ark_webtag = webview.inner.ark_webtag_string();
+        let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
 
         let mut size = 0;
         let ports = controller.createWebMessagePorts.ok_or_else(|| {
@@ -1231,9 +1265,7 @@ fn inject_console_script(webtag: &WebTag) -> Result<(), WebViewError> {
         WebViewError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
-    webview
-        .inner
-        .evaluate_javascript(console_script.to_string())
+    webview.inner.evaluate_javascript(console_script)
 }
 
 /// WebMessage callback

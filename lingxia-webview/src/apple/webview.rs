@@ -1,6 +1,6 @@
 use crate::traits::{NavigationPolicy, NewWindowPolicy};
 use crate::webview::{find_webview, get_webview_delegate};
-use crate::{LogLevel, WebViewController, WebViewError};
+use crate::{LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use block2::{Block, StackBlock};
 use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
@@ -21,9 +21,10 @@ use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentCont
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::Arc;
-use tokio::sync::oneshot::Sender;
 
-use crate::webview::{EffectiveWebViewCreateOptions, SecurityProfile, WebTag};
+use crate::webview::{
+    EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender, WebViewCreateStage,
+};
 
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
@@ -611,7 +612,7 @@ impl WebViewInner {
         path: &str,
         session_id: Option<u64>,
         effective_options: EffectiveWebViewCreateOptions,
-        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+        sender: WebViewCreateSender,
     ) {
         let appid_owned = appid.to_string();
         let path_owned = path.to_string();
@@ -652,7 +653,7 @@ impl WebViewInner {
                         path_owned,
                         error
                     );
-                    let _ = sender.send(Err(error));
+                    sender.fail(WebViewCreateStage::Requested, error);
                 }
             });
         }
@@ -665,7 +666,7 @@ impl WebViewInner {
         session_id: Option<u64>,
         effective_options: EffectiveWebViewCreateOptions,
         mtm: MainThreadMarker,
-        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+        sender: WebViewCreateSender,
     ) {
         let result = Self::create_with_marker(appid, path, session_id, &effective_options, mtm);
 
@@ -677,12 +678,12 @@ impl WebViewInner {
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
 
-                let _ = sender.send(Ok(webview));
+                sender.succeed(webview);
                 log::info!("WebView created successfully for {}-{}", appid, path);
             }
             Err(e) => {
                 log::error!("Failed to create WebView for {}-{}: {:?}", appid, path, e);
-                let _ = sender.send(Err(e));
+                sender.fail(WebViewCreateStage::Requested, e);
             }
         }
     }
@@ -1066,9 +1067,9 @@ impl WebViewInner {
     }
 
     /// Helper method to load URL on main thread
-    fn load_url_on_main_thread(&self, url: String) -> Result<(), WebViewError> {
+    fn load_url_on_main_thread(&self, url: &str) -> Result<(), WebViewError> {
         unsafe {
-            let ns_url_string = NSString::from_str(&url);
+            let ns_url_string = NSString::from_str(url);
             if let Some(ns_url) = NSURL::URLWithString(&ns_url_string) {
                 let request = NSURLRequest::requestWithURL(&ns_url);
                 let _: *mut AnyObject = msg_send![self.webview, loadRequest: &*request];
@@ -1080,32 +1081,30 @@ impl WebViewInner {
     }
 
     /// Helper method to load HTML data on main thread
-    fn load_data_on_main_thread(
-        &self,
-        data: String,
-        base_url: String,
-        _history_url: Option<String>,
-    ) -> Result<(), WebViewError> {
+    fn load_data_on_main_thread(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
         unsafe {
-            let data_nsstring = NSString::from_str(&data);
-            let base_url_nsstring = NSString::from_str(&base_url);
+            let data_nsstring = NSString::from_str(request.data);
+            let base_url_nsstring = NSString::from_str(request.base_url);
             if let Some(base_url_obj) = NSURL::URLWithString(&base_url_nsstring) {
                 let _: *mut AnyObject = msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url_obj];
-                log::info!("Loaded HTML data into WebView with base URL: {}", base_url);
+                log::info!(
+                    "Loaded HTML data into WebView with base URL: {}",
+                    request.base_url
+                );
                 Ok(())
             } else {
                 Err(WebViewError::WebView(format!(
                     "Invalid base URL: {}",
-                    base_url
+                    request.base_url
                 )))
             }
         }
     }
 
     /// Helper method to evaluate JavaScript on main thread
-    fn evaluate_javascript_on_main_thread(&self, js: String) -> Result<(), WebViewError> {
+    fn evaluate_javascript_on_main_thread(&self, js: &str) -> Result<(), WebViewError> {
         unsafe {
-            let js_string = NSString::from_str(&js);
+            let js_string = NSString::from_str(js);
             let completion =
                 StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
             // Note: evaluateJavaScript is async, but we're treating it as fire-and-forget
@@ -1146,9 +1145,9 @@ impl WebViewInner {
     }
 
     /// Helper method to set user agent on main thread
-    fn set_user_agent_on_main_thread(&self, ua: String) -> Result<(), WebViewError> {
+    fn set_user_agent_on_main_thread(&self, ua: &str) -> Result<(), WebViewError> {
         unsafe {
-            let ua_string = NSString::from_str(&ua);
+            let ua_string = NSString::from_str(ua);
             let _: () = msg_send![self.webview, setCustomUserAgent: if ua.is_empty() { std::ptr::null::<NSString>() } else { &*ua_string }];
             Ok(())
         }
@@ -1156,14 +1155,14 @@ impl WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), WebViewError> {
+    fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.load_url_on_main_thread(url)
         } else {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
-            let url_clone = url.clone();
+            let url_clone = url.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
@@ -1179,20 +1178,15 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn load_data(
-        &self,
-        data: String,
-        base_url: String,
-        history_url: Option<String>,
-    ) -> Result<(), WebViewError> {
+    fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
-            self.load_data_on_main_thread(data, base_url, history_url)
+            self.load_data_on_main_thread(request)
         } else {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
-            let data_clone = data.clone();
-            let base_url_clone = base_url.clone();
+            let data_clone = request.data.to_string();
+            let base_url_clone = request.base_url.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
@@ -1210,14 +1204,14 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
+    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.evaluate_javascript_on_main_thread(js)
         } else {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
-            let js_clone = js.clone();
+            let js_clone = js.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;
@@ -1233,6 +1227,24 @@ impl WebViewController for WebViewInner {
 
             Ok(())
         }
+    }
+
+    fn post_message(&self, message: &str) -> Result<(), WebViewError> {
+        let escaped_message = message
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t");
+        let js_code = format!(
+            "if (typeof window.__LingXiaRecvMessage === 'function') {{ \
+                window.__LingXiaRecvMessage(\"{}\"); \
+            }} else {{ \
+                console.warn('[LingXia] __LingXiaRecvMessage not available'); \
+            }}",
+            escaped_message
+        );
+        self.evaluate_javascript(&js_code)
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
@@ -1267,14 +1279,14 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
+    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
             // Already on main thread, execute directly
             self.set_user_agent_on_main_thread(ua)
         } else {
             // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
-            let ua_clone = ua.clone();
+            let ua_clone = ua.to_string();
 
             DispatchQueue::main().exec_async(move || unsafe {
                 let webview_ptr = webview_ptr_addr as *mut AnyObject;

@@ -1,5 +1,7 @@
 use crate::traits::NavigationPolicy;
-use crate::webview::{WebTag, find_webview, get_webview_delegate, register_webview};
+use crate::webview::{
+    WebTag, WebViewCreateStage, find_webview, get_webview_delegate, register_webview,
+};
 use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
@@ -401,13 +403,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                         register_webview(webview.clone());
 
                         // Send the WebView instance through the channel
-                        let _ = pending.sender.send(Ok(webview));
+                        pending.sender.succeed(webview);
                     }
                     Err(e) => {
-                        let _ = pending.sender.send(Err(WebViewError::WebView(format!(
-                            "Failed to create global ref: {:?}",
-                            e
-                        ))));
+                        pending.sender.fail(
+                            WebViewCreateStage::Requested,
+                            WebViewError::WebView(format!("Failed to create global ref: {:?}", e)),
+                        );
                     }
                 }
             }

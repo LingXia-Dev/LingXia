@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// WebView-specific error types
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum WebViewError {
     #[error("WebView error: {0}")]
     WebView(String),
@@ -35,12 +35,14 @@ mod harmony;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    NavigationPolicy, NewWindowPolicy, SystemPipeReader, WebResourceBody, WebResourceResponse,
-    WebViewController, WebViewDelegate,
+    LoadDataRequest, NavigationPolicy, NewWindowPolicy, SchemeOutcome, SystemPipeReader,
+    WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
 };
 pub use webview::{
-    WebTag, WebView, WebViewCreateOptions, create_webview, destroy_webview, find_webview,
-    get_webview_delegate, init_webview_manager, set_webview_delegate,
+    WebTag, WebView, WebViewCreateOptions, WebViewCreateStage, WebViewEvent,
+    WebViewEventSubscription, WebViewSession, create_webview, create_webview_strict,
+    destroy_webview, find_webview, get_webview_delegate, init_webview_manager,
+    set_webview_delegate,
 };
 
 #[cfg(target_os = "android")]

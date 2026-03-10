@@ -1,13 +1,14 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
-use crate::webview::{EffectiveWebViewCreateOptions, WebTag};
-use crate::{WebViewController, WebViewError};
+use crate::webview::{
+    EffectiveWebViewCreateOptions, WebTag, WebViewCreateSender, WebViewCreateStage,
+};
+use crate::{LoadDataRequest, WebViewController, WebViewError};
 use jni::objects::{Global, JObject};
 use jni::{jni_sig, jni_str};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
-use tokio::sync::oneshot::Sender;
 
 // Import JNI environment access from shared utils
 use super::jni_env::{get_lingxia_webview_class, with_env};
@@ -21,7 +22,7 @@ fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<Strin
 
 // Type alias for WebView senders map to reduce complexity
 pub(crate) struct PendingWebViewCreation {
-    pub sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+    pub sender: WebViewCreateSender,
     pub effective_options: EffectiveWebViewCreateOptions,
 }
 
@@ -43,7 +44,7 @@ impl WebViewInner {
         path: &str,
         session_id: Option<u64>,
         effective_options: EffectiveWebViewCreateOptions,
-        sender: Sender<Result<Arc<crate::WebView>, WebViewError>>,
+        sender: WebViewCreateSender,
     ) {
         // Store sender in global map for callback
         let webtag = WebTag::new(appid, path, session_id);
@@ -64,7 +65,10 @@ impl WebViewInner {
             if let Ok(mut senders_map) = senders.lock()
                 && let Some(pending) = senders_map.remove(&webtag.to_string())
             {
-                let _ = pending.sender.send(Err(WebViewError::WebView(error_msg)));
+                pending.sender.fail(
+                    WebViewCreateStage::Requested,
+                    WebViewError::WebView(error_msg),
+                );
             }
         };
 
@@ -150,7 +154,7 @@ impl Drop for WebViewInner {
 }
 
 impl WebViewController for WebViewInner {
-    fn load_url(&self, url: String) -> Result<(), WebViewError> {
+    fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let url_string = env.new_string(&url)?;
             env.call_method(
@@ -164,18 +168,13 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to load URL: {:?}", e)))
     }
 
-    fn load_data(
-        &self,
-        data: String,
-        base_url: String,
-        history_url: Option<String>,
-    ) -> Result<(), WebViewError> {
+    fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let data_string = env.new_string(&data)?;
-            let base_url_string = env.new_string(&base_url)?;
-            let history_url_string = match history_url {
+            let data_string = env.new_string(request.data)?;
+            let base_url_string = env.new_string(request.base_url)?;
+            let history_url_string = match request.history_url {
                 Some(url) => env.new_string(&url)?,
-                None => env.new_string(&base_url)?,
+                None => env.new_string(request.base_url)?,
             };
 
             env.call_method(
@@ -193,7 +192,7 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to load data: {:?}", e)))
     }
 
-    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError> {
+    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let script_string = env.new_string(&js)?;
 
@@ -221,7 +220,7 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to clear browsing data: {:?}", e)))
     }
 
-    fn post_message(&self, message: String) -> Result<(), WebViewError> {
+    fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let msg_string = env.new_string(&message)?;
 
@@ -236,7 +235,7 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to post message: {:?}", e)))
     }
 
-    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError> {
+    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let ua_string = env.new_string(&ua)?;
 

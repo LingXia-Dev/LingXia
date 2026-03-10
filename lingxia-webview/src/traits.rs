@@ -1,10 +1,22 @@
 use crate::{LogLevel, WebViewError};
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 
-/// Synchronous scheme handler signature.
-/// Returns `Some(response)` to handle the request, `None` to decline.
-pub type SyncSchemeHandler =
-    Box<dyn Fn(http::Request<Vec<u8>>) -> Option<WebResourceResponse> + Send + Sync>;
+/// Outcome of handling a scheme request.
+#[derive(Debug)]
+pub enum SchemeOutcome {
+    /// Handler produced a response.
+    Handled(WebResourceResponse),
+    /// Handler intentionally declined the request.
+    PassThrough,
+}
+
+/// Async scheme handler signature.
+pub(crate) type AsyncSchemeFuture = Pin<Box<dyn Future<Output = SchemeOutcome> + Send + 'static>>;
+pub(crate) type AsyncSchemeHandler =
+    Arc<dyn Fn(http::Request<Vec<u8>>) -> AsyncSchemeFuture + Send + Sync>;
 
 /// Navigation policy decision returned by the navigation handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,54 +87,44 @@ impl SystemPipeReader {
 /// Interface for controlling WebView (100% copy from lxapp)
 pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
-    fn load_url(&self, url: String) -> Result<(), WebViewError>;
+    fn load_url(&self, url: &str) -> Result<(), WebViewError>;
 
-    /// Load HTML data into the WebView
-    ///
-    /// # Arguments
-    /// * `data` - The HTML content to load
-    /// * `base_url` - Base URL for resolving relative paths in the HTML
-    /// * `history_url` - Optional URL to use for history (defaults to base_url if None)
-    fn load_data(
-        &self,
-        data: String,
-        base_url: String,
-        history_url: Option<String>,
-    ) -> Result<(), WebViewError>;
+    /// Load HTML data into the WebView.
+    fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError>;
 
     /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: String) -> Result<(), WebViewError>;
+    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError>;
 
     /// Post a message to the WebView
-    fn post_message(&self, message: String) -> Result<(), WebViewError> {
-        // Escape the JSON message for safe JavaScript injection
-        // Since message is already JSON, we need to escape it properly for JS string literal
-        let escaped_message = message
-            .replace('\\', "\\\\") // Escape backslashes first
-            .replace('"', "\\\"") // Escape double quotes
-            .replace('\n', "\\n") // Escape newlines
-            .replace('\r', "\\r") // Escape carriage returns
-            .replace('\t', "\\t"); // Escape tabs
-
-        // Call the global receiver function defined in webview-bridge.js
-        let js_code = format!(
-            "if (typeof window.__LingXiaRecvMessage === 'function') {{ \
-                window.__LingXiaRecvMessage(\"{}\"); \
-            }} else {{ \
-                console.warn('[LingXia] __LingXiaRecvMessage not available'); \
-            }}",
-            escaped_message
-        );
-
-        // Use evaluateJavaScript to send the message to the WebView
-        self.evaluate_javascript(js_code)
-    }
+    fn post_message(&self, message: &str) -> Result<(), WebViewError>;
 
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), WebViewError>;
 
     /// Set the user agent string for the WebView
-    fn set_user_agent(&self, ua: String) -> Result<(), WebViewError>;
+    fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LoadDataRequest<'a> {
+    pub data: &'a str,
+    pub base_url: &'a str,
+    pub history_url: Option<&'a str>,
+}
+
+impl<'a> LoadDataRequest<'a> {
+    pub fn new(data: &'a str, base_url: &'a str) -> Self {
+        Self {
+            data,
+            base_url,
+            history_url: None,
+        }
+    }
+
+    pub fn with_history_url(mut self, history_url: &'a str) -> Self {
+        self.history_url = Some(history_url);
+        self
+    }
 }
 
 /// WebView delegate trait - focused on WebView events only
@@ -145,6 +147,15 @@ pub trait WebViewDelegate: Send + Sync {
 pub struct WebResourceResponse {
     parts: http::response::Parts,
     body: WebResourceBody,
+}
+
+impl From<Option<WebResourceResponse>> for SchemeOutcome {
+    fn from(value: Option<WebResourceResponse>) -> Self {
+        match value {
+            Some(response) => SchemeOutcome::Handled(response),
+            None => SchemeOutcome::PassThrough,
+        }
+    }
 }
 
 impl WebResourceResponse {
@@ -190,17 +201,25 @@ impl From<(http::response::Parts, Vec<u8>)> for WebResourceResponse {
 }
 
 impl WebResourceResponse {
+    fn response_parts_with_status(status: u16) -> http::response::Parts {
+        let response = match http::Response::builder().status(status).body(()) {
+            Ok(response) => response,
+            Err(_) => http::Response::new(()),
+        };
+        let (parts, _) = response.into_parts();
+        parts
+    }
+
     /// Create a response serving a file from disk (status 200).
     pub fn file(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let content_length = std::fs::metadata(&path).ok().map(|m| m.len());
-        let mut response = http::Response::builder().status(200).body(()).unwrap();
+        let mut parts = Self::response_parts_with_status(200);
         if let Some(len) = content_length {
-            response
-                .headers_mut()
+            parts
+                .headers
                 .insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(len));
         }
-        let (parts, _) = response.into_parts();
         Self {
             parts,
             body: WebResourceBody::Path(path),
@@ -211,11 +230,10 @@ impl WebResourceResponse {
     pub fn bytes(data: impl Into<Vec<u8>>) -> Self {
         let data = data.into();
         let len = data.len();
-        let mut response = http::Response::builder().status(200).body(()).unwrap();
-        response
-            .headers_mut()
+        let mut parts = Self::response_parts_with_status(200);
+        parts
+            .headers
             .insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(len));
-        let (parts, _) = response.into_parts();
         Self {
             parts,
             body: WebResourceBody::Bytes(data),
@@ -224,11 +242,7 @@ impl WebResourceResponse {
 
     /// Create a response serving data from a system pipe (status 200).
     pub fn stream(reader: SystemPipeReader) -> Self {
-        let (parts, _) = http::Response::builder()
-            .status(200)
-            .body(())
-            .unwrap()
-            .into_parts();
+        let parts = Self::response_parts_with_status(200);
         Self {
             parts,
             body: WebResourceBody::Pipe(reader),
