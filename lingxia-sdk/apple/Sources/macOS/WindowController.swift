@@ -17,6 +17,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     public struct Layout {
         static let sidebarWidth: CGFloat = 180
         static let minSidebarWidth: CGFloat = 48
+        static let sidebarHiddenThreshold: CGFloat = 1
+        static let edgeDetectionWidth: CGFloat = 4
         static let browserToolbarHeight: CGFloat = 38
         static let browserButtonSize: CGFloat = 28
         static let browserToolbarIconSize: CGFloat = 14
@@ -30,6 +32,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
+    private let sidebarEdgeDetector = SidebarEdgeDetector()
+    private var isSidebarAutoShown = false
+    nonisolated(unsafe) private var sidebarAutoHideTimer: Timer?
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     private var appSessions: [String: UInt64] = [:]
@@ -75,6 +80,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
+        sidebarAutoHideTimer?.invalidate()
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
@@ -152,7 +158,19 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             self?.toggleSidebar()
         }
         sidebar.onWidthChanged = { [weak self] width, animated in
+            // Live drag pins sidebar (disables auto-hide)
+            if !animated {
+                self?.isSidebarAutoShown = false
+                self?.cancelSidebarAutoHide()
+            }
             self?.updateSidebarWidth(width, animated: animated)
+        }
+        sidebar.onMouseEnteredSidebar = { [weak self] in
+            self?.cancelSidebarAutoHide()
+        }
+        sidebar.onMouseExitedSidebar = { [weak self] in
+            guard let self, self.isSidebarAutoShown else { return }
+            self.scheduleSidebarAutoHide()
         }
         sidebar.onAddBrowserTab = { [weak self] in
             self?.addBrowserTab()
@@ -219,6 +237,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             panelRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
             panelRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
         ])
+
+        // Edge detector for auto-showing hidden sidebar
+        setupSidebarEdgeDetector(in: contentView)
     }
 
     private func setupNotificationObservers() {
@@ -256,11 +277,18 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     func toggleSidebar() {
         guard let constraint = sidebarWidthConstraint else { return }
 
-        let isCollapsing = constraint.constant > Layout.minSidebarWidth
-        if isCollapsing {
+        // If sidebar was auto-shown via edge hover, pin it (stop auto-hide)
+        if isSidebarAutoShown {
+            isSidebarAutoShown = false
+            cancelSidebarAutoHide()
+            return
+        }
+
+        let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
+        if isVisible && constraint.constant > Layout.minSidebarWidth {
             lastExpandedSidebarWidth = constraint.constant
         }
-        let targetWidth: CGFloat = isCollapsing ? Layout.minSidebarWidth : lastExpandedSidebarWidth
+        let targetWidth: CGFloat = isVisible ? 0 : lastExpandedSidebarWidth
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
@@ -268,7 +296,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             constraint.animator().constant = targetWidth
         }, completionHandler: {
             MainActor.assumeIsolated { [weak self] in
-                self?.sidebarView?.updateMinimizedState()
+                self?.refreshSidebarVisibilityUI()
             }
         })
     }
@@ -287,13 +315,72 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 constraint.animator().constant = width
             }, completionHandler: {
                 MainActor.assumeIsolated { [weak self] in
-                    self?.sidebarView?.updateMinimizedState()
+                    self?.refreshSidebarVisibilityUI()
                 }
             })
         } else {
             constraint.constant = width
-            sidebarView?.updateMinimizedState()
+            refreshSidebarVisibilityUI()
         }
+    }
+
+    // MARK: - Sidebar Edge Detection & Auto-Hide
+
+    private func setupSidebarEdgeDetector(in contentView: NSView) {
+        sidebarEdgeDetector.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(sidebarEdgeDetector, positioned: .above, relativeTo: nil)
+
+        NSLayoutConstraint.activate([
+            sidebarEdgeDetector.topAnchor.constraint(equalTo: contentView.topAnchor),
+            sidebarEdgeDetector.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            sidebarEdgeDetector.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            sidebarEdgeDetector.widthAnchor.constraint(equalToConstant: Layout.edgeDetectionWidth),
+        ])
+
+        sidebarEdgeDetector.onMouseEntered = { [weak self] in
+            self?.showSidebarFromEdgeHover()
+        }
+
+        // Initially hidden since sidebar starts visible
+        sidebarEdgeDetector.isHidden = true
+    }
+
+    private func showSidebarFromEdgeHover() {
+        guard (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold else { return }
+        isSidebarAutoShown = true
+        sidebarEdgeDetector.isHidden = true
+        cancelSidebarAutoHide()
+        updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
+    }
+
+    private func scheduleSidebarAutoHide() {
+        cancelSidebarAutoHide()
+        sidebarAutoHideTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.autoHideSidebar()
+            }
+        }
+    }
+
+    private func cancelSidebarAutoHide() {
+        sidebarAutoHideTimer?.invalidate()
+        sidebarAutoHideTimer = nil
+    }
+
+    private func autoHideSidebar() {
+        guard isSidebarAutoShown else { return }
+        isSidebarAutoShown = false
+        updateSidebarWidth(0, animated: true)
+    }
+
+    private func updateEdgeDetectorVisibility() {
+        let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
+        sidebarEdgeDetector.isHidden = !sidebarHidden
+    }
+
+    private func refreshSidebarVisibilityUI() {
+        sidebarView?.updateMinimizedState()
+        updateEdgeDetectorVisibility()
     }
 
     // MARK: - Tab Lifecycle
@@ -1087,6 +1174,38 @@ extension LxAppWindowController {
         }
         image.isTemplate = true
         return image
+    }
+}
+
+// MARK: - Sidebar Edge Detector
+
+/// Invisible view at the left edge of the window that detects mouse hover
+/// for auto-showing a fully-hidden sidebar. Transparent to all clicks.
+@MainActor
+class SidebarEdgeDetector: NSView {
+    var onMouseEntered: (() -> Void)?
+
+    // Pass all clicks through to views underneath
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas {
+            removeTrackingArea(area)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEntered?()
     }
 }
 

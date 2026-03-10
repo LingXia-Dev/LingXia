@@ -56,6 +56,7 @@ public class SidebarView: NSView {
         static let minCollapsedWidth: CGFloat = 48
         static let maxWidth: CGFloat = 400
         static let collapseThreshold: CGFloat = 80
+        static let fullyHiddenThreshold: CGFloat = 1
         static let trafficLightsHeight: CGFloat = 38
         static let toggleButtonSize: CGFloat = 28
         static let resizeHandleWidth: CGFloat = 5
@@ -83,11 +84,15 @@ public class SidebarView: NSView {
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
     private var addButtonTrackingArea: NSTrackingArea?
-    private var isAddButtonHovered = false
+    private var sidebarTrackingArea: NSTrackingArea?
 
     /// True when the sidebar is at minimized width (showing dots only)
     var isMinimized: Bool {
         return frame.width <= Layout.minCollapsedWidth + 1
+    }
+
+    var isFullyHidden: Bool {
+        return frame.width < Layout.fullyHiddenThreshold
     }
 
     /// Called when user selects a page: (appId, itemIndex)
@@ -104,6 +109,10 @@ public class SidebarView: NSView {
     var onBrowserTabSelected: ((UUID) -> Void)?
     /// Called when a browser tab close is requested
     var onBrowserTabCloseRequested: ((UUID) -> Void)?
+    /// Called when mouse enters sidebar area (for auto-hide tracking)
+    var onMouseEnteredSidebar: (() -> Void)?
+    /// Called when mouse exits sidebar area (for auto-hide tracking)
+    var onMouseExitedSidebar: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -266,13 +275,13 @@ public class SidebarView: NSView {
     // MARK: - Drag Handling
 
     private func handleDrag(proposedWidth: CGFloat) {
-        let clamped = min(max(proposedWidth, Layout.minCollapsedWidth), Layout.maxWidth)
+        let clamped = min(max(proposedWidth, 0), Layout.maxWidth)
         onWidthChanged?(clamped, false)
     }
 
     private func handleDragEnd(proposedWidth: CGFloat) {
         if proposedWidth < Layout.collapseThreshold {
-            onWidthChanged?(Layout.minCollapsedWidth, true)
+            onWidthChanged?(0, true)
         } else {
             let clamped = min(max(proposedWidth, Layout.collapseThreshold), Layout.maxWidth)
             onWidthChanged?(clamped, true)
@@ -283,10 +292,13 @@ public class SidebarView: NSView {
 
     /// Update display mode based on current width
     func updateMinimizedState() {
-        let minimized = isMinimized
-        scrollView.isHidden = minimized
-        toggleButton.isHidden = minimized
+        let hidden = isFullyHidden
+        let minimized = isMinimized && !hidden
+
+        scrollView.isHidden = hidden || minimized
+        toggleButton.isHidden = hidden || minimized
         minimizedDotsContainer.isHidden = !minimized
+        resizeHandle.isHidden = hidden
     }
 
     /// Rebuild colored dots for current groups
@@ -613,6 +625,21 @@ public class SidebarView: NSView {
 
     override public func updateTrackingAreas() {
         super.updateTrackingAreas()
+
+        // Sidebar-level tracking (for auto-hide on mouse exit)
+        if let existing = sidebarTrackingArea {
+            removeTrackingArea(existing)
+        }
+        let sidebarArea = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(sidebarArea)
+        sidebarTrackingArea = sidebarArea
+
+        // Add button hover tracking
         if let existing = addButtonTrackingArea {
             addButton.removeTrackingArea(existing)
         }
@@ -620,26 +647,33 @@ public class SidebarView: NSView {
             rect: addButton.bounds,
             options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
             owner: self,
-            userInfo: ["zone": "addButton"]
+            userInfo: nil
         )
         addButton.addTrackingArea(area)
         addButtonTrackingArea = area
     }
 
     override public func mouseEntered(with event: NSEvent) {
-        let zone = event.trackingArea?.userInfo?["zone"] as? String
-        if zone == "addButton" {
-            isAddButtonHovered = true
-            addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
+        guard let trackingArea = event.trackingArea else { return }
+        if trackingArea === sidebarTrackingArea {
+            onMouseEnteredSidebar?()
+        } else if trackingArea === addButtonTrackingArea {
+            setAddButtonHovered(true)
         }
     }
 
     override public func mouseExited(with event: NSEvent) {
-        let zone = event.trackingArea?.userInfo?["zone"] as? String
-        if zone == "addButton" {
-            isAddButtonHovered = false
-            addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+        guard let trackingArea = event.trackingArea else { return }
+        if trackingArea === sidebarTrackingArea {
+            onMouseExitedSidebar?()
+        } else if trackingArea === addButtonTrackingArea {
+            setAddButtonHovered(false)
         }
+    }
+
+    private func setAddButtonHovered(_ hovered: Bool) {
+        let alpha: CGFloat = hovered ? 0.12 : 0.06
+        addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(alpha).cgColor
     }
 }
 
