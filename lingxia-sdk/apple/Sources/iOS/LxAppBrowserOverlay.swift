@@ -91,6 +91,7 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     private var attachRetryWorkItem: DispatchWorkItem?
     private var didCloseManagedTab = false
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
+    private var bottomBarBottomConstraint: NSLayoutConstraint?
 
     init(tabId: String, ownerAppId: String, ownerSessionId: UInt64) {
         self.tabId = tabId
@@ -118,6 +119,14 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         navigationController?.setNavigationBarHidden(true, animated: false)
         navigationController?.interactivePopGestureRecognizer?.isEnabled = true
         navigationController?.interactivePopGestureRecognizer?.delegate = nil
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillShow(_:)), name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillHide(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -264,7 +273,11 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             bottomBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             bottomBar.heightAnchor.constraint(equalToConstant: 48),
-            bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4),
+            {
+                let c = bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -4)
+                bottomBarBottomConstraint = c
+                return c
+            }(),
 
             bottomBarBackground.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor, constant: 12),
             bottomBarBackground.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor, constant: -12),
@@ -335,15 +348,14 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     }
 
     private func findManagedBrowserWebView() -> WKWebView? {
-        let ptr = findBrowserWebView(tabId)
-        guard ptr != 0, let rawPointer = UnsafeRawPointer(bitPattern: ptr) else {
+        guard ownerSessionId > 0 else {
             return nil
         }
-
-        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
-        webView.setup(appId: Self.browserAppId, path: Self.browserTabPathPrefix + tabId)
-        NativeBridge.attachIfNeeded(to: webView)
-        return webView
+        return WebViewManager.findWebView(
+            appId: Self.browserAppId,
+            path: Self.browserTabPathPrefix + tabId,
+            sessionId: ownerSessionId
+        )
     }
 
     private func observeManagedWebView(_ webView: WKWebView) {
@@ -479,6 +491,26 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
             }
         default:
             break
+        }
+    }
+
+    @objc private func keyboardWillShow(_ notification: Notification) {
+        guard let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+              let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt else { return }
+        let keyboardHeight = keyboardFrame.height - view.safeAreaInsets.bottom
+        bottomBarBottomConstraint?.constant = -(keyboardHeight + 4)
+        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
+    @objc private func keyboardWillHide(_ notification: Notification) {
+        guard let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double,
+              let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt else { return }
+        bottomBarBottomConstraint?.constant = -4
+        UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
+            self.view.layoutIfNeeded()
         }
     }
 
