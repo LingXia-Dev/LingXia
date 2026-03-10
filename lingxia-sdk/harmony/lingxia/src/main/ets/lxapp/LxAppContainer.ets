@@ -12,20 +12,17 @@ import {
   removeWebViewUiCallback,
   WebViewInfo,
   getAllWebViewInfos,
-  getWebViewCreateOptions,
-  getWebViewEmbedManager,
   pauseWebViewComponents,
   resumeWebViewComponents
 } from './WebView';
+import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent, onWebviewControllerCreated } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
-import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
-import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
@@ -50,22 +47,6 @@ const TAG = 'LingXia.Container';
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
-}
-
-interface ApplyNodeLayoutsResult {
-  changed: boolean;
-  nextMap: Map<string, NodeLayoutState>;
-}
-
-// Layout snapshot for same-level NodeContainer
-interface NodeLayoutState {
-  width: Length;
-  height: Length;
-  position?: Position;
-  zIndex: number;
-  cornerRadius: number;
-  safeAreaTypes: SafeAreaType[];
-  safeAreaEdges: SafeAreaEdge[];
 }
 
 @Component
@@ -111,13 +92,6 @@ export struct LxAppContainer {
   @State private currentWebViewTranslateX: number = 0
   @State private previousWebViewTranslateX: number = 0
   @State private navbarTranslateX: number = 0
-  private controllerReadyAcked: Set<string> = new Set()
-
-  // Same-level rendering state
-  private embedManagers: Map<string, NativeComponentEmbedManager> = new Map()
-  @State private embedComponentIds: Map<string, string[]> = new Map()
-  @State private fullscreenRefreshKey: number = 0  // Force NodeContainer refresh when fullscreen changes
-
   // Fullscreen state - when set, only the fullscreen component is rendered
   @State private fullscreenWebTag: string = ''
   @State private fullscreenComponentId: string = ''
@@ -126,12 +100,6 @@ export struct LxAppContainer {
   @State private isRefreshing: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingPath: string = ''
-
-  // Layout cache keyed by webTag:componentId to drive NodeContainer attributes reactively
-  @State private nodeLayoutCache: Map<string, NodeLayoutState> = new Map()
-  private pendingEmbedSyncTags: Set<string> = new Set()
-  private embedSyncScheduled: boolean = false
-  private embedSyncTimerId: number | null = null
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
@@ -234,17 +202,6 @@ export struct LxAppContainer {
   }
 
   aboutToDisappear() {
-    // Pause all native components before cleanup
-    this.embedManagers.forEach((manager: NativeComponentEmbedManager) => {
-      manager.pauseAll();
-    });
-    if (this.embedSyncTimerId !== null) {
-      clearTimeout(this.embedSyncTimerId);
-      this.embedSyncTimerId = null;
-      this.embedSyncScheduled = false;
-      this.pendingEmbedSyncTags.clear();
-    }
-
     // Unregister this container
     LxAppContainer.activeContainers.delete(this.appId);
 
@@ -484,9 +441,6 @@ export struct LxAppContainer {
         this.webViewComponents.delete(info.webtag);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
 
-        // Allow new WebView instances for this webtag to re-ack creation after destroy
-        this.controllerReadyAcked.delete(info.webtag);
-
         // If the destroyed WebView was currently displayed, switch to another one
           if (this.currentWebTag === info.webtag) {
             if (this.webViewKeys.length > 0) {
@@ -507,7 +461,6 @@ export struct LxAppContainer {
             this.animationInProgress = false;
             this.keepAliveTags = [];
             this.pageShowTriggered.clear();
-            this.controllerReadyAcked.clear();
           }
           break;
       case 'popup_show':
@@ -624,7 +577,7 @@ export struct LxAppContainer {
           webTag: this.fullscreenWebTag,
           onClose: () => {
             // When overlay closes, cleanup state if needed
-            // Usually native player exitFullscreen trigger will clear state via updateFullscreenState
+            // Usually native player exitFullscreen trigger will clear state via handleFullscreenChange
           }
         })
       }
@@ -1226,11 +1179,6 @@ export struct LxAppContainer {
 
     // Notify new page becoming active (resume native components)
     resumeWebViewComponents(newWebTag);
-    // Refresh NodeContainer layouts in one batch to avoid extra recompose churn.
-    const layoutChanged = this.refreshAllNodeLayouts();
-    if (layoutChanged) {
-      this.fullscreenRefreshKey++;
-    }
 
     // Trigger onPageShow
     this.triggerOnPageShowIfNeeded(newWebTag);
@@ -1304,59 +1252,23 @@ export struct LxAppContainer {
   buildWebViewComponent(webTag: string, controller: webview.WebviewController): void {
     Column() {
       Stack() {
-        // Same-level native components (rendered via NodeController, MUST be before Web)
-        // Note: We use stable keys (componentId only) to avoid component recreation.
-        // ArkUI doesn't allow reusing the same FrameNode when key changes.
-        // Layout updates are handled through nodeLayoutCache @State variable.
-        ForEach(this.getEmbedComponentIds(webTag), (componentId: string) => {
-          this.buildNodeContainer(webTag, componentId, this.fullscreenRefreshKey)
-        }, (componentId: string) => componentId)
-
-        // Web component with native embed mode enabled
-        Web({ src: '', controller: controller })
-          .visibility(this.getRenderVisibility(webTag))
-          .translate(this.getRenderTranslation(webTag))
-          .margin(this.getRenderMargin(webTag))
-          .onAppear(() => {
-            const overlay = this.isOverlayWebView(webTag);
-            hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${webTag}, overlay: ${overlay}`);
-            // Do not trigger onPageShow here to avoid duplicates; finishTransition will handle it once.
-            // Notify native only when ArkUI Web component is actually attached
-            if (!this.controllerReadyAcked.has(webTag)) {
-              onWebviewControllerCreated(webTag);
-              this.controllerReadyAcked.add(webTag);
-            }
-          })
-          .onControllerAttached(() => {
-            // Setup same-level embed manager for this WebView
-            this.setupEmbedManager(webTag, controller);
-            hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${webTag}`);
-          })
-          .onDisAppear(() => {
-            // Cleanup same-level components when WebView is destroyed
-            this.cleanupEmbedManager(webTag);
-            hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${webTag}`);
-          })
-          // Enable native embed mode for same-level rendering
-          .enableNativeEmbedMode(true)
-          .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
-            this.handleEmbedLifecycle(webTag, embed);
-          })
-          .onNativeEmbedGestureEvent((touch: NativeEmbedTouchInfo) => {
-            this.handleEmbedGesture(webTag, touch);
-          })
-          .width(this.getRenderWidth(webTag))
-          .height(this.getRenderHeight(webTag))
-          .padding(this.getRenderPadding(webTag))
-          .borderRadius(this.getRenderBorderRadius(webTag))
-          .clip(this.getRenderClip(webTag))
-          .zIndex(this.getRenderZIndex(webTag))
-          .hitTestBehavior(this.getRenderHitTest(webTag))
-          .backgroundColor(COLOR_TRANSPARENT)
-          .domStorageAccess(this.resolveWebTagDomStorageAccess(webTag))
-          .fileAccess(this.resolveWebTagFileAccess(webTag))
-          .databaseAccess(this.resolveWebTagDatabaseAccess(webTag))
-          .mixedMode(this.resolveWebTagMixedMode(webTag))
+        LingXiaWebView({
+          webTag: webTag,
+          controller: controller,
+          onFullscreenChange: (tag: string, componentId: string, isFullscreen: boolean) => {
+            this.handleFullscreenChange(tag, componentId, isFullscreen);
+          }
+        })
+        .visibility(this.getRenderVisibility(webTag))
+        .translate(this.getRenderTranslation(webTag))
+        .margin(this.getRenderMargin(webTag))
+        .width(this.getRenderWidth(webTag))
+        .height(this.getRenderHeight(webTag))
+        .padding(this.getRenderPadding(webTag))
+        .borderRadius(this.getRenderBorderRadius(webTag))
+        .clip(this.getRenderClip(webTag))
+        .zIndex(this.getRenderZIndex(webTag))
+        .hitTestBehavior(this.getRenderHitTest(webTag))
       }
       .width(this.getStackWidth(webTag))
       .height(this.getStackHeight(webTag))
@@ -1369,408 +1281,24 @@ export struct LxAppContainer {
     .zIndex(this.getRenderZIndex(webTag))
   }
 
-  private getWebTagProfile(webTag: string): string {
-    return getWebViewCreateOptions(webTag).profile;
-  }
-
-  private isBrowserRelaxedProfile(webTag: string): boolean {
-    return this.getWebTagProfile(webTag) === 'browser_relaxed';
-  }
-
-  // Profile policy on Harmony:
-  // - strict_default: DOM storage OFF, database OFF
-  // - browser_relaxed: DOM storage ON, database ON
-  private resolveWebTagDomStorageAccess(webTag: string): boolean {
-    return this.isBrowserRelaxedProfile(webTag);
-  }
-
-  private resolveWebTagDatabaseAccess(webTag: string): boolean {
-    return this.isBrowserRelaxedProfile(webTag);
-  }
-
-  // File access is always OFF (not profile-configurable).
-  private resolveWebTagFileAccess(_webTag: string): boolean {
-    return false;
-  }
-
-  // HTTPS-only policy: mixed content is always blocked.
-  private resolveWebTagMixedMode(_webTag: string): MixedMode {
-    return MixedMode.None;
-  }
-
-  @Builder
-  buildNodeContainer(webTag: string, componentId: string, refreshKey: number): void {
-    // Fullscreen uses separate XComponent in renderFullscreenOverlay(); original stays at same-level position
-    if (this.getEmbedManager(webTag) && this.getEmbedManager(webTag)!.getNodeController(componentId)) {
-      NodeContainer(this.getEmbedManager(webTag)!.getNodeController(componentId)!)
-        .width(this.getNodeContainerWidth(webTag, componentId))
-        .height(this.getNodeContainerHeight(webTag, componentId))
-        .borderRadius(this.getNodeContainerCornerRadius(webTag, componentId))
-        .clip(true)
-        .position(this.getNodeContainerPosition(webTag, componentId))
-        .zIndex(this.getNodeContainerZIndex(webTag, componentId))
-        // Keep Web interactions working even when the native node is rendered above the Web node.
-        // Same-level gesture routing is driven by Web.onNativeEmbedGestureEvent, so the Web must
-        // continue to receive touch events.
-        .hitTestBehavior(HitTestMode.Transparent)
-    }
-  }
-
-  private getNodeContainerCornerRadius(webTag: string, componentId: string): number {
-    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
-    if (controller) {
-      if (controller.getIsFullscreen()) {
-        return 0;
-      }
-      const radius = controller.getCornerRadius();
-      if (radius !== undefined) {
-        return radius;
-      }
-    }
-
-    const layout = this.getNodeLayout(webTag, componentId);
-    return layout?.cornerRadius ?? 0;
-  }
-
-  private getNodeContainerWidth(webTag: string, componentId: string): Length {
-    const layout = this.getNodeLayout(webTag, componentId);
-    if (layout) {
-      return layout.width;
-    }
-    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
-    return controller?.getWidth() ?? 0;
-  }
-
-  private getNodeContainerHeight(webTag: string, componentId: string): Length {
-    const layout = this.getNodeLayout(webTag, componentId);
-    if (layout) {
-      return layout.height;
-    }
-    const controller = this.getEmbedManager(webTag)?.getNodeController(componentId);
-    return controller?.getHeight() ?? 0;
-  }
-
-  private getNodeContainerPosition(webTag: string, componentId: string): Position | undefined {
-    const layout = this.getNodeLayout(webTag, componentId);
-    if (layout) {
-      return layout.position;
-    }
-    return undefined;
-  }
-
-  private getNodeContainerZIndex(webTag: string, componentId: string): number {
-    const layout = this.getNodeLayout(webTag, componentId);
-    if (layout) {
-      return layout.zIndex;
-    }
-    return 0;
-  }
-
-  // ============================================================================
-  // Same-Level Rendering Helper Methods
-  // ============================================================================
-
   /**
-   * Setup embed manager for a WebView
+   * Handle fullscreen state change from LingXiaWebView
    */
-  private setupEmbedManager(webTag: string, controller: webview.WebviewController): void {
-    const manager = getWebViewEmbedManager(webTag);
-    this.embedManagers.set(webTag, manager);
-    manager.setUIContext(this.getUIContext());
-    manager.setOnComponentsChanged(() => {
-      // Defer and batch state writes to avoid mutating @State during render.
-      this.scheduleEmbedManagerSync(webTag);
-    });
-    this.scheduleEmbedManagerSync(webTag);
-    setEmbedController(webTag, controller);
-  }
-
-  /**
-   * Check all embed managers for fullscreen state and update accordingly
-   */
-  private updateFullscreenState(): boolean {
-    let foundFullscreen = false;
-    let nextFullscreenWebTag = '';
-    let nextFullscreenComponentId = '';
-
-    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
-      if (foundFullscreen) return;
-
-      const componentIds = manager.getComponentIds();
-      for (let i = 0; i < componentIds.length; i++) {
-        const componentId = componentIds[i];
-        const controller = manager.getNodeController(componentId);
-        if (controller?.getIsFullscreen()) {
-          nextFullscreenWebTag = webTag;
-          nextFullscreenComponentId = componentId;
-          foundFullscreen = true;
-          return;
-        }
-      }
-    });
-
-    if (foundFullscreen) {
-      if (
-        this.fullscreenWebTag !== nextFullscreenWebTag ||
-        this.fullscreenComponentId !== nextFullscreenComponentId
-      ) {
-        this.fullscreenWebTag = nextFullscreenWebTag;
-        this.fullscreenComponentId = nextFullscreenComponentId;
-        return true;
-      }
-      return false;
-    }
-
-    if (this.fullscreenComponentId.length > 0) {
+  private handleFullscreenChange(webTag: string, componentId: string, isFullscreen: boolean): void {
+    if (isFullscreen) {
+      this.fullscreenWebTag = webTag;
+      this.fullscreenComponentId = componentId;
+    } else if (this.fullscreenWebTag === webTag) {
       // Switch player back to original surface before clearing fullscreen state
       LxNativeVideoPlayer.savePlaybackState(this.fullscreenComponentId);
-      const success = LxNativeVideoPlayer.switchToOriginalSurface(this.fullscreenComponentId);
-      hilog.info(DOMAIN, TAG, `Switch to original surface result: ${success}`);
-
+      LxNativeVideoPlayer.switchToOriginalSurface(this.fullscreenComponentId);
       this.fullscreenWebTag = '';
       this.fullscreenComponentId = '';
-      return true;
     }
-    return false;
-  }
-
-  /**
-   * Cleanup embed manager for a WebView
-   * Safe to call multiple times
-   */
-  private cleanupEmbedManager(webTag: string): void {
-    if (!this.embedManagers.has(webTag)) {
-      return; // Already cleaned up
-    }
-    this.pendingEmbedSyncTags.delete(webTag);
-    teardownEmbedManager(webTag);
-    this.embedManagers.delete(webTag);
-    const previousIds = this.embedComponentIds.get(webTag);
-    if (previousIds !== undefined) {
-      const newMap = new Map<string, string[]>(this.embedComponentIds);
-      newMap.delete(webTag);
-      this.embedComponentIds = newMap;
-    }
-
-    // Remove cached layouts for this WebView
-    this.removeNodeLayoutsForWebTag(webTag);
-    const fullscreenChanged = this.updateFullscreenState();
-    if (fullscreenChanged) {
-      this.fullscreenRefreshKey++;
-    }
-  }
-
-  /**
-   * Batch and defer same-level state sync for a WebView.
-   * Avoids @State writes during render and reduces recompose churn while scrolling.
-   */
-  private scheduleEmbedManagerSync(webTag: string): void {
-    this.pendingEmbedSyncTags.add(webTag);
-    if (this.embedSyncScheduled) {
-      return;
-    }
-    this.embedSyncScheduled = true;
-    this.embedSyncTimerId = setTimeout(() => {
-      this.embedSyncTimerId = null;
-      this.embedSyncScheduled = false;
-      const tags = Array.from(this.pendingEmbedSyncTags);
-      this.pendingEmbedSyncTags.clear();
-
-      let idsMap = this.embedComponentIds;
-      let idsChanged = false;
-      let layoutMap = this.nodeLayoutCache;
-      let layoutChanged = false;
-
-      tags.forEach((tag: string) => {
-        const manager = this.embedManagers.get(tag);
-        if (!manager) {
-          return;
-        }
-        const nextIds = manager.getComponentIds().slice();
-        const currentIds = idsMap.get(tag) ?? [];
-        if (!this.areStringArraysEqual(currentIds, nextIds)) {
-          if (!idsChanged) {
-            idsMap = new Map<string, string[]>(idsMap);
-            idsChanged = true;
-          }
-          idsMap.set(tag, nextIds);
-        }
-
-        const applied = this.applyNodeLayoutsToMap(manager, tag, layoutMap);
-        if (applied.changed) {
-          layoutMap = applied.nextMap;
-          layoutChanged = true;
-        }
-      });
-
-      if (idsChanged) {
-        this.embedComponentIds = idsMap;
-      }
-      if (layoutChanged) {
-        this.nodeLayoutCache = layoutMap;
-      }
-
-      const fullscreenChanged = this.updateFullscreenState();
-      if (idsChanged || layoutChanged || fullscreenChanged) {
-        this.fullscreenRefreshKey++;
-      }
-    }, 0);
-  }
-
-  private areStringArraysEqual(left: string[], right: string[]): boolean {
-    if (left.length !== right.length) {
-      return false;
-    }
-    for (let i = 0; i < left.length; i++) {
-      if (left[i] !== right[i]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * Compute and cache layout state for all components of a WebView
-   * This drives NodeContainer attributes without recreating native nodes
-   */
-  private applyNodeLayoutsToMap(
-    manager: NativeComponentEmbedManager,
-    webTag: string,
-    source: Map<string, NodeLayoutState>
-  ): ApplyNodeLayoutsResult {
-    let changed = false;
-    const next = new Map<string, NodeLayoutState>(source);
-    const componentIds = manager.getComponentIds();
-    const prefix = `${webTag}:`;
-
-    // Remove stale entries for this webTag
-    // Convert keys to array to avoid modification during iteration issues if any
-    const keys = Array.from(next.keys());
-    keys.forEach((key: string) => {
-      if (key.startsWith(prefix)) {
-        const id = key.substring(prefix.length);
-        if (!componentIds.includes(id)) {
-          next.delete(key);
-          changed = true;
-        }
-      }
-    });
-
-    // Update current entries
-    componentIds.forEach((componentId: string) => {
-      const controller = manager.getNodeController(componentId);
-      const isFullscreen = controller?.getIsFullscreen() ?? false;
-      const layout: NodeLayoutState = {
-        width: isFullscreen ? '100%' : (controller?.getWidth() ?? 0),
-        height: isFullscreen ? '100%' : (controller?.getHeight() ?? 0),
-        position: isFullscreen ? { x: 0, y: 0 } : undefined,
-        // Must be higher than backdrop (49999) to appear on top
-        // Ensure same-level native nodes are above the Web node in the Stack (Web is rendered later).
-        zIndex: isFullscreen ? 50000 : 1,
-        cornerRadius: isFullscreen ? 0 : (controller?.getCornerRadius() ?? 0),
-        safeAreaTypes: isFullscreen ? [SafeAreaType.SYSTEM] : [],
-        safeAreaEdges: isFullscreen ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : []
-      };
-      const layoutKey = this.getLayoutKey(webTag, componentId);
-      const prev = source.get(layoutKey);
-      const prevPos = prev?.position;
-      const nextPos = layout.position;
-      const samePosition = (
-        prevPos === undefined && nextPos === undefined
-      ) || (
-        prevPos !== undefined &&
-        nextPos !== undefined &&
-        prevPos.x === nextPos.x &&
-        prevPos.y === nextPos.y
-      );
-      const sameLayout = prev !== undefined &&
-        prev.width === layout.width &&
-        prev.height === layout.height &&
-        prev.zIndex === layout.zIndex &&
-        prev.cornerRadius === layout.cornerRadius &&
-        samePosition;
-      if (!sameLayout) {
-        next.set(layoutKey, layout);
-        changed = true;
-      }
-    });
-
-    const result: ApplyNodeLayoutsResult = { changed: changed, nextMap: next };
-    return result;
-  }
-
-  private refreshAllNodeLayouts(): boolean {
-    let changed = false;
-    let next = this.nodeLayoutCache;
-    this.embedManagers.forEach((manager: NativeComponentEmbedManager, webTag: string) => {
-      const applied = this.applyNodeLayoutsToMap(manager, webTag, next);
-      if (applied.changed) {
-        next = applied.nextMap;
-        changed = true;
-      }
-    });
-    if (changed) {
-      this.nodeLayoutCache = next;
-    }
-    return changed;
-  }
-
-  /**
-   * Remove cached layouts for a specific WebView
-   */
-  private removeNodeLayoutsForWebTag(webTag: string): void {
-    const prefix = `${webTag}:`;
-    const next = new Map<string, NodeLayoutState>(this.nodeLayoutCache);
-    let changed = false;
-    // Use Array.from to get keys before iterating to safely modify map
-    Array.from(next.keys()).forEach((key: string) => {
-      if (key.startsWith(prefix)) {
-        next.delete(key);
-        changed = true;
-      }
-    });
-    if (changed) {
-      this.nodeLayoutCache = next;
-    }
-  }
-
-  private getLayoutKey(webTag: string, componentId: string): string {
-    return `${webTag}:${componentId}`;
-  }
-
-  private getNodeLayout(webTag: string, componentId: string): NodeLayoutState | undefined {
-    return this.nodeLayoutCache.get(this.getLayoutKey(webTag, componentId));
-  }
-
-  private isFullscreenTarget(webTag: string, componentId: string): boolean {
-    return this.fullscreenComponentId.length > 0 &&
-      this.fullscreenWebTag.length > 0 &&
-      this.fullscreenComponentId === componentId &&
-      this.fullscreenWebTag === webTag;
   }
 
   private hasFullscreenTarget(): boolean {
     return this.fullscreenComponentId.length > 0 && this.fullscreenWebTag.length > 0;
-  }
-
-  private getEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
-    return this.embedManagers.get(webTag);
-  }
-  private getEmbedComponentIds(webTag: string): string[] {
-    return this.embedComponentIds.get(webTag) || [];
-  }
-
-  private handleEmbedLifecycle(webTag: string, embed: NativeEmbedDataInfo): void {
-    const manager = this.embedManagers.get(webTag);
-    if (manager) {
-      manager.setUIContext(this.getUIContext());
-      manager.handleLifecycleChange(embed);
-    }
-  }
-
-  private handleEmbedGesture(webTag: string, touch: NativeEmbedTouchInfo): void {
-    const manager = this.embedManagers.get(webTag);
-    if (manager) manager.handleGestureEvent(touch);
   }
 
   private getWrapperJustify(webTag: string): FlexAlign {

@@ -584,6 +584,11 @@ pub fn on_webview_controller_destroyed(webtag: String) -> bool {
 }
 
 #[napi]
+pub fn on_navigation_policy(webtag: String, url: String) -> bool {
+    lingxia_webview::check_navigation_policy(&webtag, &url)
+}
+
+#[napi]
 pub fn is_pull_down_refresh_enabled(appid: String, path: String) -> bool {
     lxapp::is_pull_down_refresh_enabled(&appid, &path)
 }
