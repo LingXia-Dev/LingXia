@@ -5,8 +5,8 @@ use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
 use crate::traits::NavigationPolicy;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, WebTag, WebViewCreateSender, WebViewCreateStage, find_webview,
-    get_webview_delegate, register_webview,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
+    WebViewCreateSender, WebViewCreateStage, find_webview, get_webview_delegate, register_webview,
 };
 use crate::{LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
@@ -40,6 +40,89 @@ fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGu
             poisoned.into_inner()
         }
     }
+}
+
+const NETCONN_MAX_STR_LEN: usize = 256;
+const NETCONN_MAX_EXCLUSION_SIZE: usize = 256;
+
+#[repr(C)]
+struct NetConnHttpProxy {
+    host: [c_char; NETCONN_MAX_STR_LEN],
+    exclusion_list: [[c_char; NETCONN_MAX_STR_LEN]; NETCONN_MAX_EXCLUSION_SIZE],
+    exclusion_list_size: i32,
+    port: u16,
+}
+
+#[link(name = "net_connection")]
+unsafe extern "C" {
+    fn OH_NetConn_SetAppHttpProxy(http_proxy: *mut NetConnHttpProxy) -> i32;
+}
+
+fn fill_c_buffer(dst: &mut [c_char], src: &str, field: &str) -> Result<(), WebViewError> {
+    let trimmed = src.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    if trimmed.bytes().any(|b| b == 0) {
+        return Err(WebViewError::WebView(format!(
+            "{} contains interior NUL byte",
+            field
+        )));
+    }
+    if trimmed.len() >= dst.len() {
+        return Err(WebViewError::WebView(format!(
+            "{} exceeds max length {}",
+            field,
+            dst.len() - 1
+        )));
+    }
+    for (idx, byte) in trimmed.bytes().enumerate() {
+        dst[idx] = byte as c_char;
+    }
+    Ok(())
+}
+
+pub(crate) fn apply_http_proxy(
+    config: Option<&ProxyConfig>,
+) -> Result<ProxyApplyReport, WebViewError> {
+    let mut raw: Box<NetConnHttpProxy> = Box::new(unsafe { std::mem::zeroed() });
+
+    if let Some(proxy) = config {
+        fill_c_buffer(&mut raw.host, &proxy.host, "proxy host")?;
+        raw.port = proxy.port;
+
+        let mut filled: i32 = 0;
+        for rule in &proxy.bypass {
+            if rule.trim().is_empty() {
+                continue;
+            }
+            if (filled as usize) >= NETCONN_MAX_EXCLUSION_SIZE {
+                break;
+            }
+            fill_c_buffer(
+                &mut raw.exclusion_list[filled as usize],
+                rule,
+                "proxy bypass rule",
+            )?;
+            filled += 1;
+        }
+        raw.exclusion_list_size = filled;
+    }
+
+    let rc = unsafe { OH_NetConn_SetAppHttpProxy(raw.as_mut() as *mut NetConnHttpProxy) };
+    if rc != 0 {
+        return Err(WebViewError::WebView(format!(
+            "OH_NetConn_SetAppHttpProxy failed with code {}",
+            rc
+        )));
+    }
+
+    let report = if config.is_some() {
+        ProxyApplyReport::applied(ProxyActivation::EffectiveNow)
+    } else {
+        ProxyApplyReport::cleared(ProxyActivation::EffectiveNow)
+    };
+    Ok(report)
 }
 
 // Static C strings for proxy object and method names

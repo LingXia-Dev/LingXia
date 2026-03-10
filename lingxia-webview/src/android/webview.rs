@@ -2,7 +2,8 @@ use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::webview::{
-    EffectiveWebViewCreateOptions, WebTag, WebViewCreateSender, WebViewCreateStage,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
+    WebViewCreateSender, WebViewCreateStage,
 };
 use crate::{LoadDataRequest, WebViewController, WebViewError};
 use jni::objects::{Global, JObject};
@@ -30,6 +31,61 @@ type WebViewSendersMap = Arc<Mutex<HashMap<String, PendingWebViewCreation>>>;
 
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
+
+pub(crate) fn apply_http_proxy(
+    config: Option<&ProxyConfig>,
+) -> Result<ProxyApplyReport, WebViewError> {
+    let host = config.map(|cfg| cfg.host.as_str());
+    let port = config.map(|cfg| cfg.port as i32).unwrap_or(0);
+    let bypass = config.map(|cfg| cfg.bypass.clone()).unwrap_or_default();
+
+    with_env(
+        |env| -> Result<ProxyApplyReport, Box<dyn std::error::Error>> {
+            let webview_class =
+                get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+            let host_obj = match host {
+                Some(value) => JObject::from(env.new_string(value)?),
+                None => JObject::null(),
+            };
+
+            let bypass_array = env.new_object_array(
+                bypass.len() as i32,
+                jni_str!("java/lang/String"),
+                JObject::null(),
+            )?;
+            for (idx, rule) in bypass.iter().enumerate() {
+                let rule_string = env.new_string(rule)?;
+                bypass_array.set_element(env, idx, &rule_string)?;
+            }
+            let bypass_arg = JObject::from(bypass_array);
+
+            let result = env.call_static_method(
+                webview_class,
+                jni_str!("applyHttpProxy"),
+                jni_sig!("(Ljava/lang/String;I[Ljava/lang/String;)Ljava/lang/String;"),
+                &[(&host_obj).into(), port.into(), (&bypass_arg).into()],
+            )?;
+
+            let error_obj = result.l()?;
+            if !error_obj.is_null() {
+                let error_jstring = jni::objects::JString::cast_local(env, error_obj)?;
+                let error = error_jstring.try_to_string(env)?;
+                if let Some(detail) = error.strip_prefix("UNSUPPORTED:") {
+                    return Ok(ProxyApplyReport::unsupported(detail.trim()));
+                }
+                return Err(format!("Android proxy apply failed: {}", error).into());
+            }
+
+            let report = if config.is_some() {
+                ProxyApplyReport::applied(ProxyActivation::EffectiveNow)
+            } else {
+                ProxyApplyReport::cleared(ProxyActivation::EffectiveNow)
+            };
+            Ok(report)
+        },
+    )
+    .map_err(|e| WebViewError::WebView(format!("Failed to apply Android proxy: {:?}", e)))
+}
 
 #[derive(Debug)]
 pub struct WebViewInner {

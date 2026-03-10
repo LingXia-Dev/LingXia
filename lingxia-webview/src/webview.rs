@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::mpsc::{SyncSender, sync_channel};
@@ -124,6 +124,124 @@ impl std::fmt::Debug for WebViewCreateOptions {
             .field("has_navigation_handler", &self.navigation_handler.is_some())
             .field("has_new_window_handler", &self.new_window_handler.is_some())
             .finish()
+    }
+}
+
+/// Global HTTP proxy configuration shared by all WebViews in the process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProxyConfig {
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub bypass: Vec<String>,
+}
+
+impl ProxyConfig {
+    pub fn new(host: impl Into<String>, port: u16) -> Result<Self, WebViewError> {
+        let cfg = Self {
+            host: host.into(),
+            port,
+            bypass: Vec::new(),
+        };
+        cfg.validate()
+    }
+
+    pub fn with_bypass<I, S>(mut self, bypass: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.bypass = bypass.into_iter().map(Into::into).collect();
+        self
+    }
+
+    fn validate(self) -> Result<Self, WebViewError> {
+        let host = self.host.trim().to_string();
+        if host.is_empty() {
+            return Err(WebViewError::InvalidCreateOptions(
+                "proxy host cannot be empty".to_string(),
+            ));
+        }
+        if host.contains(char::is_whitespace) {
+            return Err(WebViewError::InvalidCreateOptions(
+                "proxy host cannot contain whitespace".to_string(),
+            ));
+        }
+        if self.port == 0 {
+            return Err(WebViewError::InvalidCreateOptions(
+                "proxy port must be greater than 0".to_string(),
+            ));
+        }
+
+        let mut seen = HashSet::new();
+        let mut bypass = Vec::new();
+        for raw in self.bypass {
+            let rule = raw.trim();
+            if rule.is_empty() {
+                continue;
+            }
+            let key = rule.to_ascii_lowercase();
+            if seen.insert(key) {
+                bypass.push(rule.to_string());
+            }
+        }
+
+        Ok(Self {
+            host,
+            bypass,
+            ..self
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyApplyStatus {
+    Applied,
+    Cleared,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyActivation {
+    EffectiveNow,
+    NewWebViewsOnly,
+    EngineRecreateRequired,
+    NotApplied,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProxyApplyReport {
+    pub status: ProxyApplyStatus,
+    pub activation: ProxyActivation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ProxyApplyReport {
+    pub fn applied(activation: ProxyActivation) -> Self {
+        Self {
+            status: ProxyApplyStatus::Applied,
+            activation,
+            detail: None,
+        }
+    }
+
+    pub fn cleared(activation: ProxyActivation) -> Self {
+        Self {
+            status: ProxyApplyStatus::Cleared,
+            activation,
+            detail: None,
+        }
+    }
+
+    pub fn unsupported(detail: impl Into<String>) -> Self {
+        Self {
+            status: ProxyApplyStatus::Unsupported,
+            activation: ProxyActivation::NotApplied,
+            detail: Some(detail.into()),
+        }
     }
 }
 
@@ -630,6 +748,86 @@ static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacks>>> = OnceLock::new();
 static WEBVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<WebViewSessionSignals>>>> =
     OnceLock::new();
+static CURRENT_PROXY: OnceLock<RwLock<Option<ProxyConfig>>> = OnceLock::new();
+static PROXY_APPLY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn apply_http_proxy_platform(
+    config: Option<&ProxyConfig>,
+) -> Result<ProxyApplyReport, WebViewError> {
+    #[cfg(target_os = "android")]
+    {
+        return crate::android::apply_http_proxy(config);
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        return crate::apple::apply_http_proxy(config);
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    {
+        return crate::harmony::apply_http_proxy(config);
+    }
+
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    )))]
+    {
+        let _ = config;
+        Ok(ProxyApplyReport::unsupported(
+            "proxy is not supported on this platform",
+        ))
+    }
+}
+
+/// Apply or clear process-level HTTP proxy for WebView networking.
+///
+/// - `Some(config)`: set proxy
+/// - `None`: clear proxy
+pub fn set_proxy(config: Option<ProxyConfig>) -> Result<ProxyApplyReport, WebViewError> {
+    let apply_lock = PROXY_APPLY_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock_or_recover(apply_lock, "webview_proxy_apply_lock");
+
+    let normalized_config = match config {
+        Some(cfg) => Some(cfg.validate()?),
+        None => None,
+    };
+
+    let report = apply_http_proxy_platform(normalized_config.as_ref())?;
+
+    if matches!(
+        report.status,
+        ProxyApplyStatus::Applied | ProxyApplyStatus::Cleared
+    ) {
+        let state = CURRENT_PROXY.get_or_init(|| RwLock::new(None));
+        match state.write() {
+            Ok(mut guard) => {
+                *guard = normalized_config;
+            }
+            Err(poisoned) => {
+                log::error!("RwLock poisoned at webview_current_proxy.write, recovering");
+                *poisoned.into_inner() = normalized_config;
+            }
+        }
+    }
+
+    Ok(report)
+}
+
+/// Get currently active global proxy configuration.
+pub fn current_proxy() -> Option<ProxyConfig> {
+    let state = CURRENT_PROXY.get()?;
+    match state.read() {
+        Ok(guard) => guard.clone(),
+        Err(poisoned) => {
+            log::error!("RwLock poisoned at webview_current_proxy.read, recovering");
+            poisoned.into_inner().clone()
+        }
+    }
+}
 
 fn clear_pending_callbacks(webtag: &WebTag) {
     if let Some(pending) = PENDING_CALLBACKS.get()

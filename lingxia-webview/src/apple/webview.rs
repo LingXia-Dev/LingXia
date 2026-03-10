@@ -9,8 +9,8 @@ use objc2::{
     rc::Retained,
 };
 use objc2_foundation::{
-    NSDate, NSError, NSJSONSerialization, NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect,
-    NSSize, NSString, NSURL, NSURLRequest,
+    NSArray, NSDate, NSError, NSJSONSerialization, NSJSONWritingOptions, NSObjectProtocol, NSPoint,
+    NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKNavigation, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler,
@@ -21,9 +21,12 @@ use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentCont
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::Arc;
+use std::sync::mpsc::sync_channel;
+use std::{ffi::CString, ffi::c_char, ffi::c_void};
 
 use crate::webview::{
-    EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender, WebViewCreateStage,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
+    WebTag, WebViewCreateSender, WebViewCreateStage, current_proxy,
 };
 
 #[cfg(target_os = "ios")]
@@ -41,6 +44,159 @@ const HTTPS_BLOCK_RULE_JSON: &str = r#"
     }
 ]
 "#;
+
+#[link(name = "Network", kind = "framework")]
+unsafe extern "C" {
+    fn nw_endpoint_create_host(hostname: *const c_char, port: *const c_char) -> *mut AnyObject;
+    fn nw_proxy_config_create_http_connect(
+        proxy_endpoint: *mut AnyObject,
+        proxy_tls_options: *mut c_void,
+    ) -> *mut AnyObject;
+    fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
+    fn nw_release(object: *mut AnyObject);
+}
+
+struct NwOwned(*mut AnyObject);
+
+impl NwOwned {
+    fn new(ptr: *mut AnyObject, what: &str) -> Result<Self, WebViewError> {
+        if ptr.is_null() {
+            Err(WebViewError::WebView(format!(
+                "Failed to create Apple {}",
+                what
+            )))
+        } else {
+            Ok(Self(ptr))
+        }
+    }
+
+    fn as_mut_ptr(&self) -> *mut AnyObject {
+        self.0
+    }
+}
+
+impl Drop for NwOwned {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                nw_release(self.0);
+            }
+        }
+    }
+}
+
+fn supports_proxy_configurations(store: &WKWebsiteDataStore) -> bool {
+    unsafe {
+        let supported: objc2::runtime::Bool =
+            msg_send![store, respondsToSelector: objc2::sel!(setProxyConfigurations:)];
+        supported.as_bool()
+    }
+}
+
+fn apply_proxy_to_data_store(
+    store: &WKWebsiteDataStore,
+    config: Option<&ProxyConfig>,
+) -> Result<(), WebViewError> {
+    if !supports_proxy_configurations(store) {
+        return Err(WebViewError::WebView(
+            "proxyConfigurations API is unavailable on this Apple runtime".to_string(),
+        ));
+    }
+
+    unsafe {
+        match config {
+            Some(proxy) => {
+                let host = CString::new(proxy.host.as_str()).map_err(|_| {
+                    WebViewError::WebView("Apple proxy host contains interior NUL byte".to_string())
+                })?;
+                let port = CString::new(proxy.port.to_string()).map_err(|_| {
+                    WebViewError::WebView("Apple proxy port contains interior NUL byte".to_string())
+                })?;
+                // `nw_*_create*` returns +1 objects; release explicitly via Drop guard.
+                let endpoint = NwOwned::new(
+                    nw_endpoint_create_host(host.as_ptr(), port.as_ptr()),
+                    "proxy endpoint",
+                )?;
+
+                // HTTP CONNECT proxies relay TCP streams (HTTP and HTTPS over TCP).
+                let proxy_config = NwOwned::new(
+                    nw_proxy_config_create_http_connect(
+                        endpoint.as_mut_ptr(),
+                        std::ptr::null_mut(),
+                    ),
+                    "HTTP CONNECT proxy configuration",
+                )?;
+
+                for rule in &proxy.bypass {
+                    let trimmed = rule.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    let domain = CString::new(trimmed).map_err(|_| {
+                        WebViewError::WebView(
+                            "Apple proxy bypass rule contains interior NUL byte".to_string(),
+                        )
+                    })?;
+                    nw_proxy_config_add_excluded_domain(proxy_config.as_mut_ptr(), domain.as_ptr());
+                }
+
+                let configs: *mut NSArray<AnyObject> =
+                    msg_send![class!(NSArray), arrayWithObject: proxy_config.as_mut_ptr()];
+                let _: () = msg_send![store, setProxyConfigurations: configs];
+            }
+            None => {
+                let empty_configs: *mut NSArray<AnyObject> = msg_send![class!(NSArray), array];
+                let _: () = msg_send![store, setProxyConfigurations: empty_configs];
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn apply_http_proxy_on_main(
+    config: Option<&ProxyConfig>,
+    mtm: MainThreadMarker,
+) -> Result<ProxyApplyReport, WebViewError> {
+    let store = unsafe { WKWebsiteDataStore::defaultDataStore(mtm) };
+    if !supports_proxy_configurations(&store) {
+        return Ok(ProxyApplyReport::unsupported(
+            "Apple proxy requires iOS 17+ / macOS 14+",
+        ));
+    }
+
+    apply_proxy_to_data_store(&store, config)?;
+    let report = if config.is_some() {
+        ProxyApplyReport::applied(ProxyActivation::NewWebViewsOnly)
+    } else {
+        ProxyApplyReport::cleared(ProxyActivation::NewWebViewsOnly)
+    };
+    Ok(report)
+}
+
+pub(crate) fn apply_http_proxy(
+    config: Option<&ProxyConfig>,
+) -> Result<ProxyApplyReport, WebViewError> {
+    if let Some(mtm) = MainThreadMarker::new() {
+        return apply_http_proxy_on_main(config, mtm);
+    }
+
+    let config_owned = config.cloned();
+    let (tx, rx) = sync_channel(1);
+    DispatchQueue::main().exec_async(move || {
+        let result = match MainThreadMarker::new() {
+            Some(mtm) => apply_http_proxy_on_main(config_owned.as_ref(), mtm),
+            None => Err(WebViewError::WebView(
+                "No MainThreadMarker available on main thread".to_string(),
+            )),
+        };
+        let _ = tx.send(result);
+    });
+
+    rx.recv().map_err(|_| {
+        WebViewError::WebView("Failed to receive Apple proxy apply result".to_string())
+    })?
+}
 
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
@@ -738,6 +894,15 @@ impl WebViewInner {
             if is_strict {
                 let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
                 config.setWebsiteDataStore(&non_persistent_store);
+            } else if let Some(proxy) = current_proxy() {
+                let default_store = WKWebsiteDataStore::defaultDataStore(mtm);
+                if let Err(e) = apply_proxy_to_data_store(&default_store, Some(&proxy)) {
+                    log::warn!(
+                        "Failed to apply global proxy to default data store webtag={}: {}",
+                        WebTag::new(appid, path, session_id),
+                        e
+                    );
+                }
             }
 
             // Register custom scheme handlers for this WebView.

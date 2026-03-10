@@ -12,7 +12,16 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.webkit.ProxyConfig;
+import androidx.webkit.ProxyController;
+import androidx.webkit.WebViewFeature;
+import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONObject;
 
 /**
@@ -22,6 +31,11 @@ import org.json.JSONObject;
 public class LingXiaWebView extends WebView {
     private static final String TAG = "LingXiaWebView";
     private static final String MESSAGEPORT_BRIDGE_CLASS = "com.lingxia.webview.AndroidMessagePortBridge";
+    private static final long PROXY_MAIN_THREAD_HOP_TIMEOUT_MS = 5000L;
+    private static final long PROXY_CALLBACK_TIMEOUT_MS = 5000L;
+    private static final long PROXY_TOTAL_TIMEOUT_MS =
+            PROXY_MAIN_THREAD_HOP_TIMEOUT_MS + PROXY_CALLBACK_TIMEOUT_MS + 1000L;
+    private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
 
     // MessagePort bridge instance (API 23+ only), accessed via cached reflection
     private Object messagePortBridge;
@@ -34,6 +48,7 @@ public class LingXiaWebView extends WebView {
     private long sessionId;
     private boolean pageLoaded = false;
     private CreateOptions createOptions = CreateOptions.strictDefault();
+    private static volatile boolean sHttpProxyEnabled = false;
 
     public static class WebResourceResponseData {
         public final String mimeType;
@@ -202,6 +217,106 @@ public class LingXiaWebView extends WebView {
             action.run();
         } else {
             new Handler(Looper.getMainLooper()).post(action);
+        }
+    }
+
+    private boolean isBrowserProfile() {
+        return createOptions != null && "browser_relaxed".equals(createOptions.profile);
+    }
+
+    public boolean shouldSkipRustIntercept(String url) {
+        if (!isBrowserProfile() || !sHttpProxyEnabled || url == null) {
+            return false;
+        }
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.startsWith("http://") || lower.startsWith("https://");
+    }
+
+    public static String applyHttpProxy(final String host, final int port, final String[] bypassRules) {
+        final AtomicReference<String> result = new AtomicReference<>(null);
+        final CountDownLatch done = new CountDownLatch(1);
+        final long requestRevision = sProxyRequestRevision.incrementAndGet();
+
+        ensureMainThreadStatic(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    result.set(applyHttpProxyOnMain(host, port, bypassRules, requestRevision));
+                } catch (Throwable t) {
+                    sHttpProxyEnabled = false;
+                    result.set("ERROR:" + t.getClass().getSimpleName() + ": " + t.getMessage());
+                } finally {
+                    done.countDown();
+                }
+            }
+        });
+
+        try {
+            if (!done.await(PROXY_TOTAL_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                sProxyRequestRevision.incrementAndGet();
+                sHttpProxyEnabled = false;
+                return "ERROR:timeout waiting main-thread proxy apply";
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            sProxyRequestRevision.incrementAndGet();
+            sHttpProxyEnabled = false;
+            return "ERROR:interrupted while waiting proxy apply";
+        }
+
+        return result.get();
+    }
+
+    private static String applyHttpProxyOnMain(String host, int port, String[] bypassRules, long requestRevision) {
+        if (requestRevision != sProxyRequestRevision.get()) {
+            return "ERROR:stale proxy request dropped";
+        }
+
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            sHttpProxyEnabled = false;
+            return "UNSUPPORTED:androidx.webkit PROXY_OVERRIDE not available";
+        }
+
+        final boolean enable = host != null && !host.trim().isEmpty() && port > 0;
+
+        Executor directExecutor = Runnable::run;
+        CountDownLatch completion = new CountDownLatch(1);
+        Runnable listener = completion::countDown;
+
+        try {
+            if (enable) {
+                ProxyConfig.Builder builder = new ProxyConfig.Builder()
+                        .addProxyRule("http://" + host.trim() + ":" + port);
+                if (bypassRules != null) {
+                    for (String rawRule : bypassRules) {
+                        if (rawRule != null && !rawRule.trim().isEmpty()) {
+                            builder.addBypassRule(rawRule.trim());
+                        }
+                    }
+                }
+                ProxyController.getInstance().setProxyOverride(builder.build(), directExecutor, listener);
+            } else {
+                ProxyController.getInstance().clearProxyOverride(directExecutor, listener);
+            }
+
+            if (!completion.await(PROXY_CALLBACK_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                sHttpProxyEnabled = false;
+                return "ERROR:timeout waiting androidx proxy callback";
+            }
+
+            if (requestRevision != sProxyRequestRevision.get()) {
+                return "ERROR:stale proxy request after callback";
+            }
+
+            sHttpProxyEnabled = enable;
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            sHttpProxyEnabled = false;
+            return "ERROR:interrupted while waiting androidx proxy callback";
+        } catch (Throwable t) {
+            sHttpProxyEnabled = false;
+            return "ERROR:" + t.getClass().getSimpleName() + ": " + t.getMessage();
         }
     }
 

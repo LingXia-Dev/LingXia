@@ -39,10 +39,10 @@ pub use traits::{
     WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
 };
 pub use webview::{
-    WebTag, WebView, WebViewCreateOptions, WebViewCreateStage, WebViewEvent,
-    WebViewEventSubscription, WebViewSession, create_webview, create_webview_strict,
-    destroy_webview, find_webview, get_webview_delegate, init_webview_manager,
-    set_webview_delegate,
+    ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig, WebTag, WebView,
+    WebViewCreateOptions, WebViewCreateStage, WebViewEvent, WebViewEventSubscription,
+    WebViewSession, create_webview, create_webview_strict, current_proxy, destroy_webview,
+    find_webview, get_webview_delegate, init_webview_manager, set_proxy, set_webview_delegate,
 };
 
 #[cfg(target_os = "android")]

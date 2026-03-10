@@ -35,6 +35,15 @@ android {
         jvmTarget = "11"
     }
 
+    sourceSets {
+        getByName("main") {
+            java.srcDirs(
+                "src/main/java",
+                "../../../lingxia-webview/src/android/java"
+            )
+        }
+    }
+
     // Enable publishing of the release variant
     publishing {
         singleVariant("release") {
@@ -45,11 +54,9 @@ android {
 }
 
 dependencies {
-    // LingXia WebView JAR (built by Rust build.rs or Makefile and placed in Gradle build directory)
-    api(files("${layout.buildDirectory.get()}/generated/lingxia-webview/lingxia-webview.jar"))
-
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
+    implementation("androidx.webkit:webkit:1.15.0")
     implementation(libs.material)
     implementation("androidx.viewpager2:viewpager2:1.0.0")
     implementation("androidx.media3:media3-exoplayer:1.4.1")

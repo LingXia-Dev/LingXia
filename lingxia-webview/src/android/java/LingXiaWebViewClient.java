@@ -87,7 +87,14 @@ public class LingXiaWebViewClient extends WebViewClient {
 
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        if (request == null || request.getUrl() == null) {
+            return null;
+        }
         String url = request.getUrl().toString();
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null && webView.shouldSkipRustIntercept(url)) {
+            return null;
+        }
         String method = request.getMethod();
 
         // Convert headers to flat array: [key1, value1, key2, value2, ...]
@@ -102,7 +109,6 @@ public class LingXiaWebViewClient extends WebViewClient {
         }
         String[] headerArray = headerList.toArray(new String[0]);
 
-        LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
             // Call native to handle request
             LingXiaWebView.WebResourceResponseData response = webView.handleRequest(
