@@ -28,6 +28,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let browserButtonSize: CGFloat = 28
         static let browserToolbarIconSize: CGFloat = 14
         static let browserAddressBarHeight: CGFloat = 26
+        static let browserButtonLeading: CGFloat = 8
+        static let trafficLightClearance: CGFloat = 80
     }
 
     // Browser tab IDs – ownership lives in Rust, titles cached locally from WKWebView KVO.
@@ -61,6 +63,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private let browserAddressField = NSTextField()
     private let browserWebContainer = NSView()
     private var activeBrowserWebView: WKWebView?
+    private var browserBackButtonLeadingConstraint: NSLayoutConstraint?
     nonisolated(unsafe) private var browserTitleObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var browserUrlObservation: NSKeyValueObservation?
     nonisolated(unsafe) private var browserCanGoBackObservation: NSKeyValueObservation?
@@ -280,6 +283,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(itemIndex))
     }
 
+    private func currentBrowserButtonLeading() -> CGFloat {
+        let hidden = (sidebarWidthConstraint?.constant ?? Layout.sidebarWidth) < Layout.sidebarHiddenThreshold
+        return hidden ? Layout.trafficLightClearance : Layout.browserButtonLeading
+    }
+
     func toggleSidebar() {
         guard let constraint = sidebarWidthConstraint else { return }
 
@@ -295,11 +303,13 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             lastExpandedSidebarWidth = constraint.constant
         }
         let targetWidth: CGFloat = isVisible ? 0 : lastExpandedSidebarWidth
+        let targetLeading: CGFloat = isVisible ? Layout.trafficLightClearance : Layout.browserButtonLeading
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             constraint.animator().constant = targetWidth
+            browserBackButtonLeadingConstraint?.animator().constant = targetLeading
         }, completionHandler: {
             MainActor.assumeIsolated { [weak self] in
                 self?.refreshSidebarVisibilityUI()
@@ -314,11 +324,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             lastExpandedSidebarWidth = width
         }
 
+        let sidebarHidden = width < Layout.sidebarHiddenThreshold
+        let targetLeading: CGFloat = sidebarHidden ? Layout.trafficLightClearance : Layout.browserButtonLeading
+
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
                 context.duration = 0.2
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 constraint.animator().constant = width
+                browserBackButtonLeadingConstraint?.animator().constant = targetLeading
             }, completionHandler: {
                 MainActor.assumeIsolated { [weak self] in
                     self?.refreshSidebarVisibilityUI()
@@ -326,6 +340,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             })
         } else {
             constraint.constant = width
+            browserBackButtonLeadingConstraint?.constant = targetLeading
             refreshSidebarVisibilityUI()
         }
     }
@@ -883,7 +898,11 @@ extension LxAppWindowController {
             browserToolbar.trailingAnchor.constraint(equalTo: host.trailingAnchor),
             browserToolbar.heightAnchor.constraint(equalToConstant: Layout.browserToolbarHeight),
 
-            browserBackButton.leadingAnchor.constraint(equalTo: browserToolbar.leadingAnchor, constant: 8),
+            {
+                let c = browserBackButton.leadingAnchor.constraint(equalTo: browserToolbar.leadingAnchor, constant: currentBrowserButtonLeading())
+                browserBackButtonLeadingConstraint = c
+                return c
+            }(),
             browserBackButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
             browserBackButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserBackButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
@@ -1267,7 +1286,7 @@ extension LxAppWindowController {
 
         let pageRect = page.getBoxRect(.mediaBox)
         let targetSize = CGSize(width: size, height: size)
-        let image = NSImage(size: targetSize, flipped: false) { rect in
+        let image = NSImage(size: targetSize, flipped: true) { rect in
             guard let context = NSGraphicsContext.current?.cgContext else {
                 return false
             }

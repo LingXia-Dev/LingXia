@@ -16,6 +16,29 @@ public class LxAppWindow: NSWindow {
         titleVisibility = .hidden
         isMovableByWindowBackground = true
         backgroundColor = NSColor.windowBackgroundColor
+        adjustTrafficLightPositions()
+    }
+
+    public override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(frameRect, display: flag)
+        adjustTrafficLightPositions()
+    }
+
+    public override func setFrame(_ frameRect: NSRect, display flag: Bool, animate shouldAnimate: Bool) {
+        super.setFrame(frameRect, display: flag, animate: shouldAnimate)
+        adjustTrafficLightPositions()
+    }
+
+    private func adjustTrafficLightPositions() {
+        guard !styleMask.contains(.fullScreen) else { return }
+        let targetY: CGFloat = 13
+        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            guard let button = standardWindowButton(type) else { continue }
+            var f = button.frame
+            guard abs(f.origin.y - targetY) > 0.5 else { continue }
+            f.origin.y = targetY
+            button.setFrameOrigin(f.origin)
+        }
     }
 
     public override var canBecomeKey: Bool {
