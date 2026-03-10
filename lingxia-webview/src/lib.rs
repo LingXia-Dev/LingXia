@@ -27,7 +27,7 @@ mod webview;
 mod android;
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
-mod apple;
+pub mod apple;
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;

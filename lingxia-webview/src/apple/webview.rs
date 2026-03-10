@@ -13,17 +13,21 @@ use objc2_foundation::{
     NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKAudiovisualMediaTypes, WKContentRuleList, WKContentRuleListStore, WKNavigation,
-    WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler, WKUserContentController,
+    WKAudiovisualMediaTypes, WKNavigation, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler,
     WKWebViewConfiguration, WKWebsiteDataStore,
 };
+#[cfg(target_os = "ios")]
+use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
+#[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::Arc;
 use tokio::sync::oneshot::Sender;
 
 use crate::webview::{EffectiveWebViewCreateOptions, SecurityProfile, WebTag};
 
+#[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
+#[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_JSON: &str = r#"
 [
     {
@@ -163,6 +167,25 @@ define_class!(
                 target_frame.is_null(),
                 self.ivars().intercept_https_navigation
             );
+
+            // Always allow internal inspector/devtools navigations on Apple.
+            // These URLs are not page content navigations and must bypass strict handlers.
+            let lower_url = url.to_ascii_lowercase();
+            let is_internal_inspector_nav = lower_url.starts_with("about:blank")
+                || lower_url.starts_with("about:srcdoc")
+                || lower_url.starts_with("webkit:")
+                || lower_url.starts_with("x-webkit-")
+                || lower_url.starts_with("inspector:")
+                || lower_url.starts_with("devtools:");
+            if is_internal_inspector_nav {
+                log::info!(
+                    "Apple decidePolicy allow internal-inspector webtag={} url={}",
+                    webtag,
+                    url
+                );
+                allow_navigation();
+                return;
+            }
 
             // Check closure-based navigation handler first
             if let Some(webview) = find_webview(webtag) {
@@ -535,6 +558,38 @@ pub struct WebViewInner {
     pub(crate) webtag: WebTag,
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> bool {
+    if swift_ptr == 0 {
+        return false;
+    }
+    let exec = move || unsafe {
+        let webview = swift_ptr as *mut AnyObject;
+        let can_set_attachment: objc2::runtime::Bool =
+            msg_send![webview, respondsToSelector: objc2::sel!(_setInspectorAttachmentView:)];
+        if detached && can_set_attachment.as_bool() {
+            let nil_view: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![webview, _setInspectorAttachmentView: nil_view];
+        }
+        let inspector: *mut AnyObject = msg_send![webview, _inspector];
+        if inspector.is_null() {
+            return;
+        }
+        let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
+        if visible.as_bool() {
+            let _: () = msg_send![inspector, close];
+        } else {
+            let _: () = msg_send![inspector, show];
+        }
+    };
+    if MainThreadMarker::new().is_some() {
+        exec();
+    } else {
+        DispatchQueue::main().exec_async(exec);
+    }
+    true
+}
+
 impl std::fmt::Debug for WebViewInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WebViewInner")
@@ -730,6 +785,7 @@ impl WebViewInner {
             // Profile policy on Apple:
             // - StrictDefault: block HTTPS subresources
             // - BrowserRelaxed: allow HTTPS subresources (no blocker on fresh config)
+            #[cfg(target_os = "ios")]
             if is_strict {
                 Self::enable_https_resource_blocker(&config);
             }
@@ -832,6 +888,7 @@ impl WebViewInner {
     }
 
     /// Install a content blocking rule list that blocks all HTTPS subresource loads.
+    #[cfg(target_os = "ios")]
     fn enable_https_resource_blocker(config: &WKWebViewConfiguration) {
         let Some(mtm) = MainThreadMarker::new() else {
             log::warn!("HTTPS resource blocker requires MainThreadMarker");
@@ -989,30 +1046,23 @@ impl WebViewInner {
         self.webview as usize
     }
 
+    #[cfg(target_os = "macos")]
+    fn toggle_devtools_impl(&self, detached: bool) {
+        let _ = toggle_devtools_by_swift_ptr(self.webview as usize, detached);
+    }
+
     /// Toggle docked DevTools using WKWebView's private `_inspector` API.
     /// `show` opens the inspector respecting `_setInspectorAttachmentView:` (docked).
     /// `isInspectable` and `developerExtrasEnabled` are set at WebView creation time.
     #[cfg(target_os = "macos")]
     pub fn toggle_devtools(&self) {
-        let webview_ptr = self.webview as usize;
-        let exec = move || unsafe {
-            let webview = webview_ptr as *mut AnyObject;
-            let inspector: *mut AnyObject = msg_send![webview, _inspector];
-            if inspector.is_null() {
-                return;
-            }
-            let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
-            if visible.as_bool() {
-                let _: () = msg_send![inspector, close];
-            } else {
-                let _: () = msg_send![inspector, show];
-            }
-        };
-        if MainThreadMarker::new().is_some() {
-            exec();
-        } else {
-            DispatchQueue::main().exec_async(exec);
-        }
+        self.toggle_devtools_impl(false);
+    }
+
+    /// Toggle detached DevTools (forces `_setInspectorAttachmentView:nil` before toggle).
+    #[cfg(target_os = "macos")]
+    pub fn toggle_devtools_detached(&self) {
+        self.toggle_devtools_impl(true);
     }
 
     /// Helper method to load URL on main thread
