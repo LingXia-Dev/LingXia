@@ -72,6 +72,7 @@ export struct BrowserOverlay {
   @State private canGoBack: boolean = false;
   @State private canGoForward: boolean = false;
   @State private bottomSafeAreaHeight: number = 0;
+  @State private topSafeAreaHeight: number = 0;
   @State private isEditingAddress: boolean = false;
 
   private controller: webview.WebviewController = new webview.WebviewController();
@@ -104,7 +105,8 @@ export struct BrowserOverlay {
       const windowClass: window.Window = await window.getLastWindow(getContext());
       const safeArea: window.AvoidArea = await windowClass.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.bottomSafeAreaHeight = safeArea.bottomRect.height || 0;
-      hilog.info(DOMAIN, TAG, `Safe area bottom=${this.bottomSafeAreaHeight}`);
+      this.topSafeAreaHeight = safeArea.topRect.height || 0;
+      hilog.info(DOMAIN, TAG, `Safe area top=${this.topSafeAreaHeight} bottom=${this.bottomSafeAreaHeight}`);
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get safe area insets: ${error}`);
     }
@@ -262,6 +264,7 @@ export struct BrowserOverlay {
       }
       .width('100%')
       .height('100%')
+      .padding({ top: px2vp(this.topSafeAreaHeight) })
       .backgroundColor(Color.White)
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
     }

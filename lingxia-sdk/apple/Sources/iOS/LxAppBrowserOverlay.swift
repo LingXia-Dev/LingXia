@@ -263,10 +263,10 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         controlRow.addArrangedSubview(closeButton)
 
         NSLayoutConstraint.activate([
-            // Content container - from top to bottom bar
+            // Content container - from status bar bottom to bottom bar
             contentContainer.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             contentContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            contentContainer.topAnchor.constraint(equalTo: view.topAnchor),
+            contentContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             contentContainer.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
             // Bottom bar

@@ -186,7 +186,9 @@ object LxAppBrowserOverlay {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            )
+            ).apply {
+                topMargin = 0  // updated by WindowInsets listener to leave room for status bar
+            }
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
@@ -227,6 +229,13 @@ object LxAppBrowserOverlay {
         forwardButton = fwdBtn
 
         ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
+            val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val wvParams = wv.layoutParams as FrameLayout.LayoutParams
+            if (wvParams.topMargin != statusBarTop) {
+                wvParams.topMargin = statusBarTop
+                wv.layoutParams = wvParams
+            }
+
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
             val keyboardHeight = (imeBottom - navBottom).coerceAtLeast(0)
