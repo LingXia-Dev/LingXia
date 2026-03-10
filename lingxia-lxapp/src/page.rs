@@ -9,11 +9,13 @@ use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use base64::Engine;
-use http::StatusCode;
-use lingxia_platform::traits::app_runtime::{AnimationType, AppRuntime};
+
+use lingxia_platform::traits::app_runtime::{
+    AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
+};
 use lingxia_webview::{
-    LogLevel, WebResourceResponse, WebTag, WebView, WebViewController, WebViewDelegate,
-    create_webview, destroy_webview,
+    LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewCreateOptions,
+    WebViewController, WebViewDelegate, create_webview, destroy_webview,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -112,6 +114,11 @@ pub struct Page {
 }
 
 impl Page {
+    /// Reconstruct a Page from a shared inner (used by scheme handler closures).
+    pub(crate) fn from_inner(inner: Arc<PageInner>) -> Self {
+        Self { inner }
+    }
+
     fn generate_bridge_nonce() -> String {
         let rng = SystemRandom::new();
         let mut bytes = [0u8; 16];
@@ -166,12 +173,73 @@ impl Page {
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
         });
 
+        // Capture weak ref before moving inner into page
+        let page_weak_for_lx = Arc::downgrade(&inner);
+
         let page = Self { inner };
 
-        // Initiate WebView creation asynchronously
+        // Initiate WebView creation with scheme handlers
         let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
         let (ready_tx, ready_rx) = oneshot::channel();
-        create_webview(&webtag, ready_tx, None);
+
+        // Register closure-based scheme handlers so lingxia-webview
+        // doesn't need to know about lxapp business logic.
+        let appid_for_lx = appid.clone();
+        let appid_for_https = appid.clone();
+
+        // Captures for navigation handler (no PageInner ref → no circular ref)
+        let runtime_for_nav = lxapp.runtime.clone();
+        let appid_for_nav = appid.clone();
+        let session_id_for_nav = lxapp.session_id();
+
+        // Captures for new-window handler
+        let runtime_for_new_window = lxapp.runtime.clone();
+        let appid_for_new_window = appid.clone();
+        let session_id_for_new_window = lxapp.session_id();
+
+        let options = WebViewCreateOptions::strict_default()
+            .on_scheme("lx", move |req| {
+                let inner = page_weak_for_lx.upgrade()?;
+                let lxapp = lxapp::get(appid_for_lx.clone());
+                let page = Page::from_inner(inner);
+                lxapp.lingxia_handler(&page, req)
+            })
+            .on_scheme("https", move |req| {
+                let lxapp = lxapp::get(appid_for_https.clone());
+                lxapp.https_handler(req)
+            })
+            .on_navigation(move |url| {
+                let scheme = url.split(':').next().unwrap_or("");
+                match scheme {
+                    // lx:// pages and inline content are always allowed
+                    "lx" | "data" | "blob" => NavigationPolicy::Allow,
+                    _ => {
+                        // Strict mode: https/http/about and external schemes (tel:, mailto:, etc.)
+                        // must go through openURL so the host app controls navigation.
+                        // about: is silently cancelled (no legitimate use in strict lxapp pages).
+                        if scheme != "about" {
+                            let _ = runtime_for_nav.open_url(OpenUrlRequest {
+                                owner_appid: appid_for_nav.clone(),
+                                owner_session_id: session_id_for_nav,
+                                url: url.to_string(),
+                                target: OpenUrlTarget::External,
+                            });
+                        }
+                        NavigationPolicy::Cancel
+                    }
+                }
+            })
+            .on_new_window(move |url| {
+                let _ = runtime_for_new_window.open_url(OpenUrlRequest {
+                    owner_appid: appid_for_new_window.clone(),
+                    owner_session_id: session_id_for_new_window,
+                    url: url.to_string(),
+                    target: OpenUrlTarget::SelfTarget,
+                });
+                NewWindowPolicy::Cancel
+            });
+
+        create_webview(&webtag, ready_tx, Some(options));
 
         // Spawn task to wait for WebView creation completion
         // Keep a strong reference to ensure page stays alive during WebView creation
@@ -748,32 +816,6 @@ impl WebViewDelegate for Page {
                     .with_appid(self.inner.appid.clone())
                     .with_path(self.inner.path.clone());
             }
-        }
-    }
-
-    /// Handles an HTTP request from the WebView
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<WebResourceResponse> {
-        // Get LxApp and delegate to its request handler
-        let lxapp = lxapp::get(self.inner.appid.clone());
-
-        // Use the LxApp's request handling logic
-        let uri = req.uri();
-        let scheme = uri.scheme_str().unwrap_or("");
-
-        // Use pattern matching for different URI schemes
-        match scheme {
-            // HTTPS requests - check domain whitelist and static resource types
-            "https" => lxapp.https_handler(req),
-
-            // Lingxia scheme for internal app assets
-            "lx" => lxapp.lingxia_handler(self, req),
-
-            // Reject all other schemes with 400 Bad Request
-            _ => Some(lxapp.create_error_response(
-                StatusCode::BAD_REQUEST,
-                "Unsupported Scheme",
-                &format!("Unsupported scheme: {}", scheme),
-            )),
         }
     }
 

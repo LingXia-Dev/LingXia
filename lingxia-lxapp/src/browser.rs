@@ -1,18 +1,34 @@
 use crate::{LxApp, LxAppError};
 use lingxia_webview::{
-    WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError, create_webview,
+    NewWindowPolicy, WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
+    create_webview,
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::Instant;
+use std::path::Path;
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
+
+fn normalize_browser_target_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.len() >= "http://".len()
+        && trimmed[..7].eq_ignore_ascii_case("http://")
+    {
+        format!("https://{}", &trimmed[7..])
+    } else {
+        trimmed.to_string()
+    }
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -164,6 +180,16 @@ fn extract_host_from_authority(authority: &str) -> Option<&str> {
     if host.is_empty() { None } else { Some(host) }
 }
 
+fn is_probable_web_host_without_scheme(host: &str) -> bool {
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    if host.contains('.') {
+        return true;
+    }
+    host.parse::<IpAddr>().is_ok()
+}
+
 fn resolve_browser_http_url(raw: &str, preferred_scheme: &str) -> Option<BrowserUrlResolution> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
@@ -197,6 +223,9 @@ fn resolve_browser_http_url(raw: &str, preferred_scheme: &str) -> Option<Browser
         .unwrap_or_default();
     let host = extract_host_from_authority(authority)?;
     if host.trim().is_empty() || host.chars().any(|c| c.is_whitespace()) {
+        return None;
+    }
+    if inferred_scheme.is_some() && !is_probable_web_host_without_scheme(host) {
         return None;
     }
 
@@ -354,6 +383,7 @@ struct BrowserState {
 
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
+static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -384,15 +414,6 @@ fn next_browser_create_token() -> u64 {
     BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
 }
 
-fn latest_owner_tab_id(lxapp: &LxApp) -> Option<String> {
-    lock_state()
-        .tabs
-        .iter()
-        .filter(|(_, tab)| tab.source_appid == lxapp.appid && tab.session_id == lxapp.session_id())
-        .max_by_key(|(_, tab)| tab.create_token)
-        .map(|(tab_id, _)| tab_id.clone())
-}
-
 // ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
@@ -409,10 +430,44 @@ fn browser_create_webview(
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let (ready_tx, ready_rx) = oneshot::channel();
+    let tab_id_for_new_window = tab_id.to_string();
+    let owner_for_new_window = lock_state()
+        .tabs
+        .get(tab_id)
+        .map(|s| (s.source_appid.clone(), s.session_id));
     create_webview(
         &webtag,
         ready_tx,
-        Some(WebViewCreateOptions::browser_relaxed()),
+        Some(
+            WebViewCreateOptions::browser_relaxed()
+                .on_new_window(move |url| {
+                    if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
+                        let normalized = normalize_browser_target_url(url);
+                        match resolve_owner_lxapp(owner_appid, *owner_session_id) {
+                            Ok(owner) => {
+                                let _ = owner.runtime.open_url(OpenUrlRequest {
+                                    owner_appid: owner_appid.clone(),
+                                    owner_session_id: *owner_session_id,
+                                    url: normalized.clone(),
+                                    target: OpenUrlTarget::SelfTarget,
+                                });
+                            }
+                            Err(e) => {
+                                crate::warn!(
+                                    "[InternalBrowser] new-window resolve owner failed: {}",
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        crate::warn!(
+                            "[InternalBrowser] new-window missing owner mapping for tab_id={}",
+                            tab_id_for_new_window
+                        );
+                    }
+                    NewWindowPolicy::Cancel
+                }),
+        ),
     );
     let path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
@@ -457,7 +512,6 @@ async fn browser_on_webview_ready(
             return;
         }
     };
-
     let tab_state = browser_tab_create_state(&tab_id, session_id, create_token);
     match tab_state {
         TabCreateState::Missing => {
@@ -631,6 +685,11 @@ pub fn resolve_owner_lxapp(
 
 /// Lazy-load browser lxapp on first use to avoid startup errors
 fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
+    let _load_guard = BROWSER_LOAD_MUTEX
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
     if let Some(browser) = crate::try_get(BUILTIN_BROWSER_APPID) {
         return Ok(browser);
     }
@@ -640,19 +699,45 @@ fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
     let manager = crate::lxapp::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
 
-    // Install browser assets if needed
-    if let Err(e) = crate::update::UpdateManager::install_from_assets(
-        platform,
+    // Avoid expensive re-copy when assets are already installed and valid.
+    let is_installed = crate::lxapp::metadata::get(
         BUILTIN_BROWSER_APPID,
-        crate::SDK_RUNTIME_VERSION,
-    ) {
-        crate::warn!("Built-in browser assets not available: {}", e);
+        crate::lxapp::ReleaseType::Release,
+    )
+    .ok()
+    .flatten()
+    .is_some_and(|record| {
+        let install_path_str = record.install_path.trim();
+        let install_path = Path::new(install_path_str);
+        !install_path_str.is_empty()
+            && install_path.is_dir()
+            && install_path.join("lxapp.json").is_file()
+    });
+    if !is_installed {
+        let t_install = Instant::now();
+        if let Err(e) = crate::update::UpdateManager::install_from_assets(
+            platform,
+            BUILTIN_BROWSER_APPID,
+            crate::SDK_RUNTIME_VERSION,
+        ) {
+            crate::warn!("Built-in browser assets not available: {}", e);
+        }
+        crate::info!(
+            "[InternalBrowser] install_from_assets elapsed={}ms",
+            t_install.elapsed().as_millis()
+        );
     }
 
-    Ok(manager.ensure_lxapp(
+    let t_ensure = Instant::now();
+    let app = manager.ensure_lxapp(
         BUILTIN_BROWSER_APPID.to_string(),
         crate::lxapp::metadata::ReleaseType::Release,
-    ))
+    );
+    crate::info!(
+        "[InternalBrowser] ensure_lxapp elapsed={}ms",
+        t_ensure.elapsed().as_millis()
+    );
+    Ok(app)
 }
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
@@ -687,21 +772,18 @@ pub fn open_internal_browser_tab(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
-    // Lazy-load browser lxapp on first use
-    ensure_browser_lxapp()?;
+    if crate::try_get(BUILTIN_BROWSER_APPID).is_none() {
+        let _ = rong::bg::spawn(async {
+            let _ = ensure_browser_lxapp();
+        });
+    }
 
     let target_url = url.trim();
-    let has_target_url = !target_url.is_empty();
+    let normalized_target_url = normalize_browser_target_url(target_url);
+    let has_target_url = !normalized_target_url.is_empty();
     let tab_id = tab_id
         .map(sanitize_tab_id)
         .filter(|v| !v.is_empty())
-        .or_else(|| {
-            if has_target_url {
-                latest_owner_tab_id(lxapp)
-            } else {
-                None
-            }
-        })
         .unwrap_or_else(generate_tab_id);
     let path = browser_tab_path_for_id(&tab_id);
     let session_id = lxapp.session_id();
@@ -713,7 +795,7 @@ pub fn open_internal_browser_tab(
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
             existing.verify_owner(lxapp, &tab_id)?;
             if has_target_url {
-                existing.pending_url = Some(target_url.to_string());
+                existing.pending_url = Some(normalized_target_url.clone());
             }
         } else {
             is_new_tab = true;
@@ -726,7 +808,7 @@ pub fn open_internal_browser_tab(
                     session_id,
                     create_token: token,
                     pending_url: if has_target_url {
-                        Some(target_url.to_string())
+                        Some(normalized_target_url.clone())
                     } else {
                         None
                     },
@@ -746,7 +828,7 @@ pub fn open_internal_browser_tab(
 
     // Existing tab — load target URL if provided.
     if has_target_url {
-        match browser_load_url(&path, session_id, target_url) {
+        match browser_load_url(&path, session_id, &normalized_target_url) {
             Ok(()) => {
                 if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
                     s.pending_url = None;
@@ -919,6 +1001,22 @@ mod tests {
         assert_eq!(
             response.state.value_kind,
             BrowserAddressValueKind::SearchQuery
+        );
+    }
+
+    #[test]
+    fn normalize_browser_target_url_upgrades_http_case_insensitively() {
+        assert_eq!(
+            normalize_browser_target_url("  HTTP://Example.com/path?q=1 "),
+            "https://Example.com/path?q=1"
+        );
+        assert_eq!(
+            normalize_browser_target_url("http://example.com"),
+            "https://example.com"
+        );
+        assert_eq!(
+            normalize_browser_target_url("https://example.com"),
+            "https://example.com"
         );
     }
 }
