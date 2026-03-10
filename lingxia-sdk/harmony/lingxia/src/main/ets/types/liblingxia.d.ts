@@ -29,6 +29,7 @@ declare module 'liblingxia.so' {
   export type BrowserAddressAction = 'navigate' | 'suggest' | 'reject';
   export type BrowserAddressValueKind = 'empty' | 'url' | 'search_query' | 'invalid';
   export type BrowserNavigationTarget = 'current_tab' | 'new_tab';
+  export type BrowserNavigationPolicyDecision = 'in_webview' | 'open_external' | 'deny';
 
   export interface BrowserAddressInputContext {
     preferred_scheme?: string | null;
@@ -76,6 +77,17 @@ declare module 'liblingxia.so' {
     navigation?: BrowserAddressNavigation | null;
     suggestions?: BrowserAddressSuggestion[] | null;
     error?: BrowserAddressInputError | null;
+  }
+
+  export interface BrowserNavigationPolicyRequest {
+    raw_url: string;
+    has_user_gesture?: boolean;
+    is_main_frame?: boolean;
+  }
+
+  export interface BrowserNavigationPolicyResponse {
+    decision: BrowserNavigationPolicyDecision;
+    reason?: string | null;
   }
 
   /**
@@ -197,6 +209,13 @@ declare module 'liblingxia.so' {
    * repeatedly changing the native ABI.
    */
   export function handleBrowserAddressInput(requestJson: string): string | null;
+
+  /**
+   * Run the shared browser navigation policy classifier.
+   *
+   * Returns a decision: in_webview | open_external | deny.
+   */
+  export function handleBrowserNavigationPolicy(requestJson: string): string | null;
 
   /**
    * Get TabBar state for a specific LxApp with complete items array

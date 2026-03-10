@@ -145,6 +145,14 @@ object NativeApi {
     external fun handleBrowserAddressInput(requestJson: String): String?
 
     /**
+     * Run the shared browser navigation policy classifier.
+     *
+     * Returns JSON with decision: in_webview | open_external | deny.
+     */
+    @JvmStatic
+    external fun handleBrowserNavigationPolicy(requestJson: String): String?
+
+    /**
      * Get complete TabBar state with items array (unified API)
      * @param appId The ID of the app
      * @return Complete TabBar state or null if not available

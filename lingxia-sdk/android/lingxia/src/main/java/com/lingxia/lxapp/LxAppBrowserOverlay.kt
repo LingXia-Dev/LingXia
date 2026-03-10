@@ -206,7 +206,25 @@ object LxAppBrowserOverlay {
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    return false
+                    val targetUrl = request?.url?.toString()?.trim().orEmpty()
+                    if (targetUrl.isEmpty()) {
+                        return false
+                    }
+
+                    val policy = resolveBrowserNavigationPolicy(
+                        rawUrl = targetUrl,
+                        hasUserGesture = request?.hasGesture() ?: false,
+                        isMainFrame = request?.isForMainFrame ?: true
+                    ) ?: return true  // fail-closed: policy failure blocks navigation
+
+                    return when (policy.decision) {
+                        BrowserNavigationDecision.IN_WEBVIEW -> false
+                        BrowserNavigationDecision.OPEN_EXTERNAL -> {
+                            LxApp.launchWithUrl(targetUrl, "external")
+                            true
+                        }
+                        BrowserNavigationDecision.DENY -> true
+                    }
                 }
 
                 override fun doUpdateVisitedHistory(view: WebView?, pageUrl: String?, isReload: Boolean) {

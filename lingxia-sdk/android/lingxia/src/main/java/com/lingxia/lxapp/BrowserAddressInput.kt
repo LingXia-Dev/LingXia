@@ -8,8 +8,13 @@ internal data class BrowserAddressSubmissionResult(
 )
 
 internal fun handleBrowserAddressSubmission(raw: String?, currentUrl: String?): BrowserAddressSubmissionResult? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) {
+        return null
+    }
+
     val request = JSONObject().apply {
-        put("raw_input", raw?.trim().orEmpty())
+        put("raw_input", trimmed)
         put("trigger", "submit")
         put("context", JSONObject().apply {
             put("current_url", currentUrl)

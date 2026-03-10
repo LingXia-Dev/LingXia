@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import java.net.URISyntaxException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
@@ -148,13 +149,49 @@ class LxApp private constructor(private val context: Context) {
                 }
                 Log.w(TAG, "launchWithUrl target=self: no current activity, falling back to external")
             }
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val opened = launchExternalUrl(getInstance().context, uri, 0)
+            if (!opened) {
+                Log.w(TAG, "No external handler for URL: $uri")
+            }
+        }
+
+        private fun launchExternalUrl(context: Context, uri: String, depth: Int): Boolean {
+            if (depth > 2) {
+                return false
+            }
+            return try {
+                if (uri.startsWith("intent://", ignoreCase = true)) {
+                    val parsedIntent = Intent.parseUri(uri, Intent.URI_INTENT_SCHEME).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        component = null
+                    }
+                    if (parsedIntent.resolveActivity(context.packageManager) != null) {
+                        context.startActivity(parsedIntent)
+                        return true
+                    }
+                    val fallbackUrl = parsedIntent.getStringExtra("browser_fallback_url")
+                    if (!fallbackUrl.isNullOrBlank()) {
+                        return launchExternalUrl(context, fallbackUrl, depth + 1)
+                    }
+                    false
+                } else {
+                    val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).apply {
+                        addCategory(Intent.CATEGORY_BROWSABLE)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    if (intent.resolveActivity(context.packageManager) == null) {
+                        return false
+                    }
+                    context.startActivity(intent)
+                    true
                 }
-                getInstance().context.startActivity(intent)
+            } catch (e: URISyntaxException) {
+                Log.e(TAG, "Invalid intent URI: $uri", e)
+                false
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to launch with URL: $uri", e)
+                false
             }
         }
 

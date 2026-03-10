@@ -20,12 +20,17 @@ function parseBrowserAddressInputResponse(json: string): BrowserAddressInputResp
 }
 
 export function submitBrowserAddress(raw: string, currentUrl: string): BrowserAddressSubmissionResult | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
   const context: BrowserAddressInputContext = {
     current_url: currentUrl,
     allow_search_fallback: false,
   };
   const request: BrowserAddressInputRequest = {
-    raw_input: raw.trim(),
+    raw_input: trimmed,
     trigger: 'submit',
     context: context,
   };

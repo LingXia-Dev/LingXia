@@ -246,6 +246,11 @@ pub fn handle_browser_address_input(request_json: String) -> Option<String> {
     lxapp::handle_browser_address_input_json(&request_json)
 }
 
+#[napi]
+pub fn handle_browser_navigation_policy(request_json: String) -> Option<String> {
+    lxapp::handle_browser_navigation_policy_json(&request_json)
+}
+
 /// Get complete TabBar state with items array
 #[napi]
 fn get_tab_bar(appid: String) -> Option<TabBarState> {

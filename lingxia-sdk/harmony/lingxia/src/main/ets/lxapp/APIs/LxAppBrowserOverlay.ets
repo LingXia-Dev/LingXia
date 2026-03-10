@@ -1,7 +1,12 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
+import { LxApp } from '../LxApp';
 import { submitBrowserAddress } from './BrowserAddressInput';
+import {
+  resolveBrowserNavigationPolicy,
+  type BrowserNavigationPolicyResponse
+} from './BrowserNavigationPolicy';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.BrowserOverlay';
@@ -137,6 +142,41 @@ export struct BrowserOverlay {
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .mixedMode(MixedMode.Compatible)
+          .onLoadIntercept((event) => {
+            if (!event || !event.data) {
+              return false;
+            }
+            const request = event.data;
+            const targetUrl = request.getRequestUrl();
+            if (!targetUrl) {
+              return false;
+            }
+
+            let hasUserGesture = false;
+            let isMainFrame = true;
+            try {
+              hasUserGesture = request.isRequestGesture();
+            } catch {}
+            try {
+              isMainFrame = request.isMainFrame();
+            } catch {}
+
+            const policy: BrowserNavigationPolicyResponse | null = resolveBrowserNavigationPolicy(
+              targetUrl,
+              hasUserGesture,
+              isMainFrame
+            );
+            if (!policy) {
+              return true;  // fail-closed: policy failure blocks navigation
+            }
+            if (policy.decision === 'in_webview') {
+              return false;
+            }
+            if (policy.decision === 'open_external') {
+              LxApp.launchWithUrl(targetUrl);
+            }
+            return true;
+          })
           .onPageEnd(() => {
             this.updateState();
           })
