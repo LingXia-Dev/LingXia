@@ -75,12 +75,14 @@ public class MacNavigationToolbar: NSView {
         homeButton.isHidden = true
         contentContainer.addSubview(homeButton)
 
-        // Title
+        // Title (centered in full toolbar width)
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
         titleLabel.textColor = NSColor.labelColor
+        titleLabel.alignment = .center
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         contentContainer.addSubview(titleLabel)
 
         NSLayoutConstraint.activate([
@@ -100,8 +102,9 @@ public class MacNavigationToolbar: NSView {
             homeButton.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
             homeButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
-            titleLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: Layout.titleLeading),
+            titleLabel.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
             titleLabel.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+            titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: Layout.titleLeading),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentContainer.trailingAnchor, constant: -12),
         ])
 
