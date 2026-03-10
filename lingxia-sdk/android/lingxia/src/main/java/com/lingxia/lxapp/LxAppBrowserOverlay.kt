@@ -9,6 +9,7 @@ import android.view.KeyEvent
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.text.InputType
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -320,6 +321,8 @@ object LxAppBrowserOverlay {
         val result = handleBrowserAddressSubmission(field.text?.toString(), webView?.url) ?: return
         field.setText(result.displayText)
         field.clearFocus()
+        val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(field.windowToken, 0)
         webView?.loadUrl(result.url)
     }
 
