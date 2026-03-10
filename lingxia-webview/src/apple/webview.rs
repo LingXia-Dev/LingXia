@@ -1,4 +1,5 @@
-use crate::webview::get_webview_delegate;
+use crate::traits::{NavigationPolicy, NewWindowPolicy};
+use crate::webview::{find_webview, get_webview_delegate};
 use crate::{LogLevel, WebViewController, WebViewError};
 use block2::{Block, StackBlock};
 use dispatch2::DispatchQueue;
@@ -80,10 +81,56 @@ define_class!(
             log::info!("WebView page finished: {} at {}", appid, path);
         }
 
+        #[unsafe(method(webView:didFailProvisionalNavigation:withError:))]
+        fn did_fail_provisional_navigation(
+            &self,
+            _webview: *mut AnyObject,
+            _navigation: *mut AnyObject,
+            error: *mut NSError,
+        ) {
+            let webtag = &self.ivars().webtag;
+            let desc = unsafe {
+                if error.is_null() {
+                    "unknown error".to_string()
+                } else {
+                    let s: *mut NSString = msg_send![error, localizedDescription];
+                    s.as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unknown error".to_string())
+                }
+            };
+            log::warn!(
+                "WebView provisional navigation failed webtag={} error={}",
+                webtag,
+                desc
+            );
+        }
+
+        #[unsafe(method(webView:didFailNavigation:withError:))]
+        fn did_fail_navigation(
+            &self,
+            _webview: *mut AnyObject,
+            _navigation: *mut AnyObject,
+            error: *mut NSError,
+        ) {
+            let webtag = &self.ivars().webtag;
+            let desc = unsafe {
+                if error.is_null() {
+                    "unknown error".to_string()
+                } else {
+                    let s: *mut NSString = msg_send![error, localizedDescription];
+                    s.as_ref()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "unknown error".to_string())
+                }
+            };
+            log::warn!("WebView navigation failed webtag={} error={}", webtag, desc);
+        }
+
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
         fn decide_policy_for_navigation_action(
             &self,
-            _webview: *mut AnyObject,
+            webview: *mut AnyObject,
             navigation_action: *mut AnyObject,
             decision_handler: *mut AnyObject,
         ) {
@@ -107,6 +154,32 @@ define_class!(
                 }
             };
 
+            let webtag = &self.ivars().webtag;
+            let target_frame: *mut AnyObject = unsafe { msg_send![navigation_action, targetFrame] };
+            log::info!(
+                "Apple decidePolicy webtag={} url={} target_frame_null={} intercept_https={}",
+                webtag,
+                url,
+                target_frame.is_null(),
+                self.ivars().intercept_https_navigation
+            );
+
+            // Check closure-based navigation handler first
+            if let Some(webview) = find_webview(webtag) {
+                match webview.handle_navigation(&url) {
+                    NavigationPolicy::Cancel => {
+                        log::info!(
+                            "Apple decidePolicy canceled by navigation handler webtag={} url={}",
+                            webtag,
+                            url
+                        );
+                        cancel_navigation();
+                        return;
+                    }
+                    NavigationPolicy::Allow => {} // fall through to existing logic
+                }
+            }
+
             if !self.ivars().intercept_https_navigation {
                 allow_navigation();
                 return;
@@ -117,9 +190,6 @@ define_class!(
                 allow_navigation();
                 return;
             }
-
-            let webtag = &self.ivars().webtag;
-            let (_appid, _) = webtag.extract_parts();
 
             // Build HTTP request for lxapp to check
             let http_request = match http::Request::builder()
@@ -135,9 +205,9 @@ define_class!(
                 }
             };
 
-            // Ask delegate if it wants to handle this HTTPS navigation request
-            let response = if let Some(delegate) = get_webview_delegate(webtag) {
-                delegate.handle_request(http_request)
+            // Dispatch to closure-based scheme handler
+            let response = if let Some(webview) = find_webview(webtag) {
+                webview.handle_scheme_request("https", http_request)
             } else {
                 None
             };
@@ -208,10 +278,12 @@ impl LingXiaNavigationDelegate {
     }
 }
 
-// UI Delegate for browser mode:
-// - Handles target="_blank" / window.open() by loading in the same webview
+// UI Delegate for browser mode and new-window handling:
+// - Handles target="_blank" / window.open() via closure handler
 // - Shows native NSAlert for JavaScript alert/confirm/prompt dialogs
-pub struct LingXiaUIDelegateIvars {}
+pub struct LingXiaUIDelegateIvars {
+    webtag: WebTag,
+}
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -231,15 +303,11 @@ define_class!(
             navigation_action: *mut AnyObject,
             _window_features: *mut AnyObject,
         ) -> *mut AnyObject {
-            // Load target="_blank" / window.open() URLs in the same webview.
             unsafe {
-                // Only hijack real new-window navigations from page content.
-                // This avoids swallowing internal WebKit windows (for example inspector UI).
                 let target_frame: *mut AnyObject = msg_send![navigation_action, targetFrame];
                 if target_frame.is_null() {
                     let request: *mut AnyObject = msg_send![navigation_action, request];
                     if !request.is_null() {
-                        let mut should_hijack = false;
                         let url_obj: *mut AnyObject = msg_send![request, URL];
                         if !url_obj.is_null() {
                             let abs: *mut AnyObject = msg_send![url_obj, absoluteString];
@@ -248,19 +316,89 @@ define_class!(
                                 if !cstr.is_null() {
                                     let url = std::ffi::CStr::from_ptr(cstr)
                                         .to_string_lossy()
-                                        .to_lowercase();
-                                    should_hijack =
-                                        url.starts_with("https://") || url.starts_with("lx://");
+                                        .to_string();
+                                    let webtag = &self.ivars().webtag;
+                                    log::info!(
+                                        "Apple createWebView(new-window) webtag={} url={}",
+                                        webtag,
+                                        url
+                                    );
+                                    if let Some(wv) = find_webview(webtag)
+                                        && wv.has_new_window_handler()
+                                    {
+                                        let policy = wv.handle_new_window(&url);
+                                        log::info!(
+                                            "Apple new-window policy webtag={} url={} policy={:?}",
+                                            webtag,
+                                            url,
+                                            policy
+                                        );
+                                        match policy {
+                                            NewWindowPolicy::LoadInSelf => {
+                                                if url.len() >= "http://".len()
+                                                    && url[..7].eq_ignore_ascii_case("http://")
+                                                {
+                                                    let upgraded = format!("https://{}", &url[7..]);
+                                                    let ns_upgraded = NSString::from_str(&upgraded);
+                                                    let upgraded_url_obj: *mut AnyObject = msg_send![
+                                                        class!(NSURL),
+                                                        URLWithString: &*ns_upgraded
+                                                    ];
+                                                    if !upgraded_url_obj.is_null() {
+                                                        let upgraded_request: *mut AnyObject = msg_send![
+                                                            class!(NSURLRequest),
+                                                            requestWithURL: upgraded_url_obj
+                                                        ];
+                                                        if !upgraded_request.is_null() {
+                                                            let _: () = msg_send![webview, loadRequest: upgraded_request];
+                                                            log::info!(
+                                                                "Apple new-window upgraded http->https webtag={} from={} to={}",
+                                                                webtag,
+                                                                url,
+                                                                upgraded
+                                                            );
+                                                        } else {
+                                                            let _: () = msg_send![webview, loadRequest: request];
+                                                            log::warn!(
+                                                                "Apple new-window failed to build upgraded request, fallback original webtag={} url={}",
+                                                                webtag,
+                                                                url
+                                                            );
+                                                        }
+                                                    } else {
+                                                        let _: () = msg_send![webview, loadRequest: request];
+                                                        log::warn!(
+                                                            "Apple new-window failed to build upgraded URL, fallback original webtag={} url={}",
+                                                            webtag,
+                                                            url
+                                                        );
+                                                    }
+                                                } else {
+                                                    let _: () =
+                                                        msg_send![webview, loadRequest: request];
+                                                    log::info!(
+                                                        "Apple new-window loaded in self webtag={} url={}",
+                                                        webtag,
+                                                        url
+                                                    );
+                                                }
+                                            }
+                                            NewWindowPolicy::Cancel => {}
+                                        }
+                                    } else {
+                                        log::warn!(
+                                            "Apple new-window handler missing webtag={} url={}",
+                                            webtag,
+                                            url
+                                        );
+                                    }
                                 }
                             }
-                        }
-                        if should_hijack {
-                            let _: () = msg_send![webview, loadRequest: request];
                         }
                     }
                 }
             }
-            // For non-hijacked requests, return nil so WebKit can use its own behavior.
+            // Return nil so WebKit does not create a separate window.
             std::ptr::null_mut()
         }
 
@@ -381,10 +519,10 @@ define_class!(
 );
 
 impl LingXiaUIDelegate {
-    pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+    pub fn new(webtag: WebTag, mtm: MainThreadMarker) -> Retained<Self> {
         let delegate = mtm
             .alloc::<LingXiaUIDelegate>()
-            .set_ivars(LingXiaUIDelegateIvars {});
+            .set_ivars(LingXiaUIDelegateIvars { webtag });
         unsafe { msg_send![super(delegate), init] }
     }
 }
@@ -510,7 +648,8 @@ impl WebViewInner {
             let prefs = config.preferences();
             let allow_new_windows = effective_options.profile == SecurityProfile::BrowserRelaxed;
             let is_strict = effective_options.profile == SecurityProfile::StrictDefault;
-            prefs.setJavaScriptCanOpenWindowsAutomatically(allow_new_windows);
+            let allow_js_windows = allow_new_windows || effective_options.has_new_window_handler;
+            prefs.setJavaScriptCanOpenWindowsAutomatically(allow_js_windows);
 
             // Enable Web Inspector support for all webviews (lxapp pages + browser tabs).
             {
@@ -545,25 +684,47 @@ impl WebViewInner {
                 config.setWebsiteDataStore(&non_persistent_store);
             }
 
-            // Register custom scheme handler for lx:// URLs bound to this WebView
+            // Register custom scheme handlers for this WebView.
+            // Use registered_schemes from options; fall back to "lx" for backward compatibility.
             let webtag = WebTag::new(appid, path, session_id);
-            if let Some(scheme_handler) =
-                super::schemehandler::LingXiaSchemeHandler::new(webtag.clone())
-            {
-                let lx_scheme = NSString::from_str("lx");
-                let proto_scheme_handler: &ProtocolObject<dyn WKURLSchemeHandler> =
-                    ProtocolObject::from_ref(&*scheme_handler);
-                config.setURLSchemeHandler_forURLScheme(Some(proto_scheme_handler), &lx_scheme);
+            let schemes_to_register: Vec<String> =
+                if effective_options.registered_schemes.is_empty() {
+                    vec!["lx".to_string()]
+                } else {
+                    // Only register non-standard schemes with WKURLSchemeHandler
+                    // (http/https are handled via navigation delegate, not scheme handler)
+                    effective_options
+                        .registered_schemes
+                        .iter()
+                        .filter(|s| *s != "http" && *s != "https")
+                        .cloned()
+                        .collect()
+                };
 
-                log::info!(
-                    "Successfully registered scheme `lx` handler for webtag={}",
-                    webtag.as_str()
-                );
-            } else {
-                log::error!("CRITICAL: Failed to create scheme `lx` handler!");
-                return Err(WebViewError::WebView(
-                    "Failed to create scheme `lx` handler".to_string(),
-                ));
+            for scheme_name in &schemes_to_register {
+                if let Some(scheme_handler) =
+                    super::schemehandler::LingXiaSchemeHandler::new(webtag.clone())
+                {
+                    let ns_scheme = NSString::from_str(scheme_name);
+                    let proto_scheme_handler: &ProtocolObject<dyn WKURLSchemeHandler> =
+                        ProtocolObject::from_ref(&*scheme_handler);
+                    config.setURLSchemeHandler_forURLScheme(Some(proto_scheme_handler), &ns_scheme);
+
+                    log::info!(
+                        "Successfully registered scheme `{}` handler for webtag={}",
+                        scheme_name,
+                        webtag.as_str()
+                    );
+                } else {
+                    log::error!(
+                        "CRITICAL: Failed to create scheme `{}` handler!",
+                        scheme_name
+                    );
+                    return Err(WebViewError::WebView(format!(
+                        "Failed to create scheme `{}` handler",
+                        scheme_name
+                    )));
+                }
             }
 
             // Profile policy on Apple:
@@ -642,9 +803,10 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
-            // Set UI delegate when new windows are allowed (handles target="_blank" and window.open)
-            let ui_delegate = if allow_new_windows {
-                let delegate = LingXiaUIDelegate::new(mtm);
+            // Set UI delegate when new windows are allowed or new-window handler is registered
+            let needs_ui_delegate = allow_new_windows || effective_options.has_new_window_handler;
+            let ui_delegate = if needs_ui_delegate {
+                let delegate = LingXiaUIDelegate::new(webtag.clone(), mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
                 let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];

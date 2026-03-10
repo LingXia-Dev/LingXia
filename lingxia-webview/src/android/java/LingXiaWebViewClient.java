@@ -61,28 +61,18 @@ public class LingXiaWebViewClient extends WebViewClient {
 
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        if (request != null && request.getUrl() != null) {
-            String url = request.getUrl().toString();
-            Log.d(TAG, "Should override URL loading: " + url);
+        if (request == null || request.getUrl() == null) return false;
+        String url = request.getUrl().toString();
+        Log.d(TAG, "Should override URL loading: " + url);
 
-            // Extract scheme from URL
-            String scheme = "";
-            int schemeEnd = url.indexOf("://");
-            if (schemeEnd > 0) {
-                scheme = url.substring(0, schemeEnd);
-            } else {
-                return false; // Invalid URL, don't override
-            }
-
-            // Handle lingxia scheme or block non-https schemes
-            switch (scheme) {
-                case "lx":
-                    return true; // Always intercept lingxia scheme
-                case "https":
-                    return false; // Allow https URLs
-                default:
-                    return true; // Block all other schemes
-            }
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            return webView.handleNavigationPolicy(
+                webView.getAppId() != null ? webView.getAppId() : "",
+                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+                webView.getSessionId(),
+                url
+            );
         }
         return false;
     }

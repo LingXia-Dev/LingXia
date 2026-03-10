@@ -1,4 +1,5 @@
-use crate::webview::{WebTag, get_webview_delegate, register_webview};
+use crate::traits::NavigationPolicy;
+use crate::webview::{WebTag, find_webview, get_webview_delegate, register_webview};
 use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
@@ -171,10 +172,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
             Err(_) => return Ok(JObject::null()),
         };
 
-        // Handle request and convert response
+        // Dispatch to closure-based scheme handler
         let webtag = WebTag::new(&appid, &path, session_id);
-        let response = if let Some(delegate) = get_webview_delegate(&webtag) {
-            delegate.handle_request(request)
+        let scheme = request.uri().scheme_str().unwrap_or("").to_string();
+        let response = if let Some(webview) = find_webview(&webtag) {
+            webview.handle_scheme_request(&scheme, request)
         } else {
             None
         };
@@ -283,6 +285,38 @@ fn create_java_response<'a>(
             content_length.into(),
         ],
     )
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationPolicy(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+) -> bool {
+    env.with_env(|env| -> Result<bool, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview(&webtag) {
+            return Ok(matches!(
+                webview.handle_navigation(&url),
+                NavigationPolicy::Cancel
+            ));
+        }
+
+        Ok(false)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[unsafe(no_mangle)]

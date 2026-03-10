@@ -1,4 +1,4 @@
-use crate::webview::{WebTag, find_webview, get_webview_delegate};
+use crate::webview::{WebTag, find_webview};
 use crate::{WebResourceBody, WebResourceResponse};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
@@ -91,9 +91,12 @@ pub unsafe extern "C" fn on_lx_request_start(
         }
     };
 
-    // Use the bound webtag from this scheme handler
-    let http_response = if let Some(delegate) = get_webview_delegate(&webtag) {
-        delegate.handle_request(http_request)
+    // Extract scheme from URL
+    let scheme = url.split("://").next().unwrap_or("").to_string();
+
+    // Dispatch to closure-based scheme handler
+    let http_response = if let Some(webview) = find_webview(&webtag) {
+        webview.handle_scheme_request(&scheme, http_request)
     } else {
         None
     };
@@ -306,12 +309,12 @@ pub fn register_custom_schemes() -> NapiResult<()> {
     }
 }
 
-/// Set scheme handler for a specific WebView (called in WebViewInner::create)
-pub fn set_webview_scheme_handler(
-    webtag: &WebTag,
-    register_https_scheme_handler: bool,
-) -> NapiResult<()> {
-    // Get the WebView instance to track scheme handlers
+/// Set native ArkWeb scheme handlers for a specific WebView.
+///
+/// Reads `registered_schemes` from the WebView's effective options to determine
+/// which schemes need native ArkWeb handlers. Skips if no schemes are registered
+/// (e.g. browser-relaxed mode).
+pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
     let webview = find_webview(webtag).ok_or_else(|| {
         napi_ohos::Error::new(
             napi_ohos::Status::GenericFailure,
@@ -319,95 +322,72 @@ pub fn set_webview_scheme_handler(
         )
     })?;
 
-    unsafe {
-        // Create scheme handler for lx://
-        let mut lx_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
-        OH_ArkWeb_CreateSchemeHandler(&mut lx_scheme_handler);
-
-        // Store webtag as user data instead of just app_id
-        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
-        let webtag_ptr = webtag_cstr.into_raw(); // Transfer ownership to raw pointer
-        OH_ArkWebSchemeHandler_SetUserData(lx_scheme_handler, webtag_ptr as *mut std::ffi::c_void);
-
-        // Set callbacks
-        OH_ArkWebSchemeHandler_SetOnRequestStart(lx_scheme_handler, Some(on_lx_request_start));
-        OH_ArkWebSchemeHandler_SetOnRequestStop(lx_scheme_handler, Some(on_lx_request_stop));
-
-        // Register lx:// handler for this WebView specifically
-        let lx_scheme_cstr = CString::new("lx").unwrap();
-        let webtag_cstr = CString::new(webtag.as_str()).unwrap();
-        let lx_success = OH_ArkWeb_SetSchemeHandler(
-            lx_scheme_cstr.as_ptr(),
-            webtag_cstr.as_ptr(),
-            lx_scheme_handler,
+    let schemes = &webview.effective_options().registered_schemes;
+    if schemes.is_empty() {
+        log::info!(
+            "No registered schemes for web_tag={}, skipping native handler setup",
+            webtag
         );
+        return Ok(());
+    }
 
-        if !lx_success {
-            log::error!("Failed to set lx:// scheme handler for web_tag: {}", webtag);
-            cleanup_scheme_handler(lx_scheme_handler);
-            return Err(napi_ohos::Error::new(
-                napi_ohos::Status::GenericFailure,
-                format!("Failed to set lx:// scheme handler for web_tag: {}", webtag),
-            ));
-        }
+    let webtag_cstr_for_set = CString::new(webtag.as_str()).unwrap();
+    let mut results: Vec<(String, bool)> = Vec::new();
 
-        // Track the lx scheme handler for cleanup
-        webview.inner.track_scheme_handler(lx_scheme_handler);
+    for scheme_name in schemes {
+        unsafe {
+            let mut handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
+            OH_ArkWeb_CreateSchemeHandler(&mut handler);
 
-        let mut https_success = false;
-        if register_https_scheme_handler {
-            // Create scheme handler for https://
-            let mut https_scheme_handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
-            OH_ArkWeb_CreateSchemeHandler(&mut https_scheme_handler);
+            // Store webtag as user data
+            let webtag_cstr = CString::new(webtag.as_str()).unwrap();
+            let webtag_ptr = webtag_cstr.into_raw();
+            OH_ArkWebSchemeHandler_SetUserData(handler, webtag_ptr as *mut std::ffi::c_void);
 
-            // Store webtag as user data for https handler too
-            let webtag_cstr2 = CString::new(webtag.as_str()).unwrap();
-            let webtag_ptr2 = webtag_cstr2.into_raw(); // Transfer ownership to raw pointer
-            OH_ArkWebSchemeHandler_SetUserData(
-                https_scheme_handler,
-                webtag_ptr2 as *mut std::ffi::c_void,
+            // Set callbacks
+            OH_ArkWebSchemeHandler_SetOnRequestStart(handler, Some(on_lx_request_start));
+            OH_ArkWebSchemeHandler_SetOnRequestStop(handler, Some(on_lx_request_stop));
+
+            // Register handler for this scheme on this WebView
+            let scheme_cstr = CString::new(scheme_name.as_str()).unwrap();
+            let success = OH_ArkWeb_SetSchemeHandler(
+                scheme_cstr.as_ptr(),
+                webtag_cstr_for_set.as_ptr(),
+                handler,
             );
 
-            // Set callbacks (same callbacks as lx://)
-            OH_ArkWebSchemeHandler_SetOnRequestStart(
-                https_scheme_handler,
-                Some(on_lx_request_start),
-            );
-            OH_ArkWebSchemeHandler_SetOnRequestStop(https_scheme_handler, Some(on_lx_request_stop));
-
-            // Register https:// handler for this WebView specifically
-            let https_scheme_cstr = CString::new("https").unwrap();
-            https_success = OH_ArkWeb_SetSchemeHandler(
-                https_scheme_cstr.as_ptr(),
-                webtag_cstr.as_ptr(),
-                https_scheme_handler,
-            );
-
-            if !https_success {
+            if success {
+                webview.inner.track_scheme_handler(handler);
+            } else {
                 log::error!(
-                    "Failed to set https:// scheme handler for web_tag: {}",
+                    "Failed to set {}:// scheme handler for web_tag: {}",
+                    scheme_name,
                     webtag
                 );
-                cleanup_scheme_handler(https_scheme_handler);
-                // Don't fail completely if https handler fails, lx:// is more critical
-                log::warn!("Continuing without https:// scheme handler");
-            } else {
-                // Track the https scheme handler for cleanup only if successful
-                webview.inner.track_scheme_handler(https_scheme_handler);
+                cleanup_scheme_handler(handler);
+                // Fail hard only for custom schemes (lx); HTTPS failure is non-fatal
+                if scheme_name != "https" {
+                    return Err(napi_ohos::Error::new(
+                        napi_ohos::Status::GenericFailure,
+                        format!(
+                            "Failed to set {}:// scheme handler for web_tag: {}",
+                            scheme_name, webtag
+                        ),
+                    ));
+                }
             }
-        } else {
-            log::info!(
-                "Skip https:// scheme handler for web_tag={} due to create options",
-                webtag
-            );
+            results.push((scheme_name.clone(), success));
         }
-
-        log::info!(
-            "Successfully set scheme handlers for web_tag: {} (lx: {}, https: {})",
-            webtag,
-            lx_success,
-            https_success
-        );
-        Ok(())
     }
+
+    let summary: Vec<String> = results
+        .iter()
+        .map(|(s, ok)| format!("{}: {}", s, ok))
+        .collect();
+    log::info!(
+        "Scheme handlers for web_tag={}: [{}]",
+        webtag,
+        summary.join(", ")
+    );
+    Ok(())
 }

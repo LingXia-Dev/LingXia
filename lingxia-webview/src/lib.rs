@@ -35,7 +35,8 @@ mod harmony;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
+    NavigationPolicy, NewWindowPolicy, SystemPipeReader, WebResourceBody, WebResourceResponse,
+    WebViewController, WebViewDelegate,
 };
 pub use webview::{
     WebTag, WebView, WebViewCreateOptions, create_webview, destroy_webview, find_webview,
@@ -47,6 +48,6 @@ pub use android::{initialize_jni, with_env};
 
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 pub use harmony::{
-    schemehandler::register_custom_schemes, tsfn, webview_controller_created,
-    webview_controller_destroyed,
+    check_navigation_policy, schemehandler::register_custom_schemes, tsfn,
+    webview_controller_created, webview_controller_destroyed,
 };

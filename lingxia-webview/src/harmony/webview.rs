@@ -3,9 +3,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
+use crate::traits::NavigationPolicy;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, SecurityProfile, WebTag, find_webview, get_webview_delegate,
-    register_webview,
+    EffectiveWebViewCreateOptions, WebTag, find_webview, get_webview_delegate, register_webview,
 };
 use crate::{LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
@@ -554,14 +554,8 @@ impl WebViewInner {
             return;
         }
 
-        // Profile policy on Harmony:
-        // - StrictDefault: register https:// scheme handler
-        // - BrowserRelaxed: skip https:// scheme handler
-        let register_https_scheme_handler =
-            effective_options.profile == SecurityProfile::StrictDefault;
-
-        // Register scheme handler immediately using the Ark-facing tag (webtag)
-        if let Err(e) = set_webview_scheme_handler(&webtag, register_https_scheme_handler) {
+        // Register native ArkWeb scheme handlers driven by registered_schemes
+        if let Err(e) = set_webview_scheme_handler(&webtag) {
             log::error!(
                 "Failed to set scheme handler for {}: {}",
                 webtag.as_str(),
@@ -1347,6 +1341,18 @@ extern "C" fn on_web_message_received(
             );
         }
     }
+}
+
+/// Check navigation policy for a given webtag and URL.
+/// Returns `true` to intercept (cancel) the navigation, `false` to allow it.
+/// Called from the ArkTS `onLoadIntercept` handler via NAPI.
+pub fn check_navigation_policy(webtag_str: &str, url: &str) -> bool {
+    let webtag = WebTag::from(webtag_str);
+    if let Some(webview) = find_webview(&webtag) {
+        return matches!(webview.handle_navigation(url), NavigationPolicy::Cancel);
+    }
+
+    false
 }
 
 /// Console WebMessage callback

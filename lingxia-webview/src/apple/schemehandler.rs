@@ -1,4 +1,4 @@
-use crate::webview::{WebTag, get_webview_delegate};
+use crate::webview::{WebTag, find_webview};
 use crate::{WebResourceBody, WebResourceResponse};
 use objc2::runtime::{AnyObject, NSObject, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
@@ -95,13 +95,10 @@ define_class!(
                     }
                 };
 
-                if !url.starts_with("lx://") {
-                    log::warn!("Non-lx URL in scheme handler: {}", url);
-                    self.fail_task_with_error(task, "Invalid scheme for handler");
-                    return;
-                }
+                // Extract scheme from URL
+                let scheme = url.split("://").next().unwrap_or("").to_string();
 
-                log::info!("Processing lx:// request: {} {}", method, url);
+                log::info!("Processing {}:// request: {} {}", scheme, method, url);
 
                 // Get request body
                 let mut body = vec![];
@@ -168,23 +165,23 @@ define_class!(
                     }
                 };
 
-                // Use the bound webtag from this scheme handler
+                // Dispatch to closure-based scheme handler
                 let webtag = &self.ivars().webtag;
-                let response = if let Some(delegate) = get_webview_delegate(webtag) {
-                    delegate.handle_request(http_request)
+                let response = if let Some(webview) = find_webview(webtag) {
+                    webview.handle_scheme_request(&scheme, http_request)
                 } else {
                     None
                 };
                 match response {
                     Some(http_response) => {
                         log::debug!(
-                            "Got response from handle_request, status: {}",
+                            "Got response from scheme handler, status: {}",
                             http_response.parts().status,
                         );
                         self.send_response_to_task(task, http_response, request);
                     }
                     None => {
-                        log::warn!("handle_request returned None, sending 404");
+                        log::warn!("Scheme handler returned None, sending 404");
                         self.send_404_response(task, request);
                     }
                 }

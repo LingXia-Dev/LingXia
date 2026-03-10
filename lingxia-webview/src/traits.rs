@@ -1,6 +1,33 @@
 use crate::{LogLevel, WebViewError};
 use std::path::PathBuf;
 
+/// Synchronous scheme handler signature.
+/// Returns `Some(response)` to handle the request, `None` to decline.
+pub type SyncSchemeHandler =
+    Box<dyn Fn(http::Request<Vec<u8>>) -> Option<WebResourceResponse> + Send + Sync>;
+
+/// Navigation policy decision returned by the navigation handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavigationPolicy {
+    /// Allow the WebView to navigate to this URL.
+    Allow,
+    /// Cancel the navigation. The handler is responsible for any side effects
+    /// (e.g., opening the URL externally via `AppRuntime::open_url()`).
+    Cancel,
+}
+
+/// New-window policy decision returned by the new-window handler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewWindowPolicy {
+    /// Load the URL in the current WebView (replaces current page).
+    LoadInSelf,
+    /// Cancel the new-window request without doing anything.
+    Cancel,
+}
+
+pub type NavigationHandler = Box<dyn Fn(&str) -> NavigationPolicy + Send + Sync>;
+pub type NewWindowHandler = Box<dyn Fn(&str) -> NewWindowPolicy + Send + Sync>;
+
 /// Body source for WebResourceResponse
 #[derive(Debug)]
 pub enum WebResourceBody {
@@ -109,9 +136,6 @@ pub trait WebViewDelegate: Send + Sync {
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);
 
-    /// Handles an HTTP request from the page
-    fn handle_request(&self, req: http::Request<Vec<u8>>) -> Option<WebResourceResponse>;
-
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str);
 }
@@ -162,5 +186,82 @@ impl From<(http::response::Parts, Vec<u8>)> for WebResourceResponse {
             parts: value.0,
             body: WebResourceBody::Bytes(value.1),
         }
+    }
+}
+
+impl WebResourceResponse {
+    /// Create a response serving a file from disk (status 200).
+    pub fn file(path: impl Into<PathBuf>) -> Self {
+        let path = path.into();
+        let content_length = std::fs::metadata(&path).ok().map(|m| m.len());
+        let mut response = http::Response::builder().status(200).body(()).unwrap();
+        if let Some(len) = content_length {
+            response
+                .headers_mut()
+                .insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(len));
+        }
+        let (parts, _) = response.into_parts();
+        Self {
+            parts,
+            body: WebResourceBody::Path(path),
+        }
+    }
+
+    /// Create a response serving in-memory bytes (status 200).
+    pub fn bytes(data: impl Into<Vec<u8>>) -> Self {
+        let data = data.into();
+        let len = data.len();
+        let mut response = http::Response::builder().status(200).body(()).unwrap();
+        response
+            .headers_mut()
+            .insert(http::header::CONTENT_LENGTH, http::HeaderValue::from(len));
+        let (parts, _) = response.into_parts();
+        Self {
+            parts,
+            body: WebResourceBody::Bytes(data),
+        }
+    }
+
+    /// Create a response serving data from a system pipe (status 200).
+    pub fn stream(reader: SystemPipeReader) -> Self {
+        let (parts, _) = http::Response::builder()
+            .status(200)
+            .body(())
+            .unwrap()
+            .into_parts();
+        Self {
+            parts,
+            body: WebResourceBody::Pipe(reader),
+        }
+    }
+
+    /// Set the Content-Type header (builder pattern).
+    pub fn mime(mut self, content_type: &str) -> Self {
+        if let Ok(value) = http::HeaderValue::from_str(content_type) {
+            self.parts.headers.insert(http::header::CONTENT_TYPE, value);
+        }
+        self
+    }
+
+    /// Set the HTTP status code (builder pattern).
+    pub fn status(mut self, code: u16) -> Self {
+        self.parts.status = http::StatusCode::from_u16(code).unwrap_or(self.parts.status);
+        self
+    }
+
+    /// Add a response header (builder pattern).
+    pub fn header(mut self, name: &str, value: &str) -> Self {
+        if let (Ok(header_name), Ok(header_value)) = (
+            name.parse::<http::header::HeaderName>(),
+            http::HeaderValue::from_str(value),
+        ) {
+            self.parts.headers.insert(header_name, header_value);
+        }
+        self
+    }
+
+    /// Add CORS header `Access-Control-Allow-Origin: null` (builder pattern).
+    pub fn cors(self) -> Self {
+        self.header("access-control-allow-origin", "null")
     }
 }
