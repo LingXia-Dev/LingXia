@@ -17,6 +17,8 @@ use uuid::Uuid;
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
+const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https"];
+const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
 
 fn normalize_browser_target_url(raw: &str) -> String {
     let trimmed = raw.trim();
@@ -57,6 +59,30 @@ pub enum BrowserAddressValueKind {
 pub enum BrowserNavigationTarget {
     CurrentTab,
     NewTab,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BrowserNavigationPolicyDecision {
+    InWebview,
+    OpenExternal,
+    Deny,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserNavigationPolicyRequest {
+    pub raw_url: String,
+    #[serde(default)]
+    pub has_user_gesture: bool,
+    #[serde(default = "default_true")]
+    pub is_main_frame: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserNavigationPolicyResponse {
+    pub decision: BrowserNavigationPolicyDecision,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -125,6 +151,10 @@ pub struct BrowserAddressInputResponse {
 struct BrowserUrlResolution {
     url: String,
     inferred_scheme: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn normalize_browser_preferred_scheme(raw: Option<&str>) -> String {
@@ -241,6 +271,100 @@ fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
     } else {
         BrowserAddressValueKind::Invalid
     }
+}
+
+fn extract_url_scheme(raw: &str) -> Option<String> {
+    let (scheme, _) = raw.split_once(':')?;
+    if scheme.is_empty() {
+        return None;
+    }
+    let is_valid = scheme
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !is_valid {
+        return None;
+    }
+    Some(scheme.to_ascii_lowercase())
+}
+
+fn scheme_in_list(scheme: &str, candidates: &[&str]) -> bool {
+    candidates
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(scheme))
+}
+
+fn browser_policy_response(
+    decision: BrowserNavigationPolicyDecision,
+    reason: Option<&str>,
+) -> BrowserNavigationPolicyResponse {
+    BrowserNavigationPolicyResponse {
+        decision,
+        reason: reason.map(str::to_string),
+    }
+}
+
+/// Classify browser navigation requests into:
+/// - `in_webview`: keep loading in current webview.
+/// - `open_external`: cancel in-webview load and open externally.
+/// - `deny`: cancel navigation.
+///
+/// Security model:
+/// - Only `http/https` stay in webview.
+/// - Potential external schemes require user gesture + main-frame navigation.
+/// - Non-external internal schemes (`javascript:`, `data:`, etc.) are denied.
+pub(crate) fn handle_browser_navigation_policy(
+    request: BrowserNavigationPolicyRequest,
+) -> BrowserNavigationPolicyResponse {
+    let trimmed = request.raw_url.trim();
+    if trimmed.is_empty() {
+        return browser_policy_response(BrowserNavigationPolicyDecision::Deny, Some("empty"));
+    }
+
+    if trimmed.chars().any(|c| c.is_whitespace()) {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("whitespace_url"),
+        );
+    }
+
+    let Some(scheme) = extract_url_scheme(trimmed) else {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("missing_scheme"),
+        );
+    };
+
+    if scheme_in_list(&scheme, BROWSER_IN_WEBVIEW_SCHEMES) {
+        return browser_policy_response(BrowserNavigationPolicyDecision::InWebview, None);
+    }
+
+    if scheme_in_list(&scheme, BROWSER_NON_EXTERNAL_SCHEMES) {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("non_external_scheme"),
+        );
+    }
+
+    if !request.is_main_frame {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("non_main_frame_external"),
+        );
+    }
+
+    if !request.has_user_gesture {
+        return browser_policy_response(
+            BrowserNavigationPolicyDecision::Deny,
+            Some("gesture_required"),
+        );
+    }
+
+    browser_policy_response(BrowserNavigationPolicyDecision::OpenExternal, None)
+}
+
+pub fn handle_browser_navigation_policy_json(request_json: &str) -> Option<String> {
+    let request: BrowserNavigationPolicyRequest = serde_json::from_str(request_json).ok()?;
+    serde_json::to_string(&handle_browser_navigation_policy(request)).ok()
 }
 
 /// Handle browser address-bar input with a minimal synchronous pipeline.
@@ -982,5 +1106,69 @@ mod tests {
             normalize_browser_target_url("https://example.com"),
             "https://example.com"
         );
+    }
+
+    #[test]
+    fn browser_nav_policy_allows_lark_with_gesture() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "lark://client/auth?code=1".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        });
+
+        assert_eq!(
+            response.decision,
+            BrowserNavigationPolicyDecision::OpenExternal
+        );
+    }
+
+    #[test]
+    fn browser_nav_policy_denies_lark_without_gesture() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "lark://client/auth?code=1".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        });
+
+        assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
+        assert_eq!(response.reason.as_deref(), Some("gesture_required"));
+    }
+
+    #[test]
+    fn browser_nav_policy_allows_unknown_custom_scheme_with_gesture() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "customxyz://hello".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        });
+
+        assert_eq!(
+            response.decision,
+            BrowserNavigationPolicyDecision::OpenExternal
+        );
+    }
+
+    #[test]
+    fn browser_nav_policy_denies_non_external_scheme() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "javascript:alert(1)".to_string(),
+            has_user_gesture: true,
+            is_main_frame: true,
+        });
+
+        assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
+        assert_eq!(response.reason.as_deref(), Some("non_external_scheme"));
+    }
+
+    #[test]
+    fn browser_nav_policy_denies_external_in_subframe() {
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "lark://client/auth".to_string(),
+            has_user_gesture: true,
+            is_main_frame: false,
+        });
+
+        assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
+        assert_eq!(response.reason.as_deref(), Some("non_main_frame_external"));
     }
 }

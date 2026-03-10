@@ -34,7 +34,7 @@ pub use browser::{
     BUILTIN_BROWSER_APPID, browser_owner_appid_for_tab_id, browser_owner_session_id_for_tab_id,
     browser_tab_exists, browser_tab_path_for_id, close_browser_tab, close_internal_browser_tab,
     generate_browser_startup_html, handle_browser_address_input, handle_browser_address_input_json,
-    open_internal_browser_tab, resolve_owner_lxapp,
+    handle_browser_navigation_policy_json, open_internal_browser_tab, resolve_owner_lxapp,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, UiEventType};
