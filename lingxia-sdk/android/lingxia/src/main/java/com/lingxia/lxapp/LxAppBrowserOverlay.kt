@@ -19,6 +19,8 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 object LxAppBrowserOverlay {
     private const val TAG = "LingXia.BrowserOverlay"
@@ -224,10 +226,28 @@ object LxAppBrowserOverlay {
         backButton = backBtn
         forwardButton = fwdBtn
 
+        ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val keyboardHeight = (imeBottom - navBottom).coerceAtLeast(0)
+            val params = bottomBar.layoutParams as FrameLayout.LayoutParams
+            val newMargin = navBarHeight + keyboardHeight + (8 * density).toInt()
+            if (params.bottomMargin != newMargin) {
+                params.bottomMargin = newMargin
+                bottomBar.layoutParams = params
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(container)
+
         Log.d(TAG, "Browser overlay shown")
     }
 
     fun dismiss() {
+        overlayContainer?.let { container ->
+            ViewCompat.setOnApplyWindowInsetsListener(container, null)
+        }
+
         webView?.apply {
             stopLoading()
             destroy()
