@@ -1,8 +1,8 @@
 use crate::{LxApp, LxAppError};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::{
-    NewWindowPolicy, WebTag, WebView, WebViewController, WebViewCreateOptions, WebViewError,
-    create_webview, destroy_webview as destroy_managed_webview,
+    LoadDataRequest, NewWindowPolicy, WebTag, WebView, WebViewController, WebViewCreateOptions,
+    WebViewSession, create_webview, destroy_webview as destroy_managed_webview,
     find_webview as find_managed_webview,
 };
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,6 @@ use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
-use tokio::sync::oneshot;
 use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
@@ -427,51 +426,43 @@ fn browser_create_webview(
     create_token: u64,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
-    let (ready_tx, ready_rx) = oneshot::channel();
     let tab_id_for_new_window = tab_id.to_string();
     let owner_for_new_window = lock_state()
         .tabs
         .get(tab_id)
         .map(|s| (s.source_appid.clone(), s.session_id));
-    create_webview(
-        &webtag,
-        ready_tx,
-        Some(
-            WebViewCreateOptions::browser_relaxed().on_new_window(move |url| {
-                if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
-                    let normalized = normalize_browser_target_url(url);
-                    match resolve_owner_lxapp(owner_appid, *owner_session_id) {
-                        Ok(owner) => {
-                            let _ = owner.runtime.open_url(OpenUrlRequest {
-                                owner_appid: owner_appid.clone(),
-                                owner_session_id: *owner_session_id,
-                                url: normalized.clone(),
-                                target: OpenUrlTarget::SelfTarget,
-                            });
-                        }
-                        Err(e) => {
-                            crate::warn!(
-                                "[InternalBrowser] new-window resolve owner failed: {}",
-                                e
-                            );
-                        }
+    let session = create_webview(
+        webtag,
+        WebViewCreateOptions::browser().with_new_window(move |url| {
+            if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
+                let normalized = normalize_browser_target_url(url);
+                match resolve_owner_lxapp(owner_appid, *owner_session_id) {
+                    Ok(owner) => {
+                        let _ = owner.runtime.open_url(OpenUrlRequest {
+                            owner_appid: owner_appid.clone(),
+                            owner_session_id: *owner_session_id,
+                            url: normalized.clone(),
+                            target: OpenUrlTarget::SelfTarget,
+                        });
                     }
-                } else {
-                    crate::warn!(
-                        "[InternalBrowser] new-window missing owner mapping for tab_id={}",
-                        tab_id_for_new_window
-                    );
+                    Err(e) => {
+                        crate::warn!("[InternalBrowser] new-window resolve owner failed: {}", e);
+                    }
                 }
-                NewWindowPolicy::Cancel
-            }),
-        ),
+            } else {
+                crate::warn!(
+                    "[InternalBrowser] new-window missing owner mapping for tab_id={}",
+                    tab_id_for_new_window
+                );
+            }
+            NewWindowPolicy::Cancel
+        }),
     );
     let path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
 
     if let Err(e) = rong::bg::spawn(async move {
-        browser_on_webview_ready(path_owned, session_id, tab_id_owned, create_token, ready_rx)
-            .await;
+        browser_on_webview_ready(path_owned, session_id, tab_id_owned, create_token, session).await;
     }) {
         return Err(LxAppError::Runtime(format!(
             "failed to spawn browser webview ready task: {}",
@@ -486,22 +477,13 @@ async fn browser_on_webview_ready(
     session_id: u64,
     tab_id: String,
     create_token: u64,
-    ready_rx: oneshot::Receiver<Result<Arc<WebView>, WebViewError>>,
+    session: WebViewSession,
 ) {
-    let webview = match ready_rx.await {
-        Ok(Ok(webview)) => webview,
-        Ok(Err(e)) => {
-            crate::warn!(
-                "[InternalBrowser] Failed to create webview for tab {}: {}",
-                tab_id,
-                e
-            );
-            browser_remove_tab_if_token_matches(&tab_id, session_id, create_token);
-            return;
-        }
+    let webview = match session.wait_ready().await {
+        Ok(webview) => webview,
         Err(e) => {
             crate::warn!(
-                "[InternalBrowser] WebView ready signal failed for tab {}: {}",
+                "[InternalBrowser] Failed to create webview for tab {}: {}",
                 tab_id,
                 e
             );
@@ -524,7 +506,7 @@ async fn browser_on_webview_ready(
         }
         TabCreateState::Active { pending_url } => {
             if let Some(url) = pending_url {
-                if let Err(e) = webview.load_url(url) {
+                if let Err(e) = webview.load_url(&url) {
                     crate::warn!(
                         "[InternalBrowser] Failed to load URL for tab {}: {}",
                         tab_id,
@@ -535,7 +517,7 @@ async fn browser_on_webview_ready(
                 let result = generate_browser_startup_html().and_then(|(html, base_url)| {
                     let html_str = String::from_utf8_lossy(&html);
                     webview
-                        .load_data(html_str.into_owned(), base_url, None)
+                        .load_data(LoadDataRequest::new(html_str.as_ref(), &base_url))
                         .map_err(|e| LxAppError::WebView(e.to_string()))
                 });
                 if let Err(e) = result {
@@ -603,7 +585,7 @@ fn browser_find_webview(path: &str, session_id: u64) -> Result<Arc<WebView>, LxA
 fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result<(), LxAppError> {
     let webview = browser_find_webview(path, session_id)?;
     webview
-        .load_url(url.to_string())
+        .load_url(url)
         .map_err(|e| LxAppError::WebView(e.to_string()))
 }
 

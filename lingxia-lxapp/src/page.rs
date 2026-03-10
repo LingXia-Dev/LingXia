@@ -14,14 +14,14 @@ use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
 use lingxia_webview::{
-    LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewController,
-    WebViewCreateOptions, WebViewDelegate, create_webview, destroy_webview,
+    LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
+    WebViewController, WebViewCreateOptions, WebViewDelegate, create_webview, destroy_webview,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::{oneshot, watch};
+use tokio::sync::watch;
 
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
 
@@ -180,7 +180,6 @@ impl Page {
 
         // Initiate WebView creation with scheme handlers
         let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
-        let (ready_tx, ready_rx) = oneshot::channel();
 
         // Register closure-based scheme handlers so lingxia-webview
         // doesn't need to know about lxapp business logic.
@@ -197,18 +196,27 @@ impl Page {
         let appid_for_new_window = appid.clone();
         let session_id_for_new_window = lxapp.session_id();
 
-        let options = WebViewCreateOptions::strict_default()
-            .on_scheme("lx", move |req| {
-                let inner = page_weak_for_lx.upgrade()?;
-                let lxapp = lxapp::get(appid_for_lx.clone());
-                let page = Page::from_inner(inner);
-                lxapp.lingxia_handler(&page, req)
+        let options = WebViewCreateOptions::strict()
+            .with_scheme("lx", move |req| {
+                let page_weak_for_lx = page_weak_for_lx.clone();
+                let appid_for_lx = appid_for_lx.clone();
+                async move {
+                    let Some(inner) = page_weak_for_lx.upgrade() else {
+                        return None.into();
+                    };
+                    let lxapp = lxapp::get(appid_for_lx);
+                    let page = Page::from_inner(inner);
+                    lxapp.lingxia_handler(&page, req).into()
+                }
             })
-            .on_scheme("https", move |req| {
-                let lxapp = lxapp::get(appid_for_https.clone());
-                lxapp.https_handler(req)
+            .with_scheme("https", move |req| {
+                let appid_for_https = appid_for_https.clone();
+                async move {
+                    let lxapp = lxapp::get(appid_for_https);
+                    lxapp.https_handler(req).into()
+                }
             })
-            .on_navigation(move |url| {
+            .with_navigation(move |url| {
                 let scheme = url.split(':').next().unwrap_or("");
                 match scheme {
                     // lx:// pages and inline content are always allowed
@@ -229,7 +237,7 @@ impl Page {
                     }
                 }
             })
-            .on_new_window(move |url| {
+            .with_new_window(move |url| {
                 let _ = runtime_for_new_window.open_url(OpenUrlRequest {
                     owner_appid: appid_for_new_window.clone(),
                     owner_session_id: session_id_for_new_window,
@@ -239,7 +247,7 @@ impl Page {
                 NewWindowPolicy::Cancel
             });
 
-        create_webview(&webtag, ready_tx, Some(options));
+        let session = create_webview(webtag, options);
 
         // Spawn task to wait for WebView creation completion
         // Keep a strong reference to ensure page stays alive during WebView creation
@@ -248,8 +256,8 @@ impl Page {
         let path_clone = path.clone();
 
         if let Err(e) = rong::bg::spawn(async move {
-            match ready_rx.await {
-                Ok(Ok(webview_controller)) => {
+            match session.wait_ready().await {
+                Ok(webview_controller) => {
                     // First attach WebView to page
                     page_for_task.attach_webview(webview_controller.clone());
 
@@ -263,14 +271,8 @@ impl Page {
                     // Mark ready after setup completes so waiters are released only once page is usable.
                     page_for_task.mark_webview_ready(result);
                 }
-                Ok(Err(e)) => {
-                    error!("Failed to create WebView: {}", e)
-                        .with_appid(appid_clone)
-                        .with_path(path_clone);
-                    page_for_task.mark_webview_ready(Err(e.to_string()));
-                }
                 Err(e) => {
-                    error!("WebView ready signal failed: {}", e)
+                    error!("Failed to create WebView: {}", e)
                         .with_appid(appid_clone)
                         .with_path(path_clone);
                     page_for_task.mark_webview_ready(Err(e.to_string()));
@@ -524,14 +526,11 @@ impl Page {
         let path = self.path();
         let html_data = lxapp.generate_page_html(&path, self.bridge_nonce().as_deref());
         let base_url = self.base_url();
+        let html_string = String::from_utf8_lossy(&html_data).into_owned();
 
         if let Some(controller) = self.webview_controller() {
             controller
-                .load_data(
-                    String::from_utf8_lossy(&html_data).to_string(),
-                    base_url,
-                    None,
-                )
+                .load_data(LoadDataRequest::new(&html_string, &base_url))
                 .map_err(|e| LxAppError::WebView(e.to_string()))
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
