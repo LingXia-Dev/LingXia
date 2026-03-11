@@ -283,16 +283,22 @@ public class LingXiaWebView extends WebView {
             return "ERROR:stale proxy request dropped";
         }
 
+        final boolean enable = host != null && !host.trim().isEmpty() && port > 0;
+
+        // API 21/22 builds are supported, but proxy override is unavailable there.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            sHttpProxyEnabled = false;
+            return "UNSUPPORTED:android proxy override requires API 23+";
+        }
+
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
             sHttpProxyEnabled = false;
             return "UNSUPPORTED:androidx.webkit PROXY_OVERRIDE not available";
         }
 
-        final boolean enable = host != null && !host.trim().isEmpty() && port > 0;
-
-        Executor directExecutor = Runnable::run;
         CountDownLatch completion = new CountDownLatch(1);
         Runnable listener = completion::countDown;
+        Executor directExecutor = Runnable::run;
 
         try {
             if (enable) {
