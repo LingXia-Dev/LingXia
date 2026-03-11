@@ -17,8 +17,8 @@ use crate::apple::WebViewInner;
 use crate::harmony::WebViewInner;
 
 use crate::traits::{
-    AsyncSchemeHandler, NavigationHandler, NavigationPolicy, NewWindowHandler, NewWindowPolicy,
-    SchemeOutcome,
+    AsyncSchemeHandler, DownloadHandler, DownloadRequest, NavigationHandler, NavigationPolicy,
+    NewWindowHandler, NewWindowPolicy, SchemeOutcome,
 };
 use crate::{
     LoadDataRequest, WebResourceResponse, WebViewController, WebViewDelegate, WebViewError,
@@ -105,12 +105,14 @@ pub(crate) enum SecurityProfile {
     BrowserRelaxed,
 }
 
-/// WebView creation options — choose a security profile preset and register scheme handlers.
-pub struct WebViewCreateOptions {
+/// Internal WebView creation options.
+pub(crate) struct WebViewCreateOptions {
     pub(crate) profile: SecurityProfile,
     pub(crate) scheme_handlers: HashMap<String, AsyncSchemeHandler>,
     pub(crate) navigation_handler: Option<NavigationHandler>,
     pub(crate) new_window_handler: Option<NewWindowHandler>,
+    pub(crate) download_handler: Option<DownloadHandler>,
+    pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
 }
 
 impl std::fmt::Debug for WebViewCreateOptions {
@@ -123,6 +125,8 @@ impl std::fmt::Debug for WebViewCreateOptions {
             )
             .field("has_navigation_handler", &self.navigation_handler.is_some())
             .field("has_new_window_handler", &self.new_window_handler.is_some())
+            .field("has_download_handler", &self.download_handler.is_some())
+            .field("has_delegate", &self.delegate.is_some())
             .finish()
     }
 }
@@ -256,6 +260,10 @@ pub(crate) struct EffectiveWebViewCreateOptions {
     pub(crate) has_navigation_handler: bool,
     #[serde(default)]
     pub(crate) has_new_window_handler: bool,
+    #[serde(default)]
+    pub(crate) has_download_handler: bool,
+    #[serde(default)]
+    pub(crate) has_delegate: bool,
 }
 
 impl Default for WebViewCreateOptions {
@@ -265,21 +273,25 @@ impl Default for WebViewCreateOptions {
 }
 
 impl WebViewCreateOptions {
-    pub fn strict() -> Self {
+    fn strict() -> Self {
         Self {
             profile: SecurityProfile::StrictDefault,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
+            download_handler: None,
+            delegate: None,
         }
     }
 
-    pub fn browser() -> Self {
+    fn browser() -> Self {
         Self {
             profile: SecurityProfile::BrowserRelaxed,
             scheme_handlers: HashMap::new(),
             navigation_handler: None,
             new_window_handler: None,
+            download_handler: None,
+            delegate: None,
         }
     }
 
@@ -289,10 +301,10 @@ impl WebViewCreateOptions {
     ///
     /// Usage:
     /// - Async workload:
-    ///   `options.with_scheme("lx", |req| async move { ... })`
+    ///   `options.on_scheme("lx", |req| async move { ... })`
     /// - Immediate response:
-    ///   `options.with_scheme("lx", |req| async move { immediate(req).into() })`
-    pub fn with_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    ///   `options.on_scheme("lx", |req| async move { immediate(req).into() })`
+    fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
     where
         F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
@@ -312,7 +324,7 @@ impl WebViewCreateOptions {
 
     /// Register a navigation handler that decides whether to allow or cancel navigations.
     /// The handler receives the URL being navigated to and returns a `NavigationPolicy`.
-    pub fn with_navigation<F>(mut self, handler: F) -> Self
+    fn on_navigation<F>(mut self, handler: F) -> Self
     where
         F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
     {
@@ -322,7 +334,7 @@ impl WebViewCreateOptions {
 
     /// Register a new-window handler for `target="_blank"` / `window.open()`.
     /// The handler receives the URL and returns a `NewWindowPolicy`.
-    pub fn with_new_window<F>(mut self, handler: F) -> Self
+    fn on_new_window<F>(mut self, handler: F) -> Self
     where
         F: Fn(&str) -> NewWindowPolicy + Send + Sync + 'static,
     {
@@ -330,7 +342,36 @@ impl WebViewCreateOptions {
         self
     }
 
-    pub(crate) fn normalize(self) -> (EffectiveWebViewCreateOptions, PendingCallbacks) {
+    /// Register a download handler for browser-mode downloads.
+    ///
+    /// The handler runs synchronously on the platform callback thread. Keep it fast and
+    /// spawn background work onto your runtime inside the closure.
+    ///
+    /// This callback is only valid for browser profile.
+    /// Public API: `WebViewBuilder::browser(webtag).on_download(...).create()`.
+    /// In this mode, download requests are routed to the callback path instead of in-WebView
+    /// download UI.
+    fn on_download<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(DownloadRequest) + Send + Sync + 'static,
+    {
+        self.download_handler = Some(Box::new(handler));
+        self
+    }
+
+    fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
+        self.delegate = Some(delegate);
+        self
+    }
+
+    pub(crate) fn normalize(
+        self,
+    ) -> Result<(EffectiveWebViewCreateOptions, PendingCallbacks), WebViewError> {
+        if self.profile != SecurityProfile::BrowserRelaxed && self.download_handler.is_some() {
+            return Err(WebViewError::InvalidCreateOptions(
+                "download callback is only supported in browser profile; use WebViewBuilder::browser(webtag).on_download(...).create()".to_string(),
+            ));
+        }
         let mut registered_schemes: Vec<String> = self.scheme_handlers.keys().cloned().collect();
         registered_schemes.sort_unstable();
         registered_schemes.dedup();
@@ -339,34 +380,194 @@ impl WebViewCreateOptions {
             registered_schemes,
             has_navigation_handler: self.navigation_handler.is_some(),
             has_new_window_handler: self.new_window_handler.is_some(),
+            has_download_handler: self.download_handler.is_some(),
+            has_delegate: self.delegate.is_some(),
         };
         let pending = PendingCallbacks {
             scheme_handlers: self.scheme_handlers,
             navigation_handler: self.navigation_handler,
             new_window_handler: self.new_window_handler,
+            download_handler: self.download_handler,
+            delegate: self.delegate,
         };
-        (effective, pending)
+        Ok((effective, pending))
     }
 }
 
-/// Pending callbacks extracted from `WebViewCreateOptions::normalize()`.
-/// Stored between `create_webview` (extraction) and `register_webview` (installation).
+/// Entry point for mode-specific WebView creation.
+///
+/// Typical usage:
+/// - Strict lxapp page:
+///   `WebViewBuilder::strict(tag).on_scheme(...).on_navigation(...).create()`
+/// - Browser page:
+///   `WebViewBuilder::browser(tag).on_new_window(...).on_download(...).create()`
+pub struct WebViewBuilder;
+
+#[must_use = "call .create() to start WebView creation"]
+pub struct StrictWebViewBuilder {
+    webtag: WebTag,
+    options: WebViewCreateOptions,
+}
+
+#[must_use = "call .create() to start WebView creation"]
+pub struct BrowserWebViewBuilder {
+    webtag: WebTag,
+    options: WebViewCreateOptions,
+}
+
+impl WebViewBuilder {
+    /// Start a strict-profile WebView builder.
+    #[must_use = "call .create() to start WebView creation"]
+    pub fn strict(webtag: WebTag) -> StrictWebViewBuilder {
+        StrictWebViewBuilder {
+            webtag,
+            options: WebViewCreateOptions::strict(),
+        }
+    }
+
+    /// Start a browser-profile WebView builder.
+    #[must_use = "call .create() to start WebView creation"]
+    pub fn browser(webtag: WebTag) -> BrowserWebViewBuilder {
+        BrowserWebViewBuilder {
+            webtag,
+            options: WebViewCreateOptions::browser(),
+        }
+    }
+}
+
+impl StrictWebViewBuilder {
+    /// Bind a `WebViewDelegate` during creation.
+    ///
+    /// This is the only supported way to configure delegate callbacks.
+    pub fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
+        self.options = self.options.delegate(delegate);
+        self
+    }
+
+    pub fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_scheme(scheme, handler);
+        self
+    }
+
+    pub fn on_navigation<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_navigation(handler);
+        self
+    }
+
+    pub fn on_new_window<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) -> NewWindowPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_new_window(handler);
+        self
+    }
+
+    /// Create a strict-profile WebView session.
+    ///
+    /// Re-creating with the same `webtag` follows strict rules:
+    /// - Different options => creation fails.
+    /// - Same options but new callback registrations => creation fails.
+    /// - Same options and no callbacks => existing instance is reused.
+    pub fn create(self) -> WebViewSession {
+        create_webview_session(self.webtag, self.options)
+    }
+}
+
+impl BrowserWebViewBuilder {
+    /// Bind a `WebViewDelegate` during creation.
+    ///
+    /// This is the only supported way to configure delegate callbacks.
+    pub fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
+        self.options = self.options.delegate(delegate);
+        self
+    }
+
+    pub fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_scheme(scheme, handler);
+        self
+    }
+
+    pub fn on_navigation<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) -> NavigationPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_navigation(handler);
+        self
+    }
+
+    pub fn on_new_window<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str) -> NewWindowPolicy + Send + Sync + 'static,
+    {
+        self.options = self.options.on_new_window(handler);
+        self
+    }
+
+    /// Register a download callback (browser profile only).
+    ///
+    /// The callback runs on the platform callback thread; keep it fast and offload
+    /// expensive work to your app runtime.
+    pub fn on_download<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(DownloadRequest) + Send + Sync + 'static,
+    {
+        self.options = self.options.on_download(handler);
+        self
+    }
+
+    /// Create a browser-profile WebView session.
+    ///
+    /// Re-creating with the same `webtag` follows strict rules:
+    /// - Different options => creation fails.
+    /// - Same options but new callback registrations => creation fails.
+    /// - Same options and no callbacks => existing instance is reused.
+    pub fn create(self) -> WebViewSession {
+        create_webview_session(self.webtag, self.options)
+    }
+}
+
+/// Pending callbacks extracted from internal option normalization.
+/// Stored between session creation and `register_webview` installation.
 pub(crate) struct PendingCallbacks {
     pub(crate) scheme_handlers: HashMap<String, AsyncSchemeHandler>,
     pub(crate) navigation_handler: Option<NavigationHandler>,
     pub(crate) new_window_handler: Option<NewWindowHandler>,
+    pub(crate) download_handler: Option<DownloadHandler>,
+    pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
+}
+
+impl PendingCallbacks {
+    fn has_any(&self) -> bool {
+        !self.scheme_handlers.is_empty()
+            || self.navigation_handler.is_some()
+            || self.new_window_handler.is_some()
+            || self.download_handler.is_some()
+            || self.delegate.is_some()
+    }
 }
 
 /// WebView type that includes inner implementation and delegate
 pub struct WebView {
     pub(crate) inner: WebViewInner,
     effective_options: EffectiveWebViewCreateOptions,
-    // Hold a strong reference to the delegate; PageInner::drop removes it to break cycles
+    // Hold a strong reference to the delegate; runtime destroy clears it to break cycles.
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
-    // Closure-based scheme handlers registered via WebViewCreateOptions
+    // Closure-based scheme handlers registered via builders.
     scheme_handlers: RwLock<HashMap<String, AsyncSchemeHandler>>,
     navigation_handler: RwLock<Option<NavigationHandler>>,
     new_window_handler: RwLock<Option<NewWindowHandler>>,
+    download_handler: RwLock<Option<DownloadHandler>>,
 }
 
 impl WebView {
@@ -381,6 +582,7 @@ impl WebView {
             scheme_handlers: RwLock::new(HashMap::new()),
             navigation_handler: RwLock::new(None),
             new_window_handler: RwLock::new(None),
+            download_handler: RwLock::new(None),
         }
     }
 
@@ -403,20 +605,13 @@ impl WebView {
         &self.effective_options
     }
 
-    /// Set delegate for this WebView
-    pub fn set_delegate(&self, delegate: Arc<dyn WebViewDelegate>) {
-        if let Ok(mut guard) = self.delegate.write() {
-            *guard = Some(delegate);
-        }
-    }
-
     /// Get delegate for this WebView
-    pub fn get_delegate(&self) -> Option<Arc<dyn WebViewDelegate>> {
+    pub(crate) fn get_delegate(&self) -> Option<Arc<dyn WebViewDelegate>> {
         self.delegate.read().ok().and_then(|guard| guard.clone())
     }
 
     /// Remove delegate for this WebView
-    pub fn remove_delegate(&self) {
+    pub(crate) fn remove_delegate(&self) {
         if let Ok(mut guard) = self.delegate.write() {
             *guard = None;
         }
@@ -424,6 +619,11 @@ impl WebView {
 
     /// Install all pending callbacks into this WebView (called once during creation).
     pub(crate) fn install_callbacks(&self, callbacks: PendingCallbacks) {
+        if let Some(delegate) = callbacks.delegate
+            && let Ok(mut guard) = self.delegate.write()
+        {
+            *guard = Some(delegate);
+        }
         if let Ok(mut guard) = self.scheme_handlers.write() {
             *guard = callbacks.scheme_handlers;
         }
@@ -434,6 +634,11 @@ impl WebView {
         }
         if let Some(handler) = callbacks.new_window_handler
             && let Ok(mut guard) = self.new_window_handler.write()
+        {
+            *guard = Some(handler);
+        }
+        if let Some(handler) = callbacks.download_handler
+            && let Ok(mut guard) = self.download_handler.write()
         {
             *guard = Some(handler);
         }
@@ -489,6 +694,15 @@ impl WebView {
             return handler(url);
         }
         NewWindowPolicy::Cancel
+    }
+
+    /// Dispatch a download request to the registered handler.
+    pub(crate) fn handle_download(&self, request: DownloadRequest) {
+        if let Ok(guard) = self.download_handler.read()
+            && let Some(handler) = guard.as_ref()
+        {
+            handler(request);
+        }
     }
 
     /// Toggle docked DevTools (macOS only, uses private _inspector API)
@@ -742,9 +956,8 @@ impl WebViewCreateSender {
 /// Global WebView instances storage
 static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 
-/// Pending callbacks: keyed by webtag string → callbacks struct.
-/// Stored here between `create_webview` (which extracts them from options)
-/// and `register_webview` (which installs them on the WebView).
+/// Pending callbacks: keyed by webtag string -> callbacks struct.
+/// Stored here between builder-based session creation and `register_webview`.
 static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacks>>> = OnceLock::new();
 static WEBVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<WebViewSessionSignals>>>> =
     OnceLock::new();
@@ -916,18 +1129,19 @@ impl From<&str> for WebTag {
     }
 }
 
-/// Initialize WebView manager
-pub fn init_webview_manager() {
-    let _ = WEBVIEW_INSTANCES.set(Arc::new(Mutex::new(HashMap::new())));
-}
-
 fn request_create_webview(
     webtag: &WebTag,
     sender: WebViewCreateSender,
     options: WebViewCreateOptions,
 ) {
     let (appid, path) = webtag.extract_parts();
-    let (effective_options, pending_callbacks) = options.normalize();
+    let (effective_options, pending_callbacks) = match options.normalize() {
+        Ok(value) => value,
+        Err(error) => {
+            sender.fail(WebViewCreateStage::Requested, error);
+            return;
+        }
+    };
 
     log::info!(
         "Creating WebView for key={} profile={:?} schemes={:?}",
@@ -939,20 +1153,44 @@ fn request_create_webview(
     // Get or initialize the global instances map
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
-    // Check if WebView already exists (first-create-wins by full webtag key)
+    // Existing instance policy:
+    // - Different options: fail fast (do not silently reuse incompatible instance).
+    // - Same options + callback registrations: fail fast because callbacks are immutable after first create.
+    // - Same options + no callbacks: return existing instance.
     if let Ok(webviews) = instances.lock()
         && let Some(existing_webview) = webviews.get(webtag.key())
     {
         if existing_webview.effective_options() != &effective_options {
-            log::warn!(
-                "WebView already exists with different options, reusing first-created instance: key={} existing={:?} requested={:?}",
-                webtag.key(),
-                existing_webview.effective_options(),
-                effective_options
+            sender.fail(
+                WebViewCreateStage::Requested,
+                WebViewError::InvalidCreateOptions(format!(
+                    "webview already exists with different options: key={} existing={:?} requested={:?}",
+                    webtag.key(),
+                    existing_webview.effective_options(),
+                    effective_options
+                )),
             );
-        } else {
-            log::info!("WebView already exists, reusing: {}", webtag.key());
+            return;
         }
+
+        if pending_callbacks.has_any() {
+            sender.fail(
+                WebViewCreateStage::Requested,
+                WebViewError::InvalidCreateOptions(format!(
+                    "webview already exists and callback registrations are immutable: key={} options={:?}",
+                    webtag.key(),
+                    existing_webview.effective_options()
+                )),
+            );
+            log::warn!(
+                "Rejected recreate with callbacks for existing webview key={} options={:?}",
+                webtag.key(),
+                existing_webview.effective_options()
+            );
+            return;
+        }
+
+        log::info!("WebView already exists, reusing: {}", webtag.key());
         sender.succeed(existing_webview.clone());
         return;
     }
@@ -961,10 +1199,7 @@ fn request_create_webview(
     clear_pending_callbacks(webtag);
 
     // Stash pending callbacks for install during register_webview()
-    let has_callbacks = !pending_callbacks.scheme_handlers.is_empty()
-        || pending_callbacks.navigation_handler.is_some()
-        || pending_callbacks.new_window_handler.is_some();
-    if has_callbacks {
+    if pending_callbacks.has_any() {
         let pending = PENDING_CALLBACKS.get_or_init(|| Mutex::new(HashMap::new()));
         if let Ok(mut map) = pending.lock() {
             map.insert(webtag.key().to_string(), pending_callbacks);
@@ -981,19 +1216,13 @@ fn request_create_webview(
     );
 }
 
-/// Create a WebView session and return an event-driven handle.
-pub fn create_webview(webtag: WebTag, options: WebViewCreateOptions) -> WebViewSession {
+fn create_webview_session(webtag: WebTag, options: WebViewCreateOptions) -> WebViewSession {
     let signals = WebViewSessionSignals::new();
     let session = signals.subscribe(webtag.clone());
     let sender = WebViewCreateSender::new(signals.clone());
     replace_session_signals(&webtag, signals);
     request_create_webview(&webtag, sender, options);
     session
-}
-
-/// Create a strict-default WebView session.
-pub fn create_webview_strict(webtag: WebTag) -> WebViewSession {
-    create_webview(webtag, WebViewCreateOptions::strict())
 }
 
 pub(crate) fn register_webview(webview: Arc<WebView>) {
@@ -1005,11 +1234,13 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
         && let Some(callbacks) = map.remove(webtag.key())
     {
         log::info!(
-            "Installing callbacks for {} (schemes={}, nav={}, new_window={})",
+            "Installing callbacks for {} (schemes={}, nav={}, new_window={}, download={}, delegate={})",
             webtag.key(),
             callbacks.scheme_handlers.len(),
             callbacks.navigation_handler.is_some(),
             callbacks.new_window_handler.is_some(),
+            callbacks.download_handler.is_some(),
+            callbacks.delegate.is_some()
         );
         webview.install_callbacks(callbacks);
     }
@@ -1022,8 +1253,8 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
     }
 }
 
-/// Find WebView by WebTag
-pub fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
+/// Find WebView by WebTag.
+pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     if let Some(instances) = WEBVIEW_INSTANCES.get() {
         if let Ok(webviews) = instances.lock() {
             webviews.get(webtag.key()).cloned()
@@ -1035,31 +1266,27 @@ pub fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     }
 }
 
-/// Set delegate for a WebView by WebTag
-pub fn set_webview_delegate(webtag: &WebTag, delegate: Arc<dyn WebViewDelegate>) -> bool {
-    if let Some(webview) = find_webview(webtag) {
-        webview.set_delegate(delegate);
-        true
-    } else {
-        false
-    }
-}
-
-/// Get delegate from WebView by webtag (for internal use by platform implementations)
-pub fn get_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
-    if let Some(webview) = find_webview(webtag) {
-        webview.get_delegate()
-    } else {
-        None
-    }
+#[cfg(any(
+    target_os = "android",
+    target_os = "ios",
+    target_os = "macos",
+    all(target_os = "linux", target_env = "ohos")
+))]
+pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
+    find_webview(webtag).and_then(|webview| webview.get_delegate())
 }
 
 /// Destroy a WebView instance by WebTag and remove it from global storage
-pub fn destroy_webview(webtag: &WebTag) {
-    if let Some(instances) = WEBVIEW_INSTANCES.get()
+pub(crate) fn destroy_webview(webtag: &WebTag) {
+    let removed = if let Some(instances) = WEBVIEW_INSTANCES.get()
         && let Ok(mut webviews) = instances.lock()
     {
-        webviews.remove(webtag.key());
+        webviews.remove(webtag.key())
+    } else {
+        None
+    };
+    if let Some(webview) = removed {
+        webview.remove_delegate();
     }
     clear_pending_callbacks(webtag);
     if let Some(signals) = remove_session_signals(webtag) {

@@ -5,10 +5,11 @@ use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
 use crate::traits::NavigationPolicy;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
-    WebViewCreateSender, WebViewCreateStage, find_webview, get_webview_delegate, register_webview,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
+    WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_delegate,
+    register_webview,
 };
-use crate::{LoadDataRequest, LogLevel, WebViewController, WebViewError};
+use crate::{DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
@@ -1182,7 +1183,7 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
             log::error!("Failed to inject console script for {}: {}", webtag_str, e);
         }
 
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_started();
         }
     }
@@ -1199,7 +1200,7 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
         // Extract app_id and path from webtag
         let webtag = WebTag::from(webtag);
 
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_finished();
         }
     }
@@ -1240,7 +1241,7 @@ fn setup_webmessage_port_for_webtag(
         let port_api_struct = &*(port_api as *const ArkWeb_WebMessagePortAPI);
 
         // Use the current Ark tag to avoid stale controller state.
-        let webview = crate::find_webview(webtag)
+        let webview = find_webview(webtag)
             .ok_or_else(|| WebViewError::WebView("WebView not found".to_string()))?;
         let ark_webtag = webview.inner.ark_webtag_string();
         let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
@@ -1377,7 +1378,7 @@ extern "C" fn on_web_message_received(
 
     // Keep native_port aligned with the port that delivered the message.
     if !port.is_null()
-        && let Some(webview) = crate::find_webview(&full_webtag)
+        && let Some(webview) = find_webview(&full_webtag)
     {
         webview.inner.set_port_ready(true);
         webview.inner.with_ports(|ports| {
@@ -1445,7 +1446,7 @@ extern "C" fn on_web_message_received(
         };
 
         // Forward to delegate
-        if let Some(delegate) = get_webview_delegate(&full_webtag) {
+        if let Some(delegate) = find_webview_delegate(&full_webtag) {
             delegate.handle_post_message(msg_str.to_string());
         } else {
             log::warn!(
@@ -1468,6 +1469,43 @@ pub fn check_navigation_policy(webtag_str: &str, url: &str) -> bool {
     }
 
     false
+}
+
+pub fn on_download_start(
+    webtag_str: &str,
+    url: &str,
+    user_agent: &str,
+    content_disposition: &str,
+    mime_type: &str,
+    content_length: i64,
+) -> bool {
+    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = find_webview(&webtag) else {
+        return false;
+    };
+
+    // Strict/lxapp pages should not trigger in-webview download flows.
+    if webview.effective_options().profile != SecurityProfile::BrowserRelaxed {
+        return false;
+    }
+
+    if !webview.effective_options().has_download_handler {
+        return false;
+    }
+
+    let request = DownloadRequest {
+        url: url.to_string(),
+        user_agent: (!user_agent.trim().is_empty()).then(|| user_agent.to_string()),
+        content_disposition: (!content_disposition.trim().is_empty())
+            .then(|| content_disposition.to_string()),
+        mime_type: (!mime_type.trim().is_empty()).then(|| mime_type.to_string()),
+        content_length: (content_length >= 0).then_some(content_length as u64),
+        suggested_filename: None,
+        source_page_url: None,
+        cookie: None,
+    };
+    webview.handle_download(request);
+    true
 }
 
 /// Console WebMessage callback
@@ -1527,7 +1565,7 @@ extern "C" fn on_console_message_received(
             };
 
             // Forward to delegate for logging
-            if let Some(delegate) = get_webview_delegate(&full_webtag) {
+            if let Some(delegate) = find_webview_delegate(&full_webtag) {
                 delegate.log(log_level, console_message);
             }
         }

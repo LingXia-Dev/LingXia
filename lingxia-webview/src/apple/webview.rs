@@ -1,6 +1,6 @@
 use crate::traits::{NavigationPolicy, NewWindowPolicy};
-use crate::webview::{find_webview, get_webview_delegate};
-use crate::{LoadDataRequest, LogLevel, WebViewController, WebViewError};
+use crate::webview::{find_webview, find_webview_delegate};
+use crate::{DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use block2::{Block, StackBlock};
 use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
@@ -224,7 +224,7 @@ define_class!(
             let (appid, path) = webtag.extract_parts();
 
             // Call delegate's on_page_started
-            if let Some(delegate) = get_webview_delegate(webtag) {
+            if let Some(delegate) = find_webview_delegate(webtag) {
                 delegate.on_page_started();
             }
             log::info!("WebView page started: {} at {}", appid, path);
@@ -236,7 +236,7 @@ define_class!(
             let (appid, path) = webtag.extract_parts();
 
             // Call delegate's on_page_finished
-            if let Some(delegate) = get_webview_delegate(webtag) {
+            if let Some(delegate) = find_webview_delegate(webtag) {
                 delegate.on_page_finished();
             }
             log::info!("WebView page finished: {} at {}", appid, path);
@@ -402,10 +402,90 @@ define_class!(
                 }
             }
         }
+
+        #[unsafe(method(webView:decidePolicyForNavigationResponse:decisionHandler:))]
+        fn decide_policy_for_navigation_response(
+            &self,
+            webview: *mut AnyObject,
+            navigation_response: *mut AnyObject,
+            decision_handler: *mut AnyObject,
+        ) {
+            let call_decision_handler = |policy: i32| {
+                let handler: &Block<dyn Fn(i32)> =
+                    unsafe { &*(decision_handler as *const Block<dyn Fn(i32)>) };
+                handler.call((policy,));
+            };
+            let allow_navigation = || call_decision_handler(1); // WKNavigationResponsePolicyAllow
+            let cancel_navigation = || call_decision_handler(0); // WKNavigationResponsePolicyCancel
+
+            let webtag = &self.ivars().webtag;
+            let Some(managed_webview) = find_webview(webtag) else {
+                allow_navigation();
+                return;
+            };
+
+            // Strict/lxapp pages never trigger in-webview download handling.
+            if managed_webview.effective_options().profile != SecurityProfile::BrowserRelaxed {
+                allow_navigation();
+                return;
+            }
+
+            let can_show_mime: objc2::runtime::Bool =
+                unsafe { msg_send![navigation_response, canShowMIMEType] };
+            let maybe_req = self
+                .extract_download_request_from_navigation_response(webview, navigation_response);
+            let Some(request) = maybe_req else {
+                allow_navigation();
+                return;
+            };
+
+            let disposition_is_attachment = request
+                .content_disposition
+                .as_ref()
+                .map(|value| value.to_ascii_lowercase().contains("attachment"))
+                .unwrap_or(false);
+            let should_download = disposition_is_attachment || !can_show_mime.as_bool();
+            if !should_download {
+                allow_navigation();
+                return;
+            }
+
+            if managed_webview.effective_options().has_download_handler {
+                managed_webview.handle_download(request.clone());
+                log::info!(
+                    "Apple download request dispatched webtag={} url={}",
+                    webtag,
+                    request.url
+                );
+            } else {
+                log::info!(
+                    "Apple browser download suppressed without handler webtag={} url={}",
+                    webtag,
+                    request.url
+                );
+            }
+
+            // Browser default policy: always cancel in-webview navigation for downloads.
+            cancel_navigation();
+        }
     }
 );
 
 impl LingXiaNavigationDelegate {
+    fn nsstring_ptr_to_string(ns: *mut AnyObject) -> Option<String> {
+        unsafe {
+            if ns.is_null() {
+                return None;
+            }
+            let cstr: *const std::ffi::c_char = msg_send![ns, UTF8String];
+            if cstr.is_null() {
+                None
+            } else {
+                Some(std::ffi::CStr::from_ptr(cstr).to_string_lossy().to_string())
+            }
+        }
+    }
+
     /// Extract URL string from navigation action, returns None if extraction fails
     fn extract_url_from_navigation_action(
         &self,
@@ -437,6 +517,87 @@ impl LingXiaNavigationDelegate {
                     .to_string_lossy()
                     .to_string(),
             )
+        }
+    }
+
+    fn extract_source_page_url(&self, webview: *mut AnyObject) -> Option<String> {
+        unsafe {
+            if webview.is_null() {
+                return None;
+            }
+            let current_url: *mut AnyObject = msg_send![webview, URL];
+            if current_url.is_null() {
+                return None;
+            }
+            let absolute: *mut AnyObject = msg_send![current_url, absoluteString];
+            Self::nsstring_ptr_to_string(absolute)
+        }
+    }
+
+    fn extract_download_request_from_navigation_response(
+        &self,
+        webview: *mut AnyObject,
+        navigation_response: *mut AnyObject,
+    ) -> Option<DownloadRequest> {
+        unsafe {
+            if navigation_response.is_null() {
+                return None;
+            }
+            let response: *mut AnyObject = msg_send![navigation_response, response];
+            if response.is_null() {
+                return None;
+            }
+
+            let url_obj: *mut AnyObject = msg_send![response, URL];
+            if url_obj.is_null() {
+                return None;
+            }
+            let absolute: *mut AnyObject = msg_send![url_obj, absoluteString];
+            let url = Self::nsstring_ptr_to_string(absolute)?;
+
+            let mime_type = {
+                let mime_obj: *mut AnyObject = msg_send![response, MIMEType];
+                Self::nsstring_ptr_to_string(mime_obj)
+            };
+
+            let suggested_filename = {
+                let name_obj: *mut AnyObject = msg_send![response, suggestedFilename];
+                Self::nsstring_ptr_to_string(name_obj)
+            };
+
+            let expected_len: i64 = msg_send![response, expectedContentLength];
+            let content_length = if expected_len >= 0 {
+                Some(expected_len as u64)
+            } else {
+                None
+            };
+
+            let content_disposition = {
+                let headers: *mut AnyObject = msg_send![response, allHeaderFields];
+                if headers.is_null() {
+                    None
+                } else {
+                    let key = NSString::from_str("Content-Disposition");
+                    let value: *mut AnyObject = msg_send![headers, objectForKey: &*key];
+                    Self::nsstring_ptr_to_string(value)
+                }
+            };
+
+            let user_agent = {
+                let ua_obj: *mut AnyObject = msg_send![webview, customUserAgent];
+                Self::nsstring_ptr_to_string(ua_obj)
+            };
+
+            Some(DownloadRequest {
+                url,
+                user_agent,
+                content_disposition,
+                mime_type,
+                content_length,
+                suggested_filename,
+                source_page_url: self.extract_source_page_url(webview),
+                cookie: None,
+            })
         }
     }
     pub fn new(
@@ -1669,7 +1830,7 @@ impl LingXiaMessageHandler {
         let ivars = self.ivars();
 
         let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.handle_post_message(message);
         }
     }
@@ -1692,7 +1853,7 @@ impl LingXiaMessageHandler {
                 };
 
                 let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-                if let Some(delegate) = get_webview_delegate(&webtag) {
+                if let Some(delegate) = find_webview_delegate(&webtag) {
                     delegate.log(log_level, console_message);
                 }
             } else {

@@ -1,8 +1,8 @@
 use crate::traits::NavigationPolicy;
 use crate::webview::{
-    WebTag, WebViewCreateStage, find_webview, get_webview_delegate, register_webview,
+    WebTag, WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
-use crate::{LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
+use crate::{DownloadRequest, LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use jni::objects::{JByteArray, JObject, JObjectArray, JString};
@@ -34,7 +34,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.handle_post_message(message);
         }
         Ok(0)
@@ -60,7 +60,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_started();
         }
         Ok(0)
@@ -86,10 +86,78 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_finished();
         }
         Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequested(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+    user_agent: JString,
+    content_disposition: JString,
+    mime_type: JString,
+    content_length: jlong,
+    cookie: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let user_agent: String = user_agent.try_to_string(env)?;
+        let content_disposition: String = content_disposition.try_to_string(env)?;
+        let mime_type: String = mime_type.try_to_string(env)?;
+        let cookie: String = cookie.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+
+        let request = DownloadRequest {
+            url,
+            user_agent: if user_agent.trim().is_empty() {
+                None
+            } else {
+                Some(user_agent)
+            },
+            content_disposition: if content_disposition.trim().is_empty() {
+                None
+            } else {
+                Some(content_disposition)
+            },
+            mime_type: if mime_type.trim().is_empty() {
+                None
+            } else {
+                Some(mime_type)
+            },
+            content_length: if content_length >= 0 {
+                Some(content_length as u64)
+            } else {
+                None
+            },
+            suggested_filename: None,
+            source_page_url: None,
+            cookie: if cookie.trim().is_empty() {
+                None
+            } else {
+                Some(cookie)
+            },
+        };
+
+        if let Some(webview) = find_webview(&webtag) {
+            webview.handle_download(request);
+        }
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -351,7 +419,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
             _ => LogLevel::Info,    // Default to INFO
         };
 
-        if let Some(delegate) = get_webview_delegate(&webtag) {
+        if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.log(log_level, &message);
         }
         Ok(1)

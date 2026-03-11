@@ -9,6 +9,8 @@ import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
+import android.webkit.CookieManager;
+import android.webkit.DownloadListener;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -88,12 +90,14 @@ public class LingXiaWebView extends WebView {
         public String profile;
         public boolean domStorageEnabled;
         public boolean databaseEnabled;
+        public boolean hasDownloadHandler;
 
         static CreateOptions strictDefault() {
             CreateOptions options = new CreateOptions();
             options.profile = "strict_default";
             options.domStorageEnabled = false;
             options.databaseEnabled = false;
+            options.hasDownloadHandler = false;
             return options;
         }
 
@@ -102,6 +106,7 @@ public class LingXiaWebView extends WebView {
             options.profile = "browser_relaxed";
             options.domStorageEnabled = true;
             options.databaseEnabled = true;
+            options.hasDownloadHandler = false;
             return options;
         }
 
@@ -129,7 +134,9 @@ public class LingXiaWebView extends WebView {
                     Log.w(TAG, "Invalid profile in options token: " + profile + ", fallback to strict_default");
                     profile = "strict_default";
                 }
-                return fromProfile(profile);
+                CreateOptions options = fromProfile(profile);
+                options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
+                return options;
             } catch (Throwable e) {
                 Log.w(TAG, "Failed to decode create options token, fallback to strict default", e);
                 return strictDefault();
@@ -222,6 +229,10 @@ public class LingXiaWebView extends WebView {
 
     private boolean isBrowserProfile() {
         return createOptions != null && "browser_relaxed".equals(createOptions.profile);
+    }
+
+    private boolean hasDownloadHandler() {
+        return createOptions != null && createOptions.hasDownloadHandler;
     }
 
     public boolean shouldSkipRustIntercept(String url) {
@@ -346,6 +357,7 @@ public class LingXiaWebView extends WebView {
             "Apply create options: profile=" + this.createOptions.profile
                 + ", domStorage=" + this.createOptions.domStorageEnabled
                 + ", database=" + this.createOptions.databaseEnabled
+                + ", hasDownloadHandler=" + this.createOptions.hasDownloadHandler
         );
     }
 
@@ -520,7 +532,57 @@ public class LingXiaWebView extends WebView {
     private void setupWebViewClients() {
         setWebChromeClient(new LingXiaWebChromeClient(this));
         setWebViewClient(new LingXiaWebViewClient(this));
+        setupDownloadSupport();
         Log.d(TAG, "WebView clients setup completed");
+    }
+
+    private void setupDownloadSupport() {
+        if (!isBrowserProfile()) {
+            setDownloadListener(null);
+            return;
+        }
+        setDownloadListener(new DownloadListener() {
+            @Override
+            public void onDownloadStart(
+                    String url,
+                    String userAgent,
+                    String contentDisposition,
+                    String mimeType,
+                    long contentLength
+            ) {
+                if (url == null || url.trim().isEmpty()) {
+                    Log.w(TAG, "Ignored download callback with empty URL");
+                    return;
+                }
+                if (!hasDownloadHandler()) {
+                    Log.i(TAG, "Browser download suppressed without handler, url=" + url);
+                    return;
+                }
+
+                String cookie = null;
+                try {
+                    cookie = CookieManager.getInstance().getCookie(url);
+                } catch (Throwable e) {
+                    Log.w(TAG, "Failed to read cookie for download URL: " + url, e);
+                }
+
+                try {
+                    onDownloadRequested(
+                        getAppId() != null ? getAppId() : "",
+                        getCurrentPath() != null ? getCurrentPath() : "",
+                        getSessionId(),
+                        url,
+                        userAgent != null ? userAgent : "",
+                        contentDisposition != null ? contentDisposition : "",
+                        mimeType != null ? mimeType : "",
+                        contentLength,
+                        cookie != null ? cookie : ""
+                    );
+                } catch (Throwable t) {
+                    Log.e(TAG, "Failed to dispatch onDownloadRequested", t);
+                }
+            }
+        });
     }
 
     public void postMessageToWebView(String message) {
@@ -667,6 +729,17 @@ public class LingXiaWebView extends WebView {
     native void onPageFinished(String appId, String path, long sessionId);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
     native boolean handleNavigationPolicy(String appId, String path, long sessionId, String url);
+    native void onDownloadRequested(
+        String appId,
+        String path,
+        long sessionId,
+        String url,
+        String userAgent,
+        String contentDisposition,
+        String mimeType,
+        long contentLength,
+        String cookie
+    );
     native int handlePostMessage(String appId, String path, long sessionId, String message);
     native static void notifyWebViewReady(String appId, String path, long sessionId, Object webView);
 }

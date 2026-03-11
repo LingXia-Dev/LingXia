@@ -40,6 +40,32 @@ pub enum NewWindowPolicy {
 pub type NavigationHandler = Box<dyn Fn(&str) -> NavigationPolicy + Send + Sync>;
 pub type NewWindowHandler = Box<dyn Fn(&str) -> NewWindowPolicy + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DownloadRequest {
+    /// Final download URL reported by the platform callback.
+    pub url: String,
+    /// Request user-agent if available on this platform.
+    pub user_agent: Option<String>,
+    /// `Content-Disposition` response header if exposed by the platform.
+    pub content_disposition: Option<String>,
+    /// Response MIME type if exposed by the platform.
+    pub mime_type: Option<String>,
+    /// Response content length if known.
+    pub content_length: Option<u64>,
+    /// Platform-suggested filename (may be absent).
+    pub suggested_filename: Option<String>,
+    /// Source page URL that initiated the download when available.
+    pub source_page_url: Option<String>,
+    /// Cookie header string for `url` when available.
+    pub cookie: Option<String>,
+}
+
+/// Download callback.
+///
+/// In browser profile, registering this callback makes download requests flow through the host
+/// app callback path instead of in-WebView download UI.
+pub type DownloadHandler = Box<dyn Fn(DownloadRequest) + Send + Sync>;
+
 /// Body source for WebResourceResponse
 #[derive(Debug)]
 pub enum WebResourceBody {
