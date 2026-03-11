@@ -8,6 +8,10 @@ type PageData = {
   showMenu?: boolean;
   isPdfDownloading?: boolean;
   isOfficeDownloading?: boolean;
+  pdfDownloadPaused?: boolean;
+  pdfDownloadProgress?: number;
+  officeDownloadProgress?: number;
+  officeCached?: boolean;
 };
 
 type PageActions = {
@@ -17,7 +21,11 @@ type PageActions = {
   onOfficeFileTypeInput(event: any): void;
   toggleShowMenu(): void;
   openPdf(): void;
+  pausePdfDownload(): void;
+  resumePdfDownload(): void;
+  cancelPdfDownload(): void;
   openOffice(): void;
+  cancelOfficeDownload(): void;
 };
 
 export default function DocumentPage() {
@@ -28,7 +36,11 @@ export default function DocumentPage() {
     onOfficeFileTypeInput,
     toggleShowMenu,
     openPdf,
+    pausePdfDownload,
+    resumePdfDownload,
+    cancelPdfDownload,
     openOffice,
+    cancelOfficeDownload,
   } = useLingXia();
 
   const pdfUrl = data?.pdfUrl || '';
@@ -36,7 +48,11 @@ export default function DocumentPage() {
   const officeFileType = data?.officeFileType || '';
   const showMenu = Boolean(data?.showMenu);
   const isPdfDownloading = Boolean(data?.isPdfDownloading);
+  const pdfDownloadPaused = Boolean(data?.pdfDownloadPaused);
   const isOfficeDownloading = Boolean(data?.isOfficeDownloading);
+  const pdfDownloadProgress = Number(data?.pdfDownloadProgress || 0);
+  const officeDownloadProgress = Number(data?.officeDownloadProgress || 0);
+  const officeCached = Boolean(data?.officeCached);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -71,6 +87,7 @@ export default function DocumentPage() {
         <div className="bg-white rounded-lg shadow-sm">
           <div className="px-4 py-4 border-b border-gray-100">
             <div className="text-base text-gray-900 font-medium">PDF Document</div>
+            <div className="text-xs text-gray-500 mt-1">Path: `lx.downloadFile` (runtime managed)</div>
           </div>
 
           <div className="px-4 py-4 space-y-3">
@@ -98,6 +115,43 @@ export default function DocumentPage() {
             >
               {isPdfDownloading ? 'Downloading...' : 'Open PDF'}
             </button>
+
+            {isPdfDownloading && (
+              <div className="space-y-1">
+                <div className="flex gap-2">
+                  {!pdfDownloadPaused ? (
+                    <button
+                      onClick={pausePdfDownload}
+                      className="flex-1 rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-white"
+                    >
+                      Pause
+                    </button>
+                  ) : (
+                    <button
+                      onClick={resumePdfDownload}
+                      className="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
+                    >
+                      Resume
+                    </button>
+                  )}
+                  <button
+                    onClick={cancelPdfDownload}
+                    className="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-200"
+                    style={{ width: `${Math.max(0, Math.min(100, pdfDownloadProgress))}%` }}
+                  />
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  {Math.max(0, Math.min(100, Math.floor(pdfDownloadProgress)))}%
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -106,6 +160,7 @@ export default function DocumentPage() {
           <div className="px-4 py-4 border-b border-gray-100">
             <div className="text-base text-gray-900 font-medium">Office Document</div>
             <div className="text-xs text-gray-500 mt-1">Supports: doc, docx, xls, xlsx, ppt, pptx</div>
+            <div className="text-xs text-gray-500">Path: `fetch` stream to local file (manual flow)</div>
           </div>
 
           <div className="px-4 py-4 space-y-3">
@@ -144,8 +199,28 @@ export default function DocumentPage() {
                   : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               }`}
             >
-              {isOfficeDownloading ? 'Downloading...' : 'Open Document'}
+              {isOfficeDownloading ? 'Downloading...' : officeCached ? 'Open Cached Document' : 'Open Document'}
             </button>
+
+            {isOfficeDownloading && (
+              <div className="space-y-1">
+                <button
+                  onClick={cancelOfficeDownload}
+                  className="w-full rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white"
+                >
+                  Cancel
+                </button>
+                <div className="h-2 w-full overflow-hidden rounded bg-gray-200">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-200"
+                    style={{ width: `${Math.max(0, Math.min(100, officeDownloadProgress))}%` }}
+                  />
+                </div>
+                <div className="text-right text-xs text-gray-500">
+                  {Math.max(0, Math.min(100, Math.floor(officeDownloadProgress)))}%
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

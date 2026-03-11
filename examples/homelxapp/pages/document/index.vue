@@ -29,6 +29,7 @@
       <div class="bg-white rounded-lg shadow-sm">
         <div class="px-4 py-4 border-b border-gray-100">
           <div class="text-base text-gray-900 font-medium">PDF Document</div>
+          <div class="text-xs text-gray-500 mt-1">Path: `lx.downloadFile` (runtime managed)</div>
         </div>
 
         <div class="px-4 py-4 space-y-3">
@@ -53,6 +54,40 @@
           >
             {{ isPdfDownloading ? 'Downloading...' : 'Open PDF' }}
           </button>
+
+          <div v-if="isPdfDownloading" class="space-y-1">
+            <div class="flex gap-2">
+              <button
+                v-if="!pdfDownloadPaused"
+                @click="pausePdfDownload"
+                class="flex-1 rounded-md bg-amber-500 px-3 py-2 text-sm font-medium text-white"
+              >
+                Pause
+              </button>
+              <button
+                v-else
+                @click="resumePdfDownload"
+                class="flex-1 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white"
+              >
+                Resume
+              </button>
+              <button
+                @click="cancelPdfDownload"
+                class="flex-1 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white"
+              >
+                Cancel
+              </button>
+            </div>
+            <div class="h-2 w-full overflow-hidden rounded bg-gray-200">
+              <div
+                class="h-full bg-blue-500 transition-all duration-200"
+                :style="{ width: `${Math.max(0, Math.min(100, pdfDownloadProgress))}%` }"
+              />
+            </div>
+            <div class="text-right text-xs text-gray-500">
+              {{ Math.max(0, Math.min(100, Math.floor(pdfDownloadProgress))) }}%
+            </div>
+          </div>
         </div>
       </div>
 
@@ -61,6 +96,7 @@
         <div class="px-4 py-4 border-b border-gray-100">
           <div class="text-base text-gray-900 font-medium">Office Document</div>
           <div class="text-xs text-gray-500 mt-1">Supports: doc, docx, xls, xlsx, ppt, pptx</div>
+          <div class="text-xs text-gray-500">Path: `fetch` stream to local file (manual flow)</div>
         </div>
 
         <div class="px-4 py-4 space-y-3">
@@ -95,8 +131,26 @@
               isOfficeDownloading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
             ]"
           >
-            {{ isOfficeDownloading ? 'Downloading...' : 'Open Document' }}
+            {{ isOfficeDownloading ? 'Downloading...' : officeCached ? 'Open Cached Document' : 'Open Document' }}
           </button>
+
+          <div v-if="isOfficeDownloading" class="space-y-1">
+            <button
+              @click="cancelOfficeDownload"
+              class="w-full rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white"
+            >
+              Cancel
+            </button>
+            <div class="h-2 w-full overflow-hidden rounded bg-gray-200">
+              <div
+                class="h-full bg-blue-500 transition-all duration-200"
+                :style="{ width: `${Math.max(0, Math.min(100, officeDownloadProgress))}%` }"
+              />
+            </div>
+            <div class="text-right text-xs text-gray-500">
+              {{ Math.max(0, Math.min(100, Math.floor(officeDownloadProgress))) }}%
+            </div>
+          </div>
         </div>
       </div>
 
@@ -116,7 +170,11 @@ const {
   onOfficeFileTypeInput,
   toggleShowMenu,
   openPdf,
+  pausePdfDownload,
+  resumePdfDownload,
+  cancelPdfDownload,
   openOffice,
+  cancelOfficeDownload,
 } = useLingXia();
 
 const pdfUrl = computed(() => data?.pdfUrl || '');
@@ -124,5 +182,9 @@ const officeUrl = computed(() => data?.officeUrl || '');
 const officeFileType = computed(() => data?.officeFileType || '');
 const showMenu = computed(() => Boolean(data?.showMenu));
 const isPdfDownloading = computed(() => Boolean(data?.isPdfDownloading));
+const pdfDownloadPaused = computed(() => Boolean(data?.pdfDownloadPaused));
 const isOfficeDownloading = computed(() => Boolean(data?.isOfficeDownloading));
+const pdfDownloadProgress = computed(() => Number(data?.pdfDownloadProgress || 0));
+const officeDownloadProgress = computed(() => Number(data?.officeDownloadProgress || 0));
+const officeCached = computed(() => Boolean(data?.officeCached));
 </script>

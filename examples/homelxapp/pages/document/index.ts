@@ -12,17 +12,150 @@ function detectFileType(url) {
   return "";
 }
 
-// Helper function to generate filename from URL
-function getFilenameFromUrl(url, fileType) {
-  // Create a simple hash from URL for consistent filename
+function clampProgress(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.floor(value)));
+}
+
+function getFilenameFromUrl(url, fallbackExt) {
   let hash = 0;
   for (let i = 0; i < url.length; i++) {
-    const char = url.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = (hash << 5) - hash + url.charCodeAt(i);
+    hash |= 0;
   }
-  const hashStr = Math.abs(hash).toString(36);
-  return `doc_${hashStr}.${fileType}`;
+  const suffix = Math.abs(hash).toString(36);
+  const ext = (fallbackExt || "bin").replace(/^\./, "");
+  return `fetch_${suffix}.${ext}`;
+}
+
+function parseContentLength(response) {
+  const lengthText = response?.headers?.get?.("content-length");
+  const length = Number(lengthText);
+  return Number.isFinite(length) && length > 0 ? length : 0;
+}
+
+function resolveOfficeFetchPath(url, fileType) {
+  const fileName = getFilenameFromUrl(url, fileType);
+  return `${lx.env.USER_CACHE_PATH}/${fileName}`;
+}
+
+function startPendingProgress(onProgress) {
+  let value = 1;
+  onProgress(value);
+  const timer = setInterval(() => {
+    if (value >= 90) return;
+    value = Math.min(90, value + 2);
+    onProgress(value);
+  }, 180);
+  return () => clearInterval(timer);
+}
+
+async function downloadWithFetchToFile(url, filePath, onProgress, signal) {
+  let stopPendingProgress = startPendingProgress(onProgress);
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("Download response body is empty");
+  }
+
+  const file = await Rong.open(filePath, {
+    write: true,
+    create: true,
+    truncate: true,
+  });
+
+  let writer;
+  try {
+    writer = file.writable.getWriter();
+    const reader = response.body.getReader();
+    if (signal) {
+      signal.cancel = () => {
+        signal.canceled = true;
+        try {
+          reader.cancel();
+        } catch {}
+      };
+    }
+    const totalBytes = parseContentLength(response);
+    let downloadedBytes = 0;
+    let fallbackProgress = 0;
+
+    while (true) {
+      if (signal?.canceled) {
+        const abortError = new Error("Download canceled");
+        abortError.name = "AbortError";
+        throw abortError;
+      }
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (!value || value.byteLength === 0) {
+        continue;
+      }
+      if (stopPendingProgress) {
+        stopPendingProgress();
+        stopPendingProgress = null;
+      }
+      await writer.write(value);
+      downloadedBytes += value.byteLength;
+      if (totalBytes > 0) {
+        onProgress(clampProgress((downloadedBytes / totalBytes) * 100));
+      } else {
+        fallbackProgress = Math.min(95, fallbackProgress + 3);
+        onProgress(fallbackProgress);
+      }
+    }
+
+    await writer.close();
+    onProgress(100);
+  } catch (error) {
+    if (writer) {
+      try {
+        await writer.abort(error);
+      } catch {}
+    }
+    throw error;
+  } finally {
+    if (stopPendingProgress) {
+      stopPendingProgress();
+      stopPendingProgress = null;
+    }
+    file.close();
+  }
+}
+
+async function waitDownloadResult(task, handlers = {}) {
+  let result = null;
+
+  for await (const event of task) {
+    if (event?.kind === "progress") {
+      handlers.onProgress?.(clampProgress(event.progress * 100));
+      continue;
+    }
+    if (event?.kind === "paused") {
+      handlers.onPaused?.();
+      continue;
+    }
+    if (event?.kind === "resumed") {
+      handlers.onResumed?.();
+      continue;
+    }
+    if (event?.kind === "canceled") {
+      return null;
+    }
+    if (event?.kind === "success") {
+      result = event.result;
+      handlers.onProgress?.(100);
+    }
+  }
+
+  if (!result?.tempFilePath) {
+    throw new Error("Download finished without output file");
+  }
+  return result;
 }
 
 Page({
@@ -35,14 +168,18 @@ Page({
     showMenu: true,
     isPdfDownloading: false,
     isOfficeDownloading: false,
+    pdfDownloadPaused: false,
+    pdfDownloadProgress: 0,
+    officeDownloadProgress: 0,
+    officeCached: false,
   },
 
-  onLoad: function (options) {
-    console.log("Document page onLoad");
+  onLoad: async function (options) {
+    await this.refreshOfficeCachedState();
   },
 
-  onShow: function () {
-    console.log("Document page onShow");
+  onShow: async function () {
+    await this.refreshOfficeCachedState();
   },
 
   onPdfUrlInput: function (event) {
@@ -57,11 +194,13 @@ Page({
       officeUrl: value,
       officeFileType: detectedType || this.data.officeFileType,
     });
+    void this.refreshOfficeCachedState(value, detectedType || this.data.officeFileType);
   },
 
   onOfficeFileTypeInput: function (event) {
     const value = event?.detail?.value || "";
     this.setData({ officeFileType: value });
+    void this.refreshOfficeCachedState(this.data.officeUrl, value);
   },
 
   toggleShowMenu: function () {
@@ -82,75 +221,80 @@ Page({
       return;
     }
 
-    this.setData({ isPdfDownloading: true });
+    this.setData({ isPdfDownloading: true, pdfDownloadProgress: 0, pdfDownloadPaused: false });
 
     try {
-      const filename = getFilenameFromUrl(url, "pdf");
-      const targetPath = `${lx.env.USER_CACHE_PATH}/${filename}`;
-      const tmpPath = `${targetPath}.tmp`;
-
-      // Check if file already exists
-      let fileExists = false;
-      try {
-        const stat = await Rong.stat(targetPath);
-        if (stat) {
-          console.log("File already exists, skipping download:", targetPath);
-          fileExists = true;
-        }
-      } catch (e) {
-        // File doesn't exist, need to download
-        fileExists = false;
-      }
-
-      // Download if not exists
-      if (!fileExists) {
-        // Show downloading toast
-        lx.showToast({
-          title: "Downloading...",
-          icon: "loading",
-          duration: 0, // Don't auto-hide
-        });
-
-        // Download to temporary file
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const file = await Rong.open(tmpPath, {
-          write: true,
-          create: true,
-          truncate: true,
-        });
-
-        await response.body.pipeTo(file.writable);
-        file.close();
-
-        // Rename tmp to final file
-        await Rong.rename(tmpPath, targetPath);
-
-        console.log("Download completed:", targetPath);
-
-        // Hide downloading toast
-        lx.hideToast();
+      const task = lx.downloadFile({ url });
+      this._pdfDownloadTask = task;
+      const downloadResult = await waitDownloadResult(task, {
+        onProgress: (progress) => this.setData({ pdfDownloadProgress: progress }),
+        onPaused: () => this.setData({ pdfDownloadPaused: true }),
+        onResumed: () => this.setData({ pdfDownloadPaused: false }),
+      });
+      if (!downloadResult) {
+        return;
       }
 
       // Open document
       await lx.openDocument({
-        filePath: targetPath,
+        filePath: downloadResult.tempFilePath,
         fileType: "pdf",
         showMenu: this.data.showMenu,
       });
     } catch (error) {
       console.error("openPdf failed:", error);
-      lx.hideToast();
       lx.showToast({
         title: error?.message || "Download failed",
         icon: "none",
       });
     } finally {
-      this.setData({ isPdfDownloading: false });
+      this._pdfDownloadTask = null;
+      this.setData({ isPdfDownloading: false, pdfDownloadPaused: false });
+    }
+  },
+
+  pausePdfDownload: async function () {
+    const task = this._pdfDownloadTask;
+    if (!task || this.data.pdfDownloadPaused) {
+      return;
+    }
+    try {
+      await task.pause();
+    } catch (error) {
+      lx.showToast({
+        title: error?.message || "Pause failed",
+        icon: "none",
+      });
+    }
+  },
+
+  resumePdfDownload: async function () {
+    const task = this._pdfDownloadTask;
+    if (!task || !this.data.pdfDownloadPaused) {
+      return;
+    }
+    try {
+      await task.resume();
+    } catch (error) {
+      lx.showToast({
+        title: error?.message || "Resume failed",
+        icon: "none",
+      });
+    }
+  },
+
+  cancelPdfDownload: async function () {
+    const task = this._pdfDownloadTask;
+    if (!task) {
+      return;
+    }
+    try {
+      await task.cancel();
+    } catch (error) {
+      lx.showToast({
+        title: error?.message || "Cancel failed",
+        icon: "none",
+      });
     }
   },
 
@@ -178,69 +322,54 @@ Page({
       return;
     }
 
-    this.setData({ isOfficeDownloading: true });
+    this.setData({
+      isOfficeDownloading: true,
+      officeDownloadProgress: 0,
+    });
 
     try {
-      const filename = getFilenameFromUrl(url, fileType);
-      const targetPath = `${lx.env.USER_CACHE_PATH}/${filename}`;
-      const tmpPath = `${targetPath}.tmp`;
+      const filePath = resolveOfficeFetchPath(url, fileType);
+      const stat = await Rong.stat(filePath).catch(() => null);
+      if (stat) {
+        this.setData({ officeCached: true, officeDownloadProgress: 100 });
+        await lx.openDocument({
+          filePath,
+          fileType: fileType,
+          showMenu: this.data.showMenu,
+        });
+        return;
+      }
 
-      // Check if file already exists
-      let fileExists = false;
+      const tmpPath = `${filePath}.tmp`;
+      this._officeFetchCancelToken = { canceled: false, cancel: null };
       try {
-        const stat = await Rong.stat(targetPath);
-        if (stat) {
-          console.log("File already exists, skipping download:", targetPath);
-          fileExists = true;
-        }
-      } catch (e) {
-        // File doesn't exist, need to download
-        fileExists = false;
-      }
+        await downloadWithFetchToFile(
+          url,
+          tmpPath,
+          (progress) => this.setData({ officeDownloadProgress: progress }),
+          this._officeFetchCancelToken,
+        );
+        await Rong.rename(tmpPath, filePath);
+        this.setData({ officeCached: true });
 
-      // Download if not exists
-      if (!fileExists) {
-        // Show downloading toast
-        lx.showToast({
-          title: "Downloading...",
-          icon: "loading",
-          duration: 0, // Don't auto-hide
+        // Open document
+        await lx.openDocument({
+          filePath,
+          fileType: fileType,
+          showMenu: this.data.showMenu,
         });
-
-        // Download to temporary file
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const file = await Rong.open(tmpPath, {
-          write: true,
-          create: true,
-          truncate: true,
-        });
-
-        await response.body.pipeTo(file.writable);
-        file.close();
-
-        // Rename tmp to final file
-        await Rong.rename(tmpPath, targetPath);
-
-        console.log("Download completed:", targetPath);
-
-        // Hide downloading toast
-        lx.hideToast();
+      } finally {
+        this._officeFetchCancelToken = null;
       }
-
-      // Open document
-      await lx.openDocument({
-        filePath: targetPath,
-        fileType: fileType,
-        showMenu: this.data.showMenu,
-      });
     } catch (error) {
+      if (error?.name === "AbortError") {
+        lx.showToast({
+          title: "Download canceled",
+          icon: "none",
+        });
+        return;
+      }
       console.error("openOffice failed:", error);
-      lx.hideToast();
       lx.showToast({
         title: error?.message || "Download failed",
         icon: "none",
@@ -248,5 +377,26 @@ Page({
     } finally {
       this.setData({ isOfficeDownloading: false });
     }
+  },
+
+  cancelOfficeDownload: function () {
+    const token = this._officeFetchCancelToken;
+    if (!token) return;
+    token.canceled = true;
+    if (typeof token.cancel === "function") {
+      token.cancel();
+    }
+  },
+
+  refreshOfficeCachedState: async function (urlInput, fileTypeInput) {
+    const url = (urlInput ?? this.data.officeUrl ?? "").trim();
+    const fileType = (fileTypeInput ?? this.data.officeFileType ?? "").trim();
+    if (!url || !fileType) {
+      this.setData({ officeCached: false });
+      return;
+    }
+    const filePath = resolveOfficeFetchPath(url, fileType);
+    const stat = await Rong.stat(filePath).catch(() => null);
+    this.setData({ officeCached: Boolean(stat) });
   },
 });
