@@ -777,11 +777,11 @@ fn browser_destroy_webview(path: &str, session_id: u64) {
 
 async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: DownloadRequest) {
     let task_id = Uuid::new_v4().to_string();
-    let task = crate::download_manager::DownloadTask {
+    let task = crate::download_manager::DownloadTask::for_browser(
         request,
-        root_dir: crate::download_manager::browser_download_root(&owner.runtime.app_data_dir()),
-        fallback_user_agent: Some(rong::get_user_agent()),
-    };
+        crate::download_manager::browser_download_root(&owner.runtime.app_data_dir()),
+        Some(rong::get_user_agent()),
+    );
     let owner_appid = owner.appid.clone();
     let tab_id_for_event = tab_id.clone();
 
