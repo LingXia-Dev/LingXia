@@ -4,7 +4,7 @@ use crate::traits::app_runtime::AppRuntime;
 use jni::objects::{Global, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use jni::{Env, jni_sig, jni_str};
-use lingxia_webview::with_env;
+use lingxia_webview::platform::android::with_env;
 use std::ffi::CString;
 use std::io::{Read, Result as IoResult};
 use std::path::{Path, PathBuf};

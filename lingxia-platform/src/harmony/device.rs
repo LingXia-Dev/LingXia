@@ -340,7 +340,7 @@ impl Device for Platform {
     }
 
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("makePhoneCall", &[phone_number])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("makePhoneCall", &[phone_number])
             .map_err(|e| PlatformError::Platform(format!("Failed to make phone call: {}", e)))
     }
 }

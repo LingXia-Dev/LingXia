@@ -16,7 +16,7 @@ import { webview } from '@kit.ArkWeb';
 import { getWebViewCreateOptions, getWebViewEmbedManager } from './WebView';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
-import { onNavigationPolicy, onWebviewControllerCreated } from 'liblingxia.so';
+import { onDownloadStart, onNavigationPolicy, onWebviewControllerCreated } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -76,6 +76,22 @@ export struct LingXiaWebView {
           }
           return false;
         })
+        .onDownloadStart((event) => {
+          if (!this.isBrowserRelaxed() || !this.hasDownloadHandler()) {
+            return;
+          }
+          if (!event) {
+            return;
+          }
+          onDownloadStart(
+            this.webTag,
+            event.url ?? '',
+            event.userAgent ?? '',
+            event.contentDisposition ?? '',
+            event.mimetype ?? '',
+            event.contentLength ?? -1
+          );
+        })
         .onAppear(() => {
           hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
           if (!this.controllerAcked) {
@@ -122,6 +138,10 @@ export struct LingXiaWebView {
 
   private isBrowserRelaxed(): boolean {
     return getWebViewCreateOptions(this.webTag).profile === 'browser_relaxed';
+  }
+
+  private hasDownloadHandler(): boolean {
+    return getWebViewCreateOptions(this.webTag).hasDownloadHandler === true;
   }
 
   // ============================================================================

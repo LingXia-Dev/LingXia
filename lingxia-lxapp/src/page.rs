@@ -13,9 +13,10 @@ use base64::Engine;
 use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
+use lingxia_webview::runtime::destroy_webview;
 use lingxia_webview::{
-    LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
-    WebViewController, WebViewCreateOptions, WebViewDelegate, create_webview, destroy_webview,
+    LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
+    WebViewController, WebViewDelegate,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -196,8 +197,9 @@ impl Page {
         let appid_for_new_window = appid.clone();
         let session_id_for_new_window = lxapp.session_id();
 
-        let options = WebViewCreateOptions::strict()
-            .with_scheme("lx", move |req| {
+        let session = WebViewBuilder::strict(webtag)
+            .delegate(Arc::new(page.clone()))
+            .on_scheme("lx", move |req| {
                 let page_weak_for_lx = page_weak_for_lx.clone();
                 let appid_for_lx = appid_for_lx.clone();
                 async move {
@@ -209,14 +211,14 @@ impl Page {
                     lxapp.lingxia_handler(&page, req).into()
                 }
             })
-            .with_scheme("https", move |req| {
+            .on_scheme("https", move |req| {
                 let appid_for_https = appid_for_https.clone();
                 async move {
                     let lxapp = lxapp::get(appid_for_https);
                     lxapp.https_handler(req).into()
                 }
             })
-            .with_navigation(move |url| {
+            .on_navigation(move |url| {
                 let scheme = url.split(':').next().unwrap_or("");
                 match scheme {
                     // lx:// pages and inline content are always allowed
@@ -237,7 +239,7 @@ impl Page {
                     }
                 }
             })
-            .with_new_window(move |url| {
+            .on_new_window(move |url| {
                 let _ = runtime_for_new_window.open_url(OpenUrlRequest {
                     owner_appid: appid_for_new_window.clone(),
                     owner_session_id: session_id_for_new_window,
@@ -245,9 +247,8 @@ impl Page {
                     target: OpenUrlTarget::SelfTarget,
                 });
                 NewWindowPolicy::Cancel
-            });
-
-        let session = create_webview(webtag, options);
+            })
+            .create();
 
         // Spawn task to wait for WebView creation completion
         // Keep a strong reference to ensure page stays alive during WebView creation
@@ -260,10 +261,6 @@ impl Page {
                 Ok(webview_controller) => {
                     // First attach WebView to page
                     page_for_task.attach_webview(webview_controller.clone());
-
-                    // Then set the page as the WebView delegate
-                    // Create a new Arc to avoid potential circular references
-                    webview_controller.set_delegate(Arc::new(page_for_task.clone()));
 
                     // Call setup callback - let external code handle the rest
                     let result = setup_callback(&page_for_task).await;
@@ -502,10 +499,6 @@ impl Page {
     /// combined with registry removal.
     pub(crate) fn detach_webview(&self) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
-            if let Some(wv) = webview_guard.as_ref() {
-                // Break potential cycle by removing delegate first
-                wv.remove_delegate();
-            }
             // Drop the Arc by taking it out
             let _ = webview_guard.take();
         }
@@ -840,10 +833,6 @@ impl Drop for PageInner {
     fn drop(&mut self) {
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock() {
-            if let Some(wv) = webview.as_ref() {
-                // Break potential cycle by removing delegate first
-                wv.remove_delegate();
-            }
             if let Some(_webview_controller) = webview.take() {
                 // WebView will be automatically destroyed when controller is dropped
                 info!("WebView destroyed for page")

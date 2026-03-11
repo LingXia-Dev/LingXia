@@ -16,7 +16,7 @@ impl PopupPresenter for Platform {
         let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let app_id_jstring = env.new_string(&app_id)?;
             let app_id_obj: JObject = app_id_jstring.into();
 
@@ -44,7 +44,7 @@ impl PopupPresenter for Platform {
         let popup_class: &JClass = super::get_cached_class(super::CachedClass::LxAppPopup)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let app_id_jstring = env.new_string(app_id)?;
             let app_id_obj: JObject = app_id_jstring.into();
 

@@ -9,7 +9,7 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::signature::MethodSignature;
 use jni::strings::JNIStr;
 use jni::{Env, jni_sig, jni_str};
-use lingxia_webview::with_env;
+use lingxia_webview::platform::android::with_env;
 use std::fs;
 use std::process::Command;
 

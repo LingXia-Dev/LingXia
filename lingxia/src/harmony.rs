@@ -1,7 +1,7 @@
 use lingxia_messaging::invoke_callback;
 use lingxia_platform::harmony::camera;
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
-use lingxia_webview::{tsfn, webview_controller_created, webview_controller_destroyed};
+use lingxia_webview::platform::harmony as webview_harmony;
 use log::LevelFilter;
 use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType as LxAppUiEventType};
@@ -159,7 +159,7 @@ pub fn lxapp_init(
     );
 
     // Initialize TSFN
-    if let Err(e) = tsfn::init(callback_function) {
+    if let Err(e) = webview_harmony::tsfn::init(callback_function) {
         log::error!("Failed to initialize TSFN: {}", e);
         return None;
     }
@@ -191,7 +191,7 @@ pub fn lxapp_init(
 /// Register custom schemes (must be called before WebEngine initialization)
 #[napi]
 pub fn register_custom_schemes() -> bool {
-    if let Err(e) = lingxia_webview::register_custom_schemes() {
+    if let Err(e) = webview_harmony::register_custom_schemes() {
         log::error!("Failed to register custom schemes: {}", e);
         false
     } else {
@@ -569,7 +569,7 @@ pub fn camera_take_photo() -> bool {
 
 #[napi]
 pub fn on_webview_controller_created(webtag: String) -> bool {
-    match webview_controller_created(&webtag) {
+    match webview_harmony::webview_controller_created(&webtag) {
         Ok(_) => true,
         Err(e) => {
             log::error!(
@@ -584,13 +584,32 @@ pub fn on_webview_controller_created(webtag: String) -> bool {
 
 #[napi]
 pub fn on_webview_controller_destroyed(webtag: String) -> bool {
-    webview_controller_destroyed(&webtag);
+    webview_harmony::webview_controller_destroyed(&webtag);
     true
 }
 
 #[napi]
 pub fn on_navigation_policy(webtag: String, url: String) -> bool {
-    lingxia_webview::check_navigation_policy(&webtag, &url)
+    webview_harmony::check_navigation_policy(&webtag, &url)
+}
+
+#[napi]
+pub fn on_download_start(
+    webtag: String,
+    url: String,
+    user_agent: String,
+    content_disposition: String,
+    mime_type: String,
+    content_length: i64,
+) -> bool {
+    webview_harmony::on_download_start(
+        &webtag,
+        &url,
+        &user_agent,
+        &content_disposition,
+        &mime_type,
+        content_length,
+    )
 }
 
 #[napi]

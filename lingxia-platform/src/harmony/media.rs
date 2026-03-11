@@ -91,14 +91,17 @@ impl MediaInteraction for Platform {
 
         let safe_json = json.replace('|', "%7C");
 
-        lingxia_webview::tsfn::call_arkts("previewMedia", &[safe_json.as_str()])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("previewMedia", &[safe_json.as_str()])
             .map_err(|e| PlatformError::Platform(format!("Failed to preview media: {}", e)))
     }
 
     fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("closePreview", &[callback_id_str.as_str()])
-            .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "closePreview",
+            &[callback_id_str.as_str()],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
     }
 
     fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
@@ -146,7 +149,11 @@ impl MediaInteraction for Platform {
             PlatformError::Platform(format!("Failed to serialize chooseMedia payload: {}", e))
         })?;
 
-        lingxia_webview::tsfn::call_arkts("chooseMedia", &[payload_json.as_str()]).map_err(|e| {
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "chooseMedia",
+            &[payload_json.as_str()],
+        )
+        .map_err(|e| {
             let message = format!("Failed to start chooseMedia flow: {}", e);
             lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
             PlatformError::Platform(message)
@@ -175,11 +182,12 @@ impl MediaInteraction for Platform {
             PlatformError::Platform(format!("Failed to serialize scanCode payload: {}", e))
         })?;
 
-        lingxia_webview::tsfn::call_arkts("scanCode", &[payload_json.as_str()]).map_err(|e| {
-            let message = format!("Failed to start scanCode flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
-            PlatformError::Platform(message)
-        })
+        lingxia_webview::platform::harmony::tsfn::call_arkts("scanCode", &[payload_json.as_str()])
+            .map_err(|e| {
+                let message = format!("Failed to start scanCode flow: {}", e);
+                lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
+                PlatformError::Platform(message)
+            })
     }
 
     fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
@@ -244,7 +252,7 @@ fn save_media_resource(
     let safe_file_uri = file_uri.replace('|', "%7C");
     let media_type_str = resource_type.to_string();
     let callback_id_str = callback_id.to_string();
-    lingxia_webview::tsfn::call_arkts(
+    lingxia_webview::platform::harmony::tsfn::call_arkts(
         "saveMedia",
         &[safe_file_uri.as_str(), &media_type_str, &callback_id_str],
     )

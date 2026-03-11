@@ -19,13 +19,13 @@ mod ffi {
 impl Wifi for Platform {
     fn start_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("startWifi", &[&callback_id_str])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("startWifi", &[&callback_id_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to start WiFi: {}", e)))
     }
 
     fn stop_wifi(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("stopWifi", &[&callback_id_str])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("stopWifi", &[&callback_id_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to stop WiFi: {}", e)))
     }
 
@@ -33,7 +33,7 @@ impl Wifi for Platform {
         let callback_id_str = request.callback_id.to_string();
         let password = request.password.unwrap_or_default();
 
-        lingxia_webview::tsfn::call_arkts(
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
             "connectWifi",
             &[&callback_id_str, &request.ssid, &password],
         )
@@ -42,14 +42,17 @@ impl Wifi for Platform {
 
     fn get_wifi_list(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("getWifiList", &[&callback_id_str])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("getWifiList", &[&callback_id_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to get WiFi list: {}", e)))
     }
 
     fn get_connected_wifi(&self, request: WifiGetConnectedRequest) -> Result<(), PlatformError> {
         let callback_id_str = request.callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("getConnectedWifi", &[&callback_id_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to get connected WiFi: {}", e)))
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "getConnectedWifi",
+            &[&callback_id_str],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to get connected WiFi: {}", e)))
     }
 
     fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
@@ -68,15 +71,21 @@ impl Wifi for Platform {
 
     fn add_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("addWifiStateListener", &[&callback_id_str]).map_err(
-            |e| PlatformError::Platform(format!("Failed to add WiFi state listener: {}", e)),
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "addWifiStateListener",
+            &[&callback_id_str],
         )
+        .map_err(|e| PlatformError::Platform(format!("Failed to add WiFi state listener: {}", e)))
     }
 
     fn remove_wifi_state_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("removeWifiStateListener", &[&callback_id_str]).map_err(
-            |e| PlatformError::Platform(format!("Failed to remove WiFi state listener: {}", e)),
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "removeWifiStateListener",
+            &[&callback_id_str],
         )
+        .map_err(|e| {
+            PlatformError::Platform(format!("Failed to remove WiFi state listener: {}", e))
+        })
     }
 }

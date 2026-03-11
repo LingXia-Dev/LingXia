@@ -119,7 +119,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 
     // Only store JavaVM here. App/library classes must be cached from a Java->native call so
     // `FindClass` uses the correct classloader.
-    lingxia_webview::initialize_jni(vm);
+    lingxia_webview::platform::android::initialize_jni(vm);
 
     info!("Rust library loaded successfully");
     jni::sys::JNI_VERSION_1_6
@@ -218,7 +218,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
         }
         let session = Some(session_id as u64);
         let webtag = lingxia_webview::WebTag::new(&appid, &path, session);
-        if let Some(webview) = lingxia_webview::find_webview(&webtag) {
+        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
             // Get direct access to the WebView and create a new local reference to the Java WebView object
             match env.new_local_ref(webview.get_java_webview()) {
                 Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),

@@ -40,7 +40,8 @@ pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
 use crate::lifecycle::AppServiceEvent;
-use lingxia_webview::{WebTag, destroy_webview};
+use lingxia_webview::WebTag;
+use lingxia_webview::runtime::destroy_webview;
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
@@ -1703,9 +1704,6 @@ pub fn init(runtime: Platform) -> Option<String> {
 
         error!("RUST PANIC: {} at {}", message, location);
     }));
-
-    // Initialize WebView manager
-    lingxia_webview::init_webview_manager();
 
     // Register built-in Host API set. This ensures view->host calls work regardless of
     // which logic extensions are loaded.

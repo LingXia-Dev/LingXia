@@ -9,7 +9,7 @@ impl UIUpdate for Platform {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,
@@ -37,7 +37,7 @@ impl UIUpdate for Platform {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,
@@ -65,7 +65,7 @@ impl UIUpdate for Platform {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let appid_jstring = env.new_string(&appid)?;
             let result = env.call_static_method(
                 lxapp_class,

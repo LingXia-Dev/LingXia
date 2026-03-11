@@ -410,6 +410,23 @@ declare module 'liblingxia.so' {
   export function onWebviewControllerDestroyed(webtag: string): boolean;
 
   /**
+   * Ask native layer whether current navigation should be intercepted.
+   */
+  export function onNavigationPolicy(webtag: string, url: string): boolean;
+
+  /**
+   * Forward Web download-start event to native layer.
+   */
+  export function onDownloadStart(
+    webtag: string,
+    url: string,
+    userAgent: string,
+    contentDisposition: string,
+    mimeType: string,
+    contentLength: number
+  ): boolean;
+
+  /**
    * Register user extensions (cloud provider, JS extensions, etc.)
    * Must be called before lxappInit()
    */

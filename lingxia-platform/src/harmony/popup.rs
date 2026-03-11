@@ -29,12 +29,12 @@ impl PopupPresenter for Platform {
             position,
         ];
 
-        lingxia_webview::tsfn::call_arkts("showPopup", &args)
+        lingxia_webview::platform::harmony::tsfn::call_arkts("showPopup", &args)
             .map_err(|e| PlatformError::Platform(format!("Failed to show popup: {}", e)))
     }
 
     fn hide_popup(&self, app_id: &str) -> Result<(), PlatformError> {
-        lingxia_webview::tsfn::call_arkts("hidePopup", &[app_id])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("hidePopup", &[app_id])
             .map_err(|e| PlatformError::Platform(format!("Failed to hide popup: {}", e)))
     }
 }

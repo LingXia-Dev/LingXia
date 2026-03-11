@@ -14,7 +14,7 @@ impl Location for Platform {
             let location_class: &jni::objects::JClass =
                 super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
-            lingxia_webview::with_env(|env| {
+            lingxia_webview::platform::android::with_env(|env| {
                 let result = env.call_static_method(
                     location_class,
                     jni_str!("isLocationEnabled"),
@@ -41,7 +41,7 @@ impl Location for Platform {
             let location_class: &jni::objects::JClass =
                 super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
-            lingxia_webview::with_env(|env| {
+            lingxia_webview::platform::android::with_env(|env| {
                 // Pass configuration parameters to Android implementation
                 env.call_static_method(
                     location_class,

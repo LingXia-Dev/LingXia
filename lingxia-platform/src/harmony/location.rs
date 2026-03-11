@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use crate::error::PlatformError;
 use crate::traits::location::Location;
 use lingxia_messaging::{CallbackResult, invoke_callback, register_handler, remove_callback};
-use lingxia_webview::tsfn;
+use lingxia_webview::platform::harmony::tsfn;
 
 use super::Platform;
 

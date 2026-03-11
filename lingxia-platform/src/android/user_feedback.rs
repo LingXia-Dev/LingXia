@@ -3,7 +3,7 @@ use crate::error::PlatformError;
 use crate::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
-use lingxia_webview::with_env;
+use lingxia_webview::platform::android::with_env;
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {

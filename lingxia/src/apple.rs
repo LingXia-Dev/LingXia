@@ -373,7 +373,10 @@ pub fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> boo
     }
     #[cfg(target_os = "macos")]
     {
-        lingxia_webview::apple::toggle_webview_devtools_by_swift_ptr(webview_ptr, detached)
+        lingxia_webview::platform::apple::toggle_webview_devtools_by_swift_ptr(
+            webview_ptr,
+            detached,
+        )
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -419,7 +422,7 @@ pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
     // Create WebTag and use lingxia-webview's find_webview function
     let session = Some(session_id);
     let webtag = lingxia_webview::WebTag::new(appid, path, session);
-    if let Some(webview) = lingxia_webview::find_webview(&webtag) {
+    if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
         // WebView exists, return its pointer
         webview.get_swift_webview_ptr()
     } else {

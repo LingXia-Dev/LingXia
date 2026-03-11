@@ -16,22 +16,26 @@ const TAG = 'LingXia.WebView';
 
 export interface EffectiveWebViewCreateOptions {
   profile: string;
+  hasDownloadHandler: boolean;
 }
 
 interface RawOptionsToken {
   profile?: string;
+  has_download_handler?: boolean;
 }
 
 const PROFILE_STRICT_DEFAULT = 'strict_default';
 const PROFILE_BROWSER_RELAXED = 'browser_relaxed';
 
 const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
-  profile: PROFILE_STRICT_DEFAULT
+  profile: PROFILE_STRICT_DEFAULT,
+  hasDownloadHandler: false
 };
 
 function strictDefaultOptions(): EffectiveWebViewCreateOptions {
   return {
-    profile: STRICT_DEFAULT_OPTIONS.profile
+    profile: STRICT_DEFAULT_OPTIONS.profile,
+    hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler
   };
 }
 
@@ -77,6 +81,8 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
     }
   }
 
+  normalized.hasDownloadHandler = data.has_download_handler === true;
+
   return normalized;
 }
 
@@ -96,7 +102,7 @@ function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOption
 }
 
 function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreateOptions): boolean {
-  return a.profile === b.profile;
+  return a.profile === b.profile && a.hasDownloadHandler === b.hasDownloadHandler;
 }
 
 /**

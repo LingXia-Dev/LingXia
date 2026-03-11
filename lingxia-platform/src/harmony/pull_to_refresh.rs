@@ -1,6 +1,6 @@
 use crate::error::PlatformError;
 use crate::traits::pull_to_refresh::PullToRefresh;
-use lingxia_webview::tsfn;
+use lingxia_webview::platform::harmony::tsfn;
 
 use super::Platform;
 

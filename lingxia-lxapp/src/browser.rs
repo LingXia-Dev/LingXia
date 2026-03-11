@@ -1,14 +1,16 @@
-use crate::{LxApp, LxAppError};
+use crate::{LxApp, LxAppError, publish_app_event};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
+use lingxia_webview::runtime::{
+    destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
+};
 use lingxia_webview::{
-    LoadDataRequest, NewWindowPolicy, WebTag, WebView, WebViewController, WebViewCreateOptions,
-    WebViewSession, create_webview, destroy_webview as destroy_managed_webview,
-    find_webview as find_managed_webview,
+    DownloadRequest, LoadDataRequest, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
+    WebViewController, WebViewSession,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::Instant;
@@ -535,6 +537,35 @@ fn next_browser_create_token() -> u64 {
     BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
 }
 
+fn map_download_config_error(err: crate::download_manager::DownloadConfigError) -> LxAppError {
+    match err {
+        crate::download_manager::DownloadConfigError::InvalidParameter(msg) => {
+            LxAppError::InvalidParameter(msg)
+        }
+        crate::download_manager::DownloadConfigError::Runtime(msg) => LxAppError::Runtime(msg),
+    }
+}
+
+pub fn set_browser_download_dir(path: impl Into<PathBuf>) -> Result<(), LxAppError> {
+    crate::download_manager::set_download_root_override(path).map_err(map_download_config_error)
+}
+
+pub fn reset_browser_download_dir() -> Result<(), LxAppError> {
+    crate::download_manager::clear_download_root_override().map_err(map_download_config_error)
+}
+
+pub fn browser_download_dir() -> Option<PathBuf> {
+    crate::download_manager::download_root_override()
+}
+
+fn publish_browser_download_event(owner_appid: &str, event_name: &str, payload: serde_json::Value) {
+    let payload_str = Some(payload.to_string());
+    let _ = publish_app_event(BUILTIN_BROWSER_APPID, event_name, payload_str.clone());
+    if owner_appid != BUILTIN_BROWSER_APPID {
+        let _ = publish_app_event(owner_appid, event_name, payload_str);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
@@ -551,13 +582,14 @@ fn browser_create_webview(
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
     let tab_id_for_new_window = tab_id.to_string();
+    let tab_id_for_download = tab_id.to_string();
     let owner_for_new_window = lock_state()
         .tabs
         .get(tab_id)
         .map(|s| (s.source_appid.clone(), s.session_id));
-    let session = create_webview(
-        webtag,
-        WebViewCreateOptions::browser().with_new_window(move |url| {
+    let owner_for_download = owner_for_new_window.clone();
+    let session = WebViewBuilder::browser(webtag)
+        .on_new_window(move |url| {
             if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
                 let normalized = normalize_browser_target_url(url);
                 match resolve_owner_lxapp(owner_appid, *owner_session_id) {
@@ -580,8 +612,32 @@ fn browser_create_webview(
                 );
             }
             NewWindowPolicy::Cancel
-        }),
-    );
+        })
+        .on_download(move |request| {
+            let Some((owner_appid, owner_session_id)) = owner_for_download.as_ref() else {
+                crate::warn!(
+                    "[InternalBrowser] download missing owner mapping for tab_id={}",
+                    tab_id_for_download
+                );
+                return;
+            };
+
+            let owner = match resolve_owner_lxapp(owner_appid, *owner_session_id) {
+                Ok(owner) => owner,
+                Err(e) => {
+                    crate::warn!("[InternalBrowser] download resolve owner failed: {}", e);
+                    return;
+                }
+            };
+
+            let tab_id = tab_id_for_download.clone();
+            if let Err(e) = rong::bg::spawn(async move {
+                browser_download_resource(owner, tab_id, request).await;
+            }) {
+                crate::warn!("[InternalBrowser] spawn download task failed: {}", e);
+            }
+        })
+        .create();
     let path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
 
@@ -715,13 +771,37 @@ fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result<(), LxAppE
 
 fn browser_destroy_webview(path: &str, session_id: u64) {
     let webtag = browser_webtag(path, session_id);
-    // Follow the same cleanup pattern as normal lxapp pages:
-    // 1. Remove delegate to break callback links before destruction
-    // 2. Remove from global registry (triggers platform-specific cleanup on Drop)
-    if let Some(webview) = find_managed_webview(&webtag) {
-        webview.remove_delegate();
-    }
+    // Remove from global registry (triggers platform-specific cleanup on Drop).
     destroy_managed_webview(&webtag);
+}
+
+async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: DownloadRequest) {
+    let task_id = Uuid::new_v4().to_string();
+    let task = crate::download_manager::DownloadTask {
+        request,
+        root_dir: crate::download_manager::browser_download_root(&owner.runtime.app_data_dir()),
+        fallback_user_agent: Some(rong::get_user_agent()),
+    };
+    let owner_appid = owner.appid.clone();
+    let tab_id_for_event = tab_id.clone();
+
+    let result = crate::download_manager::run_browser_download_task(
+        task,
+        &task_id,
+        &tab_id_for_event,
+        |event_name, payload| {
+            publish_browser_download_event(&owner_appid, event_name, payload);
+        },
+    )
+    .await;
+    if let Err(err) = result {
+        crate::warn!(
+            "[InternalBrowser] download task failed tab_id={} url={} reason={}",
+            tab_id,
+            err.url,
+            err.error
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

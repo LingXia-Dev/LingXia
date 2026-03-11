@@ -542,13 +542,16 @@ impl AppRuntime for Platform {
         session_id: u64,
     ) -> Result<(), PlatformError> {
         let session = session_id.to_string();
-        lingxia_webview::tsfn::call_arkts("openLxApp", &[&appid, &path, &session])
-            .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "openLxApp",
+            &[&appid, &path, &session],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to show lxapp: {}", e)))
     }
 
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
         let session = session_id.to_string();
-        lingxia_webview::tsfn::call_arkts("closeLxApp", &[&appid, &session])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("closeLxApp", &[&appid, &session])
             .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
     }
 
@@ -559,13 +562,16 @@ impl AppRuntime for Platform {
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let anim_type_int = animation_type as i32;
-        lingxia_webview::tsfn::call_arkts("navigate", &[&appid, &path, &anim_type_int.to_string()])
-            .map_err(|_| {
-                PlatformError::Platform(format!(
-                    "Failed to navigate: appid={}, path={}, animation_type={:?}",
-                    appid, path, animation_type
-                ))
-            })
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "navigate",
+            &[&appid, &path, &anim_type_int.to_string()],
+        )
+        .map_err(|_| {
+            PlatformError::Platform(format!(
+                "Failed to navigate: appid={}, path={}, animation_type={:?}",
+                appid, path, animation_type
+            ))
+        })
     }
 
     fn open_url(
@@ -577,13 +583,16 @@ impl AppRuntime for Platform {
         } else {
             "external"
         };
-        lingxia_webview::tsfn::call_arkts("launchWithUrl", &[&req.url, target_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "launchWithUrl",
+            &[&req.url, target_str],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }
 
     fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
         let callback_id_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("getCapsuleRect", &[&callback_id_str])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("getCapsuleRect", &[&callback_id_str])
             .map_err(|e| PlatformError::Platform(format!("Failed to get capsule rect: {}", e)))
     }
 }

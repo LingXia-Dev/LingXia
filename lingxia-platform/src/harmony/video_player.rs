@@ -190,10 +190,14 @@ struct InfoCallbackData {
 
 fn notify_arkts(component_id: &str, event: &str, payload: Option<&str>) {
     let result = match payload {
-        Some(payload) => {
-            lingxia_webview::tsfn::call_arkts("videoPlayerEvent", &[component_id, event, payload])
-        }
-        None => lingxia_webview::tsfn::call_arkts("videoPlayerEvent", &[component_id, event]),
+        Some(payload) => lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "videoPlayerEvent",
+            &[component_id, event, payload],
+        ),
+        None => lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "videoPlayerEvent",
+            &[component_id, event],
+        ),
     };
 
     if let Err(e) = result {
@@ -3884,8 +3888,11 @@ impl VideoPlayerManager for Platform {
     ) -> Result<(), PlatformError> {
         store_video_callback_id(component_id, callback_id);
         let callback_str = callback_id.to_string();
-        lingxia_webview::tsfn::call_arkts("setVideoPlayerCallback", &[component_id, &callback_str])
-            .map_err(|e| PlatformError::Platform(format!("Failed to set video callback: {}", e)))?;
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "setVideoPlayerCallback",
+            &[component_id, &callback_str],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to set video callback: {}", e)))?;
         Ok(())
     }
 }

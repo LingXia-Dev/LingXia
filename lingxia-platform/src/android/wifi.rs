@@ -18,7 +18,7 @@ fn call_wifi_method(method_name: &str, callback_id: u64) -> Result<(), PlatformE
     let wifi_class = get_wifi_class()?;
     let method = JNIString::new(method_name);
 
-    lingxia_webview::with_env(|env| {
+    lingxia_webview::platform::android::with_env(|env| {
         env.call_static_method(
             wifi_class,
             &method,
@@ -45,7 +45,7 @@ impl Wifi for Platform {
     fn connect_wifi(&self, request: WifiConnectRequest) -> Result<(), PlatformError> {
         let wifi_class = get_wifi_class()?;
 
-        lingxia_webview::with_env(|env| -> Result<(), PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
             let ssid_jstring = env.new_string(&request.ssid).map_err(|e| {
                 PlatformError::Platform(format!("Failed to create SSID string: {}", e))
             })?;
@@ -82,7 +82,7 @@ impl Wifi for Platform {
     fn is_wifi_enabled(&self) -> Result<bool, PlatformError> {
         let wifi_class = get_wifi_class()?;
 
-        lingxia_webview::with_env(|env| -> Result<bool, PlatformError> {
+        lingxia_webview::platform::android::with_env(|env| -> Result<bool, PlatformError> {
             let result = env
                 .call_static_method(wifi_class, jni_str!("isWifiEnabled"), jni_sig!("()Z"), &[])
                 .map_err(|e| {

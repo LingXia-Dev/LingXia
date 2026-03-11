@@ -4,6 +4,7 @@ mod archive;
 pub mod browser;
 mod cache;
 mod delegate;
+pub mod download_manager;
 mod error;
 mod executor;
 pub(crate) mod host;
@@ -31,10 +32,12 @@ pub use appservice::event_bus::{
     unregister_app_handler, unregister_page_handler,
 };
 pub use browser::{
-    BUILTIN_BROWSER_APPID, browser_owner_appid_for_tab_id, browser_owner_session_id_for_tab_id,
-    browser_tab_exists, browser_tab_path_for_id, close_browser_tab, close_internal_browser_tab,
-    generate_browser_startup_html, handle_browser_address_input, handle_browser_address_input_json,
-    handle_browser_navigation_policy_json, open_internal_browser_tab, resolve_owner_lxapp,
+    BUILTIN_BROWSER_APPID, browser_download_dir, browser_owner_appid_for_tab_id,
+    browser_owner_session_id_for_tab_id, browser_tab_exists, browser_tab_path_for_id,
+    close_browser_tab, close_internal_browser_tab, generate_browser_startup_html,
+    handle_browser_address_input, handle_browser_address_input_json,
+    handle_browser_navigation_policy_json, open_internal_browser_tab, reset_browser_download_dir,
+    resolve_owner_lxapp, set_browser_download_dir,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, UiEventType};

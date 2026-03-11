@@ -3,7 +3,7 @@ use crate::error::PlatformError;
 use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
 use jni::objects::{JObject, JString, JValue};
 use jni::{jni_sig, jni_str};
-use lingxia_webview::with_env;
+use lingxia_webview::platform::android::with_env;
 use std::error::Error;
 
 impl DocumentInteraction for Platform {

@@ -11,7 +11,7 @@ impl UserFeedback for Platform {
         let mask_str = options.mask.to_string();
 
         // Call ArkTS showToast function via TSFN
-        lingxia_webview::tsfn::call_arkts(
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
             "showToast",
             &[
                 &options.title,
@@ -27,7 +27,7 @@ impl UserFeedback for Platform {
 
     fn hide_toast(&self) -> Result<(), PlatformError> {
         // Call ArkTS hideToast function via TSFN
-        lingxia_webview::tsfn::call_arkts("hideToast", &[])
+        lingxia_webview::platform::harmony::tsfn::call_arkts("hideToast", &[])
             .map_err(|e| PlatformError::Platform(format!("Failed to hide toast: {}", e)))
     }
 
@@ -42,7 +42,7 @@ impl UserFeedback for Platform {
         let callback_id_str = callback_id.to_string();
 
         // Call ArkTS showModal function via TSFN with individual parameters
-        lingxia_webview::tsfn::call_arkts(
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
             "showModal",
             &[
                 title,
@@ -71,7 +71,7 @@ impl UserFeedback for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to serialize options: {}", e)))?;
 
         // Call ArkTS showActionSheet function via TSFN with individual parameters
-        lingxia_webview::tsfn::call_arkts(
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
             "showActionSheet",
             &[
                 &options_json,

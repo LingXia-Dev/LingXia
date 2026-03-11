@@ -1,6 +1,6 @@
 use crate::error::PlatformError;
 use crate::traits::network::Network;
-use lingxia_webview::tsfn::call_arkts;
+use lingxia_webview::platform::harmony::tsfn::call_arkts;
 
 use super::Platform;
 
