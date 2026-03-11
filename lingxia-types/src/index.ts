@@ -9,7 +9,7 @@ export * from './device';
 export * from './display';
 export * from './input';
 export * from './storage';
-export * from './document';
+export * from './file';
 export * from './location';
 export * from './navigator';
 export * from './system';
@@ -46,7 +46,13 @@ import type {
   Storage,
 } from './storage';
 
-import type { OpenDocumentOptions } from './document';
+import type {
+  OpenDocumentOptions,
+  ChooseDirectoryOptions,
+  ChooseDirectoryResult,
+  ChooseFileOptions,
+  ChooseFileResult,
+} from './file';
 
 import type {
   DeviceOrientation,
@@ -215,6 +221,11 @@ export interface Lx {
   stopPullDownRefresh(): void;
 
   getCapsuleRect(): Promise<CapsuleRect>;
+
+  /** Desktop only. Currently supported on macOS. Windows is planned. */
+  chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
+  /** Desktop only. Currently supported on macOS. Windows is planned. */
+  chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
 
   onKeyDown(callback: KeyEventCallback): void;
   offKeyDown(callback?: KeyEventCallback): void;

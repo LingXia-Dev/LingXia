@@ -41,10 +41,10 @@
       "import": "./dist/storage/index.js",
       "require": "./dist/storage/index.js"
     },
-    "./document": {
-      "types": "./dist/document/index.d.ts",
-      "import": "./dist/document/index.js",
-      "require": "./dist/document/index.js"
+    "./file": {
+      "types": "./dist/file/index.d.ts",
+      "import": "./dist/file/index.js",
+      "require": "./dist/file/index.js"
     },
     "./location": {
       "types": "./dist/location/index.d.ts",
