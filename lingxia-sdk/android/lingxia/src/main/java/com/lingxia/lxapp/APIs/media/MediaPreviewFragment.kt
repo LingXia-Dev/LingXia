@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Typeface
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -579,6 +580,11 @@ private class PreviewPagerAdapter(
         private var currentMediaPlayer: LxMediaPlayer? = null
         private var boundItem: PreviewItem? = null
         private var loopVideoPlayback: Boolean = false
+        private var videoPosterView: ImageView? = null
+        private var gatePlaybackOnPosterReady: Boolean = false
+        private var posterReadyForPlayback: Boolean = true
+        private var pendingPlayUntilPosterReady: Boolean = false
+        private var posterLoadGeneration: Long = 0L
 
         fun bind(item: PreviewItem, loopVideoPlayback: Boolean) {
             reset()
@@ -586,7 +592,7 @@ private class PreviewPagerAdapter(
             boundItem = item
             this.loopVideoPlayback = loopVideoPlayback
             when (item.mediaType) {
-                MediaPreviewType.VIDEO -> bindVideoPlaceholder(item)
+                MediaPreviewType.VIDEO -> bindVideoPlaceholder(item, preparePoster = true)
                 MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> bindImage(item)
             }
         }
@@ -601,6 +607,11 @@ private class PreviewPagerAdapter(
             currentMediaPlayer?.detach()
             currentMediaPlayer = null
             boundItem = null
+            videoPosterView = null
+            gatePlaybackOnPosterReady = false
+            posterReadyForPlayback = true
+            pendingPlayUntilPosterReady = false
+            posterLoadGeneration += 1L
             clearImageReferences(container)
             container.removeAllViews()
         }
@@ -637,23 +648,81 @@ private class PreviewPagerAdapter(
             }
         }
 
-        private fun bindVideoPlaceholder(item: PreviewItem) {
+        private fun bindVideoPlaceholder(item: PreviewItem, preparePoster: Boolean) {
+            currentLoader?.cancel(true)
+            currentLoader = null
+            val generation = posterLoadGeneration + 1L
+            posterLoadGeneration = generation
+
             val context = container.context
             val mediaUri = item.uri
 
+            val posterView = ImageView(context).apply {
+                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+                setBackgroundColor(Color.BLACK)
+                scaleType = posterScaleType(item.objectFit)
+            }
+            videoPosterView = posterView
+            container.addView(
+                posterView,
+                FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            )
+
+            gatePlaybackOnPosterReady = false
+            posterReadyForPlayback = true
+            pendingPlayUntilPosterReady = false
+
             if (mediaUri == Uri.EMPTY) {
-                showVideoError(context)
+                posterView.setImageResource(android.R.drawable.ic_dialog_alert)
+                posterView.scaleType = ImageView.ScaleType.CENTER
                 return
             }
 
-            // Keep non-visible pages lightweight. Player is created only when this page becomes visible.
-            container.addView(
-                View(context).apply {
-                    layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                    setBackgroundColor(Color.BLACK)
-                },
-                FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-            )
+            if (!preparePoster) {
+                return
+            }
+
+            val coverUri = item.coverUri
+            if (coverUri != null && coverUri != Uri.EMPTY) {
+                currentLoader = if (isLocalUri(coverUri)) {
+                    ImageLoader.loadLocal(context, coverUri, posterView, null)
+                } else {
+                    ImageLoader.loadRemote(coverUri.toString(), posterView, null)
+                }
+                return
+            }
+
+            if (isLocalUri(mediaUri)) {
+                gatePlaybackOnPosterReady = true
+                posterReadyForPlayback = false
+                currentLoader = ImageLoader.loadVideoFirstFrame(
+                    context = context,
+                    uri = mediaUri,
+                    target = posterView,
+                    onComplete = { onVideoPosterReady(generation) }
+                )
+            }
+        }
+
+        private fun posterScaleType(objectFit: LxMediaObjectFit?): ImageView.ScaleType {
+            return when (objectFit ?: LxMediaObjectFit.CONTAIN) {
+                LxMediaObjectFit.COVER -> ImageView.ScaleType.CENTER_CROP
+                LxMediaObjectFit.FILL -> ImageView.ScaleType.FIT_XY
+                LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> ImageView.ScaleType.FIT_CENTER
+            }
+        }
+
+        private fun onVideoPosterReady(generation: Long) {
+            if (generation != posterLoadGeneration) return
+            posterReadyForPlayback = true
+            if (pendingPlayUntilPosterReady) {
+                pendingPlayUntilPosterReady = false
+                currentMediaPlayer?.play()
+            }
+        }
+
+        private fun hideVideoPoster() {
+            videoPosterView?.visibility = View.GONE
         }
 
         private fun ensureVideoPlayer(item: PreviewItem) {
@@ -667,13 +736,14 @@ private class PreviewPagerAdapter(
                 return
             }
 
-            currentLoader?.cancel(true)
-            currentLoader = null
-
             // Create LxMediaPlayer for video playback
             val mediaPlayer = LxMediaPlayer(
                 context,
-                eventSink = { /* events ignored in preview */ },
+                eventSink = { payload ->
+                    if (payload["event"] == "playing") {
+                        container.post { hideVideoPoster() }
+                    }
+                },
                 typedEventSink = { event ->
                     when (event) {
                         is LxMediaEvent.Ended -> onVideoTerminal("ended")
@@ -684,6 +754,7 @@ private class PreviewPagerAdapter(
             )
             mediaPlayer.setShowCloseButton(true)
             mediaPlayer.setShowFullscreenButton(false)
+            mediaPlayer.setShowLoadingIndicator(false)
             mediaPlayer.setSuppressAutoShowControls(true)  // Prevent auto-showing controls in preview mode
             mediaPlayer.setCloseRequestListener {
                 onDismiss()
@@ -701,12 +772,13 @@ private class PreviewPagerAdapter(
             )
             mediaPlayer.update(config)
 
-            // Add player view to container
-            container.removeAllViews()
+            // Keep poster view on top until player starts rendering.
             container.addView(
                 mediaPlayer.view,
+                0,
                 FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             )
+            videoPosterView?.bringToFront()
 
             currentMediaPlayer = mediaPlayer
         }
@@ -737,20 +809,27 @@ private class PreviewPagerAdapter(
             val item = boundItem
             if (item?.mediaType == MediaPreviewType.VIDEO) {
                 ensureVideoPlayer(item)
-                currentMediaPlayer?.play()
+                if (gatePlaybackOnPosterReady && !posterReadyForPlayback) {
+                    pendingPlayUntilPosterReady = true
+                } else {
+                    pendingPlayUntilPosterReady = false
+                    currentMediaPlayer?.play()
+                }
             }
         }
 
         fun onHidden() {
             val item = boundItem
             if (item?.mediaType == MediaPreviewType.VIDEO) {
+                currentLoader?.cancel(true)
+                currentLoader = null
                 currentMediaPlayer?.pause()
                 currentMediaPlayer?.seek(0.0)
                 currentMediaPlayer?.exitFullscreen()
                 currentMediaPlayer?.detach()
                 currentMediaPlayer = null
                 container.removeAllViews()
-                bindVideoPlaceholder(item)
+                bindVideoPlaceholder(item, preparePoster = false)
             }
         }
     }
@@ -763,7 +842,12 @@ private class PreviewPagerAdapter(
             Thread(runnable, "LingXiaPreviewImage").apply { isDaemon = true }
         }
 
-        fun loadRemote(url: String, target: ImageView, progressBar: ProgressBar?): Future<*> {
+        fun loadRemote(
+            url: String,
+            target: ImageView,
+            progressBar: ProgressBar?,
+            onComplete: (() -> Unit)? = null
+        ): Future<*> {
             val imageRef = WeakReference(target)
             val progressRef = progressBar?.let { WeakReference(it) }
             val metrics = target.context.resources.displayMetrics
@@ -782,6 +866,7 @@ private class PreviewPagerAdapter(
                             } else {
                                 imageView.setImageResource(android.R.drawable.ic_dialog_alert)
                             }
+                            onComplete?.invoke()
                         }
                     }
                 } catch (e: Exception) {
@@ -789,6 +874,7 @@ private class PreviewPagerAdapter(
                     imageView?.post {
                         progressRef?.get()?.visibility = View.GONE
                         imageView.setImageResource(android.R.drawable.ic_dialog_alert)
+                        onComplete?.invoke()
                     }
                 }
             }
@@ -798,7 +884,8 @@ private class PreviewPagerAdapter(
             context: Context,
             uri: Uri,
             target: ImageView,
-            progressBar: ProgressBar?
+            progressBar: ProgressBar?,
+            onComplete: (() -> Unit)? = null
         ): Future<*> {
             val appContext = context.applicationContext
             val imageRef = WeakReference(target)
@@ -816,7 +903,86 @@ private class PreviewPagerAdapter(
                     } else {
                         imageView.setImageResource(android.R.drawable.ic_dialog_alert)
                     }
+                    onComplete?.invoke()
                 }
+            }
+        }
+
+        fun loadVideoFirstFrame(
+            context: Context,
+            uri: Uri,
+            target: ImageView,
+            onComplete: (() -> Unit)? = null
+        ): Future<*> {
+            val appContext = context.applicationContext
+            val imageRef = WeakReference(target)
+            return executor.submit {
+                val imageView = imageRef.get()
+                val metrics = imageView?.context?.resources?.displayMetrics
+                val targetW = metrics?.widthPixels ?: 1080
+                val targetH = metrics?.heightPixels ?: 1920
+                val bitmap = decodeLocalVideoFirstFrame(appContext, uri, targetW, targetH)
+                imageView?.post {
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    }
+                    onComplete?.invoke()
+                }
+            }
+        }
+
+        private fun decodeLocalVideoFirstFrame(
+            context: Context,
+            uri: Uri,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Bitmap? {
+            val retriever = MediaMetadataRetriever()
+            return try {
+                when {
+                    uri.scheme.isNullOrEmpty() || uri.scheme.equals("file", true) -> {
+                        val path = uri.path ?: return null
+                        retriever.setDataSource(path)
+                    }
+                    uri.scheme.equals("content", true) -> {
+                        retriever.setDataSource(context, uri)
+                    }
+                    else -> return null
+                }
+                val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: retriever.getFrameAtTime(-1L)
+                    ?: return null
+                downscaleBitmapIfNeeded(frame, targetWidth, targetHeight)
+            } catch (_: Exception) {
+                null
+            } finally {
+                try {
+                    retriever.release()
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        private fun downscaleBitmapIfNeeded(
+            bitmap: Bitmap,
+            targetWidth: Int,
+            targetHeight: Int
+        ): Bitmap {
+            val maxEdge = max(targetWidth, targetHeight).coerceAtLeast(720)
+            val longest = max(bitmap.width, bitmap.height)
+            if (longest <= maxEdge) return bitmap
+
+            val scale = maxEdge.toFloat() / longest.toFloat()
+            val scaledWidth = max(1, (bitmap.width * scale).toInt())
+            val scaledHeight = max(1, (bitmap.height * scale).toInt())
+            return try {
+                Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true).also { scaled ->
+                    if (scaled != bitmap) {
+                        bitmap.recycle()
+                    }
+                }
+            } catch (_: Exception) {
+                bitmap
             }
         }
 

@@ -221,6 +221,7 @@ class LxMediaPlayer(
     private var defaultBackendInitialized = false
     // Once current source has rendered a frame, do not show poster again for that same source.
     private var hasEverRenderedFrame = false
+    private var loadingIndicatorEnabled = true
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -504,6 +505,19 @@ class LxMediaPlayer(
         applySurfaceVisibility(endedFullscreen)
     }
 
+    private fun showLoadingIndicator() {
+        if (!loadingIndicatorEnabled) {
+            loadingIndicator?.visibility = View.GONE
+            return
+        }
+        loadingIndicator?.visibility = View.VISIBLE
+        loadingIndicator?.bringToFront()
+    }
+
+    private fun hideLoadingIndicator() {
+        loadingIndicator?.visibility = View.GONE
+    }
+
     fun handle(command: LxMediaCommand) {
         when (command) {
             is LxMediaCommand.Play -> play()
@@ -682,6 +696,13 @@ class LxMediaPlayer(
 
     fun setSuppressAutoShowControls(suppress: Boolean) {
         controlsOverlay?.setSuppressAutoShow(suppress)
+    }
+
+    fun setShowLoadingIndicator(show: Boolean) {
+        loadingIndicatorEnabled = show
+        if (!show) {
+            hideLoadingIndicator()
+        }
     }
 
     fun setCloseRequestListener(listener: (() -> Unit)?) {
@@ -1385,7 +1406,7 @@ class LxMediaPlayer(
         hasEverRenderedFrame = false
         hasEnded = false
         updatePosterVisibility()
-        loadingIndicator?.visibility = View.VISIBLE
+        showLoadingIndicator()
 
         surfaceHost?.setActiveBackend(BackendKind.URL)
         playerCore?.setSurfaceToken(null)
@@ -1791,15 +1812,14 @@ class LxMediaPlayer(
             is CorePlayerEvent.Waiting -> {
                 isBufferingForUi = !isPausedByUser
                 if (!isPausedByUser) {
-                    loadingIndicator?.visibility = View.VISIBLE
-                    loadingIndicator?.bringToFront()
+                    showLoadingIndicator()
                 }
                 controlsOverlay?.updatePlayPauseButton()
                 updatePosterVisibility()
             }
             is CorePlayerEvent.Playing -> {
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 uiSeeking = false
                 firstFrameDisplayed = true
                 hasEverRenderedFrame = true
@@ -1811,7 +1831,7 @@ class LxMediaPlayer(
             }
             is CorePlayerEvent.Pause -> {
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 uiSeeking = false
                 controlsOverlay?.updatePlayPauseButton()
             }
@@ -1821,14 +1841,14 @@ class LxMediaPlayer(
                     isBufferingForUi = true
                 }
                 if (!isPausedByUser) {
-                    loadingIndicator?.visibility = View.VISIBLE
+                    showLoadingIndicator()
                 }
                 controlsOverlay?.updatePlayPauseButton()
             }
             is CorePlayerEvent.Seeked -> {
                 uiSeeking = false
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 val durationMs = playerCore?.getLastKnownDurationMs()
                 val durationSeconds = (durationMs ?: 0L).toDouble() / 1000.0
                 controlsOverlay?.updateProgress(event.currentTimeMs.toDouble() / 1000.0, durationSeconds)
@@ -1840,7 +1860,7 @@ class LxMediaPlayer(
                 val prev = lastUiTimeUpdateMs
                 lastUiTimeUpdateMs = event.currentTimeMs
                 if (!isPausedByUser && !uiSeeking && prev != null && event.currentTimeMs > prev + 50) {
-                    loadingIndicator?.visibility = View.GONE
+                    hideLoadingIndicator()
                 }
             }
             is CorePlayerEvent.LoadedMetadata -> {
@@ -1851,7 +1871,7 @@ class LxMediaPlayer(
             }
             is CorePlayerEvent.Ended -> {
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 uiSeeking = false
                 hasEnded = true
                 updatePosterVisibility()
@@ -1860,7 +1880,7 @@ class LxMediaPlayer(
             }
             is CorePlayerEvent.Error -> {
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 uiSeeking = false
                 controlsOverlay?.showCenterPlayButton(true)
                 controlsOverlay?.updatePlayPauseButton()
@@ -1871,7 +1891,7 @@ class LxMediaPlayer(
             }
             is CorePlayerEvent.Stop -> {
                 isBufferingForUi = false
-                loadingIndicator?.visibility = View.GONE
+                hideLoadingIndicator()
                 uiSeeking = false
                 firstFrameDisplayed = false
                 hasEnded = false
