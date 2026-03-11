@@ -6,6 +6,6 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "lingxia": "file:../../../target/ohm/lingxia"
+    "lingxia": "file:../../../target/ohpm/lingxia.har"
   }
 }

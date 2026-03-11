@@ -51,18 +51,6 @@
           ]
         }
       ]
-    },
-    {
-      "name": "lingxia",
-      "srcPath": "./../../target/ohm/lingxia",
-      "targets": [
-        {
-          "name": "default",
-          "applyToProducts": [
-            "default"
-          ]
-        }
-      ]
     }
   ]
 }

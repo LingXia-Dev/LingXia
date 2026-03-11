@@ -32,8 +32,7 @@ ensure_tls_feature_default "tls-ring"
 # Note: SDK HAR does NOT bundle .so; example app directly includes it
 RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
 APP_SO_DEST="$SCRIPT_DIR/entry/libs/arm64-v8a/liblingxia.so"
-OHM_ROOT_DIR="$LINGXIA_ROOT/target/ohm"
-OHM_BUNDLE_DIR="$OHM_ROOT_DIR/lingxia"
+SDK_HAR_PATH="$LINGXIA_ROOT/target/ohpm/lingxia.har"
 
 # Example app config
 APP_PACKAGE="app.lingxia.lxapp.example"
@@ -75,15 +74,10 @@ stage_so() {
   echo "   ✅ Native library staged: $APP_SO_DEST"
 }
 
-# Clean previous SDK outputs to ensure a fresh bundle
-echo "Cleaning previous Harmony SDK artifacts..."
-rm -rf "$OHM_BUNDLE_DIR" 2>/dev/null || true
-
 # 0) Generate resources + build SDK HAR (no obsolete build.sh)
 echo "[0/4] Preparing HarmonyOS SDK resources + HAR..."
 bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
   --platform harmony \
-  --harmony-ohm-dir "$OHM_BUNDLE_DIR" \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-dev"
 
@@ -95,9 +89,9 @@ else
 fi
 stage_so
 
-# 2) Ensure local OHM module exists for dependency resolution
-if [ ! -f "$OHM_BUNDLE_DIR/oh-package.json5" ]; then
-  echo "❌ OHM module not found after build: $OHM_BUNDLE_DIR" >&2; exit 1
+# 2) Ensure SDK HAR exists for dependency resolution
+if [ ! -f "$SDK_HAR_PATH" ]; then
+  echo "❌ SDK HAR not found after build: $SDK_HAR_PATH" >&2; exit 1
 fi
 
 # 3) Prepare example app assets (app.json + homelxapp)
@@ -110,7 +104,9 @@ build_and_copy_runtime "$RAWFILE_DIR" "es2020" "mobile"
 build_and_copy_homelxapp "$RAWFILE_DIR"
 
 # 4) Build & install example HAP
-echo "Installing ohpm dependencies (local ohm module) ..."
+echo "Installing ohpm dependencies (local HAR dependency) ..."
+rm -rf "$SCRIPT_DIR/entry/oh_modules" 2>/dev/null || true
+rm -f "$SCRIPT_DIR/entry/oh-package-lock.json5" 2>/dev/null || true
 (cd "$SCRIPT_DIR/entry" && ohpm install)
 
 echo "Building example HAP ..."
