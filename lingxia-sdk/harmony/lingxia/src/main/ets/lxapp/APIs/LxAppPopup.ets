@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display } from '@kit.ArkUI';
 import { webview } from '@kit.ArkWeb';
 import { LxAppContainer } from '../LxAppContainer';
-import { WebViewManager } from '../WebView';
+import { WebViewManager } from '../WebViewBridge';
 import { onPageShow } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;

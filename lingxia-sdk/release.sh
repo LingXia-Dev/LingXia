@@ -14,7 +14,6 @@ Usage:
 Options:
   --platform <name>             apple, Android, Harmony, or all (default: all)
   --out <dir>                   Output directory (default: dist/sdk-release)
-  --harmony-ohm-dir <dir>       Harmony: publish local OHM module to this directory
   --no-shasums                  Skip SHASUMS file generation (useful for local dev)
   --android-maven-dir <dir>     Android: publish to this local Maven repo dir (default: <out>/android/maven)
   --android-no-zip              Android: do not create the release maven zip (useful for local dev)
@@ -57,7 +56,6 @@ NO_SHASUMS=false
 ANDROID_MAVEN_DIR=""
 ANDROID_ZIP=true
 APPLE_ZIP=true
-HARMONY_OHM_DIR=""
 GH_UPLOAD=false
 GH_REPO="LingXia-Dev/LingXia"
 GH_TAG=""
@@ -66,7 +64,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --platform) PLATFORM="${2:-}"; shift 2 ;;
     --out) OUT_DIR="${2:-}"; shift 2 ;;
-    --harmony-ohm-dir) HARMONY_OHM_DIR="${2:-}"; shift 2 ;;
     --no-shasums) NO_SHASUMS=true; shift 1 ;;
     --android-maven-dir) ANDROID_MAVEN_DIR="${2:-}"; shift 2 ;;
     --android-no-zip) ANDROID_ZIP=false; shift 1 ;;
@@ -81,10 +78,6 @@ OUT_DIR="$(to_abs_path "$OUT_DIR")"
 if [[ -n "$ANDROID_MAVEN_DIR" ]]; then
   ANDROID_MAVEN_DIR="$(to_abs_path "$ANDROID_MAVEN_DIR")"
 fi
-if [[ -n "$HARMONY_OHM_DIR" ]]; then
-  HARMONY_OHM_DIR="$(to_abs_path "$HARMONY_OHM_DIR")"
-fi
-
 workspace_version="$(awk '
   /^\[workspace\.package\]/ {in_section=1; next}
   /^\[/ {in_section=0}
@@ -149,10 +142,19 @@ HARMONY_SDK_DIR="$ROOT_DIR/lingxia-sdk/harmony"
 HARMONY_RES_DIR="$HARMONY_SDK_DIR/lingxia/src/main/resources"
 HARMONY_RAWFILE_DIR="$HARMONY_RES_DIR/rawfile"
 HARMONY_ICONS_DIR="$HARMONY_RAWFILE_DIR/icons"
+HARMONY_WEBVIEW_CORE_SRC="$ROOT_DIR/lingxia-webview/src/harmony/arkts/WebViewCore.ets"
+HARMONY_WEBVIEW_CORE_DST="$HARMONY_SDK_DIR/lingxia/src/main/ets/lxapp/WebViewCore.ets"
 
 run() {
   log "+ $*"
   (cd "$ROOT_DIR" && "$@")
+}
+
+sync_harmony_webview_core_source() {
+  [[ -f "$HARMONY_WEBVIEW_CORE_SRC" ]] || die "Missing Harmony WebView core source: $HARMONY_WEBVIEW_CORE_SRC"
+  mkdir -p "$(dirname "$HARMONY_WEBVIEW_CORE_DST")"
+  cp "$HARMONY_WEBVIEW_CORE_SRC" "$HARMONY_WEBVIEW_CORE_DST"
+  log "   ✅ Synced WebView core ArkTS: $HARMONY_WEBVIEW_CORE_DST"
 }
 
 zip_dir() {
@@ -326,6 +328,16 @@ build_harmony() {
   log "==> Building HarmonyOS SDK (HAR)"
   [[ -d "$HARMONY_SDK_DIR" ]] || die "Missing Harmony SDK dir: $HARMONY_SDK_DIR"
 
+  log "==> Syncing Harmony WebView core ArkTS"
+  sync_harmony_webview_core_source
+
+  rm -rf "$HARMONY_SDK_DIR/lingxia/oh_modules" 2>/dev/null || true
+  rm -f "$HARMONY_SDK_DIR/lingxia/oh-package-lock.json5" 2>/dev/null || true
+
+  log "==> Installing Harmony module dependencies"
+  log "+ (cd $HARMONY_SDK_DIR/lingxia && ohpm install)"
+  (cd "$HARMONY_SDK_DIR/lingxia" && ohpm install 1>&2)
+
   rm -f "$ROOT_DIR/target/ohpm/lingxia.har" 2>/dev/null || true
   rm -rf "$HARMONY_SDK_DIR/lingxia/build" 2>/dev/null || true
 
@@ -343,15 +355,6 @@ build_harmony() {
   local out_har="$OUT_DIR/lingxia-sdk-harmony-$VERSION.har"
   cp "$har" "$out_har"
   log "   ✅ $out_har"
-
-  if [[ -n "$HARMONY_OHM_DIR" ]]; then
-    local module_src="$HARMONY_SDK_DIR/lingxia"
-    rm -rf "$HARMONY_OHM_DIR" 2>/dev/null || true
-    mkdir -p "$(dirname "$HARMONY_OHM_DIR")"
-    cp -R "$module_src" "$HARMONY_OHM_DIR"
-    rm -rf "$HARMONY_OHM_DIR/build" 2>/dev/null || true
-    log "   ✅ Harmony OHM module: $HARMONY_OHM_DIR"
-  fi
 
   printf '%s\n' "$out_har"
 }

@@ -7,7 +7,7 @@ import common from '@ohos.app.ability.common';
 import { LxAppContainer } from './LxAppContainer';
 import { ToastManager } from './APIs/LxAppToast';
 import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
-import { WebViewManager, toWebTag } from './WebView';
+import { WebViewManager, toWebTag } from './WebViewBridge';
 import { AnimationType } from './LxAppNavigation';
 import { CameraCaptureOverlay } from './APIs/media/CameraCaptureOverlay';
 import { LxAppPush } from './APIs/LxAppPush';

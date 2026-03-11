@@ -21,7 +21,7 @@ import {
   loadUrl,
   clearBrowsingData,
   setUserAgent
-} from './WebView';
+} from './WebViewBridge';
 import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';

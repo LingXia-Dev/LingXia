@@ -1,6 +1,11 @@
 /**
  * LingXiaWebView - Self-contained WebView component for same-level rendering
  *
+ * Note:
+ * - WebView registry/lifecycle core is sourced from `lingxia-webview/src/harmony/arkts/WebViewCore.ets`
+ *   and synced into this module during SDK packaging.
+ * - This component remains in SDK because it binds SDK-specific NativeComponents.
+ *
  * Owns all WebView-specific concerns:
  * - Web component declaration with controller
  * - Security profile config (domStorage, fileAccess, database, mixedMode)
@@ -13,10 +18,15 @@
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
-import { getWebViewCreateOptions, getWebViewEmbedManager } from './WebView';
+import {
+  getWebViewEmbedManager,
+  handleWebViewDownloadStart,
+  handleWebViewNavigationPolicy,
+  isBrowserRelaxed as isWebViewBrowserRelaxed,
+  notifyWebViewControllerAttached
+} from './WebViewBridge';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
-import { onDownloadStart, onNavigationPolicy, onWebviewControllerCreated } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -71,19 +81,16 @@ export struct LingXiaWebView {
           if (event && event.data) {
             const url = event.data.getRequestUrl();
             if (url) {
-              return onNavigationPolicy(this.webTag, url);
+              return handleWebViewNavigationPolicy(this.webTag, url);
             }
           }
           return false;
         })
         .onDownloadStart((event) => {
-          if (!this.isBrowserRelaxed() || !this.hasDownloadHandler()) {
-            return;
-          }
           if (!event) {
             return;
           }
-          onDownloadStart(
+          handleWebViewDownloadStart(
             this.webTag,
             event.url ?? '',
             event.userAgent ?? '',
@@ -95,7 +102,7 @@ export struct LingXiaWebView {
         .onAppear(() => {
           hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
           if (!this.controllerAcked) {
-            onWebviewControllerCreated(this.webTag);
+            notifyWebViewControllerAttached(this.webTag);
             this.controllerAcked = true;
           }
         })
@@ -137,11 +144,7 @@ export struct LingXiaWebView {
   // ============================================================================
 
   private isBrowserRelaxed(): boolean {
-    return getWebViewCreateOptions(this.webTag).profile === 'browser_relaxed';
-  }
-
-  private hasDownloadHandler(): boolean {
-    return getWebViewCreateOptions(this.webTag).hasDownloadHandler === true;
+    return isWebViewBrowserRelaxed(this.webTag);
   }
 
   // ============================================================================

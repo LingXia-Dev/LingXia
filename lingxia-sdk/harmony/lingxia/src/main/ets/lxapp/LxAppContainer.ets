@@ -14,7 +14,7 @@ import {
   getAllWebViewInfos,
   pauseWebViewComponents,
   resumeWebViewComponents
-} from './WebView';
+} from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';

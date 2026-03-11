@@ -1,31 +1,49 @@
-#!/bin/bash
-
-# Build LingXia SDK HAR for HarmonyOS
-# Usage: build.sh
+#!/usr/bin/env bash
 
 set -euo pipefail
 
-# Parse command line arguments
+usage() {
+  cat <<'EOF'
+Build LingXia Harmony SDK HAR.
+
+Usage:
+  build.sh [--skip-rust]
+
+Notes:
+  This script only builds the Harmony HAR. Rust .so build is handled by app-side
+  scripts (for example, examples/harmony/dev.sh), so --skip-rust is accepted only
+  for compatibility and has no effect here.
+EOF
+}
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LINGXIA_ROOT="$SCRIPT_DIR/../.."
+
 for arg in "$@"; do
   case "$arg" in
-    skip-rust) echo "ℹ️  Rust build is handled by consuming apps; ignoring skip-rust flag." ;;
-    *) echo "Usage: $0" >&2; exit 1 ;;
+    --skip-rust)
+      echo "ℹ️  --skip-rust has no effect in lingxia-sdk/harmony/build.sh (no Rust compile stage)."
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 1
+      ;;
   esac
 done
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-LINGXIA_ROOT="$SCRIPT_DIR/../.."
-SDK_DIR="$SCRIPT_DIR"
+echo "Building Harmony HAR via lingxia-sdk/release.sh ..."
+bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+  --platform harmony \
+  --no-shasums \
+  --out "$LINGXIA_ROOT/target/sdk-harmony-build"
 
-# 2) Build HAR and publish to workspace local repo (target/ohpm)
-echo "[2/2] Building HAR ..."
-(cd "$SDK_DIR" && hvigorw assembleHar)
-
-HAR_OUT_DIR="$LINGXIA_ROOT/target/ohpm"
-mkdir -p "$HAR_OUT_DIR"
-HAR_BUNDLE=$(find "$SDK_DIR/lingxia/build" -type f -name "*.har" | head -n1)
-if [ -z "${HAR_BUNDLE:-}" ]; then
-  echo "❌ HAR not found under $SDK_DIR/lingxia/build" >&2; exit 1
+HAR_OUT="$LINGXIA_ROOT/target/ohpm/lingxia.har"
+if [[ ! -f "$HAR_OUT" ]]; then
+  echo "❌ HAR not found: $HAR_OUT" >&2
+  exit 1
 fi
-cp "$HAR_BUNDLE" "$HAR_OUT_DIR/lingxia.har"
-echo "✅ HAR published to $HAR_OUT_DIR/lingxia.har"
+echo "✅ HAR published to $HAR_OUT"
