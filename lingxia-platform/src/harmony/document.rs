@@ -3,15 +3,19 @@ use crate::error::PlatformError;
 use crate::traits::file::{FileInteraction, OpenDocumentRequest};
 
 impl FileInteraction for Platform {
-    fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
-        let mime = request.mime_type.unwrap_or_default();
-        let show_menu_flag = request.show_menu.unwrap_or(true);
-        let show_menu = if show_menu_flag { "1" } else { "0" };
-        lingxia_webview::platform::harmony::tsfn::call_arkts(
-            "openDocument",
-            &[request.file_path.as_str(), mime.as_str(), show_menu],
-        )
-        .map(|_| ())
-        .map_err(|e| PlatformError::Platform(format!("Failed to open document: {}", e)))
+    async fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
+        crate::bg_runtime::blocking(move || open_document_sync(request)).await
     }
+}
+
+fn open_document_sync(request: OpenDocumentRequest) -> Result<(), PlatformError> {
+    let mime = request.mime_type.unwrap_or_default();
+    let show_menu_flag = request.show_menu.unwrap_or(true);
+    let show_menu = if show_menu_flag { "1" } else { "0" };
+    lingxia_webview::platform::harmony::tsfn::call_arkts(
+        "openDocument",
+        &[request.file_path.as_str(), mime.as_str(), show_menu],
+    )
+    .map(|_| ())
+    .map_err(|e| PlatformError::Platform(format!("Failed to open document: {}", e)))
 }

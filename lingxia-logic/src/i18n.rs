@@ -233,6 +233,8 @@ fn business_code_from_platform_error(error: &PlatformError) -> u32 {
         PlatformError::InvalidParameter(_) => 1002,
         PlatformError::AssetNotFound(_) => 1003,
         PlatformError::Platform(_) => 1005,
+        PlatformError::BusinessError(code) => *code,
+        PlatformError::CallbackDropped => 1006,
     }
 }
 
@@ -242,6 +244,8 @@ fn detail_from_platform_error(error: &PlatformError) -> &str {
         | PlatformError::NotSupported(detail)
         | PlatformError::AssetNotFound(detail)
         | PlatformError::InvalidParameter(detail) => detail,
+        PlatformError::BusinessError(_) => "business error",
+        PlatformError::CallbackDropped => "callback dropped",
     }
 }
 

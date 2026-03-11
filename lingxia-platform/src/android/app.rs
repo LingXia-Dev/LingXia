@@ -550,26 +550,29 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to open_url: {}", e)))
     }
 
-    fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
-        with_env(|env| -> Result<(), PlatformError> {
-            let capsule_class: &JClass = super::get_cached_class(super::CachedClass::LxAppCapsule)
+    async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            with_env(|env| -> Result<(), PlatformError> {
+                let capsule_class: &JClass =
+                    super::get_cached_class(super::CachedClass::LxAppCapsule).map_err(|e| {
+                        PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
+                    })?;
+
+                env.call_static_method(
+                    capsule_class,
+                    jni_str!("getCapsuleRect"),
+                    jni_sig!("(J)V"),
+                    &[JValue::Long(callback_id as i64)],
+                )
                 .map_err(|e| {
-                    PlatformError::Platform(format!("Failed to get LxAppCapsule class: {}", e))
+                    log::error!("[Android] getCapsuleRect JNI call failed: {}", e);
+                    PlatformError::Platform(format!("Failed to get capsule rect: {}", e))
                 })?;
 
-            env.call_static_method(
-                capsule_class,
-                jni_str!("getCapsuleRect"),
-                jni_sig!("(J)V"),
-                &[JValue::Long(callback_id as i64)],
-            )
-            .map_err(|e| {
-                log::error!("[Android] getCapsuleRect JNI call failed: {}", e);
-                PlatformError::Platform(format!("Failed to get capsule rect: {}", e))
-            })?;
-
-            Ok(())
+                Ok(())
+            })
+            .map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to get JNI env: {}", e)))
+        .await
     }
 }

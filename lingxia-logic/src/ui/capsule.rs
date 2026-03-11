@@ -1,7 +1,4 @@
-use crate::i18n::{
-    js_error_from_business_code, js_error_from_platform_error, js_internal_error, js_timeout_error,
-};
-use lingxia_messaging::get_callback;
+use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, lx};
 use rong::{IntoJSObj, JSContext, JSFunc, JSResult};
@@ -24,20 +21,14 @@ struct JSCapsuleRect {
 async fn get_capsule_rect(ctx: JSContext) -> JSResult<JSCapsuleRect> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let (callback_id, receiver) = get_callback();
+    let json_str = lxapp
+        .runtime
+        .get_capsule_rect()
+        .await
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
-    match lxapp.runtime.get_capsule_rect(callback_id) {
-        Ok(()) => match receiver.await {
-            Ok(result) => match result.into_result() {
-                Ok(json_str) => serde_json::from_str(&json_str).map_err(|e| {
-                    js_internal_error(format!("getCapsuleRect invalid payload: {}", e))
-                }),
-                Err(code) => Err(js_error_from_business_code(code)),
-            },
-            Err(_) => Err(js_timeout_error("getCapsuleRect callback timed out")),
-        },
-        Err(e) => Err(js_error_from_platform_error(&e)),
-    }
+    serde_json::from_str(&json_str)
+        .map_err(|e| js_internal_error(format!("getCapsuleRect invalid payload: {}", e)))
 }
 
 /// Initialize capsule button functions

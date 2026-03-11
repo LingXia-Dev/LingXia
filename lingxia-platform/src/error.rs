@@ -14,6 +14,12 @@ pub enum PlatformError {
 
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
+
+    #[error("Business error: code {0}")]
+    BusinessError(u32),
+
+    #[error("Callback dropped")]
+    CallbackDropped,
 }
 
 /// Result type for platform operations

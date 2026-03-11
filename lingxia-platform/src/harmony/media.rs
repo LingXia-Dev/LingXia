@@ -104,106 +104,108 @@ impl MediaInteraction for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to cancel preview media: {}", e)))
     }
 
-    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
+    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
         if request.max_count == 0 {
             return Err(PlatformError::Platform(
                 "chooseMedia requires max_count to be greater than 0".to_string(),
             ));
         }
 
-        let mode_str = match request.mode {
-            ChooseMediaMode::Images => "images",
-            ChooseMediaMode::Videos => "videos",
-            ChooseMediaMode::Mix => "mix",
-        };
+        crate::bg_runtime::await_callback(|callback_id| {
+            let mode_str = match request.mode {
+                ChooseMediaMode::Images => "images",
+                ChooseMediaMode::Videos => "videos",
+                ChooseMediaMode::Mix => "mix",
+            };
 
-        let allow_album = request
-            .source_types
-            .iter()
-            .any(|source| matches!(source, MediaSource::Album));
-
-        let payload = ChooseMediaPayload {
-            callback_id: request.callback_id.to_string(),
-            max_count: request.max_count,
-            mode: mode_str.to_string(),
-            allow_album,
-            allow_camera: request
+            let allow_album = request
                 .source_types
                 .iter()
-                .any(|source| matches!(source, MediaSource::Camera)),
-            max_duration_seconds: None,
-            camera_facing: None,
-        };
+                .any(|source| matches!(source, MediaSource::Album));
 
-        // Attach optional duration and facing
-        let payload = ChooseMediaPayload {
-            max_duration_seconds: request.max_duration_seconds,
-            camera_facing: request.camera_facing.as_ref().map(|f| match f {
-                CameraFacing::Front => "front".to_string(),
-                CameraFacing::Back => "back".to_string(),
-            }),
-            ..payload
-        };
+            let payload = ChooseMediaPayload {
+                callback_id: callback_id.to_string(),
+                max_count: request.max_count,
+                mode: mode_str.to_string(),
+                allow_album,
+                allow_camera: request
+                    .source_types
+                    .iter()
+                    .any(|source| matches!(source, MediaSource::Camera)),
+                max_duration_seconds: request.max_duration_seconds,
+                camera_facing: request.camera_facing.as_ref().map(|f| match f {
+                    CameraFacing::Front => "front".to_string(),
+                    CameraFacing::Back => "back".to_string(),
+                }),
+            };
 
-        let payload_json = serde_json::to_string(&payload).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize chooseMedia payload: {}", e))
-        })?;
+            let payload_json = serde_json::to_string(&payload).map_err(|e| {
+                PlatformError::Platform(format!("Failed to serialize chooseMedia payload: {}", e))
+            })?;
 
-        lingxia_webview::platform::harmony::tsfn::call_arkts(
-            "chooseMedia",
-            &[payload_json.as_str()],
-        )
-        .map_err(|e| {
-            let message = format!("Failed to start chooseMedia flow: {}", e);
-            lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
-            PlatformError::Platform(message)
-        })
-    }
-
-    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
-        let scan_types: Vec<String> = request
-            .scan_types
-            .iter()
-            .map(|scan_type| match scan_type {
-                ScanType::QrCode => "qrCode".to_string(),
-                ScanType::BarCode => "barCode".to_string(),
-                ScanType::DataMatrix => "datamatrix".to_string(),
-                ScanType::Pdf417 => "pdf417".to_string(),
-            })
-            .collect();
-
-        let payload = ScanCodePayload {
-            scan_types,
-            only_from_camera: request.only_from_camera,
-            callback_id: request.callback_id.to_string(),
-        };
-
-        let payload_json = serde_json::to_string(&payload).map_err(|e| {
-            PlatformError::Platform(format!("Failed to serialize scanCode payload: {}", e))
-        })?;
-
-        lingxia_webview::platform::harmony::tsfn::call_arkts("scanCode", &[payload_json.as_str()])
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "chooseMedia",
+                &[payload_json.as_str()],
+            )
             .map_err(|e| {
-                let message = format!("Failed to start scanCode flow: {}", e);
-                lingxia_messaging::invoke_callback(request.callback_id, Err(1000));
-                PlatformError::Platform(message)
+                PlatformError::Platform(format!("Failed to start chooseMedia flow: {}", e))
             })
+        })
+        .await
     }
 
-    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_resource(
-            &request.file_uri,
-            MEDIA_LIBRARY_IMAGE_RESOURCE,
-            request.callback_id,
-        )
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            let scan_types: Vec<String> = request
+                .scan_types
+                .iter()
+                .map(|scan_type| match scan_type {
+                    ScanType::QrCode => "qrCode".to_string(),
+                    ScanType::BarCode => "barCode".to_string(),
+                    ScanType::DataMatrix => "datamatrix".to_string(),
+                    ScanType::Pdf417 => "pdf417".to_string(),
+                })
+                .collect();
+
+            let payload = ScanCodePayload {
+                scan_types,
+                only_from_camera: request.only_from_camera,
+                callback_id: callback_id.to_string(),
+            };
+
+            let payload_json = serde_json::to_string(&payload).map_err(|e| {
+                PlatformError::Platform(format!("Failed to serialize scanCode payload: {}", e))
+            })?;
+
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "scanCode",
+                &[payload_json.as_str()],
+            )
+            .map_err(|e| PlatformError::Platform(format!("Failed to start scanCode flow: {}", e)))
+        })
+        .await
     }
 
-    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_resource(
-            &request.file_uri,
-            MEDIA_LIBRARY_VIDEO_RESOURCE,
-            request.callback_id,
-        )
+    async fn save_image_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE, callback_id)
+        })
+        .await
+        .map(|_| ())
+    }
+
+    async fn save_video_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE, callback_id)
+        })
+        .await
+        .map(|_| ())
     }
 }
 

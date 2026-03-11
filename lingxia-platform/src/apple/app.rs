@@ -145,11 +145,14 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn get_capsule_rect(&self, _callback_id: u64) -> Result<(), PlatformError> {
+    async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ffi::get_capsule_rect(_callback_id);
-            Ok(())
+            crate::bg_runtime::await_callback(|callback_id| {
+                ffi::get_capsule_rect(callback_id);
+                Ok(())
+            })
+            .await
         }
         #[cfg(not(target_os = "ios"))]
         {

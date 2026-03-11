@@ -1,8 +1,4 @@
-use crate::i18n::{
-    js_error_from_business_code, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error, js_timeout_error,
-};
-use lingxia_messaging::{CallbackResult, get_callback};
+use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
 use lingxia_platform::traits::media_interaction::{MediaInteraction, ScanCodeRequest, ScanType};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
@@ -36,27 +32,16 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
     let scan_types = parse_scan_types(opts.scan_type)?;
     let only_from_camera = opts.only_from_camera.unwrap_or(true);
 
-    let (callback_id, receiver) = get_callback();
-
     let request = ScanCodeRequest {
         scan_types,
         only_from_camera,
-        callback_id,
     };
 
-    lxapp
+    let data = lxapp
         .runtime
         .scan_code(request)
-        .map_err(|e| js_error_from_platform_error(&e))?;
-
-    let result = receiver
         .await
-        .map_err(|_| js_timeout_error("scanCode callback timed out"))?;
-
-    let data = match result {
-        CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
-    };
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     let payload: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("scanCode invalid payload: {}", e)))?;

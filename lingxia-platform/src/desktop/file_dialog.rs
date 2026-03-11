@@ -1,38 +1,34 @@
 use crate::error::PlatformError;
-use crate::traits::file::{ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter};
+use crate::traits::file::{
+    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileDialogResult,
+};
 
-pub fn choose_file_desktop(request: ChooseFileRequest) -> Result<(), PlatformError> {
-    let _ = crate::bg_runtime::spawn_blocking(move || {
-        let callback_id = request.callback_id;
-        match run_file_dialog(&request) {
-            Ok((canceled, paths)) => send_success(callback_id, canceled, paths),
-            Err(e) => send_error(callback_id, e),
-        }
-    });
-
-    Ok(())
+pub async fn choose_file_desktop(
+    request: ChooseFileRequest,
+) -> Result<FileDialogResult, PlatformError> {
+    let handle = crate::bg_runtime::spawn_blocking(move || run_file_dialog(&request));
+    match handle {
+        Some(h) => h
+            .await
+            .map_err(|e| PlatformError::Platform(format!("choose_file task panicked: {}", e)))?,
+        None => Err(PlatformError::Platform(
+            "choose_file: async runtime not initialized".into(),
+        )),
+    }
 }
 
-pub fn choose_directory_desktop(request: ChooseDirectoryRequest) -> Result<(), PlatformError> {
-    let _ = crate::bg_runtime::spawn_blocking(move || {
-        let callback_id = request.callback_id;
-        match run_directory_dialog(&request) {
-            Ok((canceled, paths)) => send_success(callback_id, canceled, paths),
-            Err(e) => send_error(callback_id, e),
-        }
-    });
-
-    Ok(())
-}
-
-fn send_success(callback_id: u64, canceled: bool, paths: Vec<String>) {
-    let payload = serde_json::json!({ "canceled": canceled, "paths": paths }).to_string();
-    let _ = lingxia_messaging::invoke_callback(callback_id, Ok(payload));
-}
-
-fn send_error(callback_id: u64, error: PlatformError) {
-    log::error!("file dialog error: {}", error);
-    let _ = lingxia_messaging::invoke_callback(callback_id, Err(1002));
+pub async fn choose_directory_desktop(
+    request: ChooseDirectoryRequest,
+) -> Result<FileDialogResult, PlatformError> {
+    let handle = crate::bg_runtime::spawn_blocking(move || run_directory_dialog(&request));
+    match handle {
+        Some(h) => h.await.map_err(|e| {
+            PlatformError::Platform(format!("choose_directory task panicked: {}", e))
+        })?,
+        None => Err(PlatformError::Platform(
+            "choose_directory: async runtime not initialized".into(),
+        )),
+    }
 }
 
 fn apply_common_options(
@@ -61,7 +57,7 @@ fn apply_filters(mut dialog: rfd::FileDialog, filters: &[FileDialogFilter]) -> r
     dialog
 }
 
-fn run_file_dialog(request: &ChooseFileRequest) -> Result<(bool, Vec<String>), PlatformError> {
+fn run_file_dialog(request: &ChooseFileRequest) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_common_options(
         rfd::FileDialog::new(),
         &request.title,
@@ -71,33 +67,48 @@ fn run_file_dialog(request: &ChooseFileRequest) -> Result<(bool, Vec<String>), P
 
     if request.multiple {
         match dialog.pick_files() {
-            Some(paths) => Ok((
-                false,
-                paths
+            Some(paths) => Ok(FileDialogResult {
+                canceled: false,
+                paths: paths
                     .iter()
                     .map(|path| path.to_string_lossy().into_owned())
                     .collect(),
-            )),
-            None => Ok((true, vec![])),
+            }),
+            None => Ok(FileDialogResult {
+                canceled: true,
+                paths: vec![],
+            }),
         }
     } else {
         match dialog.pick_file() {
-            Some(path) => Ok((false, vec![path.to_string_lossy().into_owned()])),
-            None => Ok((true, vec![])),
+            Some(path) => Ok(FileDialogResult {
+                canceled: false,
+                paths: vec![path.to_string_lossy().into_owned()],
+            }),
+            None => Ok(FileDialogResult {
+                canceled: true,
+                paths: vec![],
+            }),
         }
     }
 }
 
 fn run_directory_dialog(
     request: &ChooseDirectoryRequest,
-) -> Result<(bool, Vec<String>), PlatformError> {
+) -> Result<FileDialogResult, PlatformError> {
     let dialog = apply_common_options(
         rfd::FileDialog::new(),
         &request.title,
         &request.default_path,
     );
     match dialog.pick_folder() {
-        Some(path) => Ok((false, vec![path.to_string_lossy().into_owned()])),
-        None => Ok((true, vec![])),
+        Some(path) => Ok(FileDialogResult {
+            canceled: false,
+            paths: vec![path.to_string_lossy().into_owned()],
+        }),
+        None => Ok(FileDialogResult {
+            canceled: true,
+            paths: vec![],
+        }),
     }
 }

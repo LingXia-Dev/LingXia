@@ -2,12 +2,10 @@
 use crate::i18n::js_error_from_platform_error;
 #[cfg(target_os = "macos")]
 use crate::i18n::js_internal_error;
-#[cfg(not(target_os = "macos"))]
-use crate::i18n::{js_error_from_business_code, js_timeout_error};
 use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(target_os = "macos"))]
-use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_platform::error::PlatformError;
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
@@ -122,25 +120,14 @@ async fn present_action_sheet_native(
     item_color: String,
     item_len: usize,
 ) -> Result<Option<usize>, RongJSError> {
-    let (callback_id, receiver) = get_callback();
-
-    lxapp
+    let data = match lxapp
         .runtime
-        .show_action_sheet(item_list, cancel_text, item_color, callback_id)
-        .map_err(|e| js_error_from_platform_error(&e))?;
-
-    let result = receiver
+        .show_action_sheet(item_list, cancel_text, item_color)
         .await
-        .map_err(|_| js_timeout_error("Action sheet callback timed out"))?;
-
-    let data = match result {
-        CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => {
-            if code == 2000 {
-                return Ok(None);
-            }
-            return Err(js_error_from_business_code(code));
-        }
+    {
+        Ok(data) => data,
+        Err(PlatformError::BusinessError(2000)) => return Ok(None),
+        Err(e) => return Err(js_error_from_platform_error(&e)),
     };
 
     let index = serde_json::from_str::<Value>(&data)

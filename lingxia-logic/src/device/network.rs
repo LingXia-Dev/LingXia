@@ -1,7 +1,6 @@
-use crate::i18n::js_error_from_business_code;
 use crate::i18n::js_error_from_platform_error;
-use crate::i18n::{js_internal_error, js_timeout_error};
-use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
+use crate::i18n::js_internal_error;
+use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
 use lxapp::{
     LxApp, info, lx, publish_app_event, register_app_handler, unregister_app_handler, warn,
@@ -151,18 +150,14 @@ fn parse_network_info(data: String) -> Result<JSNetworkInfoResult, RongJSError> 
 
 async fn get_network_info(ctx: JSContext) -> JSResult<JSNetworkInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let (callback_id, receiver) = get_callback();
 
-    lxapp
+    let data = lxapp
         .runtime
-        .get_network_info(callback_id)
+        .get_network_info()
+        .await
         .map_err(|e| js_error_from_platform_error(&e))?;
 
-    match receiver.await {
-        Ok(CallbackResult::Success(data)) => parse_network_info(data),
-        Ok(CallbackResult::Error(code)) => Err(js_error_from_business_code(code)),
-        Err(_) => Err(js_timeout_error("getNetworkInfo callback timed out")),
-    }
+    parse_network_info(data)
 }
 
 fn ensure_network_change_callback(ctx: &JSContext) -> JSResult<()> {

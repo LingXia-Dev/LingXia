@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::error::PlatformError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,12 +88,16 @@ pub trait UIUpdate: Send + Sync + 'static {
 pub trait UserFeedback: Send + Sync + 'static {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError>;
     fn hide_toast(&self) -> Result<(), PlatformError>;
-    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError>;
+
+    fn show_modal(
+        &self,
+        options: ModalOptions,
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+
     fn show_action_sheet(
         &self,
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-        callback_id: u64,
-    ) -> Result<(), PlatformError>;
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
 }

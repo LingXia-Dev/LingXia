@@ -1,11 +1,9 @@
 #[cfg(not(target_os = "macos"))]
 use crate::i18n::js_error_from_platform_error;
-#[cfg(not(target_os = "macos"))]
-use crate::i18n::{js_error_from_business_code, js_timeout_error};
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(target_os = "macos"))]
-use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_platform::error::PlatformError;
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
@@ -122,19 +120,9 @@ async fn present_modal_native(
     options: JSModalOptions,
 ) -> Result<JSModalResult, RongJSError> {
     let modal_options = options.into_modal_options();
-    let (callback_id, receiver) = get_callback();
 
-    lxapp
-        .runtime
-        .show_modal(modal_options, callback_id)
-        .map_err(|e| js_error_from_platform_error(&e))?;
-
-    let result = receiver
-        .await
-        .map_err(|_| js_timeout_error("Modal callback timed out"))?;
-
-    match result {
-        CallbackResult::Success(data) => {
+    match lxapp.runtime.show_modal(modal_options).await {
+        Ok(data) => {
             let json: Value = serde_json::from_str(&data)
                 .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
             let confirm = json
@@ -146,11 +134,11 @@ async fn present_modal_native(
                 cancel: !confirm,
             })
         }
-        CallbackResult::Error(2000) => Ok(JSModalResult {
+        Err(PlatformError::BusinessError(2000)) => Ok(JSModalResult {
             confirm: false,
             cancel: true,
         }),
-        CallbackResult::Error(code) => Err(js_error_from_business_code(code)),
+        Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }
 

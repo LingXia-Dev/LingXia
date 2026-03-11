@@ -1,12 +1,11 @@
 use crate::i18n::{
-    js_error_from_business_code, js_error_from_business_code_with_detail,
-    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error, js_timeout_error,
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error, js_internal_error,
 };
 use futures::channel::mpsc;
 use futures::future::{AbortHandle, Abortable};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
-use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileInteraction,
     OpenDocumentRequest,
@@ -16,7 +15,6 @@ use rong::{
     FromJSObj, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, Source,
     function::Optional,
 };
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -24,7 +22,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const UNKNOWN_TOTAL_PROGRESS_CURVE_BYTES: f64 = 4.0 * 1024.0 * 1024.0;
 
-const UNKNOWN_TOTAL_PROGRESS_CURVE_BYTES: f64 = 4.0 * 1024.0 * 1024.0;
 const DOWNLOAD_ASYNC_ITERATOR_SHIM: &str = r#"
 (function () {
   const lx = globalThis.lx;
@@ -135,7 +132,7 @@ fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
     }
 }
 
-fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()> {
+async fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     if options.file_path.is_empty() {
@@ -156,6 +153,7 @@ fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()>
             mime_type: map_file_type_to_mime(options.file_type),
             show_menu: options.show_menu,
         })
+        .await
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
@@ -289,23 +287,12 @@ struct DownloadIteratorRegistry {
 
 impl JSRuntimeService for DownloadIteratorRegistry {}
 
-#[derive(Debug, Deserialize)]
-struct DialogCallbackPayload {
-    canceled: bool,
-    paths: Vec<String>,
-}
-
 fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
     raw.unwrap_or_default()
         .into_iter()
         .map(|ext| ext.trim().trim_start_matches('.').to_lowercase())
         .filter(|ext| !ext.is_empty())
         .collect()
-}
-
-fn parse_dialog_payload(data: &str, api_name: &str) -> JSResult<DialogCallbackPayload> {
-    serde_json::from_str::<DialogCallbackPayload>(data)
-        .map_err(|e| js_internal_error(format!("{} invalid payload: {}", api_name, e)))
 }
 
 fn download_registry(ctx: &JSContext) -> &DownloadIteratorRegistry {
@@ -448,36 +435,26 @@ async fn choose_file(
             })
         })
         .collect();
-    let (callback_id, receiver) = get_callback();
-
-    lxapp
+    let result = lxapp
         .runtime
         .choose_file(ChooseFileRequest {
             multiple: opts.multiple.unwrap_or(false),
             filters,
             title: opts.title,
             default_path: opts.default_path,
-            callback_id,
         })
+        .await
         .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let data = match receiver
-        .await
-        .map_err(|_| js_timeout_error("chooseFile callback timed out"))?
-    {
-        CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
-    };
-    let payload = parse_dialog_payload(&data, "chooseFile")?;
-    if !payload.canceled && payload.paths.is_empty() {
+    if !result.canceled && result.paths.is_empty() {
         return Err(js_internal_error(
             "chooseFile invalid payload: non-canceled result must include at least one path",
         ));
     }
 
     Ok(ChooseFileResultObj {
-        canceled: payload.canceled,
-        paths: payload.paths,
+        canceled: result.canceled,
+        paths: result.paths,
     })
 }
 
@@ -487,34 +464,24 @@ async fn choose_directory(
 ) -> JSResult<ChooseDirectoryResultObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
-    let (callback_id, receiver) = get_callback();
-
-    lxapp
+    let result = lxapp
         .runtime
         .choose_directory(ChooseDirectoryRequest {
             title: opts.title,
             default_path: opts.default_path,
-            callback_id,
         })
+        .await
         .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let data = match receiver
-        .await
-        .map_err(|_| js_timeout_error("chooseDirectory callback timed out"))?
-    {
-        CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
-    };
-    let payload = parse_dialog_payload(&data, "chooseDirectory")?;
-    if !payload.canceled && payload.paths.len() != 1 {
+    if !result.canceled && result.paths.len() != 1 {
         return Err(js_internal_error(
             "chooseDirectory invalid payload: non-canceled result must include exactly one path",
         ));
     }
-    let path = payload.paths.into_iter().next();
+    let path = result.paths.into_iter().next();
 
     Ok(ChooseDirectoryResultObj {
-        canceled: payload.canceled,
+        canceled: result.canceled,
         path,
     })
 }
@@ -650,20 +617,23 @@ async fn download_next_step(ctx: &JSContext, task_id: &str) -> JSResult<JSDownlo
         Some(DownloadIteratorMessage::Progress {
             downloaded_bytes,
             total_bytes,
-        }) => Ok(JSDownloadIteratorStep {
-            done: false,
-            value: Some(JSDownloadEvent {
-                kind: "progress".to_string(),
-                downloaded_bytes: Some(downloaded_bytes),
+        }) => {
+            let progress = progress_value(
+                downloaded_bytes,
                 total_bytes,
-                progress: Some(progress_value(
-                    downloaded_bytes,
+                &mut state_guard.fallback_progress,
+            );
+            Ok(JSDownloadIteratorStep {
+                done: false,
+                value: Some(JSDownloadEvent {
+                    kind: "progress".to_string(),
+                    downloaded_bytes: Some(downloaded_bytes),
                     total_bytes,
-                    &mut state_guard.fallback_progress,
-                )),
-                result: None,
-            }),
-        }),
+                    progress: Some(progress),
+                    result: None,
+                }),
+            })
+        }
         Some(DownloadIteratorMessage::Paused) => Ok(JSDownloadIteratorStep {
             done: false,
             value: Some(simple_event("paused")),

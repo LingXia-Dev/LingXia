@@ -6,36 +6,51 @@ use super::Platform;
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 use super::ffi;
 
-macro_rules! apple_only {
-    ($callback_id:ident, $ffi_call:expr) => {{
+impl Network for Platform {
+    async fn get_network_info(&self) -> Result<String, PlatformError> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
-            $ffi_call;
+            crate::bg_runtime::await_callback(|callback_id| {
+                ffi::get_network_info(callback_id);
+                Ok(())
+            })
+            .await
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+        {
+            Err(PlatformError::NotSupported(
+                "get_network_info is only supported on iOS/macOS".to_string(),
+            ))
+        }
+    }
+
+    fn add_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            ffi::add_network_change_listener(callback_id);
             Ok(())
         }
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         {
-            let _ = $callback_id;
+            let _ = callback_id;
             Err(PlatformError::NotSupported(
                 "Network APIs are only supported on iOS/macOS".to_string(),
             ))
         }
-    }};
-}
-
-impl Network for Platform {
-    fn get_network_info(&self, callback_id: u64) -> Result<(), PlatformError> {
-        apple_only!(callback_id, ffi::get_network_info(callback_id))
-    }
-
-    fn add_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
-        apple_only!(callback_id, ffi::add_network_change_listener(callback_id))
     }
 
     fn remove_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {
-        apple_only!(
-            callback_id,
-            ffi::remove_network_change_listener(callback_id)
-        )
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        {
+            ffi::remove_network_change_listener(callback_id);
+            Ok(())
+        }
+        #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+        {
+            let _ = callback_id;
+            Err(PlatformError::NotSupported(
+                "Network APIs are only supported on iOS/macOS".to_string(),
+            ))
+        }
     }
 }

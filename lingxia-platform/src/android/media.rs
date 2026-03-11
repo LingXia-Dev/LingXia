@@ -50,32 +50,42 @@ impl MediaInteraction for Platform {
         .map_err(|err| PlatformError::Platform(format!("Failed to cancel previewMedia: {}", err)))
     }
 
-    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        match choose_media_impl(request) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to choose media: {}",
-                e
-            ))),
-        }
+    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            choose_media_impl(request, callback_id)
+                .map_err(|e| PlatformError::Platform(format!("Failed to choose media: {}", e)))
+        })
+        .await
     }
 
-    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
-        match scan_code_impl(request) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(PlatformError::Platform(format!(
-                "Failed to start scanCode: {}",
-                e
-            ))),
-        }
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            scan_code_impl(request, callback_id)
+                .map_err(|e| PlatformError::Platform(format!("Failed to start scanCode: {}", e)))
+        })
+        .await
     }
 
-    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_impl(request, "saveImageToPhotosAlbum")
+    async fn save_image_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            save_media_impl(request, "saveImageToPhotosAlbum", callback_id)
+        })
+        .await
+        .map(|_| ())
     }
 
-    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
-        save_media_impl(request, "saveVideoToPhotosAlbum")
+    async fn save_video_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            save_media_impl(request, "saveVideoToPhotosAlbum", callback_id)
+        })
+        .await
+        .map(|_| ())
     }
 }
 
@@ -184,7 +194,10 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Error>> {
+fn scan_code_impl(
+    request: ScanCodeRequest,
+    callback_id: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
 
     // Group codes understood by Kotlin fragment:
@@ -215,7 +228,7 @@ fn scan_code_impl(request: ScanCodeRequest) -> Result<(), Box<dyn std::error::Er
             &[
                 JValue::Object(&scan_types_array),
                 JValue::Bool(request.only_from_camera),
-                JValue::Long(request.callback_id as jlong),
+                JValue::Long(callback_id as jlong),
             ],
         )?;
 

@@ -128,17 +128,8 @@ pub trait AppRuntime:
     fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError>;
 
     /// Gets the capsule button bounding rect in screen coordinates.
-    /// Returns result via callback with JSON string format: {"width": 84.5, "height": 32, "top": 50, "right": 375, "bottom": 82, "left": 290.5}
-    /// All values are in pixels, relative to screen top-left corner (0, 0).
-    /// Note: This only works when the page has showNavigationBar: false (webview is fullscreen).
-    ///
-    /// # Arguments
-    /// * `callback_id` - The callback ID to invoke with the result
-    ///
-    /// # iOS/macOS
-    /// Returns synchronously via callback immediately
-    ///
-    /// # Android/HarmonyOS
-    /// Returns asynchronously via callback after querying native UI layer
-    fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError>;
+    /// Returns JSON: {"width": f64, "height": f64, "top": f64, "right": f64, "bottom": f64, "left": f64}
+    fn get_capsule_rect(
+        &self,
+    ) -> impl std::future::Future<Output = Result<String, PlatformError>> + Send;
 }

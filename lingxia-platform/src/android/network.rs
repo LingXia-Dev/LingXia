@@ -27,8 +27,11 @@ fn call_network_method(method_name: &str, callback_id: u64) -> Result<(), Platfo
 }
 
 impl Network for Platform {
-    fn get_network_info(&self, callback_id: u64) -> Result<(), PlatformError> {
-        call_network_method("getNetworkInfo", callback_id)
+    async fn get_network_info(&self) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            call_network_method("getNetworkInfo", callback_id)
+        })
+        .await
     }
 
     fn add_network_change_listener(&self, callback_id: u64) -> Result<(), PlatformError> {

@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::error::PlatformError;
 
 #[derive(Debug, Clone, Default)]
@@ -9,9 +11,9 @@ pub struct LocationRequestConfig {
 
 pub trait Location: Send + Sync + 'static {
     fn is_location_enabled(&self) -> Result<bool, PlatformError>;
+
     fn request_location(
         &self,
-        callback_id: u64,
         config: LocationRequestConfig,
-    ) -> Result<(), PlatformError>;
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
 }

@@ -3,33 +3,15 @@ use crate::traits::media_interaction::{ScanCodeRequest, ScanType};
 use rxing::BarcodeFormat;
 
 /// Desktop implementation of scan_code: opens a file dialog to pick an image, then scans it.
-pub fn scan_code_desktop(request: ScanCodeRequest) -> Result<(), PlatformError> {
-    let callback_id = request.callback_id;
+pub async fn scan_code_desktop(request: ScanCodeRequest) -> Result<String, PlatformError> {
     let scan_types = request.scan_types.clone();
-
-    let _ = crate::bg_runtime::spawn_blocking(move || {
-        let result = pick_and_scan(&scan_types);
-        match result {
-            Ok(Some((scan_result, scan_type))) => {
-                let payload = format!(
-                    r#"{{"scanResult":"{}","scanType":"{}"}}"#,
-                    escape_json(&scan_result),
-                    escape_json(&scan_type)
-                );
-                let _ = lingxia_messaging::invoke_callback(callback_id, Ok(payload));
-            }
-            Ok(None) => {
-                // User cancelled
-                let _ = lingxia_messaging::invoke_callback(callback_id, Err(2000));
-            }
-            Err(e) => {
-                log::error!("scan_code_desktop error: {}", e);
-                let _ = lingxia_messaging::invoke_callback(callback_id, Err(1002));
-            }
-        }
-    });
-
-    Ok(())
+    let result = crate::bg_runtime::blocking(move || pick_and_scan(&scan_types)).await?;
+    let (scan_result, scan_type) = result.ok_or(PlatformError::BusinessError(2000))?;
+    Ok(format!(
+        r#"{{"scanResult":"{}","scanType":"{}"}}"#,
+        escape_json(&scan_result),
+        escape_json(&scan_type)
+    ))
 }
 
 fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, PlatformError> {
@@ -50,13 +32,13 @@ fn pick_and_scan(scan_types: &[ScanType]) -> Result<Option<(String, String)>, Pl
     let results = rxing::helpers::detect_multiple_in_file(path.to_string_lossy().as_ref())
         .map_err(|e| PlatformError::Platform(format!("Failed to scan image: {}", e)))?;
 
-    // Filter by requested scan types if specified
     for result in &results {
         let format = result.getBarcodeFormat();
         if hints.is_empty() || hints.contains(&format) {
-            let scan_result = result.getText().to_string();
-            let scan_type = format_to_type_string(&format);
-            return Ok(Some((scan_result, scan_type)));
+            return Ok(Some((
+                result.getText().to_string(),
+                format_to_type_string(&format),
+            )));
         }
     }
 

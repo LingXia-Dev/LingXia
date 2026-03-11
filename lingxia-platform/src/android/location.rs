@@ -32,47 +32,45 @@ impl Location for Platform {
         }
     }
 
-    fn request_location(
+    async fn request_location(
         &self,
-        callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<(), PlatformError> {
-        match || -> Result<(), Box<dyn std::error::Error>> {
-            let location_class: &jni::objects::JClass =
-                super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
+    ) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            match || -> Result<(), Box<dyn std::error::Error>> {
+                let location_class: &jni::objects::JClass =
+                    super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
-            lingxia_webview::platform::android::with_env(|env| {
-                // Pass configuration parameters to Android implementation
-                env.call_static_method(
-                    location_class,
-                    jni_str!("requestLocation"),
-                    jni_sig!("(JZZI)V"),
-                    &[
-                        JValue::Long(callback_id as i64),
-                        JValue::Bool(if config.is_high_accuracy {
-                            JNI_TRUE
-                        } else {
-                            JNI_FALSE
-                        }),
-                        JValue::Bool(if config.include_altitude {
-                            JNI_TRUE
-                        } else {
-                            JNI_FALSE
-                        }),
-                        JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
-                    ],
-                )?;
-                Ok(())
-            })
-        }() {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                lingxia_messaging::invoke_callback(callback_id, Err(1000));
-                Err(PlatformError::Platform(format!(
+                lingxia_webview::platform::android::with_env(|env| {
+                    env.call_static_method(
+                        location_class,
+                        jni_str!("requestLocation"),
+                        jni_sig!("(JZZI)V"),
+                        &[
+                            JValue::Long(callback_id as i64),
+                            JValue::Bool(if config.is_high_accuracy {
+                                JNI_TRUE
+                            } else {
+                                JNI_FALSE
+                            }),
+                            JValue::Bool(if config.include_altitude {
+                                JNI_TRUE
+                            } else {
+                                JNI_FALSE
+                            }),
+                            JValue::Int(config.high_accuracy_expire_time.unwrap_or(10000) as i32),
+                        ],
+                    )?;
+                    Ok(())
+                })
+            }() {
+                Ok(()) => Ok(()),
+                Err(e) => Err(PlatformError::Platform(format!(
                     "Failed to request location via JNI: {}",
                     e
-                )))
+                ))),
             }
-        }
+        })
+        .await
     }
 }

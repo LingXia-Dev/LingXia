@@ -153,50 +153,53 @@ impl Location for Platform {
         }
     }
 
-    fn request_location(
+    async fn request_location(
         &self,
-        callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<String, PlatformError> {
         let platform = self.clone();
-        let request_config = config.clone();
+        crate::bg_runtime::await_callback(|callback_id| {
+            let request_config = config.clone();
 
-        let handler_id_cell = Arc::new(AtomicU64::new(0));
-        let handler_id_cell_inner = handler_id_cell.clone();
+            let handler_id_cell = Arc::new(AtomicU64::new(0));
+            let handler_id_cell_inner = handler_id_cell.clone();
 
-        let handler_platform = platform.clone();
-        let handler_config = request_config.clone();
-        let handler_callback_id = callback_id;
+            let handler_platform = platform.clone();
+            let handler_config = request_config.clone();
 
-        let handler_id = register_handler(move |result| {
-            let handler_id = handler_id_cell_inner.load(Ordering::Relaxed);
-            if handler_id != 0 {
-                let _ = remove_callback(handler_id);
-            }
+            let handler_id = register_handler(move |result| {
+                let handler_id = handler_id_cell_inner.load(Ordering::Relaxed);
+                if handler_id != 0 {
+                    let _ = remove_callback(handler_id);
+                }
 
-            match result {
-                CallbackResult::Success(_) => {
-                    if let Err(err) =
-                        handler_platform.start_locating(handler_callback_id, handler_config.clone())
-                    {
-                        warn!("Harmony location: failed to start after permission granted: {err}");
-                        let _ = invoke_callback(handler_callback_id, Err(1001));
+                match result {
+                    CallbackResult::Success(_) => {
+                        if let Err(err) =
+                            handler_platform.start_locating(callback_id, handler_config.clone())
+                        {
+                            warn!(
+                                "Harmony location: failed to start after permission granted: {err}"
+                            );
+                            let _ = invoke_callback(callback_id, Err(1001));
+                        }
+                    }
+                    CallbackResult::Error(code) => {
+                        let _ = invoke_callback(callback_id, Err(code));
                     }
                 }
-                CallbackResult::Error(code) => {
-                    let _ = invoke_callback(handler_callback_id, Err(code));
-                }
+            });
+            handler_id_cell.store(handler_id, Ordering::Relaxed);
+
+            let handler_id_str = handler_id.to_string();
+            if tsfn::call_arkts("requestLocationPermission", &[&handler_id_str]).is_ok() {
+                return Ok(());
             }
-        });
-        handler_id_cell.store(handler_id, Ordering::Relaxed);
 
-        let handler_id_str = handler_id.to_string();
-        if tsfn::call_arkts("requestLocationPermission", &[&handler_id_str]).is_ok() {
-            return Ok(());
-        }
-
-        let _ = remove_callback(handler_id);
-        platform.start_locating(callback_id, request_config)
+            let _ = remove_callback(handler_id);
+            platform.start_locating(callback_id, request_config)
+        })
+        .await
     }
 }
 

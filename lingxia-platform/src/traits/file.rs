@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::error::PlatformError;
 
 #[derive(Debug, Clone)]
@@ -19,28 +21,45 @@ pub struct ChooseFileRequest {
     pub filters: Vec<FileDialogFilter>,
     pub title: Option<String>,
     pub default_path: Option<String>,
-    pub callback_id: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct ChooseDirectoryRequest {
     pub title: Option<String>,
     pub default_path: Option<String>,
-    pub callback_id: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileDialogResult {
+    pub canceled: bool,
+    pub paths: Vec<String>,
 }
 
 pub trait FileInteraction: Send + Sync + 'static {
-    fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError>;
+    fn open_document(
+        &self,
+        request: OpenDocumentRequest,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
 
-    fn choose_file(&self, _request: ChooseFileRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "choose_file is not supported on this platform".into(),
-        ))
+    fn choose_file(
+        &self,
+        _request: ChooseFileRequest,
+    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+        async {
+            Err(PlatformError::NotSupported(
+                "choose_file is not supported on this platform".into(),
+            ))
+        }
     }
 
-    fn choose_directory(&self, _request: ChooseDirectoryRequest) -> Result<(), PlatformError> {
-        Err(PlatformError::NotSupported(
-            "choose_directory is not supported on this platform".into(),
-        ))
+    fn choose_directory(
+        &self,
+        _request: ChooseDirectoryRequest,
+    ) -> impl Future<Output = Result<FileDialogResult, PlatformError>> + Send {
+        async {
+            Err(PlatformError::NotSupported(
+                "choose_directory is not supported on this platform".into(),
+            ))
+        }
     }
 }

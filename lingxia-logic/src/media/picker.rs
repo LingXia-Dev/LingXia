@@ -5,11 +5,8 @@ mod types;
 
 #[cfg(not(target_os = "macos"))]
 use crate::i18n::js_invalid_parameter_error;
-use crate::i18n::{
-    js_error_from_business_code, js_error_from_platform_error, js_internal_error, js_timeout_error,
-};
+use crate::i18n::{js_error_from_business_code, js_error_from_platform_error, js_internal_error};
 use cache::ensure_cached_media_path;
-use lingxia_messaging::{CallbackResult, get_callback};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::media_interaction::ChooseMediaMode;
@@ -65,7 +62,6 @@ async fn choose_media(
         ));
     }
 
-    let (callback_id, receiver) = get_callback();
     let max_duration_seconds = opts
         .max_duration
         .filter(|v| !v.is_sign_negative())
@@ -78,22 +74,13 @@ async fn choose_media(
         source_types,
         max_duration_seconds,
         camera_facing: parse_camera(opts.camera),
-        callback_id,
     };
 
-    lxapp
+    let data = lxapp
         .runtime
         .choose_media(request)
-        .map_err(|e| js_error_from_platform_error(&e))?;
-
-    let result = receiver
         .await
-        .map_err(|_| js_timeout_error("chooseMedia callback timed out"))?;
-
-    let data = match result {
-        CallbackResult::Success(data) => data,
-        CallbackResult::Error(code) => return Err(js_error_from_business_code(code)),
-    };
+        .map_err(|e| js_error_from_platform_error(&e))?;
 
     let parsed: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("chooseMedia invalid payload: {}", e)))?;

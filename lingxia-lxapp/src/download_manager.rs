@@ -6,7 +6,7 @@ use http::header;
 use http_body_util::{BodyExt, Full};
 use lingxia_webview::DownloadRequest;
 use ring::digest::{SHA256, digest};
-use rong_http::{DEFAULT_BLOCKING_BODY_LIMIT, HttpBody, send_request};
+use rong_http::{HttpBody, send_request_with_coalesce};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Error as IoError;
@@ -20,6 +20,8 @@ use tokio::sync::watch;
 const DOWNLOAD_PROGRESS_INTERVAL_BYTES: u64 = 64 * 1024;
 const DOWNLOAD_PROGRESS_INTERVAL_MILLIS: u128 = 120;
 const DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES: u64 = 256 * 1024;
+const DOWNLOAD_SMALL_BODY_LIMIT: usize = 128 * 1024;
+const DOWNLOAD_STREAM_COALESCE_TARGET: usize = 64 * 1024;
 static DOWNLOAD_ROOT_OVERRIDE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
 static USER_CACHE_DOWNLOADS: OnceLock<DashMap<String, watch::Sender<SharedDownloadState>>> =
     OnceLock::new();
@@ -539,9 +541,7 @@ async fn write_chunk(
         });
     }
 
-    if progress
-        .downloaded
-        .saturating_sub(progress.last_persisted)
+    if progress.downloaded.saturating_sub(progress.last_persisted)
         >= DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES
     {
         progress.last_persisted = progress.downloaded;
@@ -676,7 +676,14 @@ async fn run_download_task(
         }
     };
 
-    let response = match send_request(request_obj, DEFAULT_BLOCKING_BODY_LIMIT, None).await {
+    let response = match send_request_with_coalesce(
+        request_obj,
+        DOWNLOAD_SMALL_BODY_LIMIT,
+        None,
+        DOWNLOAD_STREAM_COALESCE_TARGET,
+    )
+    .await
+    {
         Ok(response) => response,
         Err(e) => {
             return Err(emit_failed(&mut on_event, url, e, resume_offset, None));

@@ -590,10 +590,16 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }
 
-    fn get_capsule_rect(&self, callback_id: u64) -> Result<(), PlatformError> {
-        let callback_id_str = callback_id.to_string();
-        lingxia_webview::platform::harmony::tsfn::call_arkts("getCapsuleRect", &[&callback_id_str])
+    async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            let callback_id_str = callback_id.to_string();
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "getCapsuleRect",
+                &[&callback_id_str],
+            )
             .map_err(|e| PlatformError::Platform(format!("Failed to get capsule rect: {}", e)))
+        })
+        .await
     }
 }
 

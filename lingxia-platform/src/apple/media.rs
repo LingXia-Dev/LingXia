@@ -96,41 +96,33 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError> {
-        choose_media_impl(request)
+    async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| choose_media_impl(request, callback_id))
+            .await
     }
 
-    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError> {
+    async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            ios::scan_code_impl(request)
+            crate::bg_runtime::await_callback(|callback_id| {
+                ios::scan_code_impl(request, callback_id)
+            })
+            .await
         }
 
         #[cfg(target_os = "macos")]
         {
-            crate::desktop::scan::scan_code_desktop(request)
+            crate::desktop::scan::scan_code_desktop(request).await
         }
     }
 
-    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+    async fn save_image_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            let file_uri = request.file_uri.clone();
-            let callback_id = request.callback_id;
-            let _ = crate::bg_runtime::spawn_blocking(move || {
-                let result = ios::save_image_to_album(&file_uri);
-                match result {
-                    Ok(()) => {
-                        let _ =
-                            lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
-                    }
-                    Err(err) => {
-                        let code = save_media_error_code(&err.to_string());
-                        let _ = lingxia_messaging::invoke_callback(callback_id, Err(code));
-                    }
-                }
-            });
-            Ok(())
+            crate::bg_runtime::blocking(move || ios::save_image_to_album(&request.file_uri)).await
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -142,25 +134,13 @@ impl MediaInteraction for Platform {
         }
     }
 
-    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError> {
+    async fn save_video_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            let file_uri = request.file_uri.clone();
-            let callback_id = request.callback_id;
-            let _ = crate::bg_runtime::spawn_blocking(move || {
-                let result = ios::save_video_to_album(&file_uri);
-                match result {
-                    Ok(()) => {
-                        let _ =
-                            lingxia_messaging::invoke_callback(callback_id, Ok("{}".to_string()));
-                    }
-                    Err(err) => {
-                        let code = save_media_error_code(&err.to_string());
-                        let _ = lingxia_messaging::invoke_callback(callback_id, Err(code));
-                    }
-                }
-            });
-            Ok(())
+            crate::bg_runtime::blocking(move || ios::save_video_to_album(&request.file_uri)).await
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -170,18 +150,6 @@ impl MediaInteraction for Platform {
                 "save_video_to_photos_album is only supported on iOS".to_string(),
             ))
         }
-    }
-}
-
-#[cfg(target_os = "ios")]
-fn save_media_error_code(message: &str) -> u32 {
-    let lower = message.to_ascii_lowercase();
-    if lower.contains("permission") || lower.contains("denied") || lower.contains("restricted") {
-        3004
-    } else if lower.contains("not found") || lower.contains("does not exist") {
-        1001
-    } else {
-        1001
     }
 }
 
@@ -399,7 +367,7 @@ impl MediaRuntime for Platform {
     }
 }
 
-fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
+fn choose_media_impl(request: ChooseMediaRequest, callback_id: u64) -> Result<(), PlatformError> {
     let max_count = request.max_count;
     let mode = match request.mode {
         ChooseMediaMode::Images => "image",
@@ -419,7 +387,6 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), PlatformError> {
         CameraFacing::Back => "back",
     });
     let max_duration = request.max_duration_seconds;
-    let callback_id = request.callback_id;
 
     let source_types_json = serde_json::to_string(&source_types)
         .map_err(|e| PlatformError::Platform(format!("Failed to serialize source types: {}", e)))?;
@@ -614,7 +581,10 @@ mod ios {
         error.localizedDescription().to_string()
     }
 
-    pub(super) fn scan_code_impl(request: ScanCodeRequest) -> Result<(), PlatformError> {
+    pub(super) fn scan_code_impl(
+        request: ScanCodeRequest,
+        callback_id: u64,
+    ) -> Result<(), PlatformError> {
         let type_codes: Vec<i32> = request
             .scan_types
             .iter()
@@ -629,7 +599,7 @@ mod ios {
         let types_json = serde_json::to_string(&type_codes)
             .map_err(|e| PlatformError::Platform(format!("Failed to encode scan types: {}", e)))?;
 
-        let started = scan_code(&types_json, request.only_from_camera, request.callback_id);
+        let started = scan_code(&types_json, request.only_from_camera, callback_id);
         if started {
             Ok(())
         } else {

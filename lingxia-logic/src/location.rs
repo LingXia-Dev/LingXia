@@ -1,8 +1,8 @@
 use crate::i18n::{
     js_error_from_business_code, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error, js_timeout_error,
+    js_invalid_parameter_error,
 };
-use lingxia_messaging::{CallbackResult, get_callback};
+use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::location::{Location, LocationRequestConfig};
 use lxapp::{LxApp, lx};
 use rong::function::Optional;
@@ -153,9 +153,6 @@ async fn get_location(
         )));
     }
 
-    // Get callback ID and receiver for the actual location request
-    let (callback_id, receiver) = get_callback();
-
     // Create location request config from options
     let config = if let Some(opts) = options.as_ref() {
         LocationRequestConfig {
@@ -167,34 +164,20 @@ async fn get_location(
         LocationRequestConfig::default()
     };
 
-    // Call runtime interface with callback ID and config
-    match lxapp.runtime.request_location(callback_id, config) {
-        Ok(()) => {
-            // Wait for result from callback
-            match receiver.await {
-                Ok(result) => {
-                    match result {
-                        CallbackResult::Error(code) => {
-                            return Err(handle_location_error(code));
-                        }
-                        CallbackResult::Success(data) => {
-                            let mut location = parse_location_payload(&data)?;
+    match lxapp.runtime.request_location(config).await {
+        Ok(data) => {
+            let mut location = parse_location_payload(&data)?;
 
-                            // If GCJ02 coordinate system is requested, perform coordinate conversion
-                            if requested_type == "gcj02" {
-                                let (gcj_lat, gcj_lng) =
-                                    wgs84_to_gcj02(location.latitude, location.longitude);
-                                location.latitude = gcj_lat;
-                                location.longitude = gcj_lng;
-                            }
-
-                            Ok(location)
-                        }
-                    }
-                }
-                Err(_) => Err(js_timeout_error("Location callback timed out")),
+            // If GCJ02 coordinate system is requested, perform coordinate conversion
+            if requested_type == "gcj02" {
+                let (gcj_lat, gcj_lng) = wgs84_to_gcj02(location.latitude, location.longitude);
+                location.latitude = gcj_lat;
+                location.longitude = gcj_lng;
             }
+
+            Ok(location)
         }
+        Err(PlatformError::BusinessError(code)) => Err(handle_location_error(code)),
         Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }

@@ -31,58 +31,60 @@ impl UserFeedback for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to hide toast: {}", e)))
     }
 
-    fn show_modal(&self, options: ModalOptions, callback_id: u64) -> Result<(), PlatformError> {
-        // Convert ModalOptions to individual string parameters for TSFN call
-        let title = &options.title;
-        let content = &options.content;
-        let show_cancel = if options.show_cancel { "true" } else { "false" };
-        let cancel_text = &options.cancel_text;
-        let confirm_text = &options.confirm_text;
-        let confirm_color = options.confirm_color.as_deref().unwrap_or("");
-        let callback_id_str = callback_id.to_string();
+    async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            // Convert ModalOptions to individual string parameters for TSFN call
+            let title = &options.title;
+            let content = &options.content;
+            let show_cancel = if options.show_cancel { "true" } else { "false" };
+            let cancel_text = &options.cancel_text;
+            let confirm_text = &options.confirm_text;
+            let confirm_color = options.confirm_color.as_deref().unwrap_or("");
+            let callback_id_str = callback_id.to_string();
 
-        // Call ArkTS showModal function via TSFN with individual parameters
-        lingxia_webview::platform::harmony::tsfn::call_arkts(
-            "showModal",
-            &[
-                title,
-                content,
-                show_cancel,
-                cancel_text,
-                confirm_text,
-                confirm_color,
-                &callback_id_str,
-            ],
-        )
-        .map_err(|e| PlatformError::Platform(format!("Failed to show modal: {}", e)))?;
-
-        Ok(())
+            // Call ArkTS showModal function via TSFN with individual parameters
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "showModal",
+                &[
+                    title,
+                    content,
+                    show_cancel,
+                    cancel_text,
+                    confirm_text,
+                    confirm_color,
+                    &callback_id_str,
+                ],
+            )
+            .map_err(|e| PlatformError::Platform(format!("Failed to show modal: {}", e)))
+        })
+        .await
     }
 
-    fn show_action_sheet(
+    async fn show_action_sheet(
         &self,
         options: Vec<String>,
         cancel_text: String,
         item_color: String,
-        callback_id: u64,
-    ) -> Result<(), PlatformError> {
-        // Convert options to JSON string
-        let options_json = serde_json::to_string(&options)
-            .map_err(|e| PlatformError::Platform(format!("Failed to serialize options: {}", e)))?;
+    ) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            // Convert options to JSON string
+            let options_json = serde_json::to_string(&options).map_err(|e| {
+                PlatformError::Platform(format!("Failed to serialize options: {}", e))
+            })?;
 
-        // Call ArkTS showActionSheet function via TSFN with individual parameters
-        lingxia_webview::platform::harmony::tsfn::call_arkts(
-            "showActionSheet",
-            &[
-                &options_json,
-                &cancel_text,
-                &item_color,
-                &callback_id.to_string(),
-            ],
-        )
-        .map_err(|e| PlatformError::Platform(format!("Failed to show action sheet: {}", e)))?;
-
-        Ok(())
+            // Call ArkTS showActionSheet function via TSFN with individual parameters
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "showActionSheet",
+                &[
+                    &options_json,
+                    &cancel_text,
+                    &item_color,
+                    &callback_id.to_string(),
+                ],
+            )
+            .map_err(|e| PlatformError::Platform(format!("Failed to show action sheet: {}", e)))
+        })
+        .await
     }
 }
 

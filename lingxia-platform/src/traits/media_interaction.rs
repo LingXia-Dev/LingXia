@@ -1,3 +1,5 @@
+use std::future::Future;
+
 use crate::error::PlatformError;
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,7 @@ pub struct PreviewMediaRequest {
     pub start_index: i32,
     pub advance: PreviewMediaAdvance,
     pub show_index_indicator: bool,
+    /// Internal callback_id for abort signal support.
     pub callback_id: u64,
 }
 
@@ -84,7 +87,6 @@ pub struct ChooseMediaRequest {
     pub source_types: Vec<MediaSource>,
     pub max_duration_seconds: Option<u32>,
     pub camera_facing: Option<CameraFacing>,
-    pub callback_id: u64,
 }
 
 impl Default for ChooseMediaRequest {
@@ -95,7 +97,6 @@ impl Default for ChooseMediaRequest {
             source_types: vec![MediaSource::Album, MediaSource::Camera],
             max_duration_seconds: None,
             camera_facing: None,
-            callback_id: 0,
         }
     }
 }
@@ -112,7 +113,6 @@ pub enum ScanType {
 pub struct ScanCodeRequest {
     pub scan_types: Vec<ScanType>,
     pub only_from_camera: bool,
-    pub callback_id: u64,
 }
 
 impl Default for ScanCodeRequest {
@@ -120,7 +120,6 @@ impl Default for ScanCodeRequest {
         Self {
             scan_types: Vec::new(),
             only_from_camera: true,
-            callback_id: 0,
         }
     }
 }
@@ -128,14 +127,30 @@ impl Default for ScanCodeRequest {
 #[derive(Debug, Clone)]
 pub struct SaveMediaRequest {
     pub file_uri: String,
-    pub callback_id: u64,
 }
 
 pub trait MediaInteraction: Send + Sync + 'static {
+    /// Preview media. Keeps callback_id pattern for AbortSignal support.
     fn preview_media(&self, request: PreviewMediaRequest) -> Result<(), PlatformError>;
     fn cancel_preview(&self, callback_id: u64) -> Result<(), PlatformError>;
-    fn choose_media(&self, request: ChooseMediaRequest) -> Result<(), PlatformError>;
-    fn scan_code(&self, request: ScanCodeRequest) -> Result<(), PlatformError>;
-    fn save_image_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;
-    fn save_video_to_photos_album(&self, request: SaveMediaRequest) -> Result<(), PlatformError>;
+
+    fn choose_media(
+        &self,
+        request: ChooseMediaRequest,
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+
+    fn scan_code(
+        &self,
+        request: ScanCodeRequest,
+    ) -> impl Future<Output = Result<String, PlatformError>> + Send;
+
+    fn save_image_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+
+    fn save_video_to_photos_album(
+        &self,
+        request: SaveMediaRequest,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send;
 }

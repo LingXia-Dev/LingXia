@@ -409,11 +409,13 @@ impl Location for Platform {
         ios::is_location_enabled()
     }
 
-    fn request_location(
+    async fn request_location(
         &self,
-        callback_id: u64,
         config: crate::traits::location::LocationRequestConfig,
-    ) -> Result<(), PlatformError> {
-        ios::request_location_with_config(callback_id, config)
+    ) -> Result<String, PlatformError> {
+        crate::bg_runtime::await_callback(|callback_id| {
+            ios::request_location_with_config(callback_id, config)
+        })
+        .await
     }
 }

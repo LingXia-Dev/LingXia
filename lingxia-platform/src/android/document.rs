@@ -7,18 +7,22 @@ use lingxia_webview::platform::android::with_env;
 use std::error::Error;
 
 impl FileInteraction for Platform {
-    fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
-        let show_menu = request.show_menu.unwrap_or(true); // Default to true for backward compatibility
-        match open_document_impl(&request.file_path, request.mime_type.as_deref(), show_menu) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(PlatformError::Platform(
-                "Failed to open document on Android platform".to_string(),
-            )),
-            Err(err) => Err(PlatformError::Platform(format!(
-                "Failed to open document on Android platform: {}",
-                err
-            ))),
-        }
+    async fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
+        crate::bg_runtime::blocking(move || open_document_sync(request)).await
+    }
+}
+
+fn open_document_sync(request: OpenDocumentRequest) -> Result<(), PlatformError> {
+    let show_menu = request.show_menu.unwrap_or(true);
+    match open_document_impl(&request.file_path, request.mime_type.as_deref(), show_menu) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(PlatformError::Platform(
+            "Failed to open document on Android platform".to_string(),
+        )),
+        Err(err) => Err(PlatformError::Platform(format!(
+            "Failed to open document on Android platform: {}",
+            err
+        ))),
     }
 }
 
