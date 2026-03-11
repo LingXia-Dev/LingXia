@@ -1,6 +1,6 @@
 pub mod app_runtime;
 pub mod device;
-pub mod document;
+pub mod file;
 pub mod location;
 pub mod media_interaction;
 pub mod media_runtime;
@@ -16,7 +16,7 @@ pub mod wifi;
 pub mod prelude {
     pub use super::app_runtime::AppRuntime;
     pub use super::device::{Device, DeviceHardware};
-    pub use super::document::DocumentInteraction;
+    pub use super::file::FileInteraction;
     pub use super::location::Location;
     pub use super::media_interaction::MediaInteraction;
     pub use super::media_runtime::MediaRuntime;

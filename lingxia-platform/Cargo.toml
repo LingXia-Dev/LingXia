@@ -20,6 +20,7 @@ imagesize = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rxing = "0.8.3"
 rfd = "0.17.2"
+serde_json = { workspace = true }
 
 # Android-specific dependencies (only what's needed for FFI)
 [target.'cfg(target_os = "android")'.dependencies]

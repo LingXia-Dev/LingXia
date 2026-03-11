@@ -1,12 +1,12 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
+use crate::traits::file::{FileInteraction, OpenDocumentRequest};
 use jni::objects::{JObject, JString, JValue};
 use jni::{jni_sig, jni_str};
 use lingxia_webview::platform::android::with_env;
 use std::error::Error;
 
-impl DocumentInteraction for Platform {
+impl FileInteraction for Platform {
     fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
         let show_menu = request.show_menu.unwrap_or(true); // Default to true for backward compatibility
         match open_document_impl(&request.file_path, request.mime_type.as_deref(), show_menu) {

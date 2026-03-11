@@ -1,8 +1,8 @@
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::document::{DocumentInteraction, OpenDocumentRequest};
+use crate::traits::file::{FileInteraction, OpenDocumentRequest};
 
-impl DocumentInteraction for Platform {
+impl FileInteraction for Platform {
     fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
         let mime = request.mime_type.unwrap_or_default();
         let show_menu_flag = request.show_menu.unwrap_or(true);
