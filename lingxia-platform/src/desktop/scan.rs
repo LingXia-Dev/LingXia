@@ -7,7 +7,7 @@ pub fn scan_code_desktop(request: ScanCodeRequest) -> Result<(), PlatformError> 
     let callback_id = request.callback_id;
     let scan_types = request.scan_types.clone();
 
-    std::thread::spawn(move || {
+    let _ = crate::bg_runtime::spawn_blocking(move || {
         let result = pick_and_scan(&scan_types);
         match result {
             Ok(Some((scan_result, scan_type))) => {

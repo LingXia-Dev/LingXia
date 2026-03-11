@@ -18,7 +18,7 @@ edition = "2024"
 
 [workspace.dependencies]
 # Common dependencies that can be shared across workspace members
-tokio = { version = "1.0", features = ["time", "macros", "sync"] }
+tokio = { version = "1.0", features = ["rt", "time", "macros", "sync"] }
 futures = "0.3.31"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.143"

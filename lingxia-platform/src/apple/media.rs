@@ -117,7 +117,7 @@ impl MediaInteraction for Platform {
         {
             let file_uri = request.file_uri.clone();
             let callback_id = request.callback_id;
-            std::thread::spawn(move || {
+            let _ = crate::bg_runtime::spawn_blocking(move || {
                 let result = ios::save_image_to_album(&file_uri);
                 match result {
                     Ok(()) => {
@@ -147,7 +147,7 @@ impl MediaInteraction for Platform {
         {
             let file_uri = request.file_uri.clone();
             let callback_id = request.callback_id;
-            std::thread::spawn(move || {
+            let _ = crate::bg_runtime::spawn_blocking(move || {
                 let result = ios::save_video_to_album(&file_uri);
                 match result {
                     Ok(()) => {

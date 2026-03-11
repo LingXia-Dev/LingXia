@@ -2,7 +2,7 @@ use crate::error::PlatformError;
 use crate::traits::file::{ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter};
 
 pub fn choose_file_desktop(request: ChooseFileRequest) -> Result<(), PlatformError> {
-    std::thread::spawn(move || {
+    let _ = crate::bg_runtime::spawn_blocking(move || {
         let callback_id = request.callback_id;
         match run_file_dialog(&request) {
             Ok((canceled, paths)) => send_success(callback_id, canceled, paths),
@@ -14,7 +14,7 @@ pub fn choose_file_desktop(request: ChooseFileRequest) -> Result<(), PlatformErr
 }
 
 pub fn choose_directory_desktop(request: ChooseDirectoryRequest) -> Result<(), PlatformError> {
-    std::thread::spawn(move || {
+    let _ = crate::bg_runtime::spawn_blocking(move || {
         let callback_id = request.callback_id;
         match run_directory_dialog(&request) {
             Ok((canceled, paths)) => send_success(callback_id, canceled, paths),

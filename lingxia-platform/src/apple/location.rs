@@ -309,8 +309,8 @@ pub(crate) mod ios {
         // Set up timeout monitoring if requested.
         if let Some(timeout_ms) = config.high_accuracy_expire_time {
             let callbacks = callbacks().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(timeout_ms as u64));
+            let _ = crate::bg_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(timeout_ms as u64)).await;
                 let should_timeout = {
                     let mut guard = callbacks.lock().unwrap();
                     if guard.contains_key(&callback_id) {

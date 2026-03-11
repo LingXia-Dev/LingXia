@@ -1709,6 +1709,14 @@ pub fn init(runtime: Platform) -> Option<String> {
     // which logic extensions are loaded.
     crate::host::register_all();
 
+    // Inject the tokio runtime handle into lingxia-platform so it can spawn async/blocking tasks.
+    match rong::bg::handle() {
+        Some(handle) => lingxia_platform::init(handle),
+        None => {
+            error!("rong::bg not started; using fallback threads");
+        }
+    }
+
     let runtime_arc = Arc::new(runtime.clone());
     let _ = RUNTIME.set(runtime_arc.clone());
 

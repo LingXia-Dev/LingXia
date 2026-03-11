@@ -477,8 +477,8 @@ extern "C" fn on_new_output_buffer(
             .is_ok()
         {
             let component_id = wrapper.component_id.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(Duration::from_millis(60));
+            let _ = crate::bg_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(60)).await;
                 match refresh_stream_decoder_surface(&component_id) {
                     Ok(()) => log::info!(
                         "[Harmony.StreamDecoder] post-output surface refresh ok for {}",
@@ -3407,7 +3407,7 @@ pub fn set_video_surface_from_id(
     if let Some(wrapper) = lookup_stream_decoder(component_id) {
         let component_id = component_id.to_string();
         let wrapper_clone = wrapper.clone();
-        std::thread::spawn(move || {
+        let _ = crate::bg_runtime::spawn_blocking(move || {
             let user_data =
                 Arc::as_ptr(&wrapper_clone) as *const StreamDecoderWrapper as *mut c_void;
             match wrapper_clone.state.lock() {
@@ -3647,7 +3647,7 @@ fn dispatch_command_harmony(
             event: &'static str,
             detail: serde_json::Value,
         ) {
-            std::thread::spawn(move || {
+            let _ = crate::bg_runtime::spawn_blocking(move || {
                 let component_id_for_fields = component_id.clone();
                 let payload = serde_json::json!({
                     "action": "component.event",
@@ -3750,7 +3750,7 @@ fn dispatch_command_harmony(
                 let component_id = component_id.to_string();
                 let callback_id = callback_id;
                 let control_event = control_event;
-                std::thread::spawn(move || {
+                let _ = crate::bg_runtime::spawn_blocking(move || {
                     apply_stream_decoder_command_blocking(
                         component_id,
                         wrapper_clone,
@@ -3951,7 +3951,7 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                     let wrapper = self.wrapper.clone();
                     let component_id = self.component_id.clone();
                     let in_flight = self.reset_in_flight.clone();
-                    std::thread::spawn(move || {
+                    let _ = crate::bg_runtime::spawn_blocking(move || {
                         let result = (|| {
                             let mut guard = wrapper.state.lock().map_err(|_| {
                                 PlatformError::Platform("Stream decoder lock poisoned".to_string())
@@ -4045,9 +4045,11 @@ impl VideoStreamDecoderHandle for HarmonyStreamDecoderHandle {
                 .is_ok()
             {
                 let component_id = self.component_id.clone();
-                std::thread::spawn(move || {
+                let _ = crate::bg_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(Duration::from_millis(500));
+                    interval.tick().await; // first tick completes immediately
                     loop {
-                        std::thread::sleep(Duration::from_millis(500));
+                        interval.tick().await;
                         let Some(decoder) = lookup_stream_decoder(&component_id) else {
                             break;
                         };
