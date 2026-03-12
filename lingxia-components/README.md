@@ -102,3 +102,8 @@ registerPickerComponent();
 npm install
 npm run build
 ```
+
+## Design Docs
+
+- [Native Components Design and API Contract](./docs/native-components-design.md)
+- [Component API Reference](./docs/component-api-reference.md)
