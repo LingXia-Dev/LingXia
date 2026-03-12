@@ -1010,6 +1010,91 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_resolveLxUri<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_openBrowserTab<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    session_id: jlong,
+    url: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = match appid.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let url: String = match url.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        if session_id <= 0 {
+            return Ok(JString::null());
+        }
+
+        let tab_id = match lxapp::resolve_owner_lxapp(&appid, session_id as u64) {
+            Ok(_owner) => match lxapp::open_internal_browser_tab(&url, None) {
+                Ok(tab_id) => tab_id,
+                Err(e) => {
+                    error!("[Android] openBrowserTab failed: {}", e);
+                    return Ok(JString::null());
+                }
+            },
+            Err(e) => {
+                error!("[Android] openBrowserTab owner resolve failed: {}", e);
+                return Ok(JString::null());
+            }
+        };
+
+        env.new_string(tab_id).or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabClose(
+    mut env: EnvUnowned,
+    _class: JClass,
+    tab_id: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let tab_id: String = match tab_id.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(false),
+        };
+        Ok(lxapp::close_browser_tab(&tab_id).is_ok())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getBuiltinBrowserAppId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        env.new_string(lxapp::BUILTIN_BROWSER_APPID)
+            .or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabPathForId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    tab_id: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let tab_id: String = match tab_id.try_to_string(env) {
+            Ok(s) => s.to_string(),
+            Err(_) => return Ok(JString::null()),
+        };
+        let path = lxapp::browser_tab_path_for_id(&tab_id);
+        env.new_string(path).or_else(|_| Ok(JString::null()))
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserAddressInput<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,

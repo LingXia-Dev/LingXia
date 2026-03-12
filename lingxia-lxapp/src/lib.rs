@@ -34,12 +34,13 @@ pub use appservice::event_bus::{
 };
 pub use appservice::native_component::dispatch_native_component_event;
 pub use browser::{
-    BUILTIN_BROWSER_APPID, browser_download_dir, browser_owner_appid_for_tab_id,
-    browser_owner_session_id_for_tab_id, browser_tab_exists, browser_tab_path_for_id,
-    close_browser_tab, close_internal_browser_tab, generate_browser_startup_html,
-    handle_browser_address_input, handle_browser_address_input_json,
-    handle_browser_navigation_policy_json, open_internal_browser_tab, reset_browser_download_dir,
-    resolve_owner_lxapp, set_browser_download_dir,
+    BUILTIN_BROWSER_APPID, BrowserTabInfo, browser_download_dir, browser_tab_exists,
+    browser_tab_info, browser_tab_info_json, browser_tab_infos, browser_tab_infos_json,
+    browser_tab_path_for_id, browser_update_tab_info, close_browser_tab,
+    close_internal_browser_tab, generate_browser_startup_html, handle_browser_address_input,
+    handle_browser_address_input_json, handle_browser_navigation_policy_json,
+    open_internal_browser_tab, reset_browser_download_dir, resolve_owner_lxapp,
+    set_browser_download_dir,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, UiEventType};

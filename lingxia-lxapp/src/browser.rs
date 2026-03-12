@@ -22,6 +22,11 @@ const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
 const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https"];
 const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
 
+// Internal browser tab model:
+// 1) All tabs are hosted by the built-in browser lxapp (BUILTIN_BROWSER_APPID).
+// 2) One tab id maps to one page path: /tabs/{tab_id}.
+// 3) One tab owns one managed WebView instance lifecycle (reopen same tab id reuses it).
+
 fn normalize_browser_target_url(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() >= "http://".len() && trimmed[..7].eq_ignore_ascii_case("http://") {
@@ -147,6 +152,17 @@ pub struct BrowserAddressInputResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub suggestions: Option<Vec<BrowserAddressSuggestion>>,
     pub error: Option<BrowserAddressInputError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserTabInfo {
+    pub tab_id: String,
+    pub path: String,
+    pub session_id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -475,32 +491,18 @@ pub fn handle_browser_address_input_json(request_json: &str) -> Option<String> {
 
 #[derive(Clone)]
 struct BrowserTabState {
-    source_appid: String,
     session_id: u64,
     /// Monotonic token to identify the current create lifecycle of this tab.
     /// Used to ignore stale async callbacks when tab gets recreated quickly.
     create_token: u64,
     /// URL queued for loading while WebView creation is in-flight.
     pending_url: Option<String>,
-}
-
-impl BrowserTabState {
-    fn verify_owner(&self, lxapp: &LxApp, tab_id: &str) -> Result<(), LxAppError> {
-        if self.source_appid != lxapp.appid || self.session_id != lxapp.session_id() {
-            return Err(LxAppError::UnsupportedOperation(format!(
-                "internal browser tab {} is owned by {}:{}, not {}:{}",
-                tab_id,
-                self.source_appid,
-                self.session_id,
-                lxapp.appid,
-                lxapp.session_id()
-            )));
-        }
-        Ok(())
-    }
+    current_url: Option<String>,
+    title: Option<String>,
 }
 
 struct BrowserState {
+    // tab_id -> tab lifecycle state (single WebView lifecycle per tab_id)
     tabs: HashMap<String, BrowserTabState>,
 }
 
@@ -558,12 +560,9 @@ pub fn browser_download_dir() -> Option<PathBuf> {
     crate::download_manager::download_root_override()
 }
 
-fn publish_browser_download_event(owner_appid: &str, event_name: &str, payload: serde_json::Value) {
+fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) {
     let payload_str = Some(payload.to_string());
-    let _ = publish_app_event(BUILTIN_BROWSER_APPID, event_name, payload_str.clone());
-    if owner_appid != BUILTIN_BROWSER_APPID {
-        let _ = publish_app_event(owner_appid, event_name, payload_str);
-    }
+    let _ = publish_app_event(BUILTIN_BROWSER_APPID, event_name, payload_str);
 }
 
 // ---------------------------------------------------------------------------
@@ -581,56 +580,26 @@ fn browser_create_webview(
     create_token: u64,
 ) -> Result<(), LxAppError> {
     let webtag = browser_webtag(path, session_id);
-    let tab_id_for_new_window = tab_id.to_string();
     let tab_id_for_download = tab_id.to_string();
-    let owner_for_new_window = lock_state()
-        .tabs
-        .get(tab_id)
-        .map(|s| (s.source_appid.clone(), s.session_id));
-    let owner_for_download = owner_for_new_window.clone();
+    let browser_owner = ensure_browser_lxapp()?;
+    let runtime_for_new_window = browser_owner.runtime.clone();
+    let owner_appid_for_new_window = browser_owner.appid.clone();
+    let owner_session_for_new_window = browser_owner.session_id();
+    let owner_for_download = browser_owner.clone();
     let session = WebViewBuilder::browser(webtag)
         .on_new_window(move |url| {
-            if let Some((owner_appid, owner_session_id)) = owner_for_new_window.as_ref() {
-                let normalized = normalize_browser_target_url(url);
-                match resolve_owner_lxapp(owner_appid, *owner_session_id) {
-                    Ok(owner) => {
-                        let _ = owner.runtime.open_url(OpenUrlRequest {
-                            owner_appid: owner_appid.clone(),
-                            owner_session_id: *owner_session_id,
-                            url: normalized.clone(),
-                            target: OpenUrlTarget::SelfTarget,
-                        });
-                    }
-                    Err(e) => {
-                        crate::warn!("[InternalBrowser] new-window resolve owner failed: {}", e);
-                    }
-                }
-            } else {
-                crate::warn!(
-                    "[InternalBrowser] new-window missing owner mapping for tab_id={}",
-                    tab_id_for_new_window
-                );
-            }
+            let normalized = normalize_browser_target_url(url);
+            let _ = runtime_for_new_window.open_url(OpenUrlRequest {
+                owner_appid: owner_appid_for_new_window.clone(),
+                owner_session_id: owner_session_for_new_window,
+                url: normalized,
+                target: OpenUrlTarget::SelfTarget,
+            });
             NewWindowPolicy::Cancel
         })
         .on_download(move |request| {
-            let Some((owner_appid, owner_session_id)) = owner_for_download.as_ref() else {
-                crate::warn!(
-                    "[InternalBrowser] download missing owner mapping for tab_id={}",
-                    tab_id_for_download
-                );
-                return;
-            };
-
-            let owner = match resolve_owner_lxapp(owner_appid, *owner_session_id) {
-                Ok(owner) => owner,
-                Err(e) => {
-                    crate::warn!("[InternalBrowser] download resolve owner failed: {}", e);
-                    return;
-                }
-            };
-
             let tab_id = tab_id_for_download.clone();
+            let owner = owner_for_download.clone();
             if let Err(e) = rong::bg::spawn(async move {
                 browser_download_resource(owner, tab_id, request).await;
             }) {
@@ -782,7 +751,6 @@ async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: D
         crate::download_manager::browser_download_root(&owner.runtime.app_data_dir()),
         Some(rong::get_user_agent()),
     );
-    let owner_appid = owner.appid.clone();
     let tab_id_for_event = tab_id.clone();
 
     let result = crate::download_manager::run_browser_download_task(
@@ -790,7 +758,7 @@ async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: D
         &task_id,
         &tab_id_for_event,
         |event_name, payload| {
-            publish_browser_download_event(&owner_appid, event_name, payload);
+            publish_browser_download_event(event_name, payload);
         },
     )
     .await;
@@ -922,42 +890,85 @@ fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
 }
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
+    // All browser tab pages are routed under the built-in browser lxapp.
     format!("{INTERNAL_TAB_PATH_PREFIX}{}", sanitize_tab_id(tab_id))
 }
 
-pub fn browser_owner_appid_for_tab_id(tab_id: &str) -> Option<String> {
+fn normalize_optional_string(value: Option<&str>) -> Option<String> {
+    let text = value.unwrap_or_default().trim();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text.to_string())
+    }
+}
+
+fn build_tab_info(tab_id: &str, state: &BrowserTabState) -> BrowserTabInfo {
+    BrowserTabInfo {
+        tab_id: tab_id.to_string(),
+        path: browser_tab_path_for_id(tab_id),
+        session_id: state.session_id,
+        current_url: state.current_url.clone(),
+        title: state.title.clone(),
+    }
+}
+
+pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
     let normalized = sanitize_tab_id(tab_id);
     if normalized.is_empty() {
         return None;
     }
-    lock_state()
+    let state = lock_state();
+    state
         .tabs
         .get(&normalized)
-        .map(|state| state.source_appid.clone())
+        .map(|tab| build_tab_info(&normalized, tab))
 }
 
-pub fn browser_owner_session_id_for_tab_id(tab_id: &str) -> u64 {
+pub fn browser_tab_info_json(tab_id: &str) -> Option<String> {
+    browser_tab_info(tab_id).and_then(|info| serde_json::to_string(&info).ok())
+}
+
+pub fn browser_tab_infos() -> Vec<BrowserTabInfo> {
+    let state = lock_state();
+    let mut result = state
+        .tabs
+        .iter()
+        .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
+        .collect::<Vec<_>>();
+    result.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
+    result
+}
+
+pub fn browser_tab_infos_json() -> String {
+    serde_json::to_string(&browser_tab_infos()).unwrap_or_else(|_| "[]".to_string())
+}
+
+pub fn browser_update_tab_info(
+    tab_id: &str,
+    current_url: Option<&str>,
+    title: Option<&str>,
+) -> bool {
     let normalized = sanitize_tab_id(tab_id);
     if normalized.is_empty() {
-        return 0;
+        return false;
     }
-    lock_state()
-        .tabs
-        .get(&normalized)
-        .map(|state| state.session_id)
-        .unwrap_or(0)
+    let mut state = lock_state();
+    let Some(tab) = state.tabs.get_mut(&normalized) else {
+        return false;
+    };
+    if current_url.is_some() {
+        tab.current_url = normalize_optional_string(current_url);
+    }
+    if title.is_some() {
+        tab.title = normalize_optional_string(title);
+    }
+    true
 }
 
-pub fn open_internal_browser_tab(
-    lxapp: &LxApp,
-    url: &str,
-    tab_id: Option<&str>,
-) -> Result<String, LxAppError> {
-    if crate::try_get(BUILTIN_BROWSER_APPID).is_none() {
-        let _ = rong::bg::spawn(async {
-            let _ = ensure_browser_lxapp();
-        });
-    }
+pub fn open_internal_browser_tab(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
+    let browser = ensure_browser_lxapp()?;
+    let browser_session_id = browser.session_id();
 
     let target_url = url.trim();
     let normalized_target_url = normalize_browser_target_url(target_url);
@@ -967,16 +978,17 @@ pub fn open_internal_browser_tab(
         .filter(|v| !v.is_empty())
         .unwrap_or_else(generate_tab_id);
     let path = browser_tab_path_for_id(&tab_id);
-    let session_id = lxapp.session_id();
+    let session_id = browser_session_id;
     let mut create_token: Option<u64> = None;
     let mut is_new_tab = false;
 
     {
         let mut state = lock_state();
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
-            existing.verify_owner(lxapp, &tab_id)?;
+            existing.session_id = session_id;
             if has_target_url {
                 existing.pending_url = Some(normalized_target_url.clone());
+                existing.current_url = Some(normalized_target_url.clone());
             }
         } else {
             is_new_tab = true;
@@ -985,7 +997,6 @@ pub fn open_internal_browser_tab(
             state.tabs.insert(
                 tab_id.clone(),
                 BrowserTabState {
-                    source_appid: lxapp.appid.clone(),
                     session_id,
                     create_token: token,
                     pending_url: if has_target_url {
@@ -993,6 +1004,12 @@ pub fn open_internal_browser_tab(
                     } else {
                         None
                     },
+                    current_url: if has_target_url {
+                        Some(normalized_target_url.clone())
+                    } else {
+                        None
+                    },
+                    title: None,
                 },
             );
         }
@@ -1013,6 +1030,7 @@ pub fn open_internal_browser_tab(
             Ok(()) => {
                 if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
                     s.pending_url = None;
+                    s.current_url = Some(normalized_target_url.clone());
                 }
             }
             Err(LxAppError::ResourceNotFound(_)) => {
@@ -1026,23 +1044,8 @@ pub fn open_internal_browser_tab(
 }
 
 pub fn close_internal_browser_tab(lxapp: &LxApp, tab_id: &str) -> Result<(), LxAppError> {
-    let normalized = sanitize_tab_id(tab_id);
-    if normalized.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "close_internal_browser_tab requires tab_id".to_string(),
-        ));
-    }
-
-    {
-        let mut state = lock_state();
-        if let Some(tab) = state.tabs.get(&normalized) {
-            tab.verify_owner(lxapp, &normalized)?;
-        }
-        state.tabs.remove(&normalized);
-    }
-
-    browser_destroy_webview(&browser_tab_path_for_id(&normalized), lxapp.session_id());
-    Ok(())
+    let _ = lxapp;
+    close_browser_tab(tab_id)
 }
 
 pub fn browser_tab_exists(tab_id: &str) -> bool {
@@ -1053,36 +1056,22 @@ pub fn browser_tab_exists(tab_id: &str) -> bool {
     lock_state().tabs.contains_key(&normalized)
 }
 
-// Tab-id-only operations (resolve owner from stored tab state).
-//
-// Designed for platform FFI bridges where passing owner params back and forth
-// adds unnecessary complexity — the tab state already knows its owner.
-fn resolve_tab_owner(tab_id: &str) -> Result<(Arc<LxApp>, String), LxAppError> {
+pub fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     let normalized = sanitize_tab_id(tab_id);
     if normalized.is_empty() {
         return Err(LxAppError::InvalidParameter(
             "tab_id is required".to_string(),
         ));
     }
-    let owner_appid = lock_state()
-        .tabs
-        .get(&normalized)
-        .map(|t| t.source_appid.clone())
-        .ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!("browser tab not found: {}", normalized))
-        })?;
-    let owner = crate::try_get(&owner_appid).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!("owner lxapp not found: {}", owner_appid))
-    })?;
-    Ok((owner, normalized))
-}
 
-pub fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
-    match resolve_tab_owner(tab_id) {
-        Ok((owner, normalized)) => close_internal_browser_tab(&owner, &normalized),
-        Err(LxAppError::ResourceNotFound(_)) => Ok(()), // Already closed — idempotent
-        Err(e) => Err(e),
+    let removed = {
+        let mut state = lock_state();
+        state.tabs.remove(&normalized)
+    };
+    if let Some(tab) = removed {
+        browser_destroy_webview(&browser_tab_path_for_id(&normalized), tab.session_id);
     }
+    Ok(())
 }
 
 #[cfg(test)]

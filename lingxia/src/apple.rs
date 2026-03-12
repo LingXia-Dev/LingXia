@@ -140,6 +140,15 @@ mod bridge {
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
+        #[swift_bridge(swift_name = "getBuiltinBrowserAppId")]
+        fn get_builtin_browser_app_id() -> String;
+
+        #[swift_bridge(swift_name = "browserTabPathForId")]
+        fn browser_tab_path_for_id(tab_id: &str) -> String;
+
+        #[swift_bridge(swift_name = "updateBrowserTabInfo")]
+        fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool;
+
         #[swift_bridge(swift_name = "toggleWebViewDevtoolsByPtr")]
         fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool;
 
@@ -375,7 +384,7 @@ pub fn dispatch_native_component_event(
 pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_browser_tab", None, || {
         match lxapp::resolve_owner_lxapp(appid, session_id) {
-            Ok(owner) => match lxapp::open_internal_browser_tab(&owner, url, None) {
+            Ok(_owner) => match lxapp::open_internal_browser_tab(url, None) {
                 Ok(tab_id) => Some(tab_id),
                 Err(e) => {
                     log::error!("open_browser_tab failed: {}", e);
@@ -393,6 +402,30 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
         lxapp::close_browser_tab(tab_id).is_ok()
+    })
+}
+
+pub fn get_builtin_browser_app_id() -> String {
+    lxapp::BUILTIN_BROWSER_APPID.to_string()
+}
+
+pub fn browser_tab_path_for_id(tab_id: &str) -> String {
+    lxapp::browser_tab_path_for_id(tab_id)
+}
+
+pub fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool {
+    ffi_catch_unwind!("update_browser_tab_info", false, || {
+        let current_url = if current_url.trim().is_empty() {
+            None
+        } else {
+            Some(current_url)
+        };
+        let title = if title.trim().is_empty() {
+            None
+        } else {
+            Some(title)
+        };
+        lxapp::browser_update_tab_info(tab_id, current_url, title)
     })
 }
 
