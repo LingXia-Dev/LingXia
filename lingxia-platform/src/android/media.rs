@@ -238,14 +238,17 @@ fn scan_code_impl(
     Ok(())
 }
 
-fn save_media_impl(request: SaveMediaRequest, method: &str) -> Result<(), PlatformError> {
+fn save_media_impl(
+    request: SaveMediaRequest,
+    method: &str,
+    callback_id: u64,
+) -> Result<(), PlatformError> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia).map_err(|e| {
         PlatformError::Platform(format!("Failed to get cached Java class LxAppMedia: {}", e))
     })?;
 
     let method_str = method.to_string();
     let method_jni = JNIString::new(method_str.as_str());
-    let callback_id = request.callback_id;
     let file_uri = request.file_uri.clone();
 
     with_env(move |env| {
@@ -265,15 +268,15 @@ fn save_media_impl(request: SaveMediaRequest, method: &str) -> Result<(), Platfo
 
         Ok::<(), jni::errors::Error>(())
     })
-    .map_err(|err| {
-        let _ = lingxia_messaging::invoke_callback(callback_id, Err(1000));
-        PlatformError::Platform(format!("Failed to start {}: {}", method, err))
-    })?;
+    .map_err(|err| PlatformError::Platform(format!("Failed to start {}: {}", method, err)))?;
 
     Ok(())
 }
 
-fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::error::Error>> {
+fn choose_media_impl(
+    request: ChooseMediaRequest,
+    callback_id: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let media_class_ref = super::get_cached_class(super::CachedClass::LxAppMedia)?;
 
     // Map enums to integers expected by Android side
@@ -323,7 +326,7 @@ fn choose_media_impl(request: ChooseMediaRequest) -> Result<(), Box<dyn std::err
                 JValue::Int(source_flag),
                 JValue::Int(max_duration_value),
                 JValue::Int(camera_facing_value),
-                JValue::Long(request.callback_id as i64),
+                JValue::Long(callback_id as i64),
             ],
         )?;
 
