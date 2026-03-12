@@ -36,7 +36,7 @@ public struct PanelConfig {
 }
 
 /// NSSplitView subclass with customizable divider color
-class PanelSplitView: NSSplitView {
+class WorkspaceSplitView: NSSplitView {
     var customDividerColor: NSColor = .separatorColor
 
     override var dividerColor: NSColor {
@@ -77,17 +77,17 @@ class PanelSlot {
 /// Panels are pure layout containers. Content (WebViews) is attached via
 /// `WebViewManager.attachWebViewToContainer(webView, container: panelContainer)`.
 @MainActor
-public class PanelLayoutManager: NSObject, NSSplitViewDelegate {
+public class WorkspaceManager: NSObject, NSSplitViewDelegate {
 
-    private static let log = OSLog(subsystem: "LingXia", category: "PanelLayout")
+    private static let log = OSLog(subsystem: "LingXia", category: "Workspace")
 
     // MARK: - Split views
 
     /// Horizontal split: [left panel] | [center (vertical split)] | [right panel]
-    private let horizontalSplitView = PanelSplitView()
+    private let horizontalSplitView = WorkspaceSplitView()
 
     /// Vertical split: [content] | [bottom panel]  (nested inside horizontal center)
-    private let verticalSplitView = PanelSplitView()
+    private let verticalSplitView = WorkspaceSplitView()
 
     // MARK: - Layout holders (kept alive but only added to split view when visible)
 

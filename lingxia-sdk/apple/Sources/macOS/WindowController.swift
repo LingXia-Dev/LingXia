@@ -56,7 +56,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     private var appSessions: [String: UInt64] = [:]
-    internal let panelManager = PanelLayoutManager()
+    internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
     // Browser tab state — tab ownership lives in Rust; only titles/owner-appid cached locally.
@@ -234,9 +234,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         right.addSubview(toolbar)
 
         // Panel layout manager's root view fills area below toolbar
-        let panelRoot = panelManager.rootView
-        panelRoot.translatesAutoresizingMaskIntoConstraints = false
-        right.addSubview(panelRoot)
+        let workspaceRoot = workspaceManager.rootView
+        workspaceRoot.translatesAutoresizingMaskIntoConstraints = false
+        right.addSubview(workspaceRoot)
 
         // Layout constraints
         let sidebarWidth = sidebar.widthAnchor.constraint(equalToConstant: Layout.sidebarWidth)
@@ -277,10 +277,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             toolbar.trailingAnchor.constraint(equalTo: right.trailingAnchor),
 
             // Panel root: below toolbar, fills rest
-            panelRoot.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
-            panelRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
-            panelRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
-            panelRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
+            workspaceRoot.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
+            workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
+            workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
         ])
 
         // Edge detector for auto-showing hidden sidebar
@@ -496,7 +496,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         currentViewController?.view.removeFromSuperview()
         currentViewController = viewController
 
-        let container = panelManager.contentContainer
+        let container = workspaceManager.contentContainer
 
         viewController.view.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(viewController.view)
@@ -532,26 +532,26 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     /// Show a panel with WebView content. Registers the panel if not already registered.
     public func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
-        if !panelManager.isPanelRegistered(id: id) {
+        if !workspaceManager.isPanelRegistered(id: id) {
             let config = PanelConfig(id: id, position: position)
-            panelManager.registerPanel(config)
+            workspaceManager.registerPanel(config)
         }
 
         if let sessionId = appSessions[appId],
            let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId),
-           let container = panelManager.panelContainer(id: id) {
+           let container = workspaceManager.panelContainer(id: id) {
             WebViewManager.attachWebViewToContainer(webView, container: container)
         }
 
-        panelManager.showPanel(id: id)
+        workspaceManager.showPanel(id: id)
     }
 
     public func hidePanel(id: String) {
-        panelManager.hidePanel(id: id)
+        workspaceManager.hidePanel(id: id)
     }
 
     public func togglePanel(id: String) {
-        panelManager.togglePanel(id: id)
+        workspaceManager.togglePanel(id: id)
     }
 
     private func closeTab(_ appId: String) {
@@ -992,7 +992,7 @@ extension LxAppWindowController {
     private func showBrowserHostView() {
         setupBrowserHostIfNeeded()
         guard let host = browserHostView else { return }
-        let container = panelManager.contentContainer
+        let container = workspaceManager.contentContainer
 
         if host.superview !== container {
             container.addSubview(host)
