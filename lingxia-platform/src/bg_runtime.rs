@@ -1,3 +1,4 @@
+#[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 use std::future::Future;
 use std::sync::OnceLock;
 use tokio::runtime::Handle;
@@ -16,6 +17,7 @@ pub(crate) fn set_handle(handle: Handle) {
 ///
 /// If the shared runtime is not initialized yet, this falls back to a detached thread
 /// with a lightweight current-thread tokio runtime so work is not silently dropped.
+#[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 pub(crate) fn spawn<F>(future: F) -> Option<JoinHandle<F::Output>>
 where
     F: Future + Send + 'static,
@@ -58,14 +60,27 @@ where
 ///
 /// If the shared runtime is not initialized yet, this falls back to a detached thread
 /// so work is not silently dropped.
+fn try_spawn_blocking<F, R>(f: F) -> Result<JoinHandle<R>, F>
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    match BG_HANDLE.get() {
+        Some(handle) => Ok(handle.spawn_blocking(f)),
+        None => Err(f),
+    }
+}
+
+#[cfg(any(target_env = "ohos", target_os = "macos", target_os = "windows"))]
 pub(crate) fn spawn_blocking<F, R>(f: F) -> Option<JoinHandle<R>>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
-    if let Some(handle) = BG_HANDLE.get() {
-        return Some(handle.spawn_blocking(f));
-    }
+    let f = match try_spawn_blocking(f) {
+        Ok(join) => return Some(join),
+        Err(f) => f,
+    };
 
     log::warn!("[platform.bg] no runtime handle; using fallback thread");
     let thread_name = "lingxia-bg-fallback-blocking".to_string();
@@ -91,12 +106,9 @@ where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
 {
-    match BG_HANDLE.get() {
-        Some(handle) => handle
-            .spawn_blocking(f)
-            .await
-            .expect("blocking task panicked"),
-        None => {
+    match try_spawn_blocking(f) {
+        Ok(join) => join.await.expect("blocking task panicked"),
+        Err(f) => {
             log::warn!("[platform.bg] blocking: no runtime, running synchronously");
             f()
         }
