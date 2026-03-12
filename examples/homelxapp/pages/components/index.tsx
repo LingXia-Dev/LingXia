@@ -29,7 +29,7 @@ export default function ComponentsPage() {
           {/* Video */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/video/index.tsx' })}
+            onClick={() => navigateTo({ url: 'pages/video/index' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
@@ -52,7 +52,7 @@ export default function ComponentsPage() {
           {/* Navigator */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/navigator/index.tsx' })}
+            onClick={() => navigateTo({ url: 'pages/navigator/index' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
@@ -75,7 +75,7 @@ export default function ComponentsPage() {
           {/* Picker */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/picker/index.tsx' })}
+            onClick={() => navigateTo({ url: 'pages/picker/index' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">

@@ -81,7 +81,7 @@ Page({
 
   demoNavigateTo: async function () {
     await lx.navigateTo({
-      url: "pages/ui/index.tsx?type=navigation",
+      url: "pages/ui/index?type=navigation",
     });
   },
 
@@ -93,13 +93,13 @@ Page({
 
   demoSwitchTab: async function () {
     await lx.switchTab({
-      url: "pages/home/index.tsx",
+      url: "pages/home/index",
     });
   },
 
   demoRedirectTo: async function () {
     await lx.redirectTo({
-      url: "pages/ui/index.tsx?type=navigation",
+      url: "pages/ui/index?type=navigation",
     });
   },
 
@@ -172,7 +172,7 @@ Page({
     try {
       const cfg = config || {};
       const popup = await lx.showPopup({
-        url: `pages/popup/index.tsx?${query}`,
+        url: `pages/popup/index?${query}`,
         position: cfg.position || "bottom",
         widthRatio: cfg.widthRatio || 0.9,
         heightRatio: cfg.heightRatio || 0.6,
