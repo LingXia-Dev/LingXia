@@ -189,12 +189,20 @@ pub trait FingerprintProvider: Send + Sync + 'static {
     }
 }
 
+/// Trait for push token binding.
+pub trait PushNotificationProvider: Send + Sync + 'static {
+    /// Bind push token to cloud side.
+    fn bind_push_token<'a>(&'a self, _token: String) -> BoxFuture<'a, Result<(), ProviderError>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
 /// Combined provider trait.
 /// Implementations must satisfy all component traits.
-pub trait Provider: UpdateProvider + FingerprintProvider {}
+pub trait Provider: UpdateProvider + FingerprintProvider + PushNotificationProvider {}
 
 // Blanket implementation: any type implementing all sub-traits is a Provider
-impl<T: UpdateProvider + FingerprintProvider> Provider for T {}
+impl<T: UpdateProvider + FingerprintProvider + PushNotificationProvider> Provider for T {}
 
 /// Default provider with no-op implementations.
 pub struct NoOpProvider;
@@ -209,6 +217,7 @@ impl UpdateProvider for NoOpProvider {
 }
 
 impl FingerprintProvider for NoOpProvider {}
+impl PushNotificationProvider for NoOpProvider {}
 
 static PROVIDER: OnceLock<Box<dyn Provider>> = OnceLock::new();
 
@@ -222,4 +231,9 @@ pub fn register_provider(provider: Box<dyn Provider>) {
 /// Get the registered provider, or a default no-op provider.
 pub(crate) fn get_provider() -> &'static dyn Provider {
     PROVIDER.get().map(|b| b.as_ref()).unwrap_or(&NoOpProvider)
+}
+
+/// Bind a push token via the registered provider.
+pub async fn bind_push_token(token: String) -> Result<(), ProviderError> {
+    get_provider().bind_push_token(token).await
 }

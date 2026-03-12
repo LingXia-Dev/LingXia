@@ -427,8 +427,7 @@ pub fn on_applink_received(applink_url: String) -> i32 {
 /// Push: device token from ArkTS
 #[napi]
 pub fn on_push_token_received(token: String) -> i32 {
-    log::info!("[Harmony] Push token received: {}", token);
-    0
+    lxapp::push_notification::bind_push_token_for_ffi(token)
 }
 
 /// Push: link/message from ArkTS (trigger: 0=Background,1=Tap,2=Launch)

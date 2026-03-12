@@ -16,6 +16,7 @@ mod lxapp;
 mod page;
 pub(crate) mod plugin;
 pub mod provider;
+pub mod push_notification;
 mod route;
 pub mod startup;
 pub mod stream_source;
@@ -56,7 +57,7 @@ pub use lxapp::{
 pub use page::NavigationType;
 pub use provider::{
     BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, ProviderErrorCode,
-    UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
+    PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use stream_source::{

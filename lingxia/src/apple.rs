@@ -573,8 +573,7 @@ pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i3
 
 /// Handle push notification device token
 pub fn on_push_token_received(token: &str) -> i32 {
-    log::info!("[Apple] Push token received: {}", token);
-    0
+    lxapp::push_notification::bind_push_token_for_ffi(token.to_string())
 }
 
 /// Callback from platform (called from Swift/Objective-C)

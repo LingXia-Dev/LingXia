@@ -5,8 +5,8 @@ pub use lxapp::{FrameSink, StreamError, StreamProvider, StreamSession, register_
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, UpdatePackageInfo,
-    UpdateProvider, UpdateTarget, register_provider,
+    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, PushNotificationProvider,
+    UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
 };
 
 #[cfg(target_os = "android")]
