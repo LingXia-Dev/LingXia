@@ -3,13 +3,15 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+val requestedMinSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
+
 android {
     namespace = "com.lingxia.example.lxapp"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.lingxia.example.lxapp"
-        minSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
+        minSdk = requestedMinSdk
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -41,7 +43,6 @@ dependencies {
     val lingxiaSdkVersion = (project.findProperty("LINGXIA_SDK_VERSION") as String?)
         ?: System.getenv("LINGXIA_SDK_VERSION")
         ?: "dev"
-
     // Depend on local Maven-published SDK
     implementation("com.lingxia:lingxia:$lingxiaSdkVersion")
 
