@@ -5,7 +5,6 @@ use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
 use lingxia_platform::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
-use log::info;
 use lxapp::stream_source::StreamSession;
 use lxapp::{LxApp, lx};
 use rong::{JSContext, JSFunc, JSResult, js_export};
@@ -54,6 +53,7 @@ pub(super) struct VideoContextSharedState {
     pub(super) last_stream_recovery_ms: AtomicU64,
     pub(super) stream_starting: AtomicBool,
     pub(super) seek_callback_registered: AtomicBool,
+    pub(super) callback_bound: AtomicBool,
 }
 
 impl VideoContextSharedState {
@@ -75,6 +75,7 @@ impl VideoContextSharedState {
             last_stream_recovery_ms: AtomicU64::new(0),
             stream_starting: AtomicBool::new(false),
             seek_callback_registered: AtomicBool::new(false),
+            callback_bound: AtomicBool::new(false),
         }
     }
 
@@ -109,10 +110,6 @@ impl VideoContextSharedState {
             return Ok(existing);
         }
 
-        info!(
-            "VideoContext register callback component_id={} callback_id={}",
-            component_id, new_callback_id
-        );
         *guard = Some(new_callback_id);
         Ok(new_callback_id)
     }
@@ -147,7 +144,8 @@ fn shared_state_for(runtime: &Arc<Platform>, component_id: &str) -> Arc<VideoCon
 
 impl JSVideoContext {
     pub(super) fn create(ctx: &JSContext, component_id: String) -> JSResult<Self> {
-        if component_id.trim().is_empty() {
+        let component_id = component_id.trim().to_string();
+        if component_id.is_empty() {
             return Err(js_invalid_parameter_error("componentId required"));
         }
 
@@ -155,9 +153,12 @@ impl JSVideoContext {
         let runtime = lxapp.runtime.clone();
         let shared = shared_state_for(&runtime, &component_id);
         let callback_id = VideoContextSharedState::register_callback(&shared, &component_id)?;
-        runtime
-            .set_player_callback(&component_id, callback_id)
-            .map_err(|e| js_error_from_platform_error(&e))?;
+        if !shared.callback_bound.swap(true, Ordering::AcqRel) {
+            if let Err(e) = runtime.set_player_callback(&component_id, callback_id) {
+                shared.callback_bound.store(false, Ordering::Release);
+                return Err(js_error_from_platform_error(&e));
+            }
+        }
         let handle = runtime
             .bind_player(&component_id)
             .map_err(|e| js_error_from_platform_error(&e))?;
@@ -170,10 +171,6 @@ impl JSVideoContext {
             lxapp::stream_source::register_stream_seek_callback(&component_id, move |position| {
                 seek_stream_session_sync_shared(&shared_for_seek, &component_id_for_seek, position)
             });
-            info!(
-                "VideoContext seek callback registered component_id={}",
-                component_id
-            );
         }
 
         Ok(Self {

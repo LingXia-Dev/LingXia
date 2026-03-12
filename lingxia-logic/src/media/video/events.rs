@@ -78,6 +78,7 @@ pub(super) fn handle_player_event(
                         remove_callback(callback_id);
                     }
                 }
+                shared.callback_bound.store(false, Ordering::Release);
                 // Unregister seek callback to prevent leak and stale closure
                 if shared
                     .seek_callback_registered
@@ -322,6 +323,7 @@ pub(super) fn handle_player_event(
                     remove_callback(callback_id);
                 }
             }
+            shared.callback_bound.store(false, Ordering::Release);
             // Unregister seek callback to prevent leak and stale closure.
             if shared
                 .seek_callback_registered
