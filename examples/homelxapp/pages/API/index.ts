@@ -108,12 +108,18 @@ Page({
         itemList: targets,
         itemColor: "#007AFF",
       });
-      lx.openURL({
+      if (tapIndex < 0 || tapIndex >= targets.length) {
+        return;
+      }
+      await lx.openURL({
         url: "https://www.deepseek.com/",
         target: targets[tapIndex],
       });
     } catch (error) {
-      console.log("openDeepSeek cancelled:", error);
+      if (error.message.toLowerCase().includes("cancel")) {
+        return;
+      }
+      lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
