@@ -26,21 +26,24 @@ const elementRef = ref<HTMLElement | null>(null);
 const handleSuccess = (e: Event) => emit('success', e as LxNavigatorEvent);
 const handleFail = (e: Event) => emit('fail', e as LxNavigatorEvent);
 const handleComplete = (e: Event) => emit('complete', e as LxNavigatorEvent);
+const successListener: EventListenerObject = { handleEvent: handleSuccess };
+const failListener: EventListenerObject = { handleEvent: handleFail };
+const completeListener: EventListenerObject = { handleEvent: handleComplete };
 
 onMounted(() => {
   const el = elementRef.value;
   if (!el) return;
-  el.addEventListener('success', handleSuccess);
-  el.addEventListener('fail', handleFail);
-  el.addEventListener('complete', handleComplete);
+  el.addEventListener('success', successListener);
+  el.addEventListener('fail', failListener);
+  el.addEventListener('complete', completeListener);
 });
 
 onBeforeUnmount(() => {
   const el = elementRef.value;
   if (!el) return;
-  el.removeEventListener('success', handleSuccess);
-  el.removeEventListener('fail', handleFail);
-  el.removeEventListener('complete', handleComplete);
+  el.removeEventListener('success', successListener);
+  el.removeEventListener('fail', failListener);
+  el.removeEventListener('complete', completeListener);
 });
 
 defineExpose({ el: elementRef });

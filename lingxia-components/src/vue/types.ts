@@ -23,6 +23,12 @@ export interface LxPickerProps {
   confirmText?: string;
   confirmTextColor?: string;
   confirmButtonColor?: string;
+  onChange?: (event: Event) => void;
+  onNativeScroll?: (event: Event) => void;
+  bindChange?: string;
+  bindScroll?: string;
+  catchChange?: string;
+  catchScroll?: string;
 }
 
 export interface LxNavigatorProps {

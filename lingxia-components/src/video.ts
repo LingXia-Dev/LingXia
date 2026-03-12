@@ -7,6 +7,8 @@ const HARMONY_PROPS_PREFIX = "data:application/json,";
 
 // Type definitions
 export type LxVideoQuality = { label: string; url?: string };
+type LxVideoViewEventHandler = (e: Event) => void;
+type LxVideoLogicEventHandler = string;
 
 export type LxVideoAttributes = {
   id?: string;
@@ -26,20 +28,47 @@ export type LxVideoAttributes = {
   className?: string;
   style?: any;
   ref?: any;
-  // Event handlers
-  onPlayRequest?: (e: Event) => void;
-  onPlay?: (e: Event) => void;
-  onPlaying?: (e: Event) => void;
-  onPause?: (e: Event) => void;
-  onStop?: (e: Event) => void;
-  onEnded?: (e: Event) => void;
-  onTimeUpdate?: (e: Event) => void;
-  onError?: (e: Event) => void;
-  onLoadedMetadata?: (e: Event) => void;
-  onFullscreenChange?: (e: Event) => void;
-  onWaiting?: (e: Event) => void;
-  onQualityChange?: (e: Event) => void;
-  onRateChange?: (e: Event) => void;
+  // View-local event handlers
+  onPlayRequest?: LxVideoViewEventHandler;
+  onPlay?: LxVideoViewEventHandler;
+  onPlaying?: LxVideoViewEventHandler;
+  onPause?: LxVideoViewEventHandler;
+  onStop?: LxVideoViewEventHandler;
+  onEnded?: LxVideoViewEventHandler;
+  onTimeUpdate?: LxVideoViewEventHandler;
+  onError?: LxVideoViewEventHandler;
+  onLoadedMetadata?: LxVideoViewEventHandler;
+  onFullscreenChange?: LxVideoViewEventHandler;
+  onWaiting?: LxVideoViewEventHandler;
+  onQualityChange?: LxVideoViewEventHandler;
+  onRateChange?: LxVideoViewEventHandler;
+  // Logic-layer bindings (WeChat-style): bind*/catch* call Page({}) functions
+  bindPlayRequest?: LxVideoLogicEventHandler;
+  bindPlay?: LxVideoLogicEventHandler;
+  bindPlaying?: LxVideoLogicEventHandler;
+  bindPause?: LxVideoLogicEventHandler;
+  bindStop?: LxVideoLogicEventHandler;
+  bindEnded?: LxVideoLogicEventHandler;
+  bindTimeUpdate?: LxVideoLogicEventHandler;
+  bindError?: LxVideoLogicEventHandler;
+  bindLoadedMetadata?: LxVideoLogicEventHandler;
+  bindFullscreenChange?: LxVideoLogicEventHandler;
+  bindWaiting?: LxVideoLogicEventHandler;
+  bindQualityChange?: LxVideoLogicEventHandler;
+  bindRateChange?: LxVideoLogicEventHandler;
+  catchPlayRequest?: LxVideoLogicEventHandler;
+  catchPlay?: LxVideoLogicEventHandler;
+  catchPlaying?: LxVideoLogicEventHandler;
+  catchPause?: LxVideoLogicEventHandler;
+  catchStop?: LxVideoLogicEventHandler;
+  catchEnded?: LxVideoLogicEventHandler;
+  catchTimeUpdate?: LxVideoLogicEventHandler;
+  catchError?: LxVideoLogicEventHandler;
+  catchLoadedMetadata?: LxVideoLogicEventHandler;
+  catchFullscreenChange?: LxVideoLogicEventHandler;
+  catchWaiting?: LxVideoLogicEventHandler;
+  catchQualityChange?: LxVideoLogicEventHandler;
+  catchRateChange?: LxVideoLogicEventHandler;
 };
 
 type LxObjectFit = "cover" | "contain" | "fill" | "fit";
@@ -90,6 +119,14 @@ export class LxVideoElement extends HTMLElement {
   private iOSBootstrapRemaining: number = 0;
   private iOSHelper?: iOSNativeComponentHelper;
   private forceHarmonyEmbedRecreate: boolean = false;
+  private attrObserver?: MutationObserver;
+  private resizeEventListener: EventListenerObject = {
+    handleEvent: () => this.boundUpdatePosition(),
+  };
+  private iOSScrollEventListener: EventListenerObject = {
+    handleEvent: () => this.boundUpdatePosition(),
+  };
+  private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
 
   private parseRotateValue(value: unknown): 0 | 90 | 180 | 270 | undefined {
     const parsed = (() => {
@@ -123,6 +160,68 @@ export class LxVideoElement extends HTMLElement {
     return undefined;
   }
 
+  private normalizePageFuncEventKey(rawKey: string): string | null {
+    const key = rawKey.trim().toLowerCase();
+    if (!key) return null;
+    return key;
+  }
+
+  private extractBindingEventKey(attrName: string): string | null {
+    const attr = attrName.trim().toLowerCase();
+    let suffix: string | null = null;
+    if (attr.startsWith("bind") && attr.length > 4) {
+      suffix = attr.slice(4);
+    } else if (attr.startsWith("catch") && attr.length > 5) {
+      suffix = attr.slice(5);
+    }
+    if (!suffix) return null;
+    const normalized = suffix
+      .replace(/^[:\-]/, "")
+      .replace(/[\-_:]/g, "");
+    if (!normalized) return null;
+    return this.normalizePageFuncEventKey(normalized);
+  }
+
+  private collectPageFuncBindings(): Record<string, string> | undefined {
+    const bindings: Record<string, string> = {};
+    const attrs = this.getAttributeNames();
+    for (const attr of attrs) {
+      const eventKey = this.extractBindingEventKey(attr);
+      if (!eventKey) continue;
+      const funcName = this.getAttribute(attr)?.trim();
+      if (!funcName) continue;
+      bindings[eventKey] = funcName;
+    }
+    return Object.keys(bindings).length > 0 ? bindings : undefined;
+  }
+
+  private dataAttrToDatasetKey(attr: string): string {
+    const raw = attr.slice(5).trim();
+    if (!raw) return "";
+    const parts = raw.split("-").filter(Boolean);
+    if (parts.length === 0) return "";
+    return parts
+      .map((segment, index) => {
+        if (index === 0) return segment.toLowerCase();
+        return segment.charAt(0).toUpperCase() + segment.slice(1);
+      })
+      .join("");
+  }
+
+  private collectDataset(): Record<string, string> {
+    const dataset: Record<string, string> = {};
+    const attrs = this.getAttributeNames();
+    for (const attr of attrs) {
+      if (!attr.startsWith("data-")) continue;
+      const key = this.dataAttrToDatasetKey(attr);
+      if (!key) continue;
+      const value = this.getAttribute(attr);
+      if (value == null) continue;
+      dataset[key] = value;
+    }
+    return dataset;
+  }
+
   private upgradeProperty(propName: string): void {
     const self = this as unknown as Record<string, unknown>;
     if (!Object.prototype.hasOwnProperty.call(self, propName)) return;
@@ -147,6 +246,18 @@ export class LxVideoElement extends HTMLElement {
   connectedCallback() {
     // React may set custom-element properties before upgrade; replay through setters.
     this.upgradeProperty("rotate");
+    this.upgradeProperty("onplayrequest");
+    this.upgradeProperty("onplay");
+    this.upgradeProperty("onplaying");
+    this.upgradeProperty("onpause");
+    this.upgradeProperty("onstop");
+    this.upgradeProperty("onended");
+    this.upgradeProperty("ontimeupdate");
+    this.upgradeProperty("onloadedmetadata");
+    this.upgradeProperty("onfullscreenchange");
+    this.upgradeProperty("onwaiting");
+    this.upgradeProperty("onqualitychange");
+    this.upgradeProperty("onratechange");
 
     this.componentId = ensureComponentId(this, "lx-video", this.componentId);
     if (!this.componentId) {
@@ -176,6 +287,7 @@ export class LxVideoElement extends HTMLElement {
     // Setup iOS native component rendering helper (no-op on other platforms)
     this.iOSHelper = new iOSNativeComponentHelper(this, this.componentId);
     this.iOSHelper.setup();
+    this.startAttrObserver();
 
     // iOS bootstrap:
     // avoid hardcoded timeout; run an immediate mount plus a few frame-based refreshes.
@@ -212,12 +324,14 @@ export class LxVideoElement extends HTMLElement {
     // Cleanup iOS helper
     this.iOSHelper?.cleanup();
     this.iOSHelper = undefined;
+    this.stopAttrObserver();
 
     // Cleanup manually attached property handlers
     Object.keys(this._handlers).forEach(name => {
       this.removeEventListener(name, this._handlers[name]);
     });
     this._handlers = {};
+    this.rawHandlers = {};
   }
 
   attributeChangedCallback(name: string) {
@@ -239,21 +353,34 @@ export class LxVideoElement extends HTMLElement {
     this.mountOrUpdate(forcePropsUpdate);
   }
 
-  private setEventHandler(name: string, value: EventListenerOrEventListenerObject | null) {
+  private isEventListener(value: unknown): value is EventListenerOrEventListenerObject {
+    if (typeof value === "function") return true;
+    if (!value || typeof value !== "object") return false;
+    return typeof (value as EventListenerObject).handleEvent === "function";
+  }
+
+  private setEventHandler(name: string, value: unknown) {
     const current = this._handlers[name];
     if (current) {
       this.removeEventListener(name, current);
     }
-    if (value) {
-      this._handlers[name] = value;
-      this.addEventListener(name, value);
+
+    if (this.isEventListener(value)) {
+      const listener =
+        typeof value === "function"
+          ? ({ handleEvent: value } as EventListenerObject)
+          : value;
+      this._handlers[name] = listener;
+      this.rawHandlers[name] = value;
+      this.addEventListener(name, listener);
     } else {
       delete this._handlers[name];
+      delete this.rawHandlers[name];
     }
   }
 
   private getEventHandler(name: string) {
-    return (this._handlers[name] || null) as any;
+    return (this.rawHandlers[name] || null) as any;
   }
 
   // Standard Media Events for React Props (e.g. <lx-video onPlay={...} />)
@@ -348,6 +475,8 @@ export class LxVideoElement extends HTMLElement {
 
     const rawRotate = this.getAttribute("rotate");
     const validRotate = this.parseRotateValue(rawRotate);
+    const pageFuncBindings = this.collectPageFuncBindings() ?? {};
+    const dataset = this.collectDataset();
     const clearProps: string[] = [];
     if (rawRotate === null || validRotate === undefined) {
       clearProps.push("rotate");
@@ -370,8 +499,42 @@ export class LxVideoElement extends HTMLElement {
       rotate: validRotate,
       ...(clearProps.length > 0 ? { __clearProps: clearProps } : {}),
       qualities,
-      playbackRates
+      playbackRates,
+      dataset,
+      datasetJson: JSON.stringify(dataset),
+      pageFuncBindings,
+      pageFuncBindingsJson: JSON.stringify(pageFuncBindings)
     };
+  }
+
+  private shouldRefreshForAttribute(name: string): boolean {
+    const normalized = name.trim().toLowerCase();
+    return normalized.startsWith("bind") || normalized.startsWith("catch") || normalized.startsWith("data-");
+  }
+
+  private startAttrObserver(): void {
+    if (typeof MutationObserver === "undefined" || this.attrObserver) {
+      return;
+    }
+    this.attrObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        const attrName = mutation.attributeName;
+        if (!attrName || !this.shouldRefreshForAttribute(attrName)) {
+          continue;
+        }
+        this.mountOrUpdate(true);
+        break;
+      }
+    });
+    this.attrObserver.observe(this, { attributes: true });
+  }
+
+  private stopAttrObserver(): void {
+    if (!this.attrObserver) {
+      return;
+    }
+    this.attrObserver.disconnect();
+    this.attrObserver = undefined;
   }
 
   private measureForNative() {
@@ -469,18 +632,18 @@ export class LxVideoElement extends HTMLElement {
    * Start tracking component size changes.
    */
   private startTracking() {
-    window.addEventListener("resize", this.boundUpdatePosition);
+    window.addEventListener("resize", this.resizeEventListener);
     if (isIOS()) {
-      window.addEventListener("scroll", this.boundUpdatePosition, { passive: true });
+      window.addEventListener("scroll", this.iOSScrollEventListener, { passive: true });
     }
     this.startSizeObserver();
     this.updatePosition();
   }
 
   private stopTracking() {
-    window.removeEventListener("resize", this.boundUpdatePosition);
+    window.removeEventListener("resize", this.resizeEventListener);
     if (isIOS()) {
-      window.removeEventListener("scroll", this.boundUpdatePosition);
+      window.removeEventListener("scroll", this.iOSScrollEventListener);
     }
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {

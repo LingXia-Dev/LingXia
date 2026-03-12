@@ -90,15 +90,18 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
           onComplete(e as LxNavigatorEvent);
         }
       };
+      const successListener: EventListenerObject = { handleEvent: handleSuccess };
+      const failListener: EventListenerObject = { handleEvent: handleFail };
+      const completeListener: EventListenerObject = { handleEvent: handleComplete };
 
-      element.addEventListener('success', handleSuccess);
-      element.addEventListener('fail', handleFail);
-      element.addEventListener('complete', handleComplete);
+      element.addEventListener('success', successListener);
+      element.addEventListener('fail', failListener);
+      element.addEventListener('complete', completeListener);
 
       return () => {
-        element.removeEventListener('success', handleSuccess);
-        element.removeEventListener('fail', handleFail);
-        element.removeEventListener('complete', handleComplete);
+        element.removeEventListener('success', successListener);
+        element.removeEventListener('fail', failListener);
+        element.removeEventListener('complete', completeListener);
       };
     }, [onSuccess, onFail, onComplete]);
 

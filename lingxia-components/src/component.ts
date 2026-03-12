@@ -58,11 +58,19 @@ export class iOSNativeComponentHelper {
     container.appendChild(inner);
 
     // Disable scrolling but keep overflow:scroll to trigger WKChildScrollView
-    container.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-    container.addEventListener('scroll', () => {
-      container.scrollTop = 0;
-      container.scrollLeft = 0;
-    });
+    const touchMoveListener: EventListenerObject = {
+      handleEvent: (event: Event): void => {
+        (event as TouchEvent).preventDefault();
+      },
+    };
+    const scrollLockListener: EventListenerObject = {
+      handleEvent: (): void => {
+        container.scrollTop = 0;
+        container.scrollLeft = 0;
+      },
+    };
+    container.addEventListener('touchmove', touchMoveListener, { passive: false });
+    container.addEventListener('scroll', scrollLockListener);
 
     this.scrollContainer = container;
     this.host.appendChild(container);

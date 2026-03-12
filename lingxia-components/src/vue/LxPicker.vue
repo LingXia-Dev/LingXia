@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, h, onBeforeUnmount, useId, watch, type CSSProperties } from 'vue';
+import { ref, computed, h, onBeforeUnmount, useAttrs, useId, watch, type CSSProperties } from 'vue';
 import { registerPickerComponent } from '../picker.js';
 import type { LxPickerProps } from './types.js';
 
@@ -7,6 +7,7 @@ const props = withDefaults(defineProps<LxPickerProps>(), {
   placeholder: 'Please select',
   disabled: false,
 });
+const attrs = useAttrs();
 
 const slots = defineSlots();
 
@@ -26,12 +27,22 @@ const vueId = useId();
 const pickerId = computed(() => `lx-picker-${vueId.replace(/[:]/g, '')}`);
 const pickerRef = ref<HTMLElement | null>(null);
 const boundElement = ref<HTMLElement | null>(null);
+const changeListener: EventListenerObject = {
+  handleEvent: (event: Event) => handleChange(event),
+};
+const scrollListener: EventListenerObject = {
+  handleEvent: (event: Event) => handleScroll(event),
+};
 
 const isDateMode = computed(() => props.mode === 'date' || props.mode === 'time');
 const isCascading = computed(() => 
   props.columns?.length === 2 && typeof props.columns[1] === 'object' && !Array.isArray(props.columns[1])
 );
 const isSingle = computed(() => props.columns?.length === 1);
+
+function normalizeBindingAttrName(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
 
 function getIndexFromValue(): number | number[] {
   if (!props.columns) return 0;
@@ -75,6 +86,9 @@ const displayText = computed(() => {
 });
 
 function handleChange(e: Event) {
+  if (typeof props.onChange === 'function') {
+    props.onChange(e);
+  }
   const detail = (e as CustomEvent).detail;
   if (!detail) return;
   if (detail.confirmed) {
@@ -94,6 +108,9 @@ function handleChange(e: Event) {
 }
 
 function handleScroll(e: Event) {
+  if (typeof props.onNativeScroll === 'function') {
+    props.onNativeScroll(e);
+  }
   const detail = (e as CustomEvent).detail;
   if (!detail) return;
   if (detail.value !== undefined) {
@@ -109,13 +126,13 @@ function handleClick() {
 
 function bindPickerEvents(el: HTMLElement | null) {
   if (boundElement.value && boundElement.value !== el) {
-    boundElement.value.removeEventListener('change', handleChange);
-    boundElement.value.removeEventListener('scroll', handleScroll);
+    boundElement.value.removeEventListener('change', changeListener);
+    boundElement.value.removeEventListener('scroll', scrollListener);
     boundElement.value = null;
   }
   if (el && boundElement.value !== el) {
-    el.addEventListener('change', handleChange);
-    el.addEventListener('scroll', handleScroll);
+    el.addEventListener('change', changeListener);
+    el.addEventListener('scroll', scrollListener);
     boundElement.value = el;
   }
 }
@@ -124,8 +141,8 @@ watch(pickerRef, bindPickerEvents);
 
 onBeforeUnmount(() => {
   if (boundElement.value) {
-    boundElement.value.removeEventListener('change', handleChange);
-    boundElement.value.removeEventListener('scroll', handleScroll);
+    boundElement.value.removeEventListener('change', changeListener);
+    boundElement.value.removeEventListener('scroll', scrollListener);
   }
 });
 
@@ -150,6 +167,20 @@ const pickerProps = computed(() => {
   if (props.confirmText) result['confirm-text'] = props.confirmText;
   if (props.confirmTextColor) result['confirm-text-color'] = props.confirmTextColor;
   if (props.confirmButtonColor) result['confirm-button-color'] = props.confirmButtonColor;
+  if (props.bindChange) result.bindchange = props.bindChange;
+  if (props.bindScroll) result.bindscroll = props.bindScroll;
+  if (props.catchChange) result.catchchange = props.catchChange;
+  if (props.catchScroll) result.catchscroll = props.catchScroll;
+  for (const [key, value] of Object.entries(attrs)) {
+    if (typeof value !== 'string') continue;
+    if (key.startsWith('data-')) {
+      result[key] = value;
+      continue;
+    }
+    if (key.startsWith('bind') || key.startsWith('catch')) {
+      result[normalizeBindingAttrName(key)] = value;
+    }
+  }
   return result;
 });
 

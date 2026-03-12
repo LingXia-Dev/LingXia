@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useId, useRef, useState } from 'react';
 import { registerPickerComponent } from '../picker.js';
 
-export interface LxPickerProps {
+export interface LxPickerProps extends Omit<React.HTMLAttributes<HTMLElement>, 'onChange' | 'onScroll'> {
   // For selector/multiSelector/cascading mode
   columns?: string[][] | [string[], Record<string, string[]>];
 
@@ -18,6 +18,12 @@ export interface LxPickerProps {
   onConfirm?: (value: string | string[]) => void;
   onCancel?: () => void;
   onScroll?: (value: string | string[]) => void;
+  onChange?: (event: CustomEvent) => void;
+  onNativeScroll?: (event: CustomEvent) => void;
+  bindChange?: string;
+  bindScroll?: string;
+  catchChange?: string;
+  catchScroll?: string;
 
   // UI
   placeholder?: string;
@@ -40,10 +46,16 @@ if (typeof window !== "undefined") {
   registerPickerComponent();
 }
 
+function normalizeBindingAttrName(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
 export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   columns, mode, start, end, fields, value, onConfirm, onCancel, onScroll, placeholder = 'Please select',
+  onChange, onNativeScroll, bindChange, bindScroll, catchChange, catchScroll,
   className, style, disabled, cancelText, cancelTextColor, cancelButtonColor,
-  confirmText, confirmTextColor, confirmButtonColor, children
+  confirmText, confirmTextColor, confirmButtonColor, children,
+  ...rest
 }, ref) => {
   const [visible, setVisible] = useState(false);
   const reactId = useId();
@@ -55,6 +67,10 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
 
   // Track if we've bound listeners to avoid duplicates
   const boundRef = useRef<HTMLElement | null>(null);
+  const boundListenersRef = useRef<{
+    change: EventListenerObject;
+    scroll: EventListenerObject;
+  } | null>(null);
 
   const isDateMode = mode === 'date' || mode === 'time';
   const isCascading = columns && columns.length === 2 && typeof columns[1] === 'object' && !Array.isArray(columns[1]);
@@ -104,6 +120,9 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   // Event handler - dispatch to appropriate callback based on flags
   const handleChange = useCallback((e: Event) => {
     const detail = (e as CustomEvent).detail;
+    if (typeof onChange === 'function') {
+      onChange(e as CustomEvent);
+    }
     if (!detail) return;
 
     if (detail.confirmed) {
@@ -117,10 +136,13 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
       propsRef.current.onCancel?.();
       setVisible(false);
     }
-  }, [mode]);
+  }, [mode, onChange]);
 
   const handleScroll = useCallback((e: Event) => {
     const detail = (e as CustomEvent).detail;
+    if (typeof onNativeScroll === 'function') {
+      onNativeScroll(e as CustomEvent);
+    }
     if (!detail) return;
 
     if (detail.value !== undefined) {
@@ -128,23 +150,29 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
     } else if (detail.index !== undefined) {
       propsRef.current.onScroll?.(getValueFromIndex(propsRef.current.columns, detail.index));
     }
-  }, [mode]);
+  }, [mode, onNativeScroll]);
 
   // Stable ref callback - only binds/unbinds when element changes
   const pickerRefCallback = useCallback((el: HTMLElement | null) => {
     if (typeof ref === 'function') ref(el);
     else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = el;
 
-    if (boundRef.current && boundRef.current !== el) {
-      boundRef.current.removeEventListener('change', handleChange);
-      boundRef.current.removeEventListener('scroll', handleScroll);
+    if (boundRef.current && boundRef.current !== el && boundListenersRef.current) {
+      boundRef.current.removeEventListener('change', boundListenersRef.current.change);
+      boundRef.current.removeEventListener('scroll', boundListenersRef.current.scroll);
       boundRef.current = null;
+      boundListenersRef.current = null;
     }
 
     if (el && boundRef.current !== el) {
-      el.addEventListener('change', handleChange);
-      el.addEventListener('scroll', handleScroll);
+      const listeners = {
+        change: { handleEvent: (event: Event) => handleChange(event) } as EventListenerObject,
+        scroll: { handleEvent: (event: Event) => handleScroll(event) } as EventListenerObject,
+      };
+      el.addEventListener('change', listeners.change);
+      el.addEventListener('scroll', listeners.scroll);
       boundRef.current = el;
+      boundListenersRef.current = listeners;
     }
   }, [ref, handleChange, handleScroll]);
 
@@ -174,6 +202,20 @@ export const LxPicker = forwardRef<HTMLElement, LxPickerProps>(({
   if (confirmText) pickerProps['confirm-text'] = confirmText;
   if (confirmTextColor) pickerProps['confirm-text-color'] = confirmTextColor;
   if (confirmButtonColor) pickerProps['confirm-button-color'] = confirmButtonColor;
+  if (bindChange) pickerProps.bindchange = bindChange;
+  if (bindScroll) pickerProps.bindscroll = bindScroll;
+  if (catchChange) pickerProps.catchchange = catchChange;
+  if (catchScroll) pickerProps.catchscroll = catchScroll;
+  for (const [key, raw] of Object.entries(rest as Record<string, unknown>)) {
+    if (raw === undefined || raw === null) continue;
+    if (key.startsWith('data-')) {
+      pickerProps[key] = String(raw);
+      continue;
+    }
+    if ((key.startsWith('bind') || key.startsWith('catch')) && typeof raw === 'string') {
+      pickerProps[normalizeBindingAttrName(key)] = raw;
+    }
+  }
 
   return (
     <>

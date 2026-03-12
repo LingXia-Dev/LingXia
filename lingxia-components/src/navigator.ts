@@ -97,6 +97,24 @@ export class LxNavigatorElement extends HTMLElement {
   private readonly onTouchCancel = (e: TouchEvent) => this.handleTouchCancel(e);
   private readonly onMouseEnter = (e: MouseEvent) => this.handleMouseEnter(e);
   private readonly onMouseLeave = (e: MouseEvent) => this.handleMouseLeave(e);
+  private readonly clickListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onClick(event as MouseEvent),
+  };
+  private readonly touchStartListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onTouchStart(event as TouchEvent),
+  };
+  private readonly touchEndListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onTouchEnd(event as TouchEvent),
+  };
+  private readonly touchCancelListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onTouchCancel(event as TouchEvent),
+  };
+  private readonly mouseEnterListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onMouseEnter(event as MouseEvent),
+  };
+  private readonly mouseLeaveListener: EventListenerObject = {
+    handleEvent: (event: Event): void => this.onMouseLeave(event as MouseEvent),
+  };
 
   connectedCallback() {
     this.setupHoverEffect();
@@ -106,12 +124,12 @@ export class LxNavigatorElement extends HTMLElement {
 
   disconnectedCallback() {
     this.clearHoverTimer();
-    this.removeEventListener('click', this.onClick);
-    this.removeEventListener('touchstart', this.onTouchStart);
-    this.removeEventListener('touchend', this.onTouchEnd);
-    this.removeEventListener('touchcancel', this.onTouchCancel);
-    this.removeEventListener('mouseenter', this.onMouseEnter);
-    this.removeEventListener('mouseleave', this.onMouseLeave);
+    this.removeEventListener('click', this.clickListener);
+    this.removeEventListener('touchstart', this.touchStartListener);
+    this.removeEventListener('touchend', this.touchEndListener);
+    this.removeEventListener('touchcancel', this.touchCancelListener);
+    this.removeEventListener('mouseenter', this.mouseEnterListener);
+    this.removeEventListener('mouseleave', this.mouseLeaveListener);
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null) {
@@ -143,17 +161,17 @@ export class LxNavigatorElement extends HTMLElement {
   }
 
   private setupHoverEffect() {
-    this.addEventListener('touchstart', this.onTouchStart, { passive: true });
-    this.addEventListener('touchend', this.onTouchEnd, { passive: true });
-    this.addEventListener('touchcancel', this.onTouchCancel, { passive: true });
+    this.addEventListener('touchstart', this.touchStartListener, { passive: true });
+    this.addEventListener('touchend', this.touchEndListener, { passive: true });
+    this.addEventListener('touchcancel', this.touchCancelListener, { passive: true });
 
     // Desktop hover
-    this.addEventListener('mouseenter', this.onMouseEnter);
-    this.addEventListener('mouseleave', this.onMouseLeave);
+    this.addEventListener('mouseenter', this.mouseEnterListener);
+    this.addEventListener('mouseleave', this.mouseLeaveListener);
   }
 
   private setupClickHandler() {
-    this.addEventListener('click', this.onClick);
+    this.addEventListener('click', this.clickListener);
   }
 
   private handleTouchStart(e: TouchEvent) {
@@ -280,12 +298,9 @@ export class LxNavigatorElement extends HTMLElement {
     path?: string | null;
     phoneNumber?: string | null;
   }) {
-    console.log('[LxNavigator] Navigate:', options);
-
     try {
       await this.performNavigation(options);
       this.dispatchSuccess();
-      this.logNavigation(options);
     } catch (error) {
       this.dispatchFail(error);
     }
@@ -311,8 +326,29 @@ export class LxNavigatorElement extends HTMLElement {
     this.dispatchEvent(completeEvent);
   }
 
+  private resolveErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      const message = error.message.trim();
+      return message || 'Unknown error';
+    }
+
+    if (typeof error === 'string') {
+      const message = error.trim();
+      return message || 'Unknown error';
+    }
+
+    if (error && typeof error === 'object') {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) {
+        return message;
+      }
+    }
+
+    return 'Unknown error';
+  }
+
   private dispatchFail(error: unknown) {
-    const errMsg = error instanceof Error ? error.message : 'Unknown error';
+    const errMsg = this.resolveErrorMessage(error);
     const failEvent = new CustomEvent('fail', {
       detail: {
         success: false,
@@ -325,7 +361,8 @@ export class LxNavigatorElement extends HTMLElement {
 
     const completeEvent = new CustomEvent('complete', {
       detail: {
-        success: false
+        success: false,
+        errMsg
       },
       bubbles: true,
       composed: true
@@ -447,58 +484,6 @@ export class LxNavigatorElement extends HTMLElement {
     }
   }
 
-  private logNavigation(options: {
-    url: string;
-    openType: NavigatorOpenType;
-    target: NavigatorTarget;
-    delta: number;
-    lxAppId?: string | null;
-    path?: string | null;
-    phoneNumber?: string | null;
-  }) {
-    const { url, openType, target, delta, lxAppId, path, phoneNumber } = options;
-
-    switch (openType) {
-      case 'navigate':
-        if (target === 'browser') {
-          console.log(`[LxNavigator] Open in browser: ${url}`);
-        } else if (target === 'self' && /^https?:\/\//i.test(url)) {
-          console.log(`[LxNavigator] Open in app: ${url}`);
-        } else if (target === 'lxapp' && lxAppId) {
-          console.log(`[LxNavigator] Open lxapp: ${lxAppId}, path: ${path || '/'}`);
-        } else {
-          console.log(`[LxNavigator] Push page: ${url}`);
-        }
-        break;
-      case 'redirect':
-        console.log(`[LxNavigator] Replace page: ${url}`);
-        break;
-      case 'navigateBack':
-        console.log(`[LxNavigator] Go back ${delta} page(s)`);
-        break;
-      case 'reLaunch':
-        console.log(`[LxNavigator] Restart app with page: ${url}`);
-        break;
-      case 'switchTab':
-        console.log(`[LxNavigator] Switch to tab: ${url}`);
-        break;
-      case 'exit':
-        console.log('[LxNavigator] Exit current lxapp');
-        break;
-      case 'openUrl':
-        if (target === 'lxapp' && lxAppId) {
-          console.log(`[LxNavigator] Open lxapp: ${lxAppId}, path: ${path || '/'}`);
-        } else if (target === 'self') {
-          console.log(`[LxNavigator] Open in app: ${url}`);
-        } else {
-          console.log(`[LxNavigator] Open in browser: ${url}`);
-        }
-        break;
-      case 'tel':
-        console.log(`[LxNavigator] Make phone call: ${phoneNumber}`);
-        break;
-    }
-  }
 }
 
 // Register custom element

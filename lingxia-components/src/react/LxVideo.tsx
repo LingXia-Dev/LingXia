@@ -13,6 +13,10 @@ if (typeof window !== "undefined") {
   registerVideoComponent();
 }
 
+function normalizeBindingAttrName(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
 export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
   const innerRef = useRef<HTMLElement>(null);
   const handlerRef = useRef<Map<string, EventListenerOrEventListenerObject>>(new Map());
@@ -42,10 +46,11 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
     for (const [key, value] of Object.entries(props)) {
       if (!key.startsWith("on") || typeof value !== "function") continue;
       const eventName = key.substring(2).toLowerCase();
-      next.set(eventName, value);
+      const listener: EventListenerObject = { handleEvent: value as EventListener };
+      next.set(eventName, listener);
       const prevHandler = prev.get(eventName);
       if (prevHandler) el.removeEventListener(eventName, prevHandler);
-      el.addEventListener(eventName, value);
+      el.addEventListener(eventName, listener);
     }
 
     for (const [eventName, handler] of prev.entries()) {
@@ -83,7 +88,11 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
   // Filter out event props and React-only props before passing to the custom element
   const domProps: Record<string, any> = {};
   for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("on") && typeof value === "function") continue;
+    if (key.startsWith("on")) continue;
+    if ((key.startsWith("bind") || key.startsWith("catch")) && typeof value === "string") {
+      domProps[normalizeBindingAttrName(key)] = value;
+      continue;
+    }
     if (key === "children" || key === "dangerouslySetInnerHTML" || key === "ref") continue;
 
     let attrName = key;

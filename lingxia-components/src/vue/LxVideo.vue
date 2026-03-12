@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, h, onMounted, onBeforeUnmount, useId, watch } from 'vue';
+import { ref, computed, h, onMounted, onBeforeUnmount, useAttrs, useId, watch } from 'vue';
 import { registerVideoComponent } from '../video.js';
 import type { LxVideoProps } from './types.js';
 
@@ -11,6 +11,7 @@ const props = withDefaults(defineProps<LxVideoProps>(), {
   progressBar: true,
   live: false,
 });
+const attrs = useAttrs();
 
 const emit = defineEmits<{
   playRequest: [e: Event];
@@ -33,7 +34,7 @@ if (typeof window !== 'undefined') {
 }
 
 const elementRef = ref<HTMLElement | null>(null);
-const handlerMap = ref(new Map<string, EventListener>());
+const handlerMap = ref(new Map<string, EventListenerOrEventListenerObject>());
 const vueId = useId();
 
 const resolvedId = computed(() => props.id || `lx-video-${vueId.replace(/[:]/g, '')}`);
@@ -54,6 +55,10 @@ const eventMap: Record<string, string> = {
   rateChange: 'ratechange',
 };
 
+function normalizeBindingAttrName(key: string): string {
+  return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+}
+
 function setupEventListeners() {
   const el = elementRef.value;
   if (!el) return;
@@ -62,7 +67,9 @@ function setupEventListeners() {
   }
   handlerMap.value.clear();
   for (const [vueEvent, domEvent] of Object.entries(eventMap)) {
-    const handler = (e: Event) => emit(vueEvent as any, e);
+    const handler: EventListenerObject = {
+      handleEvent: (e: Event) => emit(vueEvent as any, e),
+    };
     el.addEventListener(domEvent, handler);
     handlerMap.value.set(domEvent, handler);
   }
@@ -115,6 +122,22 @@ const domProps = computed(() => {
   if (props.progressBar === false) result['progress-bar'] = 'false';
   if (props.qualities?.length) result.qualities = JSON.stringify(props.qualities);
   if (props.playbackRates?.length) result['playback-rates'] = JSON.stringify(props.playbackRates);
+  for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
+    if (typeof value !== 'string') continue;
+    if (key.startsWith('bind') || key.startsWith('catch')) {
+      result[normalizeBindingAttrName(key)] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(attrs)) {
+    if (typeof value !== 'string') continue;
+    if (key.startsWith('data-')) {
+      result[key] = value;
+      continue;
+    }
+    if (key.startsWith('bind') || key.startsWith('catch')) {
+      result[normalizeBindingAttrName(key)] = value;
+    }
+  }
   return result;
 });
 
