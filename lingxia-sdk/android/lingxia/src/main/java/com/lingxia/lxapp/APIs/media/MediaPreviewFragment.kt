@@ -332,10 +332,20 @@ class MediaPreviewFragment : Fragment() {
         finished = true
         clearAutoRunnables()
         sendPreviewResult(reason)
-        cleanupPreviewResources()
-        if (isAdded) {
-            parentFragmentManager.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
+        if (!isAdded) {
+            cleanupPreviewResources()
+            return
         }
+
+        val fm = parentFragmentManager
+        if (fm.isStateSaved) {
+            fm.beginTransaction()
+                .remove(this)
+                .commitAllowingStateLoss()
+            return
+        }
+
+        fm.popBackStack(TAG, FragmentManager.POP_BACK_STACK_INCLUSIVE)
     }
 
     private fun clampIndex(position: Int): Int {
