@@ -34,15 +34,15 @@
           volume="0.8"
           class="block w-full rounded-lg bg-black"
           :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
-          @playing="onPlayHandler"
-          @pause="onPauseHandler"
-          @stop="onStopHandler"
-          @ended="onEndedHandler"
-          @waiting="onWaitingHandler"
-          @timeupdate="onTimeUpdateHandler"
-          @fullscreenchange="onFullscreenChangeHandler"
-          @qualitychange="onQualityChangeHandler"
-          @ratechange="onRateChangeHandler"
+          bind-playing="onPlaying"
+          bind-pause="onPause"
+          bind-stop="onStop"
+          bind-ended="onEnded"
+          bind-waiting="onWaiting"
+          bind-time-update="onTimeUpdate"
+          bind-fullscreen-change="onFullscreenChange"
+          bind-quality-change="onQualityChange"
+          bind-rate-change="onRateChange"
         />
       </div>
 
@@ -134,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { useLingXia } from '@lingxia/core/vue';
 import { LxVideo } from '@lingxia/components/vue';
 import '../../tailwind.css';
@@ -151,66 +151,23 @@ type PageData = {
   videos?: VideoConfig[];
 };
 
-const { data, play, pause, stop, seek, requestFullScreen, onQualityChange, onRateChange } = useLingXia();
+const { data, play, pause, stop, seek, requestFullScreen } = useLingXia();
 
 const SEEK_STEP_SECONDS = 10;
-const eventLog = ref('Ready');
-const currentTime = ref(0);
-const duration = ref(0);
+const eventLog = computed(() => data?.eventLog || 'Ready');
+const currentTime = computed(() => (typeof data?.currentTime === 'number' ? data.currentTime : 0));
+const duration = computed(() => (typeof data?.duration === 'number' ? data.duration : 0));
 
 const video = computed(() => data?.videos?.[0]);
 
-function onPlayHandler() {
-  eventLog.value = 'Playing';
-}
-
-function onPauseHandler() {
-  eventLog.value = 'Paused';
-}
-
-function onStopHandler() {
-  eventLog.value = 'Stopped';
-}
-
-function onEndedHandler() {
-  eventLog.value = 'Ended';
-}
-
-function onWaitingHandler() {
-  eventLog.value = 'Buffering...';
-}
-
-function onTimeUpdateHandler(e: { detail?: { currentTime?: number; duration?: number } }) {
-  if (typeof e.detail?.currentTime === 'number') currentTime.value = e.detail.currentTime;
-  if (typeof e.detail?.duration === 'number') duration.value = e.detail.duration;
-}
-
-function onFullscreenChangeHandler(e: { detail?: { fullScreen?: boolean } }) {
-  eventLog.value = `Fullscreen: ${e.detail?.fullScreen ? 'on' : 'off'}`;
-}
-
-function onQualityChangeHandler(e: { detail?: { quality?: string } }) {
-  if (!video.value) return;
-  eventLog.value = `Quality: ${e.detail?.quality ?? ''}`;
-  onQualityChange?.({ videoId: video.value.id, detail: e.detail });
-}
-
-function onRateChangeHandler(e: { detail?: { rate?: number } }) {
-  if (!video.value) return;
-  eventLog.value = `Rate: ${e.detail?.rate ?? ''}`;
-  onRateChange?.({ videoId: video.value.id, detail: e.detail });
-}
-
 function seekBackward(seconds: number) {
   const newTime = Math.max(0, currentTime.value - seconds);
-  currentTime.value = newTime;
   seek(newTime);
 }
 
 function seekForward(seconds: number) {
   const maxTime = duration.value > 0 ? duration.value : Number.POSITIVE_INFINITY;
   const newTime = Math.min(maxTime, currentTime.value + seconds);
-  currentTime.value = newTime;
   seek(newTime);
 }
 </script>

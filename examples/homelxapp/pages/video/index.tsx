@@ -3,8 +3,6 @@ import { useLingXia } from '@lingxia/core/react';
 import { LxVideo } from '@lingxia/components/react';
 import '../../tailwind.css';
 
-type LxVideoEvent<TDetail> = { detail?: TDetail };
-
 type VideoConfig = {
   id: string;
   src: string;
@@ -15,6 +13,9 @@ type VideoConfig = {
 
 type PageData = {
   videos?: VideoConfig[];
+  eventLog?: string;
+  currentTime?: number;
+  duration?: number;
 };
 
 type PageActions = {
@@ -24,8 +25,6 @@ type PageActions = {
   stop(): void;
   seek(position: number): void;
   requestFullScreen(): void;
-  onQualityChange(payload: { videoId: string; detail: unknown }): void;
-  onRateChange(payload: { videoId: string; detail: unknown }): void;
 };
 
 const SEEK_STEP_SECONDS = 10;
@@ -38,88 +37,28 @@ export default function App() {
     stop,
     seek,
     requestFullScreen,
-    onQualityChange,
-    onRateChange,
   } = useLingXia();
   const video = data?.videos?.[0];
-  const [eventLog, setEventLog] = React.useState('Ready');
-  const currentTimeRef = React.useRef(0);
-  const durationRef = React.useRef(0);
-
-  const onPlayHandler = React.useCallback(() => {
-    setEventLog('Playing');
-  }, []);
-
-  const onPauseHandler = React.useCallback(() => {
-    setEventLog('Paused');
-  }, []);
-
-  const onStopHandler = React.useCallback(() => {
-    setEventLog('Stopped');
-  }, []);
-
-  const onEndedHandler = React.useCallback(() => {
-    setEventLog('Ended');
-  }, []);
-
-  const onWaitingHandler = React.useCallback(() => {
-    setEventLog('Buffering...');
-  }, []);
-
-  const onTimeUpdateHandler = React.useCallback(
-    (e: LxVideoEvent<{ currentTime?: number; duration?: number }>) => {
-      const currentTime = e.detail?.currentTime;
-      const duration = e.detail?.duration;
-      if (typeof currentTime === 'number') currentTimeRef.current = currentTime;
-      if (typeof duration === 'number') durationRef.current = duration;
-    },
-    [],
-  );
-
-  const onFullscreenChangeHandler = React.useCallback(
-    (e: LxVideoEvent<{ fullScreen?: boolean }>) => {
-      setEventLog(`Fullscreen: ${e.detail?.fullScreen ? 'on' : 'off'}`);
-    },
-    [],
-  );
-
-  const onQualityChangeHandler = React.useCallback(
-    (e: LxVideoEvent<{ quality?: string }>) => {
-      if (!video) return;
-      setEventLog(`Quality: ${e.detail?.quality ?? ''}`);
-      onQualityChange({ videoId: video.id, detail: e.detail });
-    },
-    [onQualityChange, video],
-  );
-
-  const onRateChangeHandler = React.useCallback(
-    (e: LxVideoEvent<{ rate?: number }>) => {
-      if (!video) return;
-      setEventLog(`Rate: ${e.detail?.rate ?? ''}`);
-      onRateChange({ videoId: video.id, detail: e.detail });
-    },
-    [onRateChange, video],
-  );
+  const eventLog = data?.eventLog || 'Ready';
+  const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
+  const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
   // Relative seek helpers
   const seekBackward = React.useCallback(
     (seconds: number) => {
-      const newTime = Math.max(0, currentTimeRef.current - seconds);
-      currentTimeRef.current = newTime; // Optimistic update
+      const newTime = Math.max(0, currentTime - seconds);
       seek(newTime);
     },
-    [seek],
+    [currentTime, seek],
   );
 
   const seekForward = React.useCallback(
     (seconds: number) => {
-      const maxTime =
-        durationRef.current > 0 ? durationRef.current : Number.POSITIVE_INFINITY;
-      const newTime = Math.min(maxTime, currentTimeRef.current + seconds);
-      currentTimeRef.current = newTime; // Optimistic update
+      const maxTime = duration > 0 ? duration : Number.POSITIVE_INFINITY;
+      const newTime = Math.min(maxTime, currentTime + seconds);
       seek(newTime);
     },
-    [seek],
+    [currentTime, duration, seek],
   );
 
   if (!video) {
@@ -162,15 +101,15 @@ export default function App() {
             volume="0.8"
             className="block w-full rounded-lg bg-black"
             style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-            onPlaying={onPlayHandler}
-            onPause={onPauseHandler}
-            onStop={onStopHandler}
-            onEnded={onEndedHandler}
-            onWaiting={onWaitingHandler}
-            onTimeUpdate={onTimeUpdateHandler}
-            onFullscreenChange={onFullscreenChangeHandler}
-            onQualityChange={onQualityChangeHandler}
-            onRateChange={onRateChangeHandler}
+            bindPlaying="onPlaying"
+            bindPause="onPause"
+            bindStop="onStop"
+            bindEnded="onEnded"
+            bindWaiting="onWaiting"
+            bindTimeUpdate="onTimeUpdate"
+            bindFullscreenChange="onFullscreenChange"
+            bindQualityChange="onQualityChange"
+            bindRateChange="onRateChange"
           />
         </div>
 

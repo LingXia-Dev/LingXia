@@ -137,7 +137,7 @@
             <LxNavigator
               lx-app-id="testminiapp"
               @success="addLog('✓ Opening other LxApp')"
-              @fail="addLog('✗ Failed to open LxApp')"
+              @fail="onFailWithMessage('Failed to open LxApp', $event)"
             >
               <div class="w-full py-2.5 px-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                 <div class="flex items-center justify-center gap-2">
@@ -150,7 +150,7 @@
             <LxNavigator
               url="https://www.deepseek.com"
               @success="addLog('✓ Opening DeepSeek in browser')"
-              @fail="addLog('✗ Failed to open browser')"
+              @fail="onFailWithMessage('Failed to open browser', $event)"
             >
               <div class="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                 <div class="flex items-center justify-center gap-2">
@@ -182,7 +182,7 @@
               open-type="tel"
               phone-number="10086"
               @success="addLog('✓ Making phone call')"
-              @fail="addLog('✗ Failed to make call')"
+              @fail="onFailWithMessage('Failed to make call', $event)"
             >
               <div class="w-full py-3 px-4 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 active:from-rose-700 active:to-pink-700 text-white rounded-xl text-sm font-medium text-center transition-all shadow-sm">
                 <div class="flex items-center justify-center gap-3">
@@ -198,6 +198,23 @@
                 </div>
               </div>
             </LxNavigator>
+          </div>
+        </div>
+      </div>
+
+      <!-- Event Logs -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="p-4">
+          <div class="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wider">Event Logs</div>
+          <div v-if="logs.length === 0" class="text-xs text-gray-400">No events yet</div>
+          <div v-else class="space-y-2">
+            <div
+              v-for="(log, index) in logs"
+              :key="`${log}-${index}`"
+              class="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 break-all"
+            >
+              {{ log }}
+            </div>
           </div>
         </div>
       </div>
@@ -233,5 +250,10 @@ const logs = ref<string[]>([]);
 
 function addLog(message: string) {
   logs.value = [`[${new Date().toLocaleTimeString()}] ${message}`, ...logs.value].slice(0, 10);
+}
+
+function onFailWithMessage(label: string, event: any) {
+  const errMsg = event?.detail?.errMsg || 'Unknown error';
+  addLog(`✗ ${label}: ${errMsg}`);
 }
 </script>

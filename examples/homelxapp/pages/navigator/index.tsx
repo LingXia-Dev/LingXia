@@ -9,6 +9,14 @@ export default function NavigatorPage() {
     setLogs(prev => [`[${new Date().toLocaleTimeString()}] ${message}`, ...prev].slice(0, 10));
   };
 
+  const getErrMsg = (event: any): string => {
+    return event?.detail?.errMsg || 'Unknown error';
+  };
+
+  const onFailWithMessage = (label: string) => (event: any) => {
+    addLog(`✗ ${label}: ${getErrMsg(event)}`);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="px-4 py-5 space-y-4">
@@ -43,7 +51,7 @@ export default function NavigatorPage() {
               <div className="grid grid-cols-2 gap-3">
                 {/* Navigate */}
                 <LxNavigator
-                  url="pages/device/index.tsx?type=device"
+                  url="pages/device/index?type=device"
                   openType="navigate"
                   onSuccess={() => addLog('✓ Navigate to home')}
                 >
@@ -56,7 +64,7 @@ export default function NavigatorPage() {
 
                 {/* Redirect */}
                 <LxNavigator
-                  url="pages/device/index.tsx?type=device"
+                  url="pages/device/index?type=device"
                   openType="redirect"
                   onSuccess={() => addLog('✓ Redirect to home')}
                 >
@@ -82,7 +90,7 @@ export default function NavigatorPage() {
 
                 {/* ReLaunch */}
                 <LxNavigator
-                  url="pages/device/index.tsx?type=screen"
+                  url="pages/device/index?type=screen"
                   openType="reLaunch"
                   onSuccess={() => addLog('✓ ReLaunch to home')}
                 >
@@ -105,7 +113,7 @@ export default function NavigatorPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <LxNavigator
-                  url="pages/home/index.tsx"
+                  url="pages/home/index"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to Home tab')}
                 >
@@ -114,7 +122,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  url="pages/API/index.tsx"
+                  url="pages/API/index"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to API tab')}
                 >
@@ -123,7 +131,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  url="pages/todo/index.tsx"
+                  url="pages/todo/index"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to Todo tab')}
                 >
@@ -148,7 +156,7 @@ export default function NavigatorPage() {
               <LxNavigator
                 lxAppId="testminiapp"
                 onSuccess={() => addLog('✓ Opening other LxApp')}
-                onFail={() => addLog('✗ Failed to open LxApp')}
+                onFail={onFailWithMessage('Failed to open LxApp')}
               >
                 <div className="w-full py-2.5 px-4 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                   <div className="flex items-center justify-center gap-2">
@@ -162,7 +170,7 @@ export default function NavigatorPage() {
                 url="https://www.deepseek.com"
                 target="self"
                 onSuccess={() => addLog('✓ Opening DeepSeek in-app')}
-                onFail={() => addLog('✗ Failed to open in-app browser')}
+                onFail={onFailWithMessage('Failed to open in-app browser')}
               >
                 <div className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                   <div className="flex items-center justify-center gap-2">
@@ -176,7 +184,7 @@ export default function NavigatorPage() {
                 url="https://www.deepseek.com"
                 target="browser"
                 onSuccess={() => addLog('✓ Opening DeepSeek in external browser')}
-                onFail={() => addLog('✗ Failed to open external browser')}
+                onFail={onFailWithMessage('Failed to open external browser')}
               >
                 <div className="w-full py-2.5 px-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                   <div className="flex items-center justify-center gap-2">
@@ -208,7 +216,7 @@ export default function NavigatorPage() {
                 openType="tel"
                 phoneNumber="10086"
                 onSuccess={() => addLog('✓ Making phone call')}
-                onFail={() => addLog('✗ Failed to make call')}
+                onFail={onFailWithMessage('Failed to make call')}
               >
                 <div className="w-full py-3 px-4 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 active:from-rose-700 active:to-pink-700 text-white rounded-xl text-sm font-medium text-center transition-all shadow-sm">
                   <div className="flex items-center justify-center gap-3">
@@ -225,6 +233,27 @@ export default function NavigatorPage() {
                 </div>
               </LxNavigator>
             </div>
+          </div>
+        </div>
+
+        {/* Event Logs */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="p-4">
+            <div className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wider">Event Logs</div>
+            {logs.length === 0 ? (
+              <div className="text-xs text-gray-400">No events yet</div>
+            ) : (
+              <div className="space-y-2">
+                {logs.map((log, index) => (
+                  <div
+                    key={`${log}-${index}`}
+                    className="text-xs text-gray-700 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 break-all"
+                  >
+                    {log}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

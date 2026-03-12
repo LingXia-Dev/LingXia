@@ -1,10 +1,13 @@
 Page({
-  data: { videos: [] },
+  data: {
+    videos: [],
+    eventLog: "Ready",
+    currentTime: 0,
+    duration: 0,
+  },
   videoContext: null,
 
-  onLoad: function (options) {
-    console.log("[NativeVideo] onLoad options:", options);
-
+  onLoad: function () {
     this.setData({
       videos: [
         {
@@ -39,13 +42,8 @@ Page({
 
     try {
       this.videoContext = lx.createVideoContext(videoId);
-      console.log("[NativeVideo] createVideoContext success:", videoId);
       return this.videoContext;
-    } catch (e) {
-      console.error(
-        "[NativeVideo] createVideoContext failed:",
-        e.message || e,
-      );
+    } catch {
       return null;
     }
   },
@@ -63,8 +61,7 @@ Page({
   },
 
   seek: function (position) {
-    const time =
-      typeof position === "number" ? position : Number(position) || 0;
+    const time = typeof position === "number" ? position : Number(position) || 0;
     this._getContext()?.seek(time);
   },
 
@@ -76,11 +73,52 @@ Page({
     this._getContext()?.exitFullScreen();
   },
 
-  onQualityChange: function ({ videoId, detail } = {}) {
-    console.log("[NativeVideo] onQualityChange:", { videoId, detail });
+  onPlaying: function () {
+    this.setData({ eventLog: "Playing" });
   },
 
-  onRateChange: function ({ videoId, detail } = {}) {
-    console.log("[NativeVideo] onRateChange:", { videoId, detail });
+  onPause: function () {
+    this.setData({ eventLog: "Paused" });
+  },
+
+  onStop: function () {
+    this.setData({ eventLog: "Stopped" });
+  },
+
+  onEnded: function () {
+    this.setData({ eventLog: "Ended" });
+  },
+
+  onWaiting: function () {
+    this.setData({ eventLog: "Buffering..." });
+  },
+
+  onTimeUpdate: function (event = {}) {
+    const detail = event?.detail || {};
+    const nextData = {};
+    if (typeof detail.currentTime === "number") {
+      nextData.currentTime = detail.currentTime;
+    }
+    if (typeof detail.duration === "number") {
+      nextData.duration = detail.duration;
+    }
+    if (Object.keys(nextData).length > 0) {
+      this.setData(nextData);
+    }
+  },
+
+  onFullscreenChange: function (event = {}) {
+    const fullScreen = event?.detail?.fullScreen === true;
+    this.setData({ eventLog: `Fullscreen: ${fullScreen ? "on" : "off"}` });
+  },
+
+  onQualityChange: function (event = {}) {
+    const detail = event?.detail || {};
+    this.setData({ eventLog: `Quality: ${detail.quality ?? ""}` });
+  },
+
+  onRateChange: function (event = {}) {
+    const detail = event?.detail || {};
+    this.setData({ eventLog: `Rate: ${detail.rate ?? ""}` });
   },
 });
