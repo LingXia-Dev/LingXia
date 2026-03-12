@@ -5,40 +5,53 @@ import CLingXiaRustAPI
 
 /// NSWindow class for LxApp Tab mode
 public class LxAppWindow: NSWindow {
+    nonisolated(unsafe) private var titlebarObserver: Any?
+
     override init(contentRect: NSRect, styleMask style: NSWindow.StyleMask, backing backingStoreType: NSWindow.BackingStoreType, defer flag: Bool) {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
     }
 
     func configureForTabStyle() {
-        // Tab-style with native window controls and custom tab bar
         styleMask.insert(.fullSizeContentView)
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
         isMovableByWindowBackground = true
-        backgroundColor = NSColor.windowBackgroundColor
-        adjustTrafficLightPositions()
-    }
+        backgroundColor = .clear
 
-    public override func setFrame(_ frameRect: NSRect, display flag: Bool) {
-        super.setFrame(frameRect, display: flag)
-        adjustTrafficLightPositions()
-    }
+        if let observer = titlebarObserver {
+            NotificationCenter.default.removeObserver(observer)
+            titlebarObserver = nil
+        }
 
-    public override func setFrame(_ frameRect: NSRect, display flag: Bool, animate shouldAnimate: Bool) {
-        super.setFrame(frameRect, display: flag, animate: shouldAnimate)
+        // Observe titlebar container layout to keep traffic lights positioned
+        if let button = standardWindowButton(.closeButton), let container = button.superview {
+            container.postsFrameChangedNotifications = true
+            titlebarObserver = NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification, object: container, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.adjustTrafficLightPositions()
+                }
+            }
+        }
         adjustTrafficLightPositions()
     }
 
     private func adjustTrafficLightPositions() {
         guard !styleMask.contains(.fullScreen) else { return }
-        let targetY: CGFloat = 13
+        guard let container = standardWindowButton(.closeButton)?.superview else { return }
+        let midY = container.frame.height / 2
         for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
             guard let button = standardWindowButton(type) else { continue }
-            var f = button.frame
-            guard abs(f.origin.y - targetY) > 0.5 else { continue }
-            f.origin.y = targetY
-            button.setFrameOrigin(f.origin)
+            let y = midY - button.frame.height / 2
+            if abs(button.frame.origin.y - y) > 0.5 {
+                button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: y))
+            }
         }
+    }
+
+    deinit {
+        titlebarObserver.map(NotificationCenter.default.removeObserver)
     }
 
     public override var canBecomeKey: Bool {

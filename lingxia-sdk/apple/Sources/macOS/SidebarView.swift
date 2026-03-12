@@ -1,6 +1,7 @@
 #if os(macOS)
 import AppKit
 import CLingXiaRustAPI
+import os.log
 
 // MARK: - Resize Handle
 
@@ -65,9 +66,10 @@ public class SidebarView: NSView {
         static let dotTopOffset: CGFloat = 50
     }
 
-    private let backgroundView = NSVisualEffectView()
     private let headerView = NSView()
     private let toggleButton = NSButton()
+    private let settingsButton = NSButton()
+    private let downloadButton = NSButton()
     private let scrollView = NSScrollView()
     private let resizeHandle = SidebarResizeHandle()
     private let minimizedDotsContainer = NSView()
@@ -84,7 +86,6 @@ public class SidebarView: NSView {
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
     private var addButtonTrackingArea: NSTrackingArea?
-    private var sidebarTrackingArea: NSTrackingArea?
 
     /// True when the sidebar is at minimized width (showing dots only)
     var isMinimized: Bool {
@@ -109,10 +110,6 @@ public class SidebarView: NSView {
     var onBrowserTabSelected: ((UUID) -> Void)?
     /// Called when a browser tab close is requested
     var onBrowserTabCloseRequested: ((UUID) -> Void)?
-    /// Called when mouse enters sidebar area (for auto-hide tracking)
-    var onMouseEnteredSidebar: (() -> Void)?
-    /// Called when mouse exits sidebar area (for auto-hide tracking)
-    var onMouseExitedSidebar: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -159,17 +156,31 @@ public class SidebarView: NSView {
         wantsLayer = true
         clipsToBounds = true
 
-        // Visual effect background (sidebar material)
-        backgroundView.translatesAutoresizingMaskIntoConstraints = false
-        backgroundView.material = .sidebar
-        backgroundView.blendingMode = .behindWindow
-        backgroundView.state = .active
-        addSubview(backgroundView)
-
         // Header (traffic lights + toggle)
         headerView.translatesAutoresizingMaskIntoConstraints = false
         headerView.wantsLayer = true
         addSubview(headerView)
+
+        // Settings and download buttons — top-right in header
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsButton.isBordered = false
+        settingsButton.bezelStyle = .regularSquare
+        settingsButton.imagePosition = .imageOnly
+        settingsButton.contentTintColor = NSColor.secondaryLabelColor
+        settingsButton.target = self
+        settingsButton.action = #selector(settingsClicked)
+        headerView.addSubview(settingsButton)
+
+        downloadButton.translatesAutoresizingMaskIntoConstraints = false
+        downloadButton.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        downloadButton.isBordered = false
+        downloadButton.bezelStyle = .regularSquare
+        downloadButton.imagePosition = .imageOnly
+        downloadButton.contentTintColor = NSColor.secondaryLabelColor
+        downloadButton.target = self
+        downloadButton.action = #selector(downloadClicked)
+        headerView.addSubview(downloadButton)
 
         // Toggle button — right-aligned in header
         toggleButton.translatesAutoresizingMaskIntoConstraints = false
@@ -207,15 +218,21 @@ public class SidebarView: NSView {
         addSubview(resizeHandle)
 
         NSLayoutConstraint.activate([
-            backgroundView.topAnchor.constraint(equalTo: topAnchor),
-            backgroundView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            backgroundView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            backgroundView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
             headerView.topAnchor.constraint(equalTo: topAnchor),
             headerView.leadingAnchor.constraint(equalTo: leadingAnchor),
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: Layout.trafficLightsHeight),
+
+            // Settings and download buttons: right-aligned in header, next to toggle button
+            downloadButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -4),
+            downloadButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            downloadButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
+            downloadButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
+
+            settingsButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -4),
+            settingsButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            settingsButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
+            settingsButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
             // Toggle button: right-aligned in header
             toggleButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
@@ -223,7 +240,7 @@ public class SidebarView: NSView {
             toggleButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             toggleButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
-            // Scroll view: inset trailing by resize handle width
+            // Scroll view: inset trailing by resize handle width, extends to bottom
             scrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
@@ -250,11 +267,11 @@ public class SidebarView: NSView {
             ])
         }
 
-        // Separator line inside the resize handle
+        // Separator line inside the resize handle (hidden for seamless blending with Layer 2)
         let separatorLine = NSView()
         separatorLine.translatesAutoresizingMaskIntoConstraints = false
         separatorLine.wantsLayer = true
-        separatorLine.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        separatorLine.layer?.backgroundColor = NSColor.clear.cgColor  // Hidden for seamless appearance
         resizeHandle.addSubview(separatorLine)
 
         NSLayoutConstraint.activate([
@@ -297,6 +314,8 @@ public class SidebarView: NSView {
 
         scrollView.isHidden = hidden || minimized
         toggleButton.isHidden = hidden || minimized
+        settingsButton.isHidden = hidden || minimized
+        downloadButton.isHidden = hidden || minimized
         minimizedDotsContainer.isHidden = !minimized
         resizeHandle.isHidden = hidden
     }
@@ -457,7 +476,7 @@ public class SidebarView: NSView {
     // MARK: - Browser Items
 
     /// Update browser tab items in the sidebar
-    func updateBrowserItems(_ items: [(id: UUID, title: String)], activeId: UUID?) {
+    func updateBrowserItems(_ items: [(id: UUID, title: String, favicon: NSImage?)], activeId: UUID?) {
         guard let docView = scrollView.documentView else { return }
 
         // Store ordering
@@ -479,7 +498,7 @@ public class SidebarView: NSView {
         // Add/update browser items
         for item in items {
             if let existing = browserItemViews[item.id] {
-                existing.configure(title: item.title, isSelected: item.id == activeId)
+                existing.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
             } else {
                 let itemView = SidebarBrowserItemView(id: item.id)
                 itemView.translatesAutoresizingMaskIntoConstraints = false
@@ -489,7 +508,7 @@ public class SidebarView: NSView {
                 itemView.onClose = { [weak self] id in
                     self?.onBrowserTabCloseRequested?(id)
                 }
-                itemView.configure(title: item.title, isSelected: item.id == activeId)
+                itemView.configure(title: item.title, isSelected: item.id == activeId, favicon: item.favicon)
                 browserItemViews[item.id] = itemView
             }
         }
@@ -621,23 +640,18 @@ public class SidebarView: NSView {
         onToggleRequested?()
     }
 
+    @objc private func settingsClicked() {
+        os_log("Settings button clicked", log: .default)
+    }
+
+    @objc private func downloadClicked() {
+        os_log("Download button clicked", log: .default)
+    }
+
     // MARK: - Add button hover
 
     override public func updateTrackingAreas() {
         super.updateTrackingAreas()
-
-        // Sidebar-level tracking (for auto-hide on mouse exit)
-        if let existing = sidebarTrackingArea {
-            removeTrackingArea(existing)
-        }
-        let sidebarArea = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(sidebarArea)
-        sidebarTrackingArea = sidebarArea
 
         // Add button hover tracking
         if let existing = addButtonTrackingArea {
@@ -654,19 +668,13 @@ public class SidebarView: NSView {
     }
 
     override public func mouseEntered(with event: NSEvent) {
-        guard let trackingArea = event.trackingArea else { return }
-        if trackingArea === sidebarTrackingArea {
-            onMouseEnteredSidebar?()
-        } else if trackingArea === addButtonTrackingArea {
+        if event.trackingArea === addButtonTrackingArea {
             setAddButtonHovered(true)
         }
     }
 
     override public func mouseExited(with event: NSEvent) {
-        guard let trackingArea = event.trackingArea else { return }
-        if trackingArea === sidebarTrackingArea {
-            onMouseExitedSidebar?()
-        } else if trackingArea === addButtonTrackingArea {
+        if event.trackingArea === addButtonTrackingArea {
             setAddButtonHovered(false)
         }
     }

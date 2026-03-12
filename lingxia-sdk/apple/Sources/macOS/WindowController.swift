@@ -30,6 +30,18 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let browserAddressBarHeight: CGFloat = 26
         static let browserButtonLeading: CGFloat = 8
         static let trafficLightClearance: CGFloat = 80
+        /// Padding around the floating content panel (Layer 2)
+        static let contentPanelPadding: CGFloat = 6
+        /// Corner radius of the floating content panel
+        static let contentPanelCornerRadius: CGFloat = 10
+    }
+
+    /// Background color for the base layer (Layer 1) visible through padding gaps.
+    /// Change this to customize the window chrome color.
+    private var baseLayerColor: NSColor = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? NSColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)   // dark mode
+            : NSColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1)   // light mode
     }
 
     // Browser tab IDs – ownership lives in Rust, titles cached locally from WKWebView KVO.
@@ -38,10 +50,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var sidebarView: SidebarView?
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
+    private var contentLeadingConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private let sidebarEdgeDetector = SidebarEdgeDetector()
-    private var isSidebarAutoShown = false
-    nonisolated(unsafe) private var sidebarAutoHideTimer: Timer?
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     private var appSessions: [String: UInt64] = [:]
@@ -53,6 +64,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var browserTabIds: [UUID] = []
     private var browserTabTitles: [UUID: String] = [:]
     private var browserTabOwners: [UUID: String] = [:]  // tab UUID → owner appId
+    private var browserTabFavicons: [UUID: NSImage] = [:]
+    private var browserTabFaviconRequestOrigins: [UUID: String] = [:]
     private var browserHostView: NSView?
     private let browserToolbar = NSView()
     private let browserToolbarSeparator = NSView()
@@ -89,7 +102,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
-        sidebarAutoHideTimer?.invalidate()
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
@@ -167,19 +179,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             self?.toggleSidebar()
         }
         sidebar.onWidthChanged = { [weak self] width, animated in
-            // Live drag pins sidebar (disables auto-hide)
-            if !animated {
-                self?.isSidebarAutoShown = false
-                self?.cancelSidebarAutoHide()
-            }
             self?.updateSidebarWidth(width, animated: animated)
-        }
-        sidebar.onMouseEnteredSidebar = { [weak self] in
-            self?.cancelSidebarAutoHide()
-        }
-        sidebar.onMouseExitedSidebar = { [weak self] in
-            guard let self, self.isSidebarAutoShown else { return }
-            self.scheduleSidebarAutoHide()
         }
         sidebar.onAddBrowserTab = { [weak self] in
             self?.addBrowserTab()
@@ -193,11 +193,31 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
-        // Create content container (right of sidebar)
+        // Base layer (Layer 1) — solid color fills entire window, visible through padding gaps
+        let base = NSView()
+        base.translatesAutoresizingMaskIntoConstraints = false
+        base.wantsLayer = true
+        base.layer?.backgroundColor = baseLayerColor.cgColor
+        contentView.addSubview(base, positioned: .below, relativeTo: sidebar)
+
+        // Shadow wrapper — provides elevation shadow without clipping
+        let shadowWrapper = NSView()
+        shadowWrapper.translatesAutoresizingMaskIntoConstraints = false
+        shadowWrapper.wantsLayer = true
+        shadowWrapper.layer?.shadowColor = NSColor.black.cgColor
+        shadowWrapper.layer?.shadowOpacity = 0.15
+        shadowWrapper.layer?.shadowRadius = 8
+        shadowWrapper.layer?.shadowOffset = CGSize(width: -2, height: 0)
+        contentView.addSubview(shadowWrapper)
+
+        // Content container (Layer 2) — floating panel with rounded corners, clips content
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
-        contentView.addSubview(right)
+        right.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        right.layer?.cornerRadius = Layout.contentPanelCornerRadius
+        right.layer?.masksToBounds = true
+        shadowWrapper.addSubview(right)
 
         // Create navigation toolbar
         let toolbar = MacNavigationToolbar()
@@ -222,18 +242,34 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let sidebarWidth = sidebar.widthAnchor.constraint(equalToConstant: Layout.sidebarWidth)
         sidebarWidthConstraint = sidebarWidth
 
+        let p = Layout.contentPanelPadding
+        let contentLeading = shadowWrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
+        contentLeadingConstraint = contentLeading
+
         NSLayoutConstraint.activate([
+            // Base layer: fills entire contentView
+            base.topAnchor.constraint(equalTo: contentView.topAnchor),
+            base.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            base.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            base.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
             // Sidebar: left side, full height
             sidebar.topAnchor.constraint(equalTo: contentView.topAnchor),
             sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Right container: fills remaining space
-            right.topAnchor.constraint(equalTo: contentView.topAnchor),
-            right.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor),
-            right.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-            right.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            // Shadow wrapper positions the floating panel
+            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
+            contentLeading,
+            shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p),
+            shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p),
+
+            // Right container fills shadow wrapper
+            right.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
+            right.leadingAnchor.constraint(equalTo: shadowWrapper.leadingAnchor),
+            right.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
+            right.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
 
             // Navigation toolbar: top of right container
             toolbar.topAnchor.constraint(equalTo: right.topAnchor),
@@ -291,25 +327,20 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     func toggleSidebar() {
         guard let constraint = sidebarWidthConstraint else { return }
 
-        // If sidebar was auto-shown via edge hover, pin it (stop auto-hide)
-        if isSidebarAutoShown {
-            isSidebarAutoShown = false
-            cancelSidebarAutoHide()
-            return
-        }
-
         let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
         if isVisible && constraint.constant > Layout.minSidebarWidth {
             lastExpandedSidebarWidth = constraint.constant
         }
         let targetWidth: CGFloat = isVisible ? 0 : lastExpandedSidebarWidth
         let targetLeading: CGFloat = isVisible ? Layout.trafficLightClearance : Layout.browserButtonLeading
+        let targetContentLeading: CGFloat = isVisible ? Layout.contentPanelPadding : 0
 
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             constraint.animator().constant = targetWidth
             browserBackButtonLeadingConstraint?.animator().constant = targetLeading
+            contentLeadingConstraint?.animator().constant = targetContentLeading
         }, completionHandler: {
             MainActor.assumeIsolated { [weak self] in
                 self?.refreshSidebarVisibilityUI()
@@ -326,6 +357,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         let sidebarHidden = width < Layout.sidebarHiddenThreshold
         let targetLeading: CGFloat = sidebarHidden ? Layout.trafficLightClearance : Layout.browserButtonLeading
+        let targetContentLeading: CGFloat = sidebarHidden ? Layout.contentPanelPadding : 0
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -333,6 +365,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 constraint.animator().constant = width
                 browserBackButtonLeadingConstraint?.animator().constant = targetLeading
+                contentLeadingConstraint?.animator().constant = targetContentLeading
             }, completionHandler: {
                 MainActor.assumeIsolated { [weak self] in
                     self?.refreshSidebarVisibilityUI()
@@ -341,11 +374,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         } else {
             constraint.constant = width
             browserBackButtonLeadingConstraint?.constant = targetLeading
+            contentLeadingConstraint?.constant = targetContentLeading
             refreshSidebarVisibilityUI()
         }
     }
 
-    // MARK: - Sidebar Edge Detection & Auto-Hide
+    // MARK: - Sidebar Edge Detection
 
     private func setupSidebarEdgeDetector(in contentView: NSView) {
         sidebarEdgeDetector.translatesAutoresizingMaskIntoConstraints = false
@@ -368,30 +402,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     private func showSidebarFromEdgeHover() {
         guard (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold else { return }
-        isSidebarAutoShown = true
         sidebarEdgeDetector.isHidden = true
-        cancelSidebarAutoHide()
         updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
-    }
-
-    private func scheduleSidebarAutoHide() {
-        cancelSidebarAutoHide()
-        sidebarAutoHideTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.autoHideSidebar()
-            }
-        }
-    }
-
-    private func cancelSidebarAutoHide() {
-        sidebarAutoHideTimer?.invalidate()
-        sidebarAutoHideTimer = nil
-    }
-
-    private func autoHideSidebar() {
-        guard isSidebarAutoShown else { return }
-        isSidebarAutoShown = false
-        updateSidebarWidth(0, animated: true)
     }
 
     private func updateEdgeDetectorVisibility() {
@@ -402,6 +414,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private func refreshSidebarVisibilityUI() {
         sidebarView?.updateMinimizedState()
         updateEdgeDetectorVisibility()
+        let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
+        contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
     }
 
     // MARK: - Tab Lifecycle
@@ -818,10 +832,44 @@ extension LxAppWindowController {
         return WebViewManager.findWebView(appId: Self.browserAppId, path: path, sessionId: sessionId)
     }
 
-    private func browserSidebarItems() -> [(id: UUID, title: String)] {
+    private func browserSidebarItems() -> [(id: UUID, title: String, favicon: NSImage?)] {
         browserTabIds.map { id in
-            (id, browserTabTitles[id] ?? "New Tab")
+            (id, browserTabTitles[id] ?? "New Tab", browserTabFavicons[id])
         }
+    }
+
+    private func faviconRequestOrigin(for url: URL) -> String? {
+        guard let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              let host = url.host?.lowercased() else {
+            return nil
+        }
+        let port: String
+        if let rawPort = url.port, !((scheme == "http" && rawPort == 80) || (scheme == "https" && rawPort == 443)) {
+            port = ":\(rawPort)"
+        } else {
+            port = ""
+        }
+        return "\(scheme)://\(host)\(port)"
+    }
+
+    private func fetchFavicon(for origin: String, tabId: UUID) {
+        guard let faviconURL = URL(string: "\(origin)/favicon.ico") else { return }
+        URLSession.shared.dataTask(with: faviconURL) { [weak self] data, response, _ in
+            guard let data,
+                  let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
+                  !contentType.hasPrefix("text/"),
+                  let image = NSImage(data: data), image.isValid else { return }
+            Task { @MainActor in
+                guard let self,
+                      self.browserTabIds.contains(tabId),
+                      self.browserTabFaviconRequestOrigins[tabId] == origin else { return }
+                self.browserTabFavicons[tabId] = image
+                self.sidebarView?.updateBrowserItems(self.browserSidebarItems(), activeId: self.activeBrowserTabId)
+            }
+        }.resume()
     }
 
     private func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
@@ -991,9 +1039,17 @@ extension LxAppWindowController {
 
         browserUrlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, let activeId = self.activeBrowserTabId else { return }
                 self.browserAddressField.stringValue =
                     self.displayableBrowserURL(webView.url?.absoluteString)
+                // Reset favicon on navigation and fetch for the new URL
+                self.browserTabFavicons.removeValue(forKey: activeId)
+                self.browserTabFaviconRequestOrigins.removeValue(forKey: activeId)
+                self.sidebarView?.updateBrowserItems(self.browserSidebarItems(), activeId: activeId)
+                if let url = webView.url, let origin = self.faviconRequestOrigin(for: url) {
+                    self.browserTabFaviconRequestOrigins[activeId] = origin
+                    self.fetchFavicon(for: origin, tabId: activeId)
+                }
             }
         }
 
@@ -1080,6 +1136,8 @@ extension LxAppWindowController {
         browserTabIds.removeAll()
         browserTabTitles.removeAll()
         browserTabOwners.removeAll()
+        browserTabFavicons.removeAll()
+        browserTabFaviconRequestOrigins.removeAll()
         activeBrowserTabId = nil
         hideBrowserHostView()
         sidebarView?.updateBrowserItems([], activeId: nil)
@@ -1098,6 +1156,8 @@ extension LxAppWindowController {
         for id in ownedSet {
             browserTabTitles.removeValue(forKey: id)
             browserTabOwners.removeValue(forKey: id)
+            browserTabFavicons.removeValue(forKey: id)
+            browserTabFaviconRequestOrigins.removeValue(forKey: id)
         }
         if let activeId = activeBrowserTabId,
            !browserTabIds.contains(activeId) {
@@ -1227,6 +1287,8 @@ extension LxAppWindowController {
         // Remove from Swift state
         browserTabTitles.removeValue(forKey: id)
         browserTabOwners.removeValue(forKey: id)
+        browserTabFavicons.removeValue(forKey: id)
+        browserTabFaviconRequestOrigins.removeValue(forKey: id)
         browserTabIds.remove(at: index)
 
         // Destroy Rust state (triggers WebView Drop — safe now that UI is detached)
@@ -1277,6 +1339,13 @@ extension LxAppWindowController {
         #else
         let bundle = Bundle(for: LxAppWindowController.self)
         #endif
+
+        if let url = bundle.url(forResource: iconName, withExtension: "svg", subdirectory: "icons"),
+           let image = NSImage(contentsOf: url) {
+            image.size = CGSize(width: size, height: size)
+            image.isTemplate = true
+            return image
+        }
 
         guard let url = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
               let document = CGPDFDocument(url as CFURL),

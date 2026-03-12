@@ -106,24 +106,34 @@ class SidebarBrowserItemView: NSView {
         updateAppearance()
     }
 
-    func configure(title: String, isSelected: Bool) {
+    func configure(title: String, isSelected: Bool, favicon: NSImage?) {
         titleLabel.stringValue = title.isEmpty ? "New Tab" : title
+        // Update icon before isSelected so updateAppearance sees the correct tintColor state
+        if let favicon {
+            iconView.image = favicon
+            iconView.contentTintColor = nil
+        } else {
+            iconView.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "Browser")
+            iconView.contentTintColor = NSColor.secondaryLabelColor  // updateAppearance will refine
+        }
         self.isSelected = isSelected
     }
 
     private func updateAppearance() {
+        // Only tint the icon when it's the globe SF symbol (contentTintColor nil = favicon, skip tinting)
+        let isFavicon = iconView.contentTintColor == nil
         if isSelected {
             selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
             titleLabel.textColor = NSColor.controlAccentColor
-            iconView.contentTintColor = NSColor.controlAccentColor
+            if !isFavicon { iconView.contentTintColor = NSColor.controlAccentColor }
         } else if isHovered {
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor
-            iconView.contentTintColor = NSColor.secondaryLabelColor
+            if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
         } else {
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = NSColor.labelColor
-            iconView.contentTintColor = NSColor.secondaryLabelColor
+            if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
         }
     }
 
