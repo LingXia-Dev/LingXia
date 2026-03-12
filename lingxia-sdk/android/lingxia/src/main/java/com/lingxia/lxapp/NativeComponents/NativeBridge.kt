@@ -17,7 +17,7 @@ import java.lang.ref.WeakReference
 
 /**
  * Bridge between JS component.* messages and native components.
- * Uses JavaScriptInterface for View→Native and evaluateJavascript for Native→View.
+ * Uses JavaScriptInterface for View→Native component lifecycle/control.
  */
 class NativeBridge private constructor(
     webView: LingXiaWebView
@@ -26,9 +26,8 @@ class NativeBridge private constructor(
     private var overlayHost: ComponentOverlayHost? = null
     private var componentManager: NativeComponentManager? = null
     private var pageKey: String
-
     private val mainHandler = Handler(Looper.getMainLooper())
-    
+
     // Pre-draw sync for frame-perfect scroll tracking
     private var preDrawListener: ViewTreeObserver.OnPreDrawListener? = null
     private var lastSyncedScrollX = Int.MIN_VALUE
@@ -150,7 +149,7 @@ class NativeBridge private constructor(
         try {
             val json = JSONObject(mapOf("type" to "event", "name" to "nativecomponent", "payload" to payload)).toString()
             val escaped = JSONArray().put(json).toString().let { it.substring(1, it.length - 1) }
-            val script = "(function(){if(typeof window.__LingXiaRecvMessage==='function'){try{window.__LingXiaRecvMessage($escaped);}catch(e){}}})();"
+            val script = "(function(){try{window.__LingXiaRecvMessage($escaped);}catch(e){}})();"
             mainHandler.post { webView.evaluateJavascript(script, null) }
         } catch (_: Exception) {}
     }

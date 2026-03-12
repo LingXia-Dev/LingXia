@@ -32,6 +32,7 @@ pub use appservice::event_bus::{
     publish_app_event, publish_page_event, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_page_handler,
 };
+pub use appservice::native_component::dispatch_native_component_event;
 pub use browser::{
     BUILTIN_BROWSER_APPID, browser_download_dir, browser_owner_appid_for_tab_id,
     browser_owner_session_id_for_tab_id, browser_tab_exists, browser_tab_path_for_id,

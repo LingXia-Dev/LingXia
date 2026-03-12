@@ -5,7 +5,7 @@
 import { display, window } from '@kit.ArkUI';
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue, nativeComponentError } from '../NativeComponentTypes';
-import { getNodeControllerByComponentId } from '../NativeBridgeInternal';
+import { dispatchNativeComponentEventFromBuilder, getNodeControllerByComponentId } from '../NativeBridgeInternal';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
@@ -35,7 +35,6 @@ function clearPropsContains(props: NativeComponentRecord, key: string): boolean 
 @Component
 struct NativeVideoComponent {
   @Prop @Watch('onParamsChange') params: NativeComponentParams;
-  private eventSink?: (event: NativeComponentRecord) => void;
   private componentId: string = '';
   private initialized: boolean = false;
   private cachedConfig: LxNativeVideoConfig | null = null;
@@ -50,8 +49,6 @@ struct NativeVideoComponent {
     // Cache componentId and eventSink from params
     if (this.params) {
       this.componentId = this.params.componentId || '';
-      const props = this.params.props;
-      this.eventSink = props.get('__eventSink') as ESObject as ((event: NativeComponentRecord) => void) | undefined;
     }
   }
 
@@ -157,31 +154,28 @@ struct NativeVideoComponent {
       this.toggleFullscreen();
     }
 
-    // Forward event to JS
-    if (this.eventSink) {
+    dispatchNativeComponentEventFromBuilder(this.componentId, event, detail);
+
+    const callbackId = getComponentCallback(this.componentId);
+    const shouldForwardToCallback =
+      event === 'waiting' ||
+      event === 'playrequest' ||
+      event === 'play' ||
+      event === 'playing' ||
+      event === 'pause' ||
+      event === 'stop' ||
+      event === 'seeking' ||
+      event === 'seeked' ||
+      event === 'ended' ||
+      event === 'error';
+    if (callbackId && shouldForwardToCallback) {
       const payload = new NativeComponentRecord();
       payload.set('action', 'component.event');
       payload.set('id', this.componentId);
       payload.set('event', event);
       payload.set('detail', detail);
       payload.set('componentId', this.componentId);
-      this.eventSink(payload);
-
-      const callbackId = getComponentCallback(this.componentId);
-      const shouldForwardToCallback =
-        event === 'waiting' ||
-        event === 'playrequest' ||
-        event === 'play' ||
-        event === 'playing' ||
-        event === 'pause' ||
-        event === 'stop' ||
-        event === 'seeking' ||
-        event === 'seeked' ||
-        event === 'ended' ||
-        event === 'error';
-      if (callbackId && shouldForwardToCallback) {
-        onCallback(callbackId, true, payload.toJSONString());
-      }
+      onCallback(callbackId, true, payload.toJSONString());
     }
   }
 

@@ -21,6 +21,8 @@ pub mod bridge;
 
 pub(crate) mod event_bus;
 
+pub(crate) mod native_component;
+
 pub(crate) mod view_call;
 
 mod page;

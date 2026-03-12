@@ -204,47 +204,27 @@ extension NativeBridge {
         componentManager?.handle(message: payloadWithPage)
     }
 
-    // MARK: - JS event delivery
-
     private func sendEventToJavaScript(_ payload: [String: Any]) {
         guard let webView = webView else { return }
-
-        // Construct the full message object expected by __LingXiaRecvMessage
         let fullMessage: [String: Any] = [
             "type": "event",
             "name": "nativecomponent",
-            "payload": payload // Pass the original payload dictionary directly
+            "payload": payload
         ]
-
-        //  Convert the full message object to a JSON string
         guard let fullMessageData = try? JSONSerialization.data(withJSONObject: fullMessage, options: []),
               let fullMessageJsonString = String(data: fullMessageData, encoding: .utf8) else {
-            os_log("NativeBridge: failed to encode full message", log: nativeComponentLog, type: .error)
             return
         }
-
-        // Serialize this STRING as a JSON string literal (to safely embed in JS)
-        // Wrapping in an array [str] and serializing gives ["escaped_str"]
-        // We then strip the brackets to get "escaped_str"
         guard let safeJsStringData = try? JSONSerialization.data(withJSONObject: [fullMessageJsonString], options: []),
               let safeJsStringWithBrackets = String(data: safeJsStringData, encoding: .utf8) else {
-             os_log("NativeBridge: failed to escape message string", log: nativeComponentLog, type: .error)
-             return
+            return
         }
-
-        // Remove leading '[' and trailing ']'
         let safeJsLiteral = String(safeJsStringWithBrackets.dropFirst().dropLast())
-
         let script = """
         (function(){
-          if (typeof window.__LingXiaRecvMessage === 'function') {
-            try { window.__LingXiaRecvMessage(\(safeJsLiteral)); } catch (e) {}
-          } else {
-            console.warn('[LingXia NativeComponent] __LingXiaRecvMessage not available for NativeComponent events');
-          }
+          try { window.__LingXiaRecvMessage(\(safeJsLiteral)); } catch (e) {}
         })();
         """
-
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 

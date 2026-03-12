@@ -417,6 +417,26 @@ pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool
         .unwrap_or(false)
 }
 
+/// Dispatch native-component event to Rust logic runtime.
+#[napi]
+pub fn dispatch_native_component_event(
+    appid: String,
+    path: String,
+    component_id: String,
+    event_name: String,
+    payload_json: String,
+    bindings_json: String,
+) -> bool {
+    lxapp::dispatch_native_component_event(
+        &appid,
+        &path,
+        &component_id,
+        &event_name,
+        &payload_json,
+        &bindings_json,
+    )
+}
+
 /// Handle AppLink URL by processing the path without host
 #[napi]
 pub fn on_applink_received(applink_url: String) -> i32 {

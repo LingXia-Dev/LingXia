@@ -161,6 +161,16 @@ mod bridge {
         #[swift_bridge(swift_name = "onCallback")]
         fn on_callback(id: u64, success: bool, data: &str) -> bool;
 
+        #[swift_bridge(swift_name = "dispatchNativeComponentEvent")]
+        fn dispatch_native_component_event(
+            appid: &str,
+            path: &str,
+            component_id: &str,
+            event_name: &str,
+            payload_json: &str,
+            bindings_json: &str,
+        ) -> bool;
+
         #[swift_bridge(swift_name = "isPullDownRefreshEnabled")]
         fn is_pull_down_refresh_enabled(appid: &str, path: &str) -> bool;
 
@@ -341,6 +351,25 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
     lxapp::try_get(appid)
         .map(|lxapp| lxapp.on_ui_event(ui_event_type, data.to_string()))
         .unwrap_or(false)
+}
+
+/// Dispatch native-component event to Rust logic runtime.
+pub fn dispatch_native_component_event(
+    appid: &str,
+    path: &str,
+    component_id: &str,
+    event_name: &str,
+    payload_json: &str,
+    bindings_json: &str,
+) -> bool {
+    lxapp::dispatch_native_component_event(
+        appid,
+        path,
+        component_id,
+        event_name,
+        payload_json,
+        bindings_json,
+    )
 }
 
 pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {

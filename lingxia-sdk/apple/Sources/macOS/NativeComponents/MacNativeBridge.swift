@@ -221,31 +221,21 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
     private func sendEventToJavaScript(_ payload: [String: Any]) {
         guard let webView = webView else { return }
-
         let fullMessage: [String: Any] = [
             "type": "event",
             "name": "nativecomponent",
             "payload": payload
         ]
-
         guard let fullMessageData = try? JSONSerialization.data(withJSONObject: fullMessage, options: []),
               let fullMessageJsonString = String(data: fullMessageData, encoding: .utf8) else { return }
-
         guard let safeJsStringData = try? JSONSerialization.data(withJSONObject: [fullMessageJsonString], options: []),
               let safeJsStringWithBrackets = String(data: safeJsStringData, encoding: .utf8) else { return }
-
         let safeJsLiteral = String(safeJsStringWithBrackets.dropFirst().dropLast())
-
         let script = """
         (function(){
-          if (typeof window.__LingXiaRecvMessage === 'function') {
-            try { window.__LingXiaRecvMessage(\(safeJsLiteral)); } catch (e) {}
-          } else {
-            console.warn('[LingXia MacNativeComponent] __LingXiaRecvMessage not available');
-          }
+          try { window.__LingXiaRecvMessage(\(safeJsLiteral)); } catch (e) {}
         })();
         """
-
         webView.evaluateJavaScript(script, completionHandler: nil)
     }
 

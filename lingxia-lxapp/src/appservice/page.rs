@@ -512,10 +512,8 @@ impl PageSvc {
             )
             .await
         } else {
-            Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                format!("No page event handler: {}", event),
-            )))
+            // Page lifecycle handlers are optional by design.
+            Ok(())
         }
     }
 

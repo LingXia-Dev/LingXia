@@ -850,6 +850,44 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Dispatch native-component event to Rust logic runtime.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_dispatchNativeComponentEvent<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    path: JString<'a>,
+    component_id: JString<'a>,
+    event_name: JString<'a>,
+    payload_json: JString<'a>,
+    bindings_json: JString<'a>,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let component_id: String = component_id.try_to_string(env)?;
+        let event_name: String = event_name.try_to_string(env)?;
+        let payload_json: String = payload_json.try_to_string(env)?;
+        let bindings_json: String = bindings_json.try_to_string(env)?;
+
+        let accepted = lxapp::dispatch_native_component_event(
+            &appid,
+            &path,
+            &component_id,
+            &event_name,
+            &payload_json,
+            &bindings_json,
+        );
+
+        Ok(if accepted {
+            true as jboolean
+        } else {
+            false as jboolean
+        })
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Notify native layer that app entered foreground
 /// This should be called from LxAppActivity.onStart
 #[unsafe(no_mangle)]

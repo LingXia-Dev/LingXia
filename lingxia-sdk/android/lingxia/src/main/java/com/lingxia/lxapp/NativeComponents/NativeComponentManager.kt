@@ -11,6 +11,7 @@ import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import org.json.JSONArray
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 import kotlin.math.abs
@@ -41,6 +42,8 @@ class NativeComponentManager(
 
     private val components = mutableMapOf<String, LxNativeComponent>()
     private val componentPage = mutableMapOf<String, String>()
+    private val componentPageFuncBindings = mutableMapOf<String, Map<String, String>>()
+    private val componentDataset = mutableMapOf<String, Map<String, Any?>>()
     // Rust callback IDs for VideoContext event forwarding
     private val componentCallbacks = mutableMapOf<String, Long>()
     // Content position (document coordinates = viewport + scroll at mount time)
@@ -129,11 +132,13 @@ class NativeComponentManager(
             // Guard against stale events from a previously unmounted instance that shared the same id.
             if (componentEpochs[id] != epoch) return@make
             if (!components.containsKey(id)) return@make
-            sendEventToWeb(id, event)
+            dispatchComponentEvent(id, event)
         }
 
         components[id] = component
         componentPage[id] = pageId
+        parsePageFuncBindings(props)?.let { componentPageFuncBindings[id] = it }
+        parseDataset(props)?.let { componentDataset[id] = it }
         componentContentRects[id] = contentRect
         componentScreenRects[id] = screenRect
         pageComponents.getOrPut(pageId) { mutableSetOf() }.add(id)
@@ -169,7 +174,25 @@ class NativeComponentManager(
             }
         }
 
-        params["props"].asStringMap().takeIf { it.isNotEmpty() }?.let { component.update(it) }
+        params["props"].asStringMap().takeIf { it.isNotEmpty() }?.let { props ->
+            if ("pageFuncBindings" in props) {
+                val parsed = parsePageFuncBindings(props)
+                if (parsed.isNullOrEmpty()) {
+                    componentPageFuncBindings.remove(id)
+                } else {
+                    componentPageFuncBindings[id] = parsed
+                }
+            }
+            if ("dataset" in props) {
+                val parsed = parseDataset(props)
+                if (parsed.isNullOrEmpty()) {
+                    componentDataset.remove(id)
+                } else {
+                    componentDataset[id] = parsed
+                }
+            }
+            component.update(props)
+        }
         (params["zIndex"] as? Number)?.let { component.view.translationZ = it.toFloat() }
         (params["cornerRadius"] as? Number)?.toFloat()?.let { radius ->
             applyCornerRadius(component.view, radius)
@@ -369,18 +392,18 @@ class NativeComponentManager(
         event: String,
         detail: Map<String, Any?> = emptyMap()
     ) {
-        sendEventToWeb(componentId, mapOf("event" to event, "detail" to detail))
+        dispatchComponentEvent(componentId, mapOf("event" to event, "detail" to detail))
     }
 
-    private fun sendEventToWeb(componentId: String, event: Map<String, Any>) {
+    private fun dispatchComponentEvent(componentId: String, event: Map<String, Any>) {
         val payload = event.toMutableMap()
         payload["action"] = "component.event"
         payload["id"] = componentId
+        payload["componentId"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
         updatePlaybackIntent(componentId, payload["event"] as? String)
-        
-        // Send to WebView via eventSink
         eventSink(payload)
+        dispatchPageFunc(componentId, payload)
         
         // Also forward to Rust callback if registered (for VideoContext).
         // Keep this list small to avoid high-frequency callbacks (e.g. timeupdate).
@@ -403,6 +426,145 @@ class NativeComponentManager(
                 NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
             }
         }
+    }
+
+    private fun parsePageFuncBindings(props: Map<String, Any?>): Map<String, String>? {
+        val parsed = mutableMapOf<String, String>()
+        val rawObject = props["pageFuncBindings"] as? Map<*, *>
+        if (rawObject != null) {
+            rawObject.forEach { (k, v) ->
+                val key = (k as? String)?.trim()?.lowercase().orEmpty()
+                val value = (v as? String)?.trim().orEmpty()
+                if (key.isNotEmpty() && value.isNotEmpty()) {
+                    parsed[key] = value
+                }
+            }
+        }
+        val rawJson = props["pageFuncBindingsJson"] as? String
+        if (!rawJson.isNullOrBlank()) {
+            try {
+                val obj = JSONObject(rawJson)
+                obj.keys().forEach { key ->
+                    val normalized = key.trim().lowercase()
+                    val value = obj.optString(key, "").trim()
+                    if (normalized.isNotEmpty() && value.isNotEmpty()) {
+                        parsed[normalized] = value
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return parsed.takeIf { it.isNotEmpty() }
+    }
+
+    private fun parsePageId(pageId: String): Pair<String, String>? {
+        val separator = pageId.indexOf(':')
+        if (separator <= 0 || separator >= pageId.length - 1) return null
+        val appId = pageId.substring(0, separator)
+        val path = pageId.substring(separator + 1)
+        if (appId.isEmpty() || path.isEmpty()) return null
+        return appId to path
+    }
+
+    private fun parseDataset(props: Map<String, Any?>): Map<String, Any?>? {
+        val parsed = mutableMapOf<String, Any?>()
+        val rawObject = props["dataset"] as? Map<*, *>
+        if (rawObject != null) {
+            rawObject.forEach { (k, v) ->
+                val key = (k as? String)?.trim().orEmpty()
+                if (key.isNotEmpty()) {
+                    parsed[key] = v
+                }
+            }
+        }
+        val rawJson = props["datasetJson"] as? String
+        if (!rawJson.isNullOrBlank()) {
+            try {
+                val obj = JSONObject(rawJson)
+                obj.keys().forEach { key ->
+                    val normalized = key.trim()
+                    if (normalized.isNotEmpty()) {
+                        parsed[normalized] = jsonToAny(obj.opt(key))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return parsed.takeIf { it.isNotEmpty() }
+    }
+
+    private fun jsonToAny(value: Any?): Any? {
+        return when (value) {
+            null, JSONObject.NULL -> null
+            is JSONObject -> {
+                val out = mutableMapOf<String, Any?>()
+                value.keys().forEach { key ->
+                    out[key] = jsonToAny(value.opt(key))
+                }
+                out
+            }
+            is JSONArray -> {
+                val out = mutableListOf<Any?>()
+                for (i in 0 until value.length()) {
+                    out.add(jsonToAny(value.opt(i)))
+                }
+                out
+            }
+            else -> value
+        }
+    }
+
+    private fun buildPageEvent(componentId: String, eventName: String, payload: Map<String, Any>): Map<String, Any?> {
+        val detail = payload["detail"] ?: emptyMap<String, Any?>()
+        val dataset = componentDataset[componentId] ?: emptyMap<String, Any?>()
+        val target = mapOf(
+            "id" to componentId,
+            "dataset" to dataset
+        )
+        return mapOf(
+            "type" to eventName,
+            "detail" to detail,
+            "target" to target,
+            "currentTarget" to target,
+            "timeStamp" to System.currentTimeMillis()
+        )
+    }
+
+    private fun dispatchPageFunc(componentId: String, payload: MutableMap<String, Any>) {
+        val eventName = (payload["event"] as? String)?.trim()?.lowercase() ?: return
+        val bindings = componentPageFuncBindings[componentId]
+        if (bindings.isNullOrEmpty()) {
+            return
+        }
+
+        val pageId = componentPage[componentId]
+        if (pageId.isNullOrEmpty()) {
+            return
+        }
+        val route = parsePageId(pageId)
+        if (route == null) {
+            return
+        }
+
+        val pageEventJson = try {
+            val pageEvent = buildPageEvent(componentId, eventName, payload)
+            JSONObject(pageEvent as Map<*, *>).toString()
+        } catch (e: Exception) {
+            Log.w(logTag, "nativecomponent payload encode failed componentId=$componentId event=$eventName", e)
+            return
+        }
+        val bindingsJson = try {
+            JSONObject(bindings as Map<*, *>).toString()
+        } catch (e: Exception) {
+            Log.w(logTag, "nativecomponent bindings encode failed componentId=$componentId event=$eventName", e)
+            return
+        }
+        NativeApi.dispatchNativeComponentEvent(
+            route.first,
+            route.second,
+            componentId,
+            eventName,
+            pageEventJson,
+            bindingsJson
+        )
     }
 
     private fun updatePlaybackIntent(componentId: String, eventName: String?) {
@@ -562,6 +724,8 @@ class NativeComponentManager(
         componentContentRects.remove(id)
         componentScreenRects.remove(id)
         componentPage.remove(id)
+        componentPageFuncBindings.remove(id)
+        componentDataset.remove(id)
         pageId?.let { pid ->
             pageComponents[pid]?.let { ids ->
                 ids.remove(id)

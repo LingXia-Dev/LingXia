@@ -6,6 +6,7 @@ import { NativeComponentParams, registerNativeComponentBuilder } from '../Native
 import { NativeComponentRecord } from '../NativeComponentTypes';
 import { LxAppPicker, PickerResult } from '../../APIs/LxAppPicker';
 import { LxAppDatePicker, LxDatePickerResult } from '../../APIs/LxAppDatePicker';
+import { dispatchNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
 
 // Prevent picker from showing multiple times for the same component instance
 const showingComponents: Set<string> = new Set();
@@ -23,7 +24,6 @@ interface PickerEventDetail {
 @Component
 struct NativePickerComponent {
   @Prop @Watch('onParamsChange') params: NativeComponentParams;
-  private eventSink?: (event: NativeComponentRecord) => void;
   private componentId: string = '';
   private initialized: boolean = false;
   private callbackId: string = '';
@@ -38,11 +38,6 @@ struct NativePickerComponent {
     if (this.params) {
       this.componentId = this.params.componentId || '';
       const props = this.params.props;
-      const eventSinkValue = props.get('__eventSink');
-      if (typeof eventSinkValue === 'function') {
-        this.eventSink = eventSinkValue as (event: NativeComponentRecord) => void;
-      }
-
       // Auto-show picker on mount
       this.showPickerWithProps(props);
     }
@@ -58,9 +53,7 @@ struct NativePickerComponent {
     }
   }
 
-  onParamsChange(): void {
-    // No runtime updates needed for picker
-  }
+  onParamsChange(): void {}
 
   private getStringProp(props: NativeComponentRecord, key: string, defaultValue: string): string {
     const value = props.get(key);
@@ -185,15 +178,7 @@ struct NativePickerComponent {
   }
 
   private sendEvent(event: string, detail: PickerEventDetail): void {
-    if (this.eventSink) {
-      const payload = new NativeComponentRecord();
-      payload.set('action', 'component.event');
-      payload.set('id', this.componentId);
-      payload.set('event', event);
-      payload.set('detail', detail);
-      payload.set('componentId', this.componentId);
-      this.eventSink(payload);
-    }
+    dispatchNativeComponentEventFromBuilder(this.componentId, event, detail);
   }
 
   build() {

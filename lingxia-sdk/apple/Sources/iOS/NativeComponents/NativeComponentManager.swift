@@ -1,6 +1,7 @@
 import Foundation
 import WebKit
 import OSLog
+import CLingXiaRustAPI
 
 private let nativeComponentLog = OSLog(subsystem: "LingXia", category: "NativeComponent")
 
@@ -42,6 +43,8 @@ final class NativeComponentManager {
 
     private var components: [String: LxNativeComponent] = [:]
     private var componentPage: [String: String] = [:]
+    private var componentPageFuncBindings: [String: [String: String]] = [:]
+    private var componentDataset: [String: [String: Any]] = [:]
     private var pageComponents: [String: Set<String>] = [:]
     // Monotonic generation per component id. Used to drop stale async events from old instances.
     private var componentEpochs: [String: UInt64] = [:]
@@ -82,13 +85,6 @@ final class NativeComponentManager {
 
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
-
-        let logType: OSLogType = action == "component.update" ? .debug : .info
-        if let id = message["id"] as? String {
-            os_log("NativeComponentManager handle action=%{public}@ id=%{public}@", log: nativeComponentLog, type: logType, action, id)
-        } else {
-            os_log("NativeComponentManager handle action=%{public}@", log: nativeComponentLog, type: logType, action)
-        }
 
         switch action {
         case "component.mount":
@@ -138,10 +134,16 @@ final class NativeComponentManager {
             // Guard against stale events from a previously unmounted instance that shared the same id.
             guard self.componentEpochs[id] == nextEpoch else { return }
             guard self.components[id] != nil else { return }
-            self.sendEventToWeb(componentId: id, event: event)
+            self.dispatchComponentEvent(componentId: id, event: event)
         }
         components[id] = component
         componentPage[id] = pageId
+        if let bindings = parsePageFuncBindings(props), !bindings.isEmpty {
+            componentPageFuncBindings[id] = bindings
+        }
+        if let dataset = parseDataset(props), !dataset.isEmpty {
+            componentDataset[id] = dataset
+        }
         pageComponents[pageId, default: []].insert(id)
         ComponentRouter.shared.register(componentId: id, manager: self)
 
@@ -215,6 +217,22 @@ final class NativeComponentManager {
             }
         }
         if let props = parameters["props"] as? [String: Any] {
+            if props["pageFuncBindings"] != nil {
+                let parsed = parsePageFuncBindings(props) ?? [:]
+                if parsed.isEmpty {
+                    componentPageFuncBindings.removeValue(forKey: id)
+                } else {
+                    componentPageFuncBindings[id] = parsed
+                }
+            }
+            if props["dataset"] != nil {
+                let parsed = parseDataset(props) ?? [:]
+                if parsed.isEmpty {
+                    componentDataset.removeValue(forKey: id)
+                } else {
+                    componentDataset[id] = parsed
+                }
+            }
             component.update(props: props)
         }
         if let zIndex = parameters["zIndex"] as? Double {
@@ -317,7 +335,7 @@ final class NativeComponentManager {
         if event == "waiting" || event == "playrequest" || event == "playing" || event == "pause" || event == "stop" || event == "ended" {
             (components[componentId] as? VideoComponent)?.handleStreamDecoderEvent(event)
         }
-        sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
+        dispatchComponentEvent(componentId: componentId, event: ["event": event, "detail": detail])
     }
 
     func setStreamDecoderActive(componentId: String, active: Bool) {
@@ -357,16 +375,18 @@ final class NativeComponentManager {
 
     // MARK: - Helpers
 
-    private func sendEventToWeb(componentId: String, event: [String: Any]) {
+    private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
         guard components[componentId] != nil else { return }
         var payload = event
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
         payload["id"] = componentId
+        payload["componentId"] = componentId
         if let pageId = componentPage[componentId] {
             payload["pageId"] = pageId
         }
         eventSink(payload)
+        dispatchPageFunc(componentId: componentId, payload: payload)
 
         // Also forward to Rust callback if registered (for VideoContext)
         let eventName = payload["event"] as? String
@@ -380,30 +400,17 @@ final class NativeComponentManager {
         }()
 
         if shouldForwardToCallback, let callbackId = componentCallbacks[componentId] {
-            var enriched = payload
-            enriched["componentId"] = componentId
-            if let data = try? JSONSerialization.data(withJSONObject: enriched, options: []),
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
                let enrichedJson = String(data: data, encoding: .utf8) {
                 os_log(
                     "NativeComponent callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
                     log: nativeComponentLog,
                     type: .debug,
                     componentId,
-                    String(enriched["event"] as? String ?? ""),
+                    String(payload["event"] as? String ?? ""),
                     String(callbackId)
                 )
                 _ = onCallback(callbackId, true, enrichedJson)
-            }
-        } else if componentCallbacks[componentId] == nil {
-            let event = payload["event"] as? String ?? ""
-            if event != "timeupdate" {
-                os_log(
-                    "NativeComponent callback missing for componentId=%{public}@ event=%{public}@",
-                    log: nativeComponentLog,
-                    type: .debug,
-                    componentId,
-                    event
-                )
             }
         }
     }
@@ -413,6 +420,158 @@ final class NativeComponentManager {
             return pageId
         }
         return defaultPageId
+    }
+
+    private func parsePageFuncBindings(_ props: [String: Any]) -> [String: String]? {
+        var bindings: [String: String] = [:]
+        if let raw = props["pageFuncBindings"] as? [String: Any] {
+            for (event, value) in raw {
+                let eventKey = event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !eventKey.isEmpty else { continue }
+                guard let fn = value as? String else { continue }
+                let fnName = fn.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fnName.isEmpty else { continue }
+                bindings[eventKey] = fnName
+            }
+        }
+        if let rawJson = props["pageFuncBindingsJson"] as? String,
+           let data = rawJson.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for (event, value) in json {
+                let eventKey = event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !eventKey.isEmpty else { continue }
+                guard let fn = value as? String else { continue }
+                let fnName = fn.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fnName.isEmpty else { continue }
+                bindings[eventKey] = fnName
+            }
+        }
+        return bindings.isEmpty ? nil : bindings
+    }
+
+    private func parseDataset(_ props: [String: Any]) -> [String: Any]? {
+        var dataset: [String: Any] = [:]
+        if let raw = props["dataset"] as? [String: Any] {
+            for (key, value) in raw {
+                let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else { continue }
+                dataset[normalized] = value
+            }
+        }
+        if let rawJson = props["datasetJson"] as? String,
+           let data = rawJson.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for (key, value) in json {
+                let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else { continue }
+                dataset[normalized] = value
+            }
+        }
+        return dataset.isEmpty ? nil : dataset
+    }
+
+    private func parsePageId(_ pageId: String) -> (appid: String, path: String)? {
+        guard let separator = pageId.firstIndex(of: ":") else { return nil }
+        let appId = String(pageId[..<separator])
+        let path = String(pageId[pageId.index(after: separator)...])
+        guard !appId.isEmpty, !path.isEmpty else { return nil }
+        return (appid: appId, path: path)
+    }
+
+    private func buildPageEvent(componentId: String, eventName: String, payload: [String: Any]) -> [String: Any] {
+        let detail = payload["detail"] ?? [String: Any]()
+        let dataset = componentDataset[componentId] ?? [:]
+        let target: [String: Any] = [
+            "id": componentId,
+            "dataset": dataset
+        ]
+        return [
+            "type": eventName,
+            "detail": detail,
+            "target": target,
+            "currentTarget": target,
+            "timeStamp": Int(Date().timeIntervalSince1970 * 1000)
+        ]
+    }
+
+    private func dispatchPageFunc(componentId: String, payload: [String: Any]) {
+        guard let eventName = (payload["event"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !eventName.isEmpty else { return }
+        guard let bindings = componentPageFuncBindings[componentId],
+              !bindings.isEmpty else {
+            return
+        }
+        guard let pageId = componentPage[componentId],
+              let route = parsePageId(pageId) else {
+            os_log(
+                "NativeComponent drop event: invalid pageId componentId=%{public}@",
+                log: nativeComponentLog,
+                type: .error,
+                componentId
+            )
+            return
+        }
+        let pageEvent = buildPageEvent(componentId: componentId, eventName: eventName, payload: payload)
+        guard let data = try? JSONSerialization.data(withJSONObject: pageEvent, options: []),
+              let payloadJson = String(data: data, encoding: .utf8) else {
+            os_log(
+                "NativeComponent drop event: payload encode failed componentId=%{public}@ event=%{public}@",
+                log: nativeComponentLog,
+                type: .error,
+                componentId,
+                eventName
+            )
+            return
+        }
+        guard let bindingsData = try? JSONSerialization.data(withJSONObject: bindings, options: []),
+              let bindingsJson = String(data: bindingsData, encoding: .utf8) else {
+            os_log(
+                "NativeComponent drop event: bindings encode failed componentId=%{public}@ event=%{public}@",
+                log: nativeComponentLog,
+                type: .error,
+                componentId,
+                eventName
+            )
+            return
+        }
+        _ = dispatchPageFuncToRust(
+            appid: route.appid,
+            path: route.path,
+            componentId: componentId,
+            eventName: eventName,
+            payloadJson: payloadJson,
+            bindingsJson: bindingsJson
+        )
+    }
+
+    private func dispatchPageFuncToRust(
+        appid: String,
+        path: String,
+        componentId: String,
+        eventName: String,
+        payloadJson: String,
+        bindingsJson: String
+    ) -> Bool {
+        payloadJson.toRustStr { payloadAsRustStr in
+            bindingsJson.toRustStr { bindingsAsRustStr in
+                eventName.toRustStr { eventNameAsRustStr in
+                    componentId.toRustStr { componentIdAsRustStr in
+                        path.toRustStr { pathAsRustStr in
+                            appid.toRustStr { appidAsRustStr in
+                                __swift_bridge__$dispatch_native_component_event(
+                                    appidAsRustStr,
+                                    pathAsRustStr,
+                                    componentIdAsRustStr,
+                                    eventNameAsRustStr,
+                                    payloadAsRustStr,
+                                    bindingsAsRustStr
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func rectFrom(dict: [String: Any]) -> CGRect {
@@ -535,6 +694,8 @@ final class NativeComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
+        componentPageFuncBindings.removeValue(forKey: id)
+        componentDataset.removeValue(forKey: id)
         if let callbackId {
             let payload: [String: Any] = [
                 "action": "component.event",

@@ -34,6 +34,8 @@ final class MacNativeComponentManager {
 
     private var components: [String: MacNativeComponent] = [:]
     private var componentPage: [String: String] = [:]
+    private var componentPageFuncBindings: [String: [String: String]] = [:]
+    private var componentDataset: [String: [String: Any]] = [:]
     private var pageComponents: [String: Set<String>] = [:]
     private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
@@ -119,10 +121,16 @@ final class MacNativeComponentManager {
         guard components[id] == nil, let factory = factories[type] else { return }
 
         let component = factory.make(id: id, initialProps: props) { [weak self] event in
-            self?.sendEventToWeb(componentId: id, event: event)
+            self?.dispatchComponentEvent(componentId: id, event: event)
         }
         components[id] = component
         componentPage[id] = pageId
+        if let bindings = parsePageFuncBindings(props), !bindings.isEmpty {
+            componentPageFuncBindings[id] = bindings
+        }
+        if let dataset = parseDataset(props), !dataset.isEmpty {
+            componentDataset[id] = dataset
+        }
         pageComponents[pageId, default: []].insert(id)
         MacComponentRouter.shared.register(componentId: id, manager: self)
         component.mount(in: host)
@@ -150,6 +158,22 @@ final class MacNativeComponentManager {
             component.setFrame(documentToViewport(docRect))
         }
         if let props = parameters["props"] as? [String: Any] {
+            if props["pageFuncBindings"] != nil {
+                let parsed = parsePageFuncBindings(props) ?? [:]
+                if parsed.isEmpty {
+                    componentPageFuncBindings.removeValue(forKey: id)
+                } else {
+                    componentPageFuncBindings[id] = parsed
+                }
+            }
+            if props["dataset"] != nil {
+                let parsed = parseDataset(props) ?? [:]
+                if parsed.isEmpty {
+                    componentDataset.removeValue(forKey: id)
+                } else {
+                    componentDataset[id] = parsed
+                }
+            }
             component.update(props: props)
         }
         if let radius = parameters["cornerRadius"] as? Double {
@@ -207,7 +231,7 @@ final class MacNativeComponentManager {
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
-        sendEventToWeb(componentId: componentId, event: ["event": event, "detail": detail])
+        dispatchComponentEvent(componentId: componentId, event: ["event": event, "detail": detail])
     }
 
     func teardownAll() {
@@ -222,15 +246,17 @@ final class MacNativeComponentManager {
         pageComponents.removeAll()
     }
 
-    private func sendEventToWeb(componentId: String, event: [String: Any]) {
+    private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
         var payload = event
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
         payload["id"] = componentId
+        payload["componentId"] = componentId
         if let pageId = componentPage[componentId] {
             payload["pageId"] = pageId
         }
         eventSink(payload)
+        dispatchPageFunc(componentId: componentId, payload: payload)
 
         let eventName = payload["event"] as? String
         let shouldForward: Bool = {
@@ -243,9 +269,7 @@ final class MacNativeComponentManager {
         }()
 
         if shouldForward, let callbackId = componentCallbacks[componentId] {
-            var enriched = payload
-            enriched["componentId"] = componentId
-            if let data = try? JSONSerialization.data(withJSONObject: enriched, options: []),
+            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
                let enrichedJson = String(data: data, encoding: .utf8) {
                 _ = onCallback(callbackId, true, enrichedJson)
             }
@@ -275,6 +299,138 @@ final class MacNativeComponentManager {
             return pageId
         }
         return defaultPageId
+    }
+
+    private func parsePageFuncBindings(_ props: [String: Any]) -> [String: String]? {
+        var bindings: [String: String] = [:]
+        if let raw = props["pageFuncBindings"] as? [String: Any] {
+            for (event, value) in raw {
+                let eventKey = event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !eventKey.isEmpty else { continue }
+                guard let fn = value as? String else { continue }
+                let fnName = fn.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fnName.isEmpty else { continue }
+                bindings[eventKey] = fnName
+            }
+        }
+        if let rawJson = props["pageFuncBindingsJson"] as? String,
+           let data = rawJson.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for (event, value) in json {
+                let eventKey = event.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                guard !eventKey.isEmpty else { continue }
+                guard let fn = value as? String else { continue }
+                let fnName = fn.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fnName.isEmpty else { continue }
+                bindings[eventKey] = fnName
+            }
+        }
+        return bindings.isEmpty ? nil : bindings
+    }
+
+    private func parseDataset(_ props: [String: Any]) -> [String: Any]? {
+        var dataset: [String: Any] = [:]
+        if let raw = props["dataset"] as? [String: Any] {
+            for (key, value) in raw {
+                let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else { continue }
+                dataset[normalized] = value
+            }
+        }
+        if let rawJson = props["datasetJson"] as? String,
+           let data = rawJson.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for (key, value) in json {
+                let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !normalized.isEmpty else { continue }
+                dataset[normalized] = value
+            }
+        }
+        return dataset.isEmpty ? nil : dataset
+    }
+
+    private func parsePageId(_ pageId: String) -> (appid: String, path: String)? {
+        guard let separator = pageId.firstIndex(of: ":") else { return nil }
+        let appId = String(pageId[..<separator])
+        let path = String(pageId[pageId.index(after: separator)...])
+        guard !appId.isEmpty, !path.isEmpty else { return nil }
+        return (appid: appId, path: path)
+    }
+
+    private func buildPageEvent(componentId: String, eventName: String, payload: [String: Any]) -> [String: Any] {
+        let detail = payload["detail"] ?? [String: Any]()
+        let dataset = componentDataset[componentId] ?? [:]
+        let target: [String: Any] = [
+            "id": componentId,
+            "dataset": dataset
+        ]
+        return [
+            "type": eventName,
+            "detail": detail,
+            "target": target,
+            "currentTarget": target,
+            "timeStamp": Int(Date().timeIntervalSince1970 * 1000)
+        ]
+    }
+
+    private func dispatchPageFunc(componentId: String, payload: [String: Any]) {
+        guard let eventName = (payload["event"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !eventName.isEmpty else { return }
+        guard let bindings = componentPageFuncBindings[componentId],
+              !bindings.isEmpty else {
+            return
+        }
+        guard let pageId = componentPage[componentId],
+              let route = parsePageId(pageId) else {
+            return
+        }
+        let pageEvent = buildPageEvent(componentId: componentId, eventName: eventName, payload: payload)
+        guard let data = try? JSONSerialization.data(withJSONObject: pageEvent, options: []),
+              let payloadJson = String(data: data, encoding: .utf8) else {
+            return
+        }
+        guard let bindingsData = try? JSONSerialization.data(withJSONObject: bindings, options: []),
+              let bindingsJson = String(data: bindingsData, encoding: .utf8) else {
+            return
+        }
+        _ = dispatchPageFuncToRust(
+            appid: route.appid,
+            path: route.path,
+            componentId: componentId,
+            eventName: eventName,
+            payloadJson: payloadJson,
+            bindingsJson: bindingsJson
+        )
+    }
+
+    private func dispatchPageFuncToRust(
+        appid: String,
+        path: String,
+        componentId: String,
+        eventName: String,
+        payloadJson: String,
+        bindingsJson: String
+    ) -> Bool {
+        payloadJson.toRustStr { payloadAsRustStr in
+            bindingsJson.toRustStr { bindingsAsRustStr in
+                eventName.toRustStr { eventNameAsRustStr in
+                    componentId.toRustStr { componentIdAsRustStr in
+                        path.toRustStr { pathAsRustStr in
+                            appid.toRustStr { appidAsRustStr in
+                                __swift_bridge__$dispatch_native_component_event(
+                                    appidAsRustStr,
+                                    pathAsRustStr,
+                                    componentIdAsRustStr,
+                                    eventNameAsRustStr,
+                                    payloadAsRustStr,
+                                    bindingsAsRustStr
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func rectFrom(dict: [String: Any]) -> CGRect {
@@ -407,6 +563,8 @@ final class MacNativeComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
+        componentPageFuncBindings.removeValue(forKey: id)
+        componentDataset.removeValue(forKey: id)
         componentCallbacks.removeValue(forKey: id)
         componentDocumentRects.removeValue(forKey: id)
         MacComponentRouter.shared.unregister(componentId: id)

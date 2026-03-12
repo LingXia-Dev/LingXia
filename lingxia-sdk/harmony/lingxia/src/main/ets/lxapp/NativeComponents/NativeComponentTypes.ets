@@ -39,16 +39,38 @@ export class NativeComponentRecord {
     });
   }
 
-  toJSONString(): string {
-    const parts: string[] = [];
-    this.data.forEach((value, key) => {
-      const jsonValue = JSON.stringify(value);
-      if (jsonValue === undefined) {
-        return;
-      }
-      parts.push(`${JSON.stringify(key)}:${jsonValue}`);
+  private normalizeValue(value: NativeComponentValue): NativeComponentValue {
+    if (value instanceof NativeComponentRecord) {
+      return value.toPlainObject();
+    }
+    if (Array.isArray(value)) {
+      const normalizedArray: NativeComponentValue[] = [];
+      (value as NativeComponentValue[]).forEach((item: NativeComponentValue) => {
+        normalizedArray.push(this.normalizeValue(item));
+      });
+      return normalizedArray;
+    }
+    if (value !== null && value !== undefined && typeof value === 'object') {
+      const source = value as Record<string, NativeComponentValue>;
+      const normalizedObject: Record<string, NativeComponentValue> = {};
+      Object.keys(source).forEach((key: string) => {
+        normalizedObject[key] = this.normalizeValue(source[key]);
+      });
+      return normalizedObject;
+    }
+    return value;
+  }
+
+  toPlainObject(): Record<string, NativeComponentValue> {
+    const out: Record<string, NativeComponentValue> = {};
+    this.data.forEach((value: NativeComponentValue, key: string) => {
+      out[key] = this.normalizeValue(value);
     });
-    return `{${parts.join(',')}}`;
+    return out;
+  }
+
+  toJSONString(): string {
+    return JSON.stringify(this.toPlainObject());
   }
 
   static fromESObject(obj: ESObject): NativeComponentRecord {

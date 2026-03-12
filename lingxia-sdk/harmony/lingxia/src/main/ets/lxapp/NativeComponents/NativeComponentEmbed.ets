@@ -11,7 +11,7 @@ import {
   nativeComponentLog
 } from './NativeComponentTypes';
 import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
-import { onCallback } from 'liblingxia.so';
+import { dispatchNativeComponentEvent, onCallback } from 'liblingxia.so';
 import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
 import { LxNativeVideoPlayer } from '../media/LxNativeVideoPlayer';
 
@@ -28,6 +28,11 @@ class ComponentCommand {
   }
 }
 
+class WebTagRoute {
+  appId: string = '';
+  path: string = '';
+}
+
 /**
  * Manager for handling same-level embedding in a Web component
  */
@@ -39,6 +44,8 @@ export class NativeComponentEmbedManager {
   private onComponentsChanged?: () => void;
   private eventDispatcher?: (payload: NativeComponentRecord) => void;
   private pendingUnmountTimers: Map<string, number> = new Map();
+  private componentPageFuncBindings: Map<string, Map<string, string>> = new Map();
+  private componentDataset: Map<string, NativeComponentRecord> = new Map();
   private componentPlaybackIntent: Map<string, boolean> = new Map();
   private componentsPendingAutoResume: Set<string> = new Set();
   private lifecyclePaused: boolean = false;
@@ -62,9 +69,6 @@ export class NativeComponentEmbedManager {
     this.onComponentsChanged = callback;
   }
 
-  /**
-   * Set dispatcher used to forward native events back to JavaScript
-   */
   setEventDispatcher(dispatcher?: (payload: NativeComponentRecord) => void): void {
     this.eventDispatcher = dispatcher;
   }
@@ -126,10 +130,8 @@ export class NativeComponentEmbedManager {
         `embed create(video props): componentId=${componentId} rotate=${String(props.get('rotate'))} clearRotate=${this.shouldClearProp(props, 'rotate')}`
       );
     }
-    const eventSink = this.buildEventSink(componentId);
-    if (eventSink) {
-      props.set('__eventSink', eventSink as object);
-    }
+    this.updatePageFuncBindings(componentId, props);
+    this.updateComponentDataset(componentId, props);
 
     const widthPx = embed.info?.width || 0;
     const heightPx = embed.info?.height || 0;
@@ -187,10 +189,8 @@ export class NativeComponentEmbedManager {
     // Keep UPDATE props path enabled for all component types (including video).
     // This provides a robust fallback when bridge-driven updates are delayed.
     const props = this.parseEmbedProps(embed);
-    const eventSink = this.buildEventSink(componentId);
-    if (eventSink) {
-      props.set('__eventSink', eventSink as object);
-    }
+    this.updatePageFuncBindings(componentId, props);
+    this.updateComponentDataset(componentId, props);
     updateParams.props = props;
     nodeController.updateRenderOption(updateParams);
     if (isVideoComponent) {
@@ -218,6 +218,8 @@ export class NativeComponentEmbedManager {
     nodeController.rebuild();
 
     this.nodeControllerMap.delete(componentId);
+    this.componentPageFuncBindings.delete(componentId);
+    this.componentDataset.delete(componentId);
     this.componentPlaybackIntent.delete(componentId);
     this.componentsPendingAutoResume.delete(componentId);
     const index = this.componentIdArr.indexOf(componentId);
@@ -297,10 +299,8 @@ export class NativeComponentEmbedManager {
       return false;
     }
 
-    const eventSink = this.buildEventSink(componentId);
-    if (eventSink) {
-      freshProps.set('__eventSink', eventSink as object);
-    }
+    this.updatePageFuncBindings(componentId, freshProps);
+    this.updateComponentDataset(componentId, freshProps);
 
     const updateParams = new NodeControllerUpdateParams();
     updateParams.props = freshProps;
@@ -415,21 +415,166 @@ export class NativeComponentEmbedManager {
     return null;
   }
 
-  private buildEventSink(componentId: string): ((event: NativeComponentRecord) => void) | undefined {
-    if (!this.eventDispatcher) {
-      return undefined;
+  hasComponent(componentId: string): boolean {
+    return this.nodeControllerMap.has(componentId);
+  }
+
+  dispatchComponentEvent(componentId: string, eventName: string, detail: NativeComponentValue): void {
+    const normalizedEventName = eventName.trim().toLowerCase();
+    if (!normalizedEventName) {
+      return;
     }
-    return (event: NativeComponentRecord) => {
-      this.updatePlaybackIntent(componentId, event.get('event'));
-      const payload = new NativeComponentRecord();
-      event.forEach((key, value) => {
-        payload.set(key, value);
-      });
-      payload.set('action', 'component.event');
-      payload.set('id', componentId);
-      payload.set('componentId', componentId);
-      this.eventDispatcher?.(payload);
-    };
+    const payload = new NativeComponentRecord();
+    payload.set('action', 'component.event');
+    payload.set('id', componentId);
+    payload.set('componentId', componentId);
+    payload.set('event', normalizedEventName);
+    payload.set('detail', detail ?? new NativeComponentEmptyDetail());
+    this.updatePlaybackIntent(componentId, normalizedEventName);
+    this.eventDispatcher?.(payload);
+    this.dispatchPageFunc(componentId, payload);
+  }
+
+  private parseObjectRecord(raw: NativeComponentValue | undefined): NativeComponentRecord | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return null;
+    }
+    const plain = raw as Record<string, NativeComponentValue>;
+    const record = new NativeComponentRecord();
+    let count = 0;
+    Object.keys(plain).forEach((key: string) => {
+      const normalized = key.trim();
+      if (!normalized) {
+        return;
+      }
+      record.set(normalized, plain[key]);
+      count += 1;
+    });
+    return count > 0 ? record : null;
+  }
+
+  private parseObjectRecordFromJson(raw: NativeComponentValue | undefined): NativeComponentRecord | null {
+    if (typeof raw !== 'string') {
+      return null;
+    }
+    try {
+      const parsed: ESObject = JSON.parse(raw) as ESObject;
+      return this.parseObjectRecord(parsed as Record<string, NativeComponentValue>);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  private updatePageFuncBindings(componentId: string, props: NativeComponentRecord): void {
+    if (!props.has('pageFuncBindings') && !props.has('pageFuncBindingsJson')) {
+      return;
+    }
+    const rawRecord =
+      this.parseObjectRecord(props.get('pageFuncBindings')) ??
+      this.parseObjectRecordFromJson(props.get('pageFuncBindingsJson'));
+    if (!rawRecord) {
+      this.componentPageFuncBindings.delete(componentId);
+      return;
+    }
+    const next = new Map<string, string>();
+    rawRecord.forEach((eventName: string, rawValue: NativeComponentValue) => {
+      const eventKey = eventName.trim().toLowerCase();
+      if (!eventKey) {
+        return;
+      }
+      if (typeof rawValue !== 'string') {
+        return;
+      }
+      const fnName = rawValue.trim();
+      if (!fnName) {
+        return;
+      }
+      next.set(eventKey, fnName);
+    });
+    if (next.size === 0) {
+      this.componentPageFuncBindings.delete(componentId);
+      return;
+    }
+    this.componentPageFuncBindings.set(componentId, next);
+  }
+
+  private updateComponentDataset(componentId: string, props: NativeComponentRecord): void {
+    if (!props.has('dataset') && !props.has('datasetJson')) {
+      return;
+    }
+    const next =
+      this.parseObjectRecord(props.get('dataset')) ??
+      this.parseObjectRecordFromJson(props.get('datasetJson'));
+    if (!next) {
+      this.componentDataset.delete(componentId);
+      return;
+    }
+    this.componentDataset.set(componentId, next);
+  }
+
+  private parseWebTagRoute(): WebTagRoute | null {
+    const logicalTag = (this.webTag.split('#')[0] || this.webTag).trim();
+    const separator = logicalTag.indexOf(':');
+    if (separator <= 0 || separator >= logicalTag.length - 1) {
+      return null;
+    }
+    const appId = logicalTag.substring(0, separator);
+    const path = logicalTag.substring(separator + 1);
+    if (!appId || !path) {
+      return null;
+    }
+    const route = new WebTagRoute();
+    route.appId = appId;
+    route.path = path;
+    return route;
+  }
+
+  private dispatchPageFunc(componentId: string, payload: NativeComponentRecord): void {
+    const eventValue = payload.get('event');
+    if (typeof eventValue !== 'string') {
+      return;
+    }
+    const eventName = eventValue.trim().toLowerCase();
+    if (!eventName) {
+      return;
+    }
+    const bindings = this.componentPageFuncBindings.get(componentId);
+    if (!bindings || bindings.size === 0) {
+      return;
+    }
+    const route = this.parseWebTagRoute();
+    if (!route) {
+      nativeComponentError(`drop nativecomponent event: invalid webTag=${this.webTag} componentId=${componentId}`);
+      return;
+    }
+    const pageEvent = new NativeComponentRecord();
+    const detail = payload.has('detail') ? payload.get('detail') : new NativeComponentEmptyDetail();
+    const dataset = this.componentDataset.get(componentId) ?? new NativeComponentRecord();
+    const target = new NativeComponentRecord();
+    target.set('id', componentId);
+    target.set('dataset', dataset);
+    pageEvent.set('type', eventName);
+    pageEvent.set('detail', detail);
+    pageEvent.set('target', target);
+    pageEvent.set('currentTarget', target);
+    pageEvent.set('timeStamp', Date.now());
+
+    const bindingsPayload = new NativeComponentRecord();
+    bindings.forEach((fnName: string, boundEventName: string) => {
+      bindingsPayload.set(boundEventName, fnName);
+    });
+
+    const accepted: boolean = dispatchNativeComponentEvent(
+      route.appId,
+      route.path,
+      componentId,
+      eventName,
+      pageEvent.toJSONString(),
+      bindingsPayload.toJSONString()
+    );
+    if (!accepted) {
+      nativeComponentError(`drop nativecomponent event: runtime rejected appid=${route.appId} path=${route.path} componentId=${componentId} event=${eventName}`);
+    }
   }
 
 
@@ -532,6 +677,8 @@ export class NativeComponentEmbedManager {
     });
     this.nodeControllerMap.clear();
     this.componentIdArr = [];
+    this.componentPageFuncBindings.clear();
+    this.componentDataset.clear();
   }
 
   private updatePlaybackIntent(componentId: string, eventValue: NativeComponentValue | undefined): void {

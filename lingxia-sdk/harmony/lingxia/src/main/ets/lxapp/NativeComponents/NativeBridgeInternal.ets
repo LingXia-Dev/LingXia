@@ -3,7 +3,7 @@
  * Uses official ArkWeb same-level rendering pattern with NodeController
  */
 import { webview } from '@kit.ArkWeb';
-import { NativeComponentRecord, nativeComponentError, nativeComponentLog } from './NativeComponentTypes';
+import { NativeComponentRecord, NativeComponentValue, nativeComponentError, nativeComponentLog } from './NativeComponentTypes';
 import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
@@ -11,9 +11,8 @@ import { registerPickerBuilder } from './Builders/PickerBuilder';
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
-
-// Controller references for sending events back to JavaScript
 const webViewControllers: Map<string, webview.WebviewController> = new Map();
+const componentManagerCache: Map<string, NativeComponentEmbedManager> = new Map();
 
 class PendingPropsUpdate {
   webTag: string = '';
@@ -156,7 +155,7 @@ function scheduleDelayedStop(webTag: string): void {
  */
 export function getOrCreateEmbedManager(webTag: string): NativeComponentEmbedManager {
   let manager = webViewEmbedManagers.get(webTag);
-  const dispatcher = (payload: NativeComponentRecord) => {
+  const dispatcher = (payload: NativeComponentRecord): void => {
     sendEventToJavaScript(webTag, payload);
   };
   if (!manager) {
@@ -197,6 +196,21 @@ function resolveEmbedManager(webTag: string): NativeComponentEmbedManager | unde
   return webViewEmbedManagers.get(key);
 }
 
+function resolveEmbedManagerByComponentId(componentId: string): NativeComponentEmbedManager | undefined {
+  const cached = componentManagerCache.get(componentId);
+  if (cached?.hasComponent(componentId)) {
+    return cached;
+  }
+  componentManagerCache.delete(componentId);
+  for (const manager of webViewEmbedManagers.values()) {
+    if (manager.hasComponent(componentId)) {
+      componentManagerCache.set(componentId, manager);
+      return manager;
+    }
+  }
+  return undefined;
+}
+
 function removePendingPropsForTag(webTag: string): void {
   const logicalTag = resolveLogicalWebTag(webTag);
   const keys: string[] = [];
@@ -228,6 +242,21 @@ export function teardownEmbedManager(webTag: string): void {
       // Remove from maps first to prevent re-entry
       webViewEmbedManagers.delete(resolvedKey);
       webViewControllers.delete(resolvedKey);
+      const logicalTag = resolveLogicalWebTag(resolvedKey);
+      if (logicalTag !== resolvedKey) {
+        webViewControllers.delete(logicalTag);
+      }
+      const cacheKeys: string[] = [];
+      for (const componentId of componentManagerCache.keys()) {
+        cacheKeys.push(componentId);
+      }
+      for (let i = 0; i < cacheKeys.length; i++) {
+        const componentId = cacheKeys[i];
+        const cached = componentManagerCache.get(componentId);
+        if (cached === manager) {
+          componentManagerCache.delete(componentId);
+        }
+      }
       // Then teardown
       manager.teardown();
     }
@@ -248,41 +277,45 @@ export function teardownEmbedManager(webTag: string): void {
  */
 export function setEmbedController(webTag: string, controller: webview.WebviewController): void {
   webViewControllers.set(webTag, controller);
+  const logicalTag = resolveLogicalWebTag(webTag);
+  if (logicalTag !== webTag) {
+    webViewControllers.set(logicalTag, controller);
+  }
   registerDefaultBuilders();
-  // Ensure existing manager has dispatcher available
-  const manager = webViewEmbedManagers.get(webTag);
+  const manager = resolveEmbedManager(webTag);
   if (manager) {
-    manager.setEventDispatcher((payload: NativeComponentRecord) => {
+    manager.setEventDispatcher((payload: NativeComponentRecord): void => {
       sendEventToJavaScript(webTag, payload);
     });
   }
   flushPendingPropsUpdates();
 }
 
-/**
- * Get WebviewController for a webTag (used for runJavaScript calls)
- */
-export function getWebviewController(webTag: string): webview.WebviewController | undefined {
-  return webViewControllers.get(webTag);
+function resolveController(webTag: string): webview.WebviewController | undefined {
+  const key = resolveManagerKey(webTag);
+  if (key && webViewControllers.has(key)) {
+    return webViewControllers.get(key);
+  }
+  if (webViewControllers.has(webTag)) {
+    return webViewControllers.get(webTag);
+  }
+  const logicalTag = resolveLogicalWebTag(webTag);
+  if (webViewControllers.has(logicalTag)) {
+    return webViewControllers.get(logicalTag);
+  }
+  return undefined;
 }
 
-/**
- * Send event to JavaScript for a webTag
- */
-export function sendEventToJavaScript(webTag: string, payload: NativeComponentRecord): void {
-  const controller = webViewControllers.get(webTag);
+function sendEventToJavaScript(webTag: string, payload: NativeComponentRecord): void {
+  const controller = resolveController(webTag);
   if (!controller) {
-    nativeComponentError(`No controller for webTag: ${webTag}`);
     return;
   }
-
   try {
     const jsonString = `{"type":"event","name":"nativecomponent","payload":${payload.toJSONString()}}`;
     const script = `
       (function(){
-        if (typeof window.__LingXiaRecvMessage === 'function') {
-          try { window.__LingXiaRecvMessage(${JSON.stringify(jsonString)}); } catch (e) {}
-        }
+        try { window.__LingXiaRecvMessage(${JSON.stringify(jsonString)}); } catch (e) {}
       })();
     `;
     controller.runJavaScript(script);
@@ -325,6 +358,26 @@ export function updateNativeComponentProps(
   return false;
 }
 
+/**
+ * Dispatch component event from Builder -> EmbedManager -> Rust page function entry.
+ */
+export function dispatchNativeComponentEventFromBuilder(
+  componentId: string,
+  eventName: string,
+  detail: NativeComponentValue
+): boolean {
+  if (!componentId || !eventName) {
+    return false;
+  }
+  const manager = resolveEmbedManagerByComponentId(componentId);
+  if (!manager) {
+    return false;
+  }
+  componentManagerCache.set(componentId, manager);
+  manager.dispatchComponentEvent(componentId, eventName, detail);
+  return true;
+}
+
 // ============================================================================
 // Lifecycle Management
 // ============================================================================
@@ -359,9 +412,15 @@ export function resumeAllComponents(webTag: string): void {
  * Get NodeController by componentId (searches all embed managers)
  */
 export function getNodeControllerByComponentId(componentId: string): NativeComponentNodeController | undefined {
+  const cached = componentManagerCache.get(componentId);
+  if (cached?.hasComponent(componentId)) {
+    return cached.getNodeController(componentId);
+  }
+  componentManagerCache.delete(componentId);
   for (const manager of webViewEmbedManagers.values()) {
     const controller = manager.getNodeController(componentId);
     if (controller) {
+      componentManagerCache.set(componentId, manager);
       return controller;
     }
   }
