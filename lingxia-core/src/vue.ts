@@ -7,6 +7,8 @@ type Snapshot = Record<string, unknown>;
 const reactiveSnapshot = reactive<Snapshot>({});
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let initialSnapshotResolved = false;
+let snapshotRequestInFlight = false;
 
 function replaceReactiveSnapshot(next: unknown): void {
   const normalized: Snapshot =
@@ -28,6 +30,23 @@ function scheduleSubscribeRetry(): void {
   }, 10);
 }
 
+function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
+  if (initialSnapshotResolved || snapshotRequestInFlight) return;
+  if (!bridge?.call) return;
+  snapshotRequestInFlight = true;
+  bridge
+    .call("state.getSnapshot", { scope: "page" })
+    .then(() => {
+      initialSnapshotResolved = true;
+    })
+    .catch(() => {
+      scheduleSubscribeRetry();
+    })
+    .finally(() => {
+      snapshotRequestInFlight = false;
+    });
+}
+
 function ensureBridgeSubscription(): void {
   if (subscribed) return;
   const bridge = window.LingXiaBridge;
@@ -39,6 +58,7 @@ function ensureBridgeSubscription(): void {
     replaceReactiveSnapshot(next);
   });
   subscribed = true;
+  requestInitialSnapshot(bridge);
 }
 
 function resolveActions<TActions extends ActionMap>(): TActions {

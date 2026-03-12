@@ -76,9 +76,12 @@ export function setupImageProxy(): void {
       }
     });
   };
+  const domReadyListener: EventListenerObject = {
+    handleEvent: () => rewriteExisting(),
+  };
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', rewriteExisting);
+    document.addEventListener('DOMContentLoaded', domReadyListener);
   } else {
     rewriteExisting();
   }

@@ -95,17 +95,21 @@ const portInitState = {
   reject: null as ((err: unknown) => void) | null,
   timer: null as number | null,
 };
+const portInitMessageListener: EventListenerObject = {
+  handleEvent: (event: Event): void => {
+    const messageEvent = event as MessageEvent;
+    if (messageEvent.data !== 'LingXia-port-init') return;
+    const port = messageEvent.ports?.[0];
+    if (!port) return;
+    LingXiaBridge._connectWebMessagePort(port);
+    portInitState.resolve?.(port);
+  },
+};
 
 function installMessagePortInitListener(): void {
   if (portInitState.listenerInstalled) return;
   portInitState.listenerInstalled = true;
-  window.addEventListener('message', (event: MessageEvent) => {
-    if (event.data !== 'LingXia-port-init') return;
-    const port = event.ports?.[0];
-    if (!port) return;
-    LingXiaBridge._connectWebMessagePort(port);
-    portInitState.resolve?.(port);
-  });
+  window.addEventListener('message', portInitMessageListener);
 }
 
 function cleanupPortInit(): void {
@@ -432,7 +436,7 @@ function notifyStateSubscribers(initial: boolean): void {
 }
 
 function requestStateRecovery(scope?: string): void {
-  LingXiaBridge.call('state.getSnapshot', { scope }, { cap: 'state', timeoutMs: 10000 }).catch(() => {});
+  LingXiaBridge.call('state.getSnapshot', { scope }).catch(() => {});
 }
 
 function applySnapshotFromResult(result: unknown): boolean {
@@ -614,16 +618,19 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
           if (handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
           return;
         }
-        const onAbort = (): void => {
-          signal.removeEventListener('abort', onAbort);
-          const removed = removeOutboxByReqId(id);
-          rejectPendingRequest(id, {
-            code: BRIDGE_ERROR.CANCELED,
-            message: "Bridge request aborted",
-          });
-          if (!removed && handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
+        let abortListener: EventListenerObject;
+        abortListener = {
+          handleEvent: (): void => {
+            signal.removeEventListener('abort', abortListener);
+            const removed = removeOutboxByReqId(id);
+            rejectPendingRequest(id, {
+              code: BRIDGE_ERROR.CANCELED,
+              message: "Bridge request aborted",
+            });
+            if (!removed && handshakeDone) send({ v: 2, kind: 'cancel', id } as Cancel);
+          },
         };
-        signal.addEventListener('abort', onAbort);
+        signal.addEventListener('abort', abortListener);
       }
     });
   },

@@ -8,6 +8,8 @@ type Listener = () => void;
 let snapshot: Snapshot = {};
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let initialSnapshotResolved = false;
+let snapshotRequestInFlight = false;
 const listeners = new Set<Listener>();
 
 function notifyListeners(): void {
@@ -37,6 +39,23 @@ function scheduleSubscribeRetry(): void {
   }, 10);
 }
 
+function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
+  if (initialSnapshotResolved || snapshotRequestInFlight) return;
+  if (!bridge?.call) return;
+  snapshotRequestInFlight = true;
+  bridge
+    .call("state.getSnapshot", { scope: "page" })
+    .then(() => {
+      initialSnapshotResolved = true;
+    })
+    .catch(() => {
+      scheduleSubscribeRetry();
+    })
+    .finally(() => {
+      snapshotRequestInFlight = false;
+    });
+}
+
 function ensureBridgeSubscription(): void {
   if (subscribed) return;
   const bridge = window.LingXiaBridge;
@@ -48,6 +67,7 @@ function ensureBridgeSubscription(): void {
     updateSnapshot(next);
   });
   subscribed = true;
+  requestInitialSnapshot(bridge);
 }
 
 function resolveActions<TActions extends ActionMap>(): TActions {
@@ -79,6 +99,8 @@ export function useLingXia<
     ensureBridgeSubscription();
     const listener: Listener = () => setVersion((v) => v + 1);
     listeners.add(listener);
+    // Pull latest snapshot that may arrive before this component subscribes.
+    setVersion((v) => v + 1);
     return () => {
       listeners.delete(listener);
     };

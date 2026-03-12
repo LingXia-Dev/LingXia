@@ -1,6 +1,10 @@
 import { initBridge } from './bridge';
 import { hasError, getErrorInfo, renderErrorUI } from './error';
 
+const domReadyListener: EventListenerObject = {
+  handleEvent: () => maybeRenderErrorUI(),
+};
+
 function maybeRenderErrorUI(): void {
   if (hasError()) {
     const errorInfo = getErrorInfo();
@@ -26,7 +30,7 @@ export function boot(): void {
 export function bootWhenReady(): void {
   initBridge();
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', maybeRenderErrorUI);
+    document.addEventListener('DOMContentLoaded', domReadyListener);
   } else {
     maybeRenderErrorUI();
   }

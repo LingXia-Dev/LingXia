@@ -166,7 +166,13 @@ export function installNativeComponentCoverageMonitor({ os, send }: InstallArgs)
     childList: true,
     attributes: true,
   });
-  window.addEventListener('scroll', onScroll, { capture: true, passive: true });
-  window.addEventListener('resize', schedule);
+  const scrollListener: EventListenerObject = {
+    handleEvent: () => onScroll(),
+  };
+  const resizeListener: EventListenerObject = {
+    handleEvent: () => schedule(),
+  };
+  window.addEventListener('scroll', scrollListener, { capture: true, passive: true });
+  window.addEventListener('resize', resizeListener);
   schedule();
 }
