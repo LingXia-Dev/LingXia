@@ -1,6 +1,7 @@
 use super::register_host;
 use crate::LxApp;
 use crate::LxAppError;
+use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::device::Device;
 use serde::Deserialize;
@@ -12,11 +13,34 @@ struct MakePhoneCallParams {
     phone_number: String,
 }
 
+fn map_platform_error(api: &str, error: PlatformError) -> LxAppError {
+    let (code, message) = match error {
+        PlatformError::NotSupported(message) => ("E_NOT_SUPPORTED", message),
+        PlatformError::InvalidParameter(message) => ("E_INVALID_PARAMETER", message),
+        PlatformError::AssetNotFound(message) => ("E_NOT_FOUND", message),
+        PlatformError::Platform(message) => ("E_PLATFORM", message),
+        PlatformError::BusinessError(code) => {
+            return LxAppError::RongJSHost {
+                code: code.to_string(),
+                message: format!("{api} failed"),
+                data: Some(serde_json::json!({ "bizCode": code })),
+            };
+        }
+        PlatformError::CallbackDropped => ("E_CALLBACK_DROPPED", "Callback dropped".to_string()),
+    };
+
+    LxAppError::RongJSHost {
+        code: code.to_string(),
+        message,
+        data: None,
+    }
+}
+
 fn make_phone_call_impl(lxapp: &LxApp, params: &MakePhoneCallParams) -> Result<(), LxAppError> {
     lxapp
         .runtime
         .make_phone_call(&params.phone_number)
-        .map_err(|e| LxAppError::Runtime(format!("Failed to make phone call: {}", e)))
+        .map_err(|e| map_platform_error("makePhoneCall", e))
 }
 
 host_api!(MakePhoneCall, MakePhoneCallParams, (), |lxapp, params| {
@@ -48,7 +72,7 @@ fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppErr
             url: options.url.clone(),
             target,
         })
-        .map_err(|e| LxAppError::Runtime(format!("openURL failed (target={:?}): {}", target, e)))?;
+        .map_err(|e| map_platform_error("openURL", e))?;
     Ok(())
 }
 
