@@ -135,7 +135,7 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="p-4 space-y-3">
             <LxNavigator
-              lx-app-id="testminiapp"
+              app-id="testminiapp"
               @success="addLog('✓ Opening other LxApp')"
               @fail="onFailWithMessage('Failed to open LxApp', $event)"
             >
@@ -231,7 +231,7 @@
             <div class="text-sm font-medium text-blue-900 mb-1">Smart & Simple</div>
             <div class="text-xs text-blue-700 leading-relaxed">
               • HTTPS URLs → auto open in browser<br />
-              • lxAppId → auto target other apps<br />
+              • appId → auto target other lxapp<br />
               • Pass data via query string in path
             </div>
           </div>

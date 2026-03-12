@@ -17,7 +17,7 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
   delta?: number;
 
   // Open external lxapp
-  lxAppId?: string;
+  appId?: string;
   path?: string; // Supports query string
 
   // Phone call
@@ -49,7 +49,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       openType = 'navigate',
       target, // Auto-inferred, no default
       delta = 1,
-      lxAppId,
+      appId,
       path,
       phoneNumber,
       hoverClass = 'navigator-hover',
@@ -113,7 +113,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
         'open-type': openType,
         target, // Optional, will be auto-inferred if not specified
         delta: delta.toString(),
-        'lx-app-id': lxAppId,
+        'app-id': appId,
         path,
         'phone-number': phoneNumber,
         'hover-class': hoverClass,

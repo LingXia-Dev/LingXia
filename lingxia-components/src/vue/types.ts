@@ -36,7 +36,7 @@ export interface LxNavigatorProps {
   openType?: NavigatorOpenType;
   target?: NavigatorTarget;
   delta?: number;
-  lxAppId?: string;
+  appId?: string;
   path?: string;
   phoneNumber?: string;
   hoverClass?: string;

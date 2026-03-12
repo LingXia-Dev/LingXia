@@ -154,7 +154,7 @@ export default function NavigatorPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-4 space-y-3">
               <LxNavigator
-                lxAppId="testminiapp"
+                appId="testminiapp"
                 onSuccess={() => addLog('✓ Opening other LxApp')}
                 onFail={onFailWithMessage('Failed to open LxApp')}
               >
@@ -269,7 +269,7 @@ export default function NavigatorPage() {
               <div className="text-sm font-medium text-blue-900 mb-1">Smart & Simple</div>
               <div className="text-xs text-blue-700 leading-relaxed">
                 • HTTPS URLs → auto open in browser<br />
-                • lxAppId → auto target other apps<br />
+                • appId → auto target other lxapp<br />
                 • Pass data via query string in path
               </div>
             </div>

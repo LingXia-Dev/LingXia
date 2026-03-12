@@ -33,7 +33,7 @@ export type LxNavigatorAttributes = {
   delta?: number;                  // Pages to go back (for navigateBack)
 
   // Open external lxapp
-  'lx-app-id'?: string;           // Target lxapp ID
+  'app-id'?: string;              // Target lxapp ID
   path?: string;                  // Path in target lxapp (supports query string)
 
   // Phone call
@@ -75,7 +75,7 @@ export class LxNavigatorElement extends HTMLElement {
       "open-type",
       "target",
       "delta",
-      "lx-app-id",
+      "app-id",
       "path",
       "phone-number",
       "hover-class",
@@ -243,19 +243,19 @@ export class LxNavigatorElement extends HTMLElement {
     const openType = (this.getAttribute('open-type') || 'navigate') as NavigatorOpenType;
     const explicitTarget = this.getAttribute('target') as NavigatorTarget | null;
     const delta = parseInt(this.getAttribute('delta') || '1', 10);
-    const lxAppId = this.getAttribute('lx-app-id');
+    const appId = this.getAttribute('app-id');
     const path = this.getAttribute('path');
     const phoneNumber = this.getAttribute('phone-number');
 
     // Auto-infer target if not explicitly specified
-    const target = this.inferTarget(explicitTarget, url, lxAppId);
+    const target = this.inferTarget(explicitTarget, url, appId);
 
     void this.navigate({
       url,
       openType,
       target,
       delta,
-      lxAppId,
+      appId,
       path,
       phoneNumber
     });
@@ -263,20 +263,20 @@ export class LxNavigatorElement extends HTMLElement {
 
   /**
    * Auto-infer navigation target based on context
-   * Priority: explicit target > lxAppId > HTTPS URL > default (self)
+   * Priority: explicit target > appId > HTTPS URL > default (self)
    */
   private inferTarget(
     explicitTarget: NavigatorTarget | null,
     url: string,
-    lxAppId: string | null
+    appId: string | null
   ): NavigatorTarget {
     // 1. Explicit target has highest priority
     if (explicitTarget) {
       return explicitTarget;
     }
 
-    // 2. If lxAppId is specified, target is another lxapp
-    if (lxAppId) {
+    // 2. If appId is specified, target is another lxapp
+    if (appId) {
       return 'lxapp';
     }
 
@@ -294,7 +294,7 @@ export class LxNavigatorElement extends HTMLElement {
     openType: NavigatorOpenType;
     target: NavigatorTarget;
     delta: number;
-    lxAppId?: string | null;
+    appId?: string | null;
     path?: string | null;
     phoneNumber?: string | null;
   }) {
@@ -394,7 +394,7 @@ export class LxNavigatorElement extends HTMLElement {
     openType: NavigatorOpenType;
     target: NavigatorTarget;
     delta: number;
-    lxAppId?: string | null;
+    appId?: string | null;
     path?: string | null;
     phoneNumber?: string | null;
   }) {
@@ -440,11 +440,11 @@ export class LxNavigatorElement extends HTMLElement {
     }
 
     if (options.target === 'lxapp') {
-      if (!options.lxAppId) {
-        throw new Error('navigateToLxApp requires lx-app-id');
+      if (!options.appId) {
+        throw new Error('navigateToLxApp requires app-id');
       }
       const lxappPath = options.path || '';
-      await caller('navigateToLxApp', { appId: options.lxAppId, path: lxappPath });
+      await caller('navigateToLxApp', { appId: options.appId, path: lxappPath });
       return;
     }
 

@@ -56,7 +56,7 @@ const render = () => h(
     'open-type': props.openType,
     target: props.target,
     delta: String(props.delta),
-    'lx-app-id': props.lxAppId,
+    'app-id': props.appId,
     path: props.path,
     'phone-number': props.phoneNumber,
     'hover-class': props.hoverClass,

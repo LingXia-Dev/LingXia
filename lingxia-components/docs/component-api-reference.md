@@ -127,7 +127,7 @@ import { LxNavigator } from '@lingxia/components/vue';
 | `openType` | `"navigate" \| "redirect" \| "navigateBack" \| "reLaunch" \| "switchTab" \| "exit" \| "openUrl" \| "tel"` | `"navigate"` | Selects navigation behavior and target action; `tel` calls host `makePhoneCall` |
 | `target` | `"self" \| "lxapp" \| "browser"` | auto-infer | Inferred by component when omitted |
 | `delta` | `number` | `1` | Number of pages to pop for `navigateBack` |
-| `lxAppId` | `string` | - | Target lxapp |
+| `appId` | `string` | - | Target lxapp |
 | `path` | `string` | - | Target lxapp path; query string is supported |
 | `phoneNumber` | `string` | - | Required when `openType="tel"` |
 | `hoverClass` | `string` | `"navigator-hover"` | Hover/touch feedback class name |
