@@ -1,4 +1,7 @@
-use crate::i18n::{js_error_from_lxapp_error, js_service_unavailable_error};
+use crate::i18n::{
+    err_code_message, js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_service_unavailable_error,
+};
 use lingxia_platform::ScreenInfo;
 use lingxia_platform::traits::device::Device;
 use lingxia_platform::traits::ui::{PopupPosition, PopupRequest};
@@ -42,6 +45,17 @@ fn clamp_ratio(value: f64) -> f64 {
     } else {
         value.clamp(0.0, 1.0)
     }
+}
+
+fn http_or_https_scheme(url: &str) -> Option<&'static str> {
+    let trimmed = url.trim();
+    if trimmed.len() >= "http://".len() && trimmed[..7].eq_ignore_ascii_case("http://") {
+        return Some("http");
+    }
+    if trimmed.len() >= "https://".len() && trimmed[..8].eq_ignore_ascii_case("https://") {
+        return Some("https");
+    }
+    None
 }
 
 fn default_width_ratio(position: PopupPosition, screen: &ScreenInfo) -> f64 {
@@ -109,6 +123,13 @@ async fn show_popup(ctx: JSContext, options: JSPopupOptions) -> JSResult<JSObjec
     if !lxapp.is_opened() {
         return Err(js_service_unavailable_error(
             "LxApp is closed; popup suppressed",
+        ));
+    }
+
+    if let Some(scheme) = http_or_https_scheme(&options.url) {
+        return Err(js_error_from_business_code_with_detail(
+            6000,
+            format!("{}: {}", scheme, err_code_message(6000)),
         ));
     }
 
