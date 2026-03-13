@@ -1778,6 +1778,9 @@ pub fn init(runtime: Platform) -> Option<String> {
                 warn!("Failed to persist host app version: {}", e);
             }
 
+            // Prepare built-in browser assets at init-time (best effort).
+            crate::browser::preload_builtin_browser_assets(runtime_arc.clone());
+
             let num_workers = get_num_workers();
             let executor = LxAppExecutor::init(num_workers);
 

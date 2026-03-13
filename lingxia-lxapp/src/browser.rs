@@ -13,7 +13,6 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use std::time::Instant;
 use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
@@ -675,6 +674,7 @@ async fn browser_on_webview_ready(
                         tab_id,
                         e
                     );
+                    let _ = webview.load_url("about:blank");
                 }
             }
             browser_clear_pending_if_token_matches(&tab_id, session_id, create_token);
@@ -834,7 +834,36 @@ pub fn resolve_owner_lxapp(
 // Public API
 // ---------------------------------------------------------------------------
 
-/// Lazy-load browser lxapp on first use to avoid startup errors
+fn browser_assets_installed() -> bool {
+    crate::lxapp::metadata::get(BUILTIN_BROWSER_APPID, crate::lxapp::ReleaseType::Release)
+        .ok()
+        .flatten()
+        .is_some_and(|record| {
+            let install_path_str = record.install_path.trim();
+            let install_path = Path::new(install_path_str);
+            !install_path_str.is_empty()
+                && install_path.is_dir()
+                && install_path.join("lxapp.json").is_file()
+        })
+}
+
+/// Try to install built-in browser assets during SDK initialization.
+/// Missing packaged assets are tolerated.
+pub(crate) fn preload_builtin_browser_assets(runtime: Arc<lingxia_platform::Platform>) {
+    if browser_assets_installed() {
+        return;
+    }
+
+    if let Err(e) = crate::update::UpdateManager::install_from_assets(
+        runtime,
+        BUILTIN_BROWSER_APPID,
+        crate::SDK_RUNTIME_VERSION,
+    ) {
+        crate::warn!("Built-in browser assets not available: {}", e);
+    }
+}
+
+/// Ensure browser lxapp instance exists in manager.
 fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
     let _load_guard = BROWSER_LOAD_MUTEX
         .get_or_init(|| Mutex::new(()))
@@ -845,48 +874,12 @@ fn ensure_browser_lxapp() -> Result<Arc<LxApp>, LxAppError> {
         return Ok(browser);
     }
 
-    let platform = crate::lxapp::get_platform()
-        .ok_or_else(|| LxAppError::Runtime("Platform not initialized".to_string()))?;
     let manager = crate::lxapp::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
-
-    // Avoid expensive re-copy when assets are already installed and valid.
-    let is_installed =
-        crate::lxapp::metadata::get(BUILTIN_BROWSER_APPID, crate::lxapp::ReleaseType::Release)
-            .ok()
-            .flatten()
-            .is_some_and(|record| {
-                let install_path_str = record.install_path.trim();
-                let install_path = Path::new(install_path_str);
-                !install_path_str.is_empty()
-                    && install_path.is_dir()
-                    && install_path.join("lxapp.json").is_file()
-            });
-    if !is_installed {
-        let t_install = Instant::now();
-        if let Err(e) = crate::update::UpdateManager::install_from_assets(
-            platform,
-            BUILTIN_BROWSER_APPID,
-            crate::SDK_RUNTIME_VERSION,
-        ) {
-            crate::warn!("Built-in browser assets not available: {}", e);
-        }
-        crate::info!(
-            "[InternalBrowser] install_from_assets elapsed={}ms",
-            t_install.elapsed().as_millis()
-        );
-    }
-
-    let t_ensure = Instant::now();
-    let app = manager.ensure_lxapp(
+    Ok(manager.ensure_lxapp(
         BUILTIN_BROWSER_APPID.to_string(),
         crate::lxapp::metadata::ReleaseType::Release,
-    );
-    crate::info!(
-        "[InternalBrowser] ensure_lxapp elapsed={}ms",
-        t_ensure.elapsed().as_millis()
-    );
-    Ok(app)
+    ))
 }
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
