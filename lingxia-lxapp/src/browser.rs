@@ -4,8 +4,8 @@ use lingxia_webview::runtime::{
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    DownloadRequest, LoadDataRequest, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
-    WebViewController, WebViewSession,
+    DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
+    WebViewBuilder, WebViewController, WebViewSession,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -581,11 +581,37 @@ fn browser_create_webview(
     let webtag = browser_webtag(path, session_id);
     let tab_id_for_download = tab_id.to_string();
     let browser_owner = ensure_browser_lxapp()?;
+    let runtime_for_nav = browser_owner.runtime.clone();
+    let owner_appid_for_nav = browser_owner.appid.clone();
+    let owner_session_for_nav = browser_owner.session_id();
     let runtime_for_new_window = browser_owner.runtime.clone();
     let owner_appid_for_new_window = browser_owner.appid.clone();
     let owner_session_for_new_window = browser_owner.session_id();
     let owner_for_download = browser_owner.clone();
     let session = WebViewBuilder::browser(webtag)
+        .on_navigation(move |url| {
+            // Android callback currently only provides URL string, so user-gesture/main-frame
+            // metadata is unavailable here. Keep web links in-webview and dispatch custom
+            // schemes to host runtime for OS handler resolution.
+            let decision = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+                raw_url: url.to_string(),
+                has_user_gesture: true,
+                is_main_frame: true,
+            });
+            match decision.decision {
+                BrowserNavigationPolicyDecision::InWebview => NavigationPolicy::Allow,
+                BrowserNavigationPolicyDecision::OpenExternal => {
+                    let _ = runtime_for_nav.open_url(OpenUrlRequest {
+                        owner_appid: owner_appid_for_nav.clone(),
+                        owner_session_id: owner_session_for_nav,
+                        url: url.to_string(),
+                        target: OpenUrlTarget::External,
+                    });
+                    NavigationPolicy::Cancel
+                }
+                BrowserNavigationPolicyDecision::Deny => NavigationPolicy::Cancel,
+            }
+        })
         .on_new_window(move |url| {
             let normalized = normalize_browser_target_url(url);
             let _ = runtime_for_new_window.open_url(OpenUrlRequest {
