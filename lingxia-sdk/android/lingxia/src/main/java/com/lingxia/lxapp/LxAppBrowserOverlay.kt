@@ -3,19 +3,15 @@ package com.lingxia.lxapp
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.text.InputType
 import android.util.Log
 import android.util.TypedValue
-import android.view.KeyEvent
 import android.view.Gravity
+import android.view.KeyEvent
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.text.InputType
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -25,23 +21,74 @@ import androidx.core.view.WindowInsetsCompat
 
 object LxAppBrowserOverlay {
     private const val TAG = "LingXia.BrowserOverlay"
+    private const val ATTACH_RETRY_DELAY_MS = 100L
+    private const val ATTACH_MAX_RETRIES = 8
 
     private var overlayContainer: FrameLayout? = null
-    private var webView: WebView? = null
+    private var webView: com.lingxia.lxapp.WebView? = null
+    private var currentTabId: String? = null
+    private var pendingTabId: String? = null
+    private var pendingAttachToken: Long = 0L
     private var addressField: EditText? = null
     private var backButton: ImageView? = null
     private var forwardButton: ImageView? = null
 
-    fun show(activity: Activity, url: String) {
-        Log.d(TAG, "show URL: $url")
+    fun show(activity: Activity, tabId: String, initialUrl: String = ""): Boolean {
+        val normalizedTabId = tabId.trim().lowercase()
+        val normalizedInitialUrl = initialUrl.trim()
+        if (normalizedTabId.isEmpty()) {
+            Log.w(TAG, "show failed: empty tabId")
+            return false
+        }
+        if (overlayContainer != null && currentTabId == normalizedTabId) {
+            if (normalizedInitialUrl.isNotEmpty()) {
+                updateAddressBar(normalizedInitialUrl)
+            }
+            return true
+        }
+        if (pendingTabId == normalizedTabId) {
+            return true
+        }
 
-        // Dismiss existing overlay
+        pendingAttachToken += 1
+        val token = pendingAttachToken
+        pendingTabId = normalizedTabId
+        tryShowOverlay(activity, normalizedTabId, normalizedInitialUrl, 0, token)
+        return true
+    }
+
+    private fun tryShowOverlay(
+        activity: Activity,
+        tabId: String,
+        initialUrl: String,
+        attempt: Int,
+        token: Long
+    ) {
+        if (pendingAttachToken != token || pendingTabId != tabId) {
+            return
+        }
+
+        val managedWebView = findManagedWebView(tabId)
+        if (managedWebView == null) {
+            if (attempt >= ATTACH_MAX_RETRIES) {
+                pendingTabId = null
+                Log.w(TAG, "show failed: managed WebView not found for tabId=$tabId")
+                closeBrowserTab(tabId)
+                return
+            }
+            activity.window.decorView.postDelayed(
+                { tryShowOverlay(activity, tabId, initialUrl, attempt + 1, token) },
+                ATTACH_RETRY_DELAY_MS
+            )
+            return
+        }
+
+        pendingTabId = null
         dismiss()
 
         val density = activity.resources.displayMetrics.density
         val rootView = activity.window.decorView as ViewGroup
 
-        // Full-screen container
         val container = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -51,7 +98,6 @@ object LxAppBrowserOverlay {
             fitsSystemWindows = false
         }
 
-        // === Bottom: Navigation Toolbar ===
         val navBarHeight = getNavigationBarHeight(activity)
         val toolbarHeight = (52 * density).toInt()
         val toolbarSideMargin = (12 * density).toInt()
@@ -77,7 +123,6 @@ object LxAppBrowserOverlay {
             clipChildren = false
         }
 
-        // Button row
         val buttonRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -88,23 +133,22 @@ object LxAppBrowserOverlay {
             setPadding((6 * density).toInt(), 0, (6 * density).toInt(), 0)
         }
 
-        // Back button
         val backBtn = createNavButton(activity, R.drawable.icon_back, sizeDp = 32) {
             webView?.goBack()
+            updateNavigationButtons()
         }
         backBtn.alpha = 0.3f
         backBtn.isEnabled = false
         buttonRow.addView(backBtn)
 
-        // Forward button
         val fwdBtn = createNavButton(activity, R.drawable.icon_forward, sizeDp = 32) {
             webView?.goForward()
+            updateNavigationButtons()
         }
         fwdBtn.alpha = 0.3f
         fwdBtn.isEnabled = false
         buttonRow.addView(fwdBtn)
 
-        // Address pill in bottom bar
         val pillHeight = (38 * density).toInt()
         val pillMarginH = (4 * density).toInt()
         val addressPill = LinearLayout(activity).apply {
@@ -140,7 +184,6 @@ object LxAppBrowserOverlay {
             background = null
             setPadding(0, 0, 0, 0)
             maxLines = 1
-            setText(url)
             setOnEditorActionListener { _, actionId, event ->
                 val isSubmit = actionId == EditorInfo.IME_ACTION_GO ||
                     actionId == EditorInfo.IME_ACTION_DONE ||
@@ -152,6 +195,9 @@ object LxAppBrowserOverlay {
                     false
                 }
             }
+        }
+        if (initialUrl.isNotEmpty()) {
+            addrField.setText(initialUrl)
         }
         addressPill.addView(addrField)
 
@@ -168,91 +214,54 @@ object LxAppBrowserOverlay {
                 android.R.attr.selectableItemBackgroundBorderless, outValue, true
             )
             setBackgroundResource(outValue.resourceId)
-            setOnClickListener { webView?.reload() }
+            setOnClickListener {
+                webView?.reload()
+                updateNavigationButtons()
+            }
         }
         addressPill.addView(refreshBtn)
         buttonRow.addView(addressPill)
 
-        // Close button
         val closeBtn = createNavButton(activity, R.drawable.icon_close_x) {
             dismiss()
         }
         buttonRow.addView(closeBtn)
 
         bottomBar.addView(buttonRow)
-        container.addView(bottomBar)
 
-        // === Middle: WebView ===
-        val wv = WebView(activity).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            ).apply {
-                topMargin = 0  // updated by WindowInsets listener to leave room for status bar
-            }
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                useWideViewPort = true
-                loadWithOverviewMode = true
-                setSupportZoom(true)
-                builtInZoomControls = true
-                displayZoomControls = false
-                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-            }
-            webViewClient = object : WebViewClient() {
-                override fun onPageFinished(view: WebView?, pageUrl: String?) {
-                    updateAddressBar(pageUrl)
-                    updateNavigationButtons()
-                }
-
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                    val targetUrl = request?.url?.toString()?.trim().orEmpty()
-                    if (targetUrl.isEmpty()) {
-                        return false
-                    }
-
-                    val policy = resolveBrowserNavigationPolicy(
-                        rawUrl = targetUrl,
-                        hasUserGesture = request?.hasGesture() ?: false,
-                        isMainFrame = request?.isForMainFrame ?: true
-                    ) ?: return true  // fail-closed: policy failure blocks navigation
-
-                    return when (policy.decision) {
-                        BrowserNavigationDecision.IN_WEBVIEW -> false
-                        BrowserNavigationDecision.OPEN_EXTERNAL -> {
-                            LxApp.launchWithUrl(targetUrl, "external")
-                            true
-                        }
-                        BrowserNavigationDecision.DENY -> true
-                    }
-                }
-
-                override fun doUpdateVisitedHistory(view: WebView?, pageUrl: String?, isReload: Boolean) {
-                    updateAddressBar(pageUrl)
-                    updateNavigationButtons()
-                }
-            }
-            webChromeClient = WebChromeClient()
+        val webViewParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ).apply {
+            topMargin = 0
         }
-        container.addView(wv)
+        if (managedWebView.parent != null) {
+            (managedWebView.parent as? ViewGroup)?.removeView(managedWebView)
+        }
+        managedWebView.layoutParams = webViewParams
+        managedWebView.visibility = View.VISIBLE
 
+        container.addView(managedWebView)
+        container.addView(bottomBar)
         rootView.addView(container)
 
-        wv.loadUrl(url)
+        managedWebView.resume()
+        updateAddressBar(managedWebView.url ?: initialUrl)
 
         overlayContainer = container
-        webView = wv
+        webView = managedWebView
+        currentTabId = tabId
         addressField = addrField
         backButton = backBtn
         forwardButton = fwdBtn
+        updateNavigationButtons()
 
         ViewCompat.setOnApplyWindowInsetsListener(container) { _, insets ->
             val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            val wvParams = wv.layoutParams as FrameLayout.LayoutParams
+            val wvParams = managedWebView.layoutParams as FrameLayout.LayoutParams
             if (wvParams.topMargin != statusBarTop) {
                 wvParams.topMargin = statusBarTop
-                wv.layoutParams = wvParams
+                managedWebView.layoutParams = wvParams
             }
 
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
@@ -268,29 +277,55 @@ object LxAppBrowserOverlay {
         }
         ViewCompat.requestApplyInsets(container)
 
-        Log.d(TAG, "Browser overlay shown")
+        Log.d(TAG, "Browser overlay shown tabId=$tabId")
     }
 
     fun dismiss() {
+        val pendingTab = pendingTabId
+        cancelPendingAttachRetry()
+
         overlayContainer?.let { container ->
             ViewCompat.setOnApplyWindowInsetsListener(container, null)
         }
 
+        val tabId = currentTabId
+
         webView?.apply {
             stopLoading()
-            destroy()
+            (parent as? ViewGroup)?.removeView(this)
+            pause()
         }
         webView = null
+
+        if (!pendingTab.isNullOrBlank() && pendingTab != tabId) {
+            closeBrowserTab(pendingTab)
+        }
+        if (!tabId.isNullOrBlank()) {
+            closeBrowserTab(tabId)
+        }
 
         overlayContainer?.let { container ->
             (container.parent as? ViewGroup)?.removeView(container)
         }
         overlayContainer = null
+        currentTabId = null
         addressField = null
         backButton = null
         forwardButton = null
 
         Log.d(TAG, "Browser overlay dismissed")
+    }
+
+    private fun cancelPendingAttachRetry() {
+        pendingAttachToken += 1
+        pendingTabId = null
+    }
+
+    private fun closeBrowserTab(tabId: String) {
+        val closed = NativeApi.browserTabClose(tabId)
+        if (!closed) {
+            Log.w(TAG, "browserTabClose failed for tabId=$tabId")
+        }
     }
 
     fun isShowing(): Boolean = overlayContainer != null
@@ -324,6 +359,29 @@ object LxAppBrowserOverlay {
         val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
         imm?.hideSoftInputFromWindow(field.windowToken, 0)
         webView?.loadUrl(result.url)
+        updateAddressBar(result.url)
+    }
+
+    private fun findManagedWebView(tabId: String): com.lingxia.lxapp.WebView? {
+        val browserAppId = NativeApi.getBuiltinBrowserAppId()?.trim().orEmpty()
+        if (browserAppId.isEmpty()) {
+            Log.w(TAG, "findManagedWebView failed: empty browser appId")
+            return null
+        }
+
+        val sessionId = NativeApi.getLxAppSessionId(browserAppId)
+        if (sessionId <= 0L) {
+            Log.w(TAG, "findManagedWebView failed: invalid browser session for appId=$browserAppId")
+            return null
+        }
+
+        val path = NativeApi.browserTabPathForId(tabId)?.trim().orEmpty()
+        if (path.isEmpty()) {
+            Log.w(TAG, "findManagedWebView failed: invalid tab path for tabId=$tabId")
+            return null
+        }
+
+        return NativeApi.findWebView(browserAppId, path, sessionId)
     }
 
     private fun createNavButton(

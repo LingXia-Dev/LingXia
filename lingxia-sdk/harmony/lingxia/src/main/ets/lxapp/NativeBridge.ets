@@ -26,6 +26,7 @@ import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from './NativeComponents/NativeBridgeInternal';
+import { getCurrentLxapp, getLxappSessionId, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
@@ -132,12 +133,57 @@ class NativeBridge {
     });
 
     // Launch URL (external or in-app browser)
-    this.register('launchWithUrl', (url: string, target?: string) => {
-      if (target === 'self') {
-        return BrowserOverlayManager.show(url);
+    this.register('launchWithUrl', (
+      url: string,
+      target?: string,
+      ownerAppId?: string,
+      ownerSessionIdRaw?: Object
+    ) => {
+      if (target !== 'self') {
+        LxApp.launchWithUrl(url);
+        return true;
       }
-      LxApp.launchWithUrl(url);
-      return true;
+
+      const normalizedUrl = String(url ?? '').trim();
+      if (!normalizedUrl) {
+        hilog.error(DOMAIN, TAG, 'launchWithUrl target=self failed: empty url');
+        return false;
+      }
+
+      const current: CurrentLxApp | null = getCurrentLxapp();
+      const fallbackOwnerAppId: string = current?.appid ?? '';
+      const resolvedOwnerAppId: string = String(ownerAppId ?? '').trim() || fallbackOwnerAppId;
+      const parsedOwnerSessionId = parseSessionId(ownerSessionIdRaw);
+      const resolvedOwnerSessionId: number = (() => {
+        if (parsedOwnerSessionId !== null) {
+          return parsedOwnerSessionId;
+        }
+        if (current && current.appid === resolvedOwnerAppId && Number(current.session_id) > 0) {
+          return Number(current.session_id);
+        }
+        return resolvedOwnerAppId ? Number(getLxappSessionId(resolvedOwnerAppId)) : 0;
+      })();
+
+      if (!resolvedOwnerAppId || !Number.isFinite(resolvedOwnerSessionId) || resolvedOwnerSessionId <= 0) {
+        hilog.error(
+          DOMAIN,
+          TAG,
+          `launchWithUrl target=self failed: invalid owner appId=${resolvedOwnerAppId} session=${resolvedOwnerSessionId}`
+        );
+        return false;
+      }
+
+      const tabId: string | null = openBrowserTab(
+        resolvedOwnerAppId,
+        Math.trunc(resolvedOwnerSessionId),
+        normalizedUrl
+      );
+      if (!tabId || tabId.trim().length === 0) {
+        hilog.error(DOMAIN, TAG, 'launchWithUrl target=self failed: openBrowserTab returned empty tabId');
+        return false;
+      }
+
+      return BrowserOverlayManager.show(tabId, normalizedUrl);
     });
 
     // WebView management

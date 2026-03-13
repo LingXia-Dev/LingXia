@@ -137,17 +137,56 @@ class LxApp private constructor(private val context: Context) {
          * @param uri Complete URI to open the target app (e.g., "weixin://dl/scan")
          */
         @JvmStatic
-        fun launchWithUrl(uri: String, target: String = "external") {
+        fun launchWithUrl(
+            uri: String,
+            target: String = "external",
+            ownerAppId: String = "",
+            ownerSessionId: Long = 0L
+        ) {
             Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
             if (target == "self") {
                 val activity = currentActivity
                 if (activity != null) {
                     activity.runOnUiThread {
-                        LxAppBrowserOverlay.show(activity, uri)
+                        val current = NativeApi.getCurrentLxApp()
+                        val fallbackOwnerAppId = current?.appId ?: activity.getAppId()
+                        val resolvedOwnerAppId = ownerAppId.takeIf { it.isNotBlank() } ?: fallbackOwnerAppId
+                        val resolvedOwnerSessionId = when {
+                            ownerSessionId > 0L -> ownerSessionId
+                            current != null &&
+                                current.appId == resolvedOwnerAppId &&
+                                current.sessionId > 0L -> current.sessionId
+                            resolvedOwnerAppId.isNotBlank() -> NativeApi.getLxAppSessionId(resolvedOwnerAppId)
+                            else -> 0L
+                        }
+
+                        if (resolvedOwnerAppId.isBlank() || resolvedOwnerSessionId <= 0L) {
+                            Log.w(
+                                TAG,
+                                "launchWithUrl target=self: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                            )
+                            return@runOnUiThread
+                        }
+
+                        val tabId = NativeApi.openBrowserTab(
+                            resolvedOwnerAppId,
+                            resolvedOwnerSessionId,
+                            uri
+                        )
+                        if (tabId.isNullOrBlank()) {
+                            Log.w(
+                                TAG,
+                                "launchWithUrl target=self: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                            )
+                            return@runOnUiThread
+                        }
+
+                        LxAppBrowserOverlay.show(activity, tabId, uri)
                     }
                     return
                 }
-                Log.w(TAG, "launchWithUrl target=self: no current activity, falling back to external")
+                Log.w(TAG, "launchWithUrl target=self: no current activity")
+                return
             }
             val opened = launchExternalUrl(getInstance().context, uri, 0)
             if (!opened) {

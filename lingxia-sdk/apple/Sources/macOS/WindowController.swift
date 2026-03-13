@@ -16,8 +16,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static let lxappDevToolsDetached = true
     private static let lxappDevToolsMaxRetry = 30
     private static let lxappDevToolsRetryDelay: TimeInterval = 0.05
-    private static let browserAppId = "app.lingxia.browser"
-    private static let browserTabPathPrefix = "/tabs/"
 
     public struct Layout {
         static let sidebarWidth: CGFloat = 180
@@ -59,13 +57,13 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
-    // Browser tab state — tab ownership lives in Rust; only titles/owner-appid cached locally.
+    // Browser tab state — source of truth lives in Rust; Swift only keeps UI cache.
     private var activeBrowserTabId: UUID?
     private var browserTabIds: [UUID] = []
     private var browserTabTitles: [UUID: String] = [:]
-    private var browserTabOwners: [UUID: String] = [:]  // tab UUID → owner appId
     private var browserTabFavicons: [UUID: NSImage] = [:]
     private var browserTabFaviconRequestOrigins: [UUID: String] = [:]
+    private var browserLastObservedURLs: [UUID: String] = [:]
     private var browserHostView: NSView?
     private let browserToolbar = NSView()
     private let browserToolbarSeparator = NSView()
@@ -560,9 +558,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             return
         }
 
-        // Close browser entries owned by this app while Rust owner state is still available.
-        closeBrowserTabsOwned(by: appId)
-
         let accepted = onLxappClosed(appId, sessionId)
         guard accepted else {
             os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
@@ -604,20 +599,10 @@ extension LxAppWindowController {
         return toggleActiveLxAppDevTools()
     }
 
-    func presentInternalBrowserTab(id: UUID, ownerAppId: String, ownerSessionId: UInt64) {
-        guard ownerSessionId > 0 else { return }
-
-        appSessions[ownerAppId] = ownerSessionId
-
-        if browserTabIds.contains(id) {
-            browserTabOwners[id] = ownerAppId
-            switchToBrowserTab(id: id)
-            return
+    func presentInternalBrowserTab(id: UUID) {
+        if !browserTabIds.contains(id) {
+            browserTabIds.append(id)
         }
-
-        browserTabIds.append(id)
-        browserTabOwners[id] = ownerAppId
-
         switchToBrowserTab(id: id)
     }
 
@@ -822,14 +807,19 @@ extension LxAppWindowController {
         return true
     }
 
-    /// Find the WKWebView for a browser tab via the shared findWebView(appid,path,session) API.
+    /// Find the WKWebView for a browser tab via Rust-owned app/path/session mapping.
     private func findBrowserWKWebView(for id: UUID) -> WKWebView? {
-        guard let ownerAppId = browserTabOwners[id] else { return nil }
-        let sessionId = appSessions[ownerAppId] ?? getLxAppSessionId(ownerAppId)
-        guard sessionId > 0 else { return nil }
-
-        let path = Self.browserTabPathPrefix + browserTabIdString(id)
-        return WebViewManager.findWebView(appId: Self.browserAppId, path: path, sessionId: sessionId)
+        let appId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(appId)
+        guard sessionId > 0 else {
+            return nil
+        }
+        let path = browserTabPathForId(browserTabIdString(id)).toString()
+        return WebViewManager.findWebView(
+            appId: appId,
+            path: path,
+            sessionId: sessionId
+        )
     }
 
     private func browserSidebarItems() -> [(id: UUID, title: String, favicon: NSImage?)] {
@@ -1034,22 +1024,33 @@ extension LxAppWindowController {
                 if !title.isEmpty {
                     self.handleBrowserTitleChanged(id: activeId, title: title)
                 }
+                _ = updateBrowserTabInfo(self.browserTabIdString(activeId), webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
 
         browserUrlObservation = webView.observe(\.url, options: [.new]) { [weak self] webView, _ in
             Task { @MainActor in
                 guard let self, let activeId = self.activeBrowserTabId else { return }
-                self.browserAddressField.stringValue =
-                    self.displayableBrowserURL(webView.url?.absoluteString)
-                // Reset favicon on navigation and fetch for the new URL
-                self.browserTabFavicons.removeValue(forKey: activeId)
-                self.browserTabFaviconRequestOrigins.removeValue(forKey: activeId)
-                self.sidebarView?.updateBrowserItems(self.browserSidebarItems(), activeId: activeId)
-                if let url = webView.url, let origin = self.faviconRequestOrigin(for: url) {
-                    self.browserTabFaviconRequestOrigins[activeId] = origin
-                    self.fetchFavicon(for: origin, tabId: activeId)
+                let rawURL = webView.url?.absoluteString ?? ""
+                if self.browserLastObservedURLs[activeId] == rawURL {
+                    return
                 }
+                self.browserLastObservedURLs[activeId] = rawURL
+
+                if self.browserAddressField.currentEditor() == nil {
+                    self.browserAddressField.stringValue = self.displayableBrowserURL(rawURL)
+                }
+                if let origin = webView.url.flatMap({ self.faviconRequestOrigin(for: $0) }) {
+                    if origin != self.browserTabFaviconRequestOrigins[activeId] {
+                        self.browserTabFavicons.removeValue(forKey: activeId)
+                        self.browserTabFaviconRequestOrigins[activeId] = origin
+                        self.sidebarView?.updateBrowserItems(self.browserSidebarItems(), activeId: activeId)
+                    }
+                    if self.browserTabFavicons[activeId] == nil {
+                        self.fetchFavicon(for: origin, tabId: activeId)
+                    }
+                }
+                _ = updateBrowserTabInfo(self.browserTabIdString(activeId), webView.url?.absoluteString ?? "", webView.title ?? "")
             }
         }
 
@@ -1072,17 +1073,28 @@ extension LxAppWindowController {
         guard !trimmed.isEmpty else { return "" }
 
         let lowered = trimmed.lowercased()
-        if lowered.hasPrefix("data:") || lowered.hasPrefix("lx:") || lowered == "about:blank" {
+        if lowered.hasPrefix("data:") || lowered.hasPrefix("lx:") || lowered.hasPrefix("javascript:") || lowered.hasPrefix("blob:") || lowered == "about:blank" {
             return ""
         }
         return trimmed
     }
 
-    private func openAddressInActiveBrowserTab(_ urlString: String) {
+    private func openAddressInActiveBrowserTab(_ urlString: String) -> Bool {
         guard let webView = activeBrowserWebView,
-              let url = URL(string: urlString) else { return }
+              let url = URL(string: urlString) else { return false }
         browserAddressField.stringValue = urlString
         webView.load(URLRequest(url: url))
+        return true
+    }
+
+    @MainActor
+    func consumeSelfTargetNavigationInActiveBrowserTab(urlString: String) -> Bool {
+        guard activeBrowserTabId != nil else { return false }
+        guard let webView = activeBrowserWebView else { return false }
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !displayableBrowserURL(trimmed).isEmpty else { return true }
+        if webView.url?.absoluteString == trimmed { return true }
+        return openAddressInActiveBrowserTab(trimmed)
     }
 
     @objc private func browserBackClicked() {
@@ -1105,7 +1117,7 @@ extension LxAppWindowController {
             currentURL: activeBrowserWebView?.url?.absoluteString,
             tabId: activeBrowserTabId?.uuidString
         ) else { return }
-        openAddressInActiveBrowserTab(result.url)
+        _ = openAddressInActiveBrowserTab(result.url)
     }
 
     private func clearBrowserWebViewAttachment() {
@@ -1135,38 +1147,12 @@ extension LxAppWindowController {
         clearBrowserWebViewAttachment()
         browserTabIds.removeAll()
         browserTabTitles.removeAll()
-        browserTabOwners.removeAll()
         browserTabFavicons.removeAll()
         browserTabFaviconRequestOrigins.removeAll()
+        browserLastObservedURLs.removeAll()
         activeBrowserTabId = nil
         hideBrowserHostView()
         sidebarView?.updateBrowserItems([], activeId: nil)
-    }
-
-    private func closeBrowserTabsOwned(by appId: String) {
-        let ownedTabIds = browserTabIds.filter { browserTabOwners[$0] == appId }
-        guard !ownedTabIds.isEmpty else { return }
-
-        for tabId in ownedTabIds {
-            _ = browserTabClose(browserTabIdString(tabId))
-        }
-
-        let ownedSet = Set(ownedTabIds)
-        browserTabIds.removeAll { ownedSet.contains($0) }
-        for id in ownedSet {
-            browserTabTitles.removeValue(forKey: id)
-            browserTabOwners.removeValue(forKey: id)
-            browserTabFavicons.removeValue(forKey: id)
-            browserTabFaviconRequestOrigins.removeValue(forKey: id)
-        }
-        if let activeId = activeBrowserTabId,
-           !browserTabIds.contains(activeId) {
-            clearBrowserWebViewAttachment()
-            hideBrowserHostView()
-            activeBrowserTabId = nil
-            navigationToolbar?.forceHide(false)
-        }
-        sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
     }
 
     private func addBrowserTab() {
@@ -1186,7 +1172,6 @@ extension LxAppWindowController {
             return
         }
 
-        appSessions[owner.appId] = owner.sessionId
         let tabId = openedTab.toString().lowercased()
         guard let id = UUID(uuidString: tabId) else {
             os_log(
@@ -1200,7 +1185,7 @@ extension LxAppWindowController {
             return
         }
 
-        presentInternalBrowserTab(id: id, ownerAppId: owner.appId, ownerSessionId: owner.sessionId)
+        presentInternalBrowserTab(id: id)
     }
 
     private func selectBrowserTab(id: UUID) {
@@ -1210,6 +1195,10 @@ extension LxAppWindowController {
 
     private func switchToBrowserTab(id: UUID) {
         guard browserTabIds.contains(id) else { return }
+        if activeBrowserTabId == id {
+            sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: id)
+            return
+        }
 
         // Pause current lxapp VC if any
         currentViewController?.pauseNativeComponents()
@@ -1286,9 +1275,9 @@ extension LxAppWindowController {
 
         // Remove from Swift state
         browserTabTitles.removeValue(forKey: id)
-        browserTabOwners.removeValue(forKey: id)
         browserTabFavicons.removeValue(forKey: id)
         browserTabFaviconRequestOrigins.removeValue(forKey: id)
+        browserLastObservedURLs.removeValue(forKey: id)
         browserTabIds.remove(at: index)
 
         // Destroy Rust state (triggers WebView Drop — safe now that UI is detached)
@@ -1316,6 +1305,9 @@ extension LxAppWindowController {
 
     private func handleBrowserTitleChanged(id: UUID, title: String) {
         guard browserTabIds.contains(id) else { return }
+        if browserTabTitles[id] == title {
+            return
+        }
         browserTabTitles[id] = title
         sidebarView?.updateBrowserItems(browserSidebarItems(), activeId: activeBrowserTabId)
     }

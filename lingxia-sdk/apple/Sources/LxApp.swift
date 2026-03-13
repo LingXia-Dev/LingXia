@@ -563,6 +563,17 @@ extension LxApp {
         guard !ownerAppId.isEmpty, owner_session_id > 0 else {
             return false
         }
+        #if os(macOS)
+        if ownerAppId == getBuiltinBrowserAppId().toString() {
+            let scheme = URL(string: urlString)?.scheme?.lowercased()
+            if let scheme, scheme != "http", scheme != "https" {
+                return openExternalUrlString(urlString)
+            }
+            if executeOnMain({ macOSLxApp.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString) }) {
+                return true
+            }
+        }
+        #endif
         guard let openedTab = openBrowserTab(ownerAppId, owner_session_id, urlString) else {
             os_log(.error, log: Self.log, "openBrowserTab failed for %{public}@/%{public}llu url=%{public}@",
                    ownerAppId, owner_session_id, urlString)
@@ -575,19 +586,11 @@ extension LxApp {
 
         #if os(macOS)
         return executeOnMain {
-            return macOSLxApp.presentInternalBrowserTab(
-                ownerAppId: ownerAppId,
-                ownerSessionId: owner_session_id,
-                tabId: tabId
-            )
+            return macOSLxApp.presentInternalBrowserTab(tabId: tabId)
         }
         #elseif os(iOS)
         return executeOnMain {
-            return LxAppBrowserOverlay.show(
-                tabId: tabId,
-                ownerAppId: ownerAppId,
-                ownerSessionId: owner_session_id
-            )
+            return LxAppBrowserOverlay.show(tabId: tabId)
         }
         #else
         return false

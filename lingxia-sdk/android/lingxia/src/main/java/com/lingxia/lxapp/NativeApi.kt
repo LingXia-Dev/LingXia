@@ -153,6 +153,31 @@ object NativeApi {
     external fun handleBrowserNavigationPolicy(requestJson: String): String?
 
     /**
+     * Open a managed internal browser tab and return tabId.
+     * Returns null when owner/session is invalid or creation fails.
+     */
+    @JvmStatic
+    external fun openBrowserTab(appId: String, sessionId: Long, url: String): String?
+
+    /**
+     * Close a managed internal browser tab.
+     */
+    @JvmStatic
+    external fun browserTabClose(tabId: String): Boolean
+
+    /**
+     * Get built-in browser appId.
+     */
+    @JvmStatic
+    external fun getBuiltinBrowserAppId(): String?
+
+    /**
+     * Resolve managed browser tab path from tabId.
+     */
+    @JvmStatic
+    external fun browserTabPathForId(tabId: String): String?
+
+    /**
      * Get complete TabBar state with items array (unified API)
      * @param appId The ID of the app
      * @return Complete TabBar state or null if not available

@@ -536,13 +536,16 @@ impl AppRuntime for Platform {
         with_env(|env| -> Result<(), PlatformError> {
             let url_jstring = env.new_string(req.url)?;
             let target_jstring = env.new_string(target_str)?;
+            let owner_appid_jstring = env.new_string(req.owner_appid)?;
             env.call_static_method(
                 lxapp_class,
                 jni_str!("launchWithUrl"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V"),
                 &[
                     JValue::Object(&url_jstring),
                     JValue::Object(&target_jstring),
+                    JValue::Object(&owner_appid_jstring),
+                    JValue::Long(req.owner_session_id as i64),
                 ],
             )?;
             Ok(())

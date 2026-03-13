@@ -583,9 +583,10 @@ impl AppRuntime for Platform {
         } else {
             "external"
         };
+        let owner_session = req.owner_session_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
             "launchWithUrl",
-            &[&req.url, target_str],
+            &[&req.url, target_str, &req.owner_appid, &owner_session],
         )
         .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
     }

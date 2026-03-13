@@ -203,8 +203,7 @@ extension macOSLxApp {
     }
 
     @MainActor
-    internal static func presentInternalBrowserTab(ownerAppId: String, ownerSessionId: UInt64, tabId: String) -> Bool {
-        guard ownerSessionId > 0 else { return false }
+    internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.lowercased()
         guard let id = UUID(uuidString: normalized) else {
             os_log("presentInternalBrowserTab invalid tab id: %{public}@", log: log, type: .error, tabId)
@@ -216,9 +215,15 @@ extension macOSLxApp {
         }
 
         guard let controller = tabWindowController else { return false }
-        controller.presentInternalBrowserTab(id: id, ownerAppId: ownerAppId, ownerSessionId: ownerSessionId)
+        controller.presentInternalBrowserTab(id: id)
         controller.window?.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    @MainActor
+    internal static func consumeSelfTargetNavigationInActiveBrowserTab(urlString: String) -> Bool {
+        guard let controller = tabWindowController else { return false }
+        return controller.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString)
     }
 }
 

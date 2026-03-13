@@ -2,39 +2,59 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { LxApp } from '../LxApp';
+import {
+  WebViewManager,
+  notifyWebViewControllerAttached
+} from '../WebViewBridge';
 import { submitBrowserAddress } from './BrowserAddressInput';
 import {
   resolveBrowserNavigationPolicy,
   type BrowserNavigationPolicyResponse
 } from './BrowserNavigationPolicy';
+import {
+  browserTabClose,
+  browserTabPathForId,
+  getBuiltinBrowserAppId
+} from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.BrowserOverlay';
+const ATTACH_RETRY_DELAY_MS = 100;
+const ATTACH_MAX_RETRIES = 8;
 
 /**
- * Browser overlay manager - controls in-app browser visibility
+ * Browser overlay manager - single UI instance (no multi-open UI for now)
  */
 export class BrowserOverlayManager {
   private static showing: boolean = false;
-  private static currentUrl: string = '';
+  private static currentTabId: string = '';
+  private static initialUrl: string = '';
   private static listeners: Set<() => void> = new Set();
 
-  public static show(url: string): boolean {
-    if (!url) {
-      hilog.error(DOMAIN, TAG, 'show failed: empty URL');
+  public static show(tabId: string, initialUrl: string = ''): boolean {
+    const normalizedTabId = String(tabId ?? '').trim().toLowerCase();
+    if (!normalizedTabId) {
+      hilog.error(DOMAIN, TAG, 'show failed: empty tabId');
       return false;
     }
-    hilog.info(DOMAIN, TAG, `Showing browser overlay for URL: ${url}`);
-    BrowserOverlayManager.currentUrl = url;
+
+    // Single-instance UI rule: new tab request closes previous tab first.
+    if (BrowserOverlayManager.currentTabId && BrowserOverlayManager.currentTabId !== normalizedTabId) {
+      BrowserOverlayManager.closeCurrentTab();
+    }
+
+    BrowserOverlayManager.currentTabId = normalizedTabId;
+    BrowserOverlayManager.initialUrl = String(initialUrl ?? '').trim();
     BrowserOverlayManager.showing = true;
     BrowserOverlayManager.notifyListeners();
     return true;
   }
 
   public static hide(): void {
-    hilog.info(DOMAIN, TAG, 'Hiding browser overlay');
+    BrowserOverlayManager.closeCurrentTab();
     BrowserOverlayManager.showing = false;
-    BrowserOverlayManager.currentUrl = '';
+    BrowserOverlayManager.currentTabId = '';
+    BrowserOverlayManager.initialUrl = '';
     BrowserOverlayManager.notifyListeners();
   }
 
@@ -42,8 +62,12 @@ export class BrowserOverlayManager {
     return BrowserOverlayManager.showing;
   }
 
-  public static getUrl(): string {
-    return BrowserOverlayManager.currentUrl;
+  public static getTabId(): string {
+    return BrowserOverlayManager.currentTabId;
+  }
+
+  public static getInitialUrl(): string {
+    return BrowserOverlayManager.initialUrl;
   }
 
   public static registerListener(listener: () => void): void {
@@ -63,6 +87,21 @@ export class BrowserOverlayManager {
       }
     });
   }
+
+  private static closeCurrentTab(): void {
+    const tabId = BrowserOverlayManager.currentTabId;
+    if (!tabId) {
+      return;
+    }
+    try {
+      const closed: boolean = Boolean(browserTabClose(tabId));
+      if (!closed) {
+        hilog.warn(DOMAIN, TAG, `browserTabClose returned false for tabId=${tabId}`);
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `browserTabClose failed for tabId=${tabId}: ${error}`);
+    }
+  }
 }
 
 /**
@@ -72,8 +111,10 @@ export class BrowserOverlayManager {
 @Component
 export struct BrowserOverlay {
   @State private isVisible: boolean = false;
+  @State private tabId: string = '';
   @State private url: string = '';
   @State private addressText: string = '';
+  @State private controllerReady: boolean = false;
   @State private canGoBack: boolean = false;
   @State private canGoForward: boolean = false;
   @State private bottomSafeAreaHeight: number = 0;
@@ -82,23 +123,54 @@ export struct BrowserOverlay {
 
   private controller: webview.WebviewController = new webview.WebviewController();
   private listener: (() => void) | null = null;
+  private attachRetryTimerId: number | null = null;
+  private attachRetryCount: number = 0;
+  private controllerWebTag: string = '';
+  private controllerAcked: boolean = false;
 
   aboutToAppear() {
     this.listener = () => {
-      this.isVisible = BrowserOverlayManager.isShowing();
-      const newUrl = BrowserOverlayManager.getUrl();
-      if (newUrl && newUrl !== this.url) {
-        this.url = newUrl;
-        this.addressText = newUrl;
+      const visible = BrowserOverlayManager.isShowing();
+      this.isVisible = visible;
+      if (!visible) {
+        this.clearAttachRetryTimer();
+        this.resetLocalState();
+        return;
+      }
+
+      const nextTabId = BrowserOverlayManager.getTabId();
+      const nextInitialUrl = BrowserOverlayManager.getInitialUrl();
+
+      if (nextTabId !== this.tabId) {
+        this.clearAttachRetryTimer();
+        this.attachRetryCount = 0;
+        this.tabId = nextTabId;
+        this.url = nextInitialUrl;
+        this.addressText = nextInitialUrl;
         this.canGoBack = false;
         this.canGoForward = false;
+        this.controllerReady = false;
+        this.attachManagedControllerWithRetry();
+        return;
+      }
+
+      if (nextInitialUrl && !this.url) {
+        this.url = nextInitialUrl;
+        this.addressText = nextInitialUrl;
+      }
+
+      if (this.controllerReady) {
+        this.updateState();
       }
     };
+
     BrowserOverlayManager.registerListener(this.listener!);
     this.initSafeAreaInsets();
+    this.listener();
   }
 
   aboutToDisappear() {
+    this.clearAttachRetryTimer();
     if (this.listener) {
       BrowserOverlayManager.unregisterListener(this.listener!);
       this.listener = null;
@@ -115,6 +187,99 @@ export struct BrowserOverlay {
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get safe area insets: ${error}`);
     }
+  }
+
+  private attachManagedController(): boolean {
+    if (!this.tabId) {
+      return false;
+    }
+
+    let appId = '';
+    let path = '';
+    try {
+      appId = String(getBuiltinBrowserAppId() ?? '').trim();
+      path = String(browserTabPathForId(this.tabId) ?? '').trim();
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Failed to resolve browser app/path for tabId=${this.tabId}: ${error}`);
+      return false;
+    }
+
+    if (!appId || !path) {
+      hilog.error(DOMAIN, TAG, `Invalid browser app/path for tabId=${this.tabId} appId=${appId} path=${path}`);
+      return false;
+    }
+
+    const managedController = WebViewManager.findWebview(appId, path);
+    if (!managedController) {
+      return false;
+    }
+
+    this.controller = managedController;
+    let resolvedWebTag = '';
+    const infos = WebViewManager.getAllWebViewInfos();
+    for (let i = 0; i < infos.length; i++) {
+      if (infos[i].controller === managedController) {
+        resolvedWebTag = infos[i].webtag;
+        break;
+      }
+    }
+    if (!resolvedWebTag) {
+      hilog.warn(DOMAIN, TAG, `attachManagedController: cannot resolve webtag for tabId=${this.tabId}`);
+      return false;
+    }
+    this.controllerWebTag = resolvedWebTag;
+    this.controllerAcked = false;
+    return true;
+  }
+
+  private attachManagedControllerWithRetry(): void {
+    if (!this.isVisible || !this.tabId) {
+      return;
+    }
+
+    if (this.attachManagedController()) {
+      this.controllerReady = true;
+      this.attachRetryCount = 0;
+      this.updateState();
+      return;
+    }
+
+    this.controllerReady = false;
+    if (this.attachRetryCount >= ATTACH_MAX_RETRIES) {
+      hilog.error(DOMAIN, TAG, `show failed: managed WebView not found for tabId=${this.tabId}`);
+      BrowserOverlayManager.hide();
+      return;
+    }
+
+    this.attachRetryCount += 1;
+    const expectedTabId = this.tabId;
+    this.clearAttachRetryTimer();
+    this.attachRetryTimerId = setTimeout(() => {
+      this.attachRetryTimerId = null;
+      if (!this.isVisible || this.tabId !== expectedTabId) {
+        return;
+      }
+      this.attachManagedControllerWithRetry();
+    }, ATTACH_RETRY_DELAY_MS);
+  }
+
+  private clearAttachRetryTimer(): void {
+    if (this.attachRetryTimerId !== null) {
+      clearTimeout(this.attachRetryTimerId);
+      this.attachRetryTimerId = null;
+    }
+  }
+
+  private resetLocalState(): void {
+    this.tabId = '';
+    this.url = '';
+    this.addressText = '';
+    this.controllerReady = false;
+    this.canGoBack = false;
+    this.canGoForward = false;
+    this.attachRetryCount = 0;
+    this.controllerWebTag = '';
+    this.controllerAcked = false;
   }
 
   private submitAddress(raw: string): void {
@@ -134,14 +299,20 @@ export struct BrowserOverlay {
   }
 
   build() {
-    if (this.isVisible && this.url) {
+    if (this.isVisible && this.tabId && this.controllerReady) {
       Stack({ alignContent: Alignment.Bottom }) {
-        Web({ src: this.url, controller: this.controller })
+        Web({ src: '', controller: this.controller })
           .width('100%')
           .height('100%')
           .javaScriptAccess(true)
           .domStorageAccess(true)
           .mixedMode(MixedMode.Compatible)
+          .onAppear(() => {
+            if (!this.controllerAcked && this.controllerWebTag) {
+              notifyWebViewControllerAttached(this.controllerWebTag);
+              this.controllerAcked = true;
+            }
+          })
           .onLoadIntercept((event) => {
             if (!event || !event.data) {
               return false;
@@ -167,7 +338,7 @@ export struct BrowserOverlay {
               isMainFrame
             );
             if (!policy) {
-              return true;  // fail-closed: policy failure blocks navigation
+              return true;
             }
             if (policy.decision === 'in_webview') {
               return false;
@@ -188,7 +359,6 @@ export struct BrowserOverlay {
 
         Column() {
           Row() {
-            // Back button
             Image($rawfile('icons/icon_back.svg'))
               .width(20)
               .height(20)
@@ -206,7 +376,6 @@ export struct BrowserOverlay {
                 }
               })
 
-            // Forward button
             Image($rawfile('icons/icon_forward.svg'))
               .width(20)
               .height(20)
@@ -224,7 +393,6 @@ export struct BrowserOverlay {
                 }
               })
 
-            // Address input + refresh in bottom toolbar
             Row() {
               TextInput({ text: this.addressText, placeholder: 'Enter URL' })
                 .layoutWeight(1)
@@ -269,7 +437,6 @@ export struct BrowserOverlay {
             .borderRadius(19)
             .alignItems(VerticalAlign.Center)
 
-            // Close button
             Image($rawfile('icons/icon_close_x.svg'))
               .width(22)
               .height(22)
@@ -313,8 +480,11 @@ export struct BrowserOverlay {
   private updateState(): void {
     try {
       const currentUrl = this.controller.getUrl();
-      if (currentUrl && !this.isEditingAddress) {
-        this.addressText = currentUrl;
+      if (currentUrl) {
+        this.url = currentUrl;
+        if (!this.isEditingAddress) {
+          this.addressText = currentUrl;
+        }
       }
       this.canGoBack = this.controller.accessBackward();
       this.canGoForward = this.controller.accessForward();

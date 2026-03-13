@@ -9,7 +9,7 @@ public final class LxAppBrowserOverlay: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlay")
     private static var currentController: LxAppBrowserViewController?
 
-    public static func show(tabId: String, ownerAppId: String, ownerSessionId: UInt64) -> Bool {
+    public static func show(tabId: String) -> Bool {
         let normalizedTabId = tabId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedTabId.isEmpty else {
             os_log("show failed: empty tab id", log: log, type: .error)
@@ -22,18 +22,28 @@ public final class LxAppBrowserOverlay: NSObject {
             return false
         }
 
-        if let topController = navController.topViewController as? LxAppBrowserViewController,
-           topController.tabId == normalizedTabId {
-            topController.updateOwner(ownerAppId: ownerAppId, ownerSessionId: ownerSessionId)
-            currentController = topController
+        // Reuse if already showing the same tab
+        if let existing = currentController, existing.tabId == normalizedTabId {
+            return true
+        }
+        if let top = navController.topViewController as? LxAppBrowserViewController,
+           top.tabId == normalizedTabId {
+            currentController = top
             return true
         }
 
-        let controller = LxAppBrowserViewController(
-            tabId: normalizedTabId,
-            ownerAppId: ownerAppId,
-            ownerSessionId: ownerSessionId
-        )
+        // Dismiss current browser before opening a new one
+        if let existing = currentController {
+            existing.closeManagedTabIfNeeded()
+            if existing.navigationController?.topViewController === existing {
+                existing.navigationController?.popViewController(animated: false)
+            }
+        } else if let top = navController.topViewController as? LxAppBrowserViewController {
+            top.closeManagedTabIfNeeded()
+            navController.popViewController(animated: false)
+        }
+
+        let controller = LxAppBrowserViewController(tabId: normalizedTabId)
         navController.pushViewController(controller, animated: true)
         currentController = controller
         os_log("Browser view controller pushed for tab=%{public}@", log: log, type: .info, normalizedTabId)
@@ -65,14 +75,10 @@ public final class LxAppBrowserOverlay: NSObject {
 @MainActor
 private final class LxAppBrowserViewController: UIViewController, UITextFieldDelegate, UIGestureRecognizerDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlayViewController")
-    private static let browserAppId = "app.lingxia.browser"
-    private static let browserTabPathPrefix = "/tabs/"
     private static let attachRetryDelay: TimeInterval = 0.1
     private static let maxAttachRetries = 8
 
     let tabId: String
-    private var ownerAppId: String
-    private var ownerSessionId: UInt64
 
     private let addressPill = UIView()
     private let addressField = UITextField()
@@ -93,10 +99,8 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var bottomBarBottomConstraint: NSLayoutConstraint?
 
-    init(tabId: String, ownerAppId: String, ownerSessionId: UInt64) {
+    init(tabId: String) {
         self.tabId = tabId
-        self.ownerAppId = ownerAppId
-        self.ownerSessionId = ownerSessionId
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .fullScreen
         hidesBottomBarWhenPushed = true
@@ -153,11 +157,6 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         }
     }
 
-    func updateOwner(ownerAppId: String, ownerSessionId: UInt64) {
-        self.ownerAppId = ownerAppId
-        self.ownerSessionId = ownerSessionId
-    }
-
     fileprivate func closeManagedTabIfNeeded() {
         guard !didCloseManagedTab else { return }
         didCloseManagedTab = true
@@ -175,14 +174,7 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
 
         _ = browserTabClose(tabId)
         LxAppBrowserOverlay.browserControllerDidClose(self)
-        os_log(
-            "Closed browser tab=%{public}@ owner=%{public}@/%{public}llu",
-            log: Self.log,
-            type: .info,
-            tabId,
-            ownerAppId,
-            ownerSessionId
-        )
+        os_log("Closed browser tab=%{public}@", log: Self.log, type: .info, tabId)
     }
 
     private func setupUI() {
@@ -348,13 +340,15 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     }
 
     private func findManagedBrowserWebView() -> WKWebView? {
-        guard ownerSessionId > 0 else {
+        let appId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(appId)
+        guard sessionId > 0 else {
             return nil
         }
         return WebViewManager.findWebView(
-            appId: Self.browserAppId,
-            path: Self.browserTabPathPrefix + tabId,
-            sessionId: ownerSessionId
+            appId: appId,
+            path: browserTabPathForId(tabId).toString(),
+            sessionId: sessionId
         )
     }
 
