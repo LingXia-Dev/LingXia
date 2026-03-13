@@ -128,7 +128,7 @@
   color: rgba(60, 60, 67, 0.3);
 }
 
-.todoapp input::input-placeholder {
+.todoapp input::placeholder {
   font-style: normal;
   font-weight: 400;
   color: rgba(60, 60, 67, 0.3);
