@@ -240,7 +240,7 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         addressField.autocapitalizationType = .none
         addressField.autocorrectionType = .no
         addressField.clearButtonMode = .whileEditing
-        addressField.keyboardType = .URL
+        addressField.keyboardType = .webSearch
         addressField.returnKeyType = .go
         addressField.delegate = self
         addressPill.addSubview(addressField)
