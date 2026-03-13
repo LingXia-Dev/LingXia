@@ -579,8 +579,6 @@ fn build_app_json_from_config(
 
     let api_server =
         env_non_empty("LINGXIA_API_SERVER").or_else(|| app.api_server.as_ref().cloned());
-    let api_key = env_non_empty("LINGXIA_API_KEY");
-    let api_secret = env_non_empty("LINGXIA_API_SECRET");
 
     let mut obj = serde_json::Map::new();
     obj.insert(
@@ -598,12 +596,6 @@ fn build_app_json_from_config(
         .filter(|s| !s.is_empty())
     {
         obj.insert("apiServer".to_string(), serde_json::json!(api_server));
-    }
-    if let Some(api_key) = api_key {
-        obj.insert("apiKey".to_string(), serde_json::json!(api_key));
-    }
-    if let Some(api_secret) = api_secret {
-        obj.insert("apiSecret".to_string(), serde_json::json!(api_secret));
     }
 
     obj.insert(
