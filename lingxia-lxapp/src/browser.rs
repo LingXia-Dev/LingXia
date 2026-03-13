@@ -1,11 +1,13 @@
+use crate::appservice::bridge::IncomingMessage;
+use crate::page::Page;
 use crate::{LxApp, LxAppError, publish_app_event};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::runtime::{
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
-    WebViewBuilder, WebViewController, WebViewSession,
+    DownloadRequest, LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
+    WebViewBuilder, WebViewController, WebViewDelegate, WebViewSession,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,12 +15,13 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
-const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https"];
+const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx"];
 const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
 
 // Internal browser tab model:
@@ -326,7 +329,7 @@ fn browser_policy_response(
 /// - `deny`: cancel navigation.
 ///
 /// Security model:
-/// - Only `http/https` stay in webview.
+/// - `http/https/lx` stay in webview.
 /// - Potential external schemes require user gesture + main-frame navigation.
 /// - Non-external internal schemes (`javascript:`, `data:`, etc.) are denied.
 pub(crate) fn handle_browser_navigation_policy(
@@ -508,6 +511,7 @@ struct BrowserState {
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
+static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -565,6 +569,162 @@ fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) 
 }
 
 // ---------------------------------------------------------------------------
+// Browser startup page bridge: delegate + headless page setup
+// ---------------------------------------------------------------------------
+
+/// WebView delegate for browser tab WebViews.
+///
+/// All tab WebViews share a single headless startup Page (and its PageSvc).
+/// This delegate routes postMessage, page-started, and page-finished events
+/// from the currently active tab WebView to that shared startup Page.
+struct BrowserTabDelegate {
+    appid: String,
+    startup_path: String,
+}
+
+impl WebViewDelegate for BrowserTabDelegate {
+    fn on_page_started(&self) {
+        if let Some(browser) = crate::lxapp::try_get(&self.appid) {
+            if let Some(page) = browser.get_page(&self.startup_path) {
+                page.notify_page_started();
+            }
+        }
+    }
+
+    fn on_page_finished(&self) {
+        if let Some(browser) = crate::lxapp::try_get(&self.appid) {
+            if let Some(page) = browser.get_page(&self.startup_path) {
+                page.notify_page_finished();
+            }
+        }
+    }
+
+    fn handle_post_message(&self, msg: String) {
+        match IncomingMessage::from_json_str(&msg) {
+            Ok(incoming) => {
+                if let Some(browser) = crate::lxapp::try_get(&self.appid) {
+                    if let Err(e) = browser.executor.handle_view_message(
+                        browser.clone(),
+                        self.startup_path.clone(),
+                        Arc::new(incoming),
+                    ) {
+                        crate::warn!("[InternalBrowser] Failed to handle bridge message: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                crate::warn!("[InternalBrowser] Invalid postMessage JSON: {}", e);
+            }
+        }
+    }
+
+    fn log(&self, level: LogLevel, message: &str) {
+        let log_level = match level {
+            LogLevel::Error => crate::log::LogLevel::Error,
+            LogLevel::Warn => crate::log::LogLevel::Warn,
+            LogLevel::Info => crate::log::LogLevel::Info,
+            LogLevel::Debug | LogLevel::Verbose => crate::log::LogLevel::Debug,
+        };
+        crate::log::LogBuilder::new(crate::log::LogTag::WebViewConsole, message)
+            .with_level(log_level)
+            .with_path(&self.startup_path)
+            .with_appid(self.appid.clone());
+    }
+}
+
+/// Ensure the browser lxapp has a headless startup Page + a live PageSvc.
+///
+/// Idempotent: if the page already exists in the browser lxapp's page map, returns it directly.
+/// Otherwise creates a headless Page (nonce, no WebView), registers it, starts the AppSvc,
+/// and asynchronously awaits the PageSvc ack before signalling the page as "ready".
+fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError> {
+    let startup_path = browser.config.get_initial_route();
+
+    // Return existing page if already registered (idempotent).
+    if let Some(page) = browser.get_page(&startup_path) {
+        return Ok(page);
+    }
+
+    // Serialize one-time startup page initialization to avoid duplicate CreatePage races.
+    let _startup_guard = BROWSER_STARTUP_PAGE_INIT_MUTEX
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+
+    // Another task may have finished initialization while we were waiting on the lock.
+    if let Some(page) = browser.get_page(&startup_path) {
+        return Ok(page);
+    }
+
+    // Ensure the JS app service worker is running for this browser lxapp.
+    if let Err(e) = browser.executor.create_app_svc(browser.clone_arc()) {
+        crate::warn!("[InternalBrowser] Failed to start app service: {}", e);
+    }
+
+    // Create a headless Page — nonce allocated, no WebView yet.
+    let page = Page::new_headless(
+        BUILTIN_BROWSER_APPID.to_string(),
+        startup_path.clone(),
+        browser,
+    );
+    browser.register_page(page.clone());
+
+    // Request PageSvc creation; wait for the ack and then mark the page ready.
+    let (ack_tx, ack_rx) = oneshot::channel::<()>();
+    browser
+        .executor
+        .create_page_svc_with_ack(browser.clone_arc(), startup_path, ack_tx)?;
+
+    let page_clone = page.clone();
+    if let Err(e) = rong::bg::spawn(async move {
+        let result = ack_rx.await.map_err(|e| e.to_string());
+        page_clone.mark_webview_ready(result);
+    }) {
+        crate::warn!(
+            "[InternalBrowser] Failed to spawn startup page ack task: {}",
+            e
+        );
+        page.mark_webview_ready(Err(e.to_string()));
+    }
+
+    Ok(page)
+}
+
+/// Attach the given tab WebView to the shared startup page and load the startup HTML
+/// (with nonce injected) into it. Waits for the PageSvc to be ready first.
+async fn browser_attach_startup_page(
+    webview: Arc<WebView>,
+    tab_id: &str,
+) -> Result<(), LxAppError> {
+    let browser = ensure_browser_lxapp()?;
+    let startup_path = browser.config.get_initial_route();
+    let startup_page = browser
+        .get_page(&startup_path)
+        .ok_or_else(|| LxAppError::Runtime("browser startup page not found".to_string()))?;
+
+    // Wait until PageSvc signals ready (ack from JS worker).
+    if let Err(e) = startup_page.wait_webview_ready().await {
+        crate::warn!(
+            "[InternalBrowser] Startup PageSvc not ready for tab {}: {}",
+            tab_id,
+            e
+        );
+    }
+
+    // Attach this tab's WebView so bridge responses are delivered here.
+    startup_page.attach_webview(webview.clone());
+
+    // Generate startup HTML with the shared bridge nonce and load it.
+    let nonce = startup_page.bridge_nonce();
+    let html = browser.generate_page_html(&startup_path, nonce.as_deref());
+    let base_url = format!("lx://lxapp/{}/{}", BUILTIN_BROWSER_APPID, startup_path);
+    let html_str = String::from_utf8_lossy(&html);
+    webview
+        .load_data(LoadDataRequest::new(html_str.as_ref(), &base_url))
+        .map_err(|e| LxAppError::WebView(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
 
@@ -581,6 +741,12 @@ fn browser_create_webview(
     let webtag = browser_webtag(path, session_id);
     let tab_id_for_download = tab_id.to_string();
     let browser_owner = ensure_browser_lxapp()?;
+
+    // Ensure the shared startup page (+ PageSvc) exists before creating the tab WebView.
+    // This is idempotent and fast on subsequent calls.
+    ensure_browser_startup_page(&browser_owner)?;
+
+    let startup_path = browser_owner.config.get_initial_route();
     let runtime_for_nav = browser_owner.runtime.clone();
     let owner_appid_for_nav = browser_owner.appid.clone();
     let owner_session_for_nav = browser_owner.session_id();
@@ -589,6 +755,20 @@ fn browser_create_webview(
     let owner_session_for_new_window = browser_owner.session_id();
     let owner_for_download = browser_owner.clone();
     let session = WebViewBuilder::browser(webtag)
+        .delegate(Arc::new(BrowserTabDelegate {
+            appid: BUILTIN_BROWSER_APPID.to_string(),
+            startup_path,
+        }))
+        .on_scheme("lx", move |req| async move {
+            let Some(browser) = crate::lxapp::try_get(BUILTIN_BROWSER_APPID) else {
+                return None.into();
+            };
+            let startup_path = browser.config.get_initial_route();
+            let Some(page) = browser.get_page(&startup_path) else {
+                return None.into();
+            };
+            browser.lingxia_handler(&page, req).into()
+        })
         .on_navigation(move |url| {
             // Android callback currently only provides URL string, so user-gesture/main-frame
             // metadata is unavailable here. Keep web links in-webview and dispatch custom
@@ -618,7 +798,7 @@ fn browser_create_webview(
                 owner_appid: owner_appid_for_new_window.clone(),
                 owner_session_id: owner_session_for_new_window,
                 url: normalized,
-                target: OpenUrlTarget::SelfTarget,
+                target: OpenUrlTarget::NewBrowserTab,
             });
             NewWindowPolicy::Cancel
         })
@@ -680,6 +860,7 @@ async fn browser_on_webview_ready(
         }
         TabCreateState::Active { pending_url } => {
             if let Some(url) = pending_url {
+                // Direct URL load — no bridge handshake needed, just navigate.
                 if let Err(e) = webview.load_url(&url) {
                     crate::warn!(
                         "[InternalBrowser] Failed to load URL for tab {}: {}",
@@ -688,13 +869,8 @@ async fn browser_on_webview_ready(
                     );
                 }
             } else {
-                let result = generate_browser_startup_html().and_then(|(html, base_url)| {
-                    let html_str = String::from_utf8_lossy(&html);
-                    webview
-                        .load_data(LoadDataRequest::new(html_str.as_ref(), &base_url))
-                        .map_err(|e| LxAppError::WebView(e.to_string()))
-                });
-                if let Err(e) = result {
+                // Startup page: attach WebView to shared startup Page, then load with nonce.
+                if let Err(e) = browser_attach_startup_page(webview.clone(), &tab_id).await {
                     crate::warn!(
                         "[InternalBrowser] Failed to load startup page for tab {}: {}",
                         tab_id,
@@ -1088,7 +1264,23 @@ pub fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         state.tabs.remove(&normalized)
     };
     if let Some(tab) = removed {
-        browser_destroy_webview(&browser_tab_path_for_id(&normalized), tab.session_id);
+        let tab_path = browser_tab_path_for_id(&normalized);
+        // Detach only when this tab currently backs the startup page bridge.
+        // Closing a background tab must not break the active tab bridge.
+        if let Ok(browser) = ensure_browser_lxapp() {
+            let startup_path = browser.config.get_initial_route();
+            if let Some(page) = browser.get_page(&startup_path) {
+                let startup_webview = page.webview();
+                let closing_tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+                if let (Some(startup_webview), Some(closing_tab_webview)) =
+                    (startup_webview, closing_tab_webview)
+                    && Arc::ptr_eq(&startup_webview, &closing_tab_webview)
+                {
+                    page.detach_webview();
+                }
+            }
+        }
+        browser_destroy_webview(&tab_path, tab.session_id);
     }
     Ok(())
 }

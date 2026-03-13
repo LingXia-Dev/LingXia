@@ -964,6 +964,18 @@ impl LxApp {
             .cloned()
     }
 
+    /// Register an externally created page (e.g. headless browser startup page).
+    /// Does not trigger eviction or route resolution; the caller owns the lifecycle.
+    pub(crate) fn register_page(&self, page: Page) {
+        let state = self.state.lock().unwrap();
+        state
+            .pages
+            .lock()
+            .unwrap()
+            .entry(page.path())
+            .or_insert(page);
+    }
+
     /// Check if pull-to-refresh is enabled for a specific page
     pub fn is_pull_down_refresh_enabled(&self, path: &str) -> bool {
         self.get_page(path)

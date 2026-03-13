@@ -285,12 +285,33 @@ impl Page {
         page
     }
 
+    /// Create a headless page (nonce allocated, no WebView created).
+    ///
+    /// Used for browser tab startup page, where a single logical page is shared
+    /// across all tab WebViews (one tab is attach_webview'd at a time).
+    pub(crate) fn new_headless(appid: String, path: String, lxapp: &LxApp) -> Self {
+        let page_state = Self::build_page_state(lxapp, &path);
+        let bridge_nonce = Self::generate_bridge_nonce();
+        let (ready_tx, ready_rx) = watch::channel(None);
+        let inner = Arc::new(PageInner {
+            appid,
+            path,
+            last_active_time: Arc::new(Mutex::new(Instant::now())),
+            state: Arc::new(Mutex::new(page_state)),
+            webview: Arc::new(Mutex::new(None)),
+            bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
+            webview_ready_tx: ready_tx,
+            webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+        });
+        Self { inner }
+    }
+
     pub(crate) fn bridge_nonce(&self) -> Option<String> {
         self.inner.bridge_nonce.lock().ok().and_then(|v| v.clone())
     }
 
     /// Attach WebView to this page (called when WebView is ready)
-    fn attach_webview(&self, webview: Arc<WebView>) {
+    pub(crate) fn attach_webview(&self, webview: Arc<WebView>) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             *webview_guard = Some(webview);
         }
@@ -464,9 +485,22 @@ impl Page {
         }
     }
 
-    fn mark_webview_ready(&self, result: Result<(), String>) {
+    pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
         // Ignore errors; receiver will handle missing updates.
         let _ = self.inner.webview_ready_tx.send(Some(result));
+    }
+
+    /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
+    /// Used by BrowserTabDelegate to forward events to the shared startup page.
+    pub(crate) fn notify_page_started(&self) {
+        self.set_render_status(PageRenderStatus::Started);
+    }
+
+    /// Notify that the page's WebView finished loading (mirrors WebViewDelegate::on_page_finished).
+    /// Used by BrowserTabDelegate to forward events to the shared startup page.
+    pub(crate) fn notify_page_finished(&self) {
+        self.set_render_status(PageRenderStatus::Finished);
+        self.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnReady);
     }
 
     pub async fn wait_webview_ready(&self) -> Result<(), String> {
