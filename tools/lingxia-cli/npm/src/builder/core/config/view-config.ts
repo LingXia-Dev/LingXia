@@ -7,7 +7,6 @@ function createDefaultConfig(): Record<"react" | "vue", ViewBuildConfig> {
     entryFileNames: "pages/[name]/[name].js",
     chunkFileNames: `${assetDir}/vendor-[hash].js`,
     assetFileNames: `${assetDir}/[name].[ext]`,
-    manualChunks: null,
   });
 
   return {
@@ -18,7 +17,6 @@ function createDefaultConfig(): Record<"react" | "vue", ViewBuildConfig> {
       assetDir: DEFAULT_ASSET_DIR,
       cssCodeSplitMulti: true,
       target: "es2020",
-      esbuild: { jsx: "automatic" },
       minifyStrategy: "esbuild",
     },
     vue: {

@@ -213,6 +213,7 @@ export class PageProcessor {
       plugins,
       css,
       resolve: {
+        dedupe: ["react", "react-dom", "vue"],
         alias: Object.entries(config.alias ?? {}).map(
           ([find, replacement]) => {
             // Bare "@" alias maps to "@/" prefix so it doesn't collide
@@ -233,7 +234,7 @@ export class PageProcessor {
           },
         ),
       },
-      esbuild: config.esbuild,
+      esbuild: config.esbuild && Object.keys(config.esbuild).length > 0 ? config.esbuild : undefined,
       build: {
         outDir: path.join(buildDir, "dist"),
         emptyOutDir: true,
