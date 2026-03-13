@@ -202,6 +202,12 @@ extension macOSLxApp {
         return tabWindowController?.getViewController(for: appId)
     }
 
+    /// The content panel view that excludes the sidebar. Use as root container for popups.
+    @MainActor
+    internal static var contentPanelView: NSView? {
+        tabWindowController?.contentPanelView
+    }
+
     @MainActor
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.lowercased()

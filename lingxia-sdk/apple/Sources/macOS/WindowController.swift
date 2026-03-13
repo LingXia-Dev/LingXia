@@ -57,6 +57,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
+    /// The content panel view (excludes sidebar). Use this as the root container for popups.
+    private(set) var contentPanelView: NSView?
+
     // Browser tab state — source of truth lives in Rust; Swift only keeps UI cache.
     private var activeBrowserTabId: UUID?
     private var browserTabIds: [UUID] = []
@@ -216,6 +219,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         right.layer?.cornerRadius = Layout.contentPanelCornerRadius
         right.layer?.masksToBounds = true
         shadowWrapper.addSubview(right)
+        contentPanelView = right
 
         // Create navigation toolbar
         let toolbar = MacNavigationToolbar()

@@ -387,10 +387,9 @@ public final class LxAppPopup {
         }
 
         let rootContainer: NSView
-        if let attachedContainer = webView.window?.contentView {
-            rootContainer = attachedContainer
-        } else if let fallbackWindow = NSApp.keyWindow ?? NSApp.mainWindow,
-                  let fallbackContainer = fallbackWindow.contentView {
+        if let panelView = macOSLxApp.contentPanelView {
+            rootContainer = panelView
+        } else if let fallbackContainer = webView.window?.contentView {
             rootContainer = fallbackContainer
         } else {
             os_log("showPopup failed: no usable window container", log: log, type: .error)
