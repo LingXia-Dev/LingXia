@@ -1,6 +1,7 @@
 package com.lingxia.lxapp
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -188,6 +189,17 @@ class LxApp private constructor(private val context: Context) {
                 Log.w(TAG, "launchWithUrl target=self: no current activity")
                 return
             }
+            val activity = currentActivity
+            if (activity != null) {
+                activity.runOnUiThread {
+                    val opened = launchExternalUrl(activity, uri, 0)
+                    if (!opened) {
+                        Log.w(TAG, "No external handler for URL: $uri")
+                    }
+                }
+                return
+            }
+
             val opened = launchExternalUrl(getInstance().context, uri, 0)
             if (!opened) {
                 Log.w(TAG, "No external handler for URL: $uri")
@@ -205,25 +217,27 @@ class LxApp private constructor(private val context: Context) {
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         component = null
                     }
-                    if (parsedIntent.resolveActivity(context.packageManager) != null) {
+                    try {
                         context.startActivity(parsedIntent)
-                        return true
+                        true
+                    } catch (_: ActivityNotFoundException) {
+                        val fallbackUrl = parsedIntent.getStringExtra("browser_fallback_url")
+                        if (!fallbackUrl.isNullOrBlank()) {
+                            return launchExternalUrl(context, fallbackUrl, depth + 1)
+                        }
+                        false
                     }
-                    val fallbackUrl = parsedIntent.getStringExtra("browser_fallback_url")
-                    if (!fallbackUrl.isNullOrBlank()) {
-                        return launchExternalUrl(context, fallbackUrl, depth + 1)
-                    }
-                    false
                 } else {
                     val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri)).apply {
                         addCategory(Intent.CATEGORY_BROWSABLE)
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     }
-                    if (intent.resolveActivity(context.packageManager) == null) {
+                    try {
+                        context.startActivity(intent)
+                        true
+                    } catch (_: ActivityNotFoundException) {
                         return false
                     }
-                    context.startActivity(intent)
-                    true
                 }
             } catch (e: URISyntaxException) {
                 Log.e(TAG, "Invalid intent URI: $uri", e)
