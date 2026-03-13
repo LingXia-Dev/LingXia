@@ -512,7 +512,7 @@ async function packageDist(
   const defaultName = isPluginMode ? "lingxia-plugin" : "lingxia-app";
   const baseName = sanitizeName(pkgInfo.name, defaultName);
   const version = sanitizeVersion(pkgInfo.version);
-  const archiveName = `${baseName}-${version}.tar.zstd`;
+  const archiveName = `${baseName}-${version}.tar.zst`;
   const archivePath = path.join(projectPath, archiveName);
 
   if (fs.existsSync(archivePath)) {

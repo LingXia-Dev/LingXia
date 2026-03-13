@@ -577,8 +577,7 @@ fn build_app_json_from_config(
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
     let home_lxapp_version = lxapp_assets.home_lxapp_version.as_str();
 
-    let api_server =
-        env_non_empty("LINGXIA_API_SERVER").or_else(|| app.api_server.as_ref().cloned());
+    let api_server = app.api_server.as_deref();
 
     let mut obj = serde_json::Map::new();
     obj.insert(
@@ -590,12 +589,11 @@ fn build_app_json_from_config(
         serde_json::json!(app.product_version),
     );
 
-    if let Some(api_server) = api_server
-        .as_ref()
-        .map(String::as_str)
-        .filter(|s| !s.is_empty())
-    {
+    if let Some(api_server) = api_server.filter(|s| !s.is_empty()) {
         obj.insert("apiServer".to_string(), serde_json::json!(api_server));
+    }
+    if let Some(client_id) = app.client_id.as_deref().filter(|s| !s.is_empty()) {
+        obj.insert("clientId".to_string(), serde_json::json!(client_id));
     }
 
     obj.insert(
@@ -776,11 +774,4 @@ fn hex_lower(bytes: &[u8]) -> String {
         let _ = write!(out, "{:02x}", b);
     }
     out
-}
-
-fn env_non_empty(env_name: &str) -> Option<String> {
-    std::env::var(env_name)
-        .ok()
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
 }

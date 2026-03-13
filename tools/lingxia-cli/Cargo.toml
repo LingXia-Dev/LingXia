@@ -8,7 +8,7 @@ name = "lingxia"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 anyhow = "1.0"
 
 dialoguer = { version = "0.12", features = ["completion"] }

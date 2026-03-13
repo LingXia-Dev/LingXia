@@ -7,4 +7,5 @@ pub mod ds;
 pub mod icon;
 pub mod install;
 pub mod new;
+pub mod publish;
 pub mod rust;

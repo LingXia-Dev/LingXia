@@ -219,6 +219,29 @@ enum Commands {
         #[command(subcommand)]
         platform: commands::ds::DsPlatform,
     },
+
+    /// Publish a package to the API server
+    Publish {
+        /// Bearer token for authentication (or set LINGXIA_AUTH_TOKEN env var)
+        #[arg(long, env = "LINGXIA_AUTH_TOKEN")]
+        token: String,
+
+        /// API server URL (overrides app.apiServer in lingxia.config.json)
+        #[arg(long)]
+        api_server: Option<String>,
+
+        /// Target type: lxapp, lxplugin, app (auto-detected from project files if not specified)
+        #[arg(long, value_parser = ["lxapp", "lxplugin", "app"])]
+        target: Option<String>,
+
+        /// Path to the package archive (auto-detected if not specified)
+        #[arg(long)]
+        package: Option<String>,
+
+        /// Release channel (lxapp only): release, preview, developer
+        #[arg(long, default_value = "developer", value_parser = ["release", "preview", "developer"])]
+        release_type: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -445,6 +468,21 @@ fn main() -> Result<()> {
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
+        }
+        Commands::Publish {
+            token,
+            api_server,
+            target,
+            package,
+            release_type,
+        } => {
+            commands::publish::execute(commands::publish::PublishOptions {
+                token,
+                api_server,
+                target,
+                package,
+                release_type,
+            })?;
         }
     }
 
