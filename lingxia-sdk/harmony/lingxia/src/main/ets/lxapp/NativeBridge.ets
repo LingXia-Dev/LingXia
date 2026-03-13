@@ -139,14 +139,17 @@ class NativeBridge {
       ownerAppId?: string,
       ownerSessionIdRaw?: Object
     ) => {
-      if (target !== 'self') {
+      // Mobile currently uses a single in-app browser experience:
+      // treat "new_browser_tab" the same as "self" for now.
+      const inAppBrowserTarget = target === 'self' || target === 'new_browser_tab';
+      if (!inAppBrowserTarget) {
         LxApp.launchWithUrl(url);
         return true;
       }
 
       const normalizedUrl = String(url ?? '').trim();
       if (!normalizedUrl) {
-        hilog.error(DOMAIN, TAG, 'launchWithUrl target=self failed: empty url');
+        hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: empty url');
         return false;
       }
 
@@ -168,7 +171,7 @@ class NativeBridge {
         hilog.error(
           DOMAIN,
           TAG,
-          `launchWithUrl target=self failed: invalid owner appId=${resolvedOwnerAppId} session=${resolvedOwnerSessionId}`
+          `launchWithUrl target=in_app failed: invalid owner appId=${resolvedOwnerAppId} session=${resolvedOwnerSessionId}`
         );
         return false;
       }
@@ -179,7 +182,7 @@ class NativeBridge {
         normalizedUrl
       );
       if (!tabId || tabId.trim().length === 0) {
-        hilog.error(DOMAIN, TAG, 'launchWithUrl target=self failed: openBrowserTab returned empty tabId');
+        hilog.error(DOMAIN, TAG, 'launchWithUrl target=in_app failed: openBrowserTab returned empty tabId');
         return false;
       }
 

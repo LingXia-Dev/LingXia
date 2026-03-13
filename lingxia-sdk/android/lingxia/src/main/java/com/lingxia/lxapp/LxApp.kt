@@ -145,7 +145,10 @@ class LxApp private constructor(private val context: Context) {
             ownerSessionId: Long = 0L
         ) {
             Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
-            if (target == "self") {
+            // Mobile currently uses a single in-app browser experience:
+            // treat "new_browser_tab" the same as "self" for now.
+            val inAppBrowserTarget = target == "self" || target == "new_browser_tab"
+            if (inAppBrowserTarget) {
                 val activity = currentActivity
                 if (activity != null) {
                     activity.runOnUiThread {
@@ -164,7 +167,7 @@ class LxApp private constructor(private val context: Context) {
                         if (resolvedOwnerAppId.isBlank() || resolvedOwnerSessionId <= 0L) {
                             Log.w(
                                 TAG,
-                                "launchWithUrl target=self: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                                "launchWithUrl target=in_app: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
                             )
                             return@runOnUiThread
                         }
@@ -177,7 +180,7 @@ class LxApp private constructor(private val context: Context) {
                         if (tabId.isNullOrBlank()) {
                             Log.w(
                                 TAG,
-                                "launchWithUrl target=self: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                                "launchWithUrl target=in_app: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
                             )
                             return@runOnUiThread
                         }
@@ -186,7 +189,7 @@ class LxApp private constructor(private val context: Context) {
                     }
                     return
                 }
-                Log.w(TAG, "launchWithUrl target=self: no current activity")
+                Log.w(TAG, "launchWithUrl target=in_app: no current activity")
                 return
             }
             val activity = currentActivity

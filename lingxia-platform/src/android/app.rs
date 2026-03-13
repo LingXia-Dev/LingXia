@@ -527,10 +527,10 @@ impl AppRuntime for Platform {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        let target_str = if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
-            "self"
-        } else {
-            "external"
+        let target_str = match req.target {
+            crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
+            crate::traits::app_runtime::OpenUrlTarget::NewBrowserTab => "new_browser_tab",
+            _ => "external",
         };
 
         with_env(|env| -> Result<(), PlatformError> {

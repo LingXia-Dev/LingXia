@@ -26,12 +26,15 @@ pub enum AnimationType {
 pub enum OpenUrlTarget {
     External = 0,
     SelfTarget = 1,
+    /// Open a new browser tab unconditionally (skips "navigate current tab" heuristic).
+    NewBrowserTab = 2,
 }
 
 impl OpenUrlTarget {
     pub fn parse(raw: Option<&str>) -> Self {
         match raw.map(|v| v.trim().to_ascii_lowercase()) {
             Some(v) if v == "self" => Self::SelfTarget,
+            Some(v) if v == "new_browser_tab" => Self::NewBrowserTab,
             Some(v) if v == "external" => Self::External,
             Some(v) => {
                 log::warn!("Invalid openURL target='{}', fallback to external", v);
@@ -48,6 +51,27 @@ pub struct OpenUrlRequest {
     pub owner_session_id: u64,
     pub url: String,
     pub target: OpenUrlTarget,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OpenUrlTarget;
+
+    #[test]
+    fn parse_supports_new_browser_tab() {
+        assert_eq!(
+            OpenUrlTarget::parse(Some("new_browser_tab")),
+            OpenUrlTarget::NewBrowserTab
+        );
+    }
+
+    #[test]
+    fn parse_unknown_falls_back_to_external() {
+        assert_eq!(
+            OpenUrlTarget::parse(Some("foobar")),
+            OpenUrlTarget::External
+        );
+    }
 }
 
 impl From<i32> for AnimationType {

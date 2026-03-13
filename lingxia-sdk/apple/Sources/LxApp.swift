@@ -555,8 +555,9 @@ extension LxApp {
         let ownerAppId = owner_appid.toString()
         let urlString = url.toString()
         let selfTarget: Int32 = 1
+        let newBrowserTab: Int32 = 2
 
-        guard target == selfTarget else {
+        guard target == selfTarget || target == newBrowserTab else {
             return openExternalUrlString(urlString)
         }
 
@@ -564,7 +565,9 @@ extension LxApp {
             return false
         }
         #if os(macOS)
-        if ownerAppId == getBuiltinBrowserAppId().toString() {
+        // SelfTarget tries to navigate the current active tab first (in-place navigation).
+        // NewBrowserTab always opens a new tab — skip the "navigate current" heuristic.
+        if target == selfTarget && ownerAppId == getBuiltinBrowserAppId().toString() {
             let scheme = URL(string: urlString)?.scheme?.lowercased()
             if let scheme, scheme != "http", scheme != "https" {
                 return openExternalUrlString(urlString)

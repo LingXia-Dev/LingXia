@@ -578,10 +578,10 @@ impl AppRuntime for Platform {
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
     ) -> Result<(), PlatformError> {
-        let target_str = if req.target == crate::traits::app_runtime::OpenUrlTarget::SelfTarget {
-            "self"
-        } else {
-            "external"
+        let target_str = match req.target {
+            crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
+            crate::traits::app_runtime::OpenUrlTarget::NewBrowserTab => "new_browser_tab",
+            _ => "external",
         };
         let owner_session = req.owner_session_id.to_string();
         lingxia_webview::platform::harmony::tsfn::call_arkts(
