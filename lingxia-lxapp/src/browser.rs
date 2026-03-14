@@ -22,7 +22,8 @@ use uuid::Uuid;
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 const DEFAULT_BROWSER_PREFERRED_SCHEME: &str = "https";
-const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx"];
+const LINGXIA_SCHEME: &str = "lingxia";
+const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia"];
 const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
 
 // Internal browser tab model:
@@ -308,6 +309,27 @@ pub(crate) fn extract_url_scheme(raw: &str) -> Option<String> {
     Some(scheme.to_ascii_lowercase())
 }
 
+/// Whether a `lingxia://` URL maps to the startup/newtab page or another internal browser page.
+///
+/// - `lingxia://newtab` (or bare `lingxia://`) → `StartupPage`
+/// - `lingxia://downloads`, `lingxia://settings`, … → `InternalPage`
+///
+/// Returns `None` if `url` is not a `lingxia://` URL.
+fn is_lingxia_startup_url(url: &str) -> Option<bool> {
+    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+        return None;
+    }
+    let host = url
+        .splitn(2, "://")
+        .nth(1)
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    Some(host.is_empty() || host == "newtab")
+}
+
 fn scheme_in_list(scheme: &str, candidates: &[&str]) -> bool {
     candidates
         .iter()
@@ -401,6 +423,34 @@ pub fn handle_browser_address_input(
         normalize_browser_preferred_scheme(request.context.preferred_scheme.as_deref());
     let trimmed = request.raw_input.trim();
 
+    // Handle `lingxia://` browser-internal URLs (e.g. lingxia://newtab, lingxia://downloads).
+    if extract_url_scheme(trimmed).as_deref() == Some(LINGXIA_SCHEME) {
+        let url = trimmed.to_string();
+        let action = match request.trigger {
+            BrowserAddressInputTrigger::Submit => BrowserAddressAction::Navigate,
+            BrowserAddressInputTrigger::Edit => BrowserAddressAction::Suggest,
+        };
+        let state = BrowserAddressState {
+            raw_input: request.raw_input,
+            normalized_input: url.clone(),
+            display_text: url.clone(),
+            value_kind: BrowserAddressValueKind::Url,
+            canonical_url: Some(url.clone()),
+            inferred_scheme: None,
+        };
+        let navigation = BrowserAddressNavigation {
+            url,
+            target: BrowserNavigationTarget::CurrentTab,
+        };
+        return BrowserAddressInputResponse {
+            action,
+            state,
+            navigation: matches!(action, BrowserAddressAction::Navigate).then_some(navigation),
+            suggestions: None,
+            error: None,
+        };
+    }
+
     if let Some(resolved) = resolve_browser_http_url(trimmed, &preferred_scheme) {
         let BrowserUrlResolution {
             url: resolved_url,
@@ -490,6 +540,29 @@ pub fn handle_browser_address_input(
 pub fn handle_browser_address_input_json(request_json: &str) -> Option<String> {
     let request: BrowserAddressInputRequest = serde_json::from_str(request_json).ok()?;
     serde_json::to_string(&handle_browser_address_input(request)).ok()
+}
+
+/// Return `true` if the URL should be hidden from the browser address bar.
+///
+/// Centralises all platform address-bar filtering in one place.
+/// Platforms call this and, if `true`, show an empty address field instead.
+pub fn browser_url_is_hidden(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let lowered = trimmed.to_ascii_lowercase();
+    // Internal transport scheme and non-displayable URL types.
+    if lowered.starts_with("lx:")
+        || lowered.starts_with("data:")
+        || lowered.starts_with("javascript:")
+        || lowered.starts_with("blob:")
+        || lowered == "about:blank"
+    {
+        return true;
+    }
+    // Browser-managed pages (newtab). Other lingxia:// pages are shown as-is.
+    matches!(is_lingxia_startup_url(trimmed), Some(true))
 }
 
 #[derive(Clone)]
@@ -691,11 +764,15 @@ fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError>
     Ok(page)
 }
 
-/// Attach the given tab WebView to the shared startup page and load the startup HTML
-/// (with nonce injected) into it. Waits for the PageSvc to be ready first.
+/// Attach the given tab WebView to the shared startup page and load an lx:// URL into it.
+/// Waits for the PageSvc to be ready first.
+///
+/// `page_url`: the `lx://` URL to load. `None` loads the default startup/newtab page;
+/// `Some(url)` loads a specific internal browser page (e.g. `lx://lxapp/.../downloads`).
 async fn browser_attach_startup_page(
     webview: Arc<WebView>,
     tab_id: &str,
+    page_url: Option<&str>,
 ) -> Result<(), LxAppError> {
     let browser = ensure_browser_lxapp()?;
     let startup_path = browser.config.get_initial_route();
@@ -715,10 +792,12 @@ async fn browser_attach_startup_page(
     // Attach this tab's WebView so bridge responses are delivered here.
     startup_page.attach_webview(webview.clone());
 
-    // Load startup page through the lx:// route so it participates in normal history.
-    let base_url = format!("lx://lxapp/{}/{}", BUILTIN_BROWSER_APPID, startup_path);
+    // Load the requested URL (or `lingxia://newtab` for the default startup page).
+    let url_to_load = page_url
+        .map(|u| u.to_string())
+        .unwrap_or_else(|| format!("{}://newtab", LINGXIA_SCHEME));
     webview
-        .load_url(&base_url)
+        .load_url(&url_to_load)
         .map_err(|e| LxAppError::WebView(e.to_string()))
 }
 
@@ -753,7 +832,10 @@ fn browser_create_webview(
     let startup_page_for_lx = browser_owner.get_page(&startup_path).ok_or_else(|| {
         LxAppError::Runtime("browser startup page not found for lx scheme handler".to_string())
     })?;
+    let startup_page_for_lingxia = startup_page_for_lx.clone();
     let owner_for_lx = browser_owner.clone();
+    let owner_for_lingxia = browser_owner.clone();
+    let startup_path_for_lingxia = startup_path.clone();
     let runtime_for_nav = browser_owner.runtime.clone();
     let owner_appid_for_nav = browser_owner.appid.clone();
     let owner_session_for_nav = browser_owner.session_id();
@@ -794,9 +876,45 @@ fn browser_create_webview(
                 owner.lingxia_handler(&page, req).into()
             }
         })
+        .on_scheme(LINGXIA_SCHEME, move |req| {
+            let owner = owner_for_lingxia.clone();
+            let page = startup_page_for_lingxia.clone();
+            let startup_path = startup_path_for_lingxia.clone();
+            async move {
+                // Map the `lingxia://` host to the browser page path.
+                // `lingxia://newtab` → startup path; `lingxia://X` → `/X`.
+                let host = req.uri().host().unwrap_or("").to_ascii_lowercase();
+                let page_path = if host.is_empty() || host == "newtab" {
+                    startup_path.clone()
+                } else {
+                    format!("/{host}")
+                };
+                // Serve page HTML (with bridge nonce) for the document root.
+                let req_path = req.uri().path();
+                if req_path == "/" || req_path.is_empty() {
+                    let nonce = page.bridge_nonce();
+                    let html = owner.generate_page_html(&page_path, nonce.as_deref());
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "text/html; charset=utf-8")
+                        .header("Access-Control-Allow-Origin", "null")
+                        .body(())
+                        .unwrap_or_else(|_| {
+                            Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(())
+                                .expect("Failed to build fallback lingxia response")
+                        });
+                    let (parts, _) = response.into_parts();
+                    return Some((parts, html).into()).into();
+                }
+                // Sub-paths (assets, API) fall through to the standard handler.
+                owner.lingxia_handler(&page, req).into()
+            }
+        })
         .on_navigation(move |url| {
-            // Keep internal lx:// startup page assets inside this WebView.
-            if matches!(extract_url_scheme(url).as_deref(), Some("lx")) {
+            // Keep internal lx:// and lingxia:// browser pages inside this WebView.
+            if matches!(extract_url_scheme(url).as_deref(), Some("lx" | "lingxia")) {
                 return NavigationPolicy::Allow;
             }
             // Android callback currently only provides URL string, so user-gesture/main-frame
@@ -889,17 +1007,34 @@ async fn browser_on_webview_ready(
         }
         TabCreateState::Active { pending_url } => {
             if let Some(url) = pending_url {
-                // Direct URL load — no bridge handshake needed, just navigate.
-                if let Err(e) = webview.load_url(&url) {
-                    crate::warn!(
-                        "[InternalBrowser] Failed to load URL for tab {}: {}",
-                        tab_id,
-                        e
-                    );
+                // Internal browser pages (`lingxia://X`) need the startup bridge attached
+                // so they can communicate with the JS app service worker.
+                let is_browser_internal =
+                    extract_url_scheme(&url).as_deref() == Some(LINGXIA_SCHEME);
+                if is_browser_internal {
+                    if let Err(e) =
+                        browser_attach_startup_page(webview.clone(), &tab_id, Some(&url)).await
+                    {
+                        crate::warn!(
+                            "[InternalBrowser] Failed to attach startup page for internal tab {}: {}",
+                            tab_id,
+                            e
+                        );
+                        let _ = webview.load_url("about:blank");
+                    }
+                } else {
+                    // Direct URL load — no bridge handshake needed, just navigate.
+                    if let Err(e) = webview.load_url(&url) {
+                        crate::warn!(
+                            "[InternalBrowser] Failed to load URL for tab {}: {}",
+                            tab_id,
+                            e
+                        );
+                    }
                 }
             } else {
                 // Startup page: attach WebView to shared startup Page, then load with nonce.
-                if let Err(e) = browser_attach_startup_page(webview.clone(), &tab_id).await {
+                if let Err(e) = browser_attach_startup_page(webview.clone(), &tab_id, None).await {
                     crate::warn!(
                         "[InternalBrowser] Failed to load startup page for tab {}: {}",
                         tab_id,
@@ -1194,7 +1329,16 @@ pub fn open_internal_browser_tab(url: &str, tab_id: Option<&str>) -> Result<Stri
     let browser = ensure_browser_lxapp()?;
     let browser_session_id = browser.session_id();
 
-    let target_url = url.trim();
+    let raw_url = url.trim();
+
+    // `lingxia://newtab` (and bare `lingxia://`) → startup page (no URL).
+    // Other `lingxia://` pages stay as-is and are served by the lingxia:// scheme handler.
+    let effective_url: String = match is_lingxia_startup_url(raw_url) {
+        Some(true) => String::new(),
+        _ => raw_url.to_string(),
+    };
+    let target_url = effective_url.as_str();
+
     let normalized_target_url = normalize_browser_target_url(target_url);
     let has_target_url = !normalized_target_url.is_empty();
     let tab_id = tab_id
@@ -1479,5 +1623,56 @@ mod tests {
 
         assert_eq!(response.decision, BrowserNavigationPolicyDecision::Deny);
         assert_eq!(response.reason.as_deref(), Some("non_main_frame_external"));
+    }
+
+    #[test]
+    fn lingxia_newtab_is_startup_url() {
+        assert_eq!(is_lingxia_startup_url("lingxia://newtab"), Some(true));
+        assert_eq!(is_lingxia_startup_url("lingxia://"), Some(true));
+        assert_eq!(is_lingxia_startup_url("lingxia://downloads"), Some(false));
+        assert_eq!(is_lingxia_startup_url("https://example.com"), None);
+    }
+
+    #[test]
+    fn address_input_submit_lingxia_newtab_navigates() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "lingxia://newtab".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(response.state.value_kind, BrowserAddressValueKind::Url);
+        assert_eq!(
+            response.navigation.as_ref().map(|n| n.url.as_str()),
+            Some("lingxia://newtab")
+        );
+    }
+
+    #[test]
+    fn address_input_submit_lingxia_downloads_navigates() {
+        let response = handle_browser_address_input(BrowserAddressInputRequest {
+            raw_input: "lingxia://downloads".to_string(),
+            trigger: BrowserAddressInputTrigger::Submit,
+            context: BrowserAddressInputContext::default(),
+        });
+        assert_eq!(response.action, BrowserAddressAction::Navigate);
+        assert_eq!(
+            response.navigation.as_ref().map(|n| n.url.as_str()),
+            Some("lingxia://downloads")
+        );
+    }
+
+    #[test]
+    fn browser_nav_policy_allows_lingxia_in_webview() {
+        // `lingxia://` is served natively by the browser scheme handler — stay in-webview.
+        let response = handle_browser_navigation_policy(BrowserNavigationPolicyRequest {
+            raw_url: "lingxia://settings".to_string(),
+            has_user_gesture: false,
+            is_main_frame: true,
+        });
+        assert_eq!(
+            response.decision,
+            BrowserNavigationPolicyDecision::InWebview
+        );
     }
 }
