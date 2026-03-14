@@ -64,6 +64,8 @@ public class SidebarView: NSView {
         static let dotDiameter: CGFloat = 12
         static let dotSpacing: CGFloat = 16
         static let dotTopOffset: CGFloat = 50
+        /// Y offset from header top for button placement, aligns center with traffic lights (~14pt from top)
+        static let buttonTopOffset: CGFloat = 0  // trafficLightCenterY(14) - toggleButtonSize(28)/2
     }
 
     private let headerView = NSView()
@@ -224,19 +226,20 @@ public class SidebarView: NSView {
             headerView.heightAnchor.constraint(equalToConstant: Layout.trafficLightsHeight),
 
             // Settings and download buttons: right-aligned in header, next to toggle button
+            // Use topAnchor offset to align button centers with traffic lights
             downloadButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -4),
-            downloadButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            downloadButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             downloadButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             downloadButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
             settingsButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -4),
-            settingsButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            settingsButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             settingsButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             settingsButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
             // Toggle button: right-aligned in header
             toggleButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
-            toggleButton.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
+            toggleButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             toggleButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             toggleButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 

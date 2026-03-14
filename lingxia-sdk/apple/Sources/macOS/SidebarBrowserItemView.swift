@@ -2,7 +2,7 @@
 import AppKit
 
 /// A sidebar entry for a browser tab (28pt high, matching SidebarItemView height).
-/// Displays globe icon + page title + close button (visible on hover).
+/// Displays globe icon + page title + close button (selected tab only).
 @MainActor
 class SidebarBrowserItemView: NSView {
 
@@ -24,7 +24,6 @@ class SidebarBrowserItemView: NSView {
     private var trackingArea: NSTrackingArea?
     private var closeTrackingArea: NSTrackingArea?
     private(set) var isHovered = false
-    private var isCloseHovered = false
     var isSelected = false { didSet { updateAppearance() } }
 
     let browserId: UUID
@@ -66,7 +65,7 @@ class SidebarBrowserItemView: NSView {
         titleLabel.stringValue = "New Tab"
         addSubview(titleLabel)
 
-        // Close button (hidden by default, shown on hover)
+        // Close button (only visible for selected tab)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close")
         closeButton.isBordered = false
@@ -120,20 +119,25 @@ class SidebarBrowserItemView: NSView {
     }
 
     private func updateAppearance() {
+        closeButton.isHidden = !isSelected
+
         // Only tint the icon when it's the globe SF symbol (contentTintColor nil = favicon, skip tinting)
         let isFavicon = iconView.contentTintColor == nil
         if isSelected {
             selectionBackground.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.15).cgColor
             titleLabel.textColor = NSColor.controlAccentColor
             if !isFavicon { iconView.contentTintColor = NSColor.controlAccentColor }
+            closeButton.contentTintColor = NSColor.controlAccentColor
         } else if isHovered {
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = NSColor.labelColor
             if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
+            closeButton.contentTintColor = NSColor.labelColor
         } else {
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = NSColor.labelColor
             if !isFavicon { iconView.contentTintColor = NSColor.secondaryLabelColor }
+            closeButton.contentTintColor = NSColor.secondaryLabelColor
         }
     }
 
@@ -192,10 +196,8 @@ class SidebarBrowserItemView: NSView {
         let zone = event.trackingArea?.userInfo?["zone"] as? String
         if zone == "item" {
             isHovered = true
-            closeButton.isHidden = false
             updateAppearance()
         } else if zone == "close" {
-            isCloseHovered = true
             closeButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor
         }
     }
@@ -204,12 +206,9 @@ class SidebarBrowserItemView: NSView {
         let zone = event.trackingArea?.userInfo?["zone"] as? String
         if zone == "item" {
             isHovered = false
-            isCloseHovered = false
-            closeButton.isHidden = true
             closeButton.layer?.backgroundColor = nil
             updateAppearance()
         } else if zone == "close" {
-            isCloseHovered = false
             closeButton.layer?.backgroundColor = nil
         }
     }
