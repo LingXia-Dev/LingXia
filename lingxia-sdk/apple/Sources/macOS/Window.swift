@@ -35,15 +35,27 @@ public class LxAppWindow: NSWindow {
             }
         }
         adjustTrafficLightPositions()
+        // Deferred call: container.frame may still be zero during init; re-apply after layout pass.
+        DispatchQueue.main.async { [weak self] in
+            self?.adjustTrafficLightPositions()
+        }
     }
+
+    /// Target center-Y for traffic lights from the visual window top.
+    /// Matches the center of the 38pt toolbar band so all chrome elements share one baseline.
+    static let toolbarCenterY: CGFloat = 19
 
     private func adjustTrafficLightPositions() {
         guard !styleMask.contains(.fullScreen) else { return }
-        guard let container = standardWindowButton(.closeButton)?.superview else { return }
-        let midY = container.frame.height / 2
+        guard let container = standardWindowButton(.closeButton)?.superview,
+              container.frame.height > 0 else { return }
+        // Position traffic lights at toolbarCenterY from the visual window top.
+        // AppKit y=0 is at the container bottom, so: y = containerHeight - centerFromTop - halfH
+        let containerH = container.frame.height
+        let target = Self.toolbarCenterY
         for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = standardWindowButton(type) else { continue }
-            let y = midY - button.frame.height / 2
+            guard let button = standardWindowButton(type), button.frame.height > 0 else { continue }
+            let y = max(0, containerH - target - button.frame.height / 2)
             if abs(button.frame.origin.y - y) > 0.5 {
                 button.setFrameOrigin(NSPoint(x: button.frame.origin.x, y: y))
             }

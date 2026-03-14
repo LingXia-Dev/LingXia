@@ -64,8 +64,9 @@ public class SidebarView: NSView {
         static let dotDiameter: CGFloat = 12
         static let dotSpacing: CGFloat = 16
         static let dotTopOffset: CGFloat = 50
-        /// Y offset from header top for button placement, aligns center with traffic lights (~14pt from top)
-        static let buttonTopOffset: CGFloat = 0  // trafficLightCenterY(14) - toggleButtonSize(28)/2
+        /// Y offset from header top, centers 28pt buttons at the 38pt toolbar midpoint (19pt).
+        /// Matches traffic lights, browser nav buttons, and address bar on the same baseline.
+        static let buttonTopOffset: CGFloat = 5  // (38 - 28) / 2
     }
 
     private let headerView = NSView()

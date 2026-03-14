@@ -23,6 +23,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let sidebarHiddenThreshold: CGFloat = 1
         static let edgeDetectionWidth: CGFloat = 10
         static let browserToolbarHeight: CGFloat = 38
+        /// Shared center-Y baseline for all toolbar elements (traffic lights, nav buttons, address bar).
+        /// = toolbar band height / 2 = 38 / 2 = 19pt from the visual window top.
+        static let toolbarCenterY: CGFloat = 19
         static let browserButtonSize: CGFloat = 28
         static let browserToolbarIconSize: CGFloat = 14
         static let browserAddressBarHeight: CGFloat = 26
@@ -220,12 +223,15 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         shadowWrapper.layer?.shadowOffset = CGSize(width: -2, height: 0)
         contentView.addSubview(shadowWrapper)
 
-        // Content container (Layer 2) — floating panel with rounded corners, clips content
+        // Content container (Layer 2) — floating panel, clips content.
+        // Only the bottom corners are rounded; the top edge is flush with the window top
+        // so the toolbar buttons align with the traffic lights and sidebar buttons.
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
         right.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         right.layer?.cornerRadius = Layout.contentPanelCornerRadius
+        right.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         right.layer?.masksToBounds = true
         shadowWrapper.addSubview(right)
         contentPanelView = right
@@ -270,8 +276,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Shadow wrapper positions the floating panel
-            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
+            // Shadow wrapper: flush with window top so toolbar buttons align with traffic lights
+            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor),
             contentLeading,
             shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p),
             shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p),
@@ -1078,23 +1084,24 @@ extension LxAppWindowController {
                 browserBackButtonLeadingConstraint = c
                 return c
             }(),
-            browserBackButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            // All nav buttons and address bar share the same center-Y baseline (toolbarCenterY = 19pt).
+            browserBackButton.centerYAnchor.constraint(equalTo: browserToolbar.topAnchor, constant: Layout.toolbarCenterY),
             browserBackButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserBackButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
 
             browserForwardButton.leadingAnchor.constraint(equalTo: browserBackButton.trailingAnchor, constant: 4),
-            browserForwardButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserForwardButton.centerYAnchor.constraint(equalTo: browserToolbar.topAnchor, constant: Layout.toolbarCenterY),
             browserForwardButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserForwardButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
 
             browserRefreshButton.leadingAnchor.constraint(equalTo: browserForwardButton.trailingAnchor, constant: 4),
-            browserRefreshButton.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserRefreshButton.centerYAnchor.constraint(equalTo: browserToolbar.topAnchor, constant: Layout.toolbarCenterY),
             browserRefreshButton.widthAnchor.constraint(equalToConstant: Layout.browserButtonSize),
             browserRefreshButton.heightAnchor.constraint(equalToConstant: Layout.browserButtonSize),
 
             browserAddressBarContainer.leadingAnchor.constraint(equalTo: browserRefreshButton.trailingAnchor, constant: 8),
             browserAddressBarContainer.trailingAnchor.constraint(equalTo: browserToolbar.trailingAnchor, constant: -8),
-            browserAddressBarContainer.centerYAnchor.constraint(equalTo: browserToolbar.centerYAnchor),
+            browserAddressBarContainer.centerYAnchor.constraint(equalTo: browserToolbar.topAnchor, constant: Layout.toolbarCenterY),
             browserAddressBarContainer.heightAnchor.constraint(equalToConstant: Layout.browserAddressBarHeight),
 
             browserAddressField.leadingAnchor.constraint(equalTo: browserAddressBarContainer.leadingAnchor, constant: 8),
