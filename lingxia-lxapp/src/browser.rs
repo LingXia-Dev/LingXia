@@ -1,13 +1,14 @@
 use crate::appservice::bridge::IncomingMessage;
 use crate::page::Page;
 use crate::{LxApp, LxAppError, publish_app_event};
+use http::{Response, StatusCode};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::runtime::{
     destroy_webview as destroy_managed_webview, find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    DownloadRequest, LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView,
-    WebViewBuilder, WebViewController, WebViewDelegate, WebViewSession,
+    DownloadRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
+    WebViewController, WebViewDelegate, WebViewSession,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -714,13 +715,10 @@ async fn browser_attach_startup_page(
     // Attach this tab's WebView so bridge responses are delivered here.
     startup_page.attach_webview(webview.clone());
 
-    // Generate startup HTML with the shared bridge nonce and load it.
-    let nonce = startup_page.bridge_nonce();
-    let html = browser.generate_page_html(&startup_path, nonce.as_deref());
+    // Load startup page through the lx:// route so it participates in normal history.
     let base_url = format!("lx://lxapp/{}/{}", BUILTIN_BROWSER_APPID, startup_path);
-    let html_str = String::from_utf8_lossy(&html);
     webview
-        .load_data(LoadDataRequest::new(html_str.as_ref(), &base_url))
+        .load_url(&base_url)
         .map_err(|e| LxAppError::WebView(e.to_string()))
 }
 
@@ -747,6 +745,11 @@ fn browser_create_webview(
     ensure_browser_startup_page(&browser_owner)?;
 
     let startup_path = browser_owner.config.get_initial_route();
+    let startup_document_path = format!(
+        "/{}/{}",
+        BUILTIN_BROWSER_APPID,
+        startup_path.trim_start_matches('/')
+    );
     let startup_page_for_lx = browser_owner.get_page(&startup_path).ok_or_else(|| {
         LxAppError::Runtime("browser startup page not found for lx scheme handler".to_string())
     })?;
@@ -761,12 +764,35 @@ fn browser_create_webview(
     let session = WebViewBuilder::browser(webtag)
         .delegate(Arc::new(BrowserTabDelegate {
             appid: BUILTIN_BROWSER_APPID.to_string(),
-            startup_path,
+            startup_path: startup_path.clone(),
         }))
         .on_scheme("lx", move |req| {
             let owner = owner_for_lx.clone();
             let page = startup_page_for_lx.clone();
-            async move { owner.lingxia_handler(&page, req).into() }
+            let startup_path = startup_path.clone();
+            let startup_document_path = startup_document_path.clone();
+            async move {
+                // Serve startup document dynamically (nonce-injected) via lx:// URL.
+                // Assets and other lx:// resources still go through standard lingxia_handler.
+                if req.uri().host() == Some("lxapp") && req.uri().path() == startup_document_path {
+                    let nonce = page.bridge_nonce();
+                    let html = owner.generate_page_html(&startup_path, nonce.as_deref());
+                    let response = Response::builder()
+                        .status(StatusCode::OK)
+                        .header("Content-Type", "text/html; charset=utf-8")
+                        .header("Access-Control-Allow-Origin", "null")
+                        .body(())
+                        .unwrap_or_else(|_| {
+                            Response::builder()
+                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                .body(())
+                                .expect("Failed to build fallback startup response")
+                        });
+                    let (parts, _) = response.into_parts();
+                    return Some((parts, html).into()).into();
+                }
+                owner.lingxia_handler(&page, req).into()
+            }
         })
         .on_navigation(move |url| {
             // Keep internal lx:// startup page assets inside this WebView.
