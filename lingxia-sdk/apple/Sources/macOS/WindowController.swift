@@ -1215,12 +1215,7 @@ extension LxAppWindowController {
         guard let raw else { return "" }
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
-
-        let lowered = trimmed.lowercased()
-        if lowered.hasPrefix("data:") || lowered.hasPrefix("lx:") || lowered.hasPrefix("javascript:") || lowered.hasPrefix("blob:") || lowered == "about:blank" {
-            return ""
-        }
-        return trimmed
+        return browserUrlIsHidden(trimmed) ? "" : trimmed
     }
 
     private func openAddressInActiveBrowserTab(_ urlString: String) -> Bool {
