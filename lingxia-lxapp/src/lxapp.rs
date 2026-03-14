@@ -2,7 +2,6 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::{PopupPresenter, PopupRequest};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -15,7 +14,6 @@ use tokio::sync::oneshot;
 use tokio::time;
 
 use self::navbar::NavigationBarState;
-use crate::PageLifecycleEvent;
 use crate::app::AppConfig;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
@@ -34,6 +32,7 @@ pub(crate) mod metadata;
 pub use metadata::ReleaseType;
 pub mod navbar;
 pub mod page_config;
+mod popup;
 mod scheme;
 mod security;
 pub mod tabbar;
@@ -42,6 +41,7 @@ pub(crate) mod version;
 use crate::lifecycle::AppServiceEvent;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
+pub use popup::PopupMode;
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
@@ -372,7 +372,7 @@ pub(crate) struct LxAppState {
     pub(crate) startup_options: LxAppStartupOptions,
 
     /// Currently displayed popup page (if any)
-    pub(crate) current_popup: Option<String>,
+    pub(crate) current_popup: Option<popup::ActivePopup>,
 
     /// App-level orientation override (runtime + persisted)
     pub(crate) orientation_override: Option<OrientationConfig>,
@@ -564,7 +564,13 @@ impl LxApp {
         }
         let _ = self.clear_page_stack();
         if let Ok(mut state) = self.state.lock() {
-            state.current_popup = None;
+            if let Some(popup::ActivePopup::WebPage) = state.current_popup.take() {
+                destroy_webview(&WebTag::new(
+                    &self.appid,
+                    popup::WEB_POPUP_PATH,
+                    Some(self.session.id),
+                ));
+            }
         }
 
         // Terminate AppService (receiver handles its own state)
@@ -1172,69 +1178,6 @@ impl LxApp {
             }
             // Status will be driven back to Opened by on_lxapp_opened delegate after reopen.
         });
-        Ok(())
-    }
-
-    /// Show popup content rendered via WebView.
-    ///
-    /// This will ensure the target page is created, query parameters applied, lifecycle
-    /// callbacks dispatched, and then delegate to the platform popup presenter.
-    pub fn show_popup(self: &Arc<Self>, mut request: PopupRequest) -> Result<(), LxAppError> {
-        // Ensure only one popup is active at a time.
-        self.hide_popup()?;
-
-        request.app_id = self.appid.clone();
-
-        let resolved = crate::route::resolve_route(self, &request.path)?;
-        let path = resolved.internal_path();
-        let query_str = resolved.query.unwrap_or_default();
-
-        let popup_page = self.get_or_create_page(&path);
-
-        popup_page.mark_active();
-
-        if !query_str.is_empty() {
-            popup_page.set_query(query_str);
-        }
-
-        if !request.width_ratio.is_nan() {
-            request.width_ratio = request.width_ratio.clamp(0.0, 1.0);
-        }
-        if !request.height_ratio.is_nan() {
-            request.height_ratio = request.height_ratio.clamp(0.0, 1.0);
-        }
-
-        popup_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
-
-        request.path = path.clone();
-
-        self.runtime.show_popup(request).map_err(LxAppError::from)?;
-
-        if let Ok(mut state) = self.state.lock() {
-            state.current_popup = Some(path);
-        }
-
-        Ok(())
-    }
-
-    /// Hide the currently displayed popup, if any.
-    pub fn hide_popup(self: &Arc<Self>) -> Result<(), LxAppError> {
-        let popup_path = {
-            let mut state = self.state.lock().unwrap();
-            state.current_popup.take()
-        };
-
-        if let Some(path) = popup_path {
-            if let Some(page) = self.get_page(&path) {
-                page.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
-                page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-            }
-
-            self.runtime
-                .hide_popup(&self.appid)
-                .map_err(LxAppError::from)?;
-        }
-
         Ok(())
     }
 

@@ -29,7 +29,7 @@ const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javasc
 // 2) One tab id maps to one page path: /tabs/{tab_id}.
 // 3) One tab owns one managed WebView instance lifecycle (reopen same tab id reuses it).
 
-fn normalize_browser_target_url(raw: &str) -> String {
+pub(crate) fn normalize_browser_target_url(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() >= "http://".len() && trimmed[..7].eq_ignore_ascii_case("http://") {
         format!("https://{}", &trimmed[7..])
@@ -293,7 +293,7 @@ fn classify_browser_address_value(raw: &str) -> BrowserAddressValueKind {
     }
 }
 
-fn extract_url_scheme(raw: &str) -> Option<String> {
+pub(crate) fn extract_url_scheme(raw: &str) -> Option<String> {
     let (scheme, _) = raw.split_once(':')?;
     if scheme.is_empty() {
         return None;
@@ -747,6 +747,10 @@ fn browser_create_webview(
     ensure_browser_startup_page(&browser_owner)?;
 
     let startup_path = browser_owner.config.get_initial_route();
+    let startup_page_for_lx = browser_owner.get_page(&startup_path).ok_or_else(|| {
+        LxAppError::Runtime("browser startup page not found for lx scheme handler".to_string())
+    })?;
+    let owner_for_lx = browser_owner.clone();
     let runtime_for_nav = browser_owner.runtime.clone();
     let owner_appid_for_nav = browser_owner.appid.clone();
     let owner_session_for_nav = browser_owner.session_id();
@@ -759,17 +763,16 @@ fn browser_create_webview(
             appid: BUILTIN_BROWSER_APPID.to_string(),
             startup_path,
         }))
-        .on_scheme("lx", move |req| async move {
-            let Some(browser) = crate::lxapp::try_get(BUILTIN_BROWSER_APPID) else {
-                return None.into();
-            };
-            let startup_path = browser.config.get_initial_route();
-            let Some(page) = browser.get_page(&startup_path) else {
-                return None.into();
-            };
-            browser.lingxia_handler(&page, req).into()
+        .on_scheme("lx", move |req| {
+            let owner = owner_for_lx.clone();
+            let page = startup_page_for_lx.clone();
+            async move { owner.lingxia_handler(&page, req).into() }
         })
         .on_navigation(move |url| {
+            // Keep internal lx:// startup page assets inside this WebView.
+            if matches!(extract_url_scheme(url).as_deref(), Some("lx")) {
+                return NavigationPolicy::Allow;
+            }
             // Android callback currently only provides URL string, so user-gesture/main-frame
             // metadata is unavailable here. Keep web links in-webview and dispatch custom
             // schemes to host runtime for OS handler resolution.

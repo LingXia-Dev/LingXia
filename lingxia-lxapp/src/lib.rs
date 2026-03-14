@@ -52,8 +52,8 @@ pub use lifecycle::{
 pub use lxapp::set_home_lxapp_dev_path;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    LxApp, ReleaseType, config::LxAppInfo, get_current_lxapp, get_locale, get_platform, init,
-    is_pull_down_refresh_enabled, on_low_memory, page_config::OrientationConfig,
+    LxApp, PopupMode, ReleaseType, config::LxAppInfo, get_current_lxapp, get_locale, get_platform,
+    init, is_pull_down_refresh_enabled, on_low_memory, page_config::OrientationConfig,
     page_config::PageOrientation, tabbar, try_get,
 };
 pub use page::NavigationType;
