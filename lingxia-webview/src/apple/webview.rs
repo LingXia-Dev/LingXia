@@ -624,6 +624,7 @@ impl LingXiaNavigationDelegate {
 // - Shows native NSAlert for JavaScript alert/confirm/prompt dialogs
 pub struct LingXiaUIDelegateIvars {
     webtag: WebTag,
+    allow_js_dialogs: bool,
 }
 
 define_class!(
@@ -752,6 +753,16 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if !self.ivars().allow_js_dialogs {
+                log::info!(
+                    "Apple suppressed JavaScript alert in strict profile webtag={}",
+                    self.ivars().webtag
+                );
+                let handler: &Block<dyn Fn()> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn()>) };
+                handler.call(());
+                return;
+            }
             #[cfg(target_os = "macos")]
             unsafe {
                 let alert: *mut AnyObject = msg_send![class!(NSAlert), new];
@@ -775,6 +786,16 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if !self.ivars().allow_js_dialogs {
+                log::info!(
+                    "Apple suppressed JavaScript confirm in strict profile webtag={}",
+                    self.ivars().webtag
+                );
+                let handler: &Block<dyn Fn(objc2::runtime::Bool)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(objc2::runtime::Bool)>) };
+                handler.call((objc2::runtime::Bool::new(false),));
+                return;
+            }
             let result;
             #[cfg(target_os = "macos")]
             unsafe {
@@ -809,6 +830,16 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if !self.ivars().allow_js_dialogs {
+                log::info!(
+                    "Apple suppressed JavaScript prompt in strict profile webtag={}",
+                    self.ivars().webtag
+                );
+                let handler: &Block<dyn Fn(*mut AnyObject)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
+                handler.call((std::ptr::null_mut(),));
+                return;
+            }
             let input_value: *mut AnyObject;
             #[cfg(target_os = "macos")]
             unsafe {
@@ -860,10 +891,13 @@ define_class!(
 );
 
 impl LingXiaUIDelegate {
-    pub fn new(webtag: WebTag, mtm: MainThreadMarker) -> Retained<Self> {
+    pub fn new(webtag: WebTag, allow_js_dialogs: bool, mtm: MainThreadMarker) -> Retained<Self> {
         let delegate = mtm
             .alloc::<LingXiaUIDelegate>()
-            .set_ivars(LingXiaUIDelegateIvars { webtag });
+            .set_ivars(LingXiaUIDelegateIvars {
+                webtag,
+                allow_js_dialogs,
+            });
         unsafe { msg_send![super(delegate), init] }
     }
 }
@@ -1186,10 +1220,12 @@ impl WebViewInner {
                 ProtocolObject::from_ref(&*navigation_delegate);
             let _: () = msg_send![webview, setNavigationDelegate: Some(proto_navigation_delegate)];
 
-            // Set UI delegate when new windows are allowed or new-window handler is registered
-            let needs_ui_delegate = allow_new_windows || effective_options.has_new_window_handler;
+            // Set UI delegate in strict mode to suppress JS dialogs, and in browser/new-window
+            // mode to handle target="_blank", window.open(), and JS dialogs.
+            let needs_ui_delegate =
+                is_strict || allow_new_windows || effective_options.has_new_window_handler;
             let ui_delegate = if needs_ui_delegate {
-                let delegate = LingXiaUIDelegate::new(webtag.clone(), mtm);
+                let delegate = LingXiaUIDelegate::new(webtag.clone(), !is_strict, mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
                 let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];

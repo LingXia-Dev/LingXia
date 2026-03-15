@@ -99,6 +99,30 @@ export struct LingXiaWebView {
             event.contentLength ?? -1
           );
         })
+        .onAlert((event) => {
+          if (this.isBrowserRelaxed()) {
+            return false;
+          }
+          hilog.info(DOMAIN, TAG, `Suppressed JavaScript alert in strict profile for ${this.webTag}: ${event.url}`);
+          event.result.handleConfirm();
+          return true;
+        })
+        .onConfirm((event) => {
+          if (this.isBrowserRelaxed()) {
+            return false;
+          }
+          hilog.info(DOMAIN, TAG, `Suppressed JavaScript confirm in strict profile for ${this.webTag}: ${event.url}`);
+          event.result.handleCancel();
+          return true;
+        })
+        .onPrompt((event) => {
+          if (this.isBrowserRelaxed()) {
+            return false;
+          }
+          hilog.info(DOMAIN, TAG, `Suppressed JavaScript prompt in strict profile for ${this.webTag}: ${event.url}`);
+          event.result.handleCancel();
+          return true;
+        })
         .onAppear(() => {
           hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
           if (!this.controllerAcked) {

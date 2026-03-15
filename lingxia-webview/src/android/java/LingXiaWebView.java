@@ -536,7 +536,7 @@ public class LingXiaWebView extends WebView {
     }
 
     private void setupWebViewClients() {
-        setWebChromeClient(new LingXiaWebChromeClient(this));
+        setWebChromeClient(new LingXiaWebChromeClient(this, isBrowserProfile()));
         setWebViewClient(new LingXiaWebViewClient(this));
         setupDownloadSupport();
         Log.d(TAG, "WebView clients setup completed");

@@ -2,6 +2,8 @@ package com.lingxia.webview;
 
 import android.util.Log;
 import android.webkit.ConsoleMessage;
+import android.webkit.JsPromptResult;
+import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import java.lang.ref.WeakReference;
@@ -12,9 +14,11 @@ import java.lang.ref.WeakReference;
 public class LingXiaWebChromeClient extends WebChromeClient {
     private static final String TAG = "LingXiaWebChromeClient";
     private final WeakReference<LingXiaWebView> webViewRef;
+    private final boolean allowJsDialogs;
 
-    public LingXiaWebChromeClient(LingXiaWebView webView) {
+    public LingXiaWebChromeClient(LingXiaWebView webView, boolean allowJsDialogs) {
         this.webViewRef = new WeakReference<>(webView);
+        this.allowJsDialogs = allowJsDialogs;
     }
 
     @Override
@@ -37,6 +41,51 @@ public class LingXiaWebChromeClient extends WebChromeClient {
     public void onProgressChanged(WebView view, int newProgress) {
         super.onProgressChanged(view, newProgress);
         Log.d(TAG, "Loading progress: " + newProgress + "%");
+    }
+
+    @Override
+    public boolean onJsAlert(WebView view, String url, String message, JsResult result) {
+        if (allowJsDialogs) {
+            return super.onJsAlert(view, url, message, result);
+        }
+
+        Log.i(TAG, "Suppressed JavaScript alert in strict profile: " + url);
+        if (result != null) {
+            result.confirm();
+        }
+        return true;
+    }
+
+    @Override
+    public boolean onJsConfirm(WebView view, String url, String message, JsResult result) {
+        if (allowJsDialogs) {
+            return super.onJsConfirm(view, url, message, result);
+        }
+
+        Log.i(TAG, "Suppressed JavaScript confirm in strict profile: " + url);
+        if (result != null) {
+            result.cancel();
+        }
+        return true;
+    }
+
+    @Override
+    public boolean onJsPrompt(
+        WebView view,
+        String url,
+        String message,
+        String defaultValue,
+        JsPromptResult result
+    ) {
+        if (allowJsDialogs) {
+            return super.onJsPrompt(view, url, message, defaultValue, result);
+        }
+
+        Log.i(TAG, "Suppressed JavaScript prompt in strict profile: " + url);
+        if (result != null) {
+            result.cancel();
+        }
+        return true;
     }
 
     private int getLogLevel(ConsoleMessage.MessageLevel level) {
