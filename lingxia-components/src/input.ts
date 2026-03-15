@@ -411,7 +411,7 @@ export class LxInputElement extends HTMLElement {
   }
 
   private ensureVisibleForKeyboard(explicitKeyboardHeight = 0, forceCenter = false): void {
-    if (isHarmony() || isAndroid()) return;
+    if (isHarmony() || isAndroid() || isIOS()) return;
     if (!this.shouldAdjustPosition()) return;
     ensureElementVisibleForKeyboard(this, explicitKeyboardHeight, forceCenter, [120, 220, 320]);
   }
