@@ -44,6 +44,7 @@ final class NativeComponentManager {
     private var components: [String: LxNativeComponent] = [:]
     private var componentTypes: [String: String] = [:]
     private var componentPage: [String: String] = [:]
+    private var componentAdjustPosition: [String: Bool] = [:]
     private var componentPageFuncBindings: [String: [String: String]] = [:]
     private var componentDataset: [String: [String: Any]] = [:]
     private var readyComponentIds: Set<String> = []
@@ -68,6 +69,11 @@ final class NativeComponentManager {
     private var componentPlaybackIntent: [String: Bool] = [:]
     private var componentsPendingAutoResume: Set<String> = []
     private var inactivePages: Set<String> = []
+    private var focusedTextInputComponentId: String?
+    private var focusedTextInputKeyboardHeight: CGFloat = 0
+    private var textInputKeyboardInsetRestore: UIEdgeInsets?
+    private var textInputKeyboardIndicatorInsetRestore: UIEdgeInsets?
+    private let textInputKeyboardBottomGap: CGFloat = 24
 
     init(
         scrollView: UIScrollView,
@@ -160,6 +166,7 @@ final class NativeComponentManager {
         if let dataset = parseDataset(props), !dataset.isEmpty {
             componentDataset[id] = dataset
         }
+        componentAdjustPosition[id] = parseAdjustPosition(props)
         pageComponents[pageId, default: []].insert(id)
         ComponentRouter.shared.register(componentId: id, manager: self)
 
@@ -262,8 +269,12 @@ final class NativeComponentManager {
                     componentDataset[id] = parsed
                 }
             }
+            if props["adjustPosition"] != nil || props["adjust-position"] != nil {
+                componentAdjustPosition[id] = parseAdjustPosition(props)
+            }
             component.update(props: props)
         }
+        syncFocusedTextInputLayout(componentId: id, component: component)
         if let zIndex = parameters["zIndex"] as? Double {
             component.view.layer.zPosition = CGFloat(zIndex)
         }
@@ -321,7 +332,7 @@ final class NativeComponentManager {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
         component.focus()
-        if shouldEnsureVisibleOnFocus(componentId: id) {
+        if shouldEnsureVisibleForEvent(componentId: id, eventName: "focus") {
             ensureVisible(component.view.frame, in: component.view.superview)
         }
     }
@@ -329,6 +340,7 @@ final class NativeComponentManager {
     private func handleBlur(_ parameters: [String: Any]) {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
+        handleTextInputFocusState(componentId: id, eventName: "blur", payload: [:])
         component.blur()
     }
 
@@ -409,10 +421,11 @@ final class NativeComponentManager {
     private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
         guard let component = components[componentId] else { return }
         var payload = event
-        if let eventName = payload["event"] as? String,
-           eventName == "focus",
-           shouldEnsureVisibleOnFocus(componentId: componentId) {
-            ensureVisible(component.view.frame, in: component.view.superview)
+        if let eventName = payload["event"] as? String {
+            handleTextInputFocusState(componentId: componentId, eventName: eventName, payload: payload)
+            if shouldEnsureVisibleForEvent(componentId: componentId, eventName: eventName) {
+                ensureVisible(component.view.frame, in: component.view.superview)
+            }
         }
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
@@ -517,6 +530,27 @@ final class NativeComponentManager {
             }
         }
         return dataset.isEmpty ? nil : dataset
+    }
+
+    private func parseAdjustPosition(_ props: [String: Any]) -> Bool {
+        if let raw = props["adjustPosition"] {
+            return readBooleanProp(raw, default: true)
+        }
+        if let raw = props["adjust-position"] {
+            return readBooleanProp(raw, default: true)
+        }
+        return true
+    }
+
+    private func readBooleanProp(_ raw: Any, default defaultValue: Bool) -> Bool {
+        if let boolValue = raw as? Bool { return boolValue }
+        if let number = raw as? NSNumber { return number.boolValue }
+        if let string = raw as? String {
+            let normalized = string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "true" || normalized == "1" { return true }
+            if normalized == "false" || normalized == "0" { return false }
+        }
+        return defaultValue
     }
 
     private func parsePageId(_ pageId: String) -> (appid: String, path: String)? {
@@ -634,12 +668,157 @@ final class NativeComponentManager {
     private func ensureVisible(_ rect: CGRect, in container: UIView?) {
         guard let scrollView = scrollView, let container = container else { return }
         let rectInScrollView = scrollView.convert(rect, from: container)
-        scrollView.scrollRectToVisible(rectInScrollView.insetBy(dx: 0, dy: -20), animated: true)
+        let adjustedInset = scrollView.adjustedContentInset
+        let topSafe: CGFloat = 12
+        let currentOffsetY = scrollView.contentOffset.y
+        let visibleTop = currentOffsetY + adjustedInset.top + topSafe
+        let visibleBottom = currentOffsetY + scrollView.bounds.height - adjustedInset.bottom
+
+        var targetOffsetY = currentOffsetY
+        if rectInScrollView.maxY > visibleBottom {
+            targetOffsetY += rectInScrollView.maxY - visibleBottom
+        } else if rectInScrollView.minY < visibleTop {
+            targetOffsetY += rectInScrollView.minY - visibleTop
+        } else {
+            return
+        }
+
+        let minOffsetY = -adjustedInset.top
+        let maxOffsetY = max(minOffsetY, scrollView.contentSize.height - scrollView.bounds.height + adjustedInset.bottom)
+        let clampedOffsetY = min(max(targetOffsetY, minOffsetY), maxOffsetY)
+        guard abs(clampedOffsetY - currentOffsetY) > 0.5 else { return }
+        scrollView.setContentOffset(
+            CGPoint(x: scrollView.contentOffset.x, y: clampedOffsetY),
+            animated: true
+        )
     }
 
-    private func shouldEnsureVisibleOnFocus(componentId: String) -> Bool {
+    private func shouldEnsureVisibleForTextInput(componentId: String) -> Bool {
+        guard componentAdjustPosition[componentId] != false else { return false }
+        return isTextInputComponent(componentId)
+    }
+
+    private func shouldEnsureVisibleForEvent(componentId: String, eventName: String) -> Bool {
+        switch eventName {
+        case "focus":
+            return componentAdjustPosition[componentId] != false
+        case "keyboardheightchange":
+            return shouldEnsureVisibleForTextInput(componentId: componentId)
+        default:
+            return false
+        }
+    }
+
+    private func isTextInputComponent(_ componentId: String) -> Bool {
         let type = componentTypes[componentId]
-        return type != "input.native" && type != "textarea.native"
+        return type == "input.native" || type == "textarea.native"
+    }
+
+    private func handleTextInputFocusState(componentId: String, eventName: String, payload: [String: Any]) {
+        guard isTextInputComponent(componentId) else { return }
+        switch eventName {
+        case "focus":
+            focusedTextInputComponentId = componentId
+            if let keyboardHeight = extractKeyboardHeight(from: payload) {
+                focusedTextInputKeyboardHeight = keyboardHeight
+            }
+            updateTextInputKeyboardAvoidanceInsets()
+        case "keyboardheightchange":
+            if focusedTextInputComponentId == componentId,
+               let keyboardHeight = extractKeyboardHeight(from: payload) {
+                focusedTextInputKeyboardHeight = keyboardHeight
+            }
+            updateTextInputKeyboardAvoidanceInsets()
+        case "blur":
+            clearFocusedTextInput(ifMatching: componentId)
+        default:
+            break
+        }
+    }
+
+    private func syncFocusedTextInputLayout(componentId: String, component: LxNativeComponent) {
+        guard focusedTextInputComponentId == componentId else { return }
+        updateTextInputKeyboardAvoidanceInsets()
+        guard shouldEnsureVisibleForTextInput(componentId: componentId) else { return }
+        ensureVisible(component.view.frame, in: component.view.superview)
+    }
+
+    private func updateTextInputKeyboardAvoidanceInsets() {
+        guard let scrollView else {
+            textInputKeyboardInsetRestore = nil
+            textInputKeyboardIndicatorInsetRestore = nil
+            return
+        }
+        guard let focusedId = focusedTextInputComponentId,
+              shouldEnsureVisibleForTextInput(componentId: focusedId),
+              focusedTextInputKeyboardHeight > 0 else {
+            restoreTextInputKeyboardAvoidanceInsets()
+            return
+        }
+        applyTextInputKeyboardAvoidanceInsets(to: scrollView)
+    }
+
+    private func applyTextInputKeyboardAvoidanceInsets(to scrollView: UIScrollView) {
+        if textInputKeyboardInsetRestore == nil {
+            textInputKeyboardInsetRestore = scrollView.contentInset
+        }
+        if textInputKeyboardIndicatorInsetRestore == nil {
+            textInputKeyboardIndicatorInsetRestore = scrollView.scrollIndicatorInsets
+        }
+
+        let baseInset = textInputKeyboardInsetRestore ?? scrollView.contentInset
+        let baseIndicatorInset = textInputKeyboardIndicatorInsetRestore ?? scrollView.scrollIndicatorInsets
+        let requiredBottomInset = max(baseInset.bottom, focusedTextInputKeyboardHeight + textInputKeyboardBottomGap)
+
+        var nextInset = baseInset
+        nextInset.bottom = requiredBottomInset
+        var nextIndicatorInset = baseIndicatorInset
+        nextIndicatorInset.bottom = max(baseIndicatorInset.bottom, requiredBottomInset)
+
+        scrollView.contentInset = nextInset
+        scrollView.scrollIndicatorInsets = nextIndicatorInset
+    }
+
+    private func restoreTextInputKeyboardAvoidanceInsets() {
+        guard let scrollView else {
+            textInputKeyboardInsetRestore = nil
+            textInputKeyboardIndicatorInsetRestore = nil
+            return
+        }
+        guard let restoreInset = textInputKeyboardInsetRestore,
+              let restoreIndicatorInset = textInputKeyboardIndicatorInsetRestore else {
+            return
+        }
+
+        scrollView.contentInset = restoreInset
+        scrollView.scrollIndicatorInsets = restoreIndicatorInset
+        textInputKeyboardInsetRestore = nil
+        textInputKeyboardIndicatorInsetRestore = nil
+
+        let adjustedInset = scrollView.adjustedContentInset
+        let minOffsetY = -adjustedInset.top
+        let maxOffsetY = max(minOffsetY, scrollView.contentSize.height - scrollView.bounds.height + adjustedInset.bottom)
+        let clampedOffsetY = min(max(scrollView.contentOffset.y, minOffsetY), maxOffsetY)
+        if abs(clampedOffsetY - scrollView.contentOffset.y) > 0.5 {
+            scrollView.setContentOffset(
+                CGPoint(x: scrollView.contentOffset.x, y: clampedOffsetY),
+                animated: false
+            )
+        }
+    }
+
+    private func extractKeyboardHeight(from payload: [String: Any]) -> CGFloat? {
+        guard let detail = payload["detail"] as? [String: Any] else { return nil }
+        if let number = detail["height"] as? NSNumber {
+            return CGFloat(truncating: number)
+        }
+        if let value = detail["height"] as? Double {
+            return CGFloat(value)
+        }
+        if let value = detail["height"] as? CGFloat {
+            return value
+        }
+        return nil
     }
 
     private func unmountPage(_ pageId: String) {
@@ -663,6 +842,9 @@ final class NativeComponentManager {
             component.blur()
             component.view.isHidden = true
             component.handleCommand(name: "pause", params: nil)
+        }
+        if let focusedId = focusedTextInputComponentId, ids.contains(focusedId) {
+            clearFocusedTextInput()
         }
         scheduleInactivePageStop(pageId)
     }
@@ -751,8 +933,12 @@ final class NativeComponentManager {
         }
         componentPage.removeValue(forKey: id)
         componentTypes.removeValue(forKey: id)
+        componentAdjustPosition.removeValue(forKey: id)
         componentPageFuncBindings.removeValue(forKey: id)
         componentDataset.removeValue(forKey: id)
+        if focusedTextInputComponentId == id {
+            clearFocusedTextInput()
+        }
         if let callbackId {
             let payload: [String: Any] = [
                 "action": "component.event",
@@ -777,6 +963,15 @@ final class NativeComponentManager {
         default:
             break
         }
+    }
+
+    private func clearFocusedTextInput(ifMatching componentId: String? = nil) {
+        if let componentId, focusedTextInputComponentId != componentId {
+            return
+        }
+        focusedTextInputComponentId = nil
+        focusedTextInputKeyboardHeight = 0
+        updateTextInputKeyboardAvoidanceInsets()
     }
 
     private func handleCoverage(_ parameters: [String: Any]) {
