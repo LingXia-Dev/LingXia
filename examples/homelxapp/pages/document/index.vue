@@ -175,7 +175,10 @@ const {
   cancelPdfDownload,
   openOffice,
   cancelOfficeDownload,
-} = useLingXia();
+} = useLingXia() as {
+  data?: Record<string, unknown>;
+  [key: string]: any;
+};
 
 const pdfUrl = computed(() => data?.pdfUrl || '');
 const officeUrl = computed(() => data?.officeUrl || '');

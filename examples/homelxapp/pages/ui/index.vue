@@ -375,7 +375,10 @@ const {
   chooseToastPosition,
   showDemoActionSheet,
   showPopupDemo,
-} = useLingXia();
+} = useLingXia() as {
+  data?: Record<string, any>;
+  [key: string]: any;
+};
 
 const currentType = computed(() => data.currentType ?? 'navigation');
 const pageStack = computed(() => data.pageStack ?? []);
@@ -386,8 +389,7 @@ const toastIconOptions = computed(() => data.toastIconOptions ?? []);
 const toastPosition = computed(() => data.toastPosition ?? 'center');
 const toastPositionLabel = computed(() => data.toastPositionLabel ?? 'Center');
 const toastPositionOptions = computed(() => data.toastPositionOptions ?? []);
-const popupDemo = computed(() => data.popupDemo ?? {});
-const popupMessage = computed(() => popupDemo.value?.message ?? '');
+const popupMessage = computed(() => data.popupDemo?.message ?? '');
 
 const toastIconDisplay = computed(() => {
   const match = toastIconOptions.value.find((o: any) => o.value === toastIcon.value);

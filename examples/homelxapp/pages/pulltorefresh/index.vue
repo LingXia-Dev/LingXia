@@ -75,7 +75,15 @@ import { computed } from 'vue';
 import { useLingXia } from '@lingxia/core/vue';
 import '../../tailwind.css';
 
-const { data, startRefresh, stopRefresh } = useLingXia();
+const {
+  data,
+  startRefresh,
+  stopRefresh,
+} = useLingXia() as {
+  data?: Record<string, unknown>;
+  startRefresh: () => void;
+  stopRefresh: () => void;
+};
 
 const refreshCount = computed(() => data.refreshCount ?? 0);
 const lastRefreshTime = computed(() => data.lastRefreshTime ?? null);

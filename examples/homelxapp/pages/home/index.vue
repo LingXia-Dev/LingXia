@@ -89,7 +89,10 @@ type PageActions = {
   greet(payload: { name: string }): void;
 };
 
-const { data, greet } = useLingXia();
+const {
+  data,
+  greet,
+} = useLingXia() as PageActions;
 const name = ref('');
 const isSending = ref(false);
 

@@ -278,7 +278,19 @@ const {
   startDeviceOrientationListen,
   stopDeviceOrientationListen,
   clearOrientationEvents,
-} = useLingXia();
+} = useLingXia() as {
+  data?: Record<string, any>;
+  getDeviceInfo: () => void;
+  getScreenInfo: () => void;
+  vibrateShort: () => void;
+  vibrateLong: () => void;
+  makePhoneCall: (params: { phoneNumber: string }) => void;
+  setOrientationPortrait: () => void;
+  setOrientationLandscape: () => void;
+  startDeviceOrientationListen: () => void;
+  stopDeviceOrientationListen: () => void;
+  clearOrientationEvents: () => void;
+};
 
 const phoneNumber = ref('');
 
@@ -298,7 +310,6 @@ watch(currentType, () => {
 function handleDial() {
   const trimmed = phoneNumber.value.trim();
   if (!trimmed) {
-    window.alert?.('Please enter a phone number');
     return;
   }
   makePhoneCall({ phoneNumber: trimmed });

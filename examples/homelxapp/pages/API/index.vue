@@ -432,6 +432,7 @@ type PageActions = {
   navigateToMediaPage(payload: { type: string }): void;
   navigateToDocumentPage(): void;
   navigateToTestMiniApp(): void;
+  openDeepSeek(): void;
   navigateToPullDownRefreshPage(): void;
 };
 
@@ -446,8 +447,9 @@ const {
   navigateToMediaPage,
   navigateToDocumentPage,
   navigateToTestMiniApp,
+  openDeepSeek,
   navigateToPullDownRefreshPage,
-} = useLingXia();
+} = useLingXia() as PageActions;
 
 const expandedSections = computed(() => data.expandedSections ?? {
   interface: false,

@@ -176,11 +176,13 @@ const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')
 const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 const tabs: ModeTab[] = ['selector', 'multiSelector', 'time', 'date'];
 
-const { data, setActiveTab } = useLingXia() as {
+const {
+  data,
+  setActiveTab,
+} = useLingXia() as {
   data?: PickerPageData;
-  setActiveTab?: (params: { tab: ModeTab }) => void;
+  setActiveTab: (params: { tab: ModeTab }) => void;
 };
-
 const activeTab = computed<ModeTab>(() => data?.activeTab || 'selector');
 const coffee = computed(() => data?.coffee);
 const location = computed(() => data?.location);

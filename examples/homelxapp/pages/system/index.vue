@@ -107,7 +107,15 @@ import { computed } from 'vue';
 import { useLingXia } from '@lingxia/core/vue';
 import '../../tailwind.css';
 
-const { data, getAppBaseInfo, getSystemSetting } = useLingXia();
+const {
+  data,
+  getAppBaseInfo,
+  getSystemSetting,
+} = useLingXia() as {
+  data?: Record<string, unknown>;
+  getAppBaseInfo: () => void;
+  getSystemSetting: () => void;
+};
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
 const appBaseInfo = computed(() => data.appBaseInfo ?? null);

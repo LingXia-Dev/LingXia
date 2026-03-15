@@ -151,7 +151,21 @@ type PageData = {
   videos?: VideoConfig[];
 };
 
-const { data, play, pause, stop, seek, requestFullScreen } = useLingXia();
+const {
+  data,
+  play,
+  pause,
+  stop,
+  seek,
+  requestFullScreen,
+} = useLingXia() as {
+  data?: Record<string, unknown>;
+  play: () => void;
+  pause: () => void;
+  stop: () => void;
+  seek: (position: number) => void;
+  requestFullScreen: () => void;
+};
 
 const SEEK_STEP_SECONDS = 10;
 const eventLog = computed(() => data?.eventLog || 'Ready');

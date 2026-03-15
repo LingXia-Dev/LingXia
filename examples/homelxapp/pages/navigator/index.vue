@@ -32,7 +32,7 @@
             <div class="grid grid-cols-2 gap-3">
               <!-- Navigate -->
               <LxNavigator
-                url="pages/device/index.vue?type=device"
+                url="pages/device/index?type=device"
                 open-type="navigate"
                 @success="addLog('✓ Navigate to home')"
               >
@@ -45,7 +45,7 @@
 
               <!-- Redirect -->
               <LxNavigator
-                url="pages/device/index.vue?type=device"
+                url="pages/device/index?type=device"
                 open-type="redirect"
                 @success="addLog('✓ Redirect to home')"
               >
@@ -71,7 +71,7 @@
 
               <!-- ReLaunch -->
               <LxNavigator
-                url="pages/device/index.vue?type=screen"
+                url="pages/device/index?type=screen"
                 open-type="reLaunch"
                 @success="addLog('✓ ReLaunch to home')"
               >
@@ -94,7 +94,7 @@
             </div>
             <div class="grid grid-cols-3 gap-2">
               <LxNavigator
-                url="pages/home/index.vue"
+                url="pages/home/index"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to Home tab')"
               >
@@ -103,7 +103,7 @@
                 </div>
               </LxNavigator>
               <LxNavigator
-                url="pages/API/index.vue"
+                url="pages/API/index"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to API tab')"
               >
@@ -112,7 +112,7 @@
                 </div>
               </LxNavigator>
               <LxNavigator
-                url="pages/todo/index.vue"
+                url="pages/todo/index"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to Todo tab')"
               >
@@ -149,13 +149,28 @@
 
             <LxNavigator
               url="https://www.deepseek.com"
-              @success="addLog('✓ Opening DeepSeek in browser')"
-              @fail="onFailWithMessage('Failed to open browser', $event)"
+              target="self"
+              @success="addLog('✓ Opening DeepSeek in-app')"
+              @fail="onFailWithMessage('Failed to open in-app browser', $event)"
             >
               <div class="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
                 <div class="flex items-center justify-center gap-2">
+                  <span>🔗</span>
+                  <span>Open DeepSeek</span>
+                </div>
+              </div>
+            </LxNavigator>
+
+            <LxNavigator
+              url="https://www.deepseek.com"
+              target="browser"
+              @success="addLog('✓ Opening DeepSeek in external browser')"
+              @fail="onFailWithMessage('Failed to open external browser', $event)"
+            >
+              <div class="w-full py-2.5 px-4 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                <div class="flex items-center justify-center gap-2">
                   <span>🌐</span>
-                  <span>Open DeepSeek in Browser</span>
+                  <span>Open DeepSeek in Default Browser</span>
                 </div>
               </div>
             </LxNavigator>

@@ -86,7 +86,15 @@ import { computed, onMounted, onUnmounted } from 'vue';
 import { useLingXia } from '@lingxia/core/vue';
 import '../../tailwind.css';
 
-const { data, getLocation, clearLocation } = useLingXia();
+const {
+  data,
+  getLocation,
+  clearLocation,
+} = useLingXia() as {
+  data?: Record<string, unknown>;
+  getLocation: () => void;
+  clearLocation: () => void;
+};
 
 const location = computed(() => data.location ?? null);
 const isLoading = computed(() => data.isLoading ?? false);

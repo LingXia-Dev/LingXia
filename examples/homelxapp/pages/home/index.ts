@@ -76,11 +76,12 @@ Page({
     console.log("[Home] App data:", app.globalData);
   },
 
-  greet: function (option) {
+  greet: function (option = {}) {
+    const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
     const count = this.data.greetCount + 1;
     this.setData(
       {
-        greeting: `👋 Hello ${option.name}! (#${count})
+        greeting: `👋 Hello ${name}! (#${count})
 
 🌍 Greetings from appservice powered by Rust and JS engine
 🕒 ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`,

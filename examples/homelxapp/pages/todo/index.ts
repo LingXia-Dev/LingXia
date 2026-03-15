@@ -109,7 +109,7 @@ Page({
   },
 
   // Todo core functionality
-  addTodo: async function (params) {
+  addTodo: async function (params = {}) {
     const { text } = params;
     if (!validateTodoText(text)) {
       console.log("[Todo] addTodo: Invalid text, skipping");
@@ -137,7 +137,7 @@ Page({
     );
   },
 
-  toggleTodo: async function (params) {
+  toggleTodo: async function (params = {}) {
     const { id } = params;
     if (!id) {
       console.log("[Todo] toggleTodo: No ID provided, skipping");
@@ -160,7 +160,7 @@ Page({
     console.log("[Todo] toggleTodo: Todo toggled successfully");
   },
 
-  deleteTodo: async function (params) {
+  deleteTodo: async function (params = {}) {
     const { id } = params;
     if (!id) {
       console.log("[Todo] deleteTodo: No ID provided, skipping");
@@ -208,7 +208,7 @@ Page({
     );
   },
 
-  setFilter: async function (params) {
+  setFilter: async function (params = {}) {
     console.log("[Todo] setFilter called with params:", params);
     const { filter } = params;
     if (!filter || !["all", "active", "completed"].includes(filter)) {

@@ -88,9 +88,15 @@ Page({
 
   // Make a phone call
   makePhoneCall: async function (options) {
+    const rawPhoneNumber = typeof options?.phoneNumber === "string" ? options.phoneNumber : "";
+    const normalizedPhoneNumber = rawPhoneNumber.replace(/^tel:/i, "").trim();
+    if (!normalizedPhoneNumber) {
+      return;
+    }
+
     try {
-      await lx.makePhoneCall(options);
-      console.log("Making phone call to:", options.phoneNumber);
+      await lx.makePhoneCall({ phoneNumber: normalizedPhoneNumber });
+      console.log("Making phone call to:", normalizedPhoneNumber);
     } catch (error) {
       console.error("Failed to make phone call:", error);
       lx.showToast({ title: error.message, icon: "none" });

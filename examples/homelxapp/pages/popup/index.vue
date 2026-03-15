@@ -20,7 +20,7 @@
         <input
           class="w-full px-3 py-2 rounded-md bg-white border border-gray-300 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Message to parent page"
-          v-model="message"
+          ref="inputRef"
         />
         <button
           type="button"
@@ -44,18 +44,22 @@ type PageActions = {
   sendPopupMessage(payload: { message: string }): void;
 };
 
-const { data, sendPopupMessage } = useLingXia();
-const message = ref('');
+const {
+  data,
+  sendPopupMessage,
+} = useLingXia() as PageActions;
+
+const inputRef = ref<HTMLInputElement | null>(null);
 
 const queryString = computed(() => data.queryString ?? '');
 
 function handleSend() {
-  const text = message.value.trim();
+  const text = (inputRef.value?.value ?? '').trim();
   if (!text) return;
 
   try {
     sendPopupMessage({ message: text });
-    message.value = '';
+    if (inputRef.value) inputRef.value.value = '';
   } catch (error) {
     console.error('sendPopupMessage failed:', error);
   }

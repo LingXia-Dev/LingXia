@@ -947,7 +947,10 @@ const {
   previewCompressedVideo,
   captureImageForAlbum,
   captureVideoForAlbum,
-} = useLingXia();
+} = useLingXia() as {
+  data?: Record<string, any>;
+  [key: string]: any;
+};
 
 const mediaTypeInput = computed(() => data?.mediaType || 'image');
 const isImageInfoMode = computed(() => mediaTypeInput.value === 'imageInfo');

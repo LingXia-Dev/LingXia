@@ -122,7 +122,7 @@ const {
   deleteTodo,
   clearCompleted,
   setFilter,
-} = useLingXia();
+} = useLingXia() as PageActions;
 
 const newTodo = ref('');
 

@@ -27,8 +27,14 @@ Page({
   },
 
   // Toggle category expansion state
-  toggleSection: function (params) {
+  toggleSection: function (params = {}) {
     const { section } = params;
+    if (
+      !section ||
+      !Object.prototype.hasOwnProperty.call(this.data.expandedSections, section)
+    ) {
+      return;
+    }
     const currentState = this.data.expandedSections[section];
 
     this.setData({

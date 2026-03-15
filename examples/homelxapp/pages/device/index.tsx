@@ -42,7 +42,6 @@ export default function DevicePage() {
   const handleDial = React.useCallback(async () => {
     const trimmed = phoneNumber.trim();
     if (!trimmed) {
-      window.alert?.('Please enter a phone number');
       return;
     }
 

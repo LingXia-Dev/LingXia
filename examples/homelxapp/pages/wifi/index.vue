@@ -284,7 +284,17 @@ const {
   onWifiConnected,
   offWifiConnected,
   clearWifiConnectedEvents,
-} = useLingXia();
+} = useLingXia() as {
+  data?: Record<string, any>;
+  startWifi: () => void;
+  stopWifi: () => void;
+  getWifiList: () => void;
+  getConnectedWifi: () => void;
+  connectWifi: (params: { SSID: string; password?: string }) => void;
+  onWifiConnected: () => void;
+  offWifiConnected: () => void;
+  clearWifiConnectedEvents: () => void;
+};
 
 const wifiSsid = ref('');
 const wifiPassword = ref('');
