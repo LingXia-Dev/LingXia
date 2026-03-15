@@ -592,8 +592,8 @@ fn build_app_json_from_config(
     if let Some(api_server) = api_server.filter(|s| !s.is_empty()) {
         obj.insert("apiServer".to_string(), serde_json::json!(api_server));
     }
-    if let Some(client_id) = app.client_id.as_deref().filter(|s| !s.is_empty()) {
-        obj.insert("clientId".to_string(), serde_json::json!(client_id));
+    if let Some(lingxia_id) = app.lingxia_id.as_deref().filter(|s| !s.is_empty()) {
+        obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
     }
 
     obj.insert(

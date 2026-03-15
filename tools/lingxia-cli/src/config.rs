@@ -43,8 +43,9 @@ pub struct HostAppConfig {
     pub api_server: Option<String>,
 
     #[serde(default)]
+    #[serde(rename = "lingxiaId")]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
+    pub lingxia_id: Option<String>,
 
     /// Platforms to build for this app (e.g. ["android"]).
     pub platforms: Vec<String>,
@@ -225,7 +226,7 @@ impl LingXiaConfig {
                 product_name: project_name.to_string(),
                 product_version: "0.0.1".to_string(),
                 api_server: None,
-                client_id: None,
+                lingxia_id: None,
                 platforms: vec!["android".to_string()],
                 home_lxapp_id: "homelxapp".to_string(),
                 cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
