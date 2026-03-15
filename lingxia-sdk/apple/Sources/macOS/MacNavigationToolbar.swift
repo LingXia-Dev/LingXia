@@ -53,7 +53,7 @@ public class MacNavigationToolbar: NSView {
 
         // Back button
         backButton.translatesAutoresizingMaskIntoConstraints = false
-        backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
+        backButton.image = LxIcon.image(named: "icon_back", size: CGSize(width: 16, height: 16))
         backButton.isBordered = false
         backButton.bezelStyle = .regularSquare
         backButton.imagePosition = .imageOnly
@@ -65,7 +65,7 @@ public class MacNavigationToolbar: NSView {
 
         // Home button
         homeButton.translatesAutoresizingMaskIntoConstraints = false
-        homeButton.image = NSImage(systemSymbolName: "house", accessibilityDescription: "Home")
+        homeButton.image = LxIcon.image(named: "icon_home", size: CGSize(width: 16, height: 16))
         homeButton.isBordered = false
         homeButton.bezelStyle = .regularSquare
         homeButton.imagePosition = .imageOnly

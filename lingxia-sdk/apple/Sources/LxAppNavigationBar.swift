@@ -126,10 +126,11 @@ public struct NavigationButton: View {
                     .foregroundColor(foregroundColor)
             }
             #else
-            // macOS: Use SF Symbols as fallback since LxIcon returns NSImage
-            Image(systemName: isBackButton ? "chevron.left" : "house")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(foregroundColor)
+            if let nsImage = LxIcon.image(named: isBackButton ? "icon_back" : "icon_home", size: CGSize(width: 20, height: 20)) {
+                Image(nsImage: nsImage)
+                    .renderingMode(.template)
+                    .foregroundColor(foregroundColor)
+            }
             #endif
         }
     }
