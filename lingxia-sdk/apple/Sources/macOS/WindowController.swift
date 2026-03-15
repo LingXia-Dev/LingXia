@@ -229,15 +229,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         shadowWrapper.layer?.shadowOffset = CGSize(width: -2, height: 0)
         contentView.addSubview(shadowWrapper)
 
-        // Content container (Layer 2) — floating panel, clips content.
-        // Only the bottom corners are rounded; the top edge is flush with the window top
-        // so the toolbar buttons align with the traffic lights and sidebar buttons.
+        // Content container (Layer 2) — floating panel with rounded corners, clips content.
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
         right.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         right.layer?.cornerRadius = Layout.contentPanelCornerRadius
-        right.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         right.layer?.masksToBounds = true
         shadowWrapper.addSubview(right)
         contentPanelView = right
@@ -282,8 +279,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Shadow wrapper: flush with window top so toolbar buttons align with traffic lights
-            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor),
+            // Shadow wrapper positions the floating panel with padding on all exposed edges
+            shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
             contentLeading,
             shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p),
             shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p),
