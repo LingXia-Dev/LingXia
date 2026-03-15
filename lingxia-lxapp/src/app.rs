@@ -16,6 +16,9 @@ pub struct AppConfig {
     #[serde(rename = "productVersion")]
     pub product_version: String,
 
+    #[serde(rename = "lingxiaId", default)]
+    pub lingxia_id: Option<String>,
+
     // API server address (optional)
     #[serde(rename = "apiServer", default)]
     pub api_server: Option<String>,
@@ -61,6 +64,13 @@ pub fn product_name() -> Option<&'static str> {
 
 pub fn product_version() -> Option<&'static str> {
     APP_CONFIG.get().map(|c| c.product_version.as_str())
+}
+
+pub fn lingxia_id() -> Option<&'static str> {
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.lingxia_id.as_deref())
+        .filter(|s| !s.is_empty())
 }
 
 pub fn cache_max_age_days() -> u64 {

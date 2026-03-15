@@ -26,7 +26,7 @@ mod update;
 /// This is used for update compatibility checks and can be reported to update services.
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub use app::{app_config, product_name, product_version};
+pub use app::{app_config, lingxia_id, product_name, product_version};
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
     publish_app_event, publish_page_event, register_app_handler, register_page_handler,
