@@ -1,10 +1,11 @@
-import React, { forwardRef, useCallback, useRef } from "react";
+import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { registerTextareaComponent } from "../textarea.js";
+import { buildTextareaNativeAttrs } from "../text_component_native_attrs.js";
 import {
-  appendBindingAndDatasetAttrs,
-  bindEventListeners,
+  assignForwardedRef,
+  bindElementEvents,
   getCustomEventDetail,
-  unbindEventListeners,
+  unbindElementEvents,
 } from "./text_component_shared.js";
 
 export interface LxTextareaEventDetail {
@@ -123,83 +124,66 @@ export const LxTextarea = forwardRef<HTMLElement, LxTextareaProps>(({
   id,
   ...rest
 }, ref) => {
-  const hasMountedRef = useRef(false);
-  const initialValueRef = useRef(defaultValue);
-  const didInitialNativeSyncRef = useRef(false);
-
-  const propsRef = useRef({ onInput, onChange, onFocus, onBlur, onConfirm, onLineChange, onKeyboardHeightChange });
-  propsRef.current = { onInput, onChange, onFocus, onBlur, onConfirm, onLineChange, onKeyboardHeightChange };
-
-  const boundRef = useRef<HTMLElement | null>(null);
-  const boundListenersRef = useRef<Record<string, EventListenerObject> | null>(null);
-
-  const textareaRefCallback = useCallback((el: HTMLElement | null) => {
-    if (typeof ref === "function") ref(el);
-    else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = el;
-
-    if (boundRef.current && boundRef.current !== el && boundListenersRef.current) {
-      unbindEventListeners(boundRef.current, boundListenersRef.current);
-      boundRef.current = null;
-      boundListenersRef.current = null;
-    }
-
-    if (el && boundRef.current !== el) {
-      const listeners: Record<string, EventListenerObject> = {
-        input: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onInput?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        change: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onChange?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        focus: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onFocus?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        blur: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onBlur?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        confirm: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onConfirm?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        linechange: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onLineChange?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-        keyboardheightchange: {
-          handleEvent: (event: Event) => {
-            propsRef.current.onKeyboardHeightChange?.(getCustomEventDetail<LxTextareaEventDetail>(event));
-          }
-        },
-      };
-      bindEventListeners(el, listeners);
-      boundRef.current = el;
-      boundListenersRef.current = listeners;
-      hasMountedRef.current = true;
-      return;
-    }
-
-    if (!el) {
-      hasMountedRef.current = false;
-    }
+  const elementRef = useRef<HTMLElement | null>(null);
+  const boundElementRef = useRef<HTMLElement | null>(null);
+  const handlerRef = useRef({
+    onInput,
+    onChange,
+    onFocus,
+    onBlur,
+    onConfirm,
+    onLineChange,
+    onKeyboardHeightChange,
+  });
+  handlerRef.current = {
+    onInput,
+    onChange,
+    onFocus,
+    onBlur,
+    onConfirm,
+    onLineChange,
+    onKeyboardHeightChange,
+  };
+  const listenerMapRef = useRef<Record<string, EventListenerObject>>({
+    input: {
+      handleEvent: (event: Event) => handlerRef.current.onInput?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    change: {
+      handleEvent: (event: Event) => handlerRef.current.onChange?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    focus: {
+      handleEvent: (event: Event) => handlerRef.current.onFocus?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    blur: {
+      handleEvent: (event: Event) => handlerRef.current.onBlur?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    confirm: {
+      handleEvent: (event: Event) => handlerRef.current.onConfirm?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    linechange: {
+      handleEvent: (event: Event) => handlerRef.current.onLineChange?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+    keyboardheightchange: {
+      handleEvent: (event: Event) => handlerRef.current.onKeyboardHeightChange?.(getCustomEventDetail<LxTextareaEventDetail>(event)),
+    },
+  });
+  const elementRefCallback = useCallback((element: HTMLElement | null) => {
+    boundElementRef.current = bindElementEvents(boundElementRef.current, element, listenerMapRef.current);
+    elementRef.current = element;
+    assignForwardedRef(ref, element);
   }, [ref]);
 
-  // React custom-element prop forwarding can be inconsistent for generic keys.
-  // Force attribute sync so native side always receives the expected values.
+  useEffect(() => () => {
+    unbindElementEvents(boundElementRef.current, listenerMapRef.current);
+    boundElementRef.current = null;
+    elementRef.current = null;
+  }, []);
+
   React.useEffect(() => {
-    const el = boundRef.current;
+    const el = elementRef.current;
     if (!el) return;
     const setAttr = (name: string, next: string | null) => {
-      if (next === null || next === "") {
+      if (next === null) {
         el.removeAttribute(name);
         return;
       }
@@ -210,63 +194,50 @@ export const LxTextarea = forwardRef<HTMLElement, LxTextareaProps>(({
     setAttr("maxlength", maxlength !== undefined ? String(maxlength) : null);
     setAttr("placeholder-style", placeholderStyle ? String(placeholderStyle) : null);
     setAttr("auto-height", autoHeight ? "true" : null);
-    const syncNativeProps = (el as unknown as { syncNativeProps?: () => void }).syncNativeProps;
-    if (didInitialNativeSyncRef.current && typeof syncNativeProps === "function") {
-      syncNativeProps.call(el);
-    } else {
-      didInitialNativeSyncRef.current = true;
-    }
   }, [value, focus, maxlength, placeholderStyle, autoHeight]);
 
-  const textareaProps: Record<string, string> = {};
-  if (typeof id === "string" && id.trim().length > 0) {
-    textareaProps.id = id.trim();
-  }
-  if (value !== undefined) {
-    textareaProps.value = value;
-  } else if (!hasMountedRef.current && initialValueRef.current !== undefined) {
-    textareaProps.value = initialValueRef.current;
-  }
-  if (placeholder) textareaProps.placeholder = placeholder;
-  if (placeholderStyle) textareaProps["placeholder-style"] = placeholderStyle;
-  if (placeholderClass) textareaProps["placeholder-class"] = placeholderClass;
-  if (maxlength !== undefined) textareaProps.maxlength = String(maxlength);
-  if (disabled) textareaProps.disabled = "true";
-  if (autoFocus) textareaProps["auto-focus"] = "true";
-  if (focus !== undefined) textareaProps.focus = focus ? "true" : "false";
-  if (autoHeight) textareaProps["auto-height"] = "true";
-  if (cursorSpacing !== undefined) textareaProps["cursor-spacing"] = String(cursorSpacing);
-  if (showConfirmBar === false) textareaProps["show-confirm-bar"] = "false";
-  if (adjustPosition === false) textareaProps["adjust-position"] = "false";
-  if (holdKeyboard) textareaProps["hold-keyboard"] = "true";
-  if (disableDefaultPadding) textareaProps["disable-default-padding"] = "true";
-  if (confirmType) textareaProps["confirm-type"] = confirmType;
-  if (confirmHold) textareaProps["confirm-hold"] = "true";
-  if (fixed) textareaProps.fixed = "true";
-  if (adjustKeyboardTo) textareaProps["adjust-keyboard-to"] = adjustKeyboardTo;
-  if (cursor !== undefined) textareaProps.cursor = String(cursor);
-  if (selectionStart !== undefined) textareaProps["selection-start"] = String(selectionStart);
-  if (selectionEnd !== undefined) textareaProps["selection-end"] = String(selectionEnd);
-
-  if (bindInput) textareaProps.bindinput = bindInput;
-  if (bindChange) textareaProps.bindchange = bindChange;
-  if (bindFocus) textareaProps.bindfocus = bindFocus;
-  if (bindBlur) textareaProps.bindblur = bindBlur;
-  if (bindConfirm) textareaProps.bindconfirm = bindConfirm;
-  if (bindLineChange) textareaProps.bindlinechange = bindLineChange;
-  if (bindKeyboardHeightChange) textareaProps.bindkeyboardheightchange = bindKeyboardHeightChange;
-  if (catchInput) textareaProps.catchinput = catchInput;
-  if (catchChange) textareaProps.catchchange = catchChange;
-  if (catchFocus) textareaProps.catchfocus = catchFocus;
-  if (catchBlur) textareaProps.catchblur = catchBlur;
-  if (catchConfirm) textareaProps.catchconfirm = catchConfirm;
-  if (catchLineChange) textareaProps.catchlinechange = catchLineChange;
-  if (catchKeyboardHeightChange) textareaProps.catchkeyboardheightchange = catchKeyboardHeightChange;
-
-  appendBindingAndDatasetAttrs(rest as Record<string, unknown>, textareaProps);
+  const textareaProps = buildTextareaNativeAttrs({
+    id,
+    value,
+    defaultValue,
+    placeholder,
+    placeholderStyle,
+    placeholderClass,
+    maxlength,
+    disabled,
+    autoFocus,
+    focus,
+    autoHeight,
+    cursorSpacing,
+    showConfirmBar,
+    adjustPosition,
+    holdKeyboard,
+    disableDefaultPadding,
+    confirmType,
+    confirmHold,
+    fixed,
+    adjustKeyboardTo,
+    cursor,
+    selectionStart,
+    selectionEnd,
+    bindInput,
+    bindChange,
+    bindFocus,
+    bindBlur,
+    bindConfirm,
+    bindLineChange,
+    bindKeyboardHeightChange,
+    catchInput,
+    catchChange,
+    catchFocus,
+    catchBlur,
+    catchConfirm,
+    catchLineChange,
+    catchKeyboardHeightChange,
+  }, rest as Record<string, unknown>, boundElementRef.current !== null);
 
   return React.createElement("lx-textarea", {
-    ref: textareaRefCallback,
+    ref: elementRefCallback,
     className,
     style,
     ...textareaProps,

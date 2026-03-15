@@ -11,7 +11,10 @@ This document defines the long-term contract for LingXia native components in `@
 3. Cross-platform consistency:
 - Native event must reach logic and view through stable contracts.
 - Event payload shape is normalized across Android / Apple / Harmony / Desktop.
-4. Minimal logging in hot paths; only keep logs needed for diagnosis.
+4. Single implementation for native component behavior:
+- The custom element (`lx-*`) is the only place that owns rendering behavior, native bridge integration, and component state machine.
+- React/Vue wrappers are adapters, not alternate implementations.
+5. Minimal logging in hot paths; only keep logs needed for diagnosis.
 
 ## Contract Summary
 
@@ -23,6 +26,7 @@ This document defines the long-term contract for LingXia native components in `@
 | Dataset source | element `data-*` attributes |
 | Binding resolution | case-insensitive event name matching |
 | Cross-platform scope | Android / iOS / macOS / Harmony / desktop fallback |
+| React/Vue wrappers | Thin adapters only: prop mapping, event bridging, ref/type ergonomics |
 
 ## Event Routing Contract
 
@@ -47,6 +51,30 @@ Rules:
 Rules:
 - `onX` never calls `Page({})` directly.
 - `onX` is local to the current view runtime.
+
+## Framework Wrapper Contract
+
+React/Vue wrappers exist for framework ergonomics only. They must stay thin.
+
+Allowed responsibilities:
+- Register the underlying custom element if needed.
+- Map framework-friendly props to native element attributes/properties.
+- Bridge DOM/CustomEvent into framework callbacks/listeners.
+- Expose framework-friendly `ref`, typing, `class`, `style`, and children/slot passthrough.
+
+Disallowed responsibilities:
+- Re-implement native component rendering or layout logic.
+- Maintain a second component state machine separate from the custom element.
+- Add framework-only business rules that change runtime behavior across React/Vue/native.
+- Depend on wrapper-local synchronization hacks unless required for framework interoperability.
+
+Implementation rule:
+- When behavior changes, fix the custom element first.
+- Only change React/Vue wrappers when the issue is strictly about framework integration.
+
+Rationale:
+- One behavioral implementation keeps Android / Apple / Harmony / desktop behavior aligned.
+- Thin wrappers reduce bug surface and avoid fixing the same problem twice in React and Vue.
 
 ## Event Object Contract
 

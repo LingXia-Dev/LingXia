@@ -376,6 +376,22 @@ export class NativeComponentEmbedManager {
 
     const updateParams = new NodeControllerUpdateParams();
     updateParams.props = freshProps;
+
+    // Sync NodeContainer dimensions from JS-measured layout props (__layout*).
+    // On Harmony, CSS px ≈ vp, so getBoundingClientRect() values can be used directly.
+    // This is critical for auto-height textarea: JS changes this.style.height and
+    // immediately calls mountTextarea(), passing the new height via __layoutHeight.
+    // NativeEmbedStatus.UPDATE may fire asynchronously (or not at all) for CSS-driven
+    // resizes, so we propagate the height here to make NodeContainer follow immediately.
+    const layoutHeight = this.extractNumberProp(freshProps, '__layoutHeight');
+    const layoutWidth = this.extractNumberProp(freshProps, '__layoutWidth');
+    if (layoutWidth !== undefined && layoutWidth > 0) {
+      updateParams.width = layoutWidth;
+    }
+    if (layoutHeight !== undefined && layoutHeight > 0) {
+      updateParams.height = layoutHeight;
+    }
+
     nodeController.updateRenderOption(updateParams);
 
     if (nodeController.getComponentType() === 'video.native') {
@@ -481,6 +497,20 @@ export class NativeComponentEmbedManager {
       }
     }
     return this.normalizeEmbedNumber(raw);
+  }
+
+  private extractNumberProp(props: NativeComponentRecord, key: string): number | undefined {
+    const raw = props.get(key);
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      return raw;
+    }
+    if (typeof raw === 'string') {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return undefined;
   }
 
   private normalizeEmbedNumber(raw: NativeComponentValue | undefined): number {

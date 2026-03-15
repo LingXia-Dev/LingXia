@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, h, onMounted, onBeforeUnmount } from 'vue';
+import { ref, h, onMounted, onBeforeUnmount, useAttrs } from 'vue';
 import type { LxNavigatorEvent } from '../navigator.js';
+import { buildNavigatorNativeAttrs } from '../native_component_wrapper_shared.js';
 import type { LxNavigatorProps } from './types.js';
 import '../navigator.js';
 
@@ -14,6 +15,7 @@ const props = withDefaults(defineProps<LxNavigatorProps>(), {
 });
 
 const slots = defineSlots();
+const attrs = useAttrs();
 
 const emit = defineEmits<{
   success: [e: LxNavigatorEvent];
@@ -52,19 +54,21 @@ const render = () => h(
   'lx-navigator',
   {
     ref: elementRef,
-    url: props.url,
-    'open-type': props.openType,
-    target: props.target,
-    delta: String(props.delta),
-    'app-id': props.appId,
-    path: props.path,
-    'phone-number': props.phoneNumber,
-    'hover-class': props.hoverClass,
-    'hover-stop-propagation': String(props.hoverStopPropagation),
-    'hover-start-time': String(props.hoverStartTime),
-    'hover-stay-time': String(props.hoverStayTime),
-    class: props.class,
-    style: props.style,
+    ...buildNavigatorNativeAttrs({
+      url: props.url,
+      openType: props.openType,
+      target: props.target,
+      delta: props.delta,
+      appId: props.appId,
+      path: props.path,
+      phoneNumber: props.phoneNumber,
+      hoverClass: props.hoverClass,
+      hoverStopPropagation: props.hoverStopPropagation,
+      hoverStartTime: props.hoverStartTime,
+      hoverStayTime: props.hoverStayTime,
+    }, attrs as Record<string, unknown>),
+    class: props.class ?? attrs.class,
+    style: props.style ?? attrs.style,
   },
   slots.default?.()
 );

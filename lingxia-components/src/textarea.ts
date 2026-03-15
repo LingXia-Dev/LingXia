@@ -370,21 +370,24 @@ export class LxTextareaElement extends HTMLElement {
     }
     const height = this.parseHeight(detail.height ?? detail.heightRpx);
     if (height === undefined || height <= 0) return;
-    // iOS/Harmony should follow content height directly.
-    // Android keeps a floor to avoid visible jump during first few layout passes.
     let nextHeight = height;
-    if (isAndroid()) {
-      if (this.autoHeightMinHeight === undefined) {
-        const currentHeight = this.getBoundingClientRect().height;
-        if (Number.isFinite(currentHeight) && currentHeight > 1) {
-          this.autoHeightMinHeight = currentHeight;
-        }
+    if (this.autoHeightMinHeight === undefined) {
+      // Preserve the initial CSS/layout height as the auto-height floor.
+      // Native runtimes may report content height for each extra line, but the
+      // component should only grow after it has consumed the configured height.
+      // Prefer inline style height over getBoundingClientRect() because the
+      // rect may still be 0 if linechange arrives before the first layout pass.
+      const styleHeight = Number.parseFloat(this.style.height);
+      const rectHeight = this.getBoundingClientRect().height;
+      const initialHeight = Number.isFinite(styleHeight) && styleHeight > 1
+        ? styleHeight
+        : rectHeight;
+      if (Number.isFinite(initialHeight) && initialHeight > 1) {
+        this.autoHeightMinHeight = initialHeight;
       }
-      if (this.autoHeightMinHeight !== undefined) {
-        nextHeight = Math.max(nextHeight, this.autoHeightMinHeight);
-      }
-    } else {
-      this.autoHeightMinHeight = undefined;
+    }
+    if (this.autoHeightMinHeight !== undefined) {
+      nextHeight = Math.max(nextHeight, this.autoHeightMinHeight);
     }
     if (this.lastNativeAutoHeight !== undefined && Math.abs(this.lastNativeAutoHeight - nextHeight) < 0.5) return;
     this.lastNativeAutoHeight = nextHeight;
@@ -725,6 +728,10 @@ export class LxTextareaElement extends HTMLElement {
     props.__layoutY = rect.y;
     props.__layoutWidth = rect.width;
     props.__layoutHeight = rect.height;
+
+    if (this.getBoolAttr("auto-height") && this.autoHeightMinHeight === undefined && rect.height > 1) {
+      this.autoHeightMinHeight = rect.height;
+    }
 
     if (isHarmony()) {
       this.ensureHarmonyEmbed(rect, props, cornerRadius);

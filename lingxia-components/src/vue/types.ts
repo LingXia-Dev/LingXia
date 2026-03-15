@@ -4,6 +4,7 @@ import type { LxNavigatorEvent, NavigatorOpenType, NavigatorTarget } from '../na
 
 export interface LxVideoProps extends Omit<LxVideoAttributes, 'ref' | 'className' | 'style'> {
   class?: string;
+  style?: CSSProperties;
 }
 
 export interface LxPickerProps {

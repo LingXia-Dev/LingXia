@@ -5,6 +5,7 @@ import type {
   NavigatorOpenType,
   NavigatorTarget
 } from '../navigator.js';
+import { buildNavigatorNativeAttrs } from '../native_component_wrapper_shared.js';
 
 // Import to ensure custom element is registered
 import '../navigator.js';
@@ -105,27 +106,26 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       };
     }, [onSuccess, onFail, onComplete]);
 
-    return React.createElement(
-      'lx-navigator',
-      {
-        ref: elementRef,
-        url,
-        'open-type': openType,
-        target, // Optional, will be auto-inferred if not specified
-        delta: delta.toString(),
-        'app-id': appId,
-        path,
-        'phone-number': phoneNumber,
-        'hover-class': hoverClass,
-        'hover-stop-propagation': hoverStopPropagation.toString(),
-        'hover-start-time': hoverStartTime.toString(),
-        'hover-stay-time': hoverStayTime.toString(),
-        className,
-        style,
-        ...rest
-      },
-      children
-    );
+    const navigatorProps = buildNavigatorNativeAttrs({
+      url,
+      openType,
+      target,
+      delta,
+      appId,
+      path,
+      phoneNumber,
+      hoverClass,
+      hoverStopPropagation,
+      hoverStartTime,
+      hoverStayTime,
+    }, rest as Record<string, unknown>);
+
+    return React.createElement('lx-navigator', {
+      ref: elementRef,
+      className,
+      style,
+      ...navigatorProps
+    }, children);
   }
 );
 

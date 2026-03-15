@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, ref, useAttrs, watch } from 'vue';
 import { registerInputComponent } from '../input.js';
+import { buildInputNativeAttrs } from '../text_component_native_attrs.js';
 import type { LxInputProps } from './types.js';
 import {
-  appendBindingAndDatasetAttrs,
   bindElementEvents,
   getCustomEventDetail,
   unbindElementEvents,
@@ -73,61 +73,10 @@ onBeforeUnmount(() => {
 });
 
 const inputProps = computed<Record<string, unknown>>(() => {
-  const result: Record<string, unknown> = {};
-  const explicitId =
-    typeof props.id === 'string'
-      ? props.id.trim()
-      : typeof attrs.id === 'string'
-        ? attrs.id.trim()
-        : '';
-
-  if (explicitId.length > 0) result.id = explicitId;
-
-  if (props.modelValue !== undefined) {
-    result.value = props.modelValue;
-  } else if (props.value !== undefined) {
-    result.value = props.value;
-  } else if (!elementRef.value && props.defaultValue !== undefined) {
-    result.value = props.defaultValue;
-  }
-
-  if (props.type) result.type = props.type;
-  if (props.password) result.password = 'true';
-  if (props.placeholder) result.placeholder = props.placeholder;
-  if (props.placeholderStyle) result['placeholder-style'] = props.placeholderStyle;
-  if (props.placeholderClass) result['placeholder-class'] = props.placeholderClass;
-  if (props.maxlength !== undefined) result.maxlength = String(props.maxlength);
-  if (props.cursorSpacing !== undefined) result['cursor-spacing'] = String(props.cursorSpacing);
-  if (props.autoFocus) result['auto-focus'] = 'true';
-  if (props.disabled) result.disabled = 'true';
-  if (props.focus !== undefined) result.focus = props.focus ? 'true' : 'false';
-  if (props.confirmType) result['confirm-type'] = props.confirmType;
-  if (props.alwaysEmbed) result['always-embed'] = 'true';
-  if (props.confirmHold) result['confirm-hold'] = 'true';
-  if (props.cursor !== undefined) result.cursor = String(props.cursor);
-  if (props.cursorColor) result['cursor-color'] = props.cursorColor;
-  if (props.selectionStart !== undefined) result['selection-start'] = String(props.selectionStart);
-  if (props.selectionEnd !== undefined) result['selection-end'] = String(props.selectionEnd);
-  if (props.adjustPosition === false) result['adjust-position'] = 'false';
-  if (props.holdKeyboard) result['hold-keyboard'] = 'true';
-
-  if (props.bindInput) result.bindinput = props.bindInput;
-  if (props.bindChange) result.bindchange = props.bindChange;
-  if (props.bindFocus) result.bindfocus = props.bindFocus;
-  if (props.bindBlur) result.bindblur = props.bindBlur;
-  if (props.bindConfirm) result.bindconfirm = props.bindConfirm;
-  if (props.bindKeyboardHeightChange) result.bindkeyboardheightchange = props.bindKeyboardHeightChange;
-  if (props.bindNicknameReview) result.bindnicknamereview = props.bindNicknameReview;
-  if (props.catchInput) result.catchinput = props.catchInput;
-  if (props.catchChange) result.catchchange = props.catchChange;
-  if (props.catchFocus) result.catchfocus = props.catchFocus;
-  if (props.catchBlur) result.catchblur = props.catchBlur;
-  if (props.catchConfirm) result.catchconfirm = props.catchConfirm;
-  if (props.catchKeyboardHeightChange) result.catchkeyboardheightchange = props.catchKeyboardHeightChange;
-  if (props.catchNicknameReview) result.catchnicknamereview = props.catchNicknameReview;
-
-  appendBindingAndDatasetAttrs(attrs as Record<string, unknown>, result as Record<string, string>);
-
+  const result: Record<string, unknown> = buildInputNativeAttrs({
+    ...props,
+    id: props.id ?? (typeof attrs.id === 'string' ? attrs.id : undefined),
+  }, attrs as Record<string, unknown>, elementRef.value !== null);
   result.class = props.class ?? attrs.class;
   result.style = props.style ?? attrs.style;
   return result;

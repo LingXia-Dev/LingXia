@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, h, onMounted, onBeforeUnmount, useAttrs, useId, watch } from 'vue';
+import { ref, computed, h, onBeforeUnmount, useAttrs, useId, watch } from 'vue';
 import { registerVideoComponent } from '../video.js';
+import {
+  buildVideoNativeAttrs,
+  VIDEO_DOM_EVENT_MAP,
+} from '../native_component_wrapper_shared.js';
+import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
 import type { LxVideoProps } from './types.js';
 
 const props = withDefaults(defineProps<LxVideoProps>(), {
@@ -34,59 +39,34 @@ if (typeof window !== 'undefined') {
 }
 
 const elementRef = ref<HTMLElement | null>(null);
-const handlerMap = ref(new Map<string, EventListenerOrEventListenerObject>());
 const vueId = useId();
+let boundElement: HTMLElement | null = null;
 
 const resolvedId = computed(() => props.id || `lx-video-${vueId.replace(/[:]/g, '')}`);
 
-const eventMap: Record<string, string> = {
-  playRequest: 'playrequest',
-  play: 'play',
-  playing: 'playing',
-  pause: 'pause',
-  stop: 'stop',
-  ended: 'ended',
-  timeUpdate: 'timeupdate',
-  error: 'error',
-  loadedMetadata: 'loadedmetadata',
-  fullscreenChange: 'fullscreenchange',
-  waiting: 'waiting',
-  qualityChange: 'qualitychange',
-  rateChange: 'ratechange',
+const videoEventListeners: Record<string, EventListenerObject> = {
+  [VIDEO_DOM_EVENT_MAP.onPlayRequest]: { handleEvent: (event: Event) => emit('playRequest', event) },
+  [VIDEO_DOM_EVENT_MAP.onPlay]: { handleEvent: (event: Event) => emit('play', event) },
+  [VIDEO_DOM_EVENT_MAP.onPlaying]: { handleEvent: (event: Event) => emit('playing', event) },
+  [VIDEO_DOM_EVENT_MAP.onPause]: { handleEvent: (event: Event) => emit('pause', event) },
+  [VIDEO_DOM_EVENT_MAP.onStop]: { handleEvent: (event: Event) => emit('stop', event) },
+  [VIDEO_DOM_EVENT_MAP.onEnded]: { handleEvent: (event: Event) => emit('ended', event) },
+  [VIDEO_DOM_EVENT_MAP.onTimeUpdate]: { handleEvent: (event: Event) => emit('timeUpdate', event) },
+  [VIDEO_DOM_EVENT_MAP.onError]: { handleEvent: (event: Event) => emit('error', event) },
+  [VIDEO_DOM_EVENT_MAP.onLoadedMetadata]: { handleEvent: (event: Event) => emit('loadedMetadata', event) },
+  [VIDEO_DOM_EVENT_MAP.onFullscreenChange]: { handleEvent: (event: Event) => emit('fullscreenChange', event) },
+  [VIDEO_DOM_EVENT_MAP.onWaiting]: { handleEvent: (event: Event) => emit('waiting', event) },
+  [VIDEO_DOM_EVENT_MAP.onQualityChange]: { handleEvent: (event: Event) => emit('qualityChange', event) },
+  [VIDEO_DOM_EVENT_MAP.onRateChange]: { handleEvent: (event: Event) => emit('rateChange', event) },
 };
 
-function normalizeBindingAttrName(key: string): string {
-  return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-}
+watch(elementRef, (element) => {
+  boundElement = bindElementEvents(boundElement, element, videoEventListeners);
+});
 
-function setupEventListeners() {
-  const el = elementRef.value;
-  if (!el) return;
-  for (const [eventName, handler] of handlerMap.value.entries()) {
-    el.removeEventListener(eventName, handler);
-  }
-  handlerMap.value.clear();
-  for (const [vueEvent, domEvent] of Object.entries(eventMap)) {
-    const handler: EventListenerObject = {
-      handleEvent: (e: Event) => emit(vueEvent as any, e),
-    };
-    el.addEventListener(domEvent, handler);
-    handlerMap.value.set(domEvent, handler);
-  }
-}
-
-function cleanupEventListeners() {
-  const el = elementRef.value;
-  if (!el) return;
-  for (const [eventName, handler] of handlerMap.value.entries()) {
-    el.removeEventListener(eventName, handler);
-  }
-  handlerMap.value.clear();
-}
-
-onMounted(setupEventListeners);
-onBeforeUnmount(cleanupEventListeners);
-watch(elementRef, setupEventListeners);
+onBeforeUnmount(() => {
+  unbindElementEvents(boundElement, videoEventListeners);
+});
 
 watch(
   [elementRef, () => props.rotate, () => props.objectFit],
@@ -110,40 +90,20 @@ watch(
 );
 
 const domProps = computed(() => {
-  const result: Record<string, any> = { id: resolvedId.value };
-  if (props.src) result.src = props.src;
-  if (props.poster) result.poster = props.poster;
-  if (props.autoplay) result.autoplay = true;
-  if (props.loop) result.loop = true;
-  if (props.muted) result.muted = true;
-  if (props.controls) result.controls = true;
-  if (props.live) result.live = '';
-  if (props.volume !== undefined) result.volume = props.volume;
-  if (props.progressBar === false) result['progress-bar'] = 'false';
-  if (props.qualities?.length) result.qualities = JSON.stringify(props.qualities);
-  if (props.playbackRates?.length) result['playback-rates'] = JSON.stringify(props.playbackRates);
-  for (const [key, value] of Object.entries(props as Record<string, unknown>)) {
-    if (typeof value !== 'string') continue;
-    if (key.startsWith('bind') || key.startsWith('catch')) {
-      result[normalizeBindingAttrName(key)] = value;
-    }
-  }
-  for (const [key, value] of Object.entries(attrs)) {
-    if (typeof value !== 'string') continue;
-    if (key.startsWith('data-')) {
-      result[key] = value;
-      continue;
-    }
-    if (key.startsWith('bind') || key.startsWith('catch')) {
-      result[normalizeBindingAttrName(key)] = value;
-    }
-  }
-  return result;
+  const result = buildVideoNativeAttrs({
+    ...props,
+    id: resolvedId.value,
+  }, attrs as Record<string, unknown>);
+  return {
+    ...result,
+    class: props.class ?? attrs.class,
+    style: props.style ?? attrs.style,
+  };
 });
 
 defineExpose({ el: elementRef });
 
-const render = () => h('lx-video', { ref: elementRef, ...domProps.value, class: props.class });
+const render = () => h('lx-video', { ref: elementRef, ...domProps.value });
 </script>
 
 <template>

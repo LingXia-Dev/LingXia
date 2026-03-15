@@ -1,5 +1,14 @@
-import React, { forwardRef, useEffect, useId, useMemo, useRef } from 'react';
+import React, { forwardRef, useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import { registerVideoComponent, type LxVideoAttributes } from '../video.js';
+import {
+  buildVideoNativeAttrs,
+  VIDEO_DOM_EVENT_MAP,
+} from '../native_component_wrapper_shared.js';
+import {
+  assignForwardedRef,
+  bindElementEvents,
+  unbindElementEvents,
+} from './text_component_shared.js';
 
 export interface LxVideoProps
   extends LxVideoAttributes,
@@ -8,125 +17,191 @@ export interface LxVideoProps
       keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onPlaying"
     > {}
 
-// Ensure the custom element is registered exactly once when running in a browser
 if (typeof window !== "undefined") {
   registerVideoComponent();
 }
-
-function normalizeBindingAttrName(key: string): string {
-  return key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-}
-
-export const LxVideo = forwardRef<HTMLElement, LxVideoProps>((props, ref) => {
-  const innerRef = useRef<HTMLElement>(null);
-  const handlerRef = useRef<Map<string, EventListenerOrEventListenerObject>>(new Map());
+export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
+  id,
+  src,
+  poster,
+  objectFit,
+  rotate,
+  autoplay,
+  loop,
+  muted,
+  controls,
+  progressBar,
+  live,
+  volume,
+  qualities,
+  playbackRates,
+  onPlayRequest,
+  onPlay,
+  onPlaying,
+  onPause,
+  onStop,
+  onEnded,
+  onTimeUpdate,
+  onError,
+  onLoadedMetadata,
+  onFullscreenChange,
+  onWaiting,
+  onQualityChange,
+  onRateChange,
+  bindPlayRequest,
+  bindPlay,
+  bindPlaying,
+  bindPause,
+  bindStop,
+  bindEnded,
+  bindTimeUpdate,
+  bindError,
+  bindLoadedMetadata,
+  bindFullscreenChange,
+  bindWaiting,
+  bindQualityChange,
+  bindRateChange,
+  catchPlayRequest,
+  catchPlay,
+  catchPlaying,
+  catchPause,
+  catchStop,
+  catchEnded,
+  catchTimeUpdate,
+  catchError,
+  catchLoadedMetadata,
+  catchFullscreenChange,
+  catchWaiting,
+  catchQualityChange,
+  catchRateChange,
+  className,
+  style,
+  ...rest
+}, ref) => {
+  const elementRef = useRef<HTMLElement | null>(null);
+  const boundElementRef = useRef<HTMLElement | null>(null);
   const reactId = useId();
   const resolvedId = useMemo(() => {
-    if (props.id) return props.id;
+    if (id) return id;
     return `lx-video-${reactId.replace(/[:]/g, "")}`;
-  }, [props.id, reactId]);
-  const combinedRef = (node: HTMLElement | null) => {
-    innerRef.current = node;
-    if (!ref) return;
-    if (typeof ref === "function") {
-      ref(node);
-    } else {
-      (ref as React.MutableRefObject<HTMLElement | null>).current = node;
-    }
+  }, [id, reactId]);
+  const handlerRef = useRef({
+    onPlayRequest,
+    onPlay,
+    onPlaying,
+    onPause,
+    onStop,
+    onEnded,
+    onTimeUpdate,
+    onError,
+    onLoadedMetadata,
+    onFullscreenChange,
+    onWaiting,
+    onQualityChange,
+    onRateChange,
+  });
+  handlerRef.current = {
+    onPlayRequest,
+    onPlay,
+    onPlaying,
+    onPause,
+    onStop,
+    onEnded,
+    onTimeUpdate,
+    onError,
+    onLoadedMetadata,
+    onFullscreenChange,
+    onWaiting,
+    onQualityChange,
+    onRateChange,
   };
+  const listenerMapRef = useRef<Record<string, EventListenerObject>>(
+    Object.fromEntries(
+      Object.entries(VIDEO_DOM_EVENT_MAP).map(([propKey, eventName]) => [
+        eventName,
+        {
+          handleEvent: (event: Event) => {
+            const handler = handlerRef.current[propKey as keyof typeof handlerRef.current];
+            if (typeof handler === "function") {
+              handler(event);
+            }
+          },
+        } satisfies EventListenerObject,
+      ])
+    )
+  );
+  const elementRefCallback = useCallback((element: HTMLElement | null) => {
+    boundElementRef.current = bindElementEvents(boundElementRef.current, element, listenerMapRef.current);
+    elementRef.current = element;
+    assignForwardedRef(ref, element);
+  }, [ref]);
 
-  // Handle events manually to bypass React synthetic event issues with Custom Elements
+  useEffect(() => () => {
+    unbindElementEvents(boundElementRef.current, listenerMapRef.current);
+    boundElementRef.current = null;
+    elementRef.current = null;
+  }, []);
+
   useEffect(() => {
-    const el = innerRef.current;
+    const el = elementRef.current;
     if (!el) return;
-
-    const prev = handlerRef.current;
-    const next = new Map<string, EventListenerOrEventListenerObject>();
-
-    for (const [key, value] of Object.entries(props)) {
-      if (!key.startsWith("on") || typeof value !== "function") continue;
-      const eventName = key.substring(2).toLowerCase();
-      const listener: EventListenerObject = { handleEvent: value as EventListener };
-      next.set(eventName, listener);
-      const prevHandler = prev.get(eventName);
-      if (prevHandler) el.removeEventListener(eventName, prevHandler);
-      el.addEventListener(eventName, listener);
-    }
-
-    for (const [eventName, handler] of prev.entries()) {
-      if (!next.has(eventName)) {
-        el.removeEventListener(eventName, handler);
-      }
-    }
-
-    handlerRef.current = next;
-    return () => {
-      for (const [eventName, handler] of next.entries()) {
-        el.removeEventListener(eventName, handler);
-      }
-    };
-  }, [props]);
-
-  // Force attribute sync for custom-element props that React may treat inconsistently.
-  useEffect(() => {
-    const el = innerRef.current;
-    if (!el) return;
-    const rotate = props.rotate;
     if (rotate === undefined || rotate === null) {
       el.removeAttribute("rotate");
     } else {
       el.setAttribute("rotate", String(rotate).trim());
     }
-    const objectFit = props.objectFit;
     if (objectFit === undefined || objectFit === null) {
       el.removeAttribute("object-fit");
     } else {
       el.setAttribute("object-fit", String(objectFit).trim().toLowerCase());
     }
-  }, [props.rotate, props.objectFit]);
+  }, [rotate, objectFit]);
 
-  // Filter out event props and React-only props before passing to the custom element
-  const domProps: Record<string, any> = {};
-  for (const [key, value] of Object.entries(props)) {
-    if (key.startsWith("on")) continue;
-    if ((key.startsWith("bind") || key.startsWith("catch")) && typeof value === "string") {
-      domProps[normalizeBindingAttrName(key)] = value;
-      continue;
-    }
-    if (key === "children" || key === "dangerouslySetInnerHTML" || key === "ref") continue;
+  const domProps = buildVideoNativeAttrs({
+    id: resolvedId,
+    src,
+    poster,
+    autoplay,
+    loop,
+    muted,
+    controls,
+    progressBar,
+    live,
+    volume,
+    qualities,
+    playbackRates,
+    bindPlayRequest,
+    bindPlay,
+    bindPlaying,
+    bindPause,
+    bindStop,
+    bindEnded,
+    bindTimeUpdate,
+    bindError,
+    bindLoadedMetadata,
+    bindFullscreenChange,
+    bindWaiting,
+    bindQualityChange,
+    bindRateChange,
+    catchPlayRequest,
+    catchPlay,
+    catchPlaying,
+    catchPause,
+    catchStop,
+    catchEnded,
+    catchTimeUpdate,
+    catchError,
+    catchLoadedMetadata,
+    catchFullscreenChange,
+    catchWaiting,
+    catchQualityChange,
+    catchRateChange,
+  }, rest as Record<string, unknown>);
 
-    let attrName = key;
-    if (key === "playbackRates") attrName = "playback-rates";
-    if (key === "rotate") {
-      // Synchronized via effect to avoid duplicate custom-element updates.
-      continue;
-    }
-    if (key === "objectFit") {
-      // Synchronized via effect to avoid duplicate custom-element updates.
-      continue;
-    }
-    if (key === "progressBar") {
-      if (value === false) {
-        domProps["progress-bar"] = "false";
-      }
-      continue;
-    }
-    if (key === "live") {
-      if (value === true) {
-        domProps.live = "";
-      }
-      continue;
-    }
-
-    domProps[attrName] = (key === "qualities" || key === "playbackRates") && Array.isArray(value)
-      ? JSON.stringify(value)
-      : value;
-  }
-  domProps.id = resolvedId;
-
-  // @ts-ignore - Custom element
   return React.createElement('lx-video', {
-    ref: combinedRef,
+    ref: elementRefCallback,
+    className,
+    style,
     ...domProps
   });
 });

@@ -1,7 +1,3 @@
-export function normalizeBindingAttrName(key: string): string {
-  return key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-}
-
 export function getCustomEventDetail<T>(event: Event): T {
   return ((event as CustomEvent).detail ?? {}) as T;
 }
@@ -33,21 +29,5 @@ export function unbindElementEvents(
   if (!boundElement) return;
   for (const [event, listener] of Object.entries(listeners)) {
     boundElement.removeEventListener(event, listener);
-  }
-}
-
-export function appendBindingAndDatasetAttrs(
-  attrs: Record<string, unknown>,
-  target: Record<string, string>
-): void {
-  for (const [key, value] of Object.entries(attrs)) {
-    if (typeof value !== 'string') continue;
-    if (key.startsWith('data-')) {
-      target[key] = value;
-      continue;
-    }
-    if (key.startsWith('bind') || key.startsWith('catch')) {
-      target[normalizeBindingAttrName(key)] = value;
-    }
   }
 }
