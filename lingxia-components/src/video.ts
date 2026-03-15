@@ -1,7 +1,11 @@
-import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
+import {
+  sendNativeComponentMessage,
+  registerNativeComponentHandler,
+  addNativeComponentLayoutInvalidationListener
+} from "./nativecomponent.js";
 import { measureElement } from "./dom.js";
 import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
-import { isHarmony, isIOS } from "./platform.js";
+import { isAndroid, isHarmony, isIOS } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -118,6 +122,7 @@ export class LxVideoElement extends HTMLElement {
   private iOSBootstrapFrame: number | null = null;
   private iOSBootstrapRemaining: number = 0;
   private iOSHelper?: iOSNativeComponentHelper;
+  private removeLayoutInvalidationListener?: () => void;
   private forceHarmonyEmbedRecreate: boolean = false;
   private attrObserver?: MutationObserver;
   private resizeEventListener: EventListenerObject = {
@@ -636,6 +641,9 @@ export class LxVideoElement extends HTMLElement {
     if (isIOS()) {
       window.addEventListener("scroll", this.iOSScrollEventListener, { passive: true });
     }
+    if (isAndroid()) {
+      this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.resizeEventListener);
+    }
     this.startSizeObserver();
     this.updatePosition();
   }
@@ -645,6 +653,8 @@ export class LxVideoElement extends HTMLElement {
     if (isIOS()) {
       window.removeEventListener("scroll", this.iOSScrollEventListener);
     }
+    this.removeLayoutInvalidationListener?.();
+    this.removeLayoutInvalidationListener = undefined;
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);

@@ -1,4 +1,8 @@
-import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
+import {
+  sendNativeComponentMessage,
+  registerNativeComponentHandler,
+  addNativeComponentLayoutInvalidationListener
+} from "./nativecomponent.js";
 import { ensureComponentId, NativeComponentUpdateState } from "./component.js";
 import { measureElement } from "./dom.js";
 import { isHarmony, isDesktop, isMacOS, isAndroid, isIOS } from "./platform.js";
@@ -122,6 +126,7 @@ export class LxInputElement extends HTMLElement {
   private readonly layoutEventListener: EventListenerObject = {
     handleEvent: () => this.schedulePositionSync()
   };
+  private removeLayoutInvalidationListener?: () => void;
 
   private upgradeProperty(propName: string): void {
     const self = this as unknown as Record<string, unknown>;
@@ -290,6 +295,9 @@ export class LxInputElement extends HTMLElement {
     }
     window.visualViewport?.addEventListener("resize", this.layoutEventListener);
     window.visualViewport?.addEventListener("scroll", this.layoutEventListener);
+    if (isAndroid()) {
+      this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.layoutEventListener);
+    }
     this.startSizeObserver();
     this.schedulePositionSync();
   }
@@ -300,6 +308,8 @@ export class LxInputElement extends HTMLElement {
     window.removeEventListener("scroll", this.layoutEventListener);
     window.visualViewport?.removeEventListener("resize", this.layoutEventListener);
     window.visualViewport?.removeEventListener("scroll", this.layoutEventListener);
+    this.removeLayoutInvalidationListener?.();
+    this.removeLayoutInvalidationListener = undefined;
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);
@@ -401,7 +411,7 @@ export class LxInputElement extends HTMLElement {
   }
 
   private ensureVisibleForKeyboard(explicitKeyboardHeight = 0, forceCenter = false): void {
-    if (isHarmony()) return;
+    if (isHarmony() || isAndroid()) return;
     if (!this.shouldAdjustPosition()) return;
     ensureElementVisibleForKeyboard(this, explicitKeyboardHeight, forceCenter, [120, 220, 320]);
   }

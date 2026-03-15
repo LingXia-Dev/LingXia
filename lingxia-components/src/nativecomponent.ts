@@ -2,6 +2,9 @@ import type { NativeComponentMessage } from './types.js';
 export type { NativeComponentMessage };
 
 let warnedNoHandler = false;
+const NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT = "lingxia:native-component-layout-invalidated";
+let pendingLayoutInvalidationFrame: number | null = null;
+const pendingLayoutInvalidationTimers = new Map<number, number>();
 
 export function sendNativeComponentMessage(message: NativeComponentMessage) {
   const sender =
@@ -50,4 +53,44 @@ export function registerNativeComponentHandler(
     console.warn("[LingXia NativeComponent] message handler not available");
   }
   return () => {};
+}
+
+function dispatchNativeComponentLayoutInvalidated(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT));
+}
+
+export function invalidateNativeComponentLayout(delays: number[] = [32, 96]): void {
+  if (typeof window === "undefined") return;
+  if (pendingLayoutInvalidationFrame === null) {
+    pendingLayoutInvalidationFrame = window.requestAnimationFrame(() => {
+      pendingLayoutInvalidationFrame = null;
+      dispatchNativeComponentLayoutInvalidated();
+    });
+  }
+  const uniqueDelays = new Set(
+    delays
+      .map((delay) => Math.round(delay))
+      .filter((delay) => delay > 0)
+  );
+  uniqueDelays.forEach((delay) => {
+    if (pendingLayoutInvalidationTimers.has(delay)) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      pendingLayoutInvalidationTimers.delete(delay);
+      dispatchNativeComponentLayoutInvalidated();
+    }, delay);
+    pendingLayoutInvalidationTimers.set(delay, timer);
+  });
+}
+
+export function addNativeComponentLayoutInvalidationListener(
+  listener: EventListenerOrEventListenerObject
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT, listener);
+  return () => {
+    window.removeEventListener(NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT, listener);
+  };
 }

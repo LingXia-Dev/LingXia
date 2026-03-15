@@ -1,7 +1,11 @@
-import { sendNativeComponentMessage, registerNativeComponentHandler } from "./nativecomponent.js";
+import {
+  sendNativeComponentMessage,
+  registerNativeComponentHandler,
+  addNativeComponentLayoutInvalidationListener
+} from "./nativecomponent.js";
 import { ensureComponentId } from "./component.js";
 import { measureElement } from "./dom.js";
-import { isHarmony, isDesktop } from "./platform.js";
+import { isAndroid, isHarmony, isDesktop } from "./platform.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -87,6 +91,13 @@ export class LxPickerElement extends HTMLElement {
   private webCleanup?: () => void;
   private attrObserver?: MutationObserver;
   private desktopScrollListener?: EventListenerObject;
+  private removeLayoutInvalidationListener?: () => void;
+  private readonly layoutInvalidationListener: EventListenerObject = {
+    handleEvent: () => {
+      if (!this.isConnected || isHarmony() || isDesktop()) return;
+      void this.mountPicker();
+    }
+  };
 
   private upgradeProperty(propName: string): void {
     const self = this as unknown as Record<string, unknown>;
@@ -109,6 +120,9 @@ export class LxPickerElement extends HTMLElement {
     });
 
     this.startAttrObserver();
+    if (isAndroid()) {
+      this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.layoutInvalidationListener);
+    }
     this.mountPicker();
     queueMicrotask(() => {
       if (!this.isConnected) return;
@@ -125,6 +139,8 @@ export class LxPickerElement extends HTMLElement {
       this.removeEventListener('scroll', this.desktopScrollListener);
       this.desktopScrollListener = undefined;
     }
+    this.removeLayoutInvalidationListener?.();
+    this.removeLayoutInvalidationListener = undefined;
 
     if (this.componentId && !isHarmony() && !isDesktop()) {
       sendNativeComponentMessage({
