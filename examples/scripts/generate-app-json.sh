@@ -49,6 +49,7 @@ generate_app_json() {
     local home_lxapp_id=""
     local home_lxapp_json=""
     local home_lxapp_version=""
+    local lingxia_id=""
 
     if [ -n "$selected_home_lxapp" ]; then
         home_lxapp_json="$LINGXIA_ROOT/examples/$selected_home_lxapp/lxapp.json"
@@ -81,10 +82,17 @@ generate_app_json() {
         return 1
     fi
 
+    lingxia_id=$(jq -r '.app.lingxiaId // empty' "$config_file")
+    if [ -z "$lingxia_id" ]; then
+        echo "Error: app.lingxiaId missing in $config_file" >&2
+        return 1
+    fi
+
     local base_json
-    base_json=$(jq --arg home_lxapp_id "$home_lxapp_id" --arg home_lxapp_version "$home_lxapp_version" '{
+    base_json=$(jq --arg lingxia_id "$lingxia_id" --arg home_lxapp_id "$home_lxapp_id" --arg home_lxapp_version "$home_lxapp_version" '{
         productName: .app.productName,
         productVersion: .app.productVersion,
+        lingxiaId: $lingxia_id,
         homeLxAppID: $home_lxapp_id,
         homeLxAppVersion: $home_lxapp_version
     } + (if .app.cacheMaxAgeDays then {cacheMaxAgeDays: .app.cacheMaxAgeDays} else {} end)' "$config_file")

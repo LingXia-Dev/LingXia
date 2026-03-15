@@ -294,7 +294,8 @@ build_and_copy_runtime() {
     echo "  ✅ runtime.js copied to $target_dir/runtime.js"
 }
 
-# Generate app.json configuration
+# Generate app.json configuration from examples/lingxia.config.json
+# and include required host fields such as lingxiaId.
 # Usage: generate_app_config "$TARGET_DIR"
 generate_app_config() {
     local target_dir="$1"
