@@ -252,6 +252,12 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         if registeredFactories["video.native"] == nil {
             registeredFactories["video.native"] = MacVideoComponentFactory()
         }
+        if registeredFactories["input.native"] == nil {
+            registeredFactories["input.native"] = MacInputComponentFactory()
+        }
+        if registeredFactories["textarea.native"] == nil {
+            registeredFactories["textarea.native"] = MacTextareaComponentFactory()
+        }
     }
 
     private static func makePageKey(for webView: WKWebView) -> String {

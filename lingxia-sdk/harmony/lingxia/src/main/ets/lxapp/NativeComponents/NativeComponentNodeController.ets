@@ -36,6 +36,8 @@ export class NodeControllerParams {
   type: string = '';
   renderType: NodeRenderType = NodeRenderType.RENDER_TYPE_DISPLAY;
   embedId: string = '';
+  x: number = 0;
+  y: number = 0;
   width: number = 0;
   height: number = 0;
   componentId: string = '';
@@ -47,6 +49,8 @@ export class NodeControllerParams {
  * Keep this as an explicitly-declared type to satisfy ArkTS lint rules.
  */
 export class NodeControllerUpdateParams {
+  x?: number;
+  y?: number;
   width?: number;
   height?: number;
   props?: NativeComponentRecord;
@@ -77,6 +81,8 @@ export class NativeComponentNodeController extends NodeController {
   private embedId: string = '';
   private surfaceId: string = '';
   private renderType: NodeRenderType = NodeRenderType.RENDER_TYPE_DISPLAY;
+  private componentX: number = 0;
+  private componentY: number = 0;
   private componentWidth: number = 0;
   private componentHeight: number = 0;
   private componentType: string = '';
@@ -98,6 +104,8 @@ export class NativeComponentNodeController extends NodeController {
     this.surfaceId = params.surfaceId;
     this.renderType = params.renderType;
     this.embedId = params.embedId;
+    this.componentX = params.x;
+    this.componentY = params.y;
     this.componentWidth = params.width;
     this.componentHeight = params.height;
     this.componentType = params.type;
@@ -113,6 +121,12 @@ export class NativeComponentNodeController extends NodeController {
    * Keeps the XComponent surface alive while refreshing layout/props
    */
   updateRenderOption(params: NodeControllerUpdateParams): void {
+    if (params.x !== undefined) {
+      this.componentX = params.x;
+    }
+    if (params.y !== undefined) {
+      this.componentY = params.y;
+    }
     if (params.width !== undefined) {
       this.componentWidth = params.width;
       this.originalWidth = params.width;
@@ -244,6 +258,20 @@ export class NativeComponentNodeController extends NodeController {
    */
   getWidth(): number {
     return this.originalWidth;
+  }
+
+  /**
+   * Get current component x (in vp)
+   */
+  getX(): number {
+    return this.componentX;
+  }
+
+  /**
+   * Get current component y (in vp)
+   */
+  getY(): number {
+    return this.componentY;
   }
 
   /**

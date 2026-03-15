@@ -10,6 +10,8 @@ import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.PickerComponentFactory
+import com.lingxia.lxapp.NativeComponents.Components.InputComponentFactory
+import com.lingxia.lxapp.NativeComponents.Components.TextareaComponentFactory
 import com.lingxia.webview.LingXiaWebView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -107,8 +109,6 @@ class NativeBridge private constructor(
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
             isFocusable = false
-            // Enable hardware layer for smoother rendering during scroll
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         parent?.let { addHostToParent(it, webView, host) }
         return host
@@ -259,6 +259,8 @@ class NativeBridge private constructor(
             defaultsRegistered = true
             registeredFactories.getOrPut("video.native") { VideoComponentFactory() }
             registeredFactories.getOrPut("picker.native") { PickerComponentFactory() }
+            registeredFactories.getOrPut("input.native") { InputComponentFactory() }
+            registeredFactories.getOrPut("textarea.native") { TextareaComponentFactory() }
         }
 
         @JvmStatic fun notifyPageInactive(webView: LingXiaWebView?) { webView?.let { bridgeMap[System.identityHashCode(it)]?.markPageInactive() } }

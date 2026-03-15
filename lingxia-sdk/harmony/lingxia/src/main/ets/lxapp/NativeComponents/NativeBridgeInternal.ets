@@ -8,6 +8,8 @@ import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
+import { registerInputBuilder } from './Builders/InputBuilder';
+import { registerTextareaBuilder } from './Builders/TextareaBuilder';
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
@@ -23,7 +25,7 @@ class PendingPropsUpdate {
 
 const pendingPropsUpdates: Map<string, PendingPropsUpdate> = new Map();
 let pendingPropsFlushTimer: number | null = null;
-const PENDING_PROPS_RETRY_MS = 200;
+const PENDING_PROPS_RETRY_MS = 16;
 const MAX_PENDING_PROPS_RETRIES = 50;
 const INACTIVE_COMPONENT_STOP_DELAY_MS = 60_000;
 const pendingStopTimers: Map<string, number> = new Map();
@@ -108,6 +110,8 @@ function registerDefaultBuilders(): void {
   defaultsRegistered = true;
   registerVideoBuilder();
   registerPickerBuilder();
+  registerInputBuilder();
+  registerTextareaBuilder();
 }
 
 function resolveLogicalWebTag(webTag: string): string {
@@ -174,6 +178,22 @@ export function getOrCreateEmbedManager(webTag: string): NativeComponentEmbedMan
  */
 export function getEmbedManager(webTag: string): NativeComponentEmbedManager | undefined {
   return webViewEmbedManagers.get(webTag);
+}
+
+export function getFocusedNativeComponentType(webTag: string): string {
+  const manager = resolveEmbedManager(webTag);
+  if (!manager) {
+    return '';
+  }
+  return manager.getFocusedComponentType();
+}
+
+export function getFocusedNativeComponentAdjustPosition(webTag: string): boolean {
+  const manager = resolveEmbedManager(webTag);
+  if (!manager) {
+    return true;
+  }
+  return manager.getFocusedAdjustPosition();
 }
 
 function resolveManagerKey(webTag: string): string | undefined {
@@ -367,10 +387,12 @@ export function dispatchNativeComponentEventFromBuilder(
   detail: NativeComponentValue
 ): boolean {
   if (!componentId || !eventName) {
+    nativeComponentLog(`dispatchNativeComponentEventFromBuilder: invalid args componentId=${componentId} event=${eventName}`);
     return false;
   }
   const manager = resolveEmbedManagerByComponentId(componentId);
   if (!manager) {
+    nativeComponentLog(`dispatchNativeComponentEventFromBuilder: manager missing componentId=${componentId} event=${eventName}`);
     return false;
   }
   componentManagerCache.set(componentId, manager);

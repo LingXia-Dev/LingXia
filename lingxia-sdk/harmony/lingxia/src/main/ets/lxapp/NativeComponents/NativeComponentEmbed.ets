@@ -33,6 +33,24 @@ class WebTagRoute {
   path: string = '';
 }
 
+interface EmbedInfoLike {
+  get?: (key: string) => NativeComponentValue;
+  src?: string;
+  x?: NativeComponentValue;
+  y?: NativeComponentValue;
+  width?: NativeComponentValue;
+  height?: NativeComponentValue;
+}
+
+interface EmbedDataLike {
+  info?: EmbedInfoLike;
+  src?: string;
+  x?: NativeComponentValue;
+  y?: NativeComponentValue;
+  width?: NativeComponentValue;
+  height?: NativeComponentValue;
+}
+
 /**
  * Manager for handling same-level embedding in a Web component
  */
@@ -40,6 +58,7 @@ export class NativeComponentEmbedManager {
   private webTag: string;
   private nodeControllerMap: Map<string, NativeComponentNodeController> = new Map();
   private componentIdArr: string[] = [];
+  private pendingPropsByComponentId: Map<string, NativeComponentRecord> = new Map();
   private uiContext: UIContext | null = null;
   private onComponentsChanged?: () => void;
   private eventDispatcher?: (payload: NativeComponentRecord) => void;
@@ -49,6 +68,10 @@ export class NativeComponentEmbedManager {
   private componentPlaybackIntent: Map<string, boolean> = new Map();
   private componentsPendingAutoResume: Set<string> = new Set();
   private lifecyclePaused: boolean = false;
+  private componentAdjustPosition: Map<string, boolean> = new Map();
+  private focusedComponentId: string = '';
+  private focusedComponentType: string = '';
+  private focusedAdjustPosition: boolean = true;
 
   constructor(webTag: string, eventDispatcher?: (payload: NativeComponentRecord) => void) {
     this.webTag = webTag;
@@ -80,6 +103,14 @@ export class NativeComponentEmbedManager {
     return this.componentIdArr;
   }
 
+  getFocusedComponentType(): string {
+    return this.focusedComponentType;
+  }
+
+  getFocusedAdjustPosition(): boolean {
+    return this.focusedAdjustPosition;
+  }
+
   /**
    * Get NodeController for a component ID
    */
@@ -97,7 +128,6 @@ export class NativeComponentEmbedManager {
       nativeComponentError('Embed lifecycle event missing component ID');
       return;
     }
-    nativeComponentLog(`lifecycle: componentId=${componentId} status=${embed.status} src=${embed.info?.src?.substring(0, 80) ?? 'null'}`);
 
     if (embed.status === NativeEmbedStatus.CREATE) {
       this.handleCreate(componentId, embed);
@@ -124,17 +154,29 @@ export class NativeComponentEmbedManager {
 
     // Get props from embed tag attribute
     const props = this.parseEmbedProps(embed);
+    const pendingProps = this.pendingPropsByComponentId.get(componentId);
+    if (pendingProps) {
+      pendingProps.forEach((key: string, value: NativeComponentValue) => {
+        props.set(key, value);
+      });
+      this.pendingPropsByComponentId.delete(componentId);
+    }
     if (componentType === 'video.native') {
       this.applyVideoRotationFromProps(componentId, props);
       nativeComponentLog(
         `embed create(video props): componentId=${componentId} rotate=${String(props.get('rotate'))} clearRotate=${this.shouldClearProp(props, 'rotate')}`
       );
     }
+    this.updateComponentAdjustPosition(componentId, props);
     this.updatePageFuncBindings(componentId, props);
     this.updateComponentDataset(componentId, props);
 
-    const widthPx = embed.info?.width || 0;
-    const heightPx = embed.info?.height || 0;
+    const xPx = this.readEmbedInfoNumber(embed, 'x');
+    const yPx = this.readEmbedInfoNumber(embed, 'y');
+    const widthPx = this.readEmbedInfoNumber(embed, 'width');
+    const heightPx = this.readEmbedInfoNumber(embed, 'height');
+    const xVp = this.uiContext?.px2vp(xPx) || 0;
+    const yVp = this.uiContext?.px2vp(yPx) || 0;
     const widthVp = this.uiContext?.px2vp(widthPx) || 0;
     const heightVp = this.uiContext?.px2vp(heightPx) || 0;
 
@@ -145,6 +187,8 @@ export class NativeComponentEmbedManager {
     // (DISPLAY may break overlay/layout for same-level components.)
     params.renderType = NodeRenderType.RENDER_TYPE_TEXTURE;
     params.embedId = embed.embedId || '';
+    params.x = xVp;
+    params.y = yVp;
     params.width = widthVp;
     params.height = heightVp;
     params.componentId = componentId;
@@ -178,17 +222,24 @@ export class NativeComponentEmbedManager {
     const isVideoComponent = nodeController.getComponentType() === 'video.native';
 
     // Update layout sizes (vp) when embed dimensions change
-    const widthPx = embed.info?.width || 0;
-    const heightPx = embed.info?.height || 0;
+    const xPx = this.readEmbedInfoNumber(embed, 'x');
+    const yPx = this.readEmbedInfoNumber(embed, 'y');
+    const widthPx = this.readEmbedInfoNumber(embed, 'width');
+    const heightPx = this.readEmbedInfoNumber(embed, 'height');
+    const xVp = this.uiContext?.px2vp(xPx) || 0;
+    const yVp = this.uiContext?.px2vp(yPx) || 0;
     const widthVp = this.uiContext?.px2vp(widthPx) || 0;
     const heightVp = this.uiContext?.px2vp(heightPx) || 0;
 
     const updateParams = new NodeControllerUpdateParams();
+    updateParams.x = xVp;
+    updateParams.y = yVp;
     updateParams.width = widthVp;
     updateParams.height = heightVp;
     // Keep UPDATE props path enabled for all component types (including video).
     // This provides a robust fallback when bridge-driven updates are delayed.
     const props = this.parseEmbedProps(embed);
+    this.updateComponentAdjustPosition(componentId, props);
     this.updatePageFuncBindings(componentId, props);
     this.updateComponentDataset(componentId, props);
     updateParams.props = props;
@@ -218,6 +269,12 @@ export class NativeComponentEmbedManager {
     nodeController.rebuild();
 
     this.nodeControllerMap.delete(componentId);
+    this.componentAdjustPosition.delete(componentId);
+    if (this.focusedComponentId === componentId) {
+      this.focusedComponentId = '';
+      this.focusedComponentType = '';
+      this.focusedAdjustPosition = true;
+    }
     this.componentPageFuncBindings.delete(componentId);
     this.componentDataset.delete(componentId);
     this.componentPlaybackIntent.delete(componentId);
@@ -273,24 +330,27 @@ export class NativeComponentEmbedManager {
    * This should be called from Web.onNativeEmbedGestureEvent
    */
   handleGestureEvent(touch: NativeEmbedTouchInfo): void {
+    let matchedCount = 0;
+    let targetComponentId = '';
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
       if (nodeController && nodeController.getEmbedId() === touch.embedId) {
+        matchedCount += 1;
+        targetComponentId = componentId;
         nodeController.postEvent(touch.touchEvent);
       }
     });
+    if (matchedCount !== 1) {
+      nativeComponentLog(
+        `gesture dispatch mismatch embedId=${String(touch.embedId)} matched=${matchedCount} target=${targetComponentId}`
+      );
+    }
   }
 
   /**
    * Push fresh component props from Web -> native (primary Harmony path).
    */
   updateComponentProps(componentId: string, propsJson: string): boolean {
-    const nodeController = this.nodeControllerMap.get(componentId);
-    if (!nodeController) {
-      nativeComponentLog(`updateComponentProps: missing componentId=${componentId}`);
-      return false;
-    }
-
     const freshProps = this.decodeProps(propsJson);
     if (!freshProps) {
       nativeComponentLog(
@@ -299,6 +359,18 @@ export class NativeComponentEmbedManager {
       return false;
     }
 
+    const nodeController = this.nodeControllerMap.get(componentId);
+    if (!nodeController) {
+      this.pendingPropsByComponentId.set(componentId, freshProps);
+      this.updateComponentAdjustPosition(componentId, freshProps);
+      this.updatePageFuncBindings(componentId, freshProps);
+      this.updateComponentDataset(componentId, freshProps);
+      // Treat as accepted. Pending props are applied once CREATE arrives.
+      return true;
+    }
+
+    this.pendingPropsByComponentId.delete(componentId);
+    this.updateComponentAdjustPosition(componentId, freshProps);
     this.updatePageFuncBindings(componentId, freshProps);
     this.updateComponentDataset(componentId, freshProps);
 
@@ -365,6 +437,66 @@ export class NativeComponentEmbedManager {
     return embedType;
   }
 
+  private readEmbedInfoNumber(embed: NativeEmbedDataInfo, key: string): number {
+    const embedData = embed as EmbedDataLike | undefined;
+    let raw: NativeComponentValue | undefined;
+    if (embedData) {
+      if (key === 'x') {
+        raw = embedData.x;
+      } else if (key === 'y') {
+        raw = embedData.y;
+      } else if (key === 'width') {
+        raw = embedData.width;
+      } else if (key === 'height') {
+        raw = embedData.height;
+      }
+    }
+    if (raw !== undefined && raw !== null) {
+      return this.normalizeEmbedNumber(raw);
+    }
+    const info = embedData?.info as EmbedInfoLike | undefined;
+    if (!info) {
+      return 0;
+    }
+    if (typeof info.get === 'function') {
+      if (key === 'x') {
+        raw = info.get('x');
+      } else if (key === 'y') {
+        raw = info.get('y');
+      } else if (key === 'width') {
+        raw = info.get('width');
+      } else if (key === 'height') {
+        raw = info.get('height');
+      }
+    }
+    if (raw === undefined || raw === null) {
+      if (key === 'x') {
+        raw = info.x;
+      } else if (key === 'y') {
+        raw = info.y;
+      } else if (key === 'width') {
+        raw = info.width;
+      } else if (key === 'height') {
+        raw = info.height;
+      }
+    }
+    return this.normalizeEmbedNumber(raw);
+  }
+
+  private normalizeEmbedNumber(raw: NativeComponentValue | undefined): number {
+    if (raw === undefined || raw === null) {
+      return 0;
+    }
+    if (typeof raw === 'number') {
+      return Number.isFinite(raw) ? raw : 0;
+    }
+    if (typeof raw === 'string') {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+
   private parseEmbedProps(embed: NativeEmbedDataInfo): NativeComponentRecord {
     const props = new NativeComponentRecord();
     interface EmbedInfo {
@@ -372,7 +504,8 @@ export class NativeComponentEmbedManager {
       src?: string;
     }
 
-    const info = embed.info as EmbedInfo | undefined;
+    const embedData = embed as EmbedDataLike | undefined;
+    const info = embedData?.info as EmbedInfo | undefined;
     let rawProps: string | undefined;
     if (info) {
       if (typeof info.get === 'function') {
@@ -384,6 +517,9 @@ export class NativeComponentEmbedManager {
       if (!rawProps && typeof info.src === 'string') {
         rawProps = info.src;
       }
+    }
+    if (!rawProps && typeof embedData?.src === 'string') {
+      rawProps = embedData.src;
     }
     const propsString: string = rawProps ?? '';
     const parsed = propsString ? this.decodeProps(propsString) : null;
@@ -423,6 +559,17 @@ export class NativeComponentEmbedManager {
     const normalizedEventName = eventName.trim().toLowerCase();
     if (!normalizedEventName) {
       return;
+    }
+    const nodeController = this.nodeControllerMap.get(componentId);
+    const componentType = nodeController?.getComponentType() ?? '';
+    if (normalizedEventName === 'focus') {
+      this.focusedComponentId = componentId;
+      this.focusedComponentType = componentType;
+      this.focusedAdjustPosition = this.componentAdjustPosition.get(componentId) ?? true;
+    } else if (normalizedEventName === 'blur' && this.focusedComponentId === componentId) {
+      this.focusedComponentId = '';
+      this.focusedComponentType = '';
+      this.focusedAdjustPosition = true;
     }
     const payload = new NativeComponentRecord();
     payload.set('action', 'component.event');
@@ -542,6 +689,10 @@ export class NativeComponentEmbedManager {
     if (!bindings || bindings.size === 0) {
       return;
     }
+    const boundFunctionName = bindings.get(eventName);
+    if (!boundFunctionName) {
+      return;
+    }
     const route = this.parseWebTagRoute();
     if (!route) {
       nativeComponentError(`drop nativecomponent event: invalid webTag=${this.webTag} componentId=${componentId}`);
@@ -555,14 +706,14 @@ export class NativeComponentEmbedManager {
     target.set('dataset', dataset);
     pageEvent.set('type', eventName);
     pageEvent.set('detail', detail);
+    pageEvent.set('id', componentId);
+    pageEvent.set('dataset', dataset);
     pageEvent.set('target', target);
     pageEvent.set('currentTarget', target);
     pageEvent.set('timeStamp', Date.now());
 
     const bindingsPayload = new NativeComponentRecord();
-    bindings.forEach((fnName: string, boundEventName: string) => {
-      bindingsPayload.set(boundEventName, fnName);
-    });
+    bindingsPayload.set(eventName, boundFunctionName);
 
     const accepted: boolean = dispatchNativeComponentEvent(
       route.appId,
@@ -647,12 +798,17 @@ export class NativeComponentEmbedManager {
    */
   teardown(): void {
     this.lifecyclePaused = false;
+    this.focusedComponentId = '';
+    this.focusedComponentType = '';
+    this.focusedAdjustPosition = true;
     this.pendingUnmountTimers.forEach((timerId) => {
       clearTimeout(timerId);
     });
     this.pendingUnmountTimers.clear();
     this.componentPlaybackIntent.clear();
+    this.componentAdjustPosition.clear();
     this.componentsPendingAutoResume.clear();
+    this.pendingPropsByComponentId.clear();
 
     this.componentIdArr.forEach((componentId) => {
       const nodeController = this.nodeControllerMap.get(componentId);
@@ -679,6 +835,37 @@ export class NativeComponentEmbedManager {
     this.componentIdArr = [];
     this.componentPageFuncBindings.clear();
     this.componentDataset.clear();
+  }
+
+  private readBooleanProp(props: NativeComponentRecord, key: string, fallback: boolean): boolean {
+    const raw = props.get(key);
+    if (typeof raw === 'boolean') {
+      return raw;
+    }
+    if (typeof raw === 'number') {
+      return raw !== 0;
+    }
+    if (typeof raw === 'string') {
+      const normalized = raw.trim().toLowerCase();
+      if (normalized === 'true' || normalized === '1') return true;
+      if (normalized === 'false' || normalized === '0') return false;
+    }
+    return fallback;
+  }
+
+  private updateComponentAdjustPosition(componentId: string, props: NativeComponentRecord): void {
+    if (!props) {
+      return;
+    }
+    const adjustPosition = this.readBooleanProp(
+      props,
+      'adjustPosition',
+      this.readBooleanProp(props, 'adjust-position', true)
+    );
+    this.componentAdjustPosition.set(componentId, adjustPosition);
+    if (this.focusedComponentId === componentId) {
+      this.focusedAdjustPosition = adjustPosition;
+    }
   }
 
   private updatePlaybackIntent(componentId: string, eventValue: NativeComponentValue | undefined): void {

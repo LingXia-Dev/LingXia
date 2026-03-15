@@ -36,6 +36,8 @@ final class MacNativeComponentManager {
     private var componentPage: [String: String] = [:]
     private var componentPageFuncBindings: [String: [String: String]] = [:]
     private var componentDataset: [String: [String: Any]] = [:]
+    private var readyComponentIds: Set<String> = []
+    private var pendingEventsByComponent: [String: [[String: Any]]] = [:]
     private var pageComponents: [String: Set<String>] = [:]
     private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
@@ -46,6 +48,7 @@ final class MacNativeComponentManager {
     private var scrollOffsetY: CGFloat = 0
     private var componentDocumentRects: [String: CGRect] = [:]
     private let inactivePageStopDelayNs: UInt64 = 60_000_000_000
+    private let maxPendingNativeEventsPerComponent: Int = 8
     private var pageInactiveStopTasks: [String: Task<Void, Never>] = [:]
     private var pageInactiveStopGeneration: [String: UInt64] = [:]
     private var componentPlaybackIntent: [String: Bool] = [:]
@@ -91,6 +94,8 @@ final class MacNativeComponentManager {
             handleUpdate(message)
         case "component.unmount":
             handleUnmount(message)
+        case "component.ready":
+            handleReady(message)
         case "component.focus":
             handleFocus(message)
         case "component.blur":
@@ -101,6 +106,15 @@ final class MacNativeComponentManager {
             handlePageLifecycle(message)
         default:
             break
+        }
+    }
+
+    private func handleReady(_ parameters: [String: Any]) {
+        guard let id = parameters["id"] as? String, !id.isEmpty else { return }
+        readyComponentIds.insert(id)
+        guard let pending = pendingEventsByComponent.removeValue(forKey: id) else { return }
+        for payload in pending {
+            eventSink(payload)
         }
     }
 
@@ -255,7 +269,7 @@ final class MacNativeComponentManager {
         if let pageId = componentPage[componentId] {
             payload["pageId"] = pageId
         }
-        eventSink(payload)
+        emitEventToView(componentId: componentId, payload: payload)
         dispatchPageFunc(componentId: componentId, payload: payload)
 
         let eventName = payload["event"] as? String
@@ -274,6 +288,19 @@ final class MacNativeComponentManager {
                 _ = onCallback(callbackId, true, enrichedJson)
             }
         }
+    }
+
+    private func emitEventToView(componentId: String, payload: [String: Any]) {
+        if readyComponentIds.contains(componentId) {
+            eventSink(payload)
+            return
+        }
+        var queue = pendingEventsByComponent[componentId] ?? []
+        queue.append(payload)
+        if queue.count > maxPendingNativeEventsPerComponent {
+            queue.removeFirst(queue.count - maxPendingNativeEventsPerComponent)
+        }
+        pendingEventsByComponent[componentId] = queue
     }
 
     private func documentToViewport(_ rect: CGRect) -> CGRect {
@@ -434,11 +461,23 @@ final class MacNativeComponentManager {
     }
 
     private func rectFrom(dict: [String: Any]) -> CGRect {
-        let x = CGFloat((dict["x"] as? Double) ?? 0)
-        let y = CGFloat((dict["y"] as? Double) ?? 0)
-        let w = CGFloat((dict["width"] as? Double) ?? 0)
-        let h = CGFloat((dict["height"] as? Double) ?? 0)
+        let x = Self.cgFloat(from: dict["x"])
+        let y = Self.cgFloat(from: dict["y"])
+        let w = Self.cgFloat(from: dict["width"])
+        let h = Self.cgFloat(from: dict["height"])
         return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    private static func cgFloat(from value: Any?) -> CGFloat {
+        if let cg = value as? CGFloat { return cg }
+        if let number = value as? NSNumber { return CGFloat(number.doubleValue) }
+        if let doubleValue = value as? Double { return CGFloat(doubleValue) }
+        if let floatValue = value as? Float { return CGFloat(floatValue) }
+        if let intValue = value as? Int { return CGFloat(intValue) }
+        if let string = value as? String, let parsed = Double(string) {
+            return CGFloat(parsed)
+        }
+        return 0
     }
 
     private func handlePageLifecycle(_ parameters: [String: Any]) {
@@ -483,7 +522,6 @@ final class MacNativeComponentManager {
         for id in ids {
             guard let component = components[id] else { continue }
             component.view.isHidden = false
-            component.focus()
             if componentsPendingAutoResume.remove(id) != nil {
                 component.handleCommand(name: "play", params: nil)
             }
@@ -536,6 +574,8 @@ final class MacNativeComponentManager {
     private func unmountComponent(id: String, pageId: String?) {
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.removeValue(forKey: id)
+        readyComponentIds.remove(id)
+        pendingEventsByComponent.removeValue(forKey: id)
         guard let component = components.removeValue(forKey: id) else { return }
         if let callbackId = componentCallbacks[id] {
             let payload: [String: Any] = [

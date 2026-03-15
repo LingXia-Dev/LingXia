@@ -27,6 +27,7 @@ import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
+import { getFocusedNativeComponentType, getFocusedNativeComponentAdjustPosition } from './NativeComponents/NativeBridgeInternal';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -40,6 +41,7 @@ const OVERLAY_MASK_FADE_DURATION = 180;
 
 const ANIMATION_DURATION_STANDARD = 300;      // Standard animation duration
 const ANIMATION_CURVE_EASE_IN_OUT = Curve.EaseInOut;  // Smooth ease in/out curve
+const KEYBOARD_MONITOR_INTERVAL_MS = 80;
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Container';
@@ -100,10 +102,14 @@ export struct LxAppContainer {
   @State private isRefreshing: boolean = false
   @State private enablePullDownRefresh: boolean = false
   @State private refreshingPath: string = ''
+  @State private keyboardOffsetVp: number = 0
 
   private webViewUiCallback = (action: string, info: WebViewInfo) => {
     this.handleWebViewUiEvent(action, info);
   }
+  private keyboardMonitorTimer: number | null = null;
+  private keyboardMonitorActive: boolean = false;
+  private keyboardWindow: window.Window | null = null;
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -199,6 +205,8 @@ export struct LxAppContainer {
         this.handleWebViewUiEvent('create', info);
       }
     });
+
+    this.startKeyboardMonitor();
   }
 
   aboutToDisappear() {
@@ -207,6 +215,7 @@ export struct LxAppContainer {
 
     // Remove WebView UI callback when container is destroyed
     removeWebViewUiCallback(this.webViewUiCallback);
+    this.stopKeyboardMonitor();
     hilog.info(DOMAIN, TAG, `Container destroyed for ${this.appId}:${this.path}`);
   }
 
@@ -224,12 +233,75 @@ export struct LxAppContainer {
       if (!mainWindow) {
         throw new Error('Main window not available');
       }
+      this.keyboardWindow = mainWindow;
 
       const safeArea = await mainWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
       this.statusBarHeight = safeArea.topRect.height || SYSTEM_STATUS_BAR_HEIGHT; // Ensure fallback value
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to get status bar height: ${error}`);
       this.statusBarHeight = SYSTEM_STATUS_BAR_HEIGHT; // Safe fallback value for all devices
+    }
+  }
+
+  private startKeyboardMonitor(): void {
+    if (this.keyboardMonitorActive) {
+      return;
+    }
+    this.keyboardMonitorActive = true;
+    const tick = async () => {
+      if (!this.keyboardMonitorActive) {
+        return;
+      }
+      await this.refreshKeyboardOffset();
+      if (!this.keyboardMonitorActive) {
+        return;
+      }
+      this.keyboardMonitorTimer = setTimeout(() => {
+        tick();
+      }, KEYBOARD_MONITOR_INTERVAL_MS);
+    };
+    void tick();
+  }
+
+  private stopKeyboardMonitor(): void {
+    this.keyboardMonitorActive = false;
+    if (this.keyboardMonitorTimer !== null) {
+      clearTimeout(this.keyboardMonitorTimer);
+      this.keyboardMonitorTimer = null;
+    }
+    this.keyboardOffsetVp = 0;
+  }
+
+  private async refreshKeyboardOffset(): Promise<void> {
+    if (this.overlayActive || this.hasFullscreenTarget()) {
+      if (this.keyboardOffsetVp !== 0) {
+        this.keyboardOffsetVp = 0;
+      }
+      return;
+    }
+    try {
+      let targetWindow = this.keyboardWindow;
+      if (!targetWindow) {
+        const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+        if (!context) {
+          return;
+        }
+        targetWindow = await window.getLastWindow(context);
+        if (!targetWindow) {
+          return;
+        }
+        this.keyboardWindow = targetWindow;
+      }
+      const avoidArea = await targetWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_KEYBOARD);
+      const bottomHeightPx = avoidArea.bottomRect?.height ?? 0;
+      const nextOffset = Math.max(0, Math.round(Number(px2vp(bottomHeightPx))));
+      if (Math.abs(nextOffset - this.keyboardOffsetVp) >= 1) {
+        this.keyboardOffsetVp = nextOffset;
+      }
+    } catch (_error) {
+      if (this.keyboardOffsetVp !== 0) {
+        this.keyboardOffsetVp = 0;
+      }
     }
   }
 
@@ -1527,20 +1599,39 @@ export struct LxAppContainer {
   }
 
   private getWebViewTranslation(webTag: string): TranslateOptions {
+    const keyboardTranslateY = this.getKeyboardTranslateY(webTag);
     if (!this.animationInProgress) {
       // Ensure active WebView is at 0, others are moved out if kept alive
-      if (webTag === this.currentWebTag) return { x: 0, y: 0 };
+      if (webTag === this.currentWebTag) return { x: 0, y: keyboardTranslateY };
       if (this.keepAliveTags.includes(webTag)) return { x: '100%', y: 0 };
       return { x: 0, y: 0 };
     }
 
     if (webTag === this.currentWebTag) {
-      return { x: `${this.currentWebViewTranslateX}%`, y: 0 };
+      return { x: `${this.currentWebViewTranslateX}%`, y: keyboardTranslateY };
     }
     if (webTag === this.previousWebTag) {
       return { x: `${this.previousWebViewTranslateX}%`, y: 0 };
     }
     return { x: 0, y: 0 };
+  }
+
+  private getKeyboardTranslateY(webTag: string): number {
+    if (this.keyboardOffsetVp <= 0) {
+      return 0;
+    }
+    if (this.isOverlayWebView(webTag)) {
+      return 0;
+    }
+    if (webTag !== this.currentWebTag) {
+      return 0;
+    }
+    const focusedType = getFocusedNativeComponentType(webTag);
+    const focusedAdjustPosition = getFocusedNativeComponentAdjustPosition(webTag);
+    if (focusedType === 'textarea.native' && !focusedAdjustPosition) {
+      return 0;
+    }
+    return -this.keyboardOffsetVp;
   }
 
   private getWebViewMargin(): Margin {

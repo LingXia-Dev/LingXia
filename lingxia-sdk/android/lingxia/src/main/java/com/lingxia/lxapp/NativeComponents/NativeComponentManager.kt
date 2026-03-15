@@ -5,6 +5,8 @@ import android.graphics.RectF
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.lingxia.lxapp.NativeApi
 import com.lingxia.webview.LingXiaWebView
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
@@ -32,6 +34,7 @@ class NativeComponentManager(
 ) {
     private companion object {
         private const val INACTIVE_PAGE_STOP_DELAY_MS = 60_000L
+        private const val MAX_PENDING_NATIVE_EVENTS_PER_COMPONENT = 8
     }
 
     private val logTag = "NativeComponentManager"
@@ -42,8 +45,12 @@ class NativeComponentManager(
 
     private val components = mutableMapOf<String, LxNativeComponent>()
     private val componentPage = mutableMapOf<String, String>()
+    private val componentType = mutableMapOf<String, String>()
     private val componentPageFuncBindings = mutableMapOf<String, Map<String, String>>()
     private val componentDataset = mutableMapOf<String, Map<String, Any?>>()
+    private val componentAdjustPosition = mutableMapOf<String, Boolean>()
+    private val readyComponentIds = mutableSetOf<String>()
+    private val pendingEventsByComponent = mutableMapOf<String, MutableList<Map<String, Any>>>()
     // Rust callback IDs for VideoContext event forwarding
     private val componentCallbacks = mutableMapOf<String, Long>()
     // Content position (document coordinates = viewport + scroll at mount time)
@@ -62,6 +69,7 @@ class NativeComponentManager(
     // return 0-size. Keep retrying a few times so the native overlay catches the final layout.
     private val rectSyncRetries = mutableMapOf<String, Int>()
     private val rectSyncRetryRunnables = mutableMapOf<String, Runnable>()
+    private val focusVisibilityRunnables = mutableMapOf<String, MutableList<Runnable>>()
     private val pageInactiveStopRunnables = mutableMapOf<String, Runnable>()
     private val componentPlaybackIntent = mutableMapOf<String, Boolean>()
     private val componentsPendingAutoResume = mutableSetOf<String>()
@@ -75,12 +83,20 @@ class NativeComponentManager(
             "component.mount" -> handleMount(message)
             "component.update" -> handleUpdate(message)
             "component.unmount" -> handleUnmount(message)
+            "component.ready" -> handleReady(message)
             "component.focus" -> handleFocus(message)
             "component.blur" -> handleBlur(message)
             "component.command" -> handleCommand(message)
             "component.coverage" -> handleCoverage(message)
             "page.lifecycle" -> handlePageLifecycle(message)
         }
+    }
+
+    private fun handleReady(params: Map<String, Any?>) {
+        val id = params["id"] as? String ?: return
+        readyComponentIds.add(id)
+        val pending = pendingEventsByComponent.remove(id) ?: return
+        pending.forEach { eventSink(it) }
     }
 
     private fun handleCoverage(params: Map<String, Any?>) {
@@ -137,8 +153,16 @@ class NativeComponentManager(
 
         components[id] = component
         componentPage[id] = pageId
+        componentType[id] = type
         parsePageFuncBindings(props)?.let { componentPageFuncBindings[id] = it }
         parseDataset(props)?.let { componentDataset[id] = it }
+        componentAdjustPosition[id] = parseAdjustPosition(props)
+        if (type == "input.native") {
+            Log.d(
+                logTag,
+                "mount input id=$id type=${props["type"]} password=${props["password"]} adjustPosition=${componentAdjustPosition[id]}"
+            )
+        }
         componentContentRects[id] = contentRect
         componentScreenRects[id] = screenRect
         pageComponents.getOrPut(pageId) { mutableSetOf() }.add(id)
@@ -191,6 +215,15 @@ class NativeComponentManager(
                     componentDataset[id] = parsed
                 }
             }
+            if ("adjustPosition" in props || "adjust-position" in props) {
+                componentAdjustPosition[id] = parseAdjustPosition(props)
+            }
+            if (componentType[id] == "input.native" && ("type" in props || "password" in props)) {
+                Log.d(
+                    logTag,
+                    "update input id=$id type=${props["type"]} password=${props["password"]} adjustPosition=${componentAdjustPosition[id]}"
+                )
+            }
             component.update(props)
         }
         (params["zIndex"] as? Number)?.let { component.view.translationZ = it.toFloat() }
@@ -213,6 +246,7 @@ class NativeComponentManager(
 
     private fun handleBlur(params: Map<String, Any?>) {
         val id = params["id"] as? String ?: return
+        focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
         components[id]?.blur()
     }
 
@@ -237,6 +271,8 @@ class NativeComponentManager(
     fun teardownAll() {
         pageInactiveStopRunnables.values.forEach { mainHandler.removeCallbacks(it) }
         pageInactiveStopRunnables.clear()
+        focusVisibilityRunnables.values.flatten().forEach { mainHandler.removeCallbacks(it) }
+        focusVisibilityRunnables.clear()
         componentsPendingAutoResume.clear()
         componentPlaybackIntent.clear()
         val allIds = components.keys.toList()
@@ -401,13 +437,16 @@ class NativeComponentManager(
         payload["id"] = componentId
         payload["componentId"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
-        updatePlaybackIntent(componentId, payload["event"] as? String)
-        eventSink(payload)
+        val eventName = payload["event"] as? String
+        if (eventName == "focus") {
+            scheduleEnsureFocusedComponentVisible(componentId)
+        }
+        updatePlaybackIntent(componentId, eventName)
+        emitEventToView(componentId, payload)
         dispatchPageFunc(componentId, payload)
         
         // Also forward to Rust callback if registered (for VideoContext).
         // Keep this list small to avoid high-frequency callbacks (e.g. timeupdate).
-        val eventName = payload["event"] as? String
         val shouldForwardToCallback = when (eventName) {
             "waiting",
             "playrequest",
@@ -425,6 +464,18 @@ class NativeComponentManager(
                 payload["componentId"] = componentId
                 NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
             }
+        }
+    }
+
+    private fun emitEventToView(componentId: String, payload: MutableMap<String, Any>) {
+        if (readyComponentIds.contains(componentId)) {
+            eventSink(payload)
+            return
+        }
+        val queue = pendingEventsByComponent.getOrPut(componentId) { mutableListOf() }
+        queue.add(payload.toMap())
+        if (queue.size > MAX_PENDING_NATIVE_EVENTS_PER_COMPONENT) {
+            queue.subList(0, queue.size - MAX_PENDING_NATIVE_EVENTS_PER_COMPONENT).clear()
         }
     }
 
@@ -491,6 +542,87 @@ class NativeComponentManager(
         return parsed.takeIf { it.isNotEmpty() }
     }
 
+    private fun parseAdjustPosition(props: Map<String, Any?>): Boolean {
+        if (props.containsKey("adjustPosition")) {
+            return readBooleanProp(props["adjustPosition"], true)
+        }
+        if (props.containsKey("adjust-position")) {
+            return readBooleanProp(props["adjust-position"], true)
+        }
+        return true
+    }
+
+    private fun readBooleanProp(raw: Any?, default: Boolean): Boolean {
+        if (raw == null) return default
+        return when (raw) {
+            is Boolean -> raw
+            is Number -> raw.toInt() != 0
+            is String -> raw.equals("true", ignoreCase = true) || raw == "1"
+            else -> default
+        }
+    }
+
+    private fun scheduleEnsureFocusedComponentVisible(componentId: String) {
+        if (componentAdjustPosition[componentId] == false) {
+            return
+        }
+        // Cancel ALL pending scroll-into-view runnables, not just those for this component.
+        // If the user moves focus from component A to B before A's runnables fire, A's
+        // runnables would otherwise scroll the WebView unexpectedly and scramble positions.
+        focusVisibilityRunnables.keys.toList().forEach { id ->
+            focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
+        }
+        // JS already handles keyboard avoidance for input/textarea via ensureVisibleForKeyboard.
+        // Adding a native scroll on top causes double-scrolling and position chaos.
+        val type = componentType[componentId]
+        if (type == "input.native" || type == "textarea.native") return
+
+        val tasks = mutableListOf<Runnable>()
+        val delays = longArrayOf(120L, 260L)
+        delays.forEach { delay ->
+            val task = Runnable {
+                ensureComponentVisibleForIme(componentId)
+            }
+            tasks.add(task)
+            mainHandler.postDelayed(task, delay)
+        }
+        focusVisibilityRunnables[componentId] = tasks
+    }
+
+    private fun ensureComponentVisibleForIme(componentId: String) {
+        if (componentAdjustPosition[componentId] == false) return
+        val webView = webViewRef?.get() ?: return
+        val host = hostViewRef.get() ?: return
+        val contentRect = componentContentRects[componentId] ?: return
+
+        val rootInsets = ViewCompat.getRootWindowInsets(host)
+        val imeBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+        val navBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        val keyboardHeight = (imeBottom - navBottom).coerceAtLeast(0)
+        val viewportHeight = webView.height.toFloat()
+        if (viewportHeight <= 0f) return
+
+        val scrollY = webView.scrollY.toFloat()
+        val screenTop = contentRect.top - scrollY
+        val screenBottom = contentRect.bottom - scrollY
+        val topSafe = 12f * density
+        val bottomSafe = 24f * density
+        val visibleBottom = (viewportHeight - keyboardHeight - bottomSafe).coerceAtLeast(topSafe)
+
+        var delta = 0f
+        if (screenBottom > visibleBottom) {
+            delta = screenBottom - visibleBottom
+        } else if (screenTop < topSafe) {
+            delta = screenTop - topSafe
+        }
+        if (abs(delta) < 1f) return
+
+        val targetY = (webView.scrollY + delta.roundToInt()).coerceAtLeast(0)
+        if (targetY == webView.scrollY) return
+        webView.scrollTo(webView.scrollX, targetY)
+        onWebViewScroll(webView.scrollX, targetY)
+    }
+
     private fun jsonToAny(value: Any?): Any? {
         return when (value) {
             null, JSONObject.NULL -> null
@@ -522,6 +654,8 @@ class NativeComponentManager(
         return mapOf(
             "type" to eventName,
             "detail" to detail,
+            "id" to componentId,
+            "dataset" to dataset,
             "target" to target,
             "currentTarget" to target,
             "timeStamp" to System.currentTimeMillis()
@@ -680,7 +814,6 @@ class NativeComponentManager(
                     host.addView(view)
                 }
                 view.visibility = View.VISIBLE
-                focus()
                 if (componentsPendingAutoResume.remove(id)) {
                     handleCommand("play", null)
                 }
@@ -707,8 +840,11 @@ class NativeComponentManager(
 
     private fun unmountComponent(id: String, pageId: String?) {
         webOverlayCoverageRestore.remove(id)
+        focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.remove(id)
+        readyComponentIds.remove(id)
+        pendingEventsByComponent.remove(id)
         // Unregister first to block any queued JNI command from being routed back into a component
         // that is in the middle of teardown.
         ComponentRouter.unregister(id)
@@ -724,8 +860,10 @@ class NativeComponentManager(
         componentContentRects.remove(id)
         componentScreenRects.remove(id)
         componentPage.remove(id)
+        componentType.remove(id)
         componentPageFuncBindings.remove(id)
         componentDataset.remove(id)
+        componentAdjustPosition.remove(id)
         pageId?.let { pid ->
             pageComponents[pid]?.let { ids ->
                 ids.remove(id)

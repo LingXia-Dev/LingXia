@@ -42,9 +42,12 @@ final class NativeComponentManager {
     private weak var webView: WKWebView?
 
     private var components: [String: LxNativeComponent] = [:]
+    private var componentTypes: [String: String] = [:]
     private var componentPage: [String: String] = [:]
     private var componentPageFuncBindings: [String: [String: String]] = [:]
     private var componentDataset: [String: [String: Any]] = [:]
+    private var readyComponentIds: Set<String> = []
+    private var pendingEventsByComponent: [String: [[String: Any]]] = [:]
     private var pageComponents: [String: Set<String>] = [:]
     // Monotonic generation per component id. Used to drop stale async events from old instances.
     private var componentEpochs: [String: UInt64] = [:]
@@ -59,6 +62,7 @@ final class NativeComponentManager {
     private var webOverlayCoverageRestore: [String: Bool] = [:]
     private var scrollBounceRestore: (bounces: Bool, alwaysBounceVertical: Bool)? = nil
     private let inactivePageStopDelayNs: UInt64 = 60_000_000_000
+    private let maxPendingNativeEventsPerComponent: Int = 8
     private var pageInactiveStopTasks: [String: Task<Void, Never>] = [:]
     private var pageInactiveStopGeneration: [String: UInt64] = [:]
     private var componentPlaybackIntent: [String: Bool] = [:]
@@ -93,6 +97,8 @@ final class NativeComponentManager {
             handleUpdate(message)
         case "component.unmount":
             handleUnmount(message)
+        case "component.ready":
+            handleReady(message)
         case "component.focus":
             handleFocus(message)
         case "component.blur":
@@ -105,6 +111,15 @@ final class NativeComponentManager {
             handlePageLifecycle(message)
         default:
             break
+        }
+    }
+
+    private func handleReady(_ parameters: [String: Any]) {
+        guard let id = parameters["id"] as? String, !id.isEmpty else { return }
+        readyComponentIds.insert(id)
+        guard let pending = pendingEventsByComponent.removeValue(forKey: id) else { return }
+        for payload in pending {
+            eventSink(payload)
         }
     }
 
@@ -129,6 +144,7 @@ final class NativeComponentManager {
 
         let nextEpoch = (componentEpochs[id] ?? 0) + 1
         componentEpochs[id] = nextEpoch
+        componentTypes[id] = type
         let component = factory.make(id: id, initialProps: props) { [weak self] event in
             guard let self else { return }
             // Guard against stale events from a previously unmounted instance that shared the same id.
@@ -148,9 +164,15 @@ final class NativeComponentManager {
         ComponentRouter.shared.register(componentId: id, manager: self)
 
         // Preferred path on iOS: mount into WKChildScrollView for same-level behavior.
-        var targetRect = viewportToContentRect(rect)
+        // Only media components (video) use this path; input/textarea use overlay so
+        // that WKChildScrollView mis-matching never puts them at the wrong position.
+        //
+        // JS measureElement sends document coordinates (viewport + window.scrollY), so use
+        // the rect directly as content coordinates — do NOT add contentOffset again.
+        var targetRect = rect
         var mountedInChildScrollView = false
-        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
+        if prefersSameLevelMounting(type: type),
+           let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
             let scrollContainerRect = rectFrom(dict: scrollContainerRectDict)
             if let wkChildScrollView = resolveWKChildScrollView(scrollContainerRect) {
                 targetRect = sameLevelContainerFrame(in: wkChildScrollView)
@@ -172,6 +194,12 @@ final class NativeComponentManager {
                 return
             }
             component.mount(in: host)
+            // Register for touch routing: WebKit may add WKChildScrollViews on top of our overlay
+            // host at any time, intercepting touches. The swizzler on WKContentView.hitTest lets
+            // us reclaim taps at the correct content-space position.
+            if let sv = scrollView {
+                WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: sv)
+            }
             os_log("NativeComponent %{public}@ mounted in overlay", log: nativeComponentLog, type: .info, id)
         }
 
@@ -195,7 +223,8 @@ final class NativeComponentManager {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
 
-        if let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
+        if prefersSameLevelMounting(type: componentTypes[id] ?? ""),
+           let scrollContainerRectDict = parameters["scrollContainerRect"] as? [String: Any] {
             let scrollContainerRect = rectFrom(dict: scrollContainerRectDict)
             promoteToWKChildScrollViewIfAvailable(componentId: id, component: component, scrollContainerRect: scrollContainerRect)
         }
@@ -292,7 +321,9 @@ final class NativeComponentManager {
         guard let id = parameters["id"] as? String,
               let component = components[id] else { return }
         component.focus()
-        ensureVisible(component.view.frame)
+        if shouldEnsureVisibleOnFocus(componentId: id) {
+            ensureVisible(component.view.frame, in: component.view.superview)
+        }
     }
 
     private func handleBlur(_ parameters: [String: Any]) {
@@ -376,8 +407,13 @@ final class NativeComponentManager {
     // MARK: - Helpers
 
     private func dispatchComponentEvent(componentId: String, event: [String: Any]) {
-        guard components[componentId] != nil else { return }
+        guard let component = components[componentId] else { return }
         var payload = event
+        if let eventName = payload["event"] as? String,
+           eventName == "focus",
+           shouldEnsureVisibleOnFocus(componentId: componentId) {
+            ensureVisible(component.view.frame, in: component.view.superview)
+        }
         updatePlaybackIntent(componentId: componentId, event: payload["event"] as? String)
         payload["action"] = "component.event"
         payload["id"] = componentId
@@ -385,7 +421,7 @@ final class NativeComponentManager {
         if let pageId = componentPage[componentId] {
             payload["pageId"] = pageId
         }
-        eventSink(payload)
+        emitEventToView(componentId: componentId, payload: payload)
         dispatchPageFunc(componentId: componentId, payload: payload)
 
         // Also forward to Rust callback if registered (for VideoContext)
@@ -413,6 +449,19 @@ final class NativeComponentManager {
                 _ = onCallback(callbackId, true, enrichedJson)
             }
         }
+    }
+
+    private func emitEventToView(componentId: String, payload: [String: Any]) {
+        if readyComponentIds.contains(componentId) {
+            eventSink(payload)
+            return
+        }
+        var queue = pendingEventsByComponent[componentId] ?? []
+        queue.append(payload)
+        if queue.count > maxPendingNativeEventsPerComponent {
+            queue.removeFirst(queue.count - maxPendingNativeEventsPerComponent)
+        }
+        pendingEventsByComponent[componentId] = queue
     }
 
     private func resolvePageId(_ dict: [String: Any]) -> String {
@@ -582,9 +631,15 @@ final class NativeComponentManager {
         return CGRect(x: x, y: y, width: w, height: h)
     }
 
-    private func ensureVisible(_ rect: CGRect) {
-        guard let scrollView = scrollView else { return }
-        scrollView.scrollRectToVisible(rect.insetBy(dx: 0, dy: -20), animated: true)
+    private func ensureVisible(_ rect: CGRect, in container: UIView?) {
+        guard let scrollView = scrollView, let container = container else { return }
+        let rectInScrollView = scrollView.convert(rect, from: container)
+        scrollView.scrollRectToVisible(rectInScrollView.insetBy(dx: 0, dy: -20), animated: true)
+    }
+
+    private func shouldEnsureVisibleOnFocus(componentId: String) -> Bool {
+        let type = componentTypes[componentId]
+        return type != "input.native" && type != "textarea.native"
     }
 
     private func unmountPage(_ pageId: String) {
@@ -618,7 +673,6 @@ final class NativeComponentManager {
         for id in ids {
             guard let component = components[id] else { continue }
             component.view.isHidden = false
-            component.focus()
             if componentsPendingAutoResume.remove(id) != nil {
                 component.handleCommand(name: "play", params: nil)
             }
@@ -669,6 +723,8 @@ final class NativeComponentManager {
     private func unmountComponent(id: String, pageId: String?) {
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.removeValue(forKey: id)
+        readyComponentIds.remove(id)
+        pendingEventsByComponent.removeValue(forKey: id)
         // Unregister first to block any queued command from being routed back to a component
         // that is in the middle of teardown.
         ComponentRouter.shared.unregister(componentId: id)
@@ -694,6 +750,7 @@ final class NativeComponentManager {
             }
         }
         componentPage.removeValue(forKey: id)
+        componentTypes.removeValue(forKey: id)
         componentPageFuncBindings.removeValue(forKey: id)
         componentDataset.removeValue(forKey: id)
         if let callbackId {
@@ -793,13 +850,23 @@ final class NativeComponentManager {
     }
 
     private func applyViewportFrame(componentId: String, component: LxNativeComponent, rect: CGRect) {
-        let aligned = stablePixelAligned(viewportToContentRect(rect))
+        // JS measureElement sends document coordinates (viewport + window.scrollY).
+        // The overlay host is constrained to contentLayoutGuide, so document coordinates
+        // map directly to content coordinates — do NOT add contentOffset again.
+        let aligned = stablePixelAligned(rect)
         if let last = lastAppliedViewportRect[componentId],
            rectDistance(last, aligned) <= frameEpsilon {
             return
         }
         component.setFrame(aligned)
         lastAppliedViewportRect[componentId] = aligned
+    }
+
+    /// Only video-type components use WKChildScrollView same-level mounting.
+    /// Input/textarea use the overlay host which is already in content space,
+    /// avoiding WKChildScrollView mis-matching that causes position drift.
+    private func prefersSameLevelMounting(type: String) -> Bool {
+        return type == "video.native"
     }
 
     private func rectDistance(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {

@@ -276,10 +276,14 @@ export struct LingXiaWebView {
     componentIds.forEach((componentId: string) => {
       const controller = this.embedManager!.getNodeController(componentId);
       const isFullscreen = controller?.getIsFullscreen() ?? false;
+      const normalPosition: Position = {
+        x: controller?.getX() ?? 0,
+        y: controller?.getY() ?? 0
+      };
       const layout: NodeLayoutState = {
         width: isFullscreen ? '100%' : (controller?.getWidth() ?? 0),
         height: isFullscreen ? '100%' : (controller?.getHeight() ?? 0),
-        position: isFullscreen ? { x: 0, y: 0 } : undefined,
+        position: isFullscreen ? { x: 0, y: 0 } : normalPosition,
         // Must be higher than backdrop (49999) to appear on top
         // Ensure same-level native nodes are above the Web node in the Stack (Web is rendered later).
         zIndex: isFullscreen ? 50000 : 1,
@@ -342,10 +346,7 @@ export struct LingXiaWebView {
         .clip(true)
         .position(this.getNodeContainerPosition(componentId))
         .zIndex(this.getNodeContainerZIndex(componentId))
-        // Keep Web interactions working even when the native node is rendered above the Web node.
-        // Same-level gesture routing is driven by Web.onNativeEmbedGestureEvent, so the Web must
-        // continue to receive touch events.
-        .hitTestBehavior(HitTestMode.Transparent)
+        .hitTestBehavior(this.getNodeContainerHitTest(componentId))
     }
   }
 
@@ -397,5 +398,12 @@ export struct LingXiaWebView {
       return layout.zIndex;
     }
     return 0;
+  }
+
+  private getNodeContainerHitTest(componentId: string): HitTestMode {
+    // Keep transparent routing for all native components so ArkWeb can
+    // resolve touch target based on embed region.
+    void componentId;
+    return HitTestMode.Transparent;
   }
 }
