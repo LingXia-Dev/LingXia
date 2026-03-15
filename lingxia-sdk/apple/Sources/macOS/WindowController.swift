@@ -197,6 +197,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebar.onAddBrowserTab = { [weak self] in
             self?.addBrowserTab()
         }
+        sidebar.onOpenSettings = { [weak self] in
+            self?.addBrowserTabWithURL("lingxia://settings")
+        }
+        sidebar.onOpenDownloads = { [weak self] in
+            self?.addBrowserTabWithURL("lingxia://downloads")
+        }
         sidebar.onBrowserTabSelected = { [weak self] id in
             self?.selectBrowserTab(id: id)
         }
@@ -1294,19 +1300,20 @@ extension LxAppWindowController {
         sidebarView?.updateBrowserItems([], activeId: nil)
     }
 
-    private func addBrowserTab() {
+    private func addBrowserTabWithURL(_ url: String) {
         guard let owner = browserOwnerForNewTab() else {
             os_log("Cannot create browser tab without active lxapp session", log: Self.log, type: .error)
             return
         }
 
-        guard let openedTab = openBrowserTab(owner.appId, owner.sessionId, "") else {
+        guard let openedTab = openBrowserTab(owner.appId, owner.sessionId, url) else {
             os_log(
-                "openBrowserTab failed for %{public}@/%{public}llu",
+                "openBrowserTab failed for %{public}@/%{public}llu url=%{public}@",
                 log: Self.log,
                 type: .error,
                 owner.appId,
-                owner.sessionId
+                owner.sessionId,
+                url
             )
             return
         }
@@ -1325,6 +1332,10 @@ extension LxAppWindowController {
         }
 
         presentInternalBrowserTab(id: id)
+    }
+
+    private func addBrowserTab() {
+        addBrowserTabWithURL("")
     }
 
     private func selectBrowserTab(id: UUID) {

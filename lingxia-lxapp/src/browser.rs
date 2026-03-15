@@ -887,7 +887,7 @@ fn browser_create_webview(
                 let page_path = if host.is_empty() || host == "newtab" {
                     startup_path.clone()
                 } else {
-                    format!("/{host}")
+                    format!("pages/{host}/index.html")
                 };
                 // Serve page HTML (with bridge nonce) for the document root.
                 let req_path = req.uri().path();

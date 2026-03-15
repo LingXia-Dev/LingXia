@@ -113,6 +113,10 @@ public class SidebarView: NSView {
     var onBrowserTabSelected: ((UUID) -> Void)?
     /// Called when a browser tab close is requested
     var onBrowserTabCloseRequested: ((UUID) -> Void)?
+    /// Called when settings button is clicked
+    var onOpenSettings: (() -> Void)?
+    /// Called when downloads button is clicked
+    var onOpenDownloads: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -645,11 +649,11 @@ public class SidebarView: NSView {
     }
 
     @objc private func settingsClicked() {
-        os_log("Settings button clicked", log: .default)
+        onOpenSettings?()
     }
 
     @objc private func downloadClicked() {
-        os_log("Download button clicked", log: .default)
+        onOpenDownloads?()
     }
 
     // MARK: - Add button hover
