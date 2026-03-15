@@ -18,7 +18,7 @@ lingxia-components/
 ### React
 
 ```tsx
-import { LxVideo, LxPicker, LxNavigator } from '@lingxia/components/react';
+import { LxVideo, LxPicker, LxNavigator, LxInput, LxTextarea } from '@lingxia/components/react';
 
 function App() {
   return (
@@ -38,6 +38,18 @@ function App() {
       <LxNavigator url="/other-page" openType="navigate">
         Go to other page
       </LxNavigator>
+
+      <LxInput
+        value="hello"
+        placeholder="Type here"
+        onInput={(detail) => console.log('Input:', detail.value)}
+      />
+
+      <LxTextarea
+        value="multi-line text"
+        autoHeight
+        onLineChange={(detail) => console.log('Line count:', detail.lineCount)}
+      />
     </div>
   );
 }
@@ -47,10 +59,11 @@ function App() {
 
 ```vue
 <script setup>
-import { LxVideo, LxPicker, LxNavigator } from '@lingxia/components/vue';
+import { LxVideo, LxPicker, LxNavigator, LxInput, LxTextarea } from '@lingxia/components/vue';
 import { ref } from 'vue';
 
 const selectedValue = ref('Option 1');
+const message = ref('');
 </script>
 
 <template>
@@ -70,6 +83,18 @@ const selectedValue = ref('Option 1');
     <LxNavigator url="/other-page" open-type="navigate">
       Go to other page
     </LxNavigator>
+
+    <LxInput
+      v-model="message"
+      placeholder="Type here"
+      @input="(detail) => console.log('Input:', detail.value)"
+    />
+
+    <LxTextarea
+      v-model="message"
+      auto-height
+      @line-change="(detail) => console.log('Line count:', detail.lineCount)"
+    />
   </div>
 </template>
 ```
@@ -77,15 +102,24 @@ const selectedValue = ref('Option 1');
 ### Vanilla JS / Custom Elements
 
 ```javascript
-import { registerVideoComponent, registerPickerComponent } from '@lingxia/components';
+import {
+  registerVideoComponent,
+  registerPickerComponent,
+  registerInputComponent,
+  registerTextareaComponent
+} from '@lingxia/components';
 
 // Register custom elements
 registerVideoComponent();
 registerPickerComponent();
+registerInputComponent();
+registerTextareaComponent();
 
 // Use in HTML
 // <lx-video src="video.mp4" controls></lx-video>
 // <lx-picker columns='[["A","B","C"]]'></lx-picker>
+// <lx-input placeholder="Type here"></lx-input>
+// <lx-textarea auto-height></lx-textarea>
 ```
 
 ## Components
@@ -95,6 +129,8 @@ registerPickerComponent();
 | `LxVideo` | Native video player with quality switching, playback rate control |
 | `LxPicker` | Native picker for selector, multi-selector, cascading, date, and time |
 | `LxNavigator` | Navigation component for page navigation, external links, phone calls |
+| `LxInput` | Native single-line input component |
+| `LxTextarea` | Native multi-line textarea component |
 
 ## Development
 

@@ -47,4 +47,89 @@ export interface LxNavigatorProps {
   style?: CSSProperties;
 }
 
+export interface LxInputProps {
+  id?: string;
+  modelValue?: string;
+  value?: string;
+  defaultValue?: string;
+  type?: 'text' | 'number' | 'password' | 'digit';
+  password?: boolean;
+  placeholder?: string;
+  placeholderStyle?: string;
+  placeholderClass?: string;
+  maxlength?: number;
+  cursorSpacing?: number;
+  autoFocus?: boolean;
+  disabled?: boolean;
+  focus?: boolean;
+  confirmType?: 'send' | 'search' | 'next' | 'go' | 'done';
+  alwaysEmbed?: boolean;
+  confirmHold?: boolean;
+  cursor?: number;
+  cursorColor?: string;
+  selectionStart?: number;
+  selectionEnd?: number;
+  adjustPosition?: boolean;
+  holdKeyboard?: boolean;
+  class?: string;
+  style?: CSSProperties;
+  bindInput?: string;
+  bindChange?: string;
+  bindFocus?: string;
+  bindBlur?: string;
+  bindConfirm?: string;
+  bindKeyboardHeightChange?: string;
+  bindNicknameReview?: string;
+  catchInput?: string;
+  catchChange?: string;
+  catchFocus?: string;
+  catchBlur?: string;
+  catchConfirm?: string;
+  catchKeyboardHeightChange?: string;
+  catchNicknameReview?: string;
+}
+
+export interface LxTextareaProps {
+  id?: string;
+  modelValue?: string;
+  value?: string;
+  defaultValue?: string;
+  placeholder?: string;
+  placeholderStyle?: string;
+  placeholderClass?: string;
+  maxlength?: number;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  focus?: boolean;
+  autoHeight?: boolean;
+  cursorSpacing?: number;
+  showConfirmBar?: boolean;
+  adjustPosition?: boolean;
+  holdKeyboard?: boolean;
+  disableDefaultPadding?: boolean;
+  confirmType?: 'send' | 'search' | 'next' | 'go' | 'done' | 'return';
+  confirmHold?: boolean;
+  fixed?: boolean;
+  adjustKeyboardTo?: 'cursor' | 'bottom';
+  cursor?: number;
+  selectionStart?: number;
+  selectionEnd?: number;
+  class?: string;
+  style?: CSSProperties;
+  bindInput?: string;
+  bindChange?: string;
+  bindFocus?: string;
+  bindBlur?: string;
+  bindConfirm?: string;
+  bindLineChange?: string;
+  bindKeyboardHeightChange?: string;
+  catchInput?: string;
+  catchChange?: string;
+  catchFocus?: string;
+  catchBlur?: string;
+  catchConfirm?: string;
+  catchLineChange?: string;
+  catchKeyboardHeightChange?: string;
+}
+
 export type { LxNavigatorEvent };

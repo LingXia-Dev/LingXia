@@ -9,6 +9,8 @@ This file is the API doc for all currently implemented components in `@lingxia/c
 | Video | `lx-video` | `LxVideo` | `LxVideo` |
 | Picker | `lx-picker` | `LxPicker` | `LxPicker` |
 | Navigator | `lx-navigator` | `LxNavigator` | `LxNavigator` |
+| Input | `lx-input` | `LxInput` | `LxInput` |
+| Textarea | `lx-textarea` | `LxTextarea` | `LxTextarea` |
 
 ## Cross-cutting API Rules
 
@@ -153,3 +155,108 @@ Event detail type: `{ success?: boolean; errMsg?: string }`
 ### Logic Bindings
 
 - Navigator currently has no `bindX` / `catchX` API.
+
+## LxInput API
+
+### API Subset
+
+LingXia keeps a focused cross-end compatible subset.
+
+Aligned subset:
+
+| Field | LingXia prop / attr | Notes |
+| --- | --- | --- |
+| `value` | `value` | Same semantics |
+| `type` | `type` | Supports `text` / `number` / `password` / `digit` |
+| `password` | `password` | Alias for password mode |
+| `placeholder` | `placeholder` | Same semantics |
+| `placeholder-style` | `placeholderStyle` / `placeholder-style` | Placeholder color is applied on Android/iOS/macOS; Harmony currently falls back to default placeholder color |
+| `placeholder-class` | `placeholderClass` / `placeholder-class` | Same semantics |
+| `disabled` | `disabled` | Same semantics |
+| `maxlength` | `maxlength` | Same semantics |
+| `cursor-spacing` | `cursorSpacing` / `cursor-spacing` | Same semantics |
+| `auto-focus` | `autoFocus` / `auto-focus` | Alias of `focus` |
+| `focus` | `focus` | Same semantics |
+| `confirm-type` | `confirmType` / `confirm-type` | Same semantics |
+| `always-embed` | `alwaysEmbed` / `always-embed` | Forwarded to native runtime |
+| `confirm-hold` | `confirmHold` / `confirm-hold` | Same semantics |
+| `cursor` | `cursor` | Same semantics |
+| `cursor-color` | `cursorColor` / `cursor-color` | Forwarded to native runtime |
+| `selection-start` / `selection-end` | `selectionStart` / `selectionEnd` | Same semantics |
+| `adjust-position` | `adjustPosition` / `adjust-position` | Same semantics |
+| `hold-keyboard` | `holdKeyboard` / `hold-keyboard` | Forwarded to native runtime |
+
+Not currently exposed in LingXia `LxInput`:
+
+- `type` values `idcard` / `safe-password` / `nickname`
+- `safe-password-*` fields
+- `selectionchange` / `keyboardcomposition*` / `worklet:onkeyboardheightchange` style hooks
+
+### View Events
+
+- React props: `onInput`, `onChange`, `onFocus`, `onBlur`, `onConfirm`, `onKeyboardHeightChange`, `onNicknameReview`
+- Vue emits: `input`, `change`, `focus`, `blur`, `confirm`, `keyboardHeightChange`, `nicknameReview`
+- Custom element events: `input`, `change`, `focus`, `blur`, `confirm`, `keyboardheightchange`, `nicknamereview`
+- Platform note: `keyboardheightchange` is currently emitted on iOS and Harmony. `nicknamereview` is reserved and may not fire on all runtimes yet.
+
+#### macOS platform notes
+
+- **No soft keyboard**: macOS has no on-screen keyboard, so `keyboardheightchange` is never emitted and `adjust-position` has no effect.
+- **Auto-blur**: tapping/clicking outside the native input hands focus back to the WebView through the normal macOS first-responder mechanism. Programmatic blur (`blur()` API or `focus: false` prop) works as expected. If your page relies on a tap-outside event to dismiss the input (common on mobile), you should also wire up a `mousedown` listener on the WebView side that explicitly calls `blur()`.
+
+### Logic Bindings
+
+- Supported: `bindInput`, `bindChange`, `bindFocus`, `bindBlur`, `bindConfirm`, `bindKeyboardHeightChange`, `bindNicknameReview`
+- `catch*` supports the same event set.
+
+## LxTextarea API
+
+### API Subset
+
+LingXia keeps a focused cross-end compatible subset.
+
+Aligned subset:
+
+| Field | LingXia prop / attr | Notes |
+| --- | --- | --- |
+| `value` | `value` | Same semantics |
+| `placeholder` | `placeholder` | Same semantics |
+| `placeholder-style` | `placeholderStyle` / `placeholder-style` | Placeholder color is applied on Android/iOS/macOS; Harmony currently falls back to default placeholder color |
+| `placeholder-class` | `placeholderClass` / `placeholder-class` | Same semantics |
+| `disabled` | `disabled` | Same semantics |
+| `maxlength` | `maxlength` | Same semantics |
+| `auto-focus` | `autoFocus` / `auto-focus` | Alias of `focus` |
+| `focus` | `focus` | Same semantics |
+| `auto-height` | `autoHeight` / `auto-height` | Same semantics |
+| `cursor-spacing` | `cursorSpacing` / `cursor-spacing` | Same semantics |
+| `show-confirm-bar` | `showConfirmBar` / `show-confirm-bar` | Same semantics |
+| `adjust-position` | `adjustPosition` / `adjust-position` | Same semantics |
+| `hold-keyboard` | `holdKeyboard` / `hold-keyboard` | Forwarded to native runtime |
+| `disable-default-padding` | `disableDefaultPadding` / `disable-default-padding` | Forwarded to native runtime |
+| `confirm-type` | `confirmType` / `confirm-type` | Supports `send/search/next/go/done/return`; default is `return` |
+| `confirm-hold` | `confirmHold` / `confirm-hold` | Same semantics |
+| `fixed` | `fixed` | Forwarded to native runtime |
+| `adjust-keyboard-to` | `adjustKeyboardTo` / `adjust-keyboard-to` | Supports `cursor` / `bottom` |
+| `cursor` | `cursor` | Same semantics |
+| `selection-start` / `selection-end` | `selectionStart` / `selectionEnd` | Same semantics |
+
+Not currently exposed in LingXia `LxTextarea`:
+
+- `selectionchange` / `keyboardcomposition*` style hooks
+
+### View Events
+
+- React props: `onInput`, `onChange`, `onFocus`, `onBlur`, `onConfirm`, `onLineChange`, `onKeyboardHeightChange`
+- Vue emits: `input`, `change`, `focus`, `blur`, `confirm`, `lineChange`, `keyboardHeightChange`
+- Custom element events: `input`, `change`, `focus`, `blur`, `confirm`, `linechange`, `keyboardheightchange`
+- Platform note: `keyboardheightchange` is currently emitted on iOS and Harmony.
+
+#### macOS platform notes
+
+- **No soft keyboard**: `keyboardheightchange` is never emitted, `adjust-position` has no effect.
+- **Auto-blur**: same as LxInput — clicks outside hand focus to the WebView via the macOS first-responder system. Wire a `mousedown` listener on the WebView side to call `blur()` explicitly if needed.
+
+### Logic Bindings
+
+- Supported: `bindInput`, `bindChange`, `bindFocus`, `bindBlur`, `bindConfirm`, `bindLineChange`, `bindKeyboardHeightChange`
+- `catch*` supports the same event set.

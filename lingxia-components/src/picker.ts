@@ -296,8 +296,9 @@ export class LxPickerElement extends HTMLElement {
 
   private buildPageFuncEvent(eventName: string, detail: LxPickerEventDetail): Record<string, unknown> {
     const dataset = this.collectDataset();
+    const componentId = this.componentId;
     const target = {
-      id: this.componentId,
+      id: componentId,
       dataset
     };
     return {

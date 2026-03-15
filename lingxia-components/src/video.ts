@@ -843,14 +843,16 @@ export class LxVideoElement extends HTMLElement {
         return false;
       }
       const payload = JSON.stringify({ componentId: this.componentId, ...props });
-      // Prefer single-arg payload to avoid ArkWeb proxy arg-count compatibility issues.
       try {
-        (updateFn as (payload: string) => void)(payload);
+        (updateFn as (payload: string) => void).call(proxy, payload);
         return true;
       } catch {
-        // Fallback for older bridges that only support (componentId, payload).
-        (updateFn as (componentId: string, payload: string) => void)(this.componentId, payload);
-        return true;
+        try {
+          (updateFn as (componentId: string, payload: string) => void).call(proxy, this.componentId, payload);
+          return true;
+        } catch {
+          return false;
+        }
       }
     } catch (error) {
       return false;

@@ -28,6 +28,7 @@ declare global {
       };
       nativeComponents?: {
         send?: (msg: NativeComponentMessage) => void;
+        hasHandler?: () => boolean;
         register?: (id: string, handler: (msg: NativeComponentMessage) => void) => () => void;
       };
     };

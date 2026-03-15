@@ -22,12 +22,28 @@ export function registerNativeComponentHandler(
   id: string,
   handler: (msg: NativeComponentMessage) => void
 ): () => void {
-  const registerFn =
+  const nativeComponents =
     typeof window !== "undefined"
-      ? window.LingXiaBridge?.nativeComponents?.register
+      ? window.LingXiaBridge?.nativeComponents
       : undefined;
+  const registerFn = nativeComponents?.register;
   if (typeof registerFn === "function") {
-    return registerFn(id, handler);
+    const unregister = registerFn(id, handler);
+    const platform = window.LingXiaBridge?.platform;
+    const requiresReadyHandshake = !!(
+      platform?.isIOS?.() ||
+      platform?.isAndroid?.() ||
+      platform?.isMacOS?.()
+    );
+    const hasHandler = nativeComponents?.hasHandler;
+    const send = nativeComponents?.send;
+    if (typeof send === "function") {
+      const nativeReady = typeof hasHandler === "function" ? hasHandler() : true;
+      if (requiresReadyHandshake || nativeReady) {
+        send({ action: "component.ready", id });
+      }
+    }
+    return unregister;
   }
   if (!warnedNoHandler) {
     warnedNoHandler = true;
