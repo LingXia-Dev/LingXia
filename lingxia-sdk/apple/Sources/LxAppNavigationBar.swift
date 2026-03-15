@@ -104,7 +104,7 @@ public struct NavigationButton: View {
                 isPressed = pressing
             }
         }, perform: {})
-        .background(isEnabled ? Color.clear : Color.gray.opacity(0.1))
+        .background(Color.clear)
         .cornerRadius(8)
     }
 
@@ -220,12 +220,11 @@ public struct macOSNavigationBarView: View {
                     // Back button is enabled - show back icon
                     NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: true, action: onBackTapped)
                 } else if state.show_home_button {
-                    // Home button is enabled - show app name instead of home icon
+                    // Home button is enabled - show home icon
                     NavigationButton(
                         isBackButton: false,
                         tintColor: textColor,
                         isEnabled: true,
-                        title: appName,
                         action: onHomeTapped
                     )
                 } else {
