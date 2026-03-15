@@ -1473,40 +1473,7 @@ extension LxAppWindowController {
     }
 
     private func loadBrowserToolbarIcon(named iconName: String, size: CGFloat) -> NSImage? {
-        #if SWIFT_PACKAGE
-        let bundle = Bundle.module
-        #else
-        let bundle = Bundle(for: LxAppWindowController.self)
-        #endif
-
-        if let url = bundle.url(forResource: iconName, withExtension: "svg", subdirectory: "icons"),
-           let image = NSImage(contentsOf: url) {
-            image.size = CGSize(width: size, height: size)
-            image.isTemplate = true
-            return image
-        }
-
-        guard let url = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
-              let document = CGPDFDocument(url as CFURL),
-              let page = document.page(at: 1) else {
-            return nil
-        }
-
-        let pageRect = page.getBoxRect(.mediaBox)
-        let targetSize = CGSize(width: size, height: size)
-        let image = NSImage(size: targetSize, flipped: true) { rect in
-            guard let context = NSGraphicsContext.current?.cgContext else {
-                return false
-            }
-            context.saveGState()
-            context.translateBy(x: 0, y: rect.height)
-            context.scaleBy(x: rect.width / pageRect.width, y: -rect.height / pageRect.height)
-            context.drawPDFPage(page)
-            context.restoreGState()
-            return true
-        }
-        image.isTemplate = true
-        return image
+        return LxIcon.image(named: iconName, size: CGSize(width: size, height: size))
     }
 }
 

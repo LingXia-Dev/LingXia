@@ -79,20 +79,17 @@ public enum LxIcon {
     /// Icons are stored as PDF files generated from SVG sources
     public static func image(named name: String, size: CGSize? = nil) -> NSImage? {
         guard let baseImage = loadImage(named: name) else { return nil }
+        guard let targetSize = normalizedSize(size) else { return baseImage }
 
-        // If no size specified, return the base image
-        guard let targetSize = size else { return baseImage }
+        if let copiedImage = baseImage.copy() as? NSImage {
+            copiedImage.size = targetSize
+            copiedImage.isTemplate = true
+            return copiedImage
+        }
 
-        // Scale to target size
-        let scaledImage = NSImage(size: targetSize)
-        scaledImage.lockFocus()
-        baseImage.draw(in: CGRect(origin: .zero, size: targetSize),
-                       from: NSRect(origin: .zero, size: baseImage.size),
-                       operation: .sourceOver,
-                       fraction: 1.0)
-        scaledImage.unlockFocus()
-        scaledImage.isTemplate = true
-        return scaledImage
+        baseImage.size = targetSize
+        baseImage.isTemplate = true
+        return baseImage
     }
 
     private static func loadImage(named name: String) -> NSImage? {
@@ -103,45 +100,23 @@ public enum LxIcon {
         #endif
 
         if let image = bundle.image(forResource: name) {
+            image.isTemplate = true
             return image
         }
 
-        // loading PDF from icons subdirectory (Resources/icons)
-        if let pdfURL = bundle.url(forResource: name, withExtension: "pdf", subdirectory: "icons") {
-            return renderPDF(at: pdfURL)
+        if let pdfURL = bundle.url(forResource: name, withExtension: "pdf", subdirectory: "icons"),
+           let image = NSImage(contentsOf: pdfURL) {
+            image.isTemplate = true
+            return image
         }
 
         return nil
     }
 
-    private static func renderPDF(at url: URL) -> NSImage? {
-        guard
-            let dataProvider = CGDataProvider(url: url as CFURL),
-            let document = CGPDFDocument(dataProvider),
-            let page = document.page(at: 1)
-        else {
-            return nil
-        }
-
-        let rect = page.getBoxRect(.mediaBox)
-        let scale = NSScreen.main?.backingScaleFactor ?? 2.0
-        let size = CGSize(width: rect.width, height: rect.height)
-
-        let image = NSImage(size: size)
-        image.lockFocus()
-
-        if let ctx = NSGraphicsContext.current?.cgContext {
-            ctx.setFillColor(NSColor.clear.cgColor)
-            ctx.fill(CGRect(origin: .zero, size: size))
-
-            ctx.translateBy(x: 0, y: rect.height)
-            ctx.scaleBy(x: 1, y: -1)
-            ctx.drawPDFPage(page)
-        }
-
-        image.unlockFocus()
-        image.isTemplate = true
-        return image
+    private static func normalizedSize(_ size: CGSize?) -> CGSize? {
+        guard let size else { return nil }
+        guard size.width > 0, size.height > 0 else { return nil }
+        return size
     }
 }
 
