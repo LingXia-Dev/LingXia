@@ -33,7 +33,6 @@ import { getFocusedNativeComponentType, getFocusedNativeComponentAdjustPosition 
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
 const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 
-const COLOR_WHITE = '#ffffff';
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';
@@ -74,6 +73,7 @@ export struct LxAppContainer {
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
   @State popupOverlayWebTag: string = '' // WebView tag currently displayed in popup (may include #instance suffix)
+  @State private popupPreviousWebTag: string = '' // Previously focused WebView before popup took focus
   @State overlayActive: boolean = false
   @State overlayWidthVp: number = 0
   @State overlayHeightVp: number = 0
@@ -541,6 +541,13 @@ export struct LxAppContainer {
           if (extracted && extracted.appId === this.appId) {
             this.webViewComponents.set(info.webtag, info.controller);
             this.webViewKeys = Array.from(this.webViewComponents.keys());
+            if (!this.popupPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
+              this.popupPreviousWebTag = this.currentWebTag;
+            }
+            this.currentWebTag = info.webtag;
+            if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
+              this.keepAliveTags = this.keepAliveTags.filter((tag: string) => tag !== info.webtag);
+            }
 
             const layout: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
             if (layout && layout.appId === this.appId) {
@@ -766,7 +773,7 @@ export struct LxAppContainer {
       .position({ x: 0, y: 0 })
       .height(this.getNavigationBarHeight())
       .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
-      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
+      .hitTestBehavior(HitTestMode.Transparent)
     }
   }
 
@@ -782,7 +789,7 @@ export struct LxAppContainer {
       .width('100%')
       .height(this.getNavigationBarHeight())
       .zIndex(this.shouldRenderOverlayMask() ? 10002 : 10)
-      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
+      .hitTestBehavior(HitTestMode.Transparent)
     }
   }
 
@@ -811,8 +818,7 @@ export struct LxAppContainer {
       .height(this.getNavigationBarHeight())
       .backgroundColor(POPUP_MASK_COLOR)
       .opacity(this.overlayMaskOpacity)
-      .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
-      .onClick(() => {})
+      .hitTestBehavior(HitTestMode.None)
       .zIndex(10003)
   }
 
@@ -858,6 +864,10 @@ export struct LxAppContainer {
         this.popupOverlayWebTag = '';
       }
       this.overlayActive = false;
+      if (this.popupPreviousWebTag && this.currentWebTag === webTag) {
+        this.currentWebTag = this.popupPreviousWebTag;
+      }
+      this.popupPreviousWebTag = '';
       this.animateOverlayMask(false);
       this.overlayFullWidth = false;
       this.overlayFullHeight = false;
@@ -905,9 +915,7 @@ export struct LxAppContainer {
           .height('100%')
           .backgroundColor(POPUP_MASK_COLOR)
           .opacity(this.overlayMaskOpacity)
-          .hitTestBehavior(this.shouldBlockOverlayInteractions() ? HitTestMode.Block : HitTestMode.Transparent)
-          // Do not close on mask click; hidePopup must be called explicitly
-          .onClick(() => {})
+          .hitTestBehavior(HitTestMode.None)
           .zIndex(10003)
       }
     }
@@ -930,7 +938,8 @@ export struct LxAppContainer {
    */
   @Builder
   buildWebViewArea(): void {
-    // Always use Refresh component to maintain component tree stability and prevent WebView reload
+    // Keep a stable component tree for same-level WebViews. Popup mode only changes
+    // overlay styling/state; it should not swap out the WebView host structure.
     Refresh({ refreshing: $$this.isRefreshing, builder: this.RefreshHeaderBuilder() }) {
       this.renderWebStackBuilder()
     }
@@ -1029,8 +1038,9 @@ export struct LxAppContainer {
   }
 
   private getContainerPadding(): Padding {
-    // Remove padding when fullscreen or overlay is active
-    if (this.overlayActive || this.overlayMaskOpacity > 0 || this.hasFullscreenTarget()) {
+    // Remove padding only when fullscreen is active; popup overlay should not
+    // affect the underlying layout to avoid content shifting on open/close.
+    if (this.hasFullscreenTarget()) {
       return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
     }
     return this.getWebViewAreaPadding();
@@ -1327,20 +1337,20 @@ export struct LxAppContainer {
         LingXiaWebView({
           webTag: webTag,
           controller: controller,
+          renderVisibility: this.getRenderVisibility(webTag),
+          renderTranslate: this.getRenderTranslation(webTag),
+          renderMargin: this.getRenderMargin(webTag),
+          renderWidth: this.getRenderWidth(webTag),
+          renderHeight: this.getRenderHeight(webTag),
+          renderPadding: this.getRenderPadding(webTag),
+          renderBorderRadius: this.getRenderBorderRadius(webTag),
+          renderClip: this.getRenderClip(webTag),
+          renderZIndex: this.getRenderZIndex(webTag),
+          renderHitTest: this.getRenderHitTest(webTag),
           onFullscreenChange: (tag: string, componentId: string, isFullscreen: boolean) => {
             this.handleFullscreenChange(tag, componentId, isFullscreen);
           }
         })
-        .visibility(this.getRenderVisibility(webTag))
-        .translate(this.getRenderTranslation(webTag))
-        .margin(this.getRenderMargin(webTag))
-        .width(this.getRenderWidth(webTag))
-        .height(this.getRenderHeight(webTag))
-        .padding(this.getRenderPadding(webTag))
-        .borderRadius(this.getRenderBorderRadius(webTag))
-        .clip(this.getRenderClip(webTag))
-        .zIndex(this.getRenderZIndex(webTag))
-        .hitTestBehavior(this.getRenderHitTest(webTag))
       }
       .width(this.getStackWidth(webTag))
       .height(this.getStackHeight(webTag))
@@ -1476,6 +1486,10 @@ export struct LxAppContainer {
 
   private getRenderVisibility(webTag: string): Visibility {
     if (this.isOverlayWebView(webTag)) {
+      return Visibility.Visible;
+    }
+    // Keep the page behind the popup visible so it shows through the semi-transparent mask
+    if (this.overlayActive && this.popupPreviousWebTag && webTag === this.popupPreviousWebTag) {
       return Visibility.Visible;
     }
     return this.getWebViewVisibility(webTag);

@@ -1,7 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { display } from '@kit.ArkUI';
-import { webview } from '@kit.ArkWeb';
-import { LxAppContainer } from '../LxAppContainer';
 import { WebViewManager } from '../WebViewBridge';
 import { onPageShow } from 'liblingxia.so';
 
@@ -102,17 +100,6 @@ export class LxAppPopup {
 
     hilog.info(DOMAIN, TAG, `showPopup result=${success} for ${appId}:${path}`);
     if (success) {
-      LxAppContainer.setOverlay(
-        appId,
-        path,
-        true,
-        dimensions.widthVp,
-        dimensions.heightVp,
-        position,
-        dimensions.bottomInset,
-        dimensions.fullWidth,
-        dimensions.fullHeight
-      );
       WebViewManager.notifyPopupState(appId, path, true);
       onPageShow(appId, path);
     } else {
@@ -131,8 +118,7 @@ export class LxAppPopup {
     const result = LxAppPopup.managerRef.hidePopup(appId);
     hilog.info(DOMAIN, TAG, `hidePopup result=${result} for ${appId}`);
     if (result) {
-      if (previousLayout) {
-        LxAppContainer.setOverlay(previousLayout.appId, previousLayout.path, false);
+      if (previousLayout && previousLayout.appId === appId) {
         WebViewManager.notifyPopupState(previousLayout.appId, previousLayout.path, false);
       }
       LxAppPopup.activeLayout = null;
@@ -268,7 +254,9 @@ export struct PopupManager {
   }
 
   build() {
-    // Popup UI moved into LxAppContainer (same-tree overlay). Nothing to render here.
-    Stack() {}
+    Column()
+      .width(0)
+      .height(0)
+      .hitTestBehavior(HitTestMode.Transparent)
   }
 }

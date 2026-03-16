@@ -48,6 +48,21 @@ interface ApplyNodeLayoutsResult {
 @Component
 export struct LingXiaWebView {
   @Prop webTag: string = ''
+  @Prop renderVisibility: Visibility = Visibility.Visible
+  @Prop renderTranslate: TranslateOptions = { x: 0, y: 0 } as TranslateOptions
+  @Prop renderMargin: Margin = { top: 0, bottom: 0, left: 0, right: 0 } as Margin
+  @Prop renderWidth: Length = '100%'
+  @Prop renderHeight: Length = '100%'
+  @Prop renderPadding: Padding = { top: 0, bottom: 0, left: 0, right: 0 } as Padding
+  @Prop renderBorderRadius: BorderRadiuses = {
+    topLeft: 0,
+    topRight: 0,
+    bottomLeft: 0,
+    bottomRight: 0
+  }
+  @Prop renderClip: boolean = false
+  @Prop renderZIndex: number = 0
+  @Prop renderHitTest: HitTestMode = HitTestMode.Default
   controller: webview.WebviewController = new webview.WebviewController()
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
 
@@ -67,97 +82,10 @@ export struct LingXiaWebView {
 
   build() {
     Stack() {
-      // Same-level native components (rendered via NodeController, MUST be before Web)
-      // Note: We use stable keys (componentId only) to avoid component recreation.
-      // ArkUI doesn't allow reusing the same FrameNode when key changes.
-      // Layout updates are handled through nodeLayoutCache @State variable.
       ForEach(this.embedComponentIds, (componentId: string) => {
         this.buildNodeContainer(componentId, this.fullscreenRefreshKey)
       }, (componentId: string) => componentId)
-
-      // Web component with WebView-specific config only
-      Web({ src: '', controller: this.controller })
-        .onLoadIntercept((event) => {
-          if (event && event.data) {
-            const url = event.data.getRequestUrl();
-            if (url) {
-              return handleWebViewNavigationPolicy(this.webTag, url);
-            }
-          }
-          return false;
-        })
-        .onDownloadStart((event) => {
-          if (!event) {
-            return;
-          }
-          handleWebViewDownloadStart(
-            this.webTag,
-            event.url ?? '',
-            event.userAgent ?? '',
-            event.contentDisposition ?? '',
-            event.mimetype ?? '',
-            event.contentLength ?? -1
-          );
-        })
-        .onAlert((event) => {
-          if (this.isBrowserRelaxed()) {
-            return false;
-          }
-          hilog.info(DOMAIN, TAG, `Suppressed JavaScript alert in strict profile for ${this.webTag}: ${event.url}`);
-          event.result.handleConfirm();
-          return true;
-        })
-        .onConfirm((event) => {
-          if (this.isBrowserRelaxed()) {
-            return false;
-          }
-          hilog.info(DOMAIN, TAG, `Suppressed JavaScript confirm in strict profile for ${this.webTag}: ${event.url}`);
-          event.result.handleCancel();
-          return true;
-        })
-        .onPrompt((event) => {
-          if (this.isBrowserRelaxed()) {
-            return false;
-          }
-          hilog.info(DOMAIN, TAG, `Suppressed JavaScript prompt in strict profile for ${this.webTag}: ${event.url}`);
-          event.result.handleCancel();
-          return true;
-        })
-        .onAppear(() => {
-          hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
-          if (!this.controllerAcked) {
-            notifyWebViewControllerAttached(this.webTag);
-            this.controllerAcked = true;
-          }
-        })
-        .onControllerAttached(() => {
-          this.setupEmbedManager();
-          hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${this.webTag}`);
-        })
-        .onDisAppear(() => {
-          this.cleanupEmbedManager();
-          hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${this.webTag}`);
-        })
-        // Enable native embed mode for same-level rendering
-        .enableNativeEmbedMode(true)
-        .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
-          if (this.embedManager) {
-            this.embedManager.setUIContext(this.getUIContext());
-            this.embedManager.handleLifecycleChange(embed);
-          }
-        })
-        .onNativeEmbedGestureEvent((touch: NativeEmbedTouchInfo) => {
-          if (this.embedManager) {
-            this.embedManager.handleGestureEvent(touch);
-          }
-        })
-        .domStorageAccess(this.isBrowserRelaxed())
-        .fileAccess(false)
-        .databaseAccess(this.isBrowserRelaxed())
-        .mixedMode(MixedMode.None)
-        .backgroundColor(Color.Transparent)
-        .width('100%')
-        .height('100%')
+      this.buildManagedWeb()
     }
     .width('100%')
     .height('100%')
@@ -169,6 +97,99 @@ export struct LingXiaWebView {
 
   private isBrowserRelaxed(): boolean {
     return isWebViewBrowserRelaxed(this.webTag);
+  }
+
+  @Builder
+  private buildManagedWeb(): void {
+    Web({ src: '', controller: this.controller })
+      .onLoadIntercept((event) => {
+        if (event && event.data) {
+          const url = event.data.getRequestUrl();
+          if (url) {
+            return handleWebViewNavigationPolicy(this.webTag, url);
+          }
+        }
+        return false;
+      })
+      .onDownloadStart((event) => {
+        if (!event) {
+          return;
+        }
+        handleWebViewDownloadStart(
+          this.webTag,
+          event.url ?? '',
+          event.userAgent ?? '',
+          event.contentDisposition ?? '',
+          event.mimetype ?? '',
+          event.contentLength ?? -1
+        );
+      })
+      .onAlert((event) => {
+        if (this.isBrowserRelaxed()) {
+          return false;
+        }
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript alert in strict profile for ${this.webTag}: ${event.url}`);
+        event.result.handleConfirm();
+        return true;
+      })
+      .onConfirm((event) => {
+        if (this.isBrowserRelaxed()) {
+          return false;
+        }
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript confirm in strict profile for ${this.webTag}: ${event.url}`);
+        event.result.handleCancel();
+        return true;
+      })
+      .onPrompt((event) => {
+        if (this.isBrowserRelaxed()) {
+          return false;
+        }
+        hilog.info(DOMAIN, TAG, `Suppressed JavaScript prompt in strict profile for ${this.webTag}: ${event.url}`);
+        event.result.handleCancel();
+        return true;
+      })
+      .onAppear(() => {
+        hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
+        if (!this.controllerAcked) {
+          notifyWebViewControllerAttached(this.webTag);
+          this.controllerAcked = true;
+        }
+      })
+      .onControllerAttached(() => {
+        this.setupEmbedManager();
+        hilog.info(DOMAIN, TAG, `Same-level embed manager setup for webTag: ${this.webTag}`);
+      })
+      .onDisAppear(() => {
+        this.cleanupEmbedManager();
+        hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${this.webTag}`);
+      })
+      .enableNativeEmbedMode(true)
+      .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
+        if (this.embedManager) {
+          this.embedManager.setUIContext(this.getUIContext());
+          this.embedManager.handleLifecycleChange(embed);
+        }
+      })
+      .onNativeEmbedGestureEvent((touch: NativeEmbedTouchInfo) => {
+        if (this.embedManager) {
+          this.embedManager.handleGestureEvent(touch);
+        }
+      })
+      .domStorageAccess(this.isBrowserRelaxed())
+      .fileAccess(false)
+      .databaseAccess(this.isBrowserRelaxed())
+      .mixedMode(MixedMode.None)
+      .backgroundColor(Color.Transparent)
+      .visibility(this.renderVisibility)
+      .translate(this.renderTranslate)
+      .margin(this.renderMargin)
+      .width(this.renderWidth)
+      .height(this.renderHeight)
+      .padding(this.renderPadding)
+      .borderRadius(this.renderBorderRadius)
+      .clip(this.renderClip)
+      .zIndex(this.renderZIndex)
+      .hitTestBehavior(this.renderHitTest)
   }
 
   // ============================================================================
