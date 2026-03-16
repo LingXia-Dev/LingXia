@@ -23,13 +23,6 @@ pub struct AppConfig {
     #[serde(rename = "apiServer", default)]
     pub api_server: Option<String>,
 
-    // Application-level authentication fields
-    #[serde(rename = "apiKey", default)]
-    pub api_key: Option<String>, // Client identifier, sent in request headers
-
-    #[serde(rename = "apiSecret", default)]
-    pub api_secret: Option<String>, // Shared secret for request signing, never transmitted
-
     // Home/default mini application settings (mandatory)
     #[serde(rename = "homeLxAppID")]
     pub home_lxapp_appid: String, // ID of the default/home lx application to load
