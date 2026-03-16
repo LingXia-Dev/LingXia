@@ -5,7 +5,7 @@
 import { display, window } from '@kit.ArkUI';
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue, nativeComponentError } from '../NativeComponentTypes';
-import { dispatchNativeComponentEventFromBuilder, getNodeControllerByComponentId } from '../NativeBridgeInternal';
+import { onNativeComponentEventFromBuilder, getNodeControllerByComponentId } from '../NativeBridgeInternal';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
@@ -154,7 +154,7 @@ struct NativeVideoComponent {
       this.toggleFullscreen();
     }
 
-    dispatchNativeComponentEventFromBuilder(this.componentId, event, detail);
+    onNativeComponentEventFromBuilder(this.componentId, event, detail);
 
     const callbackId = getComponentCallback(this.componentId);
     const shouldForwardToCallback =

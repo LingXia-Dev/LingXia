@@ -170,7 +170,7 @@ public final class LxAppPopup {
 
         webView.removeFromSuperview()
         webView.translatesAutoresizingMaskIntoConstraints = false
-        WebViewManager.configureWebViewTransparency(webView, transparent: true)
+        WebViewManager.configureWebViewTransparency(webView, transparent: false)
         sheetView.addSubview(webView)
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),
@@ -500,7 +500,7 @@ public final class LxAppPopup {
         // Add WebView to sheet
         webView.removeFromSuperview()
         webView.translatesAutoresizingMaskIntoConstraints = false
-        WebViewManager.configureWebViewTransparency(webView, transparent: true)
+        WebViewManager.configureWebViewTransparency(webView, transparent: false)
         sheetView.addSubview(webView)
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: sheetView.leadingAnchor),

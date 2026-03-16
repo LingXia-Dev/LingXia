@@ -3,7 +3,7 @@
  */
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue } from '../NativeComponentTypes';
-import { dispatchNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
+import { onNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
 import {
   DEFAULT_PLACEHOLDER_COLOR,
   getStringProp,
@@ -183,7 +183,7 @@ struct NativeTextareaComponent {
 
   private emit(event: string, detail: NativeComponentRecord): void {
     const componentId = this.resolveComponentId();
-    dispatchNativeComponentEventFromBuilder(componentId, event, detail as NativeComponentValue);
+    onNativeComponentEventFromBuilder(componentId, event, detail as NativeComponentValue);
   }
 
   private makeValueDetail(value: string): NativeComponentRecord {

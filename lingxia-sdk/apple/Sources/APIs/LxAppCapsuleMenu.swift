@@ -228,7 +228,7 @@ public class LxAppCapsuleMenu {
                 isDestructive: action.isDestructive
             ) {
                 dismissCapsuleMenu(backgroundView) {
-                    _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, action.action)
+                    _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.action)
                 }
             }
             stackView.addArrangedSubview(button)

@@ -4,7 +4,7 @@ import { window, display } from '@kit.ArkUI';
 import { LxApp } from './LxApp';
 import {
   getCurrentLxapp,
-  onUiEvent,
+  onLxappEvent,
   UiEventType,
   onAppShow,
   onAppHide,
@@ -112,7 +112,7 @@ export class LingxiaBaseAbility extends UIAbility {
       const current: CurrentLxApp = getCurrentLxapp();
       if (current && current.appid && current.appid.length > 0) {
         hilog.info(DOMAIN, TAG, '%{public}s', `Forwarding back press to ${current.appid}`);
-        const handled: boolean = onUiEvent(current.appid, UiEventType.BackPress, '');
+        const handled: boolean = onLxappEvent(current.appid, UiEventType.BackPress, '');
         if (handled) {
           this.lastBackHandledAt = now;
         }

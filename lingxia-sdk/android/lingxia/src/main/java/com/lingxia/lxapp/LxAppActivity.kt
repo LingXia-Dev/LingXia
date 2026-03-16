@@ -462,7 +462,7 @@ class LxAppActivity : AppCompatActivity() {
                             return
                         }
                         currentWebView?.visibility = View.VISIBLE
-                        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
+                        NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_BACK_PRESS, "")
                     } catch (e: Exception) {
                         Log.e(TAG, "Error handling back press: ${e.message}")
                     }
@@ -563,7 +563,7 @@ class LxAppActivity : AppCompatActivity() {
                 setConfig(config)
                 setOnTabSelectedListener { index, path ->
                     // Use new UI event API
-                    NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
+                    NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
                 }
                 applyTabBarLayoutParams(this, config)
             }
@@ -888,11 +888,11 @@ class LxAppActivity : AppCompatActivity() {
             return
         }
 
-        // Notify Rust layer via on_ui_event
+        // Notify Rust layer via onLxappEvent
         try {
-            NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
+            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_PULL_DOWN_REFRESH, path)
         } catch (e: Exception) {
-            Log.e(TAG, "onUiEvent pull-to-refresh failed: ${e.message}")
+            Log.e(TAG, "onLxappEvent pull-to-refresh failed: ${e.message}")
             helper.endRefreshing()
         }
     }
@@ -918,7 +918,7 @@ class LxAppActivity : AppCompatActivity() {
                 CapsuleMenuBottomSheet.show(this@LxAppActivity, appId)
             }
             setOnCloseClickListener {
-                NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_CLOSE)
+                NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, NativeApi.CAPSULE_ACTION_CLOSE)
             }
         }
 
@@ -1640,14 +1640,14 @@ class LxAppActivity : AppCompatActivity() {
      * Handles the click event from the NavigationBar's back button.
      */
     private fun handleBackButtonClick() {
-        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_BACK)
+        NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_BACK)
     }
 
     /**
      * Handles the click event from the NavigationBar's home button.
      */
     private fun handleHomeButtonClick() {
-        NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_HOME)
+        NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_NAVIGATION_CLICK, NativeApi.NAVIGATION_ACTION_HOME)
     }
 
     /**

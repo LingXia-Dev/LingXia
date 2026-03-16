@@ -239,9 +239,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         toolbar.onNavigationAction = { [weak self] action in
             guard let appId = self?.tabManager.activeTab?.appId else { return }
             if action == "back" {
-                let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+                let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
             } else if action == "home" {
-                let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+                let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionHome)
             }
         }
         navigationToolbar = toolbar
@@ -339,7 +339,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         // Always update sidebar highlight, even if Rust returns early for same index
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
         // Notify Rust of page navigation via tabbar click
-        let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(itemIndex))
+        let _ = onLxappEvent(appId, LxAppEvent.tabBarClick, String(itemIndex))
     }
 
     private func currentBrowserButtonLeading() -> CGFloat {

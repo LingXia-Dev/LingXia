@@ -427,7 +427,7 @@ pub fn on_page_show(appid: String, path: String) -> i32 {
 
 /// Handle UI events from ArkTS
 #[napi]
-pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool {
+pub fn on_lxapp_event(appid: String, event_type: UiEventType, data: String) -> bool {
     let ui_event_type = match event_type {
         UiEventType::TabBarClick => LxAppUiEventType::TabBarClick,
         UiEventType::CapsuleClick => LxAppUiEventType::CapsuleClick,
@@ -437,13 +437,12 @@ pub fn on_ui_event(appid: String, event_type: UiEventType, data: String) -> bool
     };
 
     lxapp::try_get(&appid)
-        .map(|lxapp| lxapp.on_ui_event(ui_event_type, data))
+        .map(|lxapp| lxapp.on_lxapp_event(ui_event_type, data))
         .unwrap_or(false)
 }
 
-/// Dispatch native-component event to Rust logic runtime.
 #[napi]
-pub fn dispatch_native_component_event(
+pub fn on_native_component_event(
     appid: String,
     path: String,
     component_id: String,
@@ -451,7 +450,7 @@ pub fn dispatch_native_component_event(
     payload_json: String,
     bindings_json: String,
 ) -> bool {
-    lxapp::dispatch_native_component_event(
+    lxapp::on_native_component_event(
         &appid,
         &path,
         &component_id,

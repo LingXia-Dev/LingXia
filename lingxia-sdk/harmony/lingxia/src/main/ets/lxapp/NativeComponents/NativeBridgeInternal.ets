@@ -381,18 +381,18 @@ export function updateNativeComponentProps(
 /**
  * Dispatch component event from Builder -> EmbedManager -> Rust page function entry.
  */
-export function dispatchNativeComponentEventFromBuilder(
+export function onNativeComponentEventFromBuilder(
   componentId: string,
   eventName: string,
   detail: NativeComponentValue
 ): boolean {
   if (!componentId || !eventName) {
-    nativeComponentLog(`dispatchNativeComponentEventFromBuilder: invalid args componentId=${componentId} event=${eventName}`);
+    nativeComponentLog(`onNativeComponentEventFromBuilder: invalid args componentId=${componentId} event=${eventName}`);
     return false;
   }
   const manager = resolveEmbedManagerByComponentId(componentId);
   if (!manager) {
-    nativeComponentLog(`dispatchNativeComponentEventFromBuilder: manager missing componentId=${componentId} event=${eventName}`);
+    nativeComponentLog(`onNativeComponentEventFromBuilder: manager missing componentId=${componentId} event=${eventName}`);
     return false;
   }
   componentManagerCache.set(componentId, manager);

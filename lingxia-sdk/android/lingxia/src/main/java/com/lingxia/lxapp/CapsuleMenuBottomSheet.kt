@@ -73,7 +73,7 @@ object CapsuleMenuBottomSheet {
         // Create menu content
         val menuView = createMenuView(activity, lxappInfo, items) { action ->
             // Send UI event for the selected action
-            NativeApi.onUiEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, action)
+            NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, action)
             // Dismiss the menu
             rootView.removeView(container)
         }

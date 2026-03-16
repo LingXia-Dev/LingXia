@@ -24,7 +24,7 @@ public class LxAppCapsuleButtons {
                 LxAppCapsuleMenu.show(appId: appId)
             },
             onCloseTapped: {
-                let _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
+                let _ = onLxappEvent(appId, LxAppEvent.capsuleClick, LxAppEvent.capsuleActionClose)
             }
         )
 

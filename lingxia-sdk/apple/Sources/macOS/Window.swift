@@ -105,7 +105,7 @@ public class LxAppWindow: NSWindow {
             // Only navigate back when back button is available
             if let state = NavigationBarStateManager.shared.currentState, state.show_back_button {
                 if let appId = LxAppTabManager.shared.activeTab?.appId {
-                    let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+                    let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
                     return true
                 }
             }

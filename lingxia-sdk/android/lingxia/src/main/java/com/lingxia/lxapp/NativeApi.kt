@@ -97,7 +97,7 @@ object NativeApi {
      * @return 1 if event was handled, 0 otherwise
      */
     @JvmStatic
-    external fun onUiEvent(appId: String, eventType: Int, data: String): Int
+    external fun onLxappEvent(appId: String, eventType: Int, data: String): Int
 
     /**
      * Dispatch key event to native layer
@@ -280,7 +280,7 @@ object NativeApi {
      * @return true when dispatch request is accepted, false otherwise
      */
     @JvmStatic
-    external fun dispatchNativeComponentEvent(
+    external fun onNativeComponentEvent(
         appId: String,
         path: String,
         componentId: String,

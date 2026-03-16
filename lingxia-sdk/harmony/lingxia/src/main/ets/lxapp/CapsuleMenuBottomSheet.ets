@@ -4,7 +4,7 @@
  */
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { getLxAppInfo, onUiEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
+import { getLxAppInfo, onLxappEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
 import {
   CAPSULE_ACTION_CLEAN_CACHE_RESTART,
   CAPSULE_ACTION_RESTART,
@@ -213,7 +213,7 @@ export struct CapsuleMenuBottomSheetComponent {
     hilog.info(DOMAIN, TAG, `Action selected: ${action}`);
 
     // Send UI event to Rust
-    const success: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, action);
+    const success: boolean = onLxappEvent(this.appId, UiEventType.CapsuleClick, action);
 
     if (!success) {
       hilog.error(DOMAIN, TAG, `Failed to send UI event for action: ${action}`);

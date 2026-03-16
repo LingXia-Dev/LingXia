@@ -3,7 +3,7 @@
  */
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue } from '../NativeComponentTypes';
-import { dispatchNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
+import { onNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
 import {
   DEFAULT_PLACEHOLDER_COLOR,
   getStringProp,
@@ -172,7 +172,7 @@ struct NativeInputComponent {
   }
 
   private emit(event: string, detail: NativeComponentRecord): void {
-    dispatchNativeComponentEventFromBuilder(this.resolveComponentId(), event, detail as NativeComponentValue);
+    onNativeComponentEventFromBuilder(this.resolveComponentId(), event, detail as NativeComponentValue);
   }
 
   private makeValueDetail(value: string): NativeComponentRecord {

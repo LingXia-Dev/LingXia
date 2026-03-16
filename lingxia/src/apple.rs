@@ -80,7 +80,8 @@ mod bridge {
         Launch,
     }
 
-    // UI event types for unified event handling
+    // UI event types for unified event handling.
+    // When appid is empty the event is host-app scoped (not lxapp scoped).
     pub enum UiEventType {
         TabBarClick,
         CapsuleClick,
@@ -125,8 +126,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getTabBarItem")]
         fn get_tab_bar_item(appid: &str, index: i32) -> Option<TabBarItem>;
 
-        #[swift_bridge(swift_name = "onUiEvent")]
-        fn on_ui_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
+        // lxapp-scoped event (appid must be a real lxapp id)
+        #[swift_bridge(swift_name = "onLxappEvent")]
+        fn on_lxapp_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
 
         #[swift_bridge(swift_name = "onLxappOpened")]
         fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String;
@@ -170,8 +172,8 @@ mod bridge {
         #[swift_bridge(swift_name = "onCallback")]
         fn on_callback(id: u64, success: bool, data: &str) -> bool;
 
-        #[swift_bridge(swift_name = "dispatchNativeComponentEvent")]
-        fn dispatch_native_component_event(
+        #[swift_bridge(swift_name = "onNativeComponentEvent")]
+        fn on_native_component_event(
             appid: &str,
             path: &str,
             component_id: &str,
@@ -354,8 +356,8 @@ pub fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) 
     lxapp::publish_app_event(appid, "DeviceOrientationChange", Some(payload))
 }
 
-/// Handle UI events from Swift
-pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &str) -> bool {
+/// Handle lxapp-scoped UI events from Swift. `appid` must be a real lxapp id.
+pub fn on_lxapp_event(appid: &str, event_type: self::bridge::UiEventType, data: &str) -> bool {
     let ui_event_type = match event_type {
         self::bridge::UiEventType::TabBarClick => UiEventType::TabBarClick,
         self::bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
@@ -365,12 +367,11 @@ pub fn on_ui_event(appid: &str, event_type: self::bridge::UiEventType, data: &st
     };
 
     lxapp::try_get(appid)
-        .map(|lxapp| lxapp.on_ui_event(ui_event_type, data.to_string()))
+        .map(|lxapp| lxapp.on_lxapp_event(ui_event_type, data.to_string()))
         .unwrap_or(false)
 }
 
-/// Dispatch native-component event to Rust logic runtime.
-pub fn dispatch_native_component_event(
+pub fn on_native_component_event(
     appid: &str,
     path: &str,
     component_id: &str,
@@ -378,7 +379,7 @@ pub fn dispatch_native_component_event(
     payload_json: &str,
     bindings_json: &str,
 ) -> bool {
-    lxapp::dispatch_native_component_event(
+    lxapp::on_native_component_event(
         appid,
         path,
         component_id,

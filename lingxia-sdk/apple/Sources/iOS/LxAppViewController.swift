@@ -430,7 +430,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
             let velocityThreshold: CGFloat = 600
 
             if translation > translationThreshold || velocity > velocityThreshold {
-                let _ = onUiEvent(appId, LxAppUIEvent.backPress, "")
+                let _ = onLxappEvent(appId, LxAppEvent.backPress, "")
             }
         default:
             break
@@ -708,7 +708,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         let currentPath = getCurrentPath()
-        let _ = onUiEvent(appId, LxAppUIEvent.pullDownRefresh, currentPath)
+        let _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, currentPath)
     }
 
     private func normalizePath(_ rawPath: String) -> String {
@@ -946,7 +946,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         // Use universal tab click handler (navigation handled by Rust)
         tabBar.setOnTabSelectedListener { index, _ in
             if let appId = LxAppCore.currentAppId {
-                let _ = onUiEvent(appId, LxAppUIEvent.tabBarClick, String(index))
+                let _ = onLxappEvent(appId, LxAppEvent.tabBarClick, String(index))
             }
         }
 

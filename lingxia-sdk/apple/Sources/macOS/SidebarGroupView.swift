@@ -514,15 +514,15 @@ class SidebarGroupView: NSView {
     }
 
     @objc private func contextMenuRestart() {
-        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "restart")
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart")
     }
 
     @objc private func contextMenuCleanCache() {
-        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "clean_cache_restart")
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart")
     }
 
     @objc private func contextMenuUninstall() {
-        _ = onUiEvent(appId, LxAppUIEvent.capsuleClick, "uninstall")
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "uninstall")
     }
 }
 

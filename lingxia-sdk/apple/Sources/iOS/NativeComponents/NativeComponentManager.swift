@@ -617,44 +617,7 @@ final class NativeComponentManager {
             )
             return
         }
-        _ = dispatchPageFuncToRust(
-            appid: route.appid,
-            path: route.path,
-            componentId: componentId,
-            eventName: eventName,
-            payloadJson: payloadJson,
-            bindingsJson: bindingsJson
-        )
-    }
-
-    private func dispatchPageFuncToRust(
-        appid: String,
-        path: String,
-        componentId: String,
-        eventName: String,
-        payloadJson: String,
-        bindingsJson: String
-    ) -> Bool {
-        payloadJson.toRustStr { payloadAsRustStr in
-            bindingsJson.toRustStr { bindingsAsRustStr in
-                eventName.toRustStr { eventNameAsRustStr in
-                    componentId.toRustStr { componentIdAsRustStr in
-                        path.toRustStr { pathAsRustStr in
-                            appid.toRustStr { appidAsRustStr in
-                                __swift_bridge__$dispatch_native_component_event(
-                                    appidAsRustStr,
-                                    pathAsRustStr,
-                                    componentIdAsRustStr,
-                                    eventNameAsRustStr,
-                                    payloadAsRustStr,
-                                    bindingsAsRustStr
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        _ = onNativeComponentEvent(route.appid, route.path, componentId, eventName, payloadJson, bindingsJson)
     }
 
     private func rectFrom(dict: [String: Any]) -> CGRect {

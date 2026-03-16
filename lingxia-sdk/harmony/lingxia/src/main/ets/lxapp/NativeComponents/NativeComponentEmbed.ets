@@ -11,7 +11,7 @@ import {
   nativeComponentLog
 } from './NativeComponentTypes';
 import { getComponentCallback, removeComponentCallback } from './NativeCallbackRegistry';
-import { dispatchNativeComponentEvent, onCallback } from 'liblingxia.so';
+import { onNativeComponentEvent, onCallback } from 'liblingxia.so';
 import { NativeComponentNodeController, NodeControllerParams, NodeControllerUpdateParams } from './NativeComponentNodeController';
 import { LxNativeVideoPlayer } from '../media/LxNativeVideoPlayer';
 
@@ -745,7 +745,7 @@ export class NativeComponentEmbedManager {
     const bindingsPayload = new NativeComponentRecord();
     bindingsPayload.set(eventName, boundFunctionName);
 
-    const accepted: boolean = dispatchNativeComponentEvent(
+    const accepted: boolean = onNativeComponentEvent(
       route.appId,
       route.path,
       componentId,

@@ -37,7 +37,7 @@ pub trait LxAppDelegate {
 
     /// Handle UI events
     /// Returns true if the event was handled, false to allow default behavior
-    fn on_ui_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool;
+    fn on_lxapp_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool;
 }
 
 impl LxAppDelegate for LxApp {
@@ -219,7 +219,7 @@ impl LxAppDelegate for LxApp {
         page.mark_active();
     }
 
-    fn on_ui_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool {
+    fn on_lxapp_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool {
         info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
 
         match event_type {

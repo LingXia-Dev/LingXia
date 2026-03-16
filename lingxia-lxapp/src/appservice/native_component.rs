@@ -35,7 +35,7 @@ fn resolve_function_name(bindings_json: &str, event_name: &str) -> Option<String
     None
 }
 
-pub fn dispatch_native_component_event(
+pub fn on_native_component_event(
     appid: &str,
     path: &str,
     _component_id: &str,

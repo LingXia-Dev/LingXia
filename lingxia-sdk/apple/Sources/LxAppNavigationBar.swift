@@ -409,14 +409,14 @@ struct ReactiveNavigationBarView: View {
     private func handleBackTap() {
         // Get current app ID from state manager
         if let appId = stateManager.currentAppId {
-            let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+            let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionBack)
         }
     }
 
     private func handleHomeTap() {
         // Get current app ID from state manager
         if let appId = stateManager.currentAppId {
-            let _ = onUiEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+            let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionHome)
         }
     }
 }

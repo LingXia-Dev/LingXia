@@ -2,7 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onUiEvent, UiEventType } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
@@ -143,7 +143,7 @@ export struct LxAppNavigation {
       const current: CurrentLxApp = getCurrentLxapp();
       if (current && current.appid && current.appid.length > 0) {
         hilog.info(DOMAIN, TAG, `Forwarding system back press to ${current.appid}`);
-        const handled: boolean = onUiEvent(current.appid, UiEventType.BackPress, '');
+        const handled: boolean = onLxappEvent(current.appid, UiEventType.BackPress, '');
         if (handled) {
           this.lastBackHandledAt = now;
         }

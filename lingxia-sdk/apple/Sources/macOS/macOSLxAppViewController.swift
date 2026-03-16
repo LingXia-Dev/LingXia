@@ -109,7 +109,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             setupPullToRefresh(for: webView)
         }
         pullToRefreshHelper?.startRefreshing()
-        let _ = onUiEvent(appId, LxAppUIEvent.pullDownRefresh, currentPath)
+        let _ = onLxappEvent(appId, LxAppEvent.pullDownRefresh, currentPath)
     }
 
     internal func stopPullDownRefreshProgrammatically() {

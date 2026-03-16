@@ -381,7 +381,7 @@ fn orientation_to_android_value(orientation: OrientationConfig) -> jint {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
+pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onLxappEvent(
     mut env: EnvUnowned,
     _class: JClass,
     appid: JString,
@@ -407,7 +407,7 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onUiEvent(
         let Some(lxapp) = lxapp::try_get(&appid) else {
             return Ok(0);
         };
-        if lxapp.on_ui_event(ui_event_type, data_str) {
+        if lxapp.on_lxapp_event(ui_event_type, data_str) {
             Ok(1)
         } else {
             Ok(0)
@@ -850,9 +850,8 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onCallback(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-/// Dispatch native-component event to Rust logic runtime.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_dispatchNativeComponentEvent<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onNativeComponentEvent<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     appid: JString<'a>,
@@ -870,7 +869,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_dispatchNativeComponentE
         let payload_json: String = payload_json.try_to_string(env)?;
         let bindings_json: String = bindings_json.try_to_string(env)?;
 
-        let accepted = lxapp::dispatch_native_component_event(
+        let accepted = lxapp::on_native_component_event(
             &appid,
             &path,
             &component_id,

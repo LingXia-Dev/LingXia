@@ -271,7 +271,7 @@ declare module 'liblingxia.so' {
    * @param data - Event data (e.g., tab index, action name)
    * @returns true if handled successfully, false otherwise
    */
-  export function onUiEvent(appid: string, eventType: UiEventType, data: string): boolean;
+  export function onLxappEvent(appid: string, eventType: UiEventType, data: string): boolean;
 
   /**
    * Get current active LxApp ID and path from Rust stack
@@ -311,7 +311,7 @@ declare module 'liblingxia.so' {
    * @param bindingsJson - JSON object map: eventName -> pageFunctionName
    * @returns true if dispatch accepted by runtime
    */
-  export function dispatchNativeComponentEvent(
+  export function onNativeComponentEvent(
     appid: string,
     path: string,
     componentId: string,

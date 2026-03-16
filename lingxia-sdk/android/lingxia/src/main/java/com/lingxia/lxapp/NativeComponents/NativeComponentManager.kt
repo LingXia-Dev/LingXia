@@ -837,7 +837,7 @@ class NativeComponentManager(
             Log.w(logTag, "nativecomponent bindings encode failed componentId=$componentId event=$eventName", e)
             return
         }
-        NativeApi.dispatchNativeComponentEvent(
+        NativeApi.onNativeComponentEvent(
             route.first,
             route.second,
             componentId,

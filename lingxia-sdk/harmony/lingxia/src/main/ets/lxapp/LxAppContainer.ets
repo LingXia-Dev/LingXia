@@ -20,7 +20,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './Naviga
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onUiEvent } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from './NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
@@ -957,7 +957,7 @@ export struct LxAppContainer {
   private handlePullToRefresh(path?: string): void {
     // Notify Rust core about the event
     const eventPath = path || this.path;
-    let _: boolean = onUiEvent(this.appId, UiEventType.PullDownRefresh, eventPath);
+    let _: boolean = onLxappEvent(this.appId, UiEventType.PullDownRefresh, eventPath);
 
     // Set a safety timeout to stop refreshing if the app doesn't respond
     setTimeout(() => {
@@ -1068,7 +1068,7 @@ export struct LxAppContainer {
 
   private handleTabSelected(index: number) {
     hilog.info(DOMAIN, TAG, `Tab selected: ${index}, current: ${this.selectedTabIndex}`);
-    let _: boolean = onUiEvent(this.appId, UiEventType.TabBarClick, index.toString());
+    let _: boolean = onLxappEvent(this.appId, UiEventType.TabBarClick, index.toString());
   }
 
   /**
@@ -1295,10 +1295,10 @@ export struct LxAppContainer {
   private handleNavigationBack(isHomeButton: boolean = false) {
     if (isHomeButton) {
       hilog.info(DOMAIN, TAG, 'Navigation home button pressed');
-      let _: boolean = onUiEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_HOME);
+      let _: boolean = onLxappEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_HOME);
     } else {
       hilog.info(DOMAIN, TAG, 'Navigation back button pressed');
-      let _: boolean = onUiEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_BACK);
+      let _: boolean = onLxappEvent(this.appId, UiEventType.NavigationClick, NAVIGATION_ACTION_BACK);
     }
   }
 
@@ -1311,7 +1311,7 @@ export struct LxAppContainer {
   }
 
   private handleCapsuleClose(): void {
-    let _: boolean = onUiEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_CLOSE);
+    let _: boolean = onLxappEvent(this.appId, UiEventType.CapsuleClick, CAPSULE_ACTION_CLOSE);
   }
 
   // The previous height/position logic is deprecated; always rely on getWebViewPadding to keep the layout stable

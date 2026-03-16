@@ -6,7 +6,7 @@ import { NativeComponentParams, registerNativeComponentBuilder } from '../Native
 import { NativeComponentRecord } from '../NativeComponentTypes';
 import { LxAppPicker, PickerResult } from '../../APIs/LxAppPicker';
 import { LxAppDatePicker, LxDatePickerResult } from '../../APIs/LxAppDatePicker';
-import { dispatchNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
+import { onNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
 
 // Prevent picker from showing multiple times for the same component instance
 const showingComponents: Set<string> = new Set();
@@ -178,7 +178,7 @@ struct NativePickerComponent {
   }
 
   private sendEvent(event: string, detail: PickerEventDetail): void {
-    dispatchNativeComponentEventFromBuilder(this.componentId, event, detail);
+    onNativeComponentEventFromBuilder(this.componentId, event, detail);
   }
 
   build() {
