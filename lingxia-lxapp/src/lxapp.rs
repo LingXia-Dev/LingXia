@@ -42,6 +42,7 @@ use crate::lifecycle::AppServiceEvent;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
 pub use popup::PopupMode;
+pub(crate) use popup::WEB_POPUP_PATH;
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";

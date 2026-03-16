@@ -11,7 +11,7 @@ use crate::lxapp::LxApp;
 
 /// Fixed WebTag path used for the web-page popup WebView.
 /// Safe to be a constant because only one popup can be active at a time.
-pub(super) const WEB_POPUP_PATH: &str = "__web_popup__";
+pub(crate) const WEB_POPUP_PATH: &str = "__web_popup__";
 
 /// Controls what content is loaded in the popup.
 /// Both modes display an in-app popup overlay; they differ only in content source.
