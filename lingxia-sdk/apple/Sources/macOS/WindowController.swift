@@ -141,6 +141,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         if let window = self.window as? LxAppWindow {
             window.standardWindowButton(.zoomButton)?.isHidden = false
+            window.trafficLightCenterYFromTop = Layout.contentPanelPadding + Layout.toolbarCenterY
         }
 
         tabManager.onTabChanged = { [weak self] tab in
@@ -279,7 +280,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Shadow wrapper positions the floating panel with padding on all exposed edges
+            // Shadow wrapper: floating panel with padding on all exposed edges
             shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
             contentLeading,
             shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p),
@@ -291,12 +292,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             right.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             right.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
 
-            // Navigation toolbar: top of right container
+            // Navigation toolbar stays inside the rounded panel.
             toolbar.topAnchor.constraint(equalTo: right.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: right.trailingAnchor),
 
-            // Panel root: below toolbar, fills rest
+            // Panel root follows the toolbar without changing the panel's own padding/corners.
             workspaceRoot.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
             workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
@@ -305,6 +306,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
         // Edge detector for auto-showing hidden sidebar
         setupSidebarEdgeDetector(in: contentView)
+        syncSidebarHeaderButtonAlignment()
     }
 
     private func setupNotificationObservers() {
@@ -530,6 +532,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
         contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
         sidebarEdgeDetector.isHidden = false
+        syncSidebarHeaderButtonAlignment()
         if sidebarHidden {
             startEdgePollTimer()
         } else {
@@ -652,7 +655,26 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             viewController.view.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
 
+        syncSidebarHeaderButtonAlignment()
         viewController.resumeNativeComponents()
+    }
+
+    private func syncSidebarHeaderButtonAlignment() {
+        guard let contentView = window?.contentView else { return }
+        contentView.layoutSubtreeIfNeeded()
+        if let window = window as? LxAppWindow {
+            sidebarView?.buttonCenterYFromTop = window.effectiveTrafficLightCenterYFromTop()
+        } else {
+            sidebarView?.buttonCenterYFromTop = Layout.toolbarCenterY
+        }
+    }
+
+    public func windowDidResize(_ notification: Notification) {
+        syncSidebarHeaderButtonAlignment()
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        syncSidebarHeaderButtonAlignment()
     }
 
     // MARK: - QLPreviewPanel support

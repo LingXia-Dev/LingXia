@@ -90,6 +90,15 @@ public class SidebarView: NSView {
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
     private var addButtonTrackingArea: NSTrackingArea?
 
+    /// Target center Y for the header buttons, measured from the header's top edge.
+    var buttonCenterYFromTop: CGFloat = Layout.trafficLightsHeight / 2 {
+        didSet {
+            guard oldValue != buttonCenterYFromTop else { return }
+            buttonCenterYConstraints.forEach { $0.constant = buttonCenterYFromTop }
+        }
+    }
+    private var buttonCenterYConstraints: [NSLayoutConstraint] = []
+
     /// True when the sidebar is at minimized width (showing dots only)
     var isMinimized: Bool {
         return frame.width <= Layout.minCollapsedWidth + 1
@@ -233,18 +242,15 @@ public class SidebarView: NSView {
             // Settings and download buttons: right-aligned in header, next to toggle button
             // Use topAnchor offset to align button centers with traffic lights
             downloadButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -4),
-            downloadButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             downloadButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             downloadButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
             settingsButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -4),
-            settingsButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             settingsButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             settingsButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
             // Toggle button: right-aligned in header
             toggleButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
-            toggleButton.topAnchor.constraint(equalTo: headerView.topAnchor, constant: Layout.buttonTopOffset),
             toggleButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
             toggleButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
 
@@ -265,6 +271,14 @@ public class SidebarView: NSView {
             resizeHandle.bottomAnchor.constraint(equalTo: bottomAnchor),
             resizeHandle.widthAnchor.constraint(equalToConstant: Layout.resizeHandleWidth),
         ])
+
+        // Button center constraints — stored so we can align them to the effective traffic-light center.
+        let centerY = buttonCenterYFromTop
+        let downloadCenter = downloadButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        let settingsCenter = settingsButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        let toggleCenter = toggleButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
+        buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
+        NSLayoutConstraint.activate(buttonCenterYConstraints)
 
         // Document view fills scroll view width
         if let docView = scrollView.documentView {
