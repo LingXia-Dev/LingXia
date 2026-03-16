@@ -19,9 +19,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     public struct Layout {
         static let sidebarWidth: CGFloat = 180
-        static let minSidebarWidth: CGFloat = 48
         static let sidebarHiddenThreshold: CGFloat = 1
-        static let edgeDetectionWidth: CGFloat = 10
         static let browserToolbarHeight: CGFloat = 38
         /// Shared center-Y baseline for all toolbar elements (traffic lights, nav buttons, address bar).
         /// = toolbar band height / 2 = 38 / 2 = 19pt from the visual window top.
@@ -35,6 +33,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         static let contentPanelPadding: CGFloat = 6
         /// Corner radius of the floating content panel
         static let contentPanelCornerRadius: CGFloat = 10
+        static let sidebarRevealButtonSize = CGSize(width: 36, height: 36)
+        static let sidebarRevealButtonLeadingInset: CGFloat = 4
+        static let sidebarRevealButtonBottomInset: CGFloat = 4
     }
 
     /// Background color for the base layer (Layer 1) visible through padding gaps.
@@ -53,14 +54,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
-    private let sidebarEdgeDetector = SidebarEdgeDetector()
-    /// Delayed expand timer — fires after mouse dwells at left edge
-    nonisolated(unsafe) private var edgeHoverTimer: Timer?
-    /// Poll timer to detect edge entry (NSTrackingArea is unreliable after sidebar toggle)
-    nonisolated(unsafe) private var edgePollTimer: Timer?
-    private var edgePollMouseWasAtEdge = false
-    /// Visual hint line shown at left edge when mouse enters
-    private var edgeHintView: NSView?
+    private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
     private var appSessions: [String: UInt64] = [:]
@@ -113,8 +107,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
-        edgeHoverTimer?.invalidate()
-        edgePollTimer?.invalidate()
         browserTitleObservation?.invalidate()
         browserUrlObservation?.invalidate()
         browserCanGoBackObservation?.invalidate()
@@ -189,8 +181,8 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebar.onAppCloseRequested = { [weak self] appId in
             self?.closeTab(appId)
         }
-        sidebar.onToggleRequested = { [weak self] in
-            self?.toggleSidebar()
+        sidebar.onHideRequested = { [weak self] in
+            self?.hideSidebar()
         }
         sidebar.onWidthChanged = { [weak self] width, animated in
             self?.updateSidebarWidth(width, animated: animated)
@@ -254,6 +246,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         navigationToolbar = toolbar
         right.addSubview(toolbar)
 
+        configureSidebarRevealButton()
+        contentView.addSubview(sidebarRevealButton, positioned: .above, relativeTo: shadowWrapper)
+
         // Panel layout manager's root view fills area below toolbar
         let workspaceRoot = workspaceManager.rootView
         workspaceRoot.translatesAutoresizingMaskIntoConstraints = false
@@ -302,11 +297,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
             workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
+
+            // Anchored to contentView corner so it sits at the true window edge (more left/down than the panel)
+            sidebarRevealButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.sidebarRevealButtonLeadingInset),
+            sidebarRevealButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Layout.sidebarRevealButtonBottomInset),
+            sidebarRevealButton.widthAnchor.constraint(equalToConstant: Layout.sidebarRevealButtonSize.width),
+            sidebarRevealButton.heightAnchor.constraint(equalToConstant: Layout.sidebarRevealButtonSize.height),
         ])
 
-        // Edge detector for auto-showing hidden sidebar
-        setupSidebarEdgeDetector(in: contentView)
         syncSidebarHeaderButtonAlignment()
+        refreshSidebarVisibilityUI()
     }
 
     private func setupNotificationObservers() {
@@ -365,34 +365,55 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         return ceil(maxX + 12)
     }
 
-    func toggleSidebar() {
+    private func hideSidebar() {
+        setSidebarVisible(false, animated: true)
+    }
+
+    private func showSidebar() {
+        setSidebarVisible(true, animated: true)
+    }
+
+    private func setSidebarVisible(_ visible: Bool, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
 
         let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
-        if isVisible && constraint.constant > Layout.minSidebarWidth {
+        if isVisible == visible {
+            refreshSidebarVisibilityUI()
+            return
+        }
+
+        if isVisible && constraint.constant > Layout.sidebarHiddenThreshold {
             lastExpandedSidebarWidth = constraint.constant
         }
-        let targetWidth: CGFloat = isVisible ? 0 : lastExpandedSidebarWidth
-        let targetLeading: CGFloat = isVisible ? currentTrafficLightClearance() : Layout.browserButtonLeading
-        let targetContentLeading: CGFloat = isVisible ? Layout.contentPanelPadding : 0
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.25
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            constraint.animator().constant = targetWidth
-            browserBackButtonLeadingConstraint?.animator().constant = targetLeading
-            contentLeadingConstraint?.animator().constant = targetContentLeading
-        }, completionHandler: {
-            MainActor.assumeIsolated { [weak self] in
-                self?.refreshSidebarVisibilityUI()
-            }
-        })
+        let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
+        let targetLeading: CGFloat = visible ? Layout.browserButtonLeading : currentTrafficLightClearance()
+        let targetContentLeading: CGFloat = visible ? 0 : Layout.contentPanelPadding
+
+        if animated {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.25
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                constraint.animator().constant = targetWidth
+                browserBackButtonLeadingConstraint?.animator().constant = targetLeading
+                contentLeadingConstraint?.animator().constant = targetContentLeading
+            }, completionHandler: {
+                MainActor.assumeIsolated { [weak self] in
+                    self?.refreshSidebarVisibilityUI()
+                }
+            })
+        } else {
+            constraint.constant = targetWidth
+            browserBackButtonLeadingConstraint?.constant = targetLeading
+            contentLeadingConstraint?.constant = targetContentLeading
+            refreshSidebarVisibilityUI()
+        }
     }
 
     func updateSidebarWidth(_ width: CGFloat, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
 
-        if width > Layout.minSidebarWidth {
+        if width > Layout.sidebarHiddenThreshold {
             lastExpandedSidebarWidth = width
         }
 
@@ -420,149 +441,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    // MARK: - Sidebar Edge Detection
-
-    private func setupSidebarEdgeDetector(in contentView: NSView) {
-        sidebarEdgeDetector.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(sidebarEdgeDetector, positioned: .above, relativeTo: nil)
-
-        NSLayoutConstraint.activate([
-            sidebarEdgeDetector.topAnchor.constraint(equalTo: contentView.topAnchor),
-            sidebarEdgeDetector.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            sidebarEdgeDetector.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            sidebarEdgeDetector.widthAnchor.constraint(equalToConstant: Layout.edgeDetectionWidth),
-        ])
-
-        sidebarEdgeDetector.onMouseEntered = { [weak self] in
-            self?.handleEdgeMouseEntered()
-        }
-        sidebarEdgeDetector.onMouseExited = { [weak self] in
-            self?.cancelEdgeDwell()
-        }
-        sidebarEdgeDetector.onMouseMoved = { [weak self] in
-            // mouseMoved inside edge zone = mouse still dwelling, keep timer alive
-        }
-
-        // Visual hint line — thin accent bar shown when mouse enters edge zone
-        let hint = NSView()
-        hint.translatesAutoresizingMaskIntoConstraints = false
-        hint.wantsLayer = true
-        hint.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.5).cgColor
-        hint.isHidden = true
-        contentView.addSubview(hint, positioned: .above, relativeTo: nil)
-        NSLayoutConstraint.activate([
-            hint.topAnchor.constraint(equalTo: contentView.topAnchor),
-            hint.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            hint.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            hint.widthAnchor.constraint(equalToConstant: 3),
-        ])
-        edgeHintView = hint
-    }
-
-    // MARK: - Edge Hover: Dwell Detection
-
-    /// Mouse entered the left-edge zone. Show visual hint and start dwell timer.
-    private func handleEdgeMouseEntered() {
-        guard (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold else { return }
-        showEdgeHint()
-        startEdgeDwellTimer()
-    }
-
-    /// Mouse left the edge zone. Cancel dwell timer and hide hint.
-    private func cancelEdgeDwell() {
-        edgeHoverTimer?.invalidate()
-        edgeHoverTimer = nil
-        hideEdgeHint()
-    }
-
-    /// Start a one-shot 300ms timer. If mouse is still at the edge when it fires, expand sidebar.
-    private func startEdgeDwellTimer() {
-        edgeHoverTimer?.invalidate()
-        edgeHoverTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Verify mouse is still at the left edge before expanding
-                if self.isMouseAtLeftEdge() {
-                    self.hideEdgeHint()
-                    self.showSidebarFromEdgeHover()
-                } else {
-                    self.cancelEdgeDwell()
-                }
-            }
-        }
-    }
-
-    /// Check if mouse is currently within the left-edge detection zone.
-    private func isMouseAtLeftEdge() -> Bool {
-        guard let window = self.window, window.isVisible else { return false }
-        let mouseScreen = NSEvent.mouseLocation
-        let windowFrame = window.frame
-        guard windowFrame.contains(mouseScreen) else { return false }
-        let mouseX = mouseScreen.x - windowFrame.origin.x
-        return mouseX >= 0 && mouseX < Layout.edgeDetectionWidth
-    }
-
-    private func showEdgeHint() {
-        edgeHintView?.isHidden = false
-        edgeHintView?.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.15
-            self.edgeHintView?.animator().alphaValue = 1
-        }
-    }
-
-    private func hideEdgeHint() {
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.15
-            self.edgeHintView?.animator().alphaValue = 0
-        }, completionHandler: {
-            MainActor.assumeIsolated { [weak self] in
-                self?.edgeHintView?.isHidden = true
-            }
-        })
-    }
-
-    private func showSidebarFromEdgeHover() {
-        guard (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold else { return }
-        updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
-    }
-
     private func refreshSidebarVisibilityUI() {
-        sidebarView?.updateMinimizedState()
+        sidebarView?.updateVisibilityState()
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
         contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
-        sidebarEdgeDetector.isHidden = false
+        sidebarRevealButton.isHidden = !sidebarHidden
         syncSidebarHeaderButtonAlignment()
-        if sidebarHidden {
-            startEdgePollTimer()
-        } else {
-            cancelEdgeDwell()
-            stopEdgePollTimer()
-        }
-    }
-
-    /// 4Hz poll: simulate mouseEntered/mouseExited since NSTrackingArea is unreliable.
-    private func startEdgePollTimer() {
-        guard edgePollTimer == nil else { return }
-        edgePollMouseWasAtEdge = false
-        edgePollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                let atEdge = self.isMouseAtLeftEdge()
-                if atEdge && !self.edgePollMouseWasAtEdge {
-                    self.handleEdgeMouseEntered()
-                } else if !atEdge && self.edgePollMouseWasAtEdge {
-                    self.cancelEdgeDwell()
-                }
-                self.edgePollMouseWasAtEdge = atEdge
-            }
-        }
-    }
-
-    private func stopEdgePollTimer() {
-        edgePollTimer?.invalidate()
-        edgePollTimer = nil
-        edgePollMouseWasAtEdge = false
     }
 
     // MARK: - Tab Lifecycle
@@ -675,6 +559,25 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     public func windowDidMove(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
+    }
+
+    private func configureSidebarRevealButton() {
+        sidebarRevealButton.translatesAutoresizingMaskIntoConstraints = false
+        // Use bordered circular bezel — system handles dark/light mode automatically
+        sidebarRevealButton.isBordered = true
+        sidebarRevealButton.bezelStyle = .circular
+        sidebarRevealButton.imagePosition = .imageOnly
+        sidebarRevealButton.imageScaling = .scaleProportionallyDown
+        sidebarRevealButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Show sidebar")
+        sidebarRevealButton.contentTintColor = NSColor.secondaryLabelColor
+        sidebarRevealButton.toolTip = "Show sidebar"
+        sidebarRevealButton.target = self
+        sidebarRevealButton.action = #selector(sidebarRevealButtonClicked)
+        sidebarRevealButton.isHidden = true
+    }
+
+    @objc private func sidebarRevealButtonClicked() {
+        showSidebar()
     }
 
     // MARK: - QLPreviewPanel support
@@ -1496,48 +1399,6 @@ extension LxAppWindowController {
 
     private func loadBrowserToolbarIcon(named iconName: String, size: CGFloat) -> NSImage? {
         return LxIcon.image(named: iconName, size: CGSize(width: size, height: size))
-    }
-}
-
-// MARK: - Sidebar Edge Detector
-
-/// Invisible view at the left edge of the window that detects mouse hover
-/// for auto-showing a fully-hidden sidebar. Transparent to all clicks.
-@MainActor
-class SidebarEdgeDetector: NSView {
-    var onMouseEntered: (() -> Void)?
-    var onMouseExited: (() -> Void)?
-    var onMouseMoved: (() -> Void)?
-
-    // Pass all clicks through to views underneath
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        return nil
-    }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        for area in trackingAreas {
-            removeTrackingArea(area)
-        }
-        let area = NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways],
-            owner: self,
-            userInfo: nil
-        )
-        addTrackingArea(area)
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        onMouseEntered?()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onMouseExited?()
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        onMouseMoved?()
     }
 }
 

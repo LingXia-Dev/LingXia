@@ -47,38 +47,39 @@ private class SidebarResizeHandle: NSView {
 // MARK: - SidebarView
 
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
-/// Supports drag-to-resize and a minimized mode with colored dots.
-/// In minimized mode, clicking a dot selects the tab; clicking elsewhere expands.
+/// Supports drag-to-resize and a fully hidden state.
 @MainActor
 public class SidebarView: NSView {
 
     struct Layout {
         static let expandedWidth: CGFloat = 180
-        static let minCollapsedWidth: CGFloat = 48
         static let maxWidth: CGFloat = 400
         static let collapseThreshold: CGFloat = 80
         static let fullyHiddenThreshold: CGFloat = 1
         static let trafficLightsHeight: CGFloat = 38
-        static let toggleButtonSize: CGFloat = 28
+        static let actionButtonSize: CGFloat = 28
         static let resizeHandleWidth: CGFloat = 5
-        static let dotDiameter: CGFloat = 12
-        static let dotSpacing: CGFloat = 16
-        static let dotTopOffset: CGFloat = 50
-        /// Y offset from header top, centers 28pt buttons at the 38pt toolbar midpoint (19pt).
-        /// Matches traffic lights, browser nav buttons, and address bar on the same baseline.
-        static let buttonTopOffset: CGFloat = 5  // (38 - 28) / 2
+        /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
+        static let footerHeight: CGFloat = 48
+        /// Square icon button size in the dock.
+        static let footerButtonSize: CGFloat = 28
+        /// Horizontal/vertical padding inside the dock.
+        static let footerInset: CGFloat = 10
     }
 
     private let headerView = NSView()
-    private let toggleButton = NSButton()
     private let settingsButton = NSButton()
     private let downloadButton = NSButton()
     private let scrollView = NSScrollView()
     private let resizeHandle = SidebarResizeHandle()
-    private let minimizedDotsContainer = NSView()
+    private let footerView = NSView()
+    private let footerSeparator = NSView()
+    /// Horizontal stack that holds all footer dock buttons.
+    private let footerStack = NSStackView()
+    private let hideButton = NSButton()
+    private var hideButtonTrackingArea: NSTrackingArea?
 
     private var groupViews: [String: SidebarGroupView] = [:]
-    private var dotViews: [(appId: String, dot: NSView)] = []
     private var currentTabs: [LxAppTab] = []
 
     // Browser tab views
@@ -99,11 +100,6 @@ public class SidebarView: NSView {
     }
     private var buttonCenterYConstraints: [NSLayoutConstraint] = []
 
-    /// True when the sidebar is at minimized width (showing dots only)
-    var isMinimized: Bool {
-        return frame.width <= Layout.minCollapsedWidth + 1
-    }
-
     var isFullyHidden: Bool {
         return frame.width < Layout.fullyHiddenThreshold
     }
@@ -112,8 +108,8 @@ public class SidebarView: NSView {
     var onAppPageSelected: ((String, Int) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
-    /// Called when toggle button is clicked or minimized area is clicked
-    var onToggleRequested: (() -> Void)?
+    /// Called when the bottom hide button is clicked
+    var onHideRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
     /// Called when "+" button is clicked to add a browser tab
@@ -136,35 +132,8 @@ public class SidebarView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // Prevent window drag when SidebarView itself receives events (minimized mode)
+    // Prevent window drag when SidebarView itself receives events
     override public var mouseDownCanMoveWindow: Bool { false }
-
-    // MARK: - Hit Testing (minimized mode)
-
-    override public func hitTest(_ point: NSPoint) -> NSView? {
-        guard !isHidden, frame.contains(point) else { return nil }
-
-        if isMinimized {
-            // In minimized mode, only dots and resize handle receive direct events.
-            // Everything else returns self → mouseDown triggers expand.
-            if let hit = super.hitTest(point) {
-                if hit === resizeHandle || dotViews.contains(where: { $0.dot === hit }) {
-                    return hit
-                }
-            }
-            return self
-        }
-
-        return super.hitTest(point)
-    }
-
-    override public func mouseDown(with event: NSEvent) {
-        if isMinimized {
-            onToggleRequested?()
-            return
-        }
-        super.mouseDown(with: event)
-    }
 
     // MARK: - Setup
 
@@ -172,7 +141,7 @@ public class SidebarView: NSView {
         wantsLayer = true
         clipsToBounds = true
 
-        // Header (traffic lights + toggle)
+        // Header (traffic lights + actions)
         headerView.translatesAutoresizingMaskIntoConstraints = false
         headerView.wantsLayer = true
         addSubview(headerView)
@@ -198,17 +167,6 @@ public class SidebarView: NSView {
         downloadButton.action = #selector(downloadClicked)
         headerView.addSubview(downloadButton)
 
-        // Toggle button — right-aligned in header
-        toggleButton.translatesAutoresizingMaskIntoConstraints = false
-        toggleButton.image = NSImage(systemSymbolName: "sidebar.left", accessibilityDescription: "Toggle sidebar")
-        toggleButton.isBordered = false
-        toggleButton.bezelStyle = .regularSquare
-        toggleButton.imagePosition = .imageOnly
-        toggleButton.contentTintColor = NSColor.secondaryLabelColor
-        toggleButton.target = self
-        toggleButton.action = #selector(toggleClicked)
-        headerView.addSubview(toggleButton)
-
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
@@ -223,10 +181,38 @@ public class SidebarView: NSView {
         flipView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = flipView
 
-        // Minimized dots container (hidden by default)
-        minimizedDotsContainer.translatesAutoresizingMaskIntoConstraints = false
-        minimizedDotsContainer.isHidden = true
-        addSubview(minimizedDotsContainer)
+        // Footer dock — bottom toolbar row for icon buttons
+        footerView.translatesAutoresizingMaskIntoConstraints = false
+        footerView.wantsLayer = true
+        addSubview(footerView)
+
+        // Hairline separator between scroll content and footer
+        footerSeparator.translatesAutoresizingMaskIntoConstraints = false
+        footerSeparator.wantsLayer = true
+        footerSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
+        footerView.addSubview(footerSeparator)
+
+        footerStack.translatesAutoresizingMaskIntoConstraints = false
+        footerStack.orientation = .horizontal
+        footerStack.spacing = 4
+        footerStack.alignment = .centerY
+        footerStack.distribution = .fill
+        footerView.addSubview(footerStack)
+
+        hideButton.translatesAutoresizingMaskIntoConstraints = false
+        hideButton.title = ""
+        hideButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Hide sidebar")
+        hideButton.imagePosition = .imageOnly
+        hideButton.isBordered = false
+        hideButton.bezelStyle = .regularSquare
+        hideButton.contentTintColor = NSColor.secondaryLabelColor
+        hideButton.wantsLayer = true
+        hideButton.layer?.cornerRadius = 6
+        hideButton.layer?.backgroundColor = NSColor.clear.cgColor
+        hideButton.toolTip = "Hide sidebar"
+        hideButton.target = self
+        hideButton.action = #selector(hideButtonClicked)
+        footerStack.addArrangedSubview(hideButton)
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
@@ -239,31 +225,35 @@ public class SidebarView: NSView {
             headerView.trailingAnchor.constraint(equalTo: trailingAnchor),
             headerView.heightAnchor.constraint(equalToConstant: Layout.trafficLightsHeight),
 
-            // Settings and download buttons: right-aligned in header, next to toggle button
-            // Use topAnchor offset to align button centers with traffic lights
-            downloadButton.trailingAnchor.constraint(equalTo: toggleButton.leadingAnchor, constant: -4),
-            downloadButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
-            downloadButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
+            downloadButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
+            downloadButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            downloadButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
             settingsButton.trailingAnchor.constraint(equalTo: downloadButton.leadingAnchor, constant: -4),
-            settingsButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
-            settingsButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
+            settingsButton.widthAnchor.constraint(equalToConstant: Layout.actionButtonSize),
+            settingsButton.heightAnchor.constraint(equalToConstant: Layout.actionButtonSize),
 
-            // Toggle button: right-aligned in header
-            toggleButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -12),
-            toggleButton.widthAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
-            toggleButton.heightAnchor.constraint(equalToConstant: Layout.toggleButtonSize),
-
-            // Scroll view: inset trailing by resize handle width, extends to bottom
+            // Scroll view: inset trailing by resize handle width, extends above footer
             scrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: footerView.topAnchor),
 
-            minimizedDotsContainer.topAnchor.constraint(equalTo: topAnchor, constant: Layout.dotTopOffset),
-            minimizedDotsContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
-            minimizedDotsContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
-            minimizedDotsContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footerView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            footerView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Layout.resizeHandleWidth),
+            footerView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footerView.heightAnchor.constraint(equalToConstant: Layout.footerHeight),
+
+            footerSeparator.topAnchor.constraint(equalTo: footerView.topAnchor),
+            footerSeparator.leadingAnchor.constraint(equalTo: footerView.leadingAnchor),
+            footerSeparator.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
+            footerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
+
+            footerStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            footerStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+
+            hideButton.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
+            hideButton.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -276,8 +266,7 @@ public class SidebarView: NSView {
         let centerY = buttonCenterYFromTop
         let downloadCenter = downloadButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
         let settingsCenter = settingsButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        let toggleCenter = toggleButton.centerYAnchor.constraint(equalTo: headerView.topAnchor, constant: centerY)
-        buttonCenterYConstraints = [downloadCenter, settingsCenter, toggleCenter]
+        buttonCenterYConstraints = [downloadCenter, settingsCenter]
         NSLayoutConstraint.activate(buttonCenterYConstraints)
 
         // Document view fills scroll view width
@@ -327,58 +316,13 @@ public class SidebarView: NSView {
         }
     }
 
-    // MARK: - Minimized Mode
-
-    /// Update display mode based on current width
-    func updateMinimizedState() {
+    func updateVisibilityState() {
         let hidden = isFullyHidden
-        let minimized = isMinimized && !hidden
-
-        scrollView.isHidden = hidden || minimized
-        toggleButton.isHidden = hidden || minimized
-        settingsButton.isHidden = hidden || minimized
-        downloadButton.isHidden = hidden || minimized
-        minimizedDotsContainer.isHidden = !minimized
+        scrollView.isHidden = hidden
+        settingsButton.isHidden = hidden
+        downloadButton.isHidden = hidden
+        footerView.isHidden = hidden
         resizeHandle.isHidden = hidden
-    }
-
-    /// Rebuild colored dots for current groups
-    private func rebuildDots(tabs: [LxAppTab]) {
-        for item in dotViews {
-            item.dot.removeFromSuperview()
-        }
-        dotViews.removeAll()
-
-        var yOffset: CGFloat = 0
-        for (tabIndex, tab) in tabs.enumerated() {
-            let palette = SidebarGroupColor.palette(for: tabIndex)
-            let dot = NSView()
-            dot.translatesAutoresizingMaskIntoConstraints = false
-            dot.wantsLayer = true
-            dot.layer?.backgroundColor = palette.headerBg.cgColor
-            dot.layer?.cornerRadius = Layout.dotDiameter / 2
-            minimizedDotsContainer.addSubview(dot)
-
-            NSLayoutConstraint.activate([
-                dot.centerXAnchor.constraint(equalTo: minimizedDotsContainer.centerXAnchor),
-                dot.topAnchor.constraint(equalTo: minimizedDotsContainer.topAnchor, constant: yOffset),
-                dot.widthAnchor.constraint(equalToConstant: Layout.dotDiameter),
-                dot.heightAnchor.constraint(equalToConstant: Layout.dotDiameter),
-            ])
-
-            let clickGesture = NSClickGestureRecognizer(target: self, action: #selector(dotClicked(_:)))
-            dot.addGestureRecognizer(clickGesture)
-
-            dotViews.append((appId: tab.appId, dot: dot))
-            yOffset += Layout.dotDiameter + Layout.dotSpacing
-        }
-    }
-
-    @objc private func dotClicked(_ gesture: NSClickGestureRecognizer) {
-        guard let clickedDot = gesture.view else { return }
-        if let match = dotViews.first(where: { $0.dot === clickedDot }) {
-            onAppPageSelected?(match.appId, 0)
-        }
     }
 
     // MARK: - Public API
@@ -455,7 +399,6 @@ public class SidebarView: NSView {
             setActiveHighlight(appId: activeAppId)
         }
 
-        rebuildDots(tabs: tabs)
     }
 
     /// Refresh a specific app group from Rust data
@@ -658,8 +601,8 @@ public class SidebarView: NSView {
         onAddBrowserTab?()
     }
 
-    @objc private func toggleClicked() {
-        onToggleRequested?()
+    @objc private func hideButtonClicked() {
+        onHideRequested?()
     }
 
     @objc private func settingsClicked() {
@@ -670,7 +613,7 @@ public class SidebarView: NSView {
         onOpenDownloads?()
     }
 
-    // MARK: - Add button hover
+    // MARK: - Footer / Add button hover
 
     override public func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -679,31 +622,55 @@ public class SidebarView: NSView {
         if let existing = addButtonTrackingArea {
             addButton.removeTrackingArea(existing)
         }
-        let area = NSTrackingArea(
+        let addArea = NSTrackingArea(
             rect: addButton.bounds,
             options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
-        addButton.addTrackingArea(area)
-        addButtonTrackingArea = area
+        addButton.addTrackingArea(addArea)
+        addButtonTrackingArea = addArea
+
+        // Hide button hover tracking
+        if let existing = hideButtonTrackingArea {
+            hideButton.removeTrackingArea(existing)
+        }
+        let hideArea = NSTrackingArea(
+            rect: hideButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        hideButton.addTrackingArea(hideArea)
+        hideButtonTrackingArea = hideArea
     }
 
     override public func mouseEntered(with event: NSEvent) {
         if event.trackingArea === addButtonTrackingArea {
             setAddButtonHovered(true)
+        } else if event.trackingArea === hideButtonTrackingArea {
+            setHideButtonHovered(true)
         }
     }
 
     override public func mouseExited(with event: NSEvent) {
         if event.trackingArea === addButtonTrackingArea {
             setAddButtonHovered(false)
+        } else if event.trackingArea === hideButtonTrackingArea {
+            setHideButtonHovered(false)
         }
     }
 
     private func setAddButtonHovered(_ hovered: Bool) {
         let alpha: CGFloat = hovered ? 0.12 : 0.06
         addButton.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(alpha).cgColor
+    }
+
+    private func setHideButtonHovered(_ hovered: Bool) {
+        hideButton.layer?.backgroundColor = hovered
+            ? NSColor.labelColor.withAlphaComponent(0.09).cgColor
+            : NSColor.clear.cgColor
+        hideButton.contentTintColor = hovered ? NSColor.labelColor : NSColor.secondaryLabelColor
     }
 }
 
