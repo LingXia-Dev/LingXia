@@ -25,6 +25,9 @@ pub struct LingXiaConfig {
     pub harmony: Option<HarmonyConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+    /// Panel system configuration — passed through as-is into app.json at build time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panels: Option<serde_json::Value>,
 }
 
 /// Host app settings (checked into git via `lingxia.config.json`).
@@ -244,6 +247,7 @@ impl LingXiaConfig {
             macos: None,
             harmony: None,
             resources: None,
+            panels: None,
         }
     }
 }

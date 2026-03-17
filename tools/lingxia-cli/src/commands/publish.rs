@@ -21,19 +21,17 @@ struct PackageMeta {
     target_id: String,
     version: String,
     release_type: Option<String>, // Some only for lxapp
+    min_runtime_version: Option<String>,
 }
 
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let mut meta = resolve_meta(&cwd, opts.target, &opts.release_type)?;
+    let meta = resolve_meta(&cwd, opts.target, &opts.release_type)?;
     let api_server = resolve_api_server(&cwd, opts.api_server)?;
     let api_server = api_server.trim_end_matches('/').to_string();
 
     let package_path = find_or_resolve_package(&cwd, &meta.target, opts.package)?;
-    if meta.target == "app" {
-        meta.target_id = resolve_app_target_id_for_package(&cwd, &package_path)?;
-    }
     let file_name = package_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -70,6 +68,9 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     ];
     if let Some(rt) = &meta.release_type {
         fields.push(("releaseType", rt.clone()));
+    }
+    if let Some(min_runtime_version) = &meta.min_runtime_version {
+        fields.push(("minRuntimeVersion", min_runtime_version.clone()));
     }
 
     let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
@@ -118,6 +119,7 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: Some(release_type),
+                min_runtime_version: Some(lxapp::SDK_RUNTIME_VERSION.to_string()),
             })
         }
         "lxplugin" => {
@@ -127,6 +129,7 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: None,
+                min_runtime_version: Some(lxapp::SDK_RUNTIME_VERSION.to_string()),
             })
         }
         "app" => {
@@ -136,6 +139,7 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: None,
+                min_runtime_version: None,
             })
         }
         _ => bail!("Unknown target: {target}"),
@@ -206,15 +210,11 @@ fn read_app_config(cwd: &Path) -> Result<(String, String)> {
         .app
         .context("app section missing in lingxia.config.json")?;
 
-    // targetId: first available platform package identifier
-    let target_id = cfg
-        .android
-        .as_ref()
-        .map(|a| a.package_id.clone())
-        .or_else(|| cfg.ios.as_ref().map(|i| i.bundle_id.clone()))
-        .or_else(|| cfg.macos.as_ref().and_then(|m| m.bundle_id.clone()))
-        .or_else(|| cfg.harmony.as_ref().map(|h| h.bundle_name.clone()))
-        .context("No platform configured in lingxia.config.json (android/ios/macos/harmony)")?;
+    let target_id = app
+        .lingxia_id
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .context("app.lingxiaId is required in lingxia.config.json when publishing target=app")?;
 
     let version = app.product_version;
     if version.trim().is_empty() {
@@ -222,38 +222,6 @@ fn read_app_config(cwd: &Path) -> Result<(String, String)> {
     }
 
     Ok((target_id, version))
-}
-
-fn resolve_app_target_id_for_package(cwd: &Path, package_path: &Path) -> Result<String> {
-    let cfg = LingXiaConfig::load(cwd)?;
-    let name = package_path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
-
-    if name.ends_with(".apk") {
-        return cfg
-            .android
-            .map(|a| a.package_id)
-            .context("Uploading .apk requires android.packageId in lingxia.config.json");
-    }
-    if name.ends_with(".ipa") {
-        return cfg
-            .ios
-            .map(|i| i.bundle_id)
-            .context("Uploading .ipa requires ios.bundleId in lingxia.config.json");
-    }
-    if name.ends_with(".hap") {
-        return cfg
-            .harmony
-            .map(|h| h.bundle_name)
-            .context("Uploading .hap requires harmony.bundleName in lingxia.config.json");
-    }
-
-    bail!(
-        "Unsupported app package extension: {} (expected .apk, .ipa, or .hap)",
-        package_path.display()
-    );
 }
 
 fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {

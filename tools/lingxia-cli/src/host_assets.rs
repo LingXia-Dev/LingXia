@@ -610,6 +610,9 @@ fn build_app_json_from_config(
     if let Some(max_size_mb) = app.cache_max_size_mb {
         obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
     }
+    if let Some(panels) = &config.panels {
+        obj.insert("panels".to_string(), panels.clone());
+    }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
