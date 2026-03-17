@@ -7,6 +7,7 @@ Page({
       interface: false,
       device: false,
       system: false,
+      cloud: false,
       navigation: false,
       media: false,
       document: false,
@@ -104,6 +105,13 @@ Page({
       console.error("navigateToLxApp failed", err);
       lx.showToast({ title: err.message, icon: "none" });
     }
+  },
+
+  navigateToCloudPage: async function (params) {
+    const { type = "auth" } = params || {};
+    await lx.navigateTo({
+      url: `pages/cloud/index?type=${type}`,
+    });
   },
 
   openDeepSeek: async function () {

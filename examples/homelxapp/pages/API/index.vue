@@ -16,6 +16,57 @@
         </div>
       </div>
 
+      <!-- Cloud - Dropdown -->
+      <div class="bg-white rounded-lg shadow-sm">
+        <div
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          @click="toggleSection({ section: 'cloud' })"
+        >
+          <div class="text-base text-gray-900">Cloud</div>
+          <div class="w-6 h-6 text-gray-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M6 19a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16 8.5h.5a4.5 4.5 0 1 1 .5 9H6z"/>
+            </svg>
+          </div>
+        </div>
+
+        <div v-if="expandedSections.cloud" class="border-t border-gray-100 bg-gray-50">
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            @click="navigateToTestMiniApp"
+          >
+            <div class="text-sm text-gray-700">Open Another LxApp</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToCloudPage({ type: 'auth' })"
+          >
+            <div class="text-sm text-gray-700">Cloud Auth Demo</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToCloudPage({ type: 'mqtt' })"
+          >
+            <div class="text-sm text-gray-700">Cloud MQTT Demo</div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Navigation - Dropdown -->
       <div class="bg-white rounded-lg shadow-sm">
         <div
@@ -33,17 +84,6 @@
         <div v-if="expandedSections.navigation" class="border-t border-gray-100 bg-gray-50">
           <div
             class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
-            @click="navigateToTestMiniApp"
-          >
-            <div class="text-sm text-gray-700">Open Another LxApp</div>
-            <div class="w-4 h-4 text-gray-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
-            </div>
-          </div>
-          <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
             @click="openDeepSeek"
           >
             <div class="text-sm text-gray-700">Open DeepSeek</div>
@@ -432,6 +472,7 @@ type PageActions = {
   navigateToMediaPage(payload: { type: string }): void;
   navigateToDocumentPage(): void;
   navigateToTestMiniApp(): void;
+  navigateToCloudPage(payload: { type: string }): void;
   openDeepSeek(): void;
   navigateToPullDownRefreshPage(): void;
 };
