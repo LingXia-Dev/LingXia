@@ -19,12 +19,12 @@ unsafe fn nsdata_bytes_ptr_unchecked(ns_data: &Retained<NSData>) -> *const u8 {
     unsafe { func(obj, sel) }.cast()
 }
 
-/// Cached bundles for resource lookup (app bundle, SDK bundle)
+/// Cached bundles for resource lookup (app bundle, SDK bundle, main bundle)
 /// Initialized once on first access to avoid repeated bundle detection
 fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
     static BUNDLES: OnceLock<Vec<Retained<NSBundle>>> = OnceLock::new();
     BUNDLES.get_or_init(|| {
-        let mut bundles = Vec::with_capacity(2);
+        let mut bundles = Vec::with_capacity(3);
         unsafe {
             let main_bundle = NSBundle::mainBundle();
             let bundle_type = NSString::from_str("bundle");
@@ -50,8 +50,16 @@ fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
                 }
             }
 
-            // 3. Fallback to main bundle if no SPM bundles found
-            if bundles.is_empty() {
+            // 3. Main bundle is always the final fallback.
+            // Avoids duplicate if detect_app_bundle already resolved to main bundle.
+            let main_path: Option<Retained<NSString>> = msg_send![&main_bundle, bundlePath];
+            let already_added = main_path.as_deref().is_some_and(|mp| {
+                bundles.iter().any(|b| {
+                    let bp: Option<Retained<NSString>> = msg_send![b, bundlePath];
+                    bp.as_deref().map_or(false, |p| p == mp)
+                })
+            });
+            if !already_added {
                 bundles.push(main_bundle);
             }
         }
@@ -200,12 +208,12 @@ pub fn read_asset_data(path: &str) -> Vec<u8> {
 /// Returns array of file/directory names in the directory
 pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
     unsafe {
+        let clean_path = dir_path.strip_prefix('/').unwrap_or(dir_path);
+
         for bundle in get_resource_bundles() {
             let bundle_resource_path: Option<Retained<NSString>> = msg_send![bundle, resourcePath];
 
             if let Some(resource_path) = bundle_resource_path {
-                let clean_path = dir_path.strip_prefix('/').unwrap_or(dir_path);
-
                 // Build full path
                 let full_path = if clean_path.is_empty() {
                     resource_path.to_string()
