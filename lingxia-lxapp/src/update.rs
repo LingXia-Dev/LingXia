@@ -791,7 +791,7 @@ impl UpdateManager {
     pub fn install_from_assets(
         runtime: Arc<Platform>,
         lxappid: &str,
-        _version: &str,
+        version: &str,
     ) -> Result<PathBuf, LxAppError> {
         // Determine hashed install directory consistent with zip installs
         let dir_name = lxapp_fingermark(lxappid, ReleaseType::Release);
@@ -799,7 +799,7 @@ impl UpdateManager {
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR)
-            .join(dir_name);
+            .join(&dir_name);
 
         if destination.exists() {
             fs::remove_dir_all(&destination)?;
@@ -824,7 +824,7 @@ impl UpdateManager {
             fs::write(&target, buffer)?;
         }
 
-        Self::record_install_metadata(lxappid, ReleaseType::Release, _version, &destination)?;
+        Self::record_install_metadata(lxappid, ReleaseType::Release, version, &destination)?;
         Ok(destination)
     }
 
@@ -837,7 +837,7 @@ impl UpdateManager {
         &self,
         lxappid: &str,
         release_type: ReleaseType,
-        _version: &str,
+        version: &str,
         archive_path: &Path,
     ) -> Result<(), LxAppError> {
         // Remember previous install path (if any)
@@ -849,8 +849,7 @@ impl UpdateManager {
             Self::install_archive_to_dir(&self.lxapp.runtime, lxappid, release_type, archive_path)?;
 
         // Write metadata first to allow rollback
-        if let Err(e) =
-            Self::record_install_metadata(lxappid, release_type, _version, &install_path)
+        if let Err(e) = Self::record_install_metadata(lxappid, release_type, version, &install_path)
         {
             // Rollback: remove the new installation since we couldn't commit it
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
@@ -1487,8 +1486,6 @@ pub async fn ensure_force_update_for_installed(
         tokio::task::yield_now().await;
     }
 }
-
-// Hashing for app data separation is provided by lxapp::lxapp_fingermark
 
 fn filename_from_url_or_hash(url: &str) -> String {
     // naive parse: take last path segment before query/fragment
