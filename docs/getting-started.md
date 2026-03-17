@@ -1,15 +1,20 @@
 # Getting Started
 
-Welcome to LingXia! This guide will help you create your first LingXia project.
+This guide is a quick path to get a demo running with CLI.
+
+If you want command details, see [CLI Command Reference](./cli.md).
+If you want project/file layout details, see [LxApp Project Structure](./lxapp-structure.md).
 
 ---
 
-## Prerequisites
+## 1. Prerequisites
 
 - **Node.js** 18 or later
-- **Rust** (for projects with native code)
-- **Android Studio** (for Android development)
-- **Xcode** (for iOS development, macOS only)
+- **Rust** (for host app with native runtime)
+- Platform toolchains for your target:
+- Android: Android SDK/NDK
+- iOS/macOS: Xcode (macOS host only)
+- Harmony: command-line tools SDK
 
 Verify your environment:
 
@@ -19,7 +24,7 @@ lingxia doctor
 
 ---
 
-## Installation
+## 2. Install CLI
 
 Install the LingXia CLI globally:
 
@@ -35,136 +40,65 @@ lingxia --version
 
 ---
 
-## Create a New Project
+## 3. Create Demo Project
 
-### Host App (Native App with LxApp Container)
-
-Create a complete native app project:
+Create a host app demo (contains embedded home lxapp):
 
 ```bash
-lingxia new my-app
+lingxia new my-app -t native-app -p android --package-id com.example.myapp -y
 ```
 
-Interactive mode will prompt for:
-- Project type (native-app or lxapp)
-- Product name (defaults to project name)
-- Target platforms (Android, iOS, Harmony)
-- Package ID
-
-Or use flags to skip prompts:
-
-```bash
-lingxia new my-app --platform android,ios --package-id com.example.myapp -y
-```
-
-### LxApp Only
-
-Create a standalone LxApp:
-
-```bash
-lingxia new my-lxapp --project-type lxapp
-```
-
----
-
-## Project Structure
-
-### Host App Project
-
-```
-my-app/
-├── lingxia.config.json  # Host app configuration
-├── android/             # Android native project
-├── ios/                 # iOS native project (if selected)
-├── harmony/             # HarmonyOS project (if selected)
-└── homelxapp/           # Embedded LxApp (defaults to app.homeLxAppID)
-```
-
-### LxApp Project
-
-```
-my-lxapp/
-├── lxapp.json           # App metadata (appId, appName, version)
-├── lxapp.config.ts      # Build configuration
-├── package.json         # NPM dependencies
-├── pages/               # Page components
-│   └── home/
-│       ├── index.tsx    # View layer (React/Vue)
-│       ├── index.ts     # Logic layer
-│       └── index.json   # Page config
-├── public/              # Static assets
-└── shared/              # Shared utilities
-```
-
----
-
-## Development
-
-### Run Development Mode
-
-For Host App:
+Go into the project:
 
 ```bash
 cd my-app
+```
+
+`my-app` contains:
+- `lingxia.config.json` (host project config)
+- native platform project folders (`android/`, `ios/`, `macos/`, `harmony/` based on selection)
+- home lxapp folder (default `homelxapp/`)
+
+---
+
+## 4. Build and Run Demo
+
+Build once:
+
+```bash
 lingxia build
 ```
 
-For LxApp only:
+Run on device/emulator (when available):
 
 ```bash
+lingxia run
+```
+
+Release build:
+
+```bash
+lingxia build --release
+```
+
+---
+
+## 5. Optional: LxApp-Only Demo
+
+Create a standalone lxapp project:
+
+```bash
+lingxia new my-lxapp -t lxapp -y
 cd my-lxapp
 lingxia build
 ```
 
-### Build for Production
-
-Host App:
-
-```bash
-lingxia build --release
-```
-
-LxApp only:
-
-```bash
-lingxia build --release
-```
+This mode is useful for page/logic development without native host packaging workflow.
 
 ---
 
-## Dependencies
+## 6. Next
 
-### Version Management
-
-LingXia uses **unified versioning**—all components share the same major.minor version.
-
-Your `package.json` will include:
-
-```json
-{
-  "dependencies": {
-    "@lingxia/rong": "^0.1.1"
-  }
-}
-```
-
-### Check Environment
-
-```bash
-lingxia doctor
-```
-
-Shows status of:
-- Java/JDK
-- Android SDK
-- Gradle
-- Rust toolchain
-- Android NDK
-
----
-
-## Next Steps
-
-- [CLI Command Reference](./cli.md) - All available commands
-- [Bridge API Spec](./internal/lingxia_bridge_spec.md) - Bridge API reference
-- [App Links](./applinks.md) - Deep linking configuration
+- [CLI Command Reference](./cli.md)
+- [LxApp Project Structure](./lxapp-structure.md)
+- [lingxia.config.json Reference](./lingxia-config.md)
