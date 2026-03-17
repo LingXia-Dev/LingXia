@@ -61,15 +61,16 @@ pub use lxapp::{
 pub use page::NavigationType;
 pub use panel::{open_lxapp_for_panel, panel_item_for_id, panels_config_json};
 pub use provider::{
-    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, ProviderErrorCode,
-    PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
+    BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,
+    ProviderErrorCode, PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget,
+    register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use stream_source::{
     FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
 };
 pub use update::{
-    DownloadedUpdateInfo, UpdateManager, ensure_force_update_for_installed,
+    DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_force_update_for_installed,
     is_force_update_downloading,
 };
 

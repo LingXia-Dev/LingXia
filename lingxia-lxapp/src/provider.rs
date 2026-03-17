@@ -11,6 +11,16 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Update query target.
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LxAppUpdateQuery {
+    /// Query latest available package.
+    /// `current_version=None` means fetch latest directly.
+    Latest { current_version: Option<String> },
+    /// Query a specific package version.
+    TargetVersion(String),
+}
+
+/// Update query target.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UpdateTarget {
     /// Host application.
     App { current_version: Option<String> },
@@ -18,7 +28,7 @@ pub enum UpdateTarget {
     LxApp {
         id: String,
         release_type: ReleaseType,
-        current_version: Option<String>,
+        query: LxAppUpdateQuery,
     },
     /// Plugin extension (specific version).
     Plugin { id: String, version: String },
@@ -173,8 +183,9 @@ impl std::error::Error for FingerprintError {}
 /// Trait for update checking.
 pub trait UpdateProvider: Send + Sync + 'static {
     /// Returns Some(package) when available, None when already up to date.
-    /// For App/LxApp, current_version=None requests the latest package.
-    /// For Plugin, version is required and targets a specific package.
+    /// For App, `current_version=None` requests the latest package.
+    /// For LxApp, query mode is explicit via `LxAppUpdateQuery`.
+    /// For Plugin, `version` targets a specific package.
     fn check_update<'a>(
         &'a self,
         target: UpdateTarget,

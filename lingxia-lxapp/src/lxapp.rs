@@ -493,6 +493,10 @@ impl LxApp {
         self.session.id
     }
 
+    pub fn release_type(&self) -> ReleaseType {
+        self.release_type
+    }
+
     pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
         self.session.set_status(s);
     }
@@ -510,7 +514,7 @@ impl LxApp {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
         {
-            UpdateManager::spawn_background_update_check_for(self.appid.clone(), self.release_type);
+            UpdateManager::spawn_release_lxapp_update_check(self.appid.clone());
         }
     }
 

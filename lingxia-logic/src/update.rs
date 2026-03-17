@@ -2,7 +2,9 @@ use crate::i18n::{
     err_code_message, js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_internal_error,
 };
-use lxapp::{LxApp, ReleaseType, UpdateManager, register_app_handler, try_get, warn};
+use lxapp::{
+    LxApp, LxAppUpdateQuery, ReleaseType, UpdateManager, register_app_handler, try_get, warn,
+};
 use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, JSValue, js_class,
     js_export, js_method,
@@ -265,7 +267,13 @@ pub async fn ensure_first_install(
     }
 
     let pkg = manager
-        .check_update(target_appid, release_type, None)
+        .check_update(
+            target_appid,
+            release_type,
+            LxAppUpdateQuery::Latest {
+                current_version: None,
+            },
+        )
         .await
         .map_err(|e| {
             js_error_from_business_code_with_detail(

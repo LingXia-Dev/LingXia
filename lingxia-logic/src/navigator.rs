@@ -69,7 +69,7 @@ async fn do_navigate_to_lxapp(lxapp: Arc<LxApp>, options: NavigateToOptions) -> 
         .navigate_to(target_appid.clone(), startup_options)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    UpdateManager::spawn_background_update_check_for(target_appid, release_type);
+    UpdateManager::spawn_release_lxapp_update_check(target_appid);
     Ok(())
 }
 

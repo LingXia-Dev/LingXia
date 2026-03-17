@@ -237,6 +237,14 @@ pub(crate) fn remove(lxappid: &str, release_type: ReleaseType) -> Result<(), LxA
 }
 
 pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {
+    app_meta_get(APP_VERSION_KEY)
+}
+
+pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
+    app_meta_set(APP_VERSION_KEY, version)
+}
+
+pub(crate) fn app_meta_get(key: &str) -> Result<Option<String>, LxAppError> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -245,8 +253,8 @@ pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {
         .open_table(APP_META_TABLE)
         .map_err(|e| metadata_error("open app meta table", e))?;
     if let Some(value) = table
-        .get(APP_VERSION_KEY)
-        .map_err(|e| metadata_error("read app version", e))?
+        .get(key)
+        .map_err(|e| metadata_error("read app meta value", e))?
     {
         let version = String::from_utf8(value.value().to_vec()).map_err(|e| {
             LxAppError::Runtime(format!("metadata app version decode failed: {}", e))
@@ -257,7 +265,7 @@ pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {
     }
 }
 
-pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
+pub(crate) fn app_meta_set(key: &str, value: &str) -> Result<(), LxAppError> {
     let db = database()?;
     let txn = db
         .begin_write()
@@ -267,8 +275,8 @@ pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
             .open_table(APP_META_TABLE)
             .map_err(|e| metadata_error("open app meta table", e))?;
         table
-            .insert(APP_VERSION_KEY, version.as_bytes())
-            .map_err(|e| metadata_error("write app version", e))?;
+            .insert(key, value.as_bytes())
+            .map_err(|e| metadata_error("write app meta value", e))?;
     }
     txn.commit()
         .map_err(|e| metadata_error("commit app meta write", e))?;

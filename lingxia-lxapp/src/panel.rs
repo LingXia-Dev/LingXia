@@ -67,6 +67,6 @@ async fn do_open_lxapp_for_panel(
             .set_panel_id(panel_id.to_string()),
     )?;
 
-    UpdateManager::spawn_background_update_check_for(appid.to_string(), ReleaseType::Release);
+    UpdateManager::spawn_release_lxapp_update_check(appid.to_string());
     Ok(())
 }
