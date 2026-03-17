@@ -1640,12 +1640,14 @@ export struct LxAppContainer {
     if (webTag !== this.currentWebTag) {
       return 0;
     }
+    // Only shift for native textarea components that explicitly request position adjustment.
+    // Regular WebView inputs (focusedType is null/empty) are handled by the Web component itself.
     const focusedType = getFocusedNativeComponentType(webTag);
     const focusedAdjustPosition = getFocusedNativeComponentAdjustPosition(webTag);
-    if (focusedType === 'textarea.native' && !focusedAdjustPosition) {
-      return 0;
+    if (focusedType === 'textarea.native' && focusedAdjustPosition) {
+      return -this.keyboardOffsetVp;
     }
-    return -this.keyboardOffsetVp;
+    return 0;
   }
 
   private getWebViewMargin(): Margin {

@@ -89,6 +89,7 @@ export struct LingXiaWebView {
     }
     .width('100%')
     .height('100%')
+    .translate(this.renderTranslate)
   }
 
   // ============================================================================
@@ -181,7 +182,6 @@ export struct LingXiaWebView {
       .mixedMode(MixedMode.None)
       .backgroundColor(Color.Transparent)
       .visibility(this.renderVisibility)
-      .translate(this.renderTranslate)
       .margin(this.renderMargin)
       .width(this.renderWidth)
       .height(this.renderHeight)
