@@ -17,8 +17,8 @@
     "checkJs": false,
     "baseUrl": ".",
     "paths": {
-      "lingxia-types": ["../../../lingxia-types/src"],
-      "lingxia-types/*": ["../../../lingxia-types/src/*"],
+      "lingxia-types": ["../../../packages/lingxia-types/src"],
+      "lingxia-types/*": ["../../../packages/lingxia-types/src/*"],
       "rong-types": ["/Users/michael/github/starfire/rong_types/src"],
       "rong-types/*": ["/Users/michael/github/starfire/rong_types/src/*"],
       "@lingxia/page-types/*": ["./.lingxia/types/*"]

@@ -10,19 +10,19 @@ pub struct AssetsConfig {
     #[arg(short, long)]
     pub input: Option<PathBuf>,
 
-    /// Path to runtime assets directory (lingxia-core/dist)
-    #[arg(long, default_value = "lingxia-core/dist")]
+    /// Path to runtime assets directory (packages/lingxia-core/dist)
+    #[arg(long, default_value = "packages/lingxia-core/dist")]
     pub runtime_input: PathBuf,
 
-    /// Path to output Android assets (src/main/assets/lingxia-core)
+    /// Path to output Android assets (e.g. src/main/assets/lingxia-core)
     #[arg(long)]
     pub android_out: Option<PathBuf>,
 
-    /// Path to output Apple assets (Resources/lingxia-core)
+    /// Path to output Apple assets (e.g. Resources/lingxia-core)
     #[arg(long = "apple-out")]
     pub apple_out: Option<PathBuf>,
 
-    /// Path to output HarmonyOS assets (resources/rawfile/lingxia-core)
+    /// Path to output HarmonyOS assets (e.g. resources/rawfile/lingxia-core)
     #[arg(long)]
     pub harmony_out: Option<PathBuf>,
 }

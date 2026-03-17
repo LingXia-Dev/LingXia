@@ -15,7 +15,7 @@ LingXia/
 ├── lingxia-lxapp/      # Core runtime engine with JS execution
 ├── lingxia-sdk/        # Platform-specific native SDKs
 ├── lingxia-webview/    # WebView integration layer
-├── lingxia-components/ # UI component library (npm: lingxia-components)
+├── packages/lingxia-components/ # UI component library (npm: @lingxia/components)
 ├── lingxia-builder/    # Build tools and utilities
 └── examples/           # Sample applications and demos
 ```

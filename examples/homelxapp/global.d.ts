@@ -3,6 +3,7 @@
  */
 
 /// <reference types="lingxia-types" />
+/// <reference types="../../lingxia-device-cloud/packages/cloud-types" />
 
 // Import Rong types and make them globally available
 import type * as RongFS from '@lingxia/rong/fs';

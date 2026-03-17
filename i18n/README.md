@@ -34,10 +34,10 @@ You must regenerate `lingxia-logic/src/i18n_generated.rs` when any of the follow
 Use this command:
 
 ```bash
-cargo run -p lingxia-gen -- i18n --input i18n --rust-out lingxia-logic/src/i18n_generated.rs --ts-out lingxia-types/src/generated
+cargo run -p lingxia-gen -- i18n --input i18n --rust-out lingxia-logic/src/i18n_generated.rs --ts-out packages/lingxia-types/src/generated
 ```
 
-This regenerates both Rust (`lingxia-logic/src/i18n_generated.rs`) and TypeScript (`lingxia-types/src/generated/*`) artifacts.
+This regenerates both Rust (`lingxia-logic/src/i18n_generated.rs`) and TypeScript (`packages/lingxia-types/src/generated/*`) artifacts.
 
 Generation is strict:
 - Locale key sets must be identical.

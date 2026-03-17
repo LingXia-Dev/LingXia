@@ -5,7 +5,7 @@
 ## Features
 
 -   **i18n Generation**: Compiles YAML translation files into platform-specific formats (Rust enum, Android strings.xml, iOS Localizable.strings, HarmonyOS string.json).
--   **TypeScript Generation**: Generates `error.ts` and `i18n.ts` metadata files for `lingxia-types`.
+-   **TypeScript Generation**: Generates `error.ts` and `i18n.ts` metadata files for `packages/lingxia-types`.
 -   **Platform Overrides**: Supports defining platform-specific strings in YAML.
 -   **Schema Lint**: Validates locale and permission files against JSON Schemas.
 -   **Strict Validation**: Fails generation when locale keys mismatch, permission keys mismatch, or `err_code_*` definitions are missing.
@@ -27,7 +27,7 @@ Run from the project root:
  cargo run -p lingxia-gen -- i18n \
   --input i18n \
   --rust-out /tmp/i18n_generated.rs \
-  --ts-out lingxia-types/src/generated \
+  --ts-out packages/lingxia-types/src/generated \
   --android-out lingxia-sdk/android/lingxia/src/main/res \
   --ios-out lingxia-sdk/apple/Sources/Resources \
   --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources
