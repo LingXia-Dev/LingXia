@@ -4,7 +4,7 @@ use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::platform::harmony as webview_harmony;
 use log::LevelFilter;
 use lxapp::log::LogLevel;
-use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType as LxAppUiEventType};
+use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;

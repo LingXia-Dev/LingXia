@@ -12,7 +12,7 @@ use lingxia_platform::CachedClass;
 use log::{error, info, warn};
 use lxapp::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
-    LxAppDelegate, OrientationConfig, PageOrientation, UiEventType, log::LogLevel,
+    LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation, log::LogLevel,
 };
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
@@ -393,11 +393,11 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onLxappEvent(
         let data_str: String = data.try_to_string(env)?;
 
         let ui_event_type = match event_type {
-            0 => UiEventType::TabBarClick,
-            1 => UiEventType::CapsuleClick,
-            2 => UiEventType::NavigationClick,
-            3 => UiEventType::BackPress,
-            4 => UiEventType::PullDownRefresh,
+            0 => LxAppUiEventType::TabBarClick,
+            1 => LxAppUiEventType::CapsuleClick,
+            2 => LxAppUiEventType::NavigationClick,
+            3 => LxAppUiEventType::BackPress,
+            4 => LxAppUiEventType::PullDownRefresh,
             _ => {
                 error!("Unknown UI event type: {}", event_type);
                 return Ok(0);
