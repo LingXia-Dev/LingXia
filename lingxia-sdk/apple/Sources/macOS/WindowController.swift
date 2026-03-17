@@ -265,8 +265,9 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             sidebar: sidebar,
             padding: Layout.contentPanelPadding
         ) { [weak self] trailingInset, bottomInset in
-            self?.cardTrailingConstraint?.constant = -trailingInset
-            self?.cardBottomConstraint?.constant = -bottomInset
+            guard let self else { return }
+            self.cardTrailingConstraint?.constant = -trailingInset
+            self.cardBottomConstraint?.constant = -bottomInset
         }
 
         configureSidebarRevealButton()
@@ -564,6 +565,13 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             viewController.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             viewController.view.bottomAnchor.constraint(equalTo: container.bottomAnchor)
         ])
+
+        container.layoutSubtreeIfNeeded()
+        os_log("updateContentView appId=%{public}@ frame=(%.1f,%.1f,%.1f,%.1f)",
+               log: Self.log, type: .info,
+               viewController.appId,
+               container.frame.origin.x, container.frame.origin.y,
+               container.frame.width, container.frame.height)
 
         syncSidebarHeaderButtonAlignment()
         viewController.resumeNativeComponents()

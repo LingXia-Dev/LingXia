@@ -29,7 +29,7 @@ extension macOSLxApp {
     /// - If visible: hide the panel.
     /// - If hidden: send host-scoped event to Rust; Rust chooses target lxapp and opens it
     ///   with presentation=panel. Swift only handles rendering.
-    public static func togglePanel(id: String) {
+    internal static func togglePanel(id: String) {
         guard let controller = tabWindowController else { return }
         guard panelItems.contains(where: { $0.id == id }) else { return }
 
@@ -88,15 +88,9 @@ extension macOSLxApp {
         controller.sidebarView?.updatePanelIcon(panelId: panelId, iconFileUrl: fileUrl)
     }
 
-    // MARK: - Show / Hide (public API, delegates to window controller)
+    // MARK: - Show / Hide (internal)
 
-    /// Show a panel with WebView content at the given position.
-    public static func showPanel(id: String, position: PanelPosition, appId: String, path: String) {
-        tabWindowController?.showPanelWithContent(id: id, position: position, appId: appId, path: path)
-    }
-
-    /// Hide a panel by ID.
-    public static func hidePanel(id: String) {
+    internal static func hidePanel(id: String) {
         tabWindowController?.hidePanel(id: id)
     }
 }
@@ -152,16 +146,16 @@ extension LxAppWindowController {
 // MARK: - PanelItemConfig
 
 /// Lightweight description of a configured panel item, parsed from app.json.
-public struct PanelItemConfig {
-    public let id: String
-    public let label: String
-    public let icon: String
+struct PanelItemConfig {
+    let id: String
+    let label: String
+    let icon: String
     /// PanelPosition raw value: "left", "right", or "bottom"
-    public let position: String
+    let position: String
     /// The lxapp appId this panel opens.
-    public let appId: String
+    let appId: String
     /// The page path this panel displays within the lxapp. Empty means use the app's initial route.
-    public let path: String
+    let path: String
 
     init?(json: [String: Any]) {
         guard let id = json["id"] as? String,

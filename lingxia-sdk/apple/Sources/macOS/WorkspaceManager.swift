@@ -20,6 +20,60 @@ public struct PanelConfig {
     }
 }
 
+// MARK: - PanelResizeHandle
+
+/// Draggable edge handle placed as a sibling of the panel card in contentView.
+/// Positioned in the gap between the WebView card and the panel card.
+@MainActor
+private class PanelResizeHandle: NSView {
+    private let position: PanelPosition
+    var onDrag: ((CGFloat) -> Void)?
+    var onDragEnd: ((CGFloat) -> Void)?
+    var currentSizeProvider: (() -> CGFloat)?
+
+    private var initialPoint: CGPoint = .zero
+    private var initialSize: CGFloat = 0
+
+    init(position: PanelPosition) {
+        self.position = position
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: position == .bottom ? .resizeUpDown : .resizeLeftRight)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        initialPoint = event.locationInWindow
+        initialSize = currentSizeProvider?() ?? 0
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        onDrag?(newSize(for: event))
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        onDragEnd?(newSize(for: event))
+    }
+
+    private func newSize(for event: NSEvent) -> CGFloat {
+        let loc = event.locationInWindow
+        let delta: CGFloat
+        switch position {
+        case .right:  delta = initialPoint.x - loc.x   // drag left  → expand
+        case .left:   delta = loc.x - initialPoint.x   // drag right → expand
+        case .bottom: delta = loc.y - initialPoint.y   // drag up    → expand
+        }
+        return initialSize + delta
+    }
+}
+
+// MARK: - PanelSlot
+
 /// One panel card — a floating sibling of the WebView card in the window background.
 @MainActor
 private class PanelSlot {
@@ -31,6 +85,10 @@ private class PanelSlot {
     let blurView: NSVisualEffectView
     /// Content container where the panel's WebView is attached.
     let containerView: NSView
+    /// Drag handle placed as a sibling of shadowWrapper in overlayParent.
+    let resizeHandle: PanelResizeHandle
+    /// Width (left/right panels) or height (bottom panel) constraint — updated on resize drag.
+    var sizeConstraint: NSLayoutConstraint?
 
     var isVisible: Bool = false
     var currentSize: CGFloat
@@ -55,6 +113,9 @@ private class PanelSlot {
         containerView = NSView()
         containerView.wantsLayer = true
         containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        resizeHandle = PanelResizeHandle(position: config.position)
+        resizeHandle.translatesAutoresizingMaskIntoConstraints = false
 
         shadowWrapper.addSubview(blurView)
         blurView.addSubview(containerView)
@@ -83,6 +144,8 @@ private class PanelSlot {
     }
 }
 
+// MARK: - WorkspaceManager
+
 /// Manages the content area (WebView card interior) and floating panel cards.
 ///
 /// ## Layout model
@@ -94,6 +157,7 @@ private class PanelSlot {
 ///   ├── shadowWrapper   — WebView card (shrinks when panels open)
 ///   │     └── right     — corner-radius clip, contains rootView
 ///   ├── panel cards     — sibling cards at same depth as WebView card  ← this file
+///   ├── panel handles   — sibling resize handles, one per panel, in the gap
 ///   └── sidebarRevealButton
 /// ```
 ///
@@ -117,6 +181,11 @@ public class WorkspaceManager: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "Workspace")
     private static let animationDuration: TimeInterval = 0.22
     private static let cornerRadius: CGFloat = 10
+    private static let panelMinSize: CGFloat = 160
+    private static let panelMaxSize: CGFloat = 700
+    private static let handleSize: CGFloat = 5
+    private static let minMainRegionWidth: CGFloat = 320
+    private static let minMainRegionHeight: CGFloat = 240
 
     /// Main content view; active ViewController's view is placed here.
     public let contentContainer = NSView()
@@ -148,14 +217,6 @@ public class WorkspaceManager: NSObject {
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
-    ///
-    /// - Parameters:
-    ///   - overlayParent: The window's `contentView` — panel cards are added here.
-    ///   - sidebar: Used as leading anchor for left-panel positioning.
-    ///   - padding: Edge inset matching the WebView card's padding (keeps gaps consistent).
-    ///   - onCardEdgesChanged: Called inside each animation block with the new trailing and
-    ///     bottom insets. WindowController updates its own constraints here; WorkspaceManager
-    ///     then calls `layoutSubtreeIfNeeded()` so both animate together.
     public func configure(
         overlayParent: NSView,
         sidebar: NSView,
@@ -178,7 +239,6 @@ public class WorkspaceManager: NSObject {
         ])
     }
 
-
     public func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
 
     /// Register a panel. Creates the card view and positions it off-screen.
@@ -190,6 +250,12 @@ public class WorkspaceManager: NSObject {
         let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
         slot.applyShadow(for: config.position)
         panels[config.id] = slot
+
+        let slotId = config.id
+        slot.resizeHandle.currentSizeProvider = { [weak slot] in slot?.currentSize ?? config.defaultSize }
+        let resizeHandler: (CGFloat) -> Void = { [weak self] newSize in self?.updatePanelSize(id: slotId, newSize: newSize) }
+        slot.resizeHandle.onDrag = resizeHandler
+        slot.resizeHandle.onDragEnd = resizeHandler
 
         guard let parent = overlayParent, let sidebar = sidebarRef else {
             os_log("registerPanel: configure() not called yet — panel %@ deferred", log: Self.log, type: .error, config.id)
@@ -204,8 +270,13 @@ public class WorkspaceManager: NSObject {
     public func showPanel(id: String) {
         guard let slot = panels[id], !slot.isVisible else { return }
 
-        // Mutual exclusion: close the current panel at this position first (no separate animation —
-        // it exits while the new one enters simultaneously).
+        // Clamp against current window size so panel cannot consume the whole main region.
+        let requestedSize = slot.currentSize
+        let normalizedSize = clampedPanelSize(slot.currentSize, for: slot.config.position)
+        if normalizedSize != slot.currentSize {
+            slot.currentSize = normalizedSize
+            slot.sizeConstraint?.constant = normalizedSize
+        }
         if let currentId = activeByPosition[slot.config.position], currentId != id {
             forceHide(id: currentId)
         }
@@ -214,6 +285,7 @@ public class WorkspaceManager: NSObject {
 
         let offset = exitOffset(for: slot)
         slot.shadowWrapper.isHidden = false
+        slot.resizeHandle.isHidden = false
         slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
 
         NSAnimationContext.runAnimationGroup { ctx in
@@ -224,7 +296,7 @@ public class WorkspaceManager: NSObject {
             onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
             overlayParent?.layoutSubtreeIfNeeded()
         }
-        os_log("Panel shown: %@", log: Self.log, type: .info, id)
+        os_log("Panel shown: %@ trailing=%.1f bottom=%.1f", log: Self.log, type: .info, id, cardTrailingInset(), cardBottomInset())
     }
 
     /// Hide a panel, animating it out and restoring the WebView card's space.
@@ -243,61 +315,98 @@ public class WorkspaceManager: NSObject {
 
     public func panelContainer(id: String) -> NSView? { panels[id]?.containerView }
 
-    /// Place the panel card in `overlayParent` at its final AutoLayout position.
-    /// It starts hidden; `showPanel` reveals it with a transform animation.
+    // MARK: - Resize
+
+    /// Update panel size in real-time during drag. No animation.
+    private func updatePanelSize(id: String, newSize: CGFloat) {
+        guard let slot = panels[id] else { return }
+        let clamped = clampedPanelSize(newSize, for: slot.config.position)
+        slot.currentSize = clamped
+        slot.sizeConstraint?.constant = clamped
+        onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
+        overlayParent?.layoutSubtreeIfNeeded()
+    }
+
+    // MARK: - Private
+
+    /// Place the panel card and its resize handle in `overlayParent`.
+    /// The handle lives as a sibling of the card in the gap between card and WebView.
     private func installCard(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
         let wrapper = slot.shadowWrapper
         wrapper.translatesAutoresizingMaskIntoConstraints = false
         wrapper.isHidden = true
 
-        // Insert above the WebView card shadow wrapper but below sidebarRevealButton
+        let handle = slot.resizeHandle
+        handle.isHidden = true
+
         parent.addSubview(wrapper)
+        parent.addSubview(handle)
 
         let p = padding
+        let h = Self.handleSize
         let size = slot.currentSize
 
         switch slot.config.position {
         case .right:
+            let wc = wrapper.widthAnchor.constraint(equalToConstant: size)
+            slot.sizeConstraint = wc
             NSLayoutConstraint.activate([
                 wrapper.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
                 wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
-                wrapper.widthAnchor.constraint(equalToConstant: size),
+                wc,
+                // Handle sits in the gap to the left of the panel card
+                handle.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
+                handle.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+                handle.trailingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+                handle.widthAnchor.constraint(equalToConstant: h),
             ])
 
         case .left:
+            let wc = wrapper.widthAnchor.constraint(equalToConstant: size)
+            slot.sizeConstraint = wc
             NSLayoutConstraint.activate([
                 wrapper.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
                 wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
-                wrapper.widthAnchor.constraint(equalToConstant: size),
+                wc,
+                // Handle sits in the gap to the right of the panel card
+                handle.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
+                handle.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+                handle.leadingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+                handle.widthAnchor.constraint(equalToConstant: h),
             ])
 
         case .bottom:
+            let hc = wrapper.heightAnchor.constraint(equalToConstant: size)
+            slot.sizeConstraint = hc
             NSLayoutConstraint.activate([
                 wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
                 wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
                 wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
-                wrapper.heightAnchor.constraint(equalToConstant: size),
+                hc,
+                // Handle sits in the gap above the panel card
+                handle.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
+                handle.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
+                handle.bottomAnchor.constraint(equalTo: wrapper.topAnchor),
+                handle.heightAnchor.constraint(equalToConstant: h),
             ])
         }
 
         parent.layoutSubtreeIfNeeded()
     }
 
-    /// Returns the inset the WebView card should apply for a given panel position.
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
         guard let id = activeByPosition[position], let slot = panels[id], slot.isVisible else { return p }
-        return p + slot.currentSize + p
+        return p + clampedPanelSize(slot.currentSize, for: position) + p
     }
 
     private func cardTrailingInset() -> CGFloat { cardInset(for: .right) }
     private func cardBottomInset() -> CGFloat { cardInset(for: .bottom) }
 
-    /// The translation that places a panel fully off-screen (used as start/end of animation).
     private func exitOffset(for slot: PanelSlot) -> (x: CGFloat, y: CGFloat) {
-        let size = slot.currentSize + padding
+        let size = clampedPanelSize(slot.currentSize, for: slot.config.position) + padding
         switch slot.config.position {
         case .right:  return (x: size, y: 0)
         case .left:   return (x: -size, y: 0)
@@ -305,12 +414,10 @@ public class WorkspaceManager: NSObject {
         }
     }
 
-    /// Immediately exit without updating card edges — used when replacing a panel at the same position.
     private func forceHide(id: String) {
         hidePanelInternal(id: id, duration: Self.animationDuration * 0.5, updateCardEdges: false)
     }
 
-    /// Shared exit animation for hidePanel and forceHide.
     private func hidePanelInternal(id: String, duration: TimeInterval, updateCardEdges: Bool) {
         guard let slot = panels[id] else { return }
         slot.isVisible = false
@@ -332,8 +439,29 @@ public class WorkspaceManager: NSObject {
                 guard let slot, !slot.isVisible else { return }
                 slot.shadowWrapper.isHidden = true
                 slot.shadowWrapper.layer?.transform = CATransform3DIdentity
+                slot.resizeHandle.isHidden = true
             }
         }
+    }
+
+    /// Clamp panel size by absolute bounds and current window space,
+    /// so main webview region always keeps a minimum visible area.
+    private func clampedPanelSize(_ requested: CGFloat, for position: PanelPosition) -> CGFloat {
+        let base = min(max(requested, Self.panelMinSize), Self.panelMaxSize)
+        guard let parent = overlayParent else { return base }
+
+        let p = padding
+        let maxByWindow: CGFloat
+        switch position {
+        case .right:
+            maxByWindow = parent.bounds.width - (sidebarRef?.frame.width ?? 0) - p * 3 - Self.minMainRegionWidth
+        case .bottom:
+            maxByWindow = parent.bounds.height - p * 3 - Self.minMainRegionHeight
+        case .left:
+            return base
+        }
+
+        return min(base, max(Self.panelMinSize, maxByWindow))
     }
 }
 
