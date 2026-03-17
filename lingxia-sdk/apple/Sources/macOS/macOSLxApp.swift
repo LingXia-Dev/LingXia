@@ -17,7 +17,7 @@ public class macOSLxApp: ObservableObject {
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
-    private static var tabWindowController: LxAppWindowController?
+    internal static var tabWindowController: LxAppWindowController?
 
     /// Lifecycle event observers
     nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
@@ -98,7 +98,7 @@ public class macOSLxApp: ObservableObject {
         if !isInitialized {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
         } else {
-            // Setup lifecycle observers
+            loadPanelConfig()
             setupLifecycleObservers()
         }
         return isInitialized
@@ -230,24 +230,6 @@ extension macOSLxApp {
     internal static func consumeSelfTargetNavigationInActiveBrowserTab(urlString: String) -> Bool {
         guard let controller = tabWindowController else { return false }
         return controller.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString)
-    }
-}
-
-// MARK: - Panel Control
-extension macOSLxApp {
-    /// Show a panel with WebView content at the given position
-    public static func showPanel(id: String, position: PanelPosition, appId: String, path: String) {
-        tabWindowController?.showPanelWithContent(id: id, position: position, appId: appId, path: path)
-    }
-
-    /// Hide a panel by ID
-    public static func hidePanel(id: String) {
-        tabWindowController?.hidePanel(id: id)
-    }
-
-    /// Toggle a panel's visibility
-    public static func togglePanel(id: String) {
-        tabWindowController?.togglePanel(id: id)
     }
 }
 

@@ -44,6 +44,16 @@ private class SidebarResizeHandle: NSView {
     }
 }
 
+// MARK: - PanelIconItem
+
+/// Minimal display info for a panel icon in the sidebar footer.
+/// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
+public struct PanelIconItem {
+    public let id: String
+    public let icon: String
+    public let label: String
+}
+
 // MARK: - SidebarView
 
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
@@ -78,6 +88,11 @@ public class SidebarView: NSView {
     private let footerStack = NSStackView()
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
+    private var panelButtons: [NSButton] = []
+    private var panelSpacer: NSView?
+
+    /// Called when a panel icon button is clicked: (panelId)
+    var onPanelItemToggled: ((String) -> Void)?
 
     private var groupViews: [String: SidebarGroupView] = [:]
     private var currentTabs: [LxAppTab] = []
@@ -323,6 +338,65 @@ public class SidebarView: NSView {
         downloadButton.isHidden = hidden
         footerView.isHidden = hidden
         resizeHandle.isHidden = hidden
+    }
+
+    /// Populate panel icon buttons in the footer.
+    /// `PanelIconItem` only carries what the UI needs — id, icon, label.
+    /// Routing details (appId, path, position) stay in Panel.swift.
+    func updatePanelItems(_ items: [PanelIconItem]) {
+        // Remove existing panel buttons and spacer
+        panelButtons.forEach { $0.removeFromSuperview() }
+        panelButtons.removeAll()
+        panelSpacer?.removeFromSuperview()
+        panelSpacer = nil
+
+        guard !items.isEmpty else { return }
+
+        // Flexible spacer pushes panel buttons to trailing edge
+        let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        footerStack.addArrangedSubview(spacer)
+        panelSpacer = spacer
+
+        for item in items {
+            let btn = NSButton()
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            btn.isBordered = false
+            btn.bezelStyle = .regularSquare
+            btn.imagePosition = .imageOnly
+            btn.wantsLayer = true
+            btn.layer?.cornerRadius = 6
+            btn.layer?.backgroundColor = NSColor.clear.cgColor
+            btn.toolTip = item.label
+            // Use a system symbol as fallback; replace with asset loading if icon paths are supported
+            btn.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+            btn.contentTintColor = NSColor.secondaryLabelColor
+            btn.target = self
+            btn.action = #selector(panelButtonClicked(_:))
+            // Store panel id in the button's identifier
+            btn.identifier = NSUserInterfaceItemIdentifier(item.id)
+            NSLayoutConstraint.activate([
+                btn.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
+                btn.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
+            ])
+            footerStack.addArrangedSubview(btn)
+            panelButtons.append(btn)
+        }
+    }
+
+    /// Update a panel button's icon from a file:// URL (resolved via resolveLxUri after lxapp installs).
+    func updatePanelIcon(panelId: String, iconFileUrl: String) {
+        guard let btn = panelButtons.first(where: { $0.identifier?.rawValue == panelId }),
+              let url = URL(string: iconFileUrl),
+              let image = NSImage(contentsOf: url) else { return }
+        btn.image = image
+        btn.contentTintColor = nil
+    }
+
+    @objc private func panelButtonClicked(_ sender: NSButton) {
+        guard let panelId = sender.identifier?.rawValue else { return }
+        onPanelItemToggled?(panelId)
     }
 
     // MARK: - Public API

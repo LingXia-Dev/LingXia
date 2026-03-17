@@ -49,15 +49,17 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     // Browser tab IDs – ownership lives in Rust, titles cached locally from WKWebView KVO.
 
     private let tabManager = LxAppTabManager.shared
-    private var sidebarView: SidebarView?
+    internal var sidebarView: SidebarView?
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
+    private var cardTrailingConstraint: NSLayoutConstraint?
+    private var cardBottomConstraint: NSLayoutConstraint?
     private var lastExpandedSidebarWidth: CGFloat = Layout.sidebarWidth
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
-    private var appSessions: [String: UInt64] = [:]
+    internal var appSessions: [String: UInt64] = [:]
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
 
@@ -203,6 +205,12 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseRequested = { [weak self] id in
             self?.closeBrowserTab(id: id)
         }
+        sidebar.onPanelItemToggled = { panelId in
+            macOSLxApp.togglePanel(id: panelId)
+        }
+        sidebar.updatePanelItems(macOSLxApp.panelItems.map {
+            PanelIconItem(id: $0.id, icon: $0.icon, label: $0.label)
+        })
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
@@ -245,12 +253,26 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         navigationToolbar = toolbar
-        right.addSubview(toolbar)
+        let centerPanel = workspaceManager.centerPanelView
+        centerPanel.addSubview(toolbar)
+        workspaceManager.attachBelowToolbar(toolbar)
+
+        // Wire up WorkspaceManager: panel cards float in contentView as siblings of the WebView
+        // card. When a panel opens/closes, the callback fires inside the animation block so
+        // the WebView card shrinks/grows in sync with the panel slide-in/out.
+        workspaceManager.configure(
+            overlayParent: contentView,
+            sidebar: sidebar,
+            padding: Layout.contentPanelPadding
+        ) { [weak self] trailingInset, bottomInset in
+            self?.cardTrailingConstraint?.constant = -trailingInset
+            self?.cardBottomConstraint?.constant = -bottomInset
+        }
 
         configureSidebarRevealButton()
         contentView.addSubview(sidebarRevealButton, positioned: .above, relativeTo: shadowWrapper)
 
-        // Panel layout manager's root view fills area below toolbar
+        // Workspace root fills the entire WebView card (toolbar + content, no panel panes).
         let workspaceRoot = workspaceManager.rootView
         workspaceRoot.translatesAutoresizingMaskIntoConstraints = false
         right.addSubview(workspaceRoot)
@@ -262,6 +284,10 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         let p = Layout.contentPanelPadding
         let contentLeading = shadowWrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
         contentLeadingConstraint = contentLeading
+        let cardTrailing = shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p)
+        cardTrailingConstraint = cardTrailing
+        let cardBottom = shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p)
+        cardBottomConstraint = cardBottom
 
         NSLayoutConstraint.activate([
             // Base layer: fills entire contentView
@@ -276,11 +302,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Shadow wrapper: floating panel with padding on all exposed edges
+            // Shadow wrapper: floating WebView card (trailing + bottom are dynamic)
             shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
             contentLeading,
-            shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p),
-            shadowWrapper.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -p),
+            cardTrailing,
+            cardBottom,
 
             // Right container fills shadow wrapper
             right.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
@@ -288,18 +314,17 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
             right.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             right.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
 
-            // Navigation toolbar stays inside the rounded panel.
-            toolbar.topAnchor.constraint(equalTo: right.topAnchor),
-            toolbar.leadingAnchor.constraint(equalTo: right.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: right.trailingAnchor),
+            // Toolbar: spans full top of centerPanelView
+            toolbar.topAnchor.constraint(equalTo: centerPanel.topAnchor),
+            toolbar.leadingAnchor.constraint(equalTo: centerPanel.leadingAnchor),
+            toolbar.trailingAnchor.constraint(equalTo: centerPanel.trailingAnchor),
 
-            // Panel root follows the toolbar without changing the panel's own padding/corners.
-            workspaceRoot.topAnchor.constraint(equalTo: toolbar.bottomAnchor),
+            // Workspace root fills the entire WebView card
+            workspaceRoot.topAnchor.constraint(equalTo: right.topAnchor),
             workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
             workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor),
 
-            // Anchored to contentView corner so it sits at the true window edge (more left/down than the panel)
             sidebarRevealButton.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.sidebarRevealButtonLeadingInset),
             sidebarRevealButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -Layout.sidebarRevealButtonBottomInset),
             sidebarRevealButton.widthAnchor.constraint(equalToConstant: Layout.sidebarRevealButtonSize.width),
@@ -601,32 +626,6 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
         }
-    }
-
-    // MARK: - Panel Control
-
-    /// Show a panel with WebView content. Registers the panel if not already registered.
-    public func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
-        if !workspaceManager.isPanelRegistered(id: id) {
-            let config = PanelConfig(id: id, position: position)
-            workspaceManager.registerPanel(config)
-        }
-
-        if let sessionId = appSessions[appId],
-           let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId),
-           let container = workspaceManager.panelContainer(id: id) {
-            WebViewManager.attachWebViewToContainer(webView, container: container)
-        }
-
-        workspaceManager.showPanel(id: id)
-    }
-
-    public func hidePanel(id: String) {
-        workspaceManager.hidePanel(id: id)
-    }
-
-    public func togglePanel(id: String) {
-        workspaceManager.togglePanel(id: id)
     }
 
     private func closeTab(_ appId: String) {

@@ -1,6 +1,6 @@
 use lingxia_messaging::invoke_callback;
 use lxapp::log::LogLevel;
-use lxapp::{LxAppDelegate, OrientationConfig, PageOrientation, UiEventType};
+use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
 fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
@@ -80,14 +80,19 @@ mod bridge {
         Launch,
     }
 
-    // UI event types for unified event handling.
-    // When appid is empty the event is host-app scoped (not lxapp scoped).
-    pub enum UiEventType {
+    // lxapp-scoped UI event types.
+    pub enum LxAppUiEventType {
         TabBarClick,
         CapsuleClick,
         NavigationClick,
         BackPress,
         PullDownRefresh,
+    }
+
+    // host-app scoped UI events.
+    pub enum AppUiEventType {
+        /// Panel icon clicked in the host app UI
+        PanelIconClick,
     }
 
     // Current LxApp info from Rust stack
@@ -128,7 +133,11 @@ mod bridge {
 
         // lxapp-scoped event (appid must be a real lxapp id)
         #[swift_bridge(swift_name = "onLxappEvent")]
-        fn on_lxapp_event(appid: &str, event_type: UiEventType, data: &str) -> bool;
+        fn on_lxapp_event(appid: &str, event_type: LxAppUiEventType, data: &str) -> bool;
+
+        // Host-app scoped UI event (no lxapp context; e.g. panel icon click)
+        #[swift_bridge(swift_name = "onAppEvent")]
+        fn on_app_event(event_type: AppUiEventType, data: &str) -> bool;
 
         #[swift_bridge(swift_name = "onLxappOpened")]
         fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String;
@@ -207,6 +216,16 @@ mod bridge {
         // Must be called before lxappInit. Returns true if successful.
         #[swift_bridge(swift_name = "setHomeLxAppDevPath")]
         fn set_home_lxapp_dev_path(path: &str) -> bool;
+
+        // Get panels config as JSON string (returns None if no panels configured)
+        #[swift_bridge(swift_name = "getPanelsConfigJson")]
+        fn get_panels_config_json() -> Option<String>;
+
+        // Open a lxapp for a panel (triggers download + JS init if needed).
+        // panel_id is forwarded so Swift can route the openLxApp callback to the right panel.
+        #[swift_bridge(swift_name = "openPanelLxapp")]
+        fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str);
+
     }
 }
 
@@ -357,18 +376,33 @@ pub fn on_device_orientation_changed(appid: &str, session_id: u64, value: &str) 
 }
 
 /// Handle lxapp-scoped UI events from Swift. `appid` must be a real lxapp id.
-pub fn on_lxapp_event(appid: &str, event_type: self::bridge::UiEventType, data: &str) -> bool {
+pub fn on_lxapp_event(appid: &str, event_type: self::bridge::LxAppUiEventType, data: &str) -> bool {
     let ui_event_type = match event_type {
-        self::bridge::UiEventType::TabBarClick => UiEventType::TabBarClick,
-        self::bridge::UiEventType::CapsuleClick => UiEventType::CapsuleClick,
-        self::bridge::UiEventType::NavigationClick => UiEventType::NavigationClick,
-        self::bridge::UiEventType::BackPress => UiEventType::BackPress,
-        self::bridge::UiEventType::PullDownRefresh => UiEventType::PullDownRefresh,
+        self::bridge::LxAppUiEventType::TabBarClick => LxAppUiEventType::TabBarClick,
+        self::bridge::LxAppUiEventType::CapsuleClick => LxAppUiEventType::CapsuleClick,
+        self::bridge::LxAppUiEventType::NavigationClick => LxAppUiEventType::NavigationClick,
+        self::bridge::LxAppUiEventType::BackPress => LxAppUiEventType::BackPress,
+        self::bridge::LxAppUiEventType::PullDownRefresh => LxAppUiEventType::PullDownRefresh,
     };
 
     lxapp::try_get(appid)
         .map(|lxapp| lxapp.on_lxapp_event(ui_event_type, data.to_string()))
         .unwrap_or(false)
+}
+
+/// Handle host-app scoped UI events from Swift (no lxapp context).
+pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> bool {
+    match event_type {
+        self::bridge::AppUiEventType::PanelIconClick => {
+            // data = panelId; look up config and ask Rust to load the lxapp if needed
+            if let Some((app_id, path)) = lxapp::panel_item_for_id(data) {
+                lxapp::open_lxapp_for_panel(data, &app_id, &path);
+                true
+            } else {
+                false
+            }
+        }
+    }
 }
 
 pub fn on_native_component_event(
@@ -716,4 +750,16 @@ pub fn on_user_capture_screen(lxappid: &str) {
 /// Only effective on macOS; returns false on iOS.
 pub fn set_home_lxapp_dev_path(path: &str) -> bool {
     lxapp::set_home_lxapp_dev_path(path)
+}
+
+/// Get panels config as a JSON string.
+/// Returns None if no panels are configured in app.json.
+pub fn get_panels_config_json() -> Option<String> {
+    lxapp::panels_config_json()
+}
+
+/// Open a lxapp for a panel without pushing it to the navigation stack.
+/// panel_id is used by Rust as the panel slot context for presentation routing.
+pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
+    lxapp::open_lxapp_for_panel(panel_id, appid, path);
 }

@@ -2,393 +2,336 @@
 import AppKit
 import os.log
 
-/// Position of a panel relative to the main content
 public enum PanelPosition: String {
     case left
     case right
     case bottom
 }
 
-/// Scope determines panel lifecycle relative to tabs
-public enum PanelScope {
-    case shared   // persists across tab switches
-    case perTab   // each tab gets its own panel state
-}
-
-/// Configuration for a panel slot
 public struct PanelConfig {
     public let id: String
     public let position: PanelPosition
-    public let scope: PanelScope
-    public let minSize: CGFloat
-    public let maxSize: CGFloat
     public let defaultSize: CGFloat
 
-    public init(id: String, position: PanelPosition, scope: PanelScope = .shared,
-                minSize: CGFloat = 150, maxSize: CGFloat = 500, defaultSize: CGFloat = 250) {
+    public init(id: String, position: PanelPosition, defaultSize: CGFloat = 320) {
         self.id = id
         self.position = position
-        self.scope = scope
-        self.minSize = minSize
-        self.maxSize = maxSize
         self.defaultSize = defaultSize
     }
 }
 
-/// NSSplitView subclass with customizable divider color
-class WorkspaceSplitView: NSSplitView {
-    var customDividerColor: NSColor = .separatorColor
-
-    override var dividerColor: NSColor {
-        return customDividerColor
-    }
-}
-
-/// A single panel slot — pure layout container
-class PanelSlot {
+/// One panel card — a floating sibling of the WebView card in the window background.
+@MainActor
+private class PanelSlot {
     let config: PanelConfig
+
+    /// Shadow-casting wrapper (masksToBounds = false).
+    let shadowWrapper: NSView
+    /// Visual surface: NSVisualEffectView for blur + automatic dark/light handling.
+    let blurView: NSVisualEffectView
+    /// Content container where the panel's WebView is attached.
     let containerView: NSView
+
     var isVisible: Bool = false
     var currentSize: CGFloat
 
-    init(config: PanelConfig) {
+    init(config: PanelConfig, cornerRadius: CGFloat) {
         self.config = config
-        self.containerView = NSView()
-        self.containerView.wantsLayer = true
         self.currentSize = config.defaultSize
+
+        shadowWrapper = NSView()
+        shadowWrapper.wantsLayer = true
+        shadowWrapper.layer?.masksToBounds = false
+
+        blurView = NSVisualEffectView()
+        blurView.material = .contentBackground
+        blurView.blendingMode = .behindWindow
+        blurView.state = .active
+        blurView.wantsLayer = true
+        blurView.layer?.cornerRadius = cornerRadius
+        blurView.layer?.masksToBounds = true
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+
+        containerView = NSView()
+        containerView.wantsLayer = true
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        shadowWrapper.addSubview(blurView)
+        blurView.addSubview(containerView)
+
+        NSLayoutConstraint.activate([
+            blurView.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
+            blurView.leadingAnchor.constraint(equalTo: shadowWrapper.leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
+            blurView.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
+            containerView.topAnchor.constraint(equalTo: blurView.topAnchor),
+            containerView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
+            containerView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
+            containerView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor),
+        ])
+    }
+
+    func applyShadow(for position: PanelPosition) {
+        shadowWrapper.layer?.shadowColor = NSColor.black.cgColor
+        shadowWrapper.layer?.shadowOpacity = 0.15
+        shadowWrapper.layer?.shadowRadius = 8
+        switch position {
+        case .right:  shadowWrapper.layer?.shadowOffset = CGSize(width: -3, height: 0)
+        case .left:   shadowWrapper.layer?.shadowOffset = CGSize(width:  3, height: 0)
+        case .bottom: shadowWrapper.layer?.shadowOffset = CGSize(width:  0, height: 3)
+        }
     }
 }
 
-/// Manages panel layout using NSSplitView.
+/// Manages the content area (WebView card interior) and floating panel cards.
 ///
-/// Layout structure (when all panels visible):
+/// ## Layout model
+///
 /// ```
-/// horizontalSplitView (isVertical = true → side-by-side panes)
-///   ├── leftPanelHolder
-///   ├── verticalSplitView (isVertical = false → stacked panes)
-///   │     ├── contentContainer
-///   │     └── bottomPanelHolder
-///   └── rightPanelHolder
+/// contentView (window background)
+///   ├── base            — dark/light fill
+///   ├── sidebar         — icon strip
+///   ├── shadowWrapper   — WebView card (shrinks when panels open)
+///   │     └── right     — corner-radius clip, contains rootView
+///   ├── panel cards     — sibling cards at same depth as WebView card  ← this file
+///   └── sidebarRevealButton
 /// ```
 ///
-/// Panel holders are added/removed from split views dynamically.
-/// Initially only contentContainer and verticalSplitView are present.
+/// When a panel opens the WebView card shrinks to make room; both the panel slide-in
+/// and the card resize animate together. Neither card ever overlaps the other.
 ///
-/// Panels are pure layout containers. Content (WebViews) is attached via
-/// `WebViewManager.attachWebViewToContainer(webView, container: panelContainer)`.
+/// ## Panel position constraints in contentView
+///
+/// | Position | Card anchored to           |
+/// |----------|----------------------------|
+/// | right    | contentView trailing edge  |
+/// | left     | sidebar trailing edge      |
+/// | bottom   | contentView bottom edge    |
+///
+/// ## Multi-panel
+/// One active panel per position (mutual exclusion). Opening a second panel at the same
+/// position closes the first with a simultaneous animation.
 @MainActor
-public class WorkspaceManager: NSObject, NSSplitViewDelegate {
+public class WorkspaceManager: NSObject {
 
     private static let log = OSLog(subsystem: "LingXia", category: "Workspace")
+    private static let animationDuration: TimeInterval = 0.22
+    private static let cornerRadius: CGFloat = 10
 
-    // MARK: - Split views
-
-    /// Horizontal split: [left panel] | [center (vertical split)] | [right panel]
-    private let horizontalSplitView = WorkspaceSplitView()
-
-    /// Vertical split: [content] | [bottom panel]  (nested inside horizontal center)
-    private let verticalSplitView = WorkspaceSplitView()
-
-    // MARK: - Layout holders (kept alive but only added to split view when visible)
-
-    private let leftPanelHolder = NSView()
-    private let rightPanelHolder = NSView()
-    private let bottomPanelHolder = NSView()
-
-    /// The main content container where the active VC's view is placed
+    /// Main content view; active ViewController's view is placed here.
     public let contentContainer = NSView()
 
-    // MARK: - Panel registry
+    /// Toolbar + contentContainer wrapper; placed inside the WebView card by WindowController.
+    public let centerPanelView = NSView()
+
+    public var rootView: NSView { centerPanelView }
+
+    private weak var overlayParent: NSView?
+    private weak var sidebarRef: NSView?
+    private var padding: CGFloat = 6
+
+    /// Called inside an animation block whenever panel state changes.
+    /// WindowController updates its WebView card edge constraints in this callback.
+    /// Parameters: (trailingInset, bottomInset)
+    public var onCardEdgesChanged: ((_ trailing: CGFloat, _ bottom: CGFloat) -> Void)?
 
     private var panels: [String: PanelSlot] = [:]
-    private var positionMap: [PanelPosition: String] = [:]
-
-    /// The root view to embed in the window
-    public var rootView: NSView { horizontalSplitView }
-
-    /// Divider color for all split views (default: system separator color)
-    public var dividerColor: NSColor {
-        get { horizontalSplitView.customDividerColor }
-        set {
-            horizontalSplitView.customDividerColor = newValue
-            verticalSplitView.customDividerColor = newValue
-            horizontalSplitView.needsDisplay = true
-            verticalSplitView.needsDisplay = true
-        }
-    }
-
-    // MARK: - Init
+    /// At most one active panel per position.
+    private var activeByPosition: [PanelPosition: String] = [:]
 
     override init() {
         super.init()
-        setupSplitViews()
-    }
-
-    private func setupSplitViews() {
-        // Horizontal split: side-by-side panes with vertical dividers
-        horizontalSplitView.isVertical = true
-        horizontalSplitView.dividerStyle = .thin
-        horizontalSplitView.delegate = self
-        horizontalSplitView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Vertical split: stacked panes with horizontal divider
-        verticalSplitView.isVertical = false
-        verticalSplitView.dividerStyle = .thin
-        verticalSplitView.delegate = self
-        verticalSplitView.translatesAutoresizingMaskIntoConstraints = false
-
+        centerPanelView.wantsLayer = true
         contentContainer.wantsLayer = true
-
-        for holder in [leftPanelHolder, rightPanelHolder, bottomPanelHolder] {
-            holder.wantsLayer = true
-        }
-
-        // Initial layout: only content, no panels
-        verticalSplitView.addSubview(contentContainer)
-        horizontalSplitView.addSubview(verticalSplitView)
+        contentContainer.translatesAutoresizingMaskIntoConstraints = false
+        centerPanelView.addSubview(contentContainer)
     }
 
-    // MARK: - Panel Operations
-
-    /// Whether a panel with the given ID has been registered
-    public func isPanelRegistered(id: String) -> Bool {
-        return panels[id] != nil
+    /// Must be called once by WindowController after the sidebar is placed.
+    ///
+    /// - Parameters:
+    ///   - overlayParent: The window's `contentView` — panel cards are added here.
+    ///   - sidebar: Used as leading anchor for left-panel positioning.
+    ///   - padding: Edge inset matching the WebView card's padding (keeps gaps consistent).
+    ///   - onCardEdgesChanged: Called inside each animation block with the new trailing and
+    ///     bottom insets. WindowController updates its own constraints here; WorkspaceManager
+    ///     then calls `layoutSubtreeIfNeeded()` so both animate together.
+    public func configure(
+        overlayParent: NSView,
+        sidebar: NSView,
+        padding: CGFloat,
+        onCardEdgesChanged: @escaping (_ trailing: CGFloat, _ bottom: CGFloat) -> Void
+    ) {
+        self.overlayParent = overlayParent
+        self.sidebarRef = sidebar
+        self.padding = padding
+        self.onCardEdgesChanged = onCardEdgesChanged
     }
 
-    /// Register a panel and return its container view for attaching content.
-    /// The holder is NOT added to the split view yet — call `showPanel` for that.
+    /// Constrains `contentContainer` to fill `centerPanelView` below the toolbar.
+    public func attachBelowToolbar(_ toolbarView: NSView) {
+        NSLayoutConstraint.activate([
+            contentContainer.topAnchor.constraint(equalTo: toolbarView.bottomAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: centerPanelView.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: centerPanelView.trailingAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: centerPanelView.bottomAnchor),
+        ])
+    }
+
+
+    public func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
+
+    /// Register a panel. Creates the card view and positions it off-screen.
+    /// Returns the container view where WebViews should be attached.
     @discardableResult
     public func registerPanel(_ config: PanelConfig) -> NSView {
-        if let existing = panels[config.id] {
-            os_log("Panel already registered: %@, returning existing container", log: Self.log, type: .info, config.id)
-            return existing.containerView
+        if let existing = panels[config.id] { return existing.containerView }
+
+        let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
+        slot.applyShadow(for: config.position)
+        panels[config.id] = slot
+
+        guard let parent = overlayParent, let sidebar = sidebarRef else {
+            os_log("registerPanel: configure() not called yet — panel %@ deferred", log: Self.log, type: .error, config.id)
+            return slot.containerView
         }
 
-        let slot = PanelSlot(config: config)
-        panels[config.id] = slot
-        positionMap[config.position] = config.id
-
-        // Add the slot's container into the holder (holder is not in split view yet)
-        let holder = holderView(for: config.position)
-        slot.containerView.translatesAutoresizingMaskIntoConstraints = false
-        holder.addSubview(slot.containerView)
-
-        NSLayoutConstraint.activate([
-            slot.containerView.topAnchor.constraint(equalTo: holder.topAnchor),
-            slot.containerView.leadingAnchor.constraint(equalTo: holder.leadingAnchor),
-            slot.containerView.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
-            slot.containerView.bottomAnchor.constraint(equalTo: holder.bottomAnchor),
-        ])
-
-        os_log("Panel registered: %@ at %@", log: Self.log, type: .info, config.id, config.position.rawValue)
+        installCard(slot, in: parent, sidebar: sidebar)
         return slot.containerView
     }
 
-    /// Show a panel by inserting its holder into the split view
+    /// Show a panel, animating it in and shrinking the WebView card.
     public func showPanel(id: String) {
-        guard let slot = panels[id] else {
-            os_log("showPanel: unknown panel %@", log: Self.log, type: .error, id)
-            return
-        }
-        guard !slot.isVisible else { return }
+        guard let slot = panels[id], !slot.isVisible else { return }
 
+        // Mutual exclusion: close the current panel at this position first (no separate animation —
+        // it exits while the new one enters simultaneously).
+        if let currentId = activeByPosition[slot.config.position], currentId != id {
+            forceHide(id: currentId)
+        }
+        activeByPosition[slot.config.position] = id
         slot.isVisible = true
 
-        let holder = holderView(for: slot.config.position)
-        let sv = splitView(for: slot.config.position)
+        let offset = exitOffset(for: slot)
+        slot.shadowWrapper.isHidden = false
+        slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
 
-        // Insert holder at the correct position in the split view
-        switch slot.config.position {
-        case .left:
-            // Before the center (verticalSplitView)
-            sv.addSubview(holder, positioned: .below, relativeTo: verticalSplitView)
-        case .right:
-            // After the center (verticalSplitView)
-            sv.addSubview(holder, positioned: .above, relativeTo: verticalSplitView)
-        case .bottom:
-            // After the content container
-            sv.addSubview(holder, positioned: .above, relativeTo: contentContainer)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = Self.animationDuration
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            ctx.allowsImplicitAnimation = true
+            slot.shadowWrapper.layer?.transform = CATransform3DIdentity
+            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
+            overlayParent?.layoutSubtreeIfNeeded()
         }
-
-        // Let the split view lay out, then set the divider to the desired position
-        sv.adjustSubviews()
-        applyPanelSize(slot)
-
         os_log("Panel shown: %@", log: Self.log, type: .info, id)
     }
 
-    /// Hide a panel by removing its holder from the split view
+    /// Hide a panel, animating it out and restoring the WebView card's space.
     public func hidePanel(id: String) {
-        guard let slot = panels[id] else {
-            os_log("hidePanel: unknown panel %@", log: Self.log, type: .error, id)
-            return
-        }
-        guard slot.isVisible else { return }
-
-        slot.isVisible = false
-
-        let holder = holderView(for: slot.config.position)
-        let sv = splitView(for: slot.config.position)
-
-        holder.removeFromSuperview()
-        sv.adjustSubviews()
-
+        guard let slot = panels[id], slot.isVisible else { return }
+        hidePanelInternal(id: id, duration: Self.animationDuration, updateCardEdges: true)
         os_log("Panel hidden: %@", log: Self.log, type: .info, id)
     }
 
-    /// Toggle panel visibility
     public func togglePanel(id: String) {
-        guard let slot = panels[id] else {
-            os_log("togglePanel: unknown panel %@", log: Self.log, type: .error, id)
-            return
-        }
-        if slot.isVisible {
-            hidePanel(id: id)
-        } else {
-            showPanel(id: id)
-        }
+        guard let slot = panels[id] else { return }
+        slot.isVisible ? hidePanel(id: id) : showPanel(id: id)
     }
 
-    /// Check if panel is visible
-    public func isPanelVisible(id: String) -> Bool {
-        return panels[id]?.isVisible ?? false
-    }
+    public func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
 
-    /// Get the container view for a panel (for attaching WebViews)
-    public func panelContainer(id: String) -> NSView? {
-        return panels[id]?.containerView
-    }
+    public func panelContainer(id: String) -> NSView? { panels[id]?.containerView }
 
-    // MARK: - Private Helpers
+    /// Place the panel card in `overlayParent` at its final AutoLayout position.
+    /// It starts hidden; `showPanel` reveals it with a transform animation.
+    private func installCard(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
+        let wrapper = slot.shadowWrapper
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.isHidden = true
 
-    private func holderView(for position: PanelPosition) -> NSView {
-        switch position {
-        case .left: return leftPanelHolder
-        case .right: return rightPanelHolder
-        case .bottom: return bottomPanelHolder
-        }
-    }
+        // Insert above the WebView card shadow wrapper but below sidebarRevealButton
+        parent.addSubview(wrapper)
 
-    private func splitView(for position: PanelPosition) -> NSSplitView {
-        switch position {
-        case .left, .right: return horizontalSplitView
-        case .bottom: return verticalSplitView
-        }
-    }
-
-    /// Find the divider index for a panel position among current subviews
-    private func dividerIndex(for position: PanelPosition) -> Int? {
-        let sv = splitView(for: position)
-        let holder = holderView(for: position)
-        guard let idx = sv.subviews.firstIndex(of: holder) else { return nil }
-
-        switch position {
-        case .left:
-            // Divider is to the right of the left panel holder
-            return idx
-        case .right, .bottom:
-            // Divider is to the left/above the panel holder
-            guard idx > 0 else { return nil }
-            return idx - 1
-        }
-    }
-
-    private func applyPanelSize(_ slot: PanelSlot) {
-        guard let divIdx = dividerIndex(for: slot.config.position) else { return }
-        let sv = splitView(for: slot.config.position)
+        let p = padding
+        let size = slot.currentSize
 
         switch slot.config.position {
-        case .left:
-            sv.setPosition(slot.currentSize, ofDividerAt: divIdx)
         case .right:
-            sv.setPosition(sv.frame.width - slot.currentSize, ofDividerAt: divIdx)
-        case .bottom:
-            sv.setPosition(sv.frame.height - slot.currentSize, ofDividerAt: divIdx)
-        }
-    }
+            NSLayoutConstraint.activate([
+                wrapper.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
+                wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+                wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
+                wrapper.widthAnchor.constraint(equalToConstant: size),
+            ])
 
-    /// Identify which panel slot is adjacent to a given divider
-    private func panelSlot(forDividerAt dividerIndex: Int, in splitView: NSSplitView) -> (slot: PanelSlot, side: PanelPosition)? {
-        let subs = splitView.subviews
-        guard dividerIndex >= 0, dividerIndex < subs.count - 1 else { return nil }
-
-        let leftOfDivider = subs[dividerIndex]
-        let rightOfDivider = subs[dividerIndex + 1]
-
-        if splitView === horizontalSplitView {
-            if leftOfDivider === leftPanelHolder,
-               let id = positionMap[.left], let slot = panels[id], slot.isVisible {
-                return (slot, .left)
-            }
-            if rightOfDivider === rightPanelHolder,
-               let id = positionMap[.right], let slot = panels[id], slot.isVisible {
-                return (slot, .right)
-            }
-        } else if splitView === verticalSplitView {
-            if rightOfDivider === bottomPanelHolder,
-               let id = positionMap[.bottom], let slot = panels[id], slot.isVisible {
-                return (slot, .bottom)
-            }
-        }
-
-        return nil
-    }
-
-    // MARK: - NSSplitViewDelegate
-
-    public func splitView(_ splitView: NSSplitView,
-                          constrainMinCoordinate proposedMinimumPosition: CGFloat,
-                          ofSubviewAt dividerIndex: Int) -> CGFloat {
-        guard let info = panelSlot(forDividerAt: dividerIndex, in: splitView) else {
-            return proposedMinimumPosition
-        }
-
-        switch info.side {
         case .left:
-            return info.slot.config.minSize
-        case .right:
-            return splitView.frame.width - info.slot.config.maxSize
+            NSLayoutConstraint.activate([
+                wrapper.topAnchor.constraint(equalTo: parent.topAnchor, constant: p),
+                wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+                wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
+                wrapper.widthAnchor.constraint(equalToConstant: size),
+            ])
+
         case .bottom:
-            return splitView.frame.height - info.slot.config.maxSize
+            NSLayoutConstraint.activate([
+                wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
+                wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
+                wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
+                wrapper.heightAnchor.constraint(equalToConstant: size),
+            ])
+        }
+
+        parent.layoutSubtreeIfNeeded()
+    }
+
+    /// Returns the inset the WebView card should apply for a given panel position.
+    private func cardInset(for position: PanelPosition) -> CGFloat {
+        let p = padding
+        guard let id = activeByPosition[position], let slot = panels[id], slot.isVisible else { return p }
+        return p + slot.currentSize + p
+    }
+
+    private func cardTrailingInset() -> CGFloat { cardInset(for: .right) }
+    private func cardBottomInset() -> CGFloat { cardInset(for: .bottom) }
+
+    /// The translation that places a panel fully off-screen (used as start/end of animation).
+    private func exitOffset(for slot: PanelSlot) -> (x: CGFloat, y: CGFloat) {
+        let size = slot.currentSize + padding
+        switch slot.config.position {
+        case .right:  return (x: size, y: 0)
+        case .left:   return (x: -size, y: 0)
+        case .bottom: return (x: 0, y: -size)
         }
     }
 
-    public func splitView(_ splitView: NSSplitView,
-                          constrainMaxCoordinate proposedMaximumPosition: CGFloat,
-                          ofSubviewAt dividerIndex: Int) -> CGFloat {
-        guard let info = panelSlot(forDividerAt: dividerIndex, in: splitView) else {
-            return proposedMaximumPosition
-        }
-
-        switch info.side {
-        case .left:
-            return info.slot.config.maxSize
-        case .right:
-            return splitView.frame.width - info.slot.config.minSize
-        case .bottom:
-            return splitView.frame.height - info.slot.config.minSize
-        }
+    /// Immediately exit without updating card edges — used when replacing a panel at the same position.
+    private func forceHide(id: String) {
+        hidePanelInternal(id: id, duration: Self.animationDuration * 0.5, updateCardEdges: false)
     }
 
-    public func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
-        // Panel holders can collapse; content containers cannot
-        return subview === leftPanelHolder || subview === rightPanelHolder || subview === bottomPanelHolder
-    }
-
-    public func splitViewDidResizeSubviews(_ notification: Notification) {
-        // Track current sizes when user drags dividers
-        guard let splitView = notification.object as? NSSplitView else { return }
-
-        if splitView === horizontalSplitView {
-            if let id = positionMap[.left], let slot = panels[id], slot.isVisible {
-                slot.currentSize = leftPanelHolder.frame.width
+    /// Shared exit animation for hidePanel and forceHide.
+    private func hidePanelInternal(id: String, duration: TimeInterval, updateCardEdges: Bool) {
+        guard let slot = panels[id] else { return }
+        slot.isVisible = false
+        if activeByPosition[slot.config.position] == id {
+            activeByPosition.removeValue(forKey: slot.config.position)
+        }
+        let offset = exitOffset(for: slot)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = duration
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            ctx.allowsImplicitAnimation = true
+            slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
+            if updateCardEdges {
+                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
+                overlayParent?.layoutSubtreeIfNeeded()
             }
-            if let id = positionMap[.right], let slot = panels[id], slot.isVisible {
-                slot.currentSize = rightPanelHolder.frame.width
-            }
-        } else if splitView === verticalSplitView {
-            if let id = positionMap[.bottom], let slot = panels[id], slot.isVisible {
-                slot.currentSize = bottomPanelHolder.frame.height
+        } completionHandler: { [weak slot] in
+            Task { @MainActor in
+                guard let slot, !slot.isVisible else { return }
+                slot.shadowWrapper.isHidden = true
+                slot.shadowWrapper.layer?.transform = CATransform3DIdentity
             }
         }
     }

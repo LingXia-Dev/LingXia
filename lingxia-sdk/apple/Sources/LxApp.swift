@@ -10,13 +10,13 @@ import UIKit
 import AppKit
 #endif
 
-public struct LxAppUIEvent {
-    // UI Event Type Constants - using functions to avoid concurrency issues
-    public static var tabBarClick: UiEventType { UiEventType.TabBarClick }
-    public static var capsuleClick: UiEventType { UiEventType.CapsuleClick }
-    public static var navigationClick: UiEventType { UiEventType.NavigationClick }
-    public static var backPress: UiEventType { UiEventType.BackPress }
-    public static var pullDownRefresh: UiEventType { UiEventType.PullDownRefresh }
+public struct LxAppEvent {
+    // lxapp-scoped event type constants.
+    public static var tabBarClick: LxAppUiEventType { LxAppUiEventType.TabBarClick }
+    public static var capsuleClick: LxAppUiEventType { LxAppUiEventType.CapsuleClick }
+    public static var navigationClick: LxAppUiEventType { LxAppUiEventType.NavigationClick }
+    public static var backPress: LxAppUiEventType { LxAppUiEventType.BackPress }
+    public static var pullDownRefresh: LxAppUiEventType { LxAppUiEventType.PullDownRefresh }
 
     // UI Event Data Constants
     public static let capsuleActionClose = "close"
@@ -24,11 +24,24 @@ public struct LxAppUIEvent {
     public static let navigationActionHome = "home"
 }
 
+public struct AppEvent {
+    // host-app scoped events.
+    public static var panelIconClick: AppUiEventType { AppUiEventType.PanelIconClick }
+}
+
+// Legacy compatibility alias used by tools/lingxia-runner.
+public typealias LxAppUIEvent = LxAppEvent
+
 /// Animation type enum for page transitions
 public enum AnimationType: Sendable {
     case none      // No animation
     case forward   // Forward animation (push-style)
     case backward  // Backward animation (pop-style)
+}
+
+public enum LxAppOpenPresentation: Int32, Sendable {
+    case normal = 0
+    case panel = 1
 }
 
 // Sendable Conformance for FFI Types
@@ -155,6 +168,9 @@ public class LxAppCore {
     /// Home LxApp configuration
     internal static var homeLxAppId: String?
 
+    /// Panels configuration JSON (populated after lxappInit)
+    internal static var panelsConfigJson: String?
+
     /// Global current app state - shared across iOS and macOS
     public private(set) static var currentAppId: String?
     private static var currentPath: String = ""
@@ -166,7 +182,13 @@ public class LxAppCore {
     private init() {}
 
     /// Shared openLxApp logic - used by both iOS and macOS platforms
-    internal static func executeOpenLxApp(appId: String, path: String, sessionId: UInt64) {
+    internal static func executeOpenLxApp(
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        presentation: Int32 = LxAppOpenPresentation.normal.rawValue,
+        panelId: String = ""
+    ) {
         guard sessionId > 0 else {
             os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
             return
@@ -180,11 +202,25 @@ public class LxAppCore {
             return
         }
         appSessions[appId] = sessionId
+        let openPresentation = LxAppOpenPresentation(rawValue: presentation) ?? .normal
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
         if let handler = openLxAppHandler, handler(appId, finalPath) {
             return
         }
+
+        // Panel presentation bypasses normal tab routing on macOS.
+        #if os(macOS)
+        if openPresentation == .panel,
+           macOSLxApp.handlePanelLxAppOpened(
+            appId: appId,
+            path: finalPath,
+            sessionId: sessionId,
+            panelId: panelId
+           ) {
+            return
+        }
+        #endif
 
         // Direct platform calls instead of using renderer protocol
         #if os(iOS)
@@ -266,6 +302,7 @@ public class LxAppCore {
 
         if let homeAppId = initResultString {
             homeLxAppId = homeAppId
+            panelsConfigJson = getPanelsConfigJson()?.toString()
             os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
 
             // Auto-open home lxapp after initialization (unless skipped by external tools)
@@ -441,15 +478,28 @@ public class LxApp {
 /// FFI interface for LxApp
 extension LxApp {
     /// Open specific LxApp
-    nonisolated public static func openLxApp(appid: RustStr, path: RustStr, session_id: UInt64) -> Bool {
+    nonisolated public static func openLxApp(
+        appid: RustStr,
+        path: RustStr,
+        session_id: UInt64,
+        presentation: Int32,
+        panel_id: RustStr
+    ) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()
+        let panelIdString = panel_id.toString()
         guard session_id > 0 else {
             return false
         }
 
         return executeOnMain {
-            LxAppPlatform.openLxApp(appId: appIdString, path: pathString, sessionId: session_id)
+            LxAppCore.executeOpenLxApp(
+                appId: appIdString,
+                path: pathString,
+                sessionId: session_id,
+                presentation: presentation,
+                panelId: panelIdString
+            )
             return true
         }
     }
