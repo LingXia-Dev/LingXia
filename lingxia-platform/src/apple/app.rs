@@ -2,6 +2,7 @@ use super::ffi;
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
+use crate::traits::app_runtime::LxAppPresentation;
 use crate::traits::media_runtime::MediaRuntime;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
@@ -88,13 +89,15 @@ impl AppRuntime for Platform {
         appid: String,
         path: String,
         session_id: u64,
+        presentation: LxAppPresentation,
+        panel_id: String,
     ) -> Result<(), PlatformError> {
-        if ffi::open_lxapp(&appid, &path, session_id) {
+        if ffi::open_lxapp(&appid, &path, session_id, presentation as i32, &panel_id) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to show lxapp: appid={}, path={}, session_id={}",
-                appid, path, session_id
+                "Failed to show lxapp: appid={}, path={}, session_id={}, presentation={:?}, panel_id={}",
+                appid, path, session_id, presentation, panel_id
             )))
         }
     }

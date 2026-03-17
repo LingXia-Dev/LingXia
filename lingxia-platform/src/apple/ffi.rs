@@ -117,7 +117,13 @@ mod bridge {
     extern "Swift" {
         // LxApp navigation functions
         #[swift_bridge(swift_name = "LxApp.openLxApp")]
-        fn open_lxapp(appid: &str, path: &str, session_id: u64) -> bool;
+        fn open_lxapp(
+            appid: &str,
+            path: &str,
+            session_id: u64,
+            presentation: i32,
+            panel_id: &str,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.closeLxApp")]
         fn close_lxapp(appid: &str, session_id: u64) -> bool;

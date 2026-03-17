@@ -22,6 +22,13 @@ pub enum AnimationType {
     Backward = 2,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LxAppPresentation {
+    #[default]
+    Normal = 0,
+    Panel = 1,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenUrlTarget {
     External = 0,
@@ -134,8 +141,14 @@ pub trait AppRuntime:
     fn get_system_locale(&self) -> &str;
 
     /// Show the UI container for the given LxApp and route.
-    fn show_lxapp(&self, appid: String, path: String, session_id: u64)
-    -> Result<(), PlatformError>;
+    fn show_lxapp(
+        &self,
+        appid: String,
+        path: String,
+        session_id: u64,
+        presentation: LxAppPresentation,
+        panel_id: String,
+    ) -> Result<(), PlatformError>;
 
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;
