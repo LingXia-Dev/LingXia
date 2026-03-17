@@ -1,11 +1,12 @@
 {
   "appId": "homelxapp",
   "appName": "Home LxApp Demo",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "pages": [
     "pages/home/index",
     "pages/popup/index",
     "pages/API/index",
+    "pages/cloud/index",
     "pages/video/index",
     "pages/media/index",
     "pages/ui/index",
@@ -18,7 +19,8 @@
     "pages/pulltorefresh/index",
     "pages/todo/index",
     "pages/picker/index",
-    "pages/navigator/index"
+    "pages/navigator/index",
+    "pages/input/index"
   ],
   "tabBar": {
     "color": "#999999",
