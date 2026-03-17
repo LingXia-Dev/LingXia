@@ -28,6 +28,8 @@ done
 
 # Mobile builds default to ring unless TLS backend is explicitly chosen.
 ensure_tls_feature_default "tls-ring"
+# Align cloud JS engine with lxapp on Apple platforms.
+ensure_cloud_engine_feature_default "jscore"
 
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/lxapp/Resources"

@@ -14,10 +14,6 @@
 # Optional environment
 #   LINGXIA_API_SERVER - API server to include in app.json
 #
-# Optional secrets file:
-#   $LINGXIA_ROOT/examples/.lingxia.secrets.json
-#   Supports: apiServer
-
 generate_app_json() {
     local output_dir="$1"
 
@@ -98,27 +94,22 @@ generate_app_json() {
     local config_api_server
     config_api_server=$(jq -r '.app.apiServer // empty' "$config_file")
 
-    local secrets_file="$LINGXIA_ROOT/examples/.lingxia.secrets.json"
-    local secrets_api_server=""
-    if [ -f "$secrets_file" ]; then
-        if ! jq -e . "$secrets_file" > /dev/null 2>&1; then
-            echo "Error: Invalid JSON in $secrets_file" >&2
-            return 1
-        fi
-        secrets_api_server=$(jq -r '.apiServer // empty' "$secrets_file")
-    fi
-
     local effective_api_server="$config_api_server"
 
-    # Priority: environment variables > secrets file > config file
+    # Priority: environment variables > config file
     if [ -n "${LINGXIA_API_SERVER:-}" ]; then
         effective_api_server="$LINGXIA_API_SERVER"
-    elif [ -n "$secrets_api_server" ]; then
-        effective_api_server="$secrets_api_server"
     fi
 
     if [ -n "$effective_api_server" ]; then
         base_json=$(echo "$base_json" | jq --arg server "$effective_api_server" '. + {apiServer: $server}')
+    fi
+
+    # Include panels config if present
+    local panels_json
+    panels_json=$(jq -c '.panels // empty' "$config_file")
+    if [ -n "$panels_json" ]; then
+        base_json=$(echo "$base_json" | jq --argjson panels "$panels_json" '. + {panels: $panels}')
     fi
 
     echo "$base_json" > "$output_dir/app.json"

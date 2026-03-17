@@ -27,6 +27,8 @@ done
 
 # Mobile builds default to ring unless TLS backend is explicitly chosen.
 ensure_tls_feature_default "tls-ring"
+# Align cloud JS engine with lxapp on HarmonyOS.
+ensure_cloud_engine_feature_default "quickjs"
 
 # Native library paths
 # Note: SDK HAR does NOT bundle .so; example app directly includes it

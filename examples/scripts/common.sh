@@ -37,6 +37,30 @@ ensure_tls_feature_default() {
     echo "🔐 Default TLS feature enabled: $default_tls_feature"
 }
 
+# Ensure cloud JS engine feature is present when cloud is enabled.
+# If user already specified an engine feature, keep user choice.
+ensure_cloud_engine_feature_default() {
+    local default_engine_feature="$1"
+    local features="${LXAPP_FEATURES// /}"
+
+    if [[ ! "$features" =~ (^|,)cloud(,|$) ]]; then
+        LXAPP_FEATURES="$features"
+        return 0
+    fi
+
+    if [[ "$features" =~ (^|,)quickjs(,|$) ]] || [[ "$features" =~ (^|,)jscore(,|$) ]]; then
+        LXAPP_FEATURES="$features"
+        return 0
+    fi
+
+    if [ -z "$features" ]; then
+        LXAPP_FEATURES="$default_engine_feature"
+    else
+        LXAPP_FEATURES="$features,$default_engine_feature"
+    fi
+    echo "⚙️ Default cloud JS engine feature enabled: $default_engine_feature"
+}
+
 # Run cargo command with LXAPP feature policy:
 # - if both tls-ring and tls-aws-lc are set: fail fast
 # - if only tls-ring is set: add --no-default-features to avoid default tls-aws-lc conflict

@@ -26,6 +26,9 @@ for arg in "$@"; do
     fi
 done
 
+# Align cloud JS engine with lxapp on Apple platforms.
+ensure_cloud_engine_feature_default "jscore"
+
 # Define the resources directory for macOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/Resources"
 
