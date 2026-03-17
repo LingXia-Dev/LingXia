@@ -9,9 +9,9 @@ use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// UI event types for unified event handling
+/// lxapp-scoped UI event types (page/app runtime events).
 #[derive(Debug, Clone, PartialEq)]
-pub enum UiEventType {
+pub enum LxAppUiEventType {
     /// TabBar item clicked
     TabBarClick = 0,
     /// Capsule button clicked (close, minimize, more)
@@ -37,7 +37,7 @@ pub trait LxAppDelegate {
 
     /// Handle UI events
     /// Returns true if the event was handled, false to allow default behavior
-    fn on_lxapp_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool;
+    fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool;
 }
 
 impl LxAppDelegate for LxApp {
@@ -223,15 +223,15 @@ impl LxAppDelegate for LxApp {
         page.mark_active();
     }
 
-    fn on_lxapp_event(self: &Arc<Self>, event_type: UiEventType, data: String) -> bool {
+    fn on_lxapp_event(self: &Arc<Self>, event_type: LxAppUiEventType, data: String) -> bool {
         info!("UI event received: {:?}, data: {}", event_type, data).with_appid(self.appid.clone());
 
         match event_type {
-            UiEventType::TabBarClick => self.handle_tabbar_click(data),
-            UiEventType::CapsuleClick => self.handle_capsule_click(data),
-            UiEventType::NavigationClick => self.handle_navigation_click(data),
-            UiEventType::BackPress => self.handle_back_press(),
-            UiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
+            LxAppUiEventType::TabBarClick => self.handle_tabbar_click(data),
+            LxAppUiEventType::CapsuleClick => self.handle_capsule_click(data),
+            LxAppUiEventType::NavigationClick => self.handle_navigation_click(data),
+            LxAppUiEventType::BackPress => self.handle_back_press(),
+            LxAppUiEventType::PullDownRefresh => self.handle_pull_down_refresh(data),
         }
     }
 }

@@ -14,7 +14,7 @@ use tokio::sync::oneshot;
 use tokio::time;
 
 use self::navbar::NavigationBarState;
-use crate::app::AppConfig;
+use crate::app::load_app_config;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
@@ -997,13 +997,7 @@ impl LxApp {
             .unwrap_or_default()
     }
 
-    /// Open a new runtime session for this LxApp instance:
-    /// - Apply any downloaded update for this release_type (if present)
-    /// - Record startup options
-    /// - Ensure AppService exists
-    /// - Create native Page/WebView
-    /// - Open the UI window
-    fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+    pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
         let mut startup_options = options;
 
         // Record startup options on this instance
@@ -1045,8 +1039,13 @@ impl LxApp {
         page.set_query(startup_options.query.clone());
 
         // Open UI
-        self.runtime
-            .show_lxapp(self.appid.clone(), startup_options.path, self.session.id)?;
+        self.runtime.show_lxapp(
+            self.appid.clone(),
+            startup_options.path,
+            self.session.id,
+            startup_options.presentation,
+            startup_options.panel_id,
+        )?;
         Ok(())
     }
 
@@ -1682,7 +1681,7 @@ pub fn init(runtime: Platform) -> Option<String> {
         return None;
     }
 
-    match AppConfig::load(runtime_arc.clone()) {
+    match load_app_config(runtime_arc.clone()) {
         Ok(config) => {
             let home_lxapp_appid = config.home_lxapp_appid.clone();
             let home_lxapp_version = &config.home_lxapp_version;

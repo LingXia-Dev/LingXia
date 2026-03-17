@@ -3,6 +3,7 @@ mod appservice;
 mod archive;
 pub mod browser;
 mod cache;
+mod config;
 mod delegate;
 pub mod download_manager;
 mod error;
@@ -14,6 +15,7 @@ pub mod log;
 pub mod lx;
 mod lxapp;
 mod page;
+pub mod panel;
 pub(crate) mod plugin;
 pub mod provider;
 pub mod push_notification;
@@ -43,7 +45,7 @@ pub use browser::{
     set_browser_download_dir,
 };
 pub use cache::{LxAppCache, ResolveResult};
-pub use delegate::{LxAppDelegate, UiEventType};
+pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
@@ -57,6 +59,7 @@ pub use lxapp::{
     page_config::PageOrientation, tabbar, try_get,
 };
 pub use page::NavigationType;
+pub use panel::{open_lxapp_for_panel, panel_item_for_id, panels_config_json};
 pub use provider::{
     BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError, ProviderErrorCode,
     PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
