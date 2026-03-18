@@ -2,4 +2,16 @@
 target
 node_modules/
 dist/
-*.tar.zstd
+*.tar.zst
+
+# Gradle/Kotlin local build dirs
+**/.gradle/
+**/.kotlin/
+
+# Example app native outputs
+examples/android/app/src/main/jniLibs/
+
+# Generated TypeScript sources
+
+# Harmony generated/synced artifacts
+lingxia-sdk/harmony/lingxia/src/main/ets/lxapp/WebViewCore.ets

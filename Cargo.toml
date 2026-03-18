@@ -30,13 +30,13 @@ base64 = "0.22.1"
 log = "0.4.29"
 
 # Workspace-local crates
-lingxia-lxapp = { path = "lingxia-lxapp", version = "0.3.1" }
-lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.3.1", default-features = false }
-lingxia-webview = { path = "lingxia-webview", version = "0.3.1" }
-lingxia-platform = { path = "lingxia-platform", version = "0.3.1" }
-lingxia-messaging = { path = "lingxia-messaging", version = "0.3.1" }
-lingxia-logic = { path = "lingxia-logic", version = "0.3.1", default-features = false }
-lingxia = { path = "lingxia", version = "0.3.1" }
+lingxia-lxapp = { path = "lingxia-lxapp", version = "0.4.3" }
+lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.4.3", default-features = false }
+lingxia-webview = { path = "lingxia-webview", version = "0.4.3" }
+lingxia-platform = { path = "lingxia-platform", version = "0.4.3" }
+lingxia-messaging = { path = "lingxia-messaging", version = "0.4.3" }
+lingxia-logic = { path = "lingxia-logic", version = "0.4.3", default-features = false }
+lingxia = { path = "lingxia", version = "0.4.3" }
 lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.0" }
 
 # Harmony NAPI bindings
