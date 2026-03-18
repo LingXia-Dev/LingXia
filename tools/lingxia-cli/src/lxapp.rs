@@ -4,10 +4,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Runtime version of the LingXia SDK this CLI was built against.
-/// Used as the default `min_runtime_version` when publishing packages.
-pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
-
 const JS_CLI_ENV: &str = "LINGXIA_JS_CLI";
 
 pub fn run(args: &[String]) -> Result<()> {

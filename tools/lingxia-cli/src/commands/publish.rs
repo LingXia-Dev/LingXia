@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::http_client;
-use crate::lxapp;
 
 pub struct PublishOptions {
     pub token: String,
@@ -22,7 +21,6 @@ struct PackageMeta {
     target_id: String,
     version: String,
     release_type: Option<String>, // Some only for lxapp
-    min_runtime_version: Option<String>,
 }
 
 pub fn execute(opts: PublishOptions) -> Result<()> {
@@ -70,10 +68,6 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     if let Some(rt) = &meta.release_type {
         fields.push(("releaseType", rt.clone()));
     }
-    if let Some(min_runtime_version) = &meta.min_runtime_version {
-        fields.push(("minRuntimeVersion", min_runtime_version.clone()));
-    }
-
     let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let boundary = format!("----LingXiaBoundary{}", rand_hex());
     let body = build_multipart(&boundary, &field_refs, &file_name, &file_data);
@@ -120,7 +114,6 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: Some(release_type),
-                min_runtime_version: Some(lxapp::SDK_RUNTIME_VERSION.to_string()),
             })
         }
         "lxplugin" => {
@@ -130,7 +123,6 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: None,
-                min_runtime_version: Some(lxapp::SDK_RUNTIME_VERSION.to_string()),
             })
         }
         "app" => {
@@ -140,7 +132,6 @@ fn resolve_meta(
                 target_id: id,
                 version,
                 release_type: None,
-                min_runtime_version: None,
             })
         }
         _ => bail!("Unknown target: {target}"),
