@@ -1506,7 +1506,13 @@ impl LxApp {
 /// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
 pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> String {
     // Fingermark uses appid + release_type + device fingerprint (version excluded)
-    let device_fp = resolve_or_cache_device_fingerprint();
+    let device_fp = match crate::provider::get_provider().get_fingerprint() {
+        Ok(fp) => fp,
+        Err(e) => {
+            warn!("Device fingerprint unavailable: {}", e);
+            String::new()
+        }
+    };
     let combined = format!("{}|{}|{}", lxappid, release_type.as_str(), device_fp);
     let mut hasher = DefaultHasher::new();
     combined.hash(&mut hasher);
@@ -1636,24 +1642,6 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
 // Global runtime available as soon as init() starts.
 static RUNTIME: OnceLock<Arc<Platform>> = OnceLock::new();
-// Process-wide cached device fingerprint.
-static DEVICE_FINGERPRINT: OnceLock<String> = OnceLock::new();
-
-fn resolve_or_cache_device_fingerprint() -> String {
-    if let Some(fp) = DEVICE_FINGERPRINT.get() {
-        return fp.clone();
-    }
-
-    let fp = match crate::provider::get_provider().get_fingerprint() {
-        Ok(fp) => fp,
-        Err(e) => {
-            warn!("Device Fingerprint unavailable: {}", e);
-            String::new()
-        }
-    };
-    let _ = DEVICE_FINGERPRINT.set(fp.clone());
-    fp
-}
 
 /// Initialize the LxApps singleton
 /// Returns an Option of home_app_id on success.
@@ -1689,7 +1677,6 @@ pub fn init(runtime: Platform) -> Option<String> {
 
     let runtime_arc = Arc::new(runtime.clone());
     let _ = RUNTIME.set(runtime_arc.clone());
-    let _ = resolve_or_cache_device_fingerprint();
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {

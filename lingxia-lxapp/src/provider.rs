@@ -193,6 +193,8 @@ pub trait UpdateProvider: Send + Sync + 'static {
 }
 
 /// Trait for device fingerprint.
+/// Implementations are expected to handle caching internally, so callers
+/// can invoke `get_fingerprint` directly without additional caching.
 pub trait FingerprintProvider: Send + Sync + 'static {
     /// Get the device fingerprint ID.
     fn get_fingerprint(&self) -> Result<String, FingerprintError> {
