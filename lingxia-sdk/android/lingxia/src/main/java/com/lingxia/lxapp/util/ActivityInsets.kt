@@ -12,7 +12,7 @@ import com.lingxia.lxapp.LxApp
  * "content inset" so they remain flush with gesture navigation while staying above the
  * legacy navigation bar when necessary.
  */
-object ActivityInsets {
+internal object ActivityInsets {
 
     /**
      * Current bottom inset exposed by [LxAppActivity.getContentBottomInset].

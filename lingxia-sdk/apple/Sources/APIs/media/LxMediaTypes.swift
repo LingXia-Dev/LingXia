@@ -3,7 +3,7 @@ import AVFoundation
 
 // MARK: - Cross-platform media types shared between iOS and macOS players
 
-public enum LxMediaSource {
+enum LxMediaSource {
     case url(URL)
     case file(path: String)
 
@@ -17,11 +17,11 @@ public enum LxMediaSource {
     }
 }
 
-public struct LxMediaQuality {
-    public var label: String
-    public var url: URL?
+struct LxMediaQuality {
+    var label: String
+    var url: URL?
 
-    public init(label: String, url: URL?) {
+    init(label: String, url: URL?) {
         self.label = label
         self.url = url
     }
@@ -35,7 +35,7 @@ public struct LxMediaQuality {
     }
 }
 
-public enum LxMediaObjectFit: String {
+enum LxMediaObjectFit: String {
     case cover
     case contain
     case fill
@@ -46,27 +46,27 @@ public enum LxMediaObjectFit: String {
     }
 }
 
-public struct LxMediaPlayerConfig {
-    public var source: LxMediaSource?
-    public var src: URL?
-    public var poster: URL?
-    public var duration: Double?
-    public var autoplay: Bool?
-    public var loop: Bool?
-    public var muted: Bool?
-    public var volume: Double?
-    public var controls: Bool?
-    public var progressBar: Bool?
-    public var live: Bool?
-    public var cornerRadius: Double?
-    public var qualities: [LxMediaQuality]?
-    public var speeds: [Double]?
-    public var showControlsOnInit: Bool?
-    public var objectFit: LxMediaObjectFit?
-    public var rotateDegrees: Int?
-    public var clearProps: Set<String>?
+struct LxMediaPlayerConfig {
+    var source: LxMediaSource?
+    var src: URL?
+    var poster: URL?
+    var duration: Double?
+    var autoplay: Bool?
+    var loop: Bool?
+    var muted: Bool?
+    var volume: Double?
+    var controls: Bool?
+    var progressBar: Bool?
+    var live: Bool?
+    var cornerRadius: Double?
+    var qualities: [LxMediaQuality]?
+    var speeds: [Double]?
+    var showControlsOnInit: Bool?
+    var objectFit: LxMediaObjectFit?
+    var rotateDegrees: Int?
+    var clearProps: Set<String>?
 
-    public init(
+    init(
         source: LxMediaSource? = nil,
         src: URL? = nil,
         poster: URL? = nil,
@@ -134,7 +134,7 @@ public struct LxMediaPlayerConfig {
     }
 }
 
-public enum LxMediaCommand {
+enum LxMediaCommand {
     case play
     case pause
     case stop
@@ -146,7 +146,7 @@ public enum LxMediaCommand {
     case exitFullscreen
 }
 
-public enum LxMediaEvent {
+enum LxMediaEvent {
     case play
     case playing
     case pause

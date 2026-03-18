@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  * Note: This class is called from Rust via JNI. Methods with @JvmStatic are exposed
  * to native code.
  */
-object ComponentRouter {
+internal object ComponentRouter {
     private const val TAG = "ComponentRouter"
     private val managers = ConcurrentHashMap<String, WeakReference<NativeComponentManager>>()
     private val mainHandler = Handler(Looper.getMainLooper())

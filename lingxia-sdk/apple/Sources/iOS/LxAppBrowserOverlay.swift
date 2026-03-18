@@ -5,11 +5,11 @@ import OSLog
 import CLingXiaRustAPI
 
 @MainActor
-public final class LxAppBrowserOverlay: NSObject {
+final class LxAppBrowserOverlay: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlay")
     private static var currentController: LxAppBrowserViewController?
 
-    public static func show(tabId: String) -> Bool {
+    static func show(tabId: String) -> Bool {
         let normalizedTabId = tabId.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !normalizedTabId.isEmpty else {
             os_log("show failed: empty tab id", log: log, type: .error)
@@ -60,7 +60,7 @@ public final class LxAppBrowserOverlay: NSObject {
         }
     }
 
-    public static func isShowing() -> Bool {
+    static func isShowing() -> Bool {
         guard let controller = currentController else { return false }
         return controller.navigationController?.topViewController === controller
     }

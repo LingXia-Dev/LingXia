@@ -41,7 +41,7 @@ import java.util.concurrent.Future
 import kotlin.math.max
 import org.json.JSONObject
 
-class MediaPreviewFragment : Fragment() {
+internal class MediaPreviewFragment : Fragment() {
     private enum class PreviewAdvance {
         MANUAL,
         NEXT,

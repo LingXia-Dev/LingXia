@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * All native methods are organized by functionality and provide a single point of reference
  * for the FFI interface.
  */
-object NativeApi {
+internal object NativeApi {
     private const val TAG = "NativeApi"
     private val libraryLoaded = AtomicBoolean(false)
     private val loadAttempted = AtomicBoolean(false)

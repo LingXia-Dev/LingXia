@@ -153,9 +153,9 @@ private final class TapOverlayView: UIView {
 }
 
 @MainActor
-public final class LxMediaPlayer: NSObject {
-    public let view: UIView
-    public var onScrubStateChanged: ((Bool) -> Void)?
+final class LxMediaPlayer: NSObject {
+    let view: UIView
+    var onScrubStateChanged: ((Bool) -> Void)?
     private let container: PlayerContainerView
     private let log = OSLog(subsystem: "LingXia", category: "Media")
 
@@ -268,7 +268,7 @@ public final class LxMediaPlayer: NSObject {
     private var overrideDurationSeconds: Double?
     private var hasExternalDurationOverride = false
 
-    public init(
+    init(
         eventSink: @escaping ([String: Any]) -> Void,
         typedEventSink: ((LxMediaEvent) -> Void)? = nil
     ) {
@@ -311,13 +311,13 @@ public final class LxMediaPlayer: NSObject {
         // This prevents gesture recognizer from interfering with UISlider drag
     }
 
-    public convenience init(eventHandler: @escaping (LxMediaEvent) -> Void) {
+    convenience init(eventHandler: @escaping (LxMediaEvent) -> Void) {
         self.init(eventSink: { _ in }, typedEventSink: eventHandler)
     }
 
     // MARK: Public API
 
-    public func attach(to host: UIView) {
+    func attach(to host: UIView) {
         host.addSubview(view)
         host.bringSubviewToFront(view)
         view.isUserInteractionEnabled = true
@@ -327,7 +327,7 @@ public final class LxMediaPlayer: NSObject {
         configureParentScrollViewGestures(from: host)
     }
 
-    public func refreshGestureInterference() {
+    func refreshGestureInterference() {
         configureParentScrollViewGestures(from: view)
     }
 
@@ -356,12 +356,12 @@ public final class LxMediaPlayer: NSObject {
     }
 
     /// Configure whether to show close button (for preview scenarios)
-    public func setShowCloseButton(_ show: Bool) {
+    func setShowCloseButton(_ show: Bool) {
         showCloseButton = show
         updateCloseButtonVisibility()
     }
 
-    public func setShowFullscreenButton(_ show: Bool) {
+    func setShowFullscreenButton(_ show: Bool) {
         showFullscreenButton = show
         updateFullscreenButtonVisibility()
     }
@@ -369,7 +369,7 @@ public final class LxMediaPlayer: NSObject {
     /// Mark the player as being in fullscreen mode (for external fullscreen management)
     /// This is used when the player is displayed in a fullscreen window/controller
     /// managed externally (e.g., MediaPreview)
-    public func setFullscreenMode(_ fullscreen: Bool) {
+    func setFullscreenMode(_ fullscreen: Bool) {
         isFullscreen = fullscreen
         applyDisplayRotationTransform()
         applyCornerRadius()
@@ -377,7 +377,7 @@ public final class LxMediaPlayer: NSObject {
         updateEndedPosterVisibility()
     }
 
-    public func setFrame(_ frame: CGRect) {
+    func setFrame(_ frame: CGRect) {
         // Ignore frame updates during fullscreen transition
         // The saved originalFrame will be restored after exit
         if isTransitioningFullscreen {
@@ -398,7 +398,7 @@ public final class LxMediaPlayer: NSObject {
         layoutOverlay()
     }
 
-    public func update(config: LxMediaPlayerConfig) {
+    func update(config: LxMediaPlayerConfig) {
         // Loop flag - only update if explicitly set in config
         if let loop = config.loop {
             loopEnabled = loop
@@ -614,7 +614,7 @@ public final class LxMediaPlayer: NSObject {
         playerLayer.cornerRadius = radius
     }
 
-    public func setExternalDurationSeconds(_ seconds: Double?) {
+    func setExternalDurationSeconds(_ seconds: Double?) {
         if let seconds, seconds.isFinite, seconds > 0 {
             overrideDurationSeconds = seconds
             hasExternalDurationOverride = true
@@ -626,7 +626,7 @@ public final class LxMediaPlayer: NSObject {
         refreshProgressControls()
     }
 
-    public func handle(command: LxMediaCommand) {
+    func handle(command: LxMediaCommand) {
         switch command {
         case .play: play()
         case .pause: pause()
@@ -666,7 +666,7 @@ public final class LxMediaPlayer: NSObject {
         }
     }
 
-    public func setStreamDecoderActive(
+    func setStreamDecoderActive(
         _ active: Bool,
         componentId: String?,
         commandHandler: ((String, [String: Any]) -> Bool)?
@@ -705,7 +705,7 @@ public final class LxMediaPlayer: NSObject {
         refreshProgressControls()
     }
 
-    public func handleStreamDecoderEvent(_ event: String) {
+    func handleStreamDecoderEvent(_ event: String) {
         guard streamDecoderActive else { return }
         switch event {
         case "waiting":
@@ -771,7 +771,7 @@ public final class LxMediaPlayer: NSObject {
         }
     }
 
-    public func detach() {
+    func detach() {
         stop()
         stopStreamProgressTimer()
         timeObserver.flatMap { player?.removeTimeObserver($0) }

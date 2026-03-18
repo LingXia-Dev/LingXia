@@ -37,11 +37,11 @@ sealed interface EngineEvent {
     ) : EngineEvent
 }
 
-fun interface EngineListener {
+internal fun interface EngineListener {
     fun onEngineEvent(event: EngineEvent)
 }
 
-interface PlayerEngine {
+internal interface PlayerEngine {
     val capabilities: PlayerCapabilities
 
     fun setListener(listener: EngineListener?)

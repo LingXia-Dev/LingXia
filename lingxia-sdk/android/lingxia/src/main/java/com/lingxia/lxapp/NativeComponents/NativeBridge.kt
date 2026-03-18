@@ -21,7 +21,7 @@ import java.lang.ref.WeakReference
  * Bridge between JS component.* messages and native components.
  * Uses JavaScriptInterface for View→Native component lifecycle/control.
  */
-class NativeBridge private constructor(
+internal class NativeBridge private constructor(
     webView: LingXiaWebView
 ) {
     private val webViewRef = WeakReference(webView)
@@ -278,4 +278,4 @@ class NativeBridge private constructor(
 }
 
 /** Overlay host that passes through touches to children or WebView. */
-class ComponentOverlayHost(context: android.content.Context) : FrameLayout(context)
+internal class ComponentOverlayHost(context: android.content.Context) : FrameLayout(context)

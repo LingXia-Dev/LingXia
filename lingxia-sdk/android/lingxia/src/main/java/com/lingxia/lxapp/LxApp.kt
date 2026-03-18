@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Data class representing LxApp information from the native layer
  */
-data class LxAppInfo(
+internal data class LxAppInfo(
     val appName: String,
     val version: String,
     val releaseType: String,
@@ -28,7 +28,7 @@ data class LxAppInfo(
 /**
  * Data class representing the current active LxApp from Rust stack
  */
-data class CurrentLxApp(
+internal data class CurrentLxApp(
     val appId: String,
     val path: String,
     val sessionId: Long,

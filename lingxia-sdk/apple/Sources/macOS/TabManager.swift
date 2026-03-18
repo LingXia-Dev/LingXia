@@ -3,35 +3,35 @@ import SwiftUI
 import Foundation
 
 /// Represents a single tab in the tab-style tab bar
-public struct LxAppTab: Equatable, Identifiable {
-    public let appId: String
-    public var id: String { appId }
+struct LxAppTab: Equatable, Identifiable {
+    let appId: String
+    var id: String { appId }
 
-    public var currentPath: String { "/" }
-    public var title: String { appId }
+    var currentPath: String { "/" }
+    var title: String { appId }
     // Rust decides if tab is closable, Swift doesn't need to judge
-    public var isClosable: Bool { true }
+    var isClosable: Bool { true }
 
-    public init(appId: String) {
+    init(appId: String) {
         self.appId = appId
     }
 }
 
 /// Manages tab UI state for LxApps
 @MainActor
-public class LxAppTabManager: ObservableObject {
-    public static let shared = LxAppTabManager()
+class LxAppTabManager: ObservableObject {
+    static let shared = LxAppTabManager()
 
     @Published public var tabs: [LxAppTab] = []
     @Published public var activeTab: LxAppTab?
-    public var onTabChanged: ((LxAppTab) -> Void)?
-    public var onTabsChanged: (([LxAppTab]) -> Void)?
+    var onTabChanged: ((LxAppTab) -> Void)?
+    var onTabsChanged: (([LxAppTab]) -> Void)?
 
     private init() {}
 
-    public var hasTabs: Bool { !tabs.isEmpty }
+    var hasTabs: Bool { !tabs.isEmpty }
 
-    public func addTab(appId: String) {
+    func addTab(appId: String) {
         if tabs.contains(where: { $0.appId == appId }) {
             selectTab(appId: appId)
             return
@@ -44,13 +44,13 @@ public class LxAppTabManager: ObservableObject {
         onTabsChanged?(tabs)
     }
 
-    public func selectTab(appId: String) {
+    func selectTab(appId: String) {
         guard let tab = tabs.first(where: { $0.appId == appId }) else { return }
         activeTab = tab
         onTabChanged?(tab)
     }
 
-    public func closeTab(appId: String) {
+    func closeTab(appId: String) {
         guard let index = tabs.firstIndex(where: { $0.appId == appId }) else { return }
 
         // Rust decides if tab is closable, Swift just removes it
@@ -66,7 +66,7 @@ public class LxAppTabManager: ObservableObject {
         onTabsChanged?(tabs)
     }
 
-    public func hasTab(for appId: String) -> Bool {
+    func hasTab(for appId: String) -> Bool {
         tabs.contains { $0.appId == appId }
     }
 }

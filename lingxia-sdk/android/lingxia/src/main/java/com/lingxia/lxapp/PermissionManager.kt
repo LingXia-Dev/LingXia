@@ -9,7 +9,7 @@ import androidx.core.content.ContextCompat
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-object PermissionManager {
+internal object PermissionManager {
     private data class PendingRequest(
         val permissions: Array<String>,
         val callback: (Boolean) -> Unit

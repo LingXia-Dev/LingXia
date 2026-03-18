@@ -7,7 +7,7 @@ import android.view.ViewGroup
 /**
  * Protocol for native components that can be rendered in component overlay.
  */
-interface LxNativeComponent {
+internal interface LxNativeComponent {
     val id: String
     val view: View
 
@@ -23,7 +23,7 @@ interface LxNativeComponent {
 /**
  * Factory protocol for creating native components.
  */
-interface LxNativeComponentFactory {
+internal interface LxNativeComponentFactory {
     fun make(
         id: String,
         initialProps: Map<String, Any?>,

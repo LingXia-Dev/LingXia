@@ -34,7 +34,7 @@ import com.lingxia.lxapp.LxNavBarUtils
 /**
  * Animation type enum for page transitions
  */
-enum class AnimationType(val value: Int) {
+internal enum class AnimationType(val value: Int) {
     /**
      * No animation - used for Launch/Replace/SwitchTab semantics
      */
@@ -78,7 +78,7 @@ enum class AnimationType(val value: Int) {
 /**
  * Simple navigation state tracker
  */
-data class NavigationState(
+internal data class NavigationState(
     val currentPath: String,
     val previousPath: String? = null,
     val isNavigating: Boolean = false

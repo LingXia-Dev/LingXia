@@ -6,7 +6,7 @@ import CLingXiaRustAPI
 import CLingXiaSwiftAPI
 
 @MainActor
-public enum PopupDisplayPosition {
+enum PopupDisplayPosition {
     case center
     case bottom
     case left
@@ -14,7 +14,7 @@ public enum PopupDisplayPosition {
 }
 
 @MainActor
-public final class LxAppPopup {
+final class LxAppPopup {
     private static let log = OSLog(subsystem: "LingXia", category: "Popup")
 
     private static var overlayView: UIView?
@@ -30,7 +30,7 @@ public final class LxAppPopup {
         let isFullHeight: Bool
     }
 
-    public static func showPopup(
+    static func showPopup(
         appId: String,
         path: String,
         widthRatio: Double,
@@ -192,7 +192,7 @@ public final class LxAppPopup {
         return true
     }
 
-    public static func hidePopup(appId: String) -> Bool {
+    static func hidePopup(appId: String) -> Bool {
         if let activeAppId = currentAppId, !activeAppId.isEmpty, activeAppId != appId {
             os_log("hidePopup called with mismatched appId (expected %{public}@, got %{public}@)", log: log, type: .info, activeAppId, appId)
         }
@@ -345,7 +345,7 @@ import OSLog
 import CLingXiaSwiftAPI
 
 @MainActor
-public enum PopupDisplayPosition {
+enum PopupDisplayPosition {
     case center
     case bottom
     case left
@@ -353,7 +353,7 @@ public enum PopupDisplayPosition {
 }
 
 @MainActor
-public final class LxAppPopup {
+final class LxAppPopup {
     private static let log = OSLog(subsystem: "LingXia", category: "Popup")
 
     private static var overlayView: NSView?
@@ -369,7 +369,7 @@ public final class LxAppPopup {
         let isFullHeight: Bool
     }
 
-    public static func showPopup(
+    static func showPopup(
         appId: String,
         path: String,
         widthRatio: Double,
@@ -522,7 +522,7 @@ public final class LxAppPopup {
         return true
     }
 
-    public static func hidePopup(appId: String) -> Bool {
+    static func hidePopup(appId: String) -> Bool {
         if let activeAppId = currentAppId, !activeAppId.isEmpty, activeAppId != appId {
             os_log("hidePopup called with mismatched appId (expected %{public}@, got %{public}@)", log: log, type: .info, activeAppId, appId)
         }

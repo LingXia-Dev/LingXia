@@ -43,7 +43,7 @@ import java.util.concurrent.Executors
 /**
  * Unified custom media picker UI (grid multi-select, confirm), attached to current Activity.
  */
-class MediaPickerFragment : Fragment() {
+internal class MediaPickerFragment : Fragment() {
     companion object {
         private const val TAG = "LingXia.MediaPickerFrag"
         private const val STATE_IS_ORIGINAL = "state_is_original"

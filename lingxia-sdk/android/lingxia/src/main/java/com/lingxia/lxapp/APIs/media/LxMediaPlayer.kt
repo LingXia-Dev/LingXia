@@ -64,13 +64,13 @@ sealed class LxMediaSource {
 }
 
 // Quality option for video
-data class LxMediaQuality(
+internal data class LxMediaQuality(
     val label: String,
     val url: String? = null
 )
 
 // Object fit modes
-enum class LxMediaObjectFit {
+internal enum class LxMediaObjectFit {
     COVER, CONTAIN, FILL, FIT;
 
     fun toResizeMode(): Int = when (this) {
@@ -92,7 +92,7 @@ enum class LxMediaObjectFit {
 }
 
 // Player configuration
-data class LxMediaPlayerConfig(
+internal data class LxMediaPlayerConfig(
     var source: LxMediaSource? = null,
     var src: String? = null,
     var poster: String? = null,
@@ -186,7 +186,7 @@ sealed class LxMediaEvent {
  * LxMediaPlayer - A native video player with built-in controls.
  * Designed to be reused by native components and MediaPreview.
  */
-class LxMediaPlayer(
+internal class LxMediaPlayer(
     private val context: Context,
     private val eventSink: (Map<String, Any>) -> Unit,
     private val typedEventSink: ((LxMediaEvent) -> Unit)? = null,

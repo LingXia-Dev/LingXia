@@ -4,10 +4,10 @@ import Foundation
 import UIKit
 
 /// Icon loader for LingXia SDK - loads icons from generated assets (PDF from SVG)
-public enum LxIcon {
+enum LxIcon {
     /// Load control icon by name from SDK bundle, optionally scaled to a specific size
     /// Icons are stored as PDF files generated from SVG sources
-    public static func image(named name: String, size: CGSize? = nil) -> UIImage? {
+    static func image(named name: String, size: CGSize? = nil) -> UIImage? {
         guard let baseImage = loadImage(named: name) else { return nil }
 
         // If no size specified, return the base image
@@ -74,10 +74,10 @@ private class MediaBundleToken {}
 import AppKit
 
 /// Icon loader for LingXia SDK - loads icons from generated assets
-public enum LxIcon {
+enum LxIcon {
     /// Load control icon by name from SDK bundle, optionally scaled to a specific size
     /// Icons are stored as PDF files generated from SVG sources
-    public static func image(named name: String, size: CGSize? = nil) -> NSImage? {
+    static func image(named name: String, size: CGSize? = nil) -> NSImage? {
         guard let baseImage = loadImage(named: name) else { return nil }
         guard let targetSize = normalizedSize(size) else { return baseImage }
 

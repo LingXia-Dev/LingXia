@@ -16,7 +16,7 @@ import com.lingxia.lxapp.util.ActivityInsets
  * Bottom sheet menu that appears when clicking the capsule menu (3-dots) button.
  * Shows LxApp info and action options in horizontal layout.
  */
-object CapsuleMenuBottomSheet {
+internal object CapsuleMenuBottomSheet {
     private data class ReleaseBadge(
         val text: String,
         val textColor: Int,

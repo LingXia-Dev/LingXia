@@ -12,11 +12,11 @@ private let capsuleLog = OSLog(subsystem: "LingXia", category: "Capsule")
 
 /// Capsule Button management for LxApp (iOS only)
 @MainActor
-public class LxAppCapsuleButtons {
-    public static let CAPSULE_BUTTON_TAG = 9999
+class LxAppCapsuleButtons {
+    static let CAPSULE_BUTTON_TAG = 9999
 
     #if os(iOS)
-    public static func addCapsuleButton(to viewController: UIViewController, appId: String) {
+    static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
 
         let capsuleButtons = LxAppUnifiedCapsuleView(
@@ -53,11 +53,11 @@ public class LxAppCapsuleButtons {
         os_log("statusBarHeight=%{public}.1f, topMargin=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, topMargin)
     }
 
-    public static func removeCapsuleButton(from viewController: UIViewController) {
+    static func removeCapsuleButton(from viewController: UIViewController) {
         viewController.view.viewWithTag(CAPSULE_BUTTON_TAG)?.removeFromSuperview()
     }
 
-    public static func getMenuButtonBoundingRect() -> [String: Double] {
+    static func getMenuButtonBoundingRect() -> [String: Double] {
         let statusBarHeight = LxAppTheme.getStatusBarHeight()
         
         // Match Web layout centering offset.
@@ -84,7 +84,7 @@ public class LxAppCapsuleButtons {
     }
 
     /// Get menu button bounding rect as JSON string (for FFI)
-    public static func getMenuButtonBoundingRectJSON() -> String {
+    static func getMenuButtonBoundingRectJSON() -> String {
         let rect = getMenuButtonBoundingRect()
         guard let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
@@ -161,16 +161,16 @@ private struct CapsuleIcon: View {
     }
 }
 
-public struct LxAppUnifiedCapsuleView: View {
+struct LxAppUnifiedCapsuleView: View {
     let onMoreTapped: () -> Void
     let onCloseTapped: () -> Void
 
-    public init(onMoreTapped: @escaping () -> Void, onCloseTapped: @escaping () -> Void) {
+    init(onMoreTapped: @escaping () -> Void, onCloseTapped: @escaping () -> Void) {
         self.onMoreTapped = onMoreTapped
         self.onCloseTapped = onCloseTapped
     }
 
-    public var body: some View {
+    var body: some View {
         HStack(spacing: 0) {
             // More button
             Button(action: onMoreTapped) {

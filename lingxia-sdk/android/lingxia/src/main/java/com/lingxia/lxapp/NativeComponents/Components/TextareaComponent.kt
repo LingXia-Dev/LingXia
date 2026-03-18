@@ -23,13 +23,13 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-class TextareaComponentFactory : LxNativeComponentFactory {
+internal class TextareaComponentFactory : LxNativeComponentFactory {
     override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit): LxNativeComponent {
         return TextareaComponent(id, initialProps, eventSink)
     }
 }
 
-class TextareaComponent(
+internal class TextareaComponent(
     override val id: String,
     private val initialProps: Map<String, Any?>,
     private val eventSink: (Map<String, Any>) -> Unit

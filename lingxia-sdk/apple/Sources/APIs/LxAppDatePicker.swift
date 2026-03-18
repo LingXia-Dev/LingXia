@@ -907,7 +907,7 @@ private class BackgroundTapDelegate: NSObject, UIGestureRecognizerDelegate {
     }
 }
 
-public class LxAppDatePicker {
+class LxAppDatePicker {
     private nonisolated(unsafe) static var callbackIDKey: UInt8 = 0
     private nonisolated(unsafe) static var modeKey: UInt8 = 1
     private nonisolated(unsafe) static var fieldsKey: UInt8 = 2
@@ -920,7 +920,7 @@ public class LxAppDatePicker {
     private static var currentWindow: UIWindow?
 
     @MainActor
-    public static func showDatePicker(
+    static func showDatePicker(
         mode: String,
         fields: String = "day",
         value: Any?,
@@ -1293,7 +1293,7 @@ public class LxAppDatePicker {
     }
 
     @MainActor
-    public static func dismissDatePicker() {
+    static func dismissDatePicker() {
         guard let backgroundView = backgroundView else { return }
 
         UIView.animate(withDuration: 0.3, animations: {

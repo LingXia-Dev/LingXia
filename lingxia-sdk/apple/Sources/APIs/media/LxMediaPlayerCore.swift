@@ -3,7 +3,7 @@ import AVFoundation
 import QuartzCore
 
 @MainActor
-public final class LxMediaPlayerCore: NSObject {
+final class LxMediaPlayerCore: NSObject {
     private(set) var player: AVPlayer?
     private(set) var playerItem: AVPlayerItem?
     private var timeObserver: Any?
@@ -47,7 +47,7 @@ public final class LxMediaPlayerCore: NSObject {
 
     // MARK: - Public API
 
-    public override init() {
+    override init() {
         super.init()
     }
 

@@ -19,7 +19,7 @@ import org.json.JSONObject
 /**
  * Picker configuration data class
  */
-data class PickerConfig(
+internal data class PickerConfig(
     val mode: String, // "selector" or "multiSelector"
     val range: List<Any>, // List<String> for selector, List<List<String>> for multiSelector
     val value: List<Int>, // Initial selected indices
@@ -35,7 +35,7 @@ data class PickerConfig(
 /**
  * LingXia Picker implementation for Android
  */
-object LxAppPicker {
+internal object LxAppPicker {
     private const val TAG = "LingXia.LxAppPicker"
 
     // Local callback registry for native components

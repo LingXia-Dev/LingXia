@@ -7,7 +7,7 @@ import android.webkit.WebView as AndroidWebView
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.webview.LingXiaWebView
 
-class WebView(context: Context) : LingXiaWebView(context) {
+internal class WebView(context: Context) : LingXiaWebView(context) {
 
     companion object {
         private const val TAG = "LingXia.WebView"

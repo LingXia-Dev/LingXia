@@ -8,7 +8,7 @@ import com.lingxia.lxapp.LxApp
  *
  * Provides programmatic control over pull-to-refresh functionality.
  */
-object LxAppPullToRefresh {
+internal object LxAppPullToRefresh {
     private const val TAG = "LxAppPullToRefresh"
     private fun normalizePath(raw: String?) = raw?.substringBefore('?')?.substringBefore('#') ?: ""
 

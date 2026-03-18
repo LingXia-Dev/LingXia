@@ -30,7 +30,7 @@ import java.util.Locale
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-class InputComponentFactory : LxNativeComponentFactory {
+internal class InputComponentFactory : LxNativeComponentFactory {
     override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit): LxNativeComponent {
         return InputComponent(id, initialProps, eventSink)
     }
@@ -43,7 +43,7 @@ private enum class InputMode {
     PASSWORD
 }
 
-class InputComponent(
+internal class InputComponent(
     override val id: String,
     private val initialProps: Map<String, Any?>,
     private val eventSink: (Map<String, Any>) -> Unit
@@ -626,7 +626,7 @@ private object DigitFilter : InputFilter {
     }
 }
 
-fun Map<String, Any?>.bool(key: String, default: Boolean): Boolean {
+internal fun Map<String, Any?>.bool(key: String, default: Boolean): Boolean {
     val value = this[key] ?: return default
     return when (value) {
         is Boolean -> value
@@ -636,7 +636,7 @@ fun Map<String, Any?>.bool(key: String, default: Boolean): Boolean {
     }
 }
 
-fun Map<String, Any?>.int(key: String, default: Int): Int {
+internal fun Map<String, Any?>.int(key: String, default: Int): Int {
     val value = this[key] ?: return default
     return when (value) {
         is Int -> value
@@ -646,7 +646,7 @@ fun Map<String, Any?>.int(key: String, default: Int): Int {
     }
 }
 
-fun Map<String, Any?>.double(key: String, default: Double): Double {
+internal fun Map<String, Any?>.double(key: String, default: Double): Double {
     val value = this[key] ?: return default
     return when (value) {
         is Double -> value

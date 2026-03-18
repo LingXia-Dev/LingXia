@@ -4,7 +4,7 @@ import android.view.TextureView
 import android.view.View
 import androidx.media3.ui.PlayerView
 
-data class SurfaceToken(
+internal data class SurfaceToken(
     val id: String,
     val generation: Int,
     val ownerKey: String

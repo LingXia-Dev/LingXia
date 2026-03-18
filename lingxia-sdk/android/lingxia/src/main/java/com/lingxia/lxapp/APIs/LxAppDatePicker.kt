@@ -16,7 +16,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.*
 
-data class DatePickerConfig(
+internal data class DatePickerConfig(
     val mode: String,
     val fields: String,
     val value: Any?,
@@ -30,7 +30,7 @@ data class DatePickerConfig(
     val confirmTextColor: String
 )
 
-object LxAppDatePicker {
+internal object LxAppDatePicker {
     private const val TAG = "LingXia.DatePicker"
 
     private var currentPickerView: View? = null

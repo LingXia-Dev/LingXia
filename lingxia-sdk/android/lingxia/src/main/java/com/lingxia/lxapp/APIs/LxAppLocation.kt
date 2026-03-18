@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Android implementation of location-related APIs exposed to the native layer.
  */
-object LxAppLocation {
+internal object LxAppLocation {
     private const val TAG = "LingXia.Location"
     private const val LOCATION_TIMEOUT_MS = 10_000L
     private const val STALE_LOCATION_THRESHOLD_MS = 2 * 60 * 1000L

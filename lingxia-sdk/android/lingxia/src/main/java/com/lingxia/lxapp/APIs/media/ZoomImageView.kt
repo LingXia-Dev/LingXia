@@ -15,7 +15,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-class ZoomImageView @JvmOverloads constructor(
+internal class ZoomImageView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : androidx.appcompat.widget.AppCompatImageView(context, attrs), View.OnTouchListener {

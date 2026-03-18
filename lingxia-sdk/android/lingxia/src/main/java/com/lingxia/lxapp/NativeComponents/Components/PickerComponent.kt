@@ -12,12 +12,12 @@ import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 import org.json.JSONArray
 import org.json.JSONObject
 
-class PickerComponentFactory : LxNativeComponentFactory {
+internal class PickerComponentFactory : LxNativeComponentFactory {
     override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit) =
         PickerComponent(id, initialProps, eventSink)
 }
 
-class PickerComponent(
+internal class PickerComponent(
     override val id: String,
     private val initialProps: Map<String, Any?>,
     private val eventSink: (Map<String, Any>) -> Unit

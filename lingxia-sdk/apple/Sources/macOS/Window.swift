@@ -4,16 +4,16 @@ import Foundation
 import CLingXiaRustAPI
 
 /// NSWindow class for LxApp Tab mode
-public class LxAppWindow: NSWindow {
+class LxAppWindow: NSWindow {
     nonisolated(unsafe) private var titlebarObserver: Any?
-    public var trafficLightCenterYFromTop: CGFloat = 19 {
+    var trafficLightCenterYFromTop: CGFloat = 19 {
         didSet {
             guard abs(oldValue - trafficLightCenterYFromTop) > 0.5 else { return }
             adjustTrafficLightPositions()
         }
     }
 
-    public func effectiveTrafficLightCenterYFromTop() -> CGFloat {
+    func effectiveTrafficLightCenterYFromTop() -> CGFloat {
         guard let container = standardWindowButton(.closeButton)?.superview,
               let button = standardWindowButton(.closeButton),
               container.frame.height > 0,
@@ -77,15 +77,15 @@ public class LxAppWindow: NSWindow {
         titlebarObserver.map(NotificationCenter.default.removeObserver)
     }
 
-    public override var canBecomeKey: Bool {
+    override var canBecomeKey: Bool {
         return true
     }
 
-    public override var canBecomeMain: Bool {
+    override var canBecomeMain: Bool {
         return true
     }
 
-    public override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let isDevtoolsShortcut = modifiers == [.command, .option]
             && (event.keyCode == 34 || event.charactersIgnoringModifiers?.lowercased() == "i")

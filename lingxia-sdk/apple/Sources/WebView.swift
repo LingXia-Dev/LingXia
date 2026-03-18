@@ -86,12 +86,12 @@ private struct AssociatedKeys {
 
 /// Shared WebView manager
 @MainActor
-public class WebViewManager {
+class WebViewManager {
     private static let log = OSLog(subsystem: "LingXia", category: "WebView")
     private static var debuggingEnabled = false
 
     /// Find WebView from Rust layer
-    public static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+    static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
         guard sessionId > 0 else {
             os_log("findWebView rejected invalid session for %@", log: log, type: .error, appId)
             return nil
@@ -123,7 +123,7 @@ public class WebViewManager {
     }
 
     /// Convenience lookup using stored runtime session for the app.
-    public static func findWebView(appId: String, path: String) -> WKWebView? {
+    static func findWebView(appId: String, path: String) -> WKWebView? {
         guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
             os_log("findWebView missing session for %@", log: log, type: .error, appId)
             return nil
@@ -132,13 +132,13 @@ public class WebViewManager {
     }
 
     /// Switch between WebViews
-    public static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
+    static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
         current?.pauseWebView()
         new?.resumeWebView()
     }
 
     /// Shared WebView attachment logic
-    public static func attachWebViewToContainer(_ webView: WKWebView, container: PlatformView, constraints: [NSLayoutConstraint]? = nil) {
+    static func attachWebViewToContainer(_ webView: WKWebView, container: PlatformView, constraints: [NSLayoutConstraint]? = nil) {
         // Remove from previous parent if any
         webView.removeFromSuperview()
 
@@ -176,7 +176,7 @@ public class WebViewManager {
     }
 
     /// Configure WebView transparency - shared logic with platform-specific optimizations
-    public static func configureWebViewTransparency(_ webView: WKWebView, transparent: Bool) {
+    static func configureWebViewTransparency(_ webView: WKWebView, transparent: Bool) {
         #if os(iOS)
         let backgroundColor = transparent ? PlatformColor.clear : PlatformColor.systemBackground
         let isOpaque = !transparent
@@ -205,13 +205,13 @@ public class WebViewManager {
     }
 
     /// Enable WebView debugging globally
-    public static func enableDebugging() {
+    static func enableDebugging() {
         debuggingEnabled = true
     }
 }
 
 #if os(iOS)
-public typealias PlatformView = UIView
+typealias PlatformView = UIView
 #else
-public typealias PlatformView = NSView
+typealias PlatformView = NSView
 #endif

@@ -30,7 +30,7 @@ import org.json.JSONObject
  * - CHANGE_WIFI_STATE
  * - ACCESS_FINE_LOCATION (for scanning on Android 6.0+)
  */
-object LxAppWifi {
+internal object LxAppWifi {
     private const val TAG = "LingXia.Wifi"
     private const val WIFI_CONNECT_TIMEOUT_MS = 30_000
 

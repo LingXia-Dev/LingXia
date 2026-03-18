@@ -19,7 +19,7 @@ import android.widget.LinearLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
-object LxAppBrowserOverlay {
+internal object LxAppBrowserOverlay {
     private const val TAG = "LingXia.BrowserOverlay"
     private const val ATTACH_RETRY_DELAY_MS = 100L
     private const val ATTACH_MAX_RETRIES = 8

@@ -20,8 +20,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     internal var rootContainer: UIView!
     private var webViewContainer: UIView!
     private var globalCapsuleButton: UIView?
-    public var globalNavigationBar: LingXiaNavigationBar?
-    public var currentTabBar: LingXiaTabBar?
+    var globalNavigationBar: LingXiaNavigationBar?
+    var currentTabBar: LingXiaTabBar?
     private var cancellables = Set<AnyCancellable>()
     private var backEdgePanGesture: UIScreenEdgePanGestureRecognizer?
     private var pullToRefreshHelper: PullToRefreshHelper?

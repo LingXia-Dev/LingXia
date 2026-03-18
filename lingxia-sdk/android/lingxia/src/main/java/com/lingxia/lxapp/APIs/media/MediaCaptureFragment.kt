@@ -62,7 +62,7 @@ import org.json.JSONObject
 import kotlin.math.max
 import kotlin.math.min
 
-class MediaCaptureFragment : Fragment() {
+internal class MediaCaptureFragment : Fragment() {
     companion object {
         private const val TAG = "LingXia.MediaCapture"
         private const val ARG_MODE = "mode" // image|video

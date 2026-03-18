@@ -25,7 +25,7 @@ import com.lingxia.lxapp.LxApp
 /**
  * Toast icon types
  */
-enum class ToastIcon {
+internal enum class ToastIcon {
     Success,
     Error,
     Loading,
@@ -39,7 +39,7 @@ enum class ToastIcon {
 /**
  * Toast position types
  */
-enum class ToastPosition {
+internal enum class ToastPosition {
     Top,
     Center,
     Bottom;
@@ -52,7 +52,7 @@ enum class ToastPosition {
 /**
  * Toast configuration
  */
-data class ToastConfig(
+internal data class ToastConfig(
     val title: String,
     val icon: ToastIcon = ToastIcon.None,
     val image: String? = null,

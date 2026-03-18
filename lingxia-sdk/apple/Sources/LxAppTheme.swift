@@ -8,11 +8,11 @@ import UIKit
 #endif
 
 // Shared Image Generation Helper
-public struct LxAppImageHelper {
-    public static let imageSize = CGSize(width: 24, height: 24)
+struct LxAppImageHelper {
+    static let imageSize = CGSize(width: 24, height: 24)
 
     // Shared drawing logic for three dots pattern (used by both iOS and macOS)
-    public static func drawThreeDotsPattern(in context: CGContext, size: CGSize) {
+    static func drawThreeDotsPattern(in context: CGContext, size: CGSize) {
         let centerY = size.height / 2
         let centerX = size.width / 2
         let centerDotRadius = size.height / 7
@@ -124,13 +124,13 @@ public struct LxAppTheme {
 }
 
 /// Custom drawn icons for capsule buttons
-public struct LxAppCustomIcons {
+struct LxAppCustomIcons {
     #if os(iOS)
-    public static let threeDots = Image(uiImage: createThreeDotsUIImage())
-    public static let close = Image(uiImage: createCloseUIImage())
+    static let threeDots = Image(uiImage: createThreeDotsUIImage())
+    static let close = Image(uiImage: createCloseUIImage())
     #else
-    public static let threeDots = Image(nsImage: createThreeDotsNSImage())
-    public static let close = Image(nsImage: createCloseNSImage())
+    static let threeDots = Image(nsImage: createThreeDotsNSImage())
+    static let close = Image(nsImage: createCloseNSImage())
     #endif
 
     #if os(iOS)
@@ -279,16 +279,16 @@ public struct LxAppIcons {
 
 #if os(iOS)
 public typealias LxAppPlatformColor = UIColor
-public typealias PlatformColor = UIColor
+typealias PlatformColor = UIColor
 #else
 public typealias LxAppPlatformColor = NSColor
-public typealias PlatformColor = NSColor
+typealias PlatformColor = NSColor
 #endif
 
 /// Unified color utilities
-public struct LxAppColorUtils {
+struct LxAppColorUtils {
     /// Parse color string to UInt32 ARGB
-    public static func parseColorString(_ colorStr: String, defaultColor: UInt32 = 0xFF000000) -> UInt32 {
+    static func parseColorString(_ colorStr: String, defaultColor: UInt32 = 0xFF000000) -> UInt32 {
         if colorStr.lowercased() == "transparent" {
             return 0x00000000
         }
@@ -304,17 +304,17 @@ public struct LxAppColorUtils {
     }
 
     /// Check if color is transparent
-    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+    static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
     }
 
     /// Create platform color from ARGB value
-    public static func platformColor(from argb: UInt32) -> PlatformColor {
+    static func platformColor(from argb: UInt32) -> PlatformColor {
         return PlatformColor(argb: argb)
     }
 
     /// Convert platform color to ARGB value
-    public static func argbValue(from color: PlatformColor) -> UInt32 {
+    static func argbValue(from color: PlatformColor) -> UInt32 {
         return color.toARGB()
     }
 }

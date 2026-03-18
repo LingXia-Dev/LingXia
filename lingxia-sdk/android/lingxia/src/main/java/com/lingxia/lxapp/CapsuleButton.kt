@@ -13,7 +13,7 @@ import android.widget.LinearLayout
  * Capsule button component with menu and close buttons.
  * Used in the top-right corner of LxApp pages.
  */
-class CapsuleButton(context: Context) : LinearLayout(context) {
+internal class CapsuleButton(context: Context) : LinearLayout(context) {
 
     private val menuButton: ImageButton
     private val closeButton: ImageButton

@@ -16,12 +16,12 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeComponents.LxNativeComponent
 import com.lingxia.lxapp.NativeComponents.LxNativeComponentFactory
 
-class VideoComponentFactory : LxNativeComponentFactory {
+internal class VideoComponentFactory : LxNativeComponentFactory {
     override fun make(id: String, initialProps: Map<String, Any?>, eventSink: (Map<String, Any>) -> Unit) =
         VideoComponent(id, initialProps, eventSink)
 }
 
-class VideoComponent(
+internal class VideoComponent(
     override val id: String,
     private val initialProps: Map<String, Any?>,
     eventSink: (Map<String, Any>) -> Unit

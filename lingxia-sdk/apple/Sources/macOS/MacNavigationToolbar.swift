@@ -7,7 +7,7 @@ import CLingXiaRustAPI
 /// Subscribes to NavigationBarStateManager for live updates.
 /// Collapses to zero height when the Rust state says show_navbar == false.
 @MainActor
-public class MacNavigationToolbar: NSView {
+class MacNavigationToolbar: NSView {
 
     struct Layout {
         static let height: CGFloat = 38

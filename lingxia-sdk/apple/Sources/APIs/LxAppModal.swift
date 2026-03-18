@@ -8,13 +8,13 @@ import UIKit
 #endif
 
 /// Modal dialog management for LingXia applications
-public class LxAppModal {
+class LxAppModal {
 
     /// Shared logger for modal operations
     private static let log = OSLog(subsystem: "LingXia", category: "Modal")
 
     /// Show modal with ModalOptions (FFI interface)
-    public static func showModal(options: ModalOptions, callback_id: UInt64) {
+    static func showModal(options: ModalOptions, callback_id: UInt64) {
         showModal([
             "title": options.title.toString(),
             "content": options.content.toString(),
@@ -25,7 +25,7 @@ public class LxAppModal {
     }
 
     /// Show modal with callback (main interface)
-    public static func showModal(_ options: [String: Any], callback_id: UInt64) {
+    static func showModal(_ options: [String: Any], callback_id: UInt64) {
         // Extract options
         let title = options["title"] as? String ?? ""
         let content = options["content"] as? String ?? ""

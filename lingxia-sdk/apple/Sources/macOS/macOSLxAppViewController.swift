@@ -5,9 +5,9 @@ import AppKit
 import CLingXiaRustAPI
 
 @MainActor
-public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
+class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
-    public var appId: String
+    var appId: String
     internal var currentPath: String
     private var sessionId: UInt64
     private var webViewContainer: NSView!
@@ -16,7 +16,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
-    public init(appId: String, path: String, sessionId: UInt64) {
+    init(appId: String, path: String, sessionId: UInt64) {
         self.appId = appId
         self.currentPath = path
         self.sessionId = sessionId
@@ -31,13 +31,13 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
     }
 
-    public override func loadView() {
+    override func loadView() {
         view = NSView()
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
     }
 
-    public override func viewDidLoad() {
+    override func viewDidLoad() {
         super.viewDidLoad()
 
         setupLayout()
@@ -133,7 +133,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Navigation
 
     @MainActor
-    public func navigate(appId: String, to path: String, with animationType: AnimationType) {
+    func navigate(appId: String, to path: String, with animationType: AnimationType) {
         guard !appId.isEmpty else { return }
 
         self.currentPath = path
@@ -153,7 +153,7 @@ public class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     @MainActor
-    public func updateNavigationBar(appId: String, path: String) {
+    func updateNavigationBar(appId: String, path: String) {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 

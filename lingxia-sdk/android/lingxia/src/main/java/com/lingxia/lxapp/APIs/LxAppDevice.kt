@@ -16,7 +16,7 @@ import java.io.File
 /**
  * Device-related APIs shared by LxApp JNI surface on Android.
  */
-object LxAppDevice {
+internal object LxAppDevice {
     private const val TAG = "LingXia.Device"
 
     @JvmStatic

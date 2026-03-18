@@ -22,7 +22,7 @@ import java.net.Inet6Address
 import java.util.LinkedHashSet
 import java.util.concurrent.CopyOnWriteArraySet
 
-object LxAppNetwork {
+internal object LxAppNetwork {
     private const val TAG = "LingXia.Network"
     private const val NETWORK_TYPE_NR = 20 // TelephonyManager.NETWORK_TYPE_NR (API 29+)
     private const val NETWORK_TYPE_LTE_CA = 19 // TelephonyManager.NETWORK_TYPE_LTE_CA (API 24+)

@@ -48,10 +48,10 @@ private class SidebarResizeHandle: NSView {
 
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
-public struct PanelIconItem {
-    public let id: String
-    public let icon: String
-    public let label: String
+struct PanelIconItem {
+    let id: String
+    let icon: String
+    let label: String
 }
 
 // MARK: - SidebarView
@@ -59,7 +59,7 @@ public struct PanelIconItem {
 /// The main sidebar container view, modeled after Chrome vertical tab groups.
 /// Supports drag-to-resize and a fully hidden state.
 @MainActor
-public class SidebarView: NSView {
+class SidebarView: NSView {
 
     struct Layout {
         static let expandedWidth: CGFloat = 180

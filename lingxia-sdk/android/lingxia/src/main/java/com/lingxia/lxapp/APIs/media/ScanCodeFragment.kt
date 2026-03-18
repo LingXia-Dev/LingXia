@@ -38,7 +38,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import android.graphics.drawable.GradientDrawable
 
-class ScanCodeFragment : Fragment() {
+internal class ScanCodeFragment : Fragment() {
     companion object {
         private const val TAG = "LingXia.Scan"
         private const val ARG_ONLY_CAMERA = "only_camera"

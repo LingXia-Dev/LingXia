@@ -6,14 +6,14 @@ import CLingXiaRustAPI
 import UIKit
 #endif
 
-public class LxAppPicker {
+class LxAppPicker {
 
     internal static let log = OSLog(subsystem: "LingXia", category: "Picker")
 
     // Local callback registry for native components
     // Key is callback ID, value is (success, data) -> Void
     @MainActor
-    public static var localCallbacks: [UInt64: (Bool, String) -> Void] = [:]
+    static var localCallbacks: [UInt64: (Bool, String) -> Void] = [:]
 
     #if os(iOS)
     // Static variables to track picker state (iOS only)
@@ -41,7 +41,7 @@ public class LxAppPicker {
     #endif
 
     @MainActor
-    public static func showPicker(
+    static func showPicker(
         columns: String,
         cancelText: String,
         cancelButtonColor: String,

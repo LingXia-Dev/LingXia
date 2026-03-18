@@ -18,7 +18,7 @@ import java.time.temporal.WeekFields
 import java.text.SimpleDateFormat
 import java.util.*
 
-class CustomCalendarView @JvmOverloads constructor(
+internal class CustomCalendarView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0

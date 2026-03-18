@@ -2,18 +2,18 @@
 import AppKit
 import os.log
 
-public enum PanelPosition: String {
+enum PanelPosition: String {
     case left
     case right
     case bottom
 }
 
-public struct PanelConfig {
-    public let id: String
-    public let position: PanelPosition
-    public let defaultSize: CGFloat
+struct PanelConfig {
+    let id: String
+    let position: PanelPosition
+    let defaultSize: CGFloat
 
-    public init(id: String, position: PanelPosition, defaultSize: CGFloat = 320) {
+    init(id: String, position: PanelPosition, defaultSize: CGFloat = 320) {
         self.id = id
         self.position = position
         self.defaultSize = defaultSize
@@ -176,7 +176,7 @@ private class PanelSlot {
 /// One active panel per position (mutual exclusion). Opening a second panel at the same
 /// position closes the first with a simultaneous animation.
 @MainActor
-public class WorkspaceManager: NSObject {
+class WorkspaceManager: NSObject {
 
     private static let log = OSLog(subsystem: "LingXia", category: "Workspace")
     private static let animationDuration: TimeInterval = 0.22
@@ -188,12 +188,12 @@ public class WorkspaceManager: NSObject {
     private static let minMainRegionHeight: CGFloat = 240
 
     /// Main content view; active ViewController's view is placed here.
-    public let contentContainer = NSView()
+    let contentContainer = NSView()
 
     /// Toolbar + contentContainer wrapper; placed inside the WebView card by WindowController.
-    public let centerPanelView = NSView()
+    let centerPanelView = NSView()
 
-    public var rootView: NSView { centerPanelView }
+    var rootView: NSView { centerPanelView }
 
     private weak var overlayParent: NSView?
     private weak var sidebarRef: NSView?
@@ -202,7 +202,7 @@ public class WorkspaceManager: NSObject {
     /// Called inside an animation block whenever panel state changes.
     /// WindowController updates its WebView card edge constraints in this callback.
     /// Parameters: (trailingInset, bottomInset)
-    public var onCardEdgesChanged: ((_ trailing: CGFloat, _ bottom: CGFloat) -> Void)?
+    var onCardEdgesChanged: ((_ trailing: CGFloat, _ bottom: CGFloat) -> Void)?
 
     private var panels: [String: PanelSlot] = [:]
     /// At most one active panel per position.
@@ -217,7 +217,7 @@ public class WorkspaceManager: NSObject {
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
-    public func configure(
+    func configure(
         overlayParent: NSView,
         sidebar: NSView,
         padding: CGFloat,
@@ -230,7 +230,7 @@ public class WorkspaceManager: NSObject {
     }
 
     /// Constrains `contentContainer` to fill `centerPanelView` below the toolbar.
-    public func attachBelowToolbar(_ toolbarView: NSView) {
+    func attachBelowToolbar(_ toolbarView: NSView) {
         NSLayoutConstraint.activate([
             contentContainer.topAnchor.constraint(equalTo: toolbarView.bottomAnchor),
             contentContainer.leadingAnchor.constraint(equalTo: centerPanelView.leadingAnchor),
@@ -239,12 +239,12 @@ public class WorkspaceManager: NSObject {
         ])
     }
 
-    public func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
+    func isPanelRegistered(id: String) -> Bool { panels[id] != nil }
 
     /// Register a panel. Creates the card view and positions it off-screen.
     /// Returns the container view where WebViews should be attached.
     @discardableResult
-    public func registerPanel(_ config: PanelConfig) -> NSView {
+    func registerPanel(_ config: PanelConfig) -> NSView {
         if let existing = panels[config.id] { return existing.containerView }
 
         let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
@@ -267,7 +267,7 @@ public class WorkspaceManager: NSObject {
     }
 
     /// Show a panel, animating it in and shrinking the WebView card.
-    public func showPanel(id: String) {
+    func showPanel(id: String) {
         guard let slot = panels[id], !slot.isVisible else { return }
 
         // Clamp against current window size so panel cannot consume the whole main region.
@@ -300,20 +300,20 @@ public class WorkspaceManager: NSObject {
     }
 
     /// Hide a panel, animating it out and restoring the WebView card's space.
-    public func hidePanel(id: String) {
+    func hidePanel(id: String) {
         guard let slot = panels[id], slot.isVisible else { return }
         hidePanelInternal(id: id, duration: Self.animationDuration, updateCardEdges: true)
         os_log("Panel hidden: %@", log: Self.log, type: .info, id)
     }
 
-    public func togglePanel(id: String) {
+    func togglePanel(id: String) {
         guard let slot = panels[id] else { return }
         slot.isVisible ? hidePanel(id: id) : showPanel(id: id)
     }
 
-    public func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
+    func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
 
-    public func panelContainer(id: String) -> NSView? { panels[id]?.containerView }
+    func panelContainer(id: String) -> NSView? { panels[id]?.containerView }
 
     // MARK: - Resize
 

@@ -4,11 +4,11 @@ import QuickLook
 import UIKit
 
 @MainActor
-public enum LxAppDocument {
+enum LxAppDocument {
     private static var previewCoordinator: DocumentPreviewCoordinator?
 
     @discardableResult
-    public static func openDocument(path: String, mimeType: String?, showMenu: Bool = true) -> Bool {
+    static func openDocument(path: String, mimeType: String?, showMenu: Bool = true) -> Bool {
         let fileURL = URL(fileURLWithPath: path)
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return false

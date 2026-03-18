@@ -7,14 +7,14 @@ import UIKit
 
 /// Capsule Menu Bottom Sheet
 /// Shows LxApp info and action buttons when clicking the 3-dots capsule button
-public class LxAppCapsuleMenu {
+class LxAppCapsuleMenu {
 
     private static let log = OSLog(subsystem: "LingXia", category: "CapsuleMenu")
     private static let sheetContainerTag = 1001
 
     #if os(iOS)
     /// Show capsule menu for an LxApp
-    public static func show(appId: String) {
+    static func show(appId: String) {
         let appInfo = getLxAppInfo(appId)
         if appInfo.app_name.toString().isEmpty {
             os_log("Failed to get LxApp info for: %{public}@", log: log, type: .error, appId)

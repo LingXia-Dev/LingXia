@@ -14,7 +14,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.widget.FrameLayout
 
-data class TabBarState(
+internal data class TabBarState(
     val backgroundColor: Int = Color.WHITE,          // Background color, default white
     val selectedColor: Int = 0xFF1677FF.toInt(),     // Selected item color, default tech blue
     val color: Int = 0xFF666666.toInt(),             // Unselected item color, default gray
@@ -63,7 +63,7 @@ data class TabBarState(
     }
 }
 
-data class TabBarItem(
+internal data class TabBarItem(
     val pagePath: String,                 // Page path to navigate to
     val text: String?,                    // Tab text label (optional, null means no text)
     val iconPath: String,                 // Absolute path to the icon file
@@ -81,7 +81,7 @@ data class TabBarItem(
  * - Notification badges (red dot and text)
  * - Dynamic styling and content updates
  */
-class TabBar(context: Context) : LinearLayout(context) {
+internal class TabBar(context: Context) : LinearLayout(context) {
     companion object {
         private const val TAG = "LingXia.TabBar"
         private const val VERTICAL_TAB_BAR_WIDTH_MULTIPLIER = 1.0f

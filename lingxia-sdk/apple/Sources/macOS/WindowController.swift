@@ -7,7 +7,7 @@ import os.log
 import CLingXiaRustAPI
 
 /// Window controller for macOS
-public class LxAppWindowController: NSWindowController, NSWindowDelegate {
+class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppWindowController")
     private static let browserAttachMaxRetry = 5
@@ -17,7 +17,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private static let lxappDevToolsMaxRetry = 30
     private static let lxappDevToolsRetryDelay: TimeInterval = 0.05
 
-    public struct Layout {
+    struct Layout {
         static let sidebarWidth: CGFloat = 180
         static let sidebarHiddenThreshold: CGFloat = 1
         static let browserToolbarHeight: CGFloat = 38
@@ -93,7 +93,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private var lxappDevToolsRequestToken: UInt64 = 0
 
     /// Get view controller for specific appId (needed for navigation)
-    public func getViewController(for appId: String) -> macOSLxAppViewController? {
+    func getViewController(for appId: String) -> macOSLxAppViewController? {
         return viewControllers[appId]
     }
 
@@ -152,7 +152,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         setupInitialTab()
     }
 
-    public func windowWillClose(_ notification: Notification) {
+    func windowWillClose(_ notification: Notification) {
         for (_, viewController) in viewControllers {
             viewController.destroyNativeComponents()
         }
@@ -502,7 +502,7 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         tabManager.addTab(appId: homeLxAppId)
     }
 
-    public func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    func openLxApp(appId: String, path: String, sessionId: UInt64) {
         appSessions[appId] = sessionId
         LxAppCore.setSessionId(sessionId, for: appId)
         LxAppCore.setCurrentApp(appId: appId, path: path)
@@ -592,11 +592,11 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
         browserToolbarCenterYConstraints.forEach { $0.constant = browserToolbarCenterY }
     }
 
-    public func windowDidResize(_ notification: Notification) {
+    func windowDidResize(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
     }
 
-    public func windowDidMove(_ notification: Notification) {
+    func windowDidMove(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
     }
 
@@ -621,16 +621,16 @@ public class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - QLPreviewPanel support
 
-    public override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
         return MainActor.assumeIsolated {
             LxAppMedia.qlController != nil
         }
     }
 
-    public override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
     }
 
-    public override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
         }

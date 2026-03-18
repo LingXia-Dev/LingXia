@@ -9,7 +9,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
-object ImmersiveWindowUi {
+internal object ImmersiveWindowUi {
     data class Snapshot(
         val systemUiVisibility: Int,
         val windowFlags: Int,

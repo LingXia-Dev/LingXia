@@ -9,7 +9,7 @@ import UserNotifications
 
 /// iOS LxApp manager
 @MainActor
-public class iOSLxApp {
+class iOSLxApp {
     nonisolated private static let log = OSLog(subsystem: "LingXia", category: "iOSLxApp")
     nonisolated(unsafe) private static var instance: iOSLxApp?
     private let context: UIApplication
@@ -26,7 +26,7 @@ public class iOSLxApp {
     }
 
     /// Gets the singleton iOSLxApp instance
-    public static func getInstance() -> iOSLxApp {
+    static func getInstance() -> iOSLxApp {
         guard let instance = instance else {
             fatalError("iOSLxApp not initialized")
         }
@@ -44,7 +44,7 @@ public class iOSLxApp {
     }
 
     /// Initialize the iOS LxApp system
-    public static func initialize() {
+    static func initialize() {
         if instance != nil { return }
 
         instance = iOSLxApp(context: UIApplication.shared)
@@ -149,13 +149,13 @@ public class iOSLxApp {
     }
 
     /// Opens a lxapp
-    public static func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
         LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Opens the home mini app
-    public static func openHomeLxApp() {
+    static func openHomeLxApp() {
         guard let homeLxAppId = LxAppCore.getHomeLxAppId() else {
             os_log("Home app details not available", log: log, type: .error)
             return
@@ -182,13 +182,13 @@ public class iOSLxApp {
     }
 
     /// Closes a mini app with the specified appId
-    public static func closeLxApp(appId: String, sessionId: UInt64) {
+    static func closeLxApp(appId: String, sessionId: UInt64) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
         getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId)
     }
 
     /// Navigate to a page with specific animation type
-    public static func navigate(appId: String, path: String, animationType: AnimationType) {
+    static func navigate(appId: String, path: String, animationType: AnimationType) {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
@@ -258,7 +258,7 @@ public class iOSLxApp {
     }
 
     /// Configure transparent system bars for a specific view controller
-    public static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
+    static func configureTransparentSystemBars(viewController: UIViewController, lightStatusBarIcons: Bool = false) {
         if let navController = viewController.navigationController {
             navController.navigationBar.setBackgroundImage(UIImage(), for: .default)
             navController.navigationBar.shadowImage = UIImage()

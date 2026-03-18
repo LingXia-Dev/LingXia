@@ -109,9 +109,9 @@ public let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
 #if os(iOS)
 /// iOS-specific view hierarchy helper
 @MainActor
-public class LxAppViewHierarchyHelper {
+class LxAppViewHierarchyHelper {
     /// Finds the topmost view controller in the hierarchy
-    public static func findTopmostViewController(from viewController: UIViewController) -> UIViewController {
+    static func findTopmostViewController(from viewController: UIViewController) -> UIViewController {
         if let presentedVC = viewController.presentedViewController {
             return findTopmostViewController(from: presentedVC)
         }
@@ -130,7 +130,7 @@ public class LxAppViewHierarchyHelper {
     }
 
     /// Find specific view controller type in hierarchy
-    public static func findSpecificViewController<T>(in viewController: UIViewController?) -> T? {
+    static func findSpecificViewController<T>(in viewController: UIViewController?) -> T? {
         guard let viewController = viewController else { return nil }
 
         if let targetVC = viewController as? T {

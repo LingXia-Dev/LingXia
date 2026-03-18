@@ -25,7 +25,7 @@ import org.json.JSONObject
 /**
  * Manages application updates with progress tracking
  */
-object UpdateManager {
+internal object UpdateManager {
     private const val TAG = "LingXia.UpdateManager"
 
     private var progressDialog: Dialog? = null

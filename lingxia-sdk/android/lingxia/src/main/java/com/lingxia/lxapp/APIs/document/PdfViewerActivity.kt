@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 import com.lingxia.lxapp.LxNavBarUtils
 import com.lingxia.lxapp.R
 
-class PdfViewerActivity : AppCompatActivity() {
+internal class PdfViewerActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_FILE_PATH = "com.lingxia.lxapp.document.extra.FILE_PATH"
         const val EXTRA_DISPLAY_NAME = "com.lingxia.lxapp.document.extra.DISPLAY_NAME"

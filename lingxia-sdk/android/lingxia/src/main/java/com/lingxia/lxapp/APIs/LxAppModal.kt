@@ -18,7 +18,7 @@ import com.lingxia.lxapp.LxApp
 /**
  * Modal configuration data class
  */
-data class ModalConfig(
+internal data class ModalConfig(
     val title: String = "Alert",
     val content: String = "",
     val showCancel: Boolean = true,
@@ -30,7 +30,7 @@ data class ModalConfig(
 /**
  * Modal result data class
  */
-data class ModalResult(
+internal data class ModalResult(
     val confirm: Boolean,
     val cancel: Boolean
 )

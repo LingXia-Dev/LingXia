@@ -4,14 +4,14 @@ import os.log
 import CLingXiaSwiftAPI
 
 /// Toast configuration
-public struct ToastConfig {
-    public let title: String
-    public let icon: ToastIcon
-    public let image: String?
-    public let duration: TimeInterval
-    public let mask: Bool
+struct ToastConfig {
+    let title: String
+    let icon: ToastIcon
+    let image: String?
+    let duration: TimeInterval
+    let mask: Bool
 
-    public init(
+    init(
         title: String,
         icon: ToastIcon = .Success,
         image: String? = nil,
@@ -28,7 +28,7 @@ public struct ToastConfig {
 
 /// Extension for ToastIcon to add UI properties
 extension ToastIcon {
-    public var systemImageName: String? {
+    var systemImageName: String? {
         switch self {
         case .Success:
             return "checkmark.circle.fill"
@@ -41,7 +41,7 @@ extension ToastIcon {
         }
     }
 
-    public var color: Color {
+    var color: Color {
         switch self {
         case .Success:
             return .green
@@ -57,7 +57,7 @@ extension ToastIcon {
 
 /// Extension for ToastPosition to add UI properties
 extension ToastPosition {
-    public var alignment: Alignment {
+    var alignment: Alignment {
         switch self {
         case .Top:
             return .top
@@ -71,7 +71,7 @@ extension ToastPosition {
 
 /// Main Toast API class
 @MainActor
-public class LxAppToast {
+class LxAppToast {
 
     private static let log = OSLog(subsystem: "LingXia", category: "Toast")
 
@@ -87,7 +87,7 @@ public class LxAppToast {
     ///   - duration: Display duration in seconds (default: 1.5)
     ///   - mask: Whether to show transparent mask to prevent touch through
     ///   - position: Toast position (default: center)
-    public static func showToast(
+    static func showToast(
         title: String,
         icon: ToastIcon = .Success,
         image: String? = nil,
@@ -112,7 +112,7 @@ public class LxAppToast {
     }
 
     /// Hide current toast immediately
-    public static func hideToast() {
+    static func hideToast() {
         os_log(.info, log: log, "Hiding toast")
         currentToastTimer?.invalidate()
         currentToastTimer = nil
@@ -348,11 +348,11 @@ struct LoadingIconView: View {
 }
 
 /// Toast-related errors
-public enum ToastError: Error, LocalizedError {
+enum ToastError: Error, LocalizedError {
     case noWindow
     case invalidImage
 
-    public var errorDescription: String? {
+    var errorDescription: String? {
         switch self {
         case .noWindow:
             return "No window available to display toast"

@@ -18,7 +18,7 @@ extension Notification.Name {
 
 /// Extensions for TabBar
 extension TabBar {
-    public var positionEnum: TabBarPosition {
+    var positionEnum: TabBarPosition {
         switch position {
         case 1: return .left
         case 2: return .right
@@ -26,7 +26,7 @@ extension TabBar {
         }
     }
 
-    public func getItems(appId: String) -> [TabBarItem] {
+    func getItems(appId: String) -> [TabBarItem] {
         var items: [TabBarItem] = []
         for i in 0..<items_count {
             if let item = getTabBarItem(appId, i) {
@@ -37,7 +37,7 @@ extension TabBar {
     }
 }
 
-public enum TabBarPosition {
+enum TabBarPosition {
     case bottom, left, right
 }
 
@@ -264,21 +264,21 @@ fileprivate struct TabBarHelpers {
 
 /// Extensions for TabBarItem
 extension TabBarItem {
-    public var cachedPagePath: String { page_path.toString() }
-    public var cachedText: String { text.toString() }
-    public var cachedIconPath: String { icon_path.toString() }
-    public var cachedSelectedIconPath: String { selected_icon_path.toString() }
+    var cachedPagePath: String { page_path.toString() }
+    var cachedText: String { text.toString() }
+    var cachedIconPath: String { icon_path.toString() }
+    var cachedSelectedIconPath: String { selected_icon_path.toString() }
 }
 
 /// TabBar styling helpers
-public struct TabBarHelper {
-    public static func isTransparent(_ colorValue: UInt32) -> Bool {
+struct TabBarHelper {
+    static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
     }
 }
 
 /// Unified SwiftUI TabBar for iOS and macOS
-public struct LxAppTabBar: View {
+struct LxAppTabBar: View {
     let appId: String
     let config: TabBar
     @Binding var selectedIndex: Int
@@ -286,7 +286,7 @@ public struct LxAppTabBar: View {
     // Simple refresh trigger for UI updates
     @State private var refreshTrigger = false
 
-    public init(
+    init(
         appId: String,
         config: TabBar,
         selectedIndex: Binding<Int>,
@@ -298,7 +298,7 @@ public struct LxAppTabBar: View {
         self.onTabSelected = onTabSelected
     }
 
-    public var body: some View {
+    var body: some View {
         // Get fresh data from Rust every time body is called
         let items = config.getItems(appId: appId)
 
@@ -500,13 +500,13 @@ public struct LxAppTabBar: View {
 }
 
 /// macOS TabBar that accepts external state manager
-public struct MacOSLxAppTabBar: View {
+struct MacOSLxAppTabBar: View {
     let appId: String
     let config: TabBar
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
 
-    public init(
+    init(
         appId: String,
         config: TabBar,
         selectedIndex: Binding<Int>,
@@ -518,7 +518,7 @@ public struct MacOSLxAppTabBar: View {
         self.onTabSelected = onTabSelected
     }
 
-    public var body: some View {
+    var body: some View {
         let items = config.getItems(appId: appId)
 
         Group {
@@ -723,7 +723,7 @@ public struct MacOSLxAppTabBar: View {
 
 /// Protocol for tab bar implementations
 @MainActor
-public protocol TabBarProtocol: AnyObject {
+protocol TabBarProtocol: AnyObject {
     var config: TabBar? { get }
     var appId: String { get set }
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void)
@@ -736,14 +736,14 @@ import UIKit
 
 /// UIKit TabBar implementation for iOS
 @MainActor
-public class iOSTabBarWrapper: UIView, TabBarProtocol {
+class iOSTabBarWrapper: UIView, TabBarProtocol {
     private var tabBarConfig: TabBar?
-    public var appId: String = ""
+    var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
     // Public accessor for tabBarConfig
-    public var config: TabBar? {
+    var config: TabBar? {
         return tabBarConfig
     }
 
@@ -761,12 +761,12 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         backgroundColor = UIColor.clear
     }
 
-    public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
+    func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
     }
 
     /// Initialize TabBar with config and appId
-    public func initialize(config: TabBar, appId: String) {
+    func initialize(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
 
@@ -775,7 +775,7 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         refreshLayout()
     }
 
-    public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+    func setSelectedIndex(_ index: Int, notifyListener: Bool) {
         let previousIndex = Int(tabBarConfig?.selected_index ?? 0)
         self.selectedIndex = index
 
@@ -791,7 +791,7 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
         }
     }
 
-    public func refreshLayout() {
+    func refreshLayout() {
         // Get fresh config from Rust instead of using cached tabBarConfig
         guard let freshConfig = getTabBar(appId) else {
             // If no config exists, hide the view.
@@ -1163,21 +1163,21 @@ public class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 }
 
-public typealias LingXiaTabBar = iOSTabBarWrapper
+typealias LingXiaTabBar = iOSTabBarWrapper
 #elseif os(macOS)
 import AppKit
 import SwiftUI
 
 /// NSView wrapper for SwiftUI LxAppTabBar on macOS
 @MainActor
-public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
+class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private var hostingController: NSHostingController<AnyView>?
     private var tabBarConfig: TabBar?
-    public var appId: String = ""
+    var appId: String = ""
     @Published private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
 
-    public var config: TabBar? {
+    var config: TabBar? {
         return tabBarConfig
     }
 
@@ -1196,12 +1196,12 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         layer?.backgroundColor = NSColor.clear.cgColor
     }
 
-    public func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
+    func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
     }
 
     /// Initialize TabBar with config and appId
-    public func initialize(config: TabBar, appId: String) {
+    func initialize(config: TabBar, appId: String) {
         self.tabBarConfig = config
         self.appId = appId
 
@@ -1210,7 +1210,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         refreshLayout()
     }
 
-    public func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+    func setSelectedIndex(_ index: Int, notifyListener: Bool) {
         let previousIndex = self.selectedIndex
         // Update local selectedIndex to reflect Rust state
         selectedIndex = index
@@ -1227,7 +1227,7 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         }
     }
 
-    public func refreshLayout() {
+    func refreshLayout() {
         // Get fresh config from Rust instead of using cached tabBarConfig
         guard let freshConfig = getTabBar(appId) else {
             // If no config exists, hide the view.
@@ -1297,5 +1297,5 @@ public class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 }
 
-public typealias LingXiaTabBar = macOSTabBarWrapper
+typealias LingXiaTabBar = macOSTabBarWrapper
 #endif

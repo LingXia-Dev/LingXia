@@ -7,11 +7,11 @@ import CLingXiaRustAPI
 import UIKit
 #endif
 
-public class LxAppActionSheet {
+class LxAppActionSheet {
 
     private static let log = OSLog(subsystem: "LingXia", category: "ActionSheet")
 
-    public static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
+    static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
         var optionsArray: [String] = []
         for i in 0..<options.options.len() {
             if let item = options.options.get(index: UInt(i)) {
@@ -25,7 +25,7 @@ public class LxAppActionSheet {
         ], callback_id: callback_id)
     }
 
-    public static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
+    static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
         #if os(iOS)
         let optionsArray = options["options"] as? [String] ?? []
         let cancelText = options["cancelText"] as? String ?? ""

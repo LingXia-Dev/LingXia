@@ -25,7 +25,7 @@ import kotlin.math.min
  * - Indicator is positioned to stay centered in the revealed area
  * - NO bounce animation - smooth return only
  */
-class PullToRefreshHelper(
+internal class PullToRefreshHelper(
     private val context: Context,
     private val webViewContainer: FrameLayout,
     private val onRefresh: () -> Unit

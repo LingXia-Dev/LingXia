@@ -6,14 +6,14 @@ import CLingXiaRustAPI
 import AppKit
 
 /// Shared UI layout constants for macOS windows
-public struct LxAppWindowLayout {
-    public static let titleBarHeight: CGFloat = 32        // SwiftUI custom title bar height
+struct LxAppWindowLayout {
+    static let titleBarHeight: CGFloat = 32        // SwiftUI custom title bar height
 }
 
 /// macOS LxApp implementation
 @MainActor
-public class macOSLxApp: ObservableObject {
-    public static let shared = macOSLxApp()
+class macOSLxApp: ObservableObject {
+    static let shared = macOSLxApp()
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
@@ -26,7 +26,7 @@ public class macOSLxApp: ObservableObject {
     private init() {}
 
     /// Open specific LxApp
-    public static func openLxApp(appId: String, path: String, sessionId: UInt64) {
+    static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
         LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
@@ -68,12 +68,12 @@ public class macOSLxApp: ObservableObject {
     }
 
     /// Navigate to page with specific animation type
-    public static func navigate(appId: String, path: String, animationType: AnimationType) {
+    static func navigate(appId: String, path: String, animationType: AnimationType) {
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
     /// Remove tab window controller
-    public static func removeTabWindowController(_ controller: LxAppWindowController) {
+    static func removeTabWindowController(_ controller: LxAppWindowController) {
         if tabWindowController === controller {
             tabWindowController = nil
         }
@@ -89,7 +89,7 @@ public class macOSLxApp: ObservableObject {
     }
 
     /// Initialize LxApps system
-    public static func initialize() -> Bool {
+    static func initialize() -> Bool {
         if isInitialized { return true }
 
         LxAppCore.initializeCore()

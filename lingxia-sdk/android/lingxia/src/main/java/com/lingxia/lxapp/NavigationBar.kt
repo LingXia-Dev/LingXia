@@ -19,7 +19,7 @@ import androidx.annotation.StyleRes
  * Configuration data class for the NavigationBar
  * Updated to use new Rust API with boolean fields
  */
-data class NavigationBarState(
+internal data class NavigationBarState(
     val navigationBarBackgroundColor: Int,         // Background color (e.g., #FFFFFF)
     val navigationBarTextStyle: String,            // Text style ("black" or "white")
     val navigationBarTitleText: String,            // Navigation bar title text
@@ -38,7 +38,7 @@ data class NavigationBarState(
 /**
  * Custom Navigation Bar view mimicking mini-app behavior.
  */
-class NavigationBar @JvmOverloads constructor(
+internal class NavigationBar @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     @AttrRes defStyleAttr: Int = 0,

@@ -25,7 +25,7 @@ import CoreWLAN
  * - Full WiFi scanning and connection support via CoreWLAN
  * - Can get detailed network information including signal strength
  */
-public class LxAppWifi {
+class LxAppWifi {
 
     internal static let log = OSLog(subsystem: "LingXia", category: "WiFi")
 

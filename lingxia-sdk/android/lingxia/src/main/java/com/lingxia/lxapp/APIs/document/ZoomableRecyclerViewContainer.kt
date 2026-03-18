@@ -16,7 +16,7 @@ import kotlin.math.abs
  *
  * Uses Canvas-based scaling to avoid rendering artifacts.
  */
-class ZoomableRecyclerViewContainer @JvmOverloads constructor(
+internal class ZoomableRecyclerViewContainer @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {

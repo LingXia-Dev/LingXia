@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
  * positions in WebView content coordinates and updates screen positions when
  * the WebView scrolls, eliminating JS polling latency.
  */
-class NativeComponentManager(
+internal class NativeComponentManager(
     hostView: ViewGroup,
     private val defaultPageId: String,
     private val eventSink: (Map<String, Any>) -> Unit,

@@ -10,7 +10,7 @@ import android.widget.ImageView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 
-object LxNavBarUtils {
+internal object LxNavBarUtils {
 
     object Constants {
         const val BUTTON_SIZE_DP = 32

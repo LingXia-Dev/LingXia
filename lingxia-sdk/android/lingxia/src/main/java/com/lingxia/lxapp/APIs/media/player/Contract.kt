@@ -1,23 +1,23 @@
 package com.lingxia.lxapp.APIs.media.player
 
-enum class BackendKind(val value: String) {
+internal enum class BackendKind(val value: String) {
     URL("url"),
     FEED("feed")
 }
 
-data class VideoSize(
+internal data class VideoSize(
     val width: Int,
     val height: Int,
     val rotationDegrees: Int = 0,
 )
 
-enum class StopReason(val value: String) {
+internal enum class StopReason(val value: String) {
     USER("user"),
     UNMOUNT("unmount"),
     SOURCE_CHANGE("source_change")
 }
 
-enum class WaitingReason(val value: String) {
+internal enum class WaitingReason(val value: String) {
     INITIAL("initial"),
     BUFFERING("buffering"),
     SEEKING("seeking"),
@@ -26,7 +26,7 @@ enum class WaitingReason(val value: String) {
     DECODER("decoder")
 }
 
-enum class ErrorCode(val value: String) {
+internal enum class ErrorCode(val value: String) {
     ABORTED("aborted"),
     NETWORK("network"),
     TIMEOUT("timeout"),
@@ -38,7 +38,7 @@ enum class ErrorCode(val value: String) {
     UNKNOWN("unknown")
 }
 
-data class EngineError(
+internal data class EngineError(
     val code: ErrorCode,
     val message: String,
     val nativeCode: String? = null,
@@ -47,7 +47,7 @@ data class EngineError(
     val backend: BackendKind? = null
 )
 
-data class PlayerCapabilities(
+internal data class PlayerCapabilities(
     val isLive: Boolean? = null,
     val canSeek: Boolean? = null,
     val hasDuration: Boolean? = null,

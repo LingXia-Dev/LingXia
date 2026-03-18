@@ -4,7 +4,7 @@ import android.util.Log
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
 
-object LxAppCapsule {
+internal object LxAppCapsule {
     private const val TAG = "LingXia.Capsule"
 
     @JvmStatic

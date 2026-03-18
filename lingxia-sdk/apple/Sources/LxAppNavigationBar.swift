@@ -8,14 +8,14 @@ import UIKit
 #endif
 
 @MainActor
-public class NavigationBarStateManager: ObservableObject {
-    @Published public var currentState: NavigationBarState? = nil
-    @Published public var currentAppId: String? = nil
-    public static let shared = NavigationBarStateManager()
+class NavigationBarStateManager: ObservableObject {
+    @Published var currentState: NavigationBarState? = nil
+    @Published var currentAppId: String? = nil
+    static let shared = NavigationBarStateManager()
 
     private init() {}
 
-    public func updateState(appId: String, path: String) {
+    func updateState(appId: String, path: String) {
         guard LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty else {
             currentState = nil
             return
@@ -26,7 +26,7 @@ public class NavigationBarStateManager: ObservableObject {
     }
 
     /// Force refresh state for a specific app
-    public func refreshState(for appId: String) {
+    func refreshState(for appId: String) {
         #if os(iOS)
         // Get the current LxAppViewController from iOSLxApp
         guard let lxAppManager = iOSLxApp.getInstance().currentLxAppManager else {
@@ -62,7 +62,7 @@ extension NavigationBarState {
 
 /// Clean data-driven navigation bar protocol
 @MainActor
-public protocol NavigationBarProtocol: AnyObject {
+protocol NavigationBarProtocol: AnyObject {
     /// Update UI based on NavigationBarState data (single source of truth)
     func updateWithState(_ state: NavigationBarState?)
 
@@ -71,14 +71,14 @@ public protocol NavigationBarProtocol: AnyObject {
 }
 
 /// Embedded navigation button for navbar
-public struct NavigationButton: View {
+struct NavigationButton: View {
     let isBackButton: Bool
     let tintColor: Color
     let isEnabled: Bool
     let title: String?
     let action: () -> Void
 
-    public init(isBackButton: Bool, tintColor: Color = .primary, isEnabled: Bool = true, title: String? = nil, action: @escaping () -> Void) {
+    init(isBackButton: Bool, tintColor: Color = .primary, isEnabled: Bool = true, title: String? = nil, action: @escaping () -> Void) {
         self.isBackButton = isBackButton
         self.tintColor = tintColor
         self.isEnabled = isEnabled
@@ -86,7 +86,7 @@ public struct NavigationButton: View {
         self.action = action
     }
 
-    public var body: some View {
+    var body: some View {
         Button(action: {
             if isEnabled {
                 action()
@@ -144,14 +144,14 @@ public struct NavigationButton: View {
 
 /// Pure declarative SwiftUI Navigation Bar
 /// Automatically renders based on NavigationBarState - no manual updates needed
-public struct macOSNavigationBarView: View {
+struct macOSNavigationBarView: View {
     let state: NavigationBarState?
     let appId: String?
     let onBackTapped: () -> Void
     let onHomeTapped: () -> Void
     @State private var isLoading: Bool = false
 
-    public init(
+    init(
         state: NavigationBarState?,
         appId: String? = nil,
         onBackTapped: @escaping () -> Void = {},
@@ -171,7 +171,7 @@ public struct macOSNavigationBarView: View {
         return name.isEmpty ? nil : name
     }
 
-    public var body: some View {
+    var body: some View {
         if let state = state {
             let bgColor = state.show_navbar ? backgroundColor : Color.clear
 
@@ -275,16 +275,16 @@ public struct macOSNavigationBarView: View {
 }
 
 /// Clean data-driven ViewModifier for navigation bar
-public struct LxAppNavigationBarModifier: ViewModifier {
+struct LxAppNavigationBarModifier: ViewModifier {
     let state: NavigationBarState?
     let appId: String?
 
-    public init(state: NavigationBarState?, appId: String? = nil) {
+    init(state: NavigationBarState?, appId: String? = nil) {
         self.state = state
         self.appId = appId
     }
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         VStack(spacing: 0) {
             if let state = state, state.show_navbar {
                 macOSNavigationBarView(state: state, appId: appId)
@@ -298,13 +298,13 @@ public struct LxAppNavigationBarModifier: ViewModifier {
 import UIKit
 
 @MainActor
-public class iOSNavigationBarView: UIView, NavigationBarProtocol {
+class iOSNavigationBarView: UIView, NavigationBarProtocol {
     private var hostingController: UIHostingController<ReactiveNavigationBarView>?
     private var currentState: NavigationBarState?
     private var statusBarBackgroundView: UIView?
-    public var heightConstraint: NSLayoutConstraint?
+    var heightConstraint: NSLayoutConstraint?
 
-    public override init(frame: CGRect) {
+    override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = UIColor.clear
         clipsToBounds = false // Allow content to extend beyond bounds
@@ -358,7 +358,7 @@ public class iOSNavigationBarView: UIView, NavigationBarProtocol {
         }
     }
 
-    public func updateWithState(_ state: NavigationBarState?) {
+    func updateWithState(_ state: NavigationBarState?) {
         NavigationBarStateManager.shared.currentState = state
 
         let showNavbar = state?.show_navbar ?? false
@@ -389,7 +389,7 @@ public class iOSNavigationBarView: UIView, NavigationBarProtocol {
         }
     }
 
-    public func getCalculatedContentHeight() -> CGFloat {
+    func getCalculatedContentHeight() -> CGFloat {
         return NavigationBarState.DEFAULT_HEIGHT
     }
 }
@@ -421,12 +421,12 @@ struct ReactiveNavigationBarView: View {
     }
 }
 
-public typealias LingXiaNavigationBar = iOSNavigationBarView
+typealias LingXiaNavigationBar = iOSNavigationBarView
 #elseif os(macOS)
-public typealias LingXiaNavigationBar = macOSNavigationBarView
+typealias LingXiaNavigationBar = macOSNavigationBarView
 #endif
 
-public extension View {
+extension View {
     /// Adds navigation bar to the view using clean data-driven state
     func lxAppNavigationBar(state: NavigationBarState?, appId: String? = nil) -> some View {
         self.modifier(LxAppNavigationBarModifier(state: state, appId: appId))

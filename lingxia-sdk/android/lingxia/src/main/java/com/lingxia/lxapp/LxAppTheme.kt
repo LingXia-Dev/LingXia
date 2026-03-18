@@ -1,6 +1,6 @@
 package com.lingxia.lxapp
 
-object LxAppTheme {
+internal object LxAppTheme {
 
     object Metrics {
         const val CAPSULE_BASE_TOP_DP = 52f
