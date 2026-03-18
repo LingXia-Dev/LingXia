@@ -1,6 +1,6 @@
 package com.lingxia.lxapp.APIs.media.player
 
-sealed interface EngineEvent {
+internal sealed interface EngineEvent {
     data class Prepared(
         val durationMs: Long?,
         val videoSize: VideoSize?

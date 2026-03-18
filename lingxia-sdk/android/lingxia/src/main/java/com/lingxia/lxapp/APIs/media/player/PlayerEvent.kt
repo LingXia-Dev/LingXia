@@ -1,6 +1,6 @@
 package com.lingxia.lxapp.APIs.media.player
 
-sealed class PlayerEvent(val name: String) {
+internal sealed class PlayerEvent(val name: String) {
 
     data object PlayRequest : PlayerEvent("playrequest")
 

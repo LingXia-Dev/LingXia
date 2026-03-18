@@ -1112,7 +1112,7 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Navigate to any page - super simple
      */
-    fun navigate(targetPath: String, animationType: AnimationType): Boolean {
+    internal fun navigate(targetPath: String, animationType: AnimationType): Boolean {
         if (!::appId.isInitialized) return false
 
         try {
