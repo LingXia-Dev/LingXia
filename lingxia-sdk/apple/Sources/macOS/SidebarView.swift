@@ -187,6 +187,8 @@ public class SidebarView: NSView {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.verticalScrollElasticity = .none
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
         addSubview(scrollView)
@@ -464,9 +466,8 @@ public class SidebarView: NSView {
         yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
 
         // Update document view height
-        let docHeight = max(yOffset, scrollView.contentView.bounds.height)
         if let docView = scrollView.documentView {
-            docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: docHeight)
+            docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
         }
 
         if let activeAppId = activeTab?.appId {
@@ -644,16 +645,13 @@ public class SidebarView: NSView {
         // Re-layout browser section below groups
         yOffset = layoutBrowserSection(in: docView, yOffset: yOffset)
 
-        let docHeight = max(yOffset, scrollView.contentView.bounds.height)
-        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: docHeight)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
     }
 
     /// Re-layout just the browser section (for title updates without full tab rebuild)
     private func relayoutBrowserSection(in docView: NSView) {
         let yOffset = layoutBrowserSection(in: docView, yOffset: yOffsetAfterGroups())
-
-        let docHeight = max(yOffset, scrollView.contentView.bounds.height)
-        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: docHeight)
+        docView.frame = NSRect(x: 0, y: 0, width: docView.frame.width, height: yOffset)
     }
 
     private func setupAddButton() {
