@@ -1,6 +1,6 @@
 [package]
 name = "lingxia-cli"
-version.workspace = true
+version = "0.4.3"
 edition = "2024"
 
 [[bin]]
@@ -47,7 +47,7 @@ num-bigint = "0.4"
 rand = "0.10"
 uuid = { version = "1.20", features = ["v4"] }
 plist = "1"
-tungstenite = { version = "0.28", features = ["native-tls"] }
+tungstenite = { version = "0.29", features = ["native-tls"] }
 x509-parser = "0.18"
 
 which = "8.0"

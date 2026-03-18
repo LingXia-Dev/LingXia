@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::http_client;
+use crate::lxapp;
 
 pub struct PublishOptions {
     pub token: String,
