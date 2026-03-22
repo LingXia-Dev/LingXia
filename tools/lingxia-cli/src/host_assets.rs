@@ -12,6 +12,37 @@ use std::path::{Path, PathBuf};
 
 const CACHE_VERSION: u32 = 1;
 
+fn is_png_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("png"))
+        .unwrap_or(false)
+}
+
+fn copy_splash_asset(config: &LingXiaConfig, project_root: &Path, dest_dir: &Path) -> Result<()> {
+    let splash = match config.splash.as_ref().filter(|s| !s.path.is_empty()) {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+    let src = project_root.join(&splash.path);
+    if !is_png_path(&src) {
+        anyhow::bail!(
+            "Invalid splash.path '{}': splash image must be a PNG file",
+            splash.path
+        );
+    }
+    if !src.exists() {
+        anyhow::bail!("Splash image not found: {}", src.display());
+    }
+    let dest = dest_dir.join("splash.png");
+    let src_bytes = fs::read(&src)
+        .with_context(|| format!("Failed to read splash image: {}", src.display()))?;
+    if write_if_changed(&dest, &src_bytes)? {
+        println!("  {} splash.png → {}", "✓".green(), dest.display());
+    }
+    Ok(())
+}
+
 pub(crate) fn prepare_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
@@ -89,6 +120,7 @@ pub(crate) fn prepare_host_assets(
                         .or(prepared_runtime_es2020.as_ref()),
                     &mut cache,
                 )?;
+                copy_splash_asset(config, project_root, &assets_root)?;
             }
             platform::detector::PlatformType::Ios => {
                 if !crate::platform::apple::is_macos() {
@@ -111,6 +143,7 @@ pub(crate) fn prepare_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
+                copy_splash_asset(config, project_root, &resources_dir)?;
             }
             platform::detector::PlatformType::MacOs => {
                 if !crate::platform::apple::is_macos() {
@@ -133,6 +166,7 @@ pub(crate) fn prepare_host_assets(
                     &mut prepared_resource_roots,
                     &mut cache,
                 )?;
+                copy_splash_asset(config, project_root, &resources_dir)?;
             }
             platform::detector::PlatformType::Harmony => {
                 let rawfile_root =
@@ -145,6 +179,7 @@ pub(crate) fn prepare_host_assets(
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
+                copy_splash_asset(config, project_root, &rawfile_root)?;
             }
         }
     }
@@ -610,6 +645,12 @@ fn build_app_json_from_config(
     if let Some(max_size_mb) = app.cache_max_size_mb {
         obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
     }
+    if let Some(splash) = &config.splash {
+        obj.insert(
+            "splashTimeout".to_string(),
+            serde_json::json!(splash.timeout),
+        );
+    }
     if let Some(panels) = &config.panels {
         obj.insert("panels".to_string(), panels.clone());
     }
@@ -699,6 +740,27 @@ fn sync_runtime_file(
     }
 
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_png_path;
+    use std::path::Path;
+
+    #[test]
+    fn png_path_check_accepts_png_case_insensitively() {
+        assert!(is_png_path(Path::new("splash.png")));
+        assert!(is_png_path(Path::new("SPLASH.PNG")));
+        assert!(is_png_path(Path::new("assets/launch.PnG")));
+    }
+
+    #[test]
+    fn png_path_check_rejects_non_png_extensions() {
+        assert!(!is_png_path(Path::new("splash.jpg")));
+        assert!(!is_png_path(Path::new("splash.jpeg")));
+        assert!(!is_png_path(Path::new("splash.webp")));
+        assert!(!is_png_path(Path::new("splash")));
+    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {

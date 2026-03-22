@@ -98,6 +98,7 @@ fn build_lingxia_config(
             icons: None,
             runtime: Some(format!("npm:@lingxia/core@{core_version}")),
         }),
+        splash: None,
         panels: None,
     }
 }

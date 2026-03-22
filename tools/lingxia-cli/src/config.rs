@@ -8,6 +8,16 @@ pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 pub const DEFAULT_CACHE_MAX_AGE_DAYS: u64 = 7;
 pub const DEFAULT_CACHE_MAX_SIZE_MB: u64 = 1024;
 
+/// Splash screen configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SplashConfig {
+    /// Path to the splash PNG image (relative to project root). Copied to assets as `splash.png`.
+    pub path: String,
+    /// Minimum display time in milliseconds. Splash hides only when content is loaded AND
+    /// this duration has elapsed (whichever is later).
+    pub timeout: u32,
+}
+
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +35,9 @@ pub struct LingXiaConfig {
     pub harmony: Option<HarmonyConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+    /// Splash screen configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub splash: Option<SplashConfig>,
     /// Panel system configuration — passed through as-is into app.json at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub panels: Option<serde_json::Value>,
@@ -247,6 +260,7 @@ impl LingXiaConfig {
             macos: None,
             harmony: None,
             resources: None,
+            splash: None,
             panels: None,
         }
     }

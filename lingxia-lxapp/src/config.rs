@@ -32,6 +32,13 @@ pub struct AppConfig {
     #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
 
+    #[serde(
+        rename = "splashTimeout",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub splash_timeout_ms: Option<u32>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
 }

@@ -392,6 +392,10 @@ export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmon
   "resources": {
     "runtime": "npm:@lingxia/core@0.3.1"
   },
+  "splash": {
+    "path": "path/to/splash.png",
+    "timeout": 1500
+  },
   "panels": {
     "items": []
   }
@@ -401,6 +405,8 @@ export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmon
 `app.cacheMaxAgeDays` and `app.cacheMaxSizeMB` are optional. Set either value to `0` to disable that cleanup policy.
 
 `homeLxAppVersion` is not configured in `lingxia.config.json`; it is generated into runtime `app.json` from the built home lxapp version.
+
+When `splash` is configured, CLI requires a PNG source image, copies it into native host resources as `splash.png`, and writes `splashTimeout` into runtime `app.json`.
 
 See [lingxia.config.json Reference](./lingxia-config.md) for full field-level details.
 

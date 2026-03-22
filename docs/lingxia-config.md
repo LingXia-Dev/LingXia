@@ -15,6 +15,10 @@ It is used by CLI build/run/publish flows, and parts of it are transformed into 
     "platforms": ["android"],
     "homeLxAppID": "homelxapp"
   },
+  "splash": {
+    "path": "path/to/splash.png",
+    "timeout": 1500
+  },
   "android": {
     "packageId": "com.example.myapp"
   }
@@ -31,6 +35,7 @@ It is used by CLI build/run/publish flows, and parts of it are transformed into 
 | `macos` | object | No | macOS platform config |
 | `harmony` | object | No | Harmony platform config |
 | `resources` | object | No | Resource/runtime overrides |
+| `splash` | object | No | Host splash-screen asset and minimum display duration |
 | `panels` | object | No | Panel configuration (passed through to runtime `app.json`) |
 
 ## `app` Fields
@@ -56,8 +61,17 @@ It is used by CLI build/run/publish flows, and parts of it are transformed into 
 | `macos` | `bundleId`, `deploymentTarget`, `executableName`, `targetName` |
 | `harmony` | `bundleName`, `compatibleSdkVersion`, `targetSdkVersion` |
 
+## `splash` Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `path` | string | Yes | Path to the splash PNG image, relative to the project root. Non-PNG files are rejected by CLI. |
+| `timeout` | number | Yes | Minimum splash display duration in milliseconds. The splash hides only after content is ready and this timeout has elapsed. |
+
 ## Notes
 
 - `homeLxAppVersion` is not configured here. CLI derives it from home lxapp build metadata and writes it into runtime `app.json`.
 - Missing cache fields are allowed. Runtime defaults are applied from `app.json` parsing.
+- When `splash` is configured, CLI requires a PNG source image and copies it into each native host as `splash.png`.
+- CLI also writes `splash.timeout` into runtime `app.json` as `splashTimeout`.
 - `panels` is passed through by CLI and validated by runtime schema (for example unique panel id, one panel per position).
