@@ -71,7 +71,7 @@ fi
 
 echo "[1/5] Preparing iOS SDK resources..."
 # For dev: generate SDK i18n/icons resources via the unified SDK script.
-SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
   --platform apple \
   --apple-no-zip \
   --no-shasums \

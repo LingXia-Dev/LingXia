@@ -44,7 +44,7 @@ else
 fi
 
 echo "[0/5] Preparing macOS SDK resources..."
-SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
     --platform apple \
     --apple-no-zip \
     --no-shasums \

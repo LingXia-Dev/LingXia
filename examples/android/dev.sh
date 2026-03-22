@@ -158,7 +158,7 @@ build_rust_android() {
 }
 
 echo "[0/4] Preparing Android SDK (resources + local Maven)..."
-bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
   --platform android \
   --android-maven-dir "$LOCAL_MAVEN_DIR" \
   --android-no-zip \

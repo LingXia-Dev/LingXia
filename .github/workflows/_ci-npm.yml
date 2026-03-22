@@ -1,0 +1,129 @@
+# Reusable workflow for NPM package checks
+# Called by ci.yml
+
+name: CI - NPM
+
+on:
+  workflow_call:
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  web-runtime:
+    name: Web Runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-core-${{ hashFiles('packages/lingxia-core/package.json', 'packages/lingxia-core/package-lock.json') }}
+          restore-keys: npm-core-
+
+      - name: Install & Build
+        working-directory: packages/lingxia-core
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+  types:
+    name: TypeScript Types
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-types-${{ hashFiles('packages/lingxia-types/package.json') }}
+          restore-keys: npm-types-
+
+      - name: Install & Build
+        working-directory: packages/lingxia-types
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+  components:
+    name: Components
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-components-${{ hashFiles('packages/lingxia-components/package.json') }}
+          restore-keys: npm-components-
+
+      - name: Install & Build
+        working-directory: packages/lingxia-components
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+  cli:
+    name: CLI NPM Package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-cli-${{ hashFiles('tools/lingxia-cli/npm/package-lock.json') }}
+          restore-keys: npm-cli-
+
+      - name: Install & Build
+        working-directory: tools/lingxia-cli/npm
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+      - name: Test
+        working-directory: tools/lingxia-cli/npm
+        run: npm test

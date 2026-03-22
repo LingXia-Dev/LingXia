@@ -35,8 +35,8 @@ for arg in "$@"; do
   esac
 done
 
-echo "Building Harmony HAR via lingxia-sdk/release.sh ..."
-bash "$LINGXIA_ROOT/lingxia-sdk/release.sh" \
+echo "Building Harmony HAR via scripts/release/sdk.sh ..."
+bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
   --platform harmony \
   --no-shasums \
   --out "$LINGXIA_ROOT/target/sdk-harmony-build"

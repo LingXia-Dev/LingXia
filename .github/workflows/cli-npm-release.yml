@@ -10,6 +10,11 @@ on:
         description: "Release tag to publish (e.g. lingxia-cli-v0.1.0)"
         required: true
         type: string
+      dry_run:
+        description: "Dry run (build only, skip publish)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -44,6 +49,10 @@ jobs:
             cross: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -61,27 +70,27 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Verify tag matches CLI version
+      - name: Verify tag matches workspace version
         run: |
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           expected="${tag#lingxia-cli-v}"
-          cli_version="$(awk '
-            /^\[package\]/ {in_section=1; next}
+          workspace_version="$(awk '
+            /^\[workspace\.package\]/ {in_section=1; next}
             /^\[/ {in_section=0}
             in_section && $1 == "version" {
               gsub(/"/, "", $3);
               print $3;
               exit
-            }' tools/lingxia-cli/Cargo.toml)"
-          if [ -z "$cli_version" ]; then
-            echo "Failed to read CLI version from Cargo.toml" >&2
+            }' Cargo.toml)"
+          if [ -z "$workspace_version" ]; then
+            echo "Failed to read workspace version from Cargo.toml" >&2
             exit 1
           fi
-          if [ "$expected" != "$cli_version" ]; then
-            echo "Tag version ($expected) does not match CLI version ($cli_version)" >&2
+          if [ "$expected" != "$workspace_version" ]; then
+            echo "Tag version ($expected) does not match workspace version ($workspace_version)" >&2
             exit 1
           fi
-          echo "Version verified: $cli_version"
+          echo "Version verified: $workspace_version"
 
       - name: Run tests
         if: matrix.platform == 'linux-x64'
@@ -106,63 +115,16 @@ jobs:
           path: out/*
           if-no-files-found: error
 
-  # Windows native build (cross-compile from Linux is complex)
-  build-windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: cli-win32-x64
-
-      - name: Verify tag matches CLI version
-        shell: bash
-        run: |
-          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          expected="${tag#lingxia-cli-v}"
-          cli_version="$(awk '
-            /^\[package\]/ {in_section=1; next}
-            /^\[/ {in_section=0}
-            in_section && $1 == "version" {
-              gsub(/"/, "", $3);
-              print $3;
-              exit
-            }' tools/lingxia-cli/Cargo.toml)"
-          if [ -z "$cli_version" ]; then
-            echo "Failed to read CLI version from Cargo.toml" >&2
-            exit 1
-          fi
-          if [ "$expected" != "$cli_version" ]; then
-            echo "Tag version ($expected) does not match CLI version ($cli_version)" >&2
-            exit 1
-          fi
-          echo "Version verified: $cli_version"
-
-      - name: Build lingxia (release)
-        run: cargo build -p lingxia-cli --release
-
-      - name: Collect binary
-        shell: bash
-        run: |
-          mkdir -p out
-          cp target/release/lingxia.exe out/lingxia.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lingxia-win32-x64
-          path: out/*
-          if-no-files-found: error
-
   publish:
-    needs: [build-linux, build-windows]
+    needs: [build-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -178,15 +140,71 @@ jobs:
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
           version="${tag#lingxia-cli-v}"
 
-          node tools/lingxia-cli/npm/scripts/set-version.js "$version"
+          node tools/lingxia-cli/npm/scripts/set-version.cjs "$version"
           mkdir -p release-assets
           cp artifacts/lingxia-darwin-arm64/lingxia release-assets/lingxia-darwin-arm64
           cp artifacts/lingxia-darwin-x64/lingxia release-assets/lingxia-darwin-x64
           cp artifacts/lingxia-linux-x64/lingxia release-assets/lingxia-linux-x64
           cp artifacts/lingxia-linux-arm64/lingxia release-assets/lingxia-linux-arm64
-          cp artifacts/lingxia-win32-x64/lingxia.exe release-assets/lingxia-win32-x64.exe
+
+      - name: Prepare platform npm packages
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#lingxia-cli-v}"
+
+          mkdir -p platform-packages
+
+          create_pkg() {
+            platform="$1"
+            pkg_name="$2"
+            os_name="$3"
+            cpu_name="$4"
+            artifact_path="$5"
+            bin_name="$6"
+
+            pkg_dir="platform-packages/$platform"
+            mkdir -p "$pkg_dir/bin"
+            cp "$artifact_path" "$pkg_dir/bin/$bin_name"
+            chmod +x "$pkg_dir/bin/$bin_name"
+
+            cat > "$pkg_dir/package.json" <<EOF
+          {
+            "name": "$pkg_name",
+            "version": "$version",
+            "os": ["$os_name"],
+            "cpu": ["$cpu_name"],
+            "files": ["bin/$bin_name"],
+            "license": "MIT"
+          }
+          EOF
+          }
+
+          create_pkg "darwin-arm64" "@lingxia/cli-darwin-arm64" "darwin" "arm64" "artifacts/lingxia-darwin-arm64/lingxia" "lingxia"
+          create_pkg "darwin-x64" "@lingxia/cli-darwin-x64" "darwin" "x64" "artifacts/lingxia-darwin-x64/lingxia" "lingxia"
+
+      - name: Install CLI npm dependencies
+        working-directory: tools/lingxia-cli/npm
+        env:
+          LINGXIA_CLI_SKIP_DOWNLOAD: "1"
+        run: npm install
+
+      - name: Dry run summary
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          echo "DRY RUN - would publish:"
+          echo "  - GitHub Release assets:"
+          ls -la release-assets/
+          echo "  - Platform npm packages:"
+          for platform in darwin-arm64 darwin-x64; do
+            echo "    * @lingxia/cli-$platform"
+            (cd "platform-packages/$platform" && npm pack --dry-run)
+          done
+          echo "  - NPM package: @lingxia/cli"
+          (cd tools/lingxia-cli/npm && npm pack --dry-run)
 
       - name: Upload binaries to GitHub Release
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -195,11 +213,63 @@ jobs:
             release-assets/lingxia-darwin-x64
             release-assets/lingxia-linux-x64
             release-assets/lingxia-linux-arm64
-            release-assets/lingxia-win32-x64.exe
 
-      - name: Publish wrapper package
+      - name: Publish platform packages
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
-          (cd tools/lingxia-cli/npm/cli && npm publish --access public)
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#lingxia-cli-v}"
+
+          for platform in darwin-arm64 darwin-x64; do
+            pkg="@lingxia/cli-$platform"
+            pkg_dir="platform-packages/$platform"
+            if npm view "$pkg@$version" version >/dev/null 2>&1; then
+              echo "✓ $pkg@$version already published, skipping"
+            else
+              (cd "$pkg_dir" && npm publish --access public)
+              echo "✓ Published $pkg@$version"
+            fi
+          done
+
+      - name: Wait for platform package availability
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#lingxia-cli-v}"
+
+          for platform in darwin-arm64 darwin-x64; do
+            pkg="@lingxia/cli-$platform"
+            available=0
+            for attempt in {1..12}; do
+              if npm view "$pkg@$version" version >/dev/null 2>&1; then
+                echo "✓ $pkg@$version is available"
+                available=1
+                break
+              fi
+              echo "Waiting for npm to index $pkg@$version (attempt $attempt/12)..."
+              sleep 5
+            done
+            if [ "$available" -ne 1 ]; then
+              echo "ERROR: $pkg@$version is not available yet, aborting wrapper publish." >&2
+              exit 1
+            fi
+          done
+
+      - name: Publish wrapper package
+        if: github.event_name != 'workflow_dispatch' || !inputs.dry_run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          version="${tag#lingxia-cli-v}"
+          if npm view "@lingxia/cli@$version" version >/dev/null 2>&1; then
+            echo "✓ @lingxia/cli@$version already published, skipping"
+          else
+            (cd tools/lingxia-cli/npm && npm publish --access public)
+            echo "✓ Published @lingxia/cli@$version"
+          fi

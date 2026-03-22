@@ -1,0 +1,217 @@
+name: SDK Release
+
+on:
+  push:
+    tags:
+      - "lingxia-sdk-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload to (e.g. lingxia-sdk-v0.0.1)"
+        required: true
+        type: string
+      android:
+        description: "Build + upload Android artifact"
+        required: false
+        default: true
+        type: boolean
+      ios:
+        description: "Build + upload iOS (source) artifact"
+        required: false
+        default: true
+        type: boolean
+      harmony:
+        description: "Build + upload HarmonyOS artifact (requires self-hosted runner)"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # Pre-check job to verify version and build shared artifacts
+  pre-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - name: Verify tag matches workspace version
+        id: verify
+        run: |
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          expected="${tag#lingxia-sdk-v}"
+          workspace_version="$(awk '
+            /^\[workspace\.package\]/ {in_section=1; next}
+            /^\[/ {in_section=0}
+            in_section && $1 == "version" {
+              gsub(/"/, "", $3);
+              print $3;
+              exit
+            }' Cargo.toml)"
+          if [ -z "$workspace_version" ]; then
+            echo "Failed to read workspace version" >&2
+            exit 1
+          fi
+          if [ "$expected" != "$workspace_version" ]; then
+            echo "Tag version ($expected) does not match workspace version ($workspace_version)" >&2
+            exit 1
+          fi
+          echo "Version verified: $workspace_version"
+          echo "version=$workspace_version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-core-${{ hashFiles('packages/lingxia-core/package.json', 'packages/lingxia-core/package-lock.json') }}
+          restore-keys: npm-
+
+      - name: Build web runtime (dist/)
+        run: |
+          cd packages/lingxia-core
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          else
+            npm install
+          fi
+          npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: core-dist
+          path: packages/lingxia-core/dist
+          if-no-files-found: error
+
+  android:
+    needs: pre-check
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-dist
+          path: packages/lingxia-core/dist
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: sdk-android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Build Android SDK artifact
+        run: |
+          bash scripts/release/sdk.sh --platform android
+
+      - name: Upload Android artifact to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            dist/sdk-release/lingxia-sdk-android-maven-*.zip
+            dist/sdk-release/SHASUMS256-*-android.txt
+
+  ios_source:
+    needs: pre-check
+    # iOS SDK requires macOS for swift-bridge code generation (cargo build --target aarch64-apple-ios)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.ios)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-dist
+          path: packages/lingxia-core/dist
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: sdk-ios
+
+      - name: Build iOS (source) SDK artifact
+        run: |
+          bash scripts/release/sdk.sh --platform apple
+
+      - name: Upload iOS artifact to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            dist/sdk-release/lingxia-sdk-apple-source-*.zip
+            dist/sdk-release/SHASUMS256-*-apple.txt
+
+  harmony:
+    needs: pre-check
+    # HarmonyOS requires DevEco tooling (hvigorw) - only available on self-hosted runners
+    # Only triggered via workflow_dispatch with harmony=true
+    if: github.event_name == 'workflow_dispatch' && inputs.harmony
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: core-dist
+          path: packages/lingxia-core/dist
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: sdk-harmony
+
+      - name: Build HarmonyOS SDK artifact
+        run: |
+          bash scripts/release/sdk.sh --platform harmony
+
+      - name: Upload HarmonyOS artifact to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+          files: |
+            dist/sdk-release/lingxia-sdk-harmony-*.har
+            dist/sdk-release/SHASUMS256-*-harmony.txt

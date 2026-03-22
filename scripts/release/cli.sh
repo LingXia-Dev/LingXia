@@ -4,7 +4,31 @@ set -euo pipefail
 START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MAIN_PKG="$ROOT_DIR/tools/lingxia-cli/npm/package.json"
-CLI_CARGO_TOML="$ROOT_DIR/tools/lingxia-cli/Cargo.toml"
+WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+
+read_workspace_version() {
+  awk '
+    /^\[workspace\.package\]/ {in_section=1; next}
+    /^\[/ {in_section=0}
+    in_section && $1 == "version" {
+      gsub(/"/, "", $3);
+      print $3;
+      exit
+    }' "$WORKSPACE_CARGO_TOML"
+}
+
+set_workspace_version() {
+  local version="$1"
+  local tmp
+  tmp="$(mktemp)"
+  awk -v v="$version" '
+    /^\[workspace\.package\]/ {in_section=1; print; next}
+    /^\[/ {in_section=0}
+    in_section && $1 == "version" {print "version = \"" v "\""; next}
+    {print}
+  ' "$WORKSPACE_CARGO_TOML" > "$tmp"
+  mv "$tmp" "$WORKSPACE_CARGO_TOML"
+}
 
 # Supported targets: PLATFORM_NAME -> "RUST_TARGET OS CPU BIN_EXT"
 get_target_info() {
@@ -54,21 +78,21 @@ while [[ $# -gt 0 ]]; do
     --bump) BUMP_VERSION="$2"; shift ;;
     -h|--help)
       cat <<EOF
-Usage: release.sh [OPTIONS]
+Usage: scripts/release/cli.sh [OPTIONS]
 
 Options:
   --bump <version>     Bump all version files to specified version (e.g., 0.0.8)
-                       Updates: package.json, Cargo.toml, optionalDependencies, package-lock.json
+                       Updates: workspace Cargo.toml, package.json, optionalDependencies, package-lock.json
   --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, all
   --publish            Publish platform package(s) + main @lingxia/cli (requires all platforms)
   --out <dir>          Output directory (default: ./dist)
   --skip-build         Skip cargo build, use existing binaries
 
 Examples:
-  ./release.sh --bump 0.0.8                   # Bump version only
-  ./release.sh --target darwin-x64            # Build Intel Mac
-  ./release.sh --bump 0.0.8 --publish         # Bump + build all + publish
-  ./release.sh --target all --publish         # Full release (all platforms)
+  scripts/release/cli.sh --bump 0.0.8                   # Bump version only
+  scripts/release/cli.sh --target darwin-x64            # Build Intel Mac
+  scripts/release/cli.sh --bump 0.0.8 --publish         # Bump + build all + publish
+  scripts/release/cli.sh --target all --publish         # Full release (all platforms)
 EOF
       exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -97,23 +121,14 @@ if [[ -n "$BUMP_VERSION" ]]; then
     exit 1
   fi
   
-  # 1. Update package.json version
-  node -e "
-    const fs = require('fs');
-    const pkg = JSON.parse(fs.readFileSync('$MAIN_PKG'));
-    pkg.version = '$BUMP_VERSION';
-    // Also update optionalDependencies
-    for (const k of Object.keys(pkg.optionalDependencies || {})) {
-      if (k.startsWith('@lingxia/cli-')) pkg.optionalDependencies[k] = '$BUMP_VERSION';
-    }
-    fs.writeFileSync('$MAIN_PKG', JSON.stringify(pkg, null, 2) + '\n');
-  "
+  # 1. Update workspace version (CLI/crates/sdk share this version)
+  set_workspace_version "$BUMP_VERSION"
+  echo "  ✓ Updated workspace Cargo.toml"
+
+  # 2. Update package.json + optionalDependencies
+  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$BUMP_VERSION"
   echo "  ✓ Updated npm/package.json"
-  
-  # 2. Update Cargo.toml version
-  sed -i.bak "s/^version = \"[^\"]*\"/version = \"$BUMP_VERSION\"/" "$CLI_CARGO_TOML" && rm -f "$CLI_CARGO_TOML.bak"
-  echo "  ✓ Updated Cargo.toml"
-  
+
   # 3. Update package-lock.json
   (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm install --package-lock-only --ignore-scripts 2>/dev/null)
   echo "  ✓ Updated npm/package-lock.json"
@@ -121,9 +136,9 @@ if [[ -n "$BUMP_VERSION" ]]; then
   echo ""
   echo "✅ Version bumped to $BUMP_VERSION"
   echo "   Files updated:"
+  echo "   - Cargo.toml"
   echo "   - tools/lingxia-cli/npm/package.json"
   echo "   - tools/lingxia-cli/npm/package-lock.json"
-  echo "   - tools/lingxia-cli/Cargo.toml"
   
   # If no target specified, exit after bump
   if [[ -z "$TARGET" && "$PUBLISH" -eq 0 ]]; then
@@ -132,18 +147,24 @@ if [[ -n "$BUMP_VERSION" ]]; then
 fi
 
 # Read and validate versions
-VERSION="$(node -p "require('$MAIN_PKG').version" 2>/dev/null)" || {
-  echo "ERROR: Failed to read version from $MAIN_PKG"; exit 1
+VERSION="$(read_workspace_version)"
+if [[ -z "$VERSION" ]]; then
+  echo "ERROR: Failed to read workspace version from $WORKSPACE_CARGO_TOML"
+  exit 1
+fi
+
+npm_version="$(node -p "require('$MAIN_PKG').version" 2>/dev/null)" || {
+  echo "ERROR: Failed to read version from $MAIN_PKG"
+  exit 1
 }
 
-cargo_version="$(awk -F\" '/^version =/ {print $2; exit}' "$CLI_CARGO_TOML")"
-if [[ "$cargo_version" != "$VERSION" ]]; then
+if [[ "$npm_version" != "$VERSION" ]]; then
   if [[ "$PUBLISH" -eq 1 ]]; then
-    echo "ERROR: Version mismatch - Cargo.toml ($cargo_version) != package.json ($VERSION)"
+    echo "ERROR: Version mismatch - workspace Cargo.toml ($VERSION) != package.json ($npm_version)"
     exit 1
   fi
-  echo "Syncing Cargo.toml version: $cargo_version -> $VERSION"
-  sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" "$CLI_CARGO_TOML" && rm -f "$CLI_CARGO_TOML.bak"
+  echo "Syncing npm package version: $npm_version -> $VERSION"
+  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$VERSION"
 fi
 
 # Sync package-lock.json version
@@ -167,14 +188,7 @@ if [[ -n "$bad_deps" ]]; then
     exit 1
   fi
   echo "Syncing optionalDependencies to $VERSION"
-  node -e "
-    const fs = require('fs');
-    const pkg = JSON.parse(fs.readFileSync('$MAIN_PKG'));
-    for (const k of Object.keys(pkg.optionalDependencies || {})) {
-      if (k.startsWith('@lingxia/cli-')) pkg.optionalDependencies[k] = pkg.version;
-    }
-    fs.writeFileSync('$MAIN_PKG', JSON.stringify(pkg, null, 2) + '\n');
-  "
+  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$VERSION"
 fi
 
 # Setup output directory
