@@ -71,6 +71,13 @@ pub(crate) fn fetch_latest_npm_package_version(package: &str) -> Result<String> 
     Ok(fetch_npm_manifest(package, None)?.version)
 }
 
+pub(crate) fn ensure_npm_package_version_exists(package: &str, version: &str) -> Result<()> {
+    let _ = fetch_npm_manifest(package, Some(version)).with_context(|| {
+        format!("Failed to resolve npm package {package}@{version} from npm registry")
+    })?;
+    Ok(())
+}
+
 pub(crate) fn fetch_latest_scaffold_versions() -> Result<ScaffoldPackageVersions> {
     Ok(ScaffoldPackageVersions {
         core: fetch_latest_npm_package_version(DEFAULT_RUNTIME_PACKAGE)?,

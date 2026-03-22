@@ -135,7 +135,7 @@ fn ensure_android_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
     println!("  Downloading LingXia SDK v{}...", version);
 
     let asset_name = SdkPlatform::Android.asset_name(version);
-    let tag = format!("sdk-v{version}");
+    let tag = format!("lingxia-sdk-v{version}");
     let zip_data = github::download_release_asset(&tag, &asset_name)?;
 
     fs::create_dir_all(&maven_dir)?;
@@ -166,7 +166,7 @@ fn ensure_apple_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
     println!("  Downloading LingXia Apple SDK v{}...", version);
 
     let asset_name = SdkPlatform::Apple.asset_name(version);
-    let tag = format!("sdk-v{version}");
+    let tag = format!("lingxia-sdk-v{version}");
     let zip_data = github::download_release_asset(&tag, &asset_name)?;
 
     if staged_dir.exists() {
@@ -201,7 +201,7 @@ fn ensure_harmony_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
     println!("  Downloading LingXia Harmony SDK v{}...", version);
 
     let asset_name = SdkPlatform::Harmony.asset_name(version);
-    let tag = format!("sdk-v{version}");
+    let tag = format!("lingxia-sdk-v{version}");
     let har_data = github::download_release_asset(&tag, &asset_name)?;
 
     fs::create_dir_all(&ohpm_dir)?;

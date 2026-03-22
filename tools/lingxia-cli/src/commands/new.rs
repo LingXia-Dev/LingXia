@@ -56,7 +56,7 @@ pub fn execute(
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
-    // Fetch LingXia versions from GitHub
+    // Fetch LingXia versions from registries
     // Use spinner only in TTY (interactive terminal), skip in CI/non-TTY to avoid log pollution
     let is_tty = std::io::stdout().is_terminal();
     let spinner: Option<ProgressBar> = if is_tty {
