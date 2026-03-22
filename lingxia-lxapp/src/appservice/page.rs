@@ -1,6 +1,6 @@
 use super::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, Bridge, JsonPatchOp,
-    MessageHandler, MessageTransport, RpcError, ServiceType,
+    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, Bridge, MessageHandler,
+    MessageTransport, RpcError, ServiceType,
 };
 use crate::PageServiceEvent;
 use crate::error;
@@ -14,7 +14,7 @@ use rong::{
 };
 use rong_event::EventEmitter;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tokio::sync::Mutex;
@@ -88,7 +88,7 @@ impl MessageHandler for PageSvc {
         ServiceType::None
     }
 
-    async fn get_state_snapshot(&self, _scope: Option<&str>) -> Result<Value, LxAppError> {
+    async fn get_state_snapshot(&self, _scope: Option<&str>) -> Result<String, LxAppError> {
         let data_obj = self
             .this
             .get::<_, JSObject>("data")
@@ -96,10 +96,8 @@ impl MessageHandler for PageSvc {
         let data_json = data_obj
             .json_stringify()
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let state: Value =
-            serde_json::from_str(&data_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let rev = self.state.try_lock().map(|s| s.state_rev).unwrap_or(0);
-        Ok(json!({ "rev": rev, "state": state }))
+        Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
     }
 
     async fn handle_req(
@@ -108,7 +106,7 @@ impl MessageHandler for PageSvc {
         params_json: Option<&str>,
         service_type: ServiceType,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
-    ) -> Result<Value, RpcError> {
+    ) -> Result<String, RpcError> {
         let ctx = self.get_ctx();
 
         let build_call_arg = |json: Option<&str>| -> Option<JSValue> {
@@ -119,38 +117,38 @@ impl MessageHandler for PageSvc {
             json.json_to_js_value(&ctx).ok()
         };
 
-        let js_value_to_json = |v: JSValue| -> Result<Value, RpcError> {
+        let js_value_to_json_str = |v: JSValue| -> Result<String, RpcError> {
             if v.is_undefined() || v.is_null() {
-                return Ok(Value::Null);
+                return Ok("null".to_owned());
             }
             if v.is_boolean() {
                 let b: bool = v
                     .into_value()
                     .try_into()
                     .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                return Ok(Value::Bool(b));
+                return Ok(if b { "true" } else { "false" }.to_owned());
             }
             if v.is_number() {
                 let n: f64 = v
                     .into_value()
                     .try_into()
                     .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                return Ok(Value::Number(serde_json::Number::from_f64(n).ok_or_else(
-                    || RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string())),
-                )?));
+                let num = serde_json::Number::from_f64(n).ok_or_else(|| {
+                    RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string()))
+                })?;
+                return Ok(num.to_string());
             }
             if v.is_string() {
                 let s: String = v
                     .into_value()
                     .try_into()
                     .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                return Ok(Value::String(s));
+                return serde_json::to_string(&s)
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
             }
             if let Some(obj) = v.into_object() {
-                let s = obj
+                return obj
                     .json_stringify()
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
-                return serde_json::from_str(&s)
                     .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
             }
 
@@ -184,7 +182,7 @@ impl MessageHandler for PageSvc {
                     }
                     res = fut => {
                         match res {
-                            Ok(v) => js_value_to_json(v),
+                            Ok(v) => js_value_to_json_str(v),
                             Err(e) => Err(rpc_error_from_rong(e)),
                         }
                     }
@@ -206,7 +204,14 @@ impl MessageHandler for PageSvc {
                     biased;
                     res = &mut host_fut => {
                         match res {
-                            Ok(json) => Ok(json),
+                            Ok(json) => RawValue::from_string(json)
+                                .map(|raw| raw.get().to_owned())
+                                .map_err(|e| {
+                                    RpcError::new(
+                                        BRIDGE_INTERNAL_ERROR,
+                                        Some(format!("Host handler returned invalid JSON: {}", e)),
+                                    )
+                                }),
                             Err(e) => {
                                 // Host handlers are expected to return a cancel error when they
                                 // observe `cancel`. Map that to BRIDGE_CANCELED so view callers
@@ -235,9 +240,7 @@ impl MessageHandler for PageSvc {
                     );
                 }
 
-                let json = json_result?;
-                serde_json::from_str(&json)
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))
+                json_result
             }
             ServiceType::None => Err(RpcError::new(
                 BRIDGE_METHOD_NOT_FOUND,
@@ -402,15 +405,18 @@ impl PageSvc {
         let new_rev = base_rev + 1;
         state.state_rev = new_rev;
 
-        // Parse { ops: [...] } format from Page.js
+        // Parse { ops: [...] } format from Page.js. Keep the original JSON for forwarding,
+        // but still validate that it is a well-formed patch array before sending it onward.
         #[derive(Deserialize)]
         struct OpsWrapper {
-            ops: Vec<JsonPatchOp>,
+            ops: Box<RawValue>,
         }
         let wrapper: OpsWrapper = serde_json::from_str(&ops_json).map_err(|e| {
             RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
         })?;
-        let ops = wrapper.ops;
+        serde_json::from_str::<Vec<super::bridge::JsonPatchOp>>(wrapper.ops.get()).map_err(
+            |e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())),
+        )?;
 
         let ack = if let Some(cb) = callback.0 {
             state.state_callback.insert(new_rev, cb);
@@ -422,7 +428,7 @@ impl PageSvc {
         drop(state);
 
         self.bridge
-            .send_state_patch(self, None, base_rev, new_rev, ops, ack)
+            .send_state_patch(self, None, base_rev, new_rev, wrapper.ops, ack)
             .map_err(|e| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
             })?;
@@ -526,15 +532,12 @@ impl PageSvc {
                 .get::<_, JSObject>("data")
                 .unwrap_or_else(|_| JSObject::new(&self.this.get_ctx()));
             let data_json = page_data.json_stringify()?;
-            let data_value: Value = serde_json::from_str(&data_json).map_err(|e| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
-            })?;
 
             state.state_rev = 1;
             drop(state);
 
             self.bridge
-                .send_state_snapshot(self, None, 1, data_value)
+                .send_state_snapshot(self, None, 1, data_json)
                 .map_err(|e| {
                     RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
                 })?;

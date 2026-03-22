@@ -2,6 +2,7 @@ use crate::error::LxAppError;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, atomic::AtomicUsize};
@@ -35,14 +36,14 @@ pub(crate) trait MessageTransport {
 
 pub(crate) trait MessageHandler {
     fn get_service_type(&self, service_name: &str) -> ServiceType;
-    async fn get_state_snapshot(&self, scope: Option<&str>) -> Result<Value, LxAppError>;
+    async fn get_state_snapshot(&self, scope: Option<&str>) -> Result<String, LxAppError>;
     async fn handle_req(
         &self,
         method: &str,
         params_json: Option<&str>,
         service_type: ServiceType,
         cancel_rx: oneshot::Receiver<()>,
-    ) -> Result<Value, RpcError>;
+    ) -> Result<String, RpcError>;
     async fn handle_notify(
         &self,
         method: &str,
@@ -105,7 +106,7 @@ pub(crate) struct ReqMsg {
     pub v: u8,
     pub id: String,
     pub method: String,
-    pub params: Option<Value>,
+    pub params: Option<Box<RawValue>>,
     #[serde(default)]
     pub cap: String,
 }
@@ -114,7 +115,7 @@ pub(crate) struct ReqMsg {
 pub(crate) struct NotifyMsg {
     pub v: u8,
     pub method: String,
-    pub params: Option<Value>,
+    pub params: Option<Box<RawValue>>,
     #[serde(default)]
     pub cap: String,
 }
@@ -184,60 +185,51 @@ pub enum IncomingMessage {
 
 impl IncomingMessage {
     pub fn from_json_str(json_str: &str) -> Result<Self, LxAppError> {
-        let raw: Value = serde_json::from_str(json_str)?;
-        let obj = raw
-            .as_object()
-            .ok_or_else(|| LxAppError::Bridge("Message must be JSON object".to_string()))?;
+        // Lightweight probe to determine message kind without deep-parsing params/result.
+        #[derive(Deserialize)]
+        struct KindProbe {
+            v: Option<u8>,
+            kind: Option<String>,
+            id: Option<String>,
+        }
 
-        let v = obj
-            .get("v")
-            .and_then(|v| v.as_u64())
-            .and_then(|v| u8::try_from(v).ok());
-        let kind = obj
-            .get("kind")
-            .and_then(|k| k.as_str())
-            .map(|s| s.to_string());
-        let id = obj
-            .get("id")
-            .and_then(|i| i.as_str())
-            .map(|s| s.to_string());
+        let probe: KindProbe = serde_json::from_str(json_str)
+            .map_err(|e| LxAppError::Bridge(format!("Invalid JSON: {}", e)))?;
 
-        let Some(kind_str) = kind.as_deref() else {
+        let Some(kind_str) = probe.kind.as_deref() else {
             return Ok(IncomingMessage::Unknown(UnknownMsg {
-                v,
-                kind,
-                id,
+                v: probe.v,
+                kind: None,
+                id: probe.id,
                 parse_error: Some("Missing 'kind'".to_string()),
             }));
         };
 
+        // Deserialize directly from the raw string so that RawValue fields (e.g. params)
+        // capture the original JSON bytes without deep-parsing.
         match kind_str {
-            "hello" => serde_json::from_value::<HelloMsg>(raw.clone()).map(IncomingMessage::Hello),
-            "req" => serde_json::from_value::<ReqMsg>(raw.clone()).map(IncomingMessage::Req),
-            "res" => serde_json::from_value::<ResMsg>(raw.clone()).map(IncomingMessage::Res),
-            "notify" => {
-                serde_json::from_value::<NotifyMsg>(raw.clone()).map(IncomingMessage::Notify)
-            }
-            "cancel" => {
-                serde_json::from_value::<CancelMsg>(raw.clone()).map(IncomingMessage::Cancel)
-            }
+            "hello" => serde_json::from_str::<HelloMsg>(json_str).map(IncomingMessage::Hello),
+            "req" => serde_json::from_str::<ReqMsg>(json_str).map(IncomingMessage::Req),
+            "res" => serde_json::from_str::<ResMsg>(json_str).map(IncomingMessage::Res),
+            "notify" => serde_json::from_str::<NotifyMsg>(json_str).map(IncomingMessage::Notify),
+            "cancel" => serde_json::from_str::<CancelMsg>(json_str).map(IncomingMessage::Cancel),
             "state.ack" => {
-                serde_json::from_value::<StateAckMsg>(raw.clone()).map(IncomingMessage::StateAck)
+                serde_json::from_str::<StateAckMsg>(json_str).map(IncomingMessage::StateAck)
             }
             _ => {
                 return Ok(IncomingMessage::Unknown(UnknownMsg {
-                    v,
-                    kind,
-                    id,
+                    v: probe.v,
+                    kind: probe.kind,
+                    id: probe.id,
                     parse_error: None,
                 }));
             }
         }
         .or_else(|e| {
             Ok(IncomingMessage::Unknown(UnknownMsg {
-                v,
-                kind,
-                id,
+                v: probe.v,
+                kind: probe.kind,
+                id: probe.id,
                 parse_error: Some(e.to_string()),
             }))
         })
@@ -279,7 +271,7 @@ struct Res {
     id: String,
     ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    result: Option<Value>,
+    result: Option<Box<RawValue>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<BridgeError>,
 }
@@ -291,9 +283,10 @@ pub struct StateSnapshot {
     #[serde(skip_serializing_if = "Option::is_none")]
     scope: Option<String>,
     rev: u64,
-    state: Value,
+    state: Box<RawValue>,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct JsonPatchOp {
     pub op: String,
@@ -311,7 +304,7 @@ pub struct StatePatch {
     #[serde(rename = "baseRev")]
     base_rev: u64,
     rev: u64,
-    ops: Vec<JsonPatchOp>,
+    ops: Box<RawValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ack: Option<bool>,
 }
@@ -373,8 +366,10 @@ impl Bridge {
         &self,
         transport: &T,
         id: String,
-        result: Value,
+        result_json: String,
     ) -> Result<(), LxAppError> {
+        let result =
+            RawValue::from_string(result_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let msg = Res {
             v: 2,
             kind: "res",
@@ -453,8 +448,10 @@ impl Bridge {
         transport: &T,
         scope: Option<String>,
         rev: u64,
-        state: Value,
+        state_json: String,
     ) -> Result<(), LxAppError> {
+        let state =
+            RawValue::from_string(state_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let msg = StateSnapshot {
             v: 2,
             kind: "state.snapshot",
@@ -471,7 +468,7 @@ impl Bridge {
         scope: Option<String>,
         base_rev: u64,
         rev: u64,
-        ops: Vec<JsonPatchOp>,
+        ops: Box<RawValue>,
         ack: Option<bool>,
     ) -> Result<(), LxAppError> {
         let msg = StatePatch {
@@ -604,10 +601,14 @@ impl Bridge {
 
                 // Handle state.getSnapshot specially
                 if method == "state.getSnapshot" {
+                    #[derive(Deserialize)]
+                    struct SnapshotParams {
+                        scope: Option<String>,
+                    }
                     let scope = params
                         .as_ref()
-                        .and_then(|v| v.get("scope"))
-                        .and_then(|v| v.as_str());
+                        .and_then(|v| serde_json::from_str::<SnapshotParams>(v.get()).ok())
+                        .and_then(|p| p.scope);
                     // Snapshot building can be expensive (large state + stringify/parse), so keep
                     // it off the bridge message pump.
                     let bridge = <Bridge as Clone>::clone(self);
@@ -618,7 +619,16 @@ impl Bridge {
                     rong::spawn(async move {
                         match handler.get_state_snapshot(scope.as_deref()).await {
                             Ok(snapshot) => {
-                                let _ = bridge.send_res_ok(&transport, id.clone(), snapshot);
+                                if let Err(e) = bridge.send_res_ok(&transport, id.clone(), snapshot)
+                                {
+                                    let _ = bridge.send_res_err(
+                                        &transport,
+                                        id.clone(),
+                                        BRIDGE_INTERNAL_ERROR,
+                                        Some(e.to_string()),
+                                        None,
+                                    );
+                                }
                             }
                             Err(e) => {
                                 let _ = bridge.send_res_err(
@@ -641,10 +651,7 @@ impl Bridge {
                     .unwrap()
                     .insert(id.clone(), cancel_tx);
 
-                let params_json = params
-                    .as_ref()
-                    .map(|v| serde_json::to_string(v))
-                    .transpose()?;
+                let params_json: Option<String> = params.as_ref().map(|v| v.get().to_owned());
                 let service_type = handler.get_service_type(method);
 
                 if matches!(service_type, ServiceType::None) {
@@ -675,8 +682,16 @@ impl Bridge {
                     bridge.pending_req_cancel.lock().unwrap().remove(&id);
 
                     match result {
-                        Ok(value) => {
-                            let _ = bridge.send_res_ok(&transport, id.clone(), value);
+                        Ok(json) => {
+                            if let Err(e) = bridge.send_res_ok(&transport, id.clone(), json) {
+                                let _ = bridge.send_res_err(
+                                    &transport,
+                                    id.clone(),
+                                    BRIDGE_INTERNAL_ERROR,
+                                    Some(e.to_string()),
+                                    None,
+                                );
+                            }
                         }
                         Err(e) => {
                             let _ = bridge.send_res_err(
@@ -727,11 +742,7 @@ impl Bridge {
                     return Ok(());
                 }
 
-                let params_json = msg
-                    .params
-                    .as_ref()
-                    .map(|v| serde_json::to_string(v))
-                    .transpose()?;
+                let params_json: Option<String> = msg.params.as_ref().map(|v| v.get().to_owned());
                 let service_type = handler.get_service_type(&msg.method);
                 handler
                     .handle_notify(&msg.method, params_json.as_deref(), service_type)
