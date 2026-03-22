@@ -1,4 +1,4 @@
-use crate::traits::{NavigationPolicy, NewWindowPolicy};
+use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy};
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError};
 use block2::{Block, StackBlock};
@@ -198,6 +198,89 @@ pub(crate) fn apply_http_proxy(
     })?
 }
 
+/// Extract a `LoadError` from a raw `*mut NSError`.
+///
+/// # Safety
+/// `error` must be either null or a valid `NSError` pointer.
+unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
+    if error.is_null() {
+        return LoadError {
+            url: None,
+            kind: LoadErrorKind::Unknown,
+            description: "unknown error".to_string(),
+        };
+    }
+    let description = {
+        let s: *mut NSString = unsafe { msg_send![error, localizedDescription] };
+        unsafe { s.as_ref() }
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unknown error".to_string())
+    };
+    let error_code: i64 = unsafe { msg_send![error, code] };
+    let url = {
+        let user_info: *mut AnyObject = unsafe { msg_send![error, userInfo] };
+        if user_info.is_null() {
+            None
+        } else {
+            let key = NSString::from_str("NSErrorFailingURLStringKey");
+            let val: *mut NSString = unsafe { msg_send![user_info, objectForKey: &*key] };
+            unsafe { val.as_ref() }.map(|v| v.to_string())
+        }
+    };
+    let kind = match error_code {
+        -999 => LoadErrorKind::Cancelled,
+        -1001 => LoadErrorKind::Timeout,
+        -1002 => LoadErrorKind::InvalidUrl,
+        -1003 | -1006 => LoadErrorKind::Dns,
+        -1004 | -1005 | -1009 => LoadErrorKind::Network,
+        -1022 | -1206..=-1200 => LoadErrorKind::Security,
+        -1100 => LoadErrorKind::NotFound,
+        _ => {
+            let desc = description.trim().to_ascii_lowercase();
+            if desc.is_empty() {
+                LoadErrorKind::Unknown
+            } else if desc.contains("dns")
+                || desc.contains("host")
+                || desc.contains("name not resolved")
+            {
+                LoadErrorKind::Dns
+            } else if desc.contains("timeout") || desc.contains("timed out") {
+                LoadErrorKind::Timeout
+            } else if desc.contains("ssl")
+                || desc.contains("tls")
+                || desc.contains("certificate")
+                || desc.contains("secure connection")
+            {
+                LoadErrorKind::Security
+            } else if desc.contains("cancel") || desc.contains("aborted") {
+                LoadErrorKind::Cancelled
+            } else if desc.contains("bad url")
+                || desc.contains("invalid url")
+                || desc.contains("malformed")
+                || desc.contains("unsupported scheme")
+            {
+                LoadErrorKind::InvalidUrl
+            } else if desc.contains("not found") || desc.contains("no such file") {
+                LoadErrorKind::NotFound
+            } else if desc.contains("network")
+                || desc.contains("offline")
+                || desc.contains("internet")
+                || desc.contains("connect")
+                || desc.contains("connection")
+            {
+                LoadErrorKind::Network
+            } else {
+                LoadErrorKind::Unknown
+            }
+        }
+    };
+    LoadError {
+        url,
+        kind,
+        description,
+    }
+}
+
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
@@ -250,21 +333,23 @@ define_class!(
             error: *mut NSError,
         ) {
             let webtag = &self.ivars().webtag;
-            let desc = unsafe {
-                if error.is_null() {
-                    "unknown error".to_string()
-                } else {
-                    let s: *mut NSString = msg_send![error, localizedDescription];
-                    s.as_ref()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unknown error".to_string())
-                }
-            };
+            let load_error = unsafe { ns_error_to_load_error(error) };
+            if load_error.kind == LoadErrorKind::Cancelled {
+                log::debug!(
+                    "Ignoring cancelled provisional navigation webtag={} error={}",
+                    webtag,
+                    load_error.description
+                );
+                return;
+            }
             log::warn!(
                 "WebView provisional navigation failed webtag={} error={}",
                 webtag,
-                desc
+                load_error.description
             );
+            if let Some(delegate) = find_webview_delegate(webtag) {
+                delegate.on_load_error(&load_error);
+            }
         }
 
         #[unsafe(method(webView:didFailNavigation:withError:))]
@@ -275,17 +360,23 @@ define_class!(
             error: *mut NSError,
         ) {
             let webtag = &self.ivars().webtag;
-            let desc = unsafe {
-                if error.is_null() {
-                    "unknown error".to_string()
-                } else {
-                    let s: *mut NSString = msg_send![error, localizedDescription];
-                    s.as_ref()
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "unknown error".to_string())
-                }
-            };
-            log::warn!("WebView navigation failed webtag={} error={}", webtag, desc);
+            let load_error = unsafe { ns_error_to_load_error(error) };
+            if load_error.kind == LoadErrorKind::Cancelled {
+                log::debug!(
+                    "Ignoring cancelled navigation webtag={} error={}",
+                    webtag,
+                    load_error.description
+                );
+                return;
+            }
+            log::warn!(
+                "WebView navigation failed webtag={} error={}",
+                webtag,
+                load_error.description
+            );
+            if let Some(delegate) = find_webview_delegate(webtag) {
+                delegate.on_load_error(&load_error);
+            }
         }
 
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]

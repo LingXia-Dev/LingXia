@@ -77,12 +77,49 @@ public class LingXiaWebViewClient extends WebViewClient {
         return false;
     }
 
+    private void reportMainFrameLoadError(String failingUrl, int errorCode, String description) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView == null) {
+            return;
+        }
+        webView.setPageLoaded(false);
+        webView.onLoadError(
+            webView.getAppId() != null ? webView.getAppId() : "",
+            webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
+            webView.getSessionId(),
+            failingUrl,
+            errorCode,
+            description
+        );
+    }
+
     @Override
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
         super.onReceivedError(view, request, error);
-        Log.e(TAG, "Error loading page: " + error.getDescription() +
-              ", code: " + error.getErrorCode() +
-              ", failing URL: " + (request != null ? request.getUrl() : "unknown"));
+        String failingUrl = request != null ? request.getUrl().toString() : "";
+        CharSequence desc = error.getDescription();
+        String description = desc != null ? desc.toString() : "unknown error";
+        int errorCode = error.getErrorCode();
+        Log.e(TAG, "Error loading page: " + description +
+              ", code: " + errorCode +
+              ", failing URL: " + failingUrl);
+
+        // Only report main-frame errors to Rust; sub-resource errors are not actionable.
+        if (request != null && request.isForMainFrame()) {
+            reportMainFrameLoadError(failingUrl, errorCode, description);
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+        super.onReceivedError(view, errorCode, description, failingUrl);
+        String safeUrl = failingUrl != null ? failingUrl : "";
+        String safeDescription = description != null ? description : "unknown error";
+        Log.e(TAG, "Error loading page (legacy callback): " + safeDescription +
+              ", code: " + errorCode +
+              ", failing URL: " + safeUrl);
+        reportMainFrameLoadError(safeUrl, errorCode, safeDescription);
     }
 
     @Override

@@ -1,4 +1,4 @@
-use crate::traits::NavigationPolicy;
+use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy};
 use crate::webview::{
     WebTag, WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
@@ -90,6 +90,90 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
             delegate.on_page_finished();
         }
         Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+fn android_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {
+    match error_code {
+        -2 => LoadErrorKind::Dns,
+        -6 | -7 | -3 | -4 | -5 | -9 | -15 => LoadErrorKind::Network,
+        -8 => LoadErrorKind::Timeout,
+        -11 | -16 => LoadErrorKind::Security,
+        -10 | -12 => LoadErrorKind::InvalidUrl,
+        -14 => LoadErrorKind::NotFound,
+        _ => {
+            let desc = description.trim().to_ascii_lowercase();
+            if desc.is_empty() {
+                LoadErrorKind::Unknown
+            } else if desc.contains("dns")
+                || desc.contains("host")
+                || desc.contains("name not resolved")
+            {
+                LoadErrorKind::Dns
+            } else if desc.contains("timeout") || desc.contains("timed out") {
+                LoadErrorKind::Timeout
+            } else if desc.contains("ssl")
+                || desc.contains("tls")
+                || desc.contains("certificate")
+                || desc.contains("secure connection")
+            {
+                LoadErrorKind::Security
+            } else if desc.contains("cancel") || desc.contains("aborted") {
+                LoadErrorKind::Cancelled
+            } else if desc.contains("bad url")
+                || desc.contains("invalid url")
+                || desc.contains("malformed")
+                || desc.contains("unsupported scheme")
+            {
+                LoadErrorKind::InvalidUrl
+            } else if desc.contains("not found") || desc.contains("no such file") {
+                LoadErrorKind::NotFound
+            } else if desc.contains("network")
+                || desc.contains("offline")
+                || desc.contains("internet")
+                || desc.contains("connect")
+                || desc.contains("connection")
+            {
+                LoadErrorKind::Network
+            } else {
+                LoadErrorKind::Unknown
+            }
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    url: JString,
+    error_code: jint,
+    description: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+        let url: String = url.try_to_string(env)?;
+        let description: String = description.try_to_string(env)?;
+
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(delegate) = find_webview_delegate(&webtag) {
+            delegate.on_load_error(&LoadError {
+                url: if url.is_empty() { None } else { Some(url) },
+                kind: android_load_error_kind(error_code, &description),
+                description,
+            });
+        }
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

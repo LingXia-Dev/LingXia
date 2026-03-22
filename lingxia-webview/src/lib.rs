@@ -35,8 +35,9 @@ mod harmony;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    DownloadRequest, LoadDataRequest, NavigationPolicy, NewWindowPolicy, SchemeOutcome,
-    SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
+    DownloadRequest, LoadDataRequest, LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy,
+    SchemeOutcome, SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController,
+    WebViewDelegate,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
@@ -86,6 +87,11 @@ pub mod platform {
             check_navigation_policy, schemehandler::register_custom_schemes, tsfn,
             webview_controller_created, webview_controller_destroyed,
         };
+
+        #[doc(hidden)]
+        pub fn on_load_error(webtag: &str, url: &str, error_code: i32, description: &str) {
+            crate::harmony::on_load_error(webtag, url, error_code, description);
+        }
 
         #[doc(hidden)]
         pub fn on_download_start(

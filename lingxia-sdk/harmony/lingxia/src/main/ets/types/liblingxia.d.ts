@@ -447,6 +447,16 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
+   * Forward main-frame Web load error to native layer.
+   */
+  export function onLoadError(
+    webtag: string,
+    url: string,
+    errorCode: number,
+    description: string
+  ): boolean;
+
+  /**
    * Register user extensions (cloud provider, JS extensions, etc.)
    * Must be called before lxappInit()
    */

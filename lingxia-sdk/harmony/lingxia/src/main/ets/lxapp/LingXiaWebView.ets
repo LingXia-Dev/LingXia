@@ -21,6 +21,7 @@ import { webview } from '@kit.ArkWeb';
 import {
   getWebViewEmbedManager,
   handleWebViewDownloadStart,
+  handleWebViewLoadError,
   handleWebViewNavigationPolicy,
   isBrowserRelaxed as isWebViewBrowserRelaxed,
   notifyWebViewControllerAttached
@@ -123,6 +124,17 @@ export struct LingXiaWebView {
           event.contentDisposition ?? '',
           event.mimetype ?? '',
           event.contentLength ?? -1
+        );
+      })
+      .onErrorReceive((event) => {
+        if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+          return;
+        }
+        handleWebViewLoadError(
+          this.webTag,
+          event.request.getRequestUrl() ?? '',
+          event.error.getErrorCode(),
+          event.error.getErrorInfo() ?? 'unknown error'
         );
       })
       .onAlert((event) => {

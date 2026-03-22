@@ -3,7 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
-use crate::traits::NavigationPolicy;
+use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy};
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
     WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_delegate,
@@ -1173,10 +1173,10 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
         log::info!("Page begin loading: {}", webtag_str);
 
         let webtag = WebTag::from(webtag_str);
-        if find_webview(&webtag).is_none() {
+        let Some(webview) = find_webview(&webtag) else {
             log::debug!("Ignoring page begin for stale webview {}", webtag_str);
             return;
-        }
+        };
 
         // Only inject console interception script; port setup is deferred to get_port_callback
         if let Err(e) = inject_console_script(&webtag) {
@@ -1197,8 +1197,11 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
     if let Ok(webtag) = unsafe { CStr::from_ptr(web_tag).to_str() } {
         log::info!("Page end loading: {}", webtag);
 
-        // Extract app_id and path from webtag
         let webtag = WebTag::from(webtag);
+        let Some(webview) = find_webview(&webtag) else {
+            log::debug!("Ignoring page end for stale webview {}", webtag);
+            return;
+        };
 
         if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_finished();
@@ -1506,6 +1509,66 @@ pub fn on_download_start(
     };
     webview.handle_download(request);
     true
+}
+
+fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {
+    match error_code {
+        -2 => LoadErrorKind::Dns,
+        -8 => LoadErrorKind::Timeout,
+        -11 | -16 => LoadErrorKind::Security,
+        -14 => LoadErrorKind::NotFound,
+        -3 | -4 | -5 | -6 | -7 | -9 | -15 => LoadErrorKind::Network,
+        -10 | -12 => LoadErrorKind::InvalidUrl,
+        _ => {
+            let desc = description.trim().to_ascii_lowercase();
+            if desc.is_empty() {
+                LoadErrorKind::Unknown
+            } else if desc.contains("dns")
+                || desc.contains("host")
+                || desc.contains("name not resolved")
+            {
+                LoadErrorKind::Dns
+            } else if desc.contains("timeout") || desc.contains("timed out") {
+                LoadErrorKind::Timeout
+            } else if desc.contains("ssl")
+                || desc.contains("tls")
+                || desc.contains("certificate")
+                || desc.contains("secure connection")
+            {
+                LoadErrorKind::Security
+            } else if desc.contains("cancel") || desc.contains("aborted") {
+                LoadErrorKind::Cancelled
+            } else if desc.contains("bad url")
+                || desc.contains("invalid url")
+                || desc.contains("malformed")
+                || desc.contains("unsupported scheme")
+            {
+                LoadErrorKind::InvalidUrl
+            } else if desc.contains("not found") || desc.contains("no such file") {
+                LoadErrorKind::NotFound
+            } else if desc.contains("network")
+                || desc.contains("offline")
+                || desc.contains("internet")
+                || desc.contains("connect")
+                || desc.contains("connection")
+            {
+                LoadErrorKind::Network
+            } else {
+                LoadErrorKind::Unknown
+            }
+        }
+    }
+}
+
+pub fn on_load_error(webtag_str: &str, url: &str, error_code: i32, description: &str) {
+    let webtag = WebTag::from(webtag_str);
+    if let Some(delegate) = find_webview_delegate(&webtag) {
+        delegate.on_load_error(&LoadError {
+            url: (!url.is_empty()).then(|| url.to_string()),
+            kind: harmony_load_error_kind(error_code, description),
+            description: description.to_string(),
+        });
+    }
 }
 
 /// Console WebMessage callback

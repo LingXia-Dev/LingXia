@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import {
   handleWebViewDownloadStart as coreHandleWebViewDownloadStart,
+  handleWebViewLoadError as coreHandleWebViewLoadError,
   handleWebViewNavigationPolicy as coreHandleWebViewNavigationPolicy,
   notifyWebViewControllerCreated as coreNotifyWebViewControllerAttached,
   WebViewInfo,
@@ -145,6 +146,15 @@ export function isBrowserRelaxed(webtag: string): boolean {
 
 export function handleWebViewNavigationPolicy(webtag: string, url: string): boolean {
   return coreHandleWebViewNavigationPolicy(webtag, url);
+}
+
+export function handleWebViewLoadError(
+  webtag: string,
+  url: string,
+  errorCode: number,
+  description: string
+): void {
+  coreHandleWebViewLoadError(webtag, url, errorCode, description);
 }
 
 export function handleWebViewDownloadStart(

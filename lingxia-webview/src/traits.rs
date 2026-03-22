@@ -153,6 +153,33 @@ impl<'a> LoadDataRequest<'a> {
     }
 }
 
+/// Normalized category for a main-frame page load failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoadErrorKind {
+    Dns,
+    Network,
+    Timeout,
+    Security,
+    Cancelled,
+    InvalidUrl,
+    NotFound,
+    Unknown,
+}
+
+/// Error reported when a main-frame page load fails (DNS, network, TLS, etc.).
+///
+/// The webview crate is responsible only for delivering this event.
+/// What to display is entirely up to the caller.
+#[derive(Debug, Clone)]
+pub struct LoadError {
+    /// URL that failed to load, if the platform exposes it.
+    pub url: Option<String>,
+    /// Cross-platform error category for application logic and UI.
+    pub kind: LoadErrorKind,
+    /// Human-readable description from the platform.
+    pub description: String,
+}
+
 /// WebView delegate trait - focused on WebView events only
 pub trait WebViewDelegate: Send + Sync {
     /// Called when the page starts loading
@@ -160,6 +187,12 @@ pub trait WebViewDelegate: Send + Sync {
 
     /// Called when the page finishes loading
     fn on_page_finished(&self);
+
+    /// Called when a main-frame page load fails (e.g. DNS failure, network unreachable, TLS error).
+    ///
+    /// Only fires for the main document; sub-resource errors are ignored.
+    /// Default is a no-op so existing implementations do not need to change.
+    fn on_load_error(&self, _error: &LoadError) {}
 
     /// Handles a postMessage from the page View(WebView)
     fn handle_post_message(&self, msg: String);

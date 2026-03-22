@@ -655,6 +655,12 @@ pub fn on_download_start(
 }
 
 #[napi]
+pub fn on_load_error(webtag: String, url: String, error_code: i32, description: String) -> bool {
+    webview_harmony::on_load_error(&webtag, &url, error_code, &description);
+    true
+}
+
+#[napi]
 pub fn is_pull_down_refresh_enabled(appid: String, path: String) -> bool {
     lxapp::is_pull_down_refresh_enabled(&appid, &path)
 }

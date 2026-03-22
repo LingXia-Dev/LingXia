@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import {
   onDownloadStart as hostOnDownloadStart,
+  onLoadError as hostOnLoadError,
   onNavigationPolicy as hostOnNavigationPolicy,
   onWebviewControllerCreated as hostOnWebviewControllerCreated,
   onWebviewControllerDestroyed as hostOnWebviewControllerDestroyed
@@ -24,11 +25,19 @@ export interface WebViewDownloadRequest {
   contentLength: number;
 }
 
+export interface WebViewLoadError {
+  webtag: string;
+  url: string;
+  errorCode: number;
+  description: string;
+}
+
 export interface WebViewHostHooks {
   onControllerCreated?: (webtag: string) => void;
   onControllerDestroyed?: (webtag: string) => void;
   onNavigationPolicy?: (webtag: string, url: string) => boolean;
   onDownloadStart?: (request: WebViewDownloadRequest) => void;
+  onLoadError?: (error: WebViewLoadError) => void;
 }
 
 interface RawOptionsToken {
@@ -52,7 +61,8 @@ function hasHostHooksConfigured(): boolean {
     hostHooks.onControllerCreated ||
     hostHooks.onControllerDestroyed ||
     hostHooks.onNavigationPolicy ||
-    hostHooks.onDownloadStart
+    hostHooks.onDownloadStart ||
+    hostHooks.onLoadError
   );
 }
 
@@ -81,6 +91,9 @@ function bindDefaultHostHooksIfNeeded(): void {
         request.mimetype,
         request.contentLength
       );
+    },
+    onLoadError: (error: WebViewLoadError): void => {
+      hostOnLoadError(error.webtag, error.url, error.errorCode, error.description);
     }
   };
   defaultHostHooksBound = true;
@@ -604,12 +617,31 @@ export function isBrowserRelaxedProfile(webtag: string): boolean {
   return getWebViewCreateOptions(webtag).profile === PROFILE_BROWSER_RELAXED;
 }
 
+export function handleWebViewLoadError(
+  webtag: string,
+  url: string,
+  errorCode: number,
+  description: string
+): void {
+  bindDefaultHostHooksIfNeeded();
+  const callback = hostHooks.onLoadError;
+  if (!callback) {
+    return;
+  }
+  try {
+    callback({ webtag, url, errorCode, description });
+  } catch (error) {
+    hilog.error(DOMAIN, TAG, `Host hook onLoadError failed for ${webtag}: ${error}`);
+  }
+}
+
 export function setWebViewHostHooks(hooks: WebViewHostHooks): void {
   hostHooks = {
     onControllerCreated: hooks.onControllerCreated,
     onControllerDestroyed: hooks.onControllerDestroyed,
     onNavigationPolicy: hooks.onNavigationPolicy,
-    onDownloadStart: hooks.onDownloadStart
+    onDownloadStart: hooks.onDownloadStart,
+    onLoadError: hooks.onLoadError
   };
   defaultHostHooksBound = true;
 }
