@@ -58,8 +58,9 @@ pub use lxapp::{
     init, is_pull_down_refresh_enabled, on_low_memory, page_config::OrientationConfig,
     page_config::PageOrientation, tabbar, try_get,
 };
-pub use page::NavigationType;
+pub use page::{NavigationType, Page, ViewCallOptions};
 pub use panel::{open_lxapp_for_panel, panel_item_for_id, panels_config_json};
+pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
     BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,
     ProviderErrorCode, PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget,

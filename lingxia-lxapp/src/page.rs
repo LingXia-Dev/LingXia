@@ -9,6 +9,9 @@ use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use base64::Engine;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde_json::Value;
 
 use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
@@ -21,10 +24,12 @@ use lingxia_webview::{
 use ring::rand::{SecureRandom, SystemRandom};
 
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
+
+const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Inner state of a page that can be shared across threads
 #[derive(Clone)]
@@ -112,6 +117,61 @@ impl NavigationType {
 pub struct Page {
     // Use Arc to share the inner state across threads
     inner: Arc<PageInner>,
+}
+
+/// Options for Rust-side calls into `window.LingXiaBridge`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ViewCallOptions {
+    timeout: Duration,
+}
+
+impl Default for ViewCallOptions {
+    fn default() -> Self {
+        Self {
+            timeout: DEFAULT_VIEW_CALL_TIMEOUT,
+        }
+    }
+}
+
+impl ViewCallOptions {
+    /// Create default call options.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Override the response timeout for this call.
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    /// Return the configured timeout.
+    pub fn timeout(self) -> Duration {
+        self.timeout
+    }
+}
+
+fn serialize_view_call_params<P>(params: &P) -> Result<Option<Value>, LxAppError>
+where
+    P: Serialize + ?Sized,
+{
+    let value = serde_json::to_value(params)?;
+    if value.is_null() {
+        return Ok(None);
+    }
+    Ok(Some(value))
+}
+
+fn decode_view_call_result<R>(method: &str, value: Value) -> Result<R, LxAppError>
+where
+    R: DeserializeOwned,
+{
+    serde_json::from_value(value).map_err(|err| {
+        LxAppError::Bridge(format!(
+            "Failed to decode view response for '{}': {}",
+            method, err
+        ))
+    })
 }
 
 impl Page {
@@ -808,6 +868,104 @@ impl Page {
             .executor
             .call_page_service(lxapp.clone(), self.path(), name, Some(arg))
     }
+
+    /// Call a View method on this page without a payload and deserialize the response.
+    pub async fn call_view<R>(&self, method: &str) -> Result<R, LxAppError>
+    where
+        R: DeserializeOwned,
+    {
+        self.call_view_in(method, ViewCallOptions::default()).await
+    }
+
+    /// Call a View method on this page without a payload using explicit call options.
+    pub async fn call_view_in<R>(
+        &self,
+        method: &str,
+        options: ViewCallOptions,
+    ) -> Result<R, LxAppError>
+    where
+        R: DeserializeOwned,
+    {
+        let value = self.call_view_json_in(method, options).await?;
+        decode_view_call_result(method, value)
+    }
+
+    /// Call a View method on this page with a typed payload and deserialize the response.
+    pub async fn call_view_with<P, R>(&self, method: &str, params: &P) -> Result<R, LxAppError>
+    where
+        P: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        self.call_view_with_in(method, params, ViewCallOptions::default())
+            .await
+    }
+
+    /// Call a View method on this page with a typed payload using explicit call options.
+    pub async fn call_view_with_in<P, R>(
+        &self,
+        method: &str,
+        params: &P,
+        options: ViewCallOptions,
+    ) -> Result<R, LxAppError>
+    where
+        P: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        let value = self.call_view_json_with_in(method, params, options).await?;
+        decode_view_call_result(method, value)
+    }
+
+    /// Call a View method on this page and return the raw JSON response.
+    pub async fn call_view_json(&self, method: &str) -> Result<Value, LxAppError> {
+        self.call_view_json_in(method, ViewCallOptions::default())
+            .await
+    }
+
+    /// Call a View method on this page and return the raw JSON response using explicit options.
+    pub async fn call_view_json_in(
+        &self,
+        method: &str,
+        options: ViewCallOptions,
+    ) -> Result<Value, LxAppError> {
+        self.call_view_json_value(method, None, options).await
+    }
+
+    /// Call a View method on this page with a typed payload and return the raw JSON response.
+    pub async fn call_view_json_with<P>(
+        &self,
+        method: &str,
+        params: &P,
+    ) -> Result<Value, LxAppError>
+    where
+        P: Serialize + ?Sized,
+    {
+        self.call_view_json_with_in(method, params, ViewCallOptions::default())
+            .await
+    }
+
+    /// Call a View method on this page with a typed payload and return the raw JSON response.
+    pub async fn call_view_json_with_in<P>(
+        &self,
+        method: &str,
+        params: &P,
+        options: ViewCallOptions,
+    ) -> Result<Value, LxAppError>
+    where
+        P: Serialize + ?Sized,
+    {
+        self.call_view_json_value(method, serialize_view_call_params(params)?, options)
+            .await
+    }
+
+    async fn call_view_json_value(
+        &self,
+        method: &str,
+        params: Option<Value>,
+        options: ViewCallOptions,
+    ) -> Result<Value, LxAppError> {
+        let pending = crate::appservice::view_call::call_view(self, method, params)?;
+        crate::appservice::view_call::await_pending_view_call(pending, options.timeout()).await
+    }
 }
 
 impl WebViewDelegate for Page {
@@ -860,6 +1018,50 @@ impl WebViewDelegate for Page {
             .with_level(log_level)
             .with_path(&self.inner.path)
             .with_appid(self.inner.appid.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, serde::Deserialize)]
+    struct ViewReply {
+        ok: bool,
+    }
+
+    #[test]
+    fn serialize_view_call_params_skips_null() {
+        assert_eq!(serialize_view_call_params(&()).unwrap(), None);
+        assert_eq!(
+            serialize_view_call_params(&serde_json::json!({ "topic": "status" })).unwrap(),
+            Some(serde_json::json!({ "topic": "status" }))
+        );
+    }
+
+    #[test]
+    fn decode_view_call_result_deserializes_typed_payload() {
+        let reply: ViewReply =
+            decode_view_call_result("example.echo", serde_json::json!({ "ok": true })).unwrap();
+        assert!(reply.ok);
+    }
+
+    #[test]
+    fn decode_view_call_result_reports_method_name() {
+        let err = decode_view_call_result::<ViewReply>("example.echo", serde_json::json!({}))
+            .unwrap_err();
+
+        match err {
+            LxAppError::Bridge(message) => {
+                assert!(message.contains("example.echo"));
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn view_call_options_default_timeout_is_positive() {
+        assert!(ViewCallOptions::default().timeout() > Duration::ZERO);
     }
 }
 

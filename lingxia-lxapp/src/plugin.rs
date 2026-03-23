@@ -122,6 +122,8 @@ pub fn wait_for_download(
 ///
 /// # Example
 /// ```
+/// use lingxia_lxapp::parse_plugin_url;
+///
 /// let url = "lx://plugin/myPlugin/pages/index";
 /// let (name, path) = parse_plugin_url(url).unwrap();
 /// assert_eq!(name, "myPlugin");

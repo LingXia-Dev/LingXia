@@ -138,6 +138,8 @@ pub fn log(tag: LogTag, level: LogLevel, message: impl std::fmt::Display) {
 ///
 /// Usage:
 /// ```rust
+/// use lingxia_lxapp::info;
+///
 /// // Simple usage - prints immediately
 /// info!("Simple message");
 ///

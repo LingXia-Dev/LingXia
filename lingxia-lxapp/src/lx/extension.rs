@@ -17,11 +17,10 @@
 //!             Ok("Hello from Rust Extension!".to_string())
 //!         }
 //!
-//!         let js_greet_func = JSFunc::new(greet_from_rust);
-//!         if let Err(e) = ctx.global().set("greetFromRust", js_greet_func) {
-//!             eprintln!("Failed to register 'greetFromRust': {}", e);
-//!         }
+//!         let js_greet_func = JSFunc::new(ctx, greet_from_rust)?;
+//!         ctx.global().set("greetFromRust", js_greet_func)?;
 //!         // Now, `greetFromRust()` will be available in the LxApp's JS logic.
+//!         Ok(())
 //!     }
 //! }
 //!

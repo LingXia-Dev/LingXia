@@ -2,6 +2,8 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -19,7 +21,7 @@ use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::executor::LxAppExecutor;
 use crate::lxapp::page_config::OrientationConfig;
-use crate::page::Page;
+use crate::page::{Page, ViewCallOptions};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
 use crate::{error, info, warn};
@@ -57,7 +59,6 @@ const DEFAULT_VERSION: &str = "0.0.1";
 
 const LXAPP_STACK_MAX: usize = 5;
 const PAGE_STACK_MAX: usize = 10;
-const VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Configured worker/stack count override. Must be set before `init()`.
 static NUM_WORKERS: OnceLock<usize> = OnceLock::new();
@@ -1520,46 +1521,63 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> Stri
 }
 
 impl LxApp {
-    /// Send a request to the current page's WebView and await the response.
-    ///
-    /// Used for Logic→View RPC calls (e.g. rendering action sheets via DOM).
-    pub async fn call_current_page_view(
-        &self,
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value, LxAppError> {
+    /// Return the current visible page or an error when the page stack is empty.
+    pub fn current_page(&self) -> Result<Page, LxAppError> {
         let path = self
             .peek_current_page()
             .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
-        let page = self
-            .get_page(&path)
-            .ok_or_else(|| LxAppError::WebView(format!("Page not found: {}", path)))?;
+        self.require_page(&path)
+    }
 
-        let pending = crate::appservice::view_call::call_view(&page, method, params)?;
+    /// Return a page by path or an error when that page is not currently alive.
+    pub fn require_page(&self, path: &str) -> Result<Page, LxAppError> {
+        self.get_page(path)
+            .ok_or_else(|| LxAppError::WebView(format!("Page not found: {}", path)))
+    }
 
-        match time::timeout(VIEW_CALL_TIMEOUT, pending.rx).await {
-            Ok(Ok(result)) => result.map_err(|rpc_err| LxAppError::RongJSHost {
-                code: rpc_err.code,
-                message: rpc_err
-                    .message
-                    .unwrap_or_else(|| "View call failed".to_string()),
-                data: rpc_err.data,
-            }),
-            Ok(Err(_)) => Err(LxAppError::ChannelError(
-                "View call channel closed".to_string(),
-            )),
-            Err(_) => {
-                crate::appservice::view_call::cancel_view_call(
-                    &pending.id,
-                    Some(format!("View call timed out after {:?}", VIEW_CALL_TIMEOUT)),
-                );
-                Err(LxAppError::Bridge(format!(
-                    "{}: View call timed out after {:?}",
-                    crate::appservice::bridge::BRIDGE_TIMEOUT,
-                    VIEW_CALL_TIMEOUT
-                )))
-            }
-        }
+    /// Call the current page View method without a payload and deserialize the response.
+    pub async fn call_view<R>(&self, method: &str) -> Result<R, LxAppError>
+    where
+        R: DeserializeOwned,
+    {
+        self.current_page()?.call_view(method).await
+    }
+
+    /// Call the current page View method without a payload using explicit call options.
+    pub async fn call_view_in<R>(
+        &self,
+        method: &str,
+        options: ViewCallOptions,
+    ) -> Result<R, LxAppError>
+    where
+        R: DeserializeOwned,
+    {
+        self.current_page()?.call_view_in(method, options).await
+    }
+
+    /// Call the current page View method with a typed payload and deserialize the response.
+    pub async fn call_view_with<P, R>(&self, method: &str, params: &P) -> Result<R, LxAppError>
+    where
+        P: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        self.current_page()?.call_view_with(method, params).await
+    }
+
+    /// Call the current page View method with explicit call options.
+    pub async fn call_view_with_in<P, R>(
+        &self,
+        method: &str,
+        params: &P,
+        options: ViewCallOptions,
+    ) -> Result<R, LxAppError>
+    where
+        P: Serialize + ?Sized,
+        R: DeserializeOwned,
+    {
+        self.current_page()?
+            .call_view_with_in(method, params, options)
+            .await
     }
 
     /// Notify the AppService (logic.js layer) with a built-in event and optional JSON payload.

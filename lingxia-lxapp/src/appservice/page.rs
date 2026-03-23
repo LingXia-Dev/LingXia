@@ -1,6 +1,6 @@
 use super::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, Bridge, MessageHandler,
-    MessageTransport, RpcError, ServiceType,
+    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_STREAM_CLOSED, Bridge,
+    MessageHandler, MessageTransport, RpcError, ServiceType,
 };
 use crate::PageServiceEvent;
 use crate::error;
@@ -9,8 +9,8 @@ use crate::host::get_host;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
-    Class, JSContext, JSFunc, JSObject, JSResult, JSValue, JsonToJSValue, RongJSError, Source,
-    error::HostError, function::Optional, js_class, js_export, js_method,
+    Class, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, JsonToJSValue, RongJSError,
+    Source, error::HostError, function::Optional, js_class, js_export, js_method,
 };
 use rong_event::EventEmitter;
 use serde::Deserialize;
@@ -38,6 +38,12 @@ struct PageSvcState {
     state_callback: HashMap<u64, JSFunc>,
     state_rev: u64,
     init_data: Option<JSObject>,
+    channels: HashMap<String, ChannelState>,
+}
+
+struct ChannelState {
+    handler: Option<JSObject>,
+    outbound_seq: u64,
 }
 
 fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
@@ -59,6 +65,84 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
 fn rpc_error_from_rong(err: RongJSError) -> RpcError {
     let lxapp_error: LxAppError = err.into();
     rpc_error_from_lxapp_error(&lxapp_error)
+}
+
+fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
+    if v.is_undefined() || v.is_null() {
+        return Ok("null".to_owned());
+    }
+    if v.is_boolean() {
+        let b: bool = v
+            .into_value()
+            .try_into()
+            .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
+        return Ok(if b { "true" } else { "false" }.to_owned());
+    }
+    if v.is_number() {
+        let n: f64 = v
+            .into_value()
+            .try_into()
+            .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
+        let num = serde_json::Number::from_f64(n).ok_or_else(|| {
+            RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string()))
+        })?;
+        return Ok(num.to_string());
+    }
+    if v.is_string() {
+        let s: String = v
+            .into_value()
+            .try_into()
+            .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
+        return serde_json::to_string(&s)
+            .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
+    }
+    if let Some(obj) = v.into_object() {
+        return obj
+            .json_stringify()
+            .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
+    }
+
+    Err(RpcError::new(
+        BRIDGE_INTERNAL_ERROR,
+        Some("Unsupported JS return type".to_string()),
+    ))
+}
+
+fn get_async_iterator_symbol(ctx: &JSContext) -> Result<JSSymbol, RpcError> {
+    ctx.global()
+        .get::<_, JSObject>("Symbol")
+        .and_then(|symbol| symbol.get::<_, JSSymbol>("asyncIterator"))
+        .map_err(rpc_error_from_rong)
+}
+
+fn maybe_get_async_iterator(
+    ctx: &JSContext,
+    value: &JSValue,
+) -> Result<Option<JSObject>, RpcError> {
+    let Some(obj) = value.clone().into_object() else {
+        return Ok(None);
+    };
+
+    let async_iter_symbol = get_async_iterator_symbol(ctx)?;
+    if let Ok(async_iter_fn) = obj.get::<_, JSFunc>(async_iter_symbol) {
+        let iterator = async_iter_fn
+            .call::<_, JSObject>(Some(obj.clone()), ())
+            .map_err(rpc_error_from_rong)?;
+        return Ok(Some(iterator));
+    }
+
+    if obj.get::<_, JSFunc>("next").is_ok() {
+        return Ok(Some(obj));
+    }
+
+    Ok(None)
+}
+
+#[derive(Deserialize)]
+struct AsyncIteratorStep {
+    done: bool,
+    #[serde(default)]
+    value: Option<Box<RawValue>>,
 }
 
 impl MessageTransport for PageSvc {
@@ -102,6 +186,7 @@ impl MessageHandler for PageSvc {
 
     async fn handle_req(
         &self,
+        req_id: &str,
         method: &str,
         params_json: Option<&str>,
         service_type: ServiceType,
@@ -115,47 +200,6 @@ impl MessageHandler for PageSvc {
                 return None;
             }
             json.json_to_js_value(&ctx).ok()
-        };
-
-        let js_value_to_json_str = |v: JSValue| -> Result<String, RpcError> {
-            if v.is_undefined() || v.is_null() {
-                return Ok("null".to_owned());
-            }
-            if v.is_boolean() {
-                let b: bool = v
-                    .into_value()
-                    .try_into()
-                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                return Ok(if b { "true" } else { "false" }.to_owned());
-            }
-            if v.is_number() {
-                let n: f64 = v
-                    .into_value()
-                    .try_into()
-                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                let num = serde_json::Number::from_f64(n).ok_or_else(|| {
-                    RpcError::new(BRIDGE_INTERNAL_ERROR, Some("Invalid number".to_string()))
-                })?;
-                return Ok(num.to_string());
-            }
-            if v.is_string() {
-                let s: String = v
-                    .into_value()
-                    .try_into()
-                    .map_err(|e: RongJSError| rpc_error_from_rong(e))?;
-                return serde_json::to_string(&s)
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
-            }
-            if let Some(obj) = v.into_object() {
-                return obj
-                    .json_stringify()
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
-            }
-
-            Err(RpcError::new(
-                BRIDGE_INTERNAL_ERROR,
-                Some("Unsupported JS return type".to_string()),
-            ))
         };
 
         match service_type {
@@ -176,17 +220,25 @@ impl MessageHandler for PageSvc {
                     }
                 };
 
-                tokio::select! {
+                let value = tokio::select! {
                     _ = &mut cancel_rx => {
-                        Err(RpcError::new(BRIDGE_CANCELED, None))
+                        return Err(RpcError::new(BRIDGE_CANCELED, None));
                     }
                     res = fut => {
                         match res {
-                            Ok(v) => js_value_to_json_str(v),
-                            Err(e) => Err(rpc_error_from_rong(e)),
+                            Ok(v) => v,
+                            Err(e) => return Err(rpc_error_from_rong(e)),
                         }
                     }
+                };
+
+                if let Some(iterator) = maybe_get_async_iterator(&ctx, &value)? {
+                    return self
+                        .consume_async_iterator(req_id, iterator, &mut cancel_rx)
+                        .await;
                 }
+
+                js_value_to_json_str(value)
             }
             ServiceType::HostAPI(handler) => {
                 let lxapp = LxApp::from_ctx(&ctx)
@@ -304,6 +356,190 @@ impl MessageHandler for PageSvc {
         }
     }
 
+    async fn handle_sub(
+        &self,
+        id: &str,
+        topic: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+        mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<(), RpcError> {
+        let ctx = self.get_ctx();
+        let call_arg = params_json.and_then(|json| {
+            if json == "null" {
+                return None;
+            }
+            json.json_to_js_value(&ctx).ok()
+        });
+
+        let iterator = match service_type {
+            ServiceType::JSFunc(js_func) => {
+                let value = match call_arg {
+                    Some(val) => js_func
+                        .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
+                        .await
+                        .map_err(rpc_error_from_rong)?,
+                    None => js_func
+                        .call_async::<_, JSValue>(Some(self.this.clone()), ())
+                        .await
+                        .map_err(rpc_error_from_rong)?,
+                };
+                maybe_get_async_iterator(&ctx, &value)?.ok_or_else(|| {
+                    RpcError::new(
+                        BRIDGE_INTERNAL_ERROR,
+                        Some(format!(
+                            "Subscription '{}' must return an async iterator",
+                            topic
+                        )),
+                    )
+                })?
+            }
+            ServiceType::HostAPI(_) | ServiceType::None => {
+                return Err(RpcError::new(
+                    BRIDGE_METHOD_NOT_FOUND,
+                    Some(format!("Topic not found: {}", topic)),
+                ));
+            }
+        };
+
+        self.bridge
+            .send_res_ok(self, id.to_string(), "null".to_string())
+            .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+
+        match self
+            .consume_subscription_iterator(id, iterator, &mut cancel_rx)
+            .await
+        {
+            Ok(()) => {
+                self.bridge
+                    .send_sub_close(self, id.to_string(), None, None, None)
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+            }
+            Err(e) if e.code == BRIDGE_CANCELED => {}
+            Err(e) => {
+                crate::warn!("subscription '{}' stopped with error: {}", topic, e.code);
+                self.bridge
+                    .send_sub_close(self, id.to_string(), Some(&e.code), e.message, e.data)
+                    .map_err(|send_err| {
+                        RpcError::new(BRIDGE_INTERNAL_ERROR, Some(send_err.to_string()))
+                    })?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn handle_ch_open(
+        &self,
+        id: &str,
+        topic: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+    ) -> Result<(), RpcError> {
+        let ctx = self.get_ctx();
+        let call_arg = params_json.and_then(|json| {
+            if json == "null" {
+                return None;
+            }
+            json.json_to_js_value(&ctx).ok()
+        });
+
+        match service_type {
+            ServiceType::JSFunc(js_func) => {
+                let channel_ctx = self.create_channel_context(id)?;
+                {
+                    let mut state = self.state.lock().await;
+                    state.channels.insert(
+                        id.to_string(),
+                        ChannelState {
+                            handler: None,
+                            outbound_seq: 0,
+                        },
+                    );
+                }
+                let value = match match call_arg {
+                    Some(val) => {
+                        js_func
+                            .call_async::<_, JSValue>(Some(self.this.clone()), (val, channel_ctx))
+                            .await
+                    }
+                    None => {
+                        js_func
+                            .call_async::<_, JSValue>(
+                                Some(self.this.clone()),
+                                (JSObject::new(&ctx), channel_ctx),
+                            )
+                            .await
+                    }
+                } {
+                    Ok(value) => value,
+                    Err(err) => {
+                        let mut state = self.state.lock().await;
+                        state.channels.remove(id);
+                        return Err(rpc_error_from_rong(err));
+                    }
+                };
+                let handler = value.into_object();
+                let mut state = self.state.lock().await;
+                if let Some(channel) = state.channels.get_mut(id) {
+                    channel.handler = handler;
+                }
+                Ok(())
+            }
+            ServiceType::HostAPI(_) | ServiceType::None => Err(RpcError::new(
+                BRIDGE_METHOD_NOT_FOUND,
+                Some(format!("Topic not found: {}", topic)),
+            )),
+        }
+    }
+
+    async fn handle_ch_data(&self, id: &str, payload_json: &str) -> Result<(), RpcError> {
+        let handler = {
+            let state = self.state.lock().await;
+            state
+                .channels
+                .get(id)
+                .and_then(|channel| channel.handler.clone())
+        };
+        let Some(handler_obj) = handler else {
+            return Err(RpcError::new(
+                BRIDGE_STREAM_CLOSED,
+                Some(format!("Channel closed: {}", id)),
+            ));
+        };
+        let Ok(on_data) = handler_obj.get::<_, JSFunc>("onData") else {
+            return Ok(());
+        };
+        let payload = payload_json
+            .json_to_js_value(&self.get_ctx())
+            .map_err(rpc_error_from_rong)?;
+        on_data
+            .call_async::<_, ()>(Some(handler_obj), (payload,))
+            .await
+            .map_err(rpc_error_from_rong)
+    }
+
+    async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>) {
+        let handler = {
+            let mut state = self.state.lock().await;
+            state
+                .channels
+                .remove(id)
+                .and_then(|channel| channel.handler)
+        };
+        let Some(handler_obj) = handler else {
+            return;
+        };
+        let Ok(on_close) = handler_obj.get::<_, JSFunc>("onClose") else {
+            return;
+        };
+        let info = JSObject::new(&self.get_ctx());
+        let _ = info.set("code", code.unwrap_or_default().to_string());
+        let _ = info.set("reason", reason.unwrap_or_default().to_string());
+        let _ = on_close
+            .call_async::<_, ()>(Some(handler_obj), (info,))
+            .await;
+    }
+
     async fn handle_bridge_ready(&self) {
         let mut page_svc_clone = self.clone();
         let _ = page_svc_clone.handle_bridge_ready_internal().await;
@@ -365,6 +601,7 @@ impl PageSvc {
                 state_callback: HashMap::new(),
                 state_rev: 0,
                 init_data: None,
+                channels: HashMap::new(),
             })),
         };
 
@@ -458,6 +695,11 @@ impl PageSvc {
             for (_, func) in state.state_callback.iter() {
                 mark_fn(func.as_js_value());
             }
+            for channel in state.channels.values() {
+                if let Some(handler) = &channel.handler {
+                    mark_fn(handler.as_js_value());
+                }
+            }
         }
     }
 }
@@ -475,6 +717,184 @@ impl PageSvc {
             }
         }
         Ok(())
+    }
+
+    async fn consume_async_iterator(
+        &self,
+        stream_id: &str,
+        iterator: JSObject,
+        cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<String, RpcError> {
+        let next_fn = iterator
+            .get::<_, JSFunc>("next")
+            .map_err(rpc_error_from_rong)?;
+        let return_fn = iterator.get::<_, JSFunc>("return").ok();
+        let mut seq = 0u64;
+
+        loop {
+            let step_obj = tokio::select! {
+                _ = &mut *cancel_rx => {
+                    if let Some(return_fn) = return_fn.clone() {
+                        let _ = return_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()).await;
+                    }
+                    return Err(RpcError::new(BRIDGE_CANCELED, None));
+                }
+                step = next_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()) => {
+                    step.map_err(rpc_error_from_rong)?
+                }
+            };
+
+            let step_json = step_obj
+                .json_stringify()
+                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+            let step: AsyncIteratorStep = serde_json::from_str(&step_json).map_err(|e| {
+                RpcError::new(
+                    BRIDGE_INTERNAL_ERROR,
+                    Some(format!("Invalid async iterator step: {}", e)),
+                )
+            })?;
+            let value_json = step
+                .value
+                .map(|value| value.get().to_owned())
+                .unwrap_or_else(|| "null".to_string());
+
+            if step.done {
+                return Ok(value_json);
+            }
+
+            self.bridge
+                .send_event(self, stream_id.to_string(), seq, value_json)
+                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+            seq += 1;
+        }
+    }
+
+    async fn consume_subscription_iterator(
+        &self,
+        sub_id: &str,
+        iterator: JSObject,
+        cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<(), RpcError> {
+        let next_fn = iterator
+            .get::<_, JSFunc>("next")
+            .map_err(rpc_error_from_rong)?;
+        let return_fn = iterator.get::<_, JSFunc>("return").ok();
+        let mut seq = 0u64;
+
+        loop {
+            let step_obj = tokio::select! {
+                _ = &mut *cancel_rx => {
+                    if let Some(return_fn) = return_fn.clone() {
+                        let _ = return_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()).await;
+                    }
+                    return Err(RpcError::new(BRIDGE_CANCELED, None));
+                }
+                step = next_fn.call_async::<_, JSObject>(Some(iterator.clone()), ()) => {
+                    step.map_err(rpc_error_from_rong)?
+                }
+            };
+
+            let step_json = step_obj
+                .json_stringify()
+                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+            let step: AsyncIteratorStep = serde_json::from_str(&step_json).map_err(|e| {
+                RpcError::new(
+                    BRIDGE_INTERNAL_ERROR,
+                    Some(format!("Invalid async iterator step: {}", e)),
+                )
+            })?;
+
+            if step.done {
+                return Ok(());
+            }
+
+            let payload_json = step
+                .value
+                .map(|value| value.get().to_owned())
+                .unwrap_or_else(|| "null".to_string());
+            self.bridge
+                .send_event(self, sub_id.to_string(), seq, payload_json)
+                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+            seq += 1;
+        }
+    }
+
+    fn create_channel_context(&self, id: &str) -> Result<JSObject, RpcError> {
+        let ctx = self.get_ctx();
+        let channel_ctx = JSObject::new(&ctx);
+        channel_ctx
+            .set("id", id.to_string())
+            .map_err(rpc_error_from_rong)?;
+
+        let channel_id = id.to_string();
+        let page_svc_send = self.clone();
+        let send_fn = JSFunc::new(&ctx, move |payload: JSValue| {
+            let page_svc = page_svc_send.clone();
+            let channel_id = channel_id.clone();
+            async move {
+                let payload_json = js_value_to_json_str(payload).map_err(|e| {
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        e.message.unwrap_or_else(|| e.code),
+                    ))
+                })?;
+                let seq = {
+                    let mut state = page_svc.state.lock().await;
+                    let channel = state.channels.get_mut(&channel_id).ok_or_else(|| {
+                        RongJSError::from(HostError::new(
+                            rong::error::E_INTERNAL,
+                            format!("Channel closed: {}", channel_id),
+                        ))
+                    })?;
+                    let seq = channel.outbound_seq;
+                    channel.outbound_seq += 1;
+                    seq
+                };
+                page_svc
+                    .bridge
+                    .send_ch_data(&page_svc, channel_id.clone(), seq, payload_json)
+                    .map_err(|e| {
+                        RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+                    })?;
+                Ok(())
+            }
+        })
+        .map_err(rpc_error_from_rong)?;
+        channel_ctx
+            .set("send", send_fn)
+            .map_err(rpc_error_from_rong)?;
+
+        let channel_id = id.to_string();
+        let page_svc_close = self.clone();
+        let close_fn = JSFunc::new(
+            &ctx,
+            move |code: Optional<String>, reason: Optional<String>| {
+                let page_svc = page_svc_close.clone();
+                let channel_id = channel_id.clone();
+                async move {
+                    {
+                        let mut state = page_svc.state.lock().await;
+                        state.channels.remove(&channel_id);
+                    }
+                    page_svc
+                        .bridge
+                        .send_ch_close(&page_svc, channel_id, code.0, reason.0)
+                        .map_err(|e| {
+                            RongJSError::from(HostError::new(
+                                rong::error::E_INTERNAL,
+                                e.to_string(),
+                            ))
+                        })?;
+                    Ok(())
+                }
+            },
+        )
+        .map_err(rpc_error_from_rong)?;
+        channel_ctx
+            .set("close", close_fn)
+            .map_err(rpc_error_from_rong)?;
+
+        Ok(channel_ctx)
     }
 
     pub(crate) async fn call_or_event_from_native(

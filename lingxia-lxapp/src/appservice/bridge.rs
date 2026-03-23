@@ -20,8 +20,10 @@ pub const BRIDGE_HANDSHAKE_FAILED: &str = "BRIDGE_HANDSHAKE_FAILED";
 #[allow(dead_code)]
 pub const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
 pub const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
+pub const BRIDGE_TOPIC_NOT_FOUND: &str = "BRIDGE_TOPIC_NOT_FOUND";
 pub const BRIDGE_CAPABILITY_DENIED: &str = "BRIDGE_CAPABILITY_DENIED";
 pub const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
+pub const BRIDGE_STREAM_CLOSED: &str = "BRIDGE_STREAM_CLOSED";
 
 #[derive(Clone)]
 pub(crate) enum ServiceType {
@@ -39,6 +41,7 @@ pub(crate) trait MessageHandler {
     async fn get_state_snapshot(&self, scope: Option<&str>) -> Result<String, LxAppError>;
     async fn handle_req(
         &self,
+        id: &str,
         method: &str,
         params_json: Option<&str>,
         service_type: ServiceType,
@@ -50,6 +53,23 @@ pub(crate) trait MessageHandler {
         params_json: Option<&str>,
         service_type: ServiceType,
     );
+    async fn handle_sub(
+        &self,
+        id: &str,
+        topic: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+        cancel_rx: oneshot::Receiver<()>,
+    ) -> Result<(), RpcError>;
+    async fn handle_ch_open(
+        &self,
+        id: &str,
+        topic: &str,
+        params_json: Option<&str>,
+        service_type: ServiceType,
+    ) -> Result<(), RpcError>;
+    async fn handle_ch_data(&self, id: &str, payload_json: &str) -> Result<(), RpcError>;
+    async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>);
     async fn handle_bridge_ready(&self);
     fn expected_bridge_nonce(&self) -> Option<String> {
         None
@@ -66,6 +86,7 @@ pub(crate) struct Bridge {
     msg_counter: Rc<AtomicUsize>,
     handshake: Rc<Mutex<HandshakeState>>,
     pending_req_cancel: Rc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    active_sub_cancel: Rc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -127,6 +148,47 @@ pub(crate) struct CancelMsg {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+pub(crate) struct SubMsg {
+    pub v: u8,
+    pub id: String,
+    pub topic: String,
+    pub params: Option<Box<RawValue>>,
+    #[serde(default)]
+    pub cap: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct UnsubMsg {
+    pub v: u8,
+    pub id: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct ChOpenMsg {
+    pub v: u8,
+    pub id: String,
+    pub topic: String,
+    pub params: Option<Box<RawValue>>,
+    #[serde(default)]
+    pub cap: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct ChDataMsg {
+    pub v: u8,
+    pub id: String,
+    pub payload: Box<RawValue>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub(crate) struct ChCloseMsg {
+    pub v: u8,
+    pub id: String,
+    pub code: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub(crate) struct StateAckMsg {
     pub v: u8,
     pub scope: Option<String>,
@@ -179,6 +241,11 @@ pub enum IncomingMessage {
     Res(ResMsg),
     Notify(NotifyMsg),
     Cancel(CancelMsg),
+    Sub(SubMsg),
+    Unsub(UnsubMsg),
+    ChOpen(ChOpenMsg),
+    ChData(ChDataMsg),
+    ChClose(ChCloseMsg),
     StateAck(StateAckMsg),
     Unknown(UnknownMsg),
 }
@@ -213,6 +280,13 @@ impl IncomingMessage {
             "res" => serde_json::from_str::<ResMsg>(json_str).map(IncomingMessage::Res),
             "notify" => serde_json::from_str::<NotifyMsg>(json_str).map(IncomingMessage::Notify),
             "cancel" => serde_json::from_str::<CancelMsg>(json_str).map(IncomingMessage::Cancel),
+            "sub" => serde_json::from_str::<SubMsg>(json_str).map(IncomingMessage::Sub),
+            "unsub" => serde_json::from_str::<UnsubMsg>(json_str).map(IncomingMessage::Unsub),
+            "ch.open" => serde_json::from_str::<ChOpenMsg>(json_str).map(IncomingMessage::ChOpen),
+            "ch.data" => serde_json::from_str::<ChDataMsg>(json_str).map(IncomingMessage::ChData),
+            "ch.close" => {
+                serde_json::from_str::<ChCloseMsg>(json_str).map(IncomingMessage::ChClose)
+            }
             "state.ack" => {
                 serde_json::from_str::<StateAckMsg>(json_str).map(IncomingMessage::StateAck)
             }
@@ -277,6 +351,24 @@ struct Res {
 }
 
 #[derive(Serialize)]
+struct EventMsg {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    seq: u64,
+    payload: Box<RawValue>,
+}
+
+#[derive(Serialize)]
+struct SubCloseOut {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<BridgeError>,
+}
+
+#[derive(Serialize)]
 pub struct StateSnapshot {
     v: u8,
     kind: &'static str,
@@ -309,22 +401,56 @@ pub struct StatePatch {
     ack: Option<bool>,
 }
 
+#[derive(Serialize)]
+struct ChAck {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<BridgeError>,
+}
+
+#[derive(Serialize)]
+struct ChDataOut {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    seq: u64,
+    payload: Box<RawValue>,
+}
+
+#[derive(Serialize)]
+struct ChCloseOut {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
 impl Bridge {
     pub(crate) fn new() -> Self {
         Self {
             msg_counter: Rc::new(AtomicUsize::new(0)),
             handshake: Rc::new(Mutex::new(HandshakeState::default())),
             pending_req_cancel: Rc::new(Mutex::new(HashMap::new())),
+            active_sub_cancel: Rc::new(Mutex::new(HashMap::new())),
         }
     }
 
     // NOTE: Caller-provided `cap` MUST NOT be trusted for security. We infer the required
     // capability from `method` and only use `cap` for consistency validation.
-    pub(crate) fn required_cap_for_method(method: &str) -> String {
-        if method.starts_with("host.") {
+    pub(crate) fn required_cap_for_name(name: &str) -> String {
+        if name.starts_with("host.") {
             return "host".to_string();
         }
-        if let Some((prefix, _)) = method.split_once('.') {
+        if name.starts_with("state.") {
+            return "state".to_string();
+        }
+        if let Some((prefix, _)) = name.split_once('.') {
             return prefix.to_string();
         }
         "page".to_string()
@@ -362,7 +488,7 @@ impl Bridge {
         Ok(())
     }
 
-    fn send_res_ok<T: MessageTransport>(
+    pub(crate) fn send_res_ok<T: MessageTransport>(
         &self,
         transport: &T,
         id: String,
@@ -483,6 +609,119 @@ impl Bridge {
         self.send_json(transport, &msg)
     }
 
+    pub fn send_event<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+        seq: u64,
+        payload_json: String,
+    ) -> Result<(), LxAppError> {
+        let payload =
+            RawValue::from_string(payload_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let msg = EventMsg {
+            v: 2,
+            kind: "event",
+            id: id.into(),
+            seq,
+            payload,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_ch_ack_ok<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+    ) -> Result<(), LxAppError> {
+        let msg = ChAck {
+            v: 2,
+            kind: "ch.ack",
+            id: id.into(),
+            ok: true,
+            error: None,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_sub_close<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+        code: Option<&str>,
+        message: Option<String>,
+        data: Option<Value>,
+    ) -> Result<(), LxAppError> {
+        let msg = SubCloseOut {
+            v: 2,
+            kind: "sub.close",
+            id: id.into(),
+            error: code.map(|code| BridgeError {
+                code: Value::String(code.to_string()),
+                message,
+                data,
+            }),
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_ch_ack_err<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+        code: &str,
+        message: Option<String>,
+        data: Option<Value>,
+    ) -> Result<(), LxAppError> {
+        let msg = ChAck {
+            v: 2,
+            kind: "ch.ack",
+            id: id.into(),
+            ok: false,
+            error: Some(BridgeError {
+                code: Value::String(code.to_string()),
+                message,
+                data,
+            }),
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_ch_data<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+        seq: u64,
+        payload_json: String,
+    ) -> Result<(), LxAppError> {
+        let payload =
+            RawValue::from_string(payload_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
+        let msg = ChDataOut {
+            v: 2,
+            kind: "ch.data",
+            id: id.into(),
+            seq,
+            payload,
+        };
+        self.send_json(transport, &msg)
+    }
+
+    pub fn send_ch_close<T: MessageTransport>(
+        &self,
+        transport: &T,
+        id: impl Into<String>,
+        code: Option<String>,
+        reason: Option<String>,
+    ) -> Result<(), LxAppError> {
+        let msg = ChCloseOut {
+            v: 2,
+            kind: "ch.close",
+            id: id.into(),
+            code,
+            reason,
+        };
+        self.send_json(transport, &msg)
+    }
+
     pub async fn process_incoming_message<T, H>(
         &self,
         transport: &T,
@@ -567,7 +806,7 @@ impl Bridge {
                     );
                     return Ok(());
                 }
-                let required_cap = Self::required_cap_for_method(method);
+                let required_cap = Self::required_cap_for_name(method);
                 if cap.is_empty() {
                     let _ = self.send_res_err(
                         transport,
@@ -676,7 +915,13 @@ impl Bridge {
                 let method = method.to_string();
                 rong::spawn(async move {
                     let result = handler
-                        .handle_req(&method, params_json.as_deref(), service_type, cancel_rx)
+                        .handle_req(
+                            &id,
+                            &method,
+                            params_json.as_deref(),
+                            service_type,
+                            cancel_rx,
+                        )
                         .await;
 
                     bridge.pending_req_cancel.lock().unwrap().remove(&id);
@@ -734,7 +979,7 @@ impl Bridge {
                 if !self.is_ready() {
                     return Ok(());
                 }
-                let required_cap = Self::required_cap_for_method(&msg.method);
+                let required_cap = Self::required_cap_for_name(&msg.method);
                 if msg.cap.is_empty() || msg.cap != required_cap {
                     return Ok(());
                 }
@@ -746,6 +991,186 @@ impl Bridge {
                 let service_type = handler.get_service_type(&msg.method);
                 handler
                     .handle_notify(&msg.method, params_json.as_deref(), service_type)
+                    .await;
+                return Ok(());
+            }
+            IncomingMessage::Sub(msg) => {
+                if msg.v != 2 {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_PROTOCOL_MISMATCH,
+                        Some(format!("Unsupported protocol: {}", msg.v)),
+                        None,
+                    );
+                    return Ok(());
+                }
+                if !self.is_ready() {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_NOT_READY,
+                        Some("Bridge not ready".to_string()),
+                        None,
+                    );
+                    return Ok(());
+                }
+                let required_cap = Self::required_cap_for_name(&msg.topic);
+                if msg.cap.is_empty() || msg.cap != required_cap {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_MALFORMED_MESSAGE,
+                        Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                        None,
+                    );
+                    return Ok(());
+                }
+                if !handler.is_cap_allowed(&required_cap) {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_CAPABILITY_DENIED,
+                        None,
+                        None,
+                    );
+                    return Ok(());
+                }
+
+                let service_type = handler.get_service_type(&msg.topic);
+                if matches!(service_type, ServiceType::None) {
+                    let _ = self.send_res_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_TOPIC_NOT_FOUND,
+                        Some(format!("Topic not found: {}", msg.topic)),
+                        None,
+                    );
+                    return Ok(());
+                }
+
+                let (cancel_tx, cancel_rx) = oneshot::channel();
+                self.active_sub_cancel
+                    .lock()
+                    .unwrap()
+                    .insert(msg.id.clone(), cancel_tx);
+                let params_json = msg.params.as_ref().map(|v| v.get().to_owned());
+                let bridge = <Bridge as Clone>::clone(self);
+                let transport = <T as Clone>::clone(transport);
+                let handler = <H as Clone>::clone(handler);
+                let id = msg.id.clone();
+                let topic = msg.topic.clone();
+                rong::spawn(async move {
+                    let result = handler
+                        .handle_sub(&id, &topic, params_json.as_deref(), service_type, cancel_rx)
+                        .await;
+                    bridge.active_sub_cancel.lock().unwrap().remove(&id);
+                    if let Err(e) = result {
+                        let _ =
+                            bridge.send_res_err(&transport, id.clone(), &e.code, e.message, e.data);
+                    }
+                });
+                return Ok(());
+            }
+            IncomingMessage::Unsub(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                if let Some(tx) = self.active_sub_cancel.lock().unwrap().remove(&msg.id) {
+                    let _ = tx.send(());
+                }
+                return Ok(());
+            }
+            IncomingMessage::ChOpen(msg) => {
+                if msg.v != 2 {
+                    let _ = self.send_ch_ack_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_PROTOCOL_MISMATCH,
+                        Some(format!("Unsupported protocol: {}", msg.v)),
+                        None,
+                    );
+                    return Ok(());
+                }
+                if !self.is_ready() {
+                    let _ = self.send_ch_ack_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_NOT_READY,
+                        Some("Bridge not ready".to_string()),
+                        None,
+                    );
+                    return Ok(());
+                }
+                let required_cap = Self::required_cap_for_name(&msg.topic);
+                if msg.cap.is_empty() || msg.cap != required_cap {
+                    let _ = self.send_ch_ack_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_MALFORMED_MESSAGE,
+                        Some(format!("Capability mismatch: expected '{}'", required_cap)),
+                        None,
+                    );
+                    return Ok(());
+                }
+                if !handler.is_cap_allowed(&required_cap) {
+                    let _ = self.send_ch_ack_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_CAPABILITY_DENIED,
+                        None,
+                        None,
+                    );
+                    return Ok(());
+                }
+
+                let service_type = handler.get_service_type(&msg.topic);
+                if matches!(service_type, ServiceType::None) {
+                    let _ = self.send_ch_ack_err(
+                        transport,
+                        msg.id.clone(),
+                        BRIDGE_TOPIC_NOT_FOUND,
+                        Some(format!("Topic not found: {}", msg.topic)),
+                        None,
+                    );
+                    return Ok(());
+                }
+
+                let params_json = msg.params.as_ref().map(|v| v.get().to_owned());
+                match handler
+                    .handle_ch_open(&msg.id, &msg.topic, params_json.as_deref(), service_type)
+                    .await
+                {
+                    Ok(()) => {
+                        let _ = self.send_ch_ack_ok(transport, msg.id.clone());
+                    }
+                    Err(e) => {
+                        let _ = self.send_ch_ack_err(
+                            transport,
+                            msg.id.clone(),
+                            &e.code,
+                            e.message,
+                            e.data,
+                        );
+                    }
+                }
+                return Ok(());
+            }
+            IncomingMessage::ChData(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                if let Err(e) = handler.handle_ch_data(&msg.id, msg.payload.get()).await {
+                    crate::warn!("channel '{}' data handler failed: {}", msg.id, e.code);
+                }
+                return Ok(());
+            }
+            IncomingMessage::ChClose(msg) => {
+                if msg.v != 2 {
+                    return Ok(());
+                }
+                handler
+                    .handle_ch_close(&msg.id, msg.code.as_deref(), msg.reason.as_deref())
                     .await;
                 return Ok(());
             }
