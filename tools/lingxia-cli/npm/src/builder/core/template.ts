@@ -5,6 +5,26 @@ import {
   hasFrameworkTemplates,
   getFrameworkTemplates,
 } from "./framework-templates.js";
+import type { MethodInfo } from "./builders/page-types.js";
+
+export type PageBridgeMode = "notify" | "call" | "stream";
+
+export interface PageBridgeMethod {
+  name: string;
+  mode: PageBridgeMode;
+}
+
+export function assertBridgeMethodCompatible(
+  name: string,
+  info: MethodInfo,
+): void {
+  if (info.params.length > 1) {
+    throw new Error(
+      `Page action '${name}' must accept zero or one payload parameter; ` +
+        `found ${info.params.length}. Wrap multiple values in a single object.`,
+    );
+  }
+}
 
 export class TemplateManager {
   copyFrameworkTemplates(framework: string, buildDir: string): void {
@@ -26,7 +46,7 @@ export class TemplateManager {
 
   generatePageTemplate(
     framework: "react" | "vue",
-    pageFunctions: string[],
+    pageFunctions: PageBridgeMethod[],
   ): string {
     const templates = getFrameworkTemplates(framework);
     if (!templates) {
@@ -40,17 +60,22 @@ export class TemplateManager {
     );
   }
 
-  generateFunctionBridge(functions: string[]): string {
+  generateFunctionBridge(functions: PageBridgeMethod[] | string[]): string {
     if (functions.length === 0) {
       return "window.__PAGE_FUNCTIONS = [];";
     }
 
-    const functionList = JSON.stringify(functions);
+    const normalized = functions.map((entry) =>
+      typeof entry === "string"
+        ? { name: entry, mode: "notify" as PageBridgeMode }
+        : entry,
+    );
+    const functionList = JSON.stringify(normalized.map((entry) => entry.name));
 
     // Generate explicit function wrappers for better debugging and runtime safety
-    const wrappers = functions
+    const wrappers = normalized
       .map(
-        (funcName) => `
+        ({ name: funcName, mode }) => `
 window['${funcName}'] = function(...args) {
   // Filter out React/DOM event objects to prevent circular reference errors
   const cleanArgs = args.filter(arg => {
@@ -62,9 +87,17 @@ window['${funcName}'] = function(...args) {
   });
 
   try {
-    // Page functions are fire-and-forget. Business results should be expressed via state updates
-    // (LXS / setData), not via req/res return values.
-    window.LingXiaBridge.notify('${funcName}', cleanArgs.length === 1 ? cleanArgs[0] : cleanArgs);
+    if (cleanArgs.length > 1) {
+      throw new Error("Page action '${funcName}' accepts at most one payload argument");
+    }
+    const payload = cleanArgs.length === 0 ? undefined : cleanArgs[0];
+    ${
+      mode === "stream"
+        ? `return window.LingXiaBridge.callStream('${funcName}', payload);`
+        : mode === "call"
+          ? `return window.LingXiaBridge.call('${funcName}', payload);`
+          : `window.LingXiaBridge.notify('${funcName}', payload);`
+    }
   } catch (e) {
     console.warn('[PageFunc] ${funcName} failed:', e && e.message ? e.message : e);
     throw e;
@@ -79,7 +112,46 @@ window['${funcName}'] = function(...args) {
 ${wrappers}`;
   }
 
+  inferBridgeMethods(methods: Record<string, MethodInfo>): PageBridgeMethod[] {
+    return Object.entries(methods).map(([name, info]) => {
+      assertBridgeMethodCompatible(name, info);
+      return {
+        name,
+        mode: inferBridgeMode(info),
+      };
+    });
+  }
+
   hasFrameworkTemplate(framework: string): boolean {
     return hasFrameworkTemplates(framework);
   }
+}
+
+function inferBridgeMode(info: MethodInfo): PageBridgeMode {
+  if (info.generator) {
+    return "stream";
+  }
+
+  const returnType = info.returnType?.replace(/\s+/g, "");
+  if (!returnType) {
+    return "notify";
+  }
+
+  if (
+    returnType.startsWith("AsyncIterable<") ||
+    returnType.startsWith("AsyncIterator<") ||
+    returnType.startsWith("AsyncGenerator<")
+  ) {
+    return "stream";
+  }
+
+  if (
+    returnType === "void" ||
+    returnType === "undefined" ||
+    returnType === "Promise<void>"
+  ) {
+    return "notify";
+  }
+
+  return "call";
 }

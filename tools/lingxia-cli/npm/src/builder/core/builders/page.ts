@@ -5,6 +5,7 @@ import { pathToFileURL } from "url";
 import type { BuildOptions, Page, PageFiles } from "../../types/index.js";
 import { FileUtils } from "../utils/file.js";
 import { TemplateManager } from "../template.js";
+import type { PageBridgeMethod } from "../template.js";
 import { FrameworkFactory } from "../frameworks/factory.js";
 import type { ViewBuildConfig } from "../config/view-build-schema.js";
 import { ViewConfigManager, DEFAULT_ASSET_DIR } from "../config/view-config.js";
@@ -83,7 +84,7 @@ export class PageProcessor {
    */
   async buildPagesBatch(
     framework: "react" | "vue",
-    items: { page: Page; pageFiles: PageFiles; pageFunctions: string[] }[],
+    items: { page: Page; pageFiles: PageFiles; pageFunctions: PageBridgeMethod[] }[],
     options: BuildOptions = {},
   ): Promise<void> {
     if (framework !== this.framework) {

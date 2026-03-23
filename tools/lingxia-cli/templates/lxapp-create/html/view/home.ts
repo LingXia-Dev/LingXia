@@ -11,7 +11,7 @@ nameInput.onkeydown = (e) => {
   if (e.key === 'Enter') btn.click();
 };
 
-window.LingXiaBridge?.subscribe((data: { greeting: string }) => {
+window.LingXiaBridge?.state.subscribe((data: { greeting: string }) => {
   if (data.greeting) {
     greetingEl.textContent = data.greeting;
     greetingEl.style.display = 'block';

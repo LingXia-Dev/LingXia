@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Page, PageFiles } from "../../types/index.js";
 import { getFrameworkTemplates } from "../framework-templates.js";
+import type { PageBridgeMethod } from "../template.js";
 
 /**
  * Abstract base class for framework processors
@@ -33,7 +34,7 @@ export abstract class FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[],
+    pageFunctions: PageBridgeMethod[],
   ): Promise<void>;
 
   /**

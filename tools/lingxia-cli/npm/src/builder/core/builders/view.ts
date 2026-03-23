@@ -3,14 +3,13 @@ import path from "path";
 import type { Page, PageFiles, BuildOptions } from "../../types/index.js";
 import { FileUtils } from "../utils/file.js";
 import { PageProcessor } from "./page.js";
-import { extractPageFunctionsFromSource } from "./page-functions.js";
 import { extractPageTypes } from "./page-types.js";
 import { validateViewFile } from "./view-validator.js";
 import {
   DEFAULT_STATIC_DIRS,
   resolveStaticDirs,
 } from "../constants/static-dirs.js";
-import { TemplateManager } from "../template.js";
+import { TemplateManager, type PageBridgeMethod } from "../template.js";
 import { readProjectFramework } from "../config/framework.js";
 import type { ProjectFramework } from "../config/framework.js";
 import type { BuildConfig } from "../config/lxapp-config.js";
@@ -102,7 +101,7 @@ export class ViewBuilder {
         const pageFiles = this.detectPageFiles(page);
         // Validate that view files don't use lx.* APIs (must use useLingXia() instead)
         validateViewFile(pageFiles);
-        const pageFunctions = this.extractPageFunctions(pageFiles);
+        const pageFunctions = this.extractPageBridgeMethods(pageFiles);
         return { page, pageFiles, pageFunctions };
       });
 
@@ -177,7 +176,7 @@ export class ViewBuilder {
       await fs.promises.mkdir(outputDir, { recursive: true });
 
       // Extract page functions from Logic layer
-      const pageFunctions = this.extractHtmlPageFunctions(sourceDir, baseName);
+      const pageFunctions = this.extractHtmlBridgeMethods(sourceDir, baseName);
 
       // Copy HTML file and inject runtime.js + page function bridge
       const htmlSrc = path.join(this.projectPath, page.path);
@@ -248,7 +247,7 @@ export class ViewBuilder {
   /**
    * Extract page functions from the Logic layer for HTML pages.
    */
-  private extractHtmlPageFunctions(sourceDir: string, baseName: string): string[] {
+  private extractHtmlBridgeMethods(sourceDir: string, baseName: string): PageBridgeMethod[] {
     const tsPath = path.join(sourceDir, `${baseName}.ts`);
     const jsPath = path.join(sourceDir, `${baseName}.js`);
     const logicPath = fs.existsSync(tsPath) ? tsPath : fs.existsSync(jsPath) ? jsPath : null;
@@ -259,7 +258,7 @@ export class ViewBuilder {
 
     try {
       const logicContent = fs.readFileSync(logicPath, "utf-8");
-      return extractPageFunctionsFromSource(logicContent);
+      return this.templateManager.inferBridgeMethods(extractPageTypes(logicContent).methods);
     } catch (error) {
       console.warn(`⚠️ Failed to extract functions from ${logicPath}`);
       return [];
@@ -269,7 +268,7 @@ export class ViewBuilder {
   /**
    * Inject page function bridge script into HTML content.
    */
-  private injectPageFunctionBridge(htmlContent: string, functions: string[]): string {
+  private injectPageFunctionBridge(htmlContent: string, functions: PageBridgeMethod[]): string {
     if (functions.length === 0) {
       return htmlContent;
     }
@@ -525,14 +524,14 @@ export class ViewBuilder {
     return null;
   }
 
-  private extractPageFunctions(pageFiles: PageFiles): string[] {
+  private extractPageBridgeMethods(pageFiles: PageFiles): PageBridgeMethod[] {
     if (!pageFiles.logic.exists || !pageFiles.logic.path) {
       return [];
     }
 
     try {
       const logicContent = fs.readFileSync(pageFiles.logic.path, "utf-8");
-      return extractPageFunctionsFromSource(logicContent);
+      return this.templateManager.inferBridgeMethods(extractPageTypes(logicContent).methods);
     } catch (error) {
       console.warn(
         `⚠️ Failed to extract functions from ${pageFiles.logic.path}`,

@@ -4,6 +4,7 @@ import { FrameworkProcessor } from "./base.js";
 import type { Page, PageFiles } from "../../types/index.js";
 import { getPageTitle } from "../utils/page.js";
 import { FileUtils } from "../utils/file.js";
+import type { PageBridgeMethod } from "../template.js";
 
 /**
  * HTML framework processor
@@ -41,7 +42,7 @@ export class HtmlProcessor extends FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[],
+    pageFunctions: PageBridgeMethod[],
   ): Promise<void> {
     // HTML pages don't need build setup
     // They are processed directly

@@ -5,7 +5,7 @@ import { FrameworkProcessor } from "./base.js";
 import type { Page, PageFiles } from "../../types/index.js";
 import { getPageTitle } from "../utils/page.js";
 import { FileUtils } from "../utils/file.js";
-import { TemplateManager } from "../template.js";
+import { TemplateManager, type PageBridgeMethod } from "../template.js";
 
 /**
  * Vue framework processor
@@ -37,7 +37,7 @@ export class VueProcessor extends FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[],
+    pageFunctions: PageBridgeMethod[],
   ): Promise<void> {
     // Copy framework templates
     this.copyTemplates(buildDir);
@@ -117,7 +117,7 @@ export class VueProcessor extends FrameworkProcessor {
     buildDir: string,
     page: Page,
     pageFiles: PageFiles,
-    pageFunctions: string[],
+    pageFunctions: PageBridgeMethod[],
   ): Promise<void> {
     const pageTitle = getPageTitle(page, pageFiles);
 

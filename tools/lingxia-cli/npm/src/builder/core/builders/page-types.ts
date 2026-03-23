@@ -45,6 +45,7 @@ export interface MethodInfo {
   params: MethodParam[];
   returnType?: string;
   async?: boolean;
+  generator?: boolean;
 }
 
 export interface PageTypeInfo {
@@ -180,9 +181,10 @@ function extractMethodInfo(node: BabelNode): MethodInfo {
   }
 
   const isAsync = Boolean(node.async);
+  const isGenerator = Boolean(node.generator);
   const returnType = extractReturnType(node);
 
-  return { params, async: isAsync, returnType };
+  return { params, async: isAsync, generator: isGenerator, returnType };
 }
 
 function extractParamInfo(param: BabelNode): MethodParam | null {
