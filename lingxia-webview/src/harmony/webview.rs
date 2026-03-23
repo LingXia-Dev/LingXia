@@ -1173,10 +1173,10 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
         log::info!("Page begin loading: {}", webtag_str);
 
         let webtag = WebTag::from(webtag_str);
-        let Some(webview) = find_webview(&webtag) else {
+        if find_webview(&webtag).is_none() {
             log::debug!("Ignoring page begin for stale webview {}", webtag_str);
             return;
-        };
+        }
 
         // Only inject console interception script; port setup is deferred to get_port_callback
         if let Err(e) = inject_console_script(&webtag) {
@@ -1198,10 +1198,10 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
         log::info!("Page end loading: {}", webtag);
 
         let webtag = WebTag::from(webtag);
-        let Some(webview) = find_webview(&webtag) else {
+        if find_webview(&webtag).is_none() {
             log::debug!("Ignoring page end for stale webview {}", webtag);
             return;
-        };
+        }
 
         if let Some(delegate) = find_webview_delegate(&webtag) {
             delegate.on_page_finished();
