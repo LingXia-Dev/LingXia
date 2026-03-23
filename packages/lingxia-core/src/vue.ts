@@ -50,11 +50,12 @@ function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): vo
 function ensureBridgeSubscription(): void {
   if (subscribed) return;
   const bridge = window.LingXiaBridge;
-  if (!bridge?.subscribe) {
+  const subscribeState = bridge?.state?.subscribe;
+  if (!subscribeState) {
     scheduleSubscribeRetry();
     return;
   }
-  bridge.subscribe((next) => {
+  subscribeState((next) => {
     replaceReactiveSnapshot(next);
   });
   subscribed = true;

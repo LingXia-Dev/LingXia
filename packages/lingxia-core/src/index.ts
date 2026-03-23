@@ -8,12 +8,28 @@
 
 export type {
   BridgeConfig,
+  CallOptions,
+  Channel,
+  ChannelOpenOptions,
   BridgeErrorCode,
+  ChannelEventName,
+  DataSubscriber,
   ErrorInfo,
   LingXiaBridgeInterface,
   LxBridgeError,
-  DataSubscriber,
+  LxMethod,
+  LxMethodParams,
+  LxMethodResult,
+  LxMethodStreamData,
   NativeComponentMessage,
+  NotifyOptions,
+  StateInfo,
+  StreamCallOptions,
+  StreamEventName,
+  StreamHandle,
+  SubscribeOptions,
+  Subscription,
+  SubscriptionEventName,
 } from './types';
 
 export { LingXiaBridge, host, initBridge } from './bridge';
