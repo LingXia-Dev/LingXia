@@ -8,7 +8,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
-use serde_json::Value;
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// Modal options from JavaScript (compatible with common mini-app APIs)
@@ -50,6 +50,11 @@ impl JSModalOptions {
 struct JSModalResult {
     confirm: bool,
     cancel: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewModalResult {
+    confirm: bool,
 }
 
 /// Show modal function (async)
@@ -97,19 +102,14 @@ async fn present_modal_webview(
         "confirmColor": options.confirm_color,
     });
 
-    let result = lxapp
-        .call_current_page_view("ui.showModal", Some(params))
+    let result: ViewModalResult = lxapp
+        .call_view_with("ui.showModal", &params)
         .await
         .map_err(|e| js_internal_error(format!("WebView modal failed: {}", e)))?;
 
-    let confirm = result
-        .get("confirm")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| js_internal_error("WebView modal payload missing boolean `confirm`"))?;
-
     Ok(JSModalResult {
-        confirm,
-        cancel: !confirm,
+        confirm: result.confirm,
+        cancel: !result.confirm,
     })
 }
 
@@ -123,15 +123,11 @@ async fn present_modal_native(
 
     match lxapp.runtime.show_modal(modal_options).await {
         Ok(data) => {
-            let json: Value = serde_json::from_str(&data)
+            let result: ViewModalResult = serde_json::from_str(&data)
                 .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
-            let confirm = json
-                .get("confirm")
-                .and_then(Value::as_bool)
-                .ok_or_else(|| js_internal_error("Modal callback missing boolean `confirm`"))?;
             Ok(JSModalResult {
-                confirm,
-                cancel: !confirm,
+                confirm: result.confirm,
+                cancel: !result.confirm,
             })
         }
         Err(PlatformError::BusinessError(2000)) => Ok(JSModalResult {

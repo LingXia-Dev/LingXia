@@ -10,7 +10,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, RongJSError};
-use serde_json::Value;
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// Action sheet options from JavaScript
@@ -27,6 +27,12 @@ struct JSActionSheetOptions {
 struct JSActionSheetResult {
     #[rename = "tapIndex"]
     tap_index: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ViewActionSheetResult {
+    #[serde(rename = "tapIndex")]
+    tap_index: i64,
 }
 
 /// Show action sheet function for JavaScript
@@ -92,12 +98,13 @@ async fn present_action_sheet_webview(
         "itemColor": item_color,
     });
 
-    let result = lxapp
-        .call_current_page_view("ui.showActionSheet", Some(params))
-        .await
-        .map_err(|e| js_internal_error(format!("WebView action sheet failed: {}", e)))?;
+    let result: ViewActionSheetResult =
+        lxapp
+            .call_view_with("ui.showActionSheet", &params)
+            .await
+            .map_err(|e| js_internal_error(format!("WebView action sheet failed: {}", e)))?;
 
-    let index = result.get("tapIndex").and_then(Value::as_i64).unwrap_or(-1);
+    let index = result.tap_index;
 
     if index < 0 {
         return Ok(None);
@@ -130,9 +137,8 @@ async fn present_action_sheet_native(
         Err(e) => return Err(js_error_from_platform_error(&e)),
     };
 
-    let index = serde_json::from_str::<Value>(&data)
-        .ok()
-        .and_then(|json| json.get("tapIndex").and_then(Value::as_i64))
+    let index = serde_json::from_str::<ViewActionSheetResult>(&data)
+        .map(|result| result.tap_index)
         .unwrap_or(-1);
 
     if index < 0 {

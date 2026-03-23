@@ -81,8 +81,8 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<()> {
             "position": options.position.as_deref().unwrap_or("center"),
         });
 
-        lxapp
-            .call_current_page_view("ui.showToast", Some(params))
+        let _: () = lxapp
+            .call_view_with("ui.showToast", &params)
             .await
             .map_err(|e| js_internal_error(format!("WebView toast failed: {}", e)))?;
 
@@ -112,8 +112,8 @@ async fn hide_toast(ctx: JSContext) -> JSResult<()> {
 
     #[cfg(target_os = "macos")]
     {
-        lxapp
-            .call_current_page_view("ui.hideToast", None)
+        let _: () = lxapp
+            .call_view("ui.hideToast")
             .await
             .map_err(|e| js_internal_error(format!("WebView hideToast failed: {}", e)))?;
 
