@@ -814,8 +814,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
-import { LxVideo } from '@lingxia/components/vue';
+import { useLingXia } from '@lingxia/vue';
+import { LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [

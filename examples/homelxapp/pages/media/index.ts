@@ -651,10 +651,18 @@ Page({
       if (item.type !== "video" && imageDurationMs > 0) source.durationMs = imageDurationMs;
       return source;
     });
-    await this.runPreviewSession(sources, 0, advance);
+    await this._runPreviewSession({
+      sources,
+      startIndex: 0,
+      advance,
+    });
   },
 
-  runPreviewSession: async function (sources, startIndex, advance) {
+  _runPreviewSession: async function ({
+    sources,
+    startIndex,
+    advance,
+  }) {
     this.cancelPreviewSession();
     const controller = new AbortController();
     this._previewAbortController = controller;
@@ -840,7 +848,11 @@ Page({
       return;
     }
 
-    await this.runPreviewSession([path], 0, "manual");
+    await this._runPreviewSession({
+      sources: [path],
+      startIndex: 0,
+      advance: "manual",
+    });
   },
 
   onVideoCompressQualityInput: function (event) {
@@ -929,7 +941,11 @@ Page({
     const objectFit = resolveObjectFitValue(this.data.previewObjectFitKey || "default", "contain");
     if (typeof rotate === "number") source.rotate = rotate;
     if (objectFit) source.objectFit = objectFit;
-    await this.runPreviewSession([source], 0, "manual");
+    await this._runPreviewSession({
+      sources: [source],
+      startIndex: 0,
+      advance: "manual",
+    });
   },
 
   onCompressQualityInput: function (event) {
@@ -1011,7 +1027,11 @@ Page({
       return;
     }
 
-    await this.runPreviewSession([path], 0, "manual");
+    await this._runPreviewSession({
+      sources: [path],
+      startIndex: 0,
+      advance: "manual",
+    });
   },
 
   getFileSize: async function (path) {

@@ -1,4 +1,4 @@
-import { useLingXia } from '@lingxia/core/react';
+import { useLingXia } from '@lingxia/react';
 import '../../tailwind.css';
 
 type PageData = {

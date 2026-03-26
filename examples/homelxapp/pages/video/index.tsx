@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/core/react';
-import { LxVideo } from '@lingxia/components/react';
+import { useLingXia } from '@lingxia/react';
+import { LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -25,6 +25,15 @@ type PageActions = {
   stop(): void;
   seek(position: number): void;
   requestFullScreen(): void;
+  onPlaying(event: Event): void;
+  onPause(event: Event): void;
+  onStop(event: Event): void;
+  onEnded(event: Event): void;
+  onWaiting(event: Event): void;
+  onTimeUpdate(event: Event): void;
+  onFullscreenChange(event: Event): void;
+  onQualityChange(event: Event): void;
+  onRateChange(event: Event): void;
 };
 
 const SEEK_STEP_SECONDS = 10;
@@ -37,7 +46,16 @@ export default function App() {
     stop,
     seek,
     requestFullScreen,
-  } = useLingXia();
+    onPlaying,
+    onPause,
+    onStop,
+    onEnded,
+    onWaiting,
+    onTimeUpdate,
+    onFullscreenChange,
+    onQualityChange,
+    onRateChange,
+  } = useLingXia() as unknown as PageActions;
   const video = data?.videos?.[0];
   const eventLog = data?.eventLog || 'Ready';
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
@@ -101,15 +119,15 @@ export default function App() {
             volume="0.8"
             className="block w-full rounded-lg bg-black"
             style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-            bindPlaying="onPlaying"
-            bindPause="onPause"
-            bindStop="onStop"
-            bindEnded="onEnded"
-            bindWaiting="onWaiting"
-            bindTimeUpdate="onTimeUpdate"
-            bindFullscreenChange="onFullscreenChange"
-            bindQualityChange="onQualityChange"
-            bindRateChange="onRateChange"
+            onPlaying={onPlaying}
+            onPause={onPause}
+            onStop={onStop}
+            onEnded={onEnded}
+            onWaiting={onWaiting}
+            onTimeUpdate={onTimeUpdate}
+            onFullscreenChange={onFullscreenChange}
+            onQualityChange={onQualityChange}
+            onRateChange={onRateChange}
           />
         </div>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/core/react';
+import { useLingXia } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function DevicePage() {

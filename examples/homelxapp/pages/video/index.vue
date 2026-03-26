@@ -34,15 +34,15 @@
           volume="0.8"
           class="block w-full rounded-lg bg-black"
           :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
-          bind-playing="onPlaying"
-          bind-pause="onPause"
-          bind-stop="onStop"
-          bind-ended="onEnded"
-          bind-waiting="onWaiting"
-          bind-time-update="onTimeUpdate"
-          bind-fullscreen-change="onFullscreenChange"
-          bind-quality-change="onQualityChange"
-          bind-rate-change="onRateChange"
+          @playing="onPlaying"
+          @pause="onPause"
+          @stop="onStop"
+          @ended="onEnded"
+          @waiting="onWaiting"
+          @time-update="onTimeUpdate"
+          @fullscreen-change="onFullscreenChange"
+          @quality-change="onQualityChange"
+          @rate-change="onRateChange"
         />
       </div>
 
@@ -135,8 +135,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
-import { LxVideo } from '@lingxia/components/vue';
+import { useLingXia } from '@lingxia/vue';
+import { LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -158,6 +158,15 @@ const {
   stop,
   seek,
   requestFullScreen,
+  onPlaying,
+  onPause,
+  onStop,
+  onEnded,
+  onWaiting,
+  onTimeUpdate,
+  onFullscreenChange,
+  onQualityChange,
+  onRateChange,
 } = useLingXia() as {
   data?: Record<string, unknown>;
   play: () => void;
@@ -165,6 +174,15 @@ const {
   stop: () => void;
   seek: (position: number) => void;
   requestFullScreen: () => void;
+  onPlaying: (e: Event) => void;
+  onPause: (e: Event) => void;
+  onStop: (e: Event) => void;
+  onEnded: (e: Event) => void;
+  onWaiting: (e: Event) => void;
+  onTimeUpdate: (e: Event) => void;
+  onFullscreenChange: (e: Event) => void;
+  onQualityChange: (e: Event) => void;
+  onRateChange: (e: Event) => void;
 };
 
 const SEEK_STEP_SECONDS = 10;

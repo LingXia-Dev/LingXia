@@ -25,9 +25,8 @@
         <LxPicker
           :columns="[coffees]"
           :value="coffee"
-          data-field="coffee"
-          bind-change="onPickerChange"
-          bind-scroll="onPickerScroll"
+          @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'coffee', value })"
+          @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'coffee', value })"
           placeholder="Select coffee"
         />
       </div>
@@ -38,9 +37,8 @@
           <LxPicker
             :columns="[continents, cities]"
             :value="location"
-            data-field="location"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'location', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'location', value })"
             placeholder="Select location"
             cancel-text="取消"
             cancel-text-color="#FF6B6B"
@@ -57,9 +55,8 @@
           <LxPicker
             :columns="[hours, minutes]"
             :value="multiTime"
-            data-field="multiTime"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'multiTime', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'multiTime', value })"
           >
             <div class="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
               {{ multiTimeLabel }}
@@ -75,9 +72,8 @@
           :value="time"
           start="09:00"
           end="18:00"
-          data-field="time"
-          bind-change="onPickerChange"
-          bind-scroll="onPickerScroll"
+          @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'time', value })"
+          @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'time', value })"
           placeholder="Select time"
         />
       </div>
@@ -91,9 +87,8 @@
             :value="year"
             start="2010"
             end="2030"
-            data-field="year"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'year', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'year', value })"
             placeholder="Select year"
           />
         </div>
@@ -106,9 +101,8 @@
             :value="month"
             start="2023-01"
             end="2025-12"
-            data-field="month"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'month', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'month', value })"
             placeholder="Select month"
           />
         </div>
@@ -121,9 +115,8 @@
             :value="date"
             start="2024-01-01"
             end="2027-12-31"
-            data-field="date"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'date', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'date', value })"
             placeholder="Select a date"
           />
         </div>
@@ -134,9 +127,8 @@
             mode="date"
             fields="range"
             :value="dateRange"
-            data-field="dateRange"
-            bind-change="onPickerChange"
-            bind-scroll="onPickerScroll"
+            @confirm="(value: string | string[]) => onPickerConfirm?.({ field: 'dateRange', value })"
+            @scroll="(value: string | string[]) => onPickerScroll?.({ field: 'dateRange', value })"
             placeholder="Select date range"
           />
         </div>
@@ -147,8 +139,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
-import { LxPicker } from '@lingxia/components/vue';
+import { useLingXia } from '@lingxia/vue';
+import { LxPicker } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type ModeTab = 'selector' | 'multiSelector' | 'time' | 'date';
@@ -179,9 +171,13 @@ const tabs: ModeTab[] = ['selector', 'multiSelector', 'time', 'date'];
 const {
   data,
   setActiveTab,
+  onPickerConfirm,
+  onPickerScroll,
 } = useLingXia() as {
   data?: PickerPageData;
   setActiveTab: (params: { tab: ModeTab }) => void;
+  onPickerConfirm: (params: { field: string; value: string | string[] }) => void;
+  onPickerScroll: (params: { field: string; value: string | string[] }) => void;
 };
 const activeTab = computed<ModeTab>(() => data?.activeTab || 'selector');
 const coffee = computed(() => data?.coffee);

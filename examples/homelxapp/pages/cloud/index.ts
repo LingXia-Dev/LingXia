@@ -239,7 +239,7 @@ Page({
         mqttStatus: `Subscribed to ${MQTT_SHORT_TOPIC}`,
         mqttSubscribed: true,
       });
-      void this.consumeMqtt(subscription, loopId);
+      void this._consumeMqtt({ subscription, loopId });
     } catch (error) {
       const message = getErrorMessage(error, "MQTT subscribe failed");
       this.setData({
@@ -272,10 +272,13 @@ Page({
     }
   },
 
-  consumeMqtt: async function (
-    subscription: any,
-    loopId: number
-  ) {
+  _consumeMqtt: async function ({
+    subscription,
+    loopId,
+  }: {
+    subscription: any;
+    loopId: number;
+  }) {
     try {
       for await (const message of subscription) {
         if (loopId !== this.mqttLoopId) {

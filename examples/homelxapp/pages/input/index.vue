@@ -11,7 +11,7 @@
           <div class="text-sm font-semibold text-gray-900">Basic Textarea</div>
           <div class="text-xs text-gray-500">Standard multi-line input</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxTextarea id="textarea-basic" style="height: 64px;" placeholder="Type here" adjust-position="false" bind-input="onInputChange" />
+            <LxTextarea id="textarea-basic" style="height: 64px;" placeholder="Type here" adjust-position="false" @input="onInputChange" />
           </div>
         </section>
 
@@ -19,7 +19,7 @@
           <div class="text-sm font-semibold text-gray-900">Auto-height Textarea</div>
           <div class="text-xs text-gray-500">Height grows with content</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxTextarea id="textarea-autoheight" style="height: 96px;" auto-height placeholder="Type here" bind-input="onInputChange" />
+            <LxTextarea id="textarea-autoheight" style="height: 96px;" auto-height placeholder="Type here" @input="onInputChange" />
           </div>
         </section>
 
@@ -34,7 +34,7 @@
               :maxlength="200"
               adjust-position="true"
               placeholder="Max length is 200"
-              bind-input="onTextareaMaxLengthInput"
+              @input="onTextareaMaxLengthInput"
             />
           </div>
           <div class="text-xs text-gray-400 text-right">{{ textareaMaxLengthValue.length }}/200</div>
@@ -46,7 +46,7 @@
           <div class="text-sm font-semibold text-gray-900">Basic Input</div>
           <div class="text-xs text-gray-500">Standard single line text input</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxInput id="input-basic" style="height: 36px;" placeholder="Type here" bind-input="onInputChange" />
+            <LxInput id="input-basic" style="height: 36px;" placeholder="Type here" @input="onInputChange" />
           </div>
         </section>
 
@@ -60,7 +60,7 @@
               :value="maxLengthValue"
               :maxlength="10"
               placeholder="Max length is 10"
-              bind-input="onMaxLengthInput"
+              @input="onMaxLengthInput"
             />
           </div>
           <div class="text-xs text-gray-400 text-right">{{ maxLengthValue.length }}/10</div>
@@ -75,7 +75,7 @@
               style="height: 36px;"
               :value="syncValue"
               placeholder="Synced to view"
-              bind-input="onSyncInput"
+              @input="onSyncInput"
             />
           </div>
           <div class="text-xs text-gray-500">Current value: {{ syncValue }}</div>
@@ -90,7 +90,7 @@
               style="height: 36px;"
               :value="controlledValue"
               placeholder="Try typing 1111"
-              bind-input="onControlledInput"
+              @input="onControlledInput"
             />
           </div>
         </section>
@@ -107,9 +107,9 @@
               type="number"
               :maxlength="3"
               placeholder="Type 123"
-              bind-input="onAutoBlurInput"
-              bind-focus="onAutoBlurFocus"
-              bind-blur="onAutoBlurBlur"
+              @input="onAutoBlurInput"
+              @focus="onAutoBlurFocus"
+              @blur="onAutoBlurBlur"
             />
           </div>
         </section>
@@ -118,7 +118,7 @@
           <div class="text-sm font-semibold text-gray-900">Keyboard Control</div>
           <div class="text-xs text-gray-500">Press enter to trigger confirm</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxInput id="input-confirm" style="height: 36px;" placeholder="Press enter" confirm-type="done" bind-input="onInputChange" />
+            <LxInput id="input-confirm" style="height: 36px;" placeholder="Press enter" confirm-type="done" @input="onInputChange" />
           </div>
         </section>
 
@@ -126,7 +126,7 @@
           <div class="text-sm font-semibold text-gray-900">Number Input</div>
           <div class="text-xs text-gray-500">Only numeric characters should be accepted</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxInput id="input-number" style="height: 36px;" type="number" placeholder="Numbers only" bind-input="onInputChange" />
+            <LxInput id="input-number" style="height: 36px;" type="number" placeholder="Numbers only" @input="onInputChange" />
           </div>
         </section>
 
@@ -134,7 +134,7 @@
           <div class="text-sm font-semibold text-gray-900">Password Input</div>
           <div class="text-xs text-gray-500">Password should stay masked while editing</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxInput id="input-password" style="height: 36px;" type="password" placeholder="Password" bind-input="onInputChange" />
+            <LxInput id="input-password" style="height: 36px;" type="password" placeholder="Password" @input="onInputChange" />
           </div>
         </section>
 
@@ -142,7 +142,7 @@
           <div class="text-sm font-semibold text-gray-900">Digit Input</div>
           <div class="text-xs text-gray-500">Allows decimal point</div>
           <div class="rounded-lg border border-gray-300 bg-white overflow-hidden px-2">
-            <LxInput id="input-digit" style="height: 36px;" type="digit" placeholder="Decimal number" bind-input="onInputChange" />
+            <LxInput id="input-digit" style="height: 36px;" type="digit" placeholder="Decimal number" @input="onInputChange" />
           </div>
         </section>
 
@@ -155,7 +155,7 @@
               style="height: 36px;"
               placeholder-style="color:#ef4444;"
               placeholder="Placeholder should be red"
-              bind-input="onInputChange"
+              @input="onInputChange"
             />
           </div>
         </section>
@@ -166,8 +166,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
-import { LxInput, LxTextarea } from '@lingxia/components/vue';
+import { useLingXia } from '@lingxia/vue';
+import { LxInput, LxTextarea } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type DemoType = 'input' | 'textarea';
@@ -182,7 +182,27 @@ type InputPageData = {
   autoBlurFocus?: boolean;
 };
 
-const { data } = useLingXia() as { data?: InputPageData };
+const {
+  data,
+  onInputChange,
+  onMaxLengthInput,
+  onSyncInput,
+  onControlledInput,
+  onAutoBlurInput,
+  onAutoBlurFocus,
+  onAutoBlurBlur,
+  onTextareaMaxLengthInput,
+} = useLingXia() as {
+  data?: InputPageData;
+  onInputChange: (detail: Record<string, unknown>) => void;
+  onMaxLengthInput: (detail: Record<string, unknown>) => void;
+  onSyncInput: (detail: Record<string, unknown>) => void;
+  onControlledInput: (detail: Record<string, unknown>) => void;
+  onAutoBlurInput: (detail: Record<string, unknown>) => void;
+  onAutoBlurFocus: (detail: Record<string, unknown>) => void;
+  onAutoBlurBlur: (detail: Record<string, unknown>) => void;
+  onTextareaMaxLengthInput: (detail: Record<string, unknown>) => void;
+};
 
 const demoType = computed<DemoType>(() => (data?.demoType === 'textarea' ? 'textarea' : 'input'));
 const pageTitle = computed(() => (demoType.value === 'textarea' ? 'Textarea' : 'Input'));

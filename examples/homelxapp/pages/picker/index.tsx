@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/core/react';
-import { LxPicker } from '@lingxia/components/react';
+import { useLingXia } from '@lingxia/react';
+import { LxPicker } from '@lingxia/react';
 import '../../tailwind.css';
 
 const coffees = ['Espresso', 'Americano', 'Latte', 'Cappuccino', 'Mocha', 'Macchiato'];
@@ -31,12 +31,14 @@ type PageData = {
 type PageActions = {
   data?: PageData;
   setActiveTab?: (params: { tab: ModeTab }) => void;
+  onPickerConfirm?: (params: { field: string; value: string | string[] }) => void;
+  onPickerScroll?: (params: { field: string; value: string | string[] }) => void;
 };
 
 const tabs: ModeTab[] = ['selector', 'multiSelector', 'time', 'date'];
 
 export default function PickerPage() {
-  const { data, setActiveTab } = useLingXia() as PageActions;
+  const { data, setActiveTab, onPickerConfirm, onPickerScroll } = useLingXia() as PageActions;
   const activeTab: ModeTab = data?.activeTab || 'selector';
   const coffee = data?.coffee;
   const location = data?.location;
@@ -82,9 +84,8 @@ export default function PickerPage() {
             <LxPicker
               columns={[coffees]}
               value={coffee}
-              data-field="coffee"
-              bindChange="onPickerChange"
-              bindScroll="onPickerScroll"
+              onConfirm={(value) => onPickerConfirm?.({ field: 'coffee', value })}
+              onScroll={(value) => onPickerScroll?.({ field: 'coffee', value })}
               placeholder="Select coffee"
             />
           </div>
@@ -97,9 +98,8 @@ export default function PickerPage() {
               <LxPicker
                 columns={[continents, cities]}
                 value={location}
-                data-field="location"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'location', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'location', value })}
                 placeholder="Select location"
                 cancelText="取消"
                 cancelTextColor="#FF6B6B"
@@ -116,9 +116,8 @@ export default function PickerPage() {
               <LxPicker
                 columns={[hours, minutes]}
                 value={multiTime}
-                data-field="multiTime"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'multiTime', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'multiTime', value })}
               >
                 <div className="p-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-center">
                   {multiTime.join(':')}
@@ -136,9 +135,8 @@ export default function PickerPage() {
               value={time}
               start="09:00"
               end="18:00"
-              data-field="time"
-              bindChange="onPickerChange"
-              bindScroll="onPickerScroll"
+              onConfirm={(value) => onPickerConfirm?.({ field: 'time', value })}
+              onScroll={(value) => onPickerScroll?.({ field: 'time', value })}
               placeholder="Select time"
             />
           </div>
@@ -154,9 +152,8 @@ export default function PickerPage() {
                 value={year}
                 start="2010"
                 end="2030"
-                data-field="year"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'year', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'year', value })}
                 placeholder="Select year"
               />
             </div>
@@ -169,9 +166,8 @@ export default function PickerPage() {
                 value={month}
                 start="2023-01"
                 end="2025-12"
-                data-field="month"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'month', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'month', value })}
                 placeholder="Select month"
               />
             </div>
@@ -184,9 +180,8 @@ export default function PickerPage() {
                 value={date}
                 start="2024-01-01"
                 end="2027-12-31"
-                data-field="date"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'date', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'date', value })}
                 placeholder="Select a date"
               />
             </div>
@@ -197,9 +192,8 @@ export default function PickerPage() {
                 mode="date"
                 fields="range"
                 value={dateRange}
-                data-field="dateRange"
-                bindChange="onPickerChange"
-                bindScroll="onPickerScroll"
+                onConfirm={(value) => onPickerConfirm?.({ field: 'dateRange', value })}
+                onScroll={(value) => onPickerScroll?.({ field: 'dateRange', value })}
                 placeholder="Select date range"
               />
             </div>

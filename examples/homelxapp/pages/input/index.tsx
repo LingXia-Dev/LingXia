@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/core/react';
-import { LxInput, LxTextarea } from '@lingxia/components/react';
+import { useLingXia } from '@lingxia/react';
+import { LxInput, LxTextarea } from '@lingxia/react';
 import '../../tailwind.css';
 
 type DemoType = 'input' | 'textarea';
@@ -17,6 +17,14 @@ type PageData = {
 
 type PageActions = {
   data?: PageData;
+  onInputChange?: (detail: { value?: string }) => void;
+  onMaxLengthInput?: (detail: { value?: string }) => void;
+  onSyncInput?: (detail: { value?: string }) => void;
+  onControlledInput?: (detail: { value?: string }) => void;
+  onAutoBlurInput?: (detail: { value?: string }) => void;
+  onAutoBlurFocus?: (detail: { value?: string }) => void;
+  onAutoBlurBlur?: (detail: { value?: string }) => void;
+  onTextareaMaxLengthInput?: (detail: { value?: string }) => void;
 };
 
 function Card(props: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -37,12 +45,21 @@ function FieldBox(props: { children: React.ReactNode }) {
   );
 }
 
-function InputDemo(props: { data?: PageData }) {
+function InputDemo(props: {
+  data?: PageData;
+  onInputChange?: (detail: { value?: string }) => void;
+  onMaxLengthInput?: (detail: { value?: string }) => void;
+  onSyncInput?: (detail: { value?: string }) => void;
+  onControlledInput?: (detail: { value?: string }) => void;
+  onAutoBlurInput?: (detail: { value?: string }) => void;
+  onAutoBlurFocus?: (detail: { value?: string }) => void;
+  onAutoBlurBlur?: (detail: { value?: string }) => void;
+}) {
   return (
     <>
       <Card title="Basic Input" subtitle="Tap inside the box below">
         <FieldBox>
-          <LxInput id="input-basic" style={{ height: '36px' }} placeholder="Type here" bindInput="onInputChange" />
+          <LxInput id="input-basic" style={{ height: '36px' }} placeholder="Type here" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
@@ -54,7 +71,7 @@ function InputDemo(props: { data?: PageData }) {
             value={props.data?.maxLengthValue || ''}
             maxlength={10}
             placeholder="Max length is 10"
-            bindInput="onMaxLengthInput"
+            onInput={props.onMaxLengthInput}
           />
         </FieldBox>
         <div className="text-xs text-gray-400 text-right">{(props.data?.maxLengthValue || '').length}/10</div>
@@ -67,7 +84,7 @@ function InputDemo(props: { data?: PageData }) {
             style={{ height: '36px' }}
             value={props.data?.syncValue || ''}
             placeholder="Synced to view"
-            bindInput="onSyncInput"
+            onInput={props.onSyncInput}
           />
         </FieldBox>
         <div className="text-xs text-gray-500">Current value: {props.data?.syncValue || ''}</div>
@@ -80,7 +97,7 @@ function InputDemo(props: { data?: PageData }) {
             style={{ height: '36px' }}
             value={props.data?.controlledValue || ''}
             placeholder="Try typing 1111"
-            bindInput="onControlledInput"
+            onInput={props.onControlledInput}
           />
         </FieldBox>
       </Card>
@@ -95,34 +112,34 @@ function InputDemo(props: { data?: PageData }) {
             type="number"
             maxlength={3}
             placeholder="Type 123"
-            bindInput="onAutoBlurInput"
-            bindFocus="onAutoBlurFocus"
-            bindBlur="onAutoBlurBlur"
+            onInput={props.onAutoBlurInput}
+            onFocus={props.onAutoBlurFocus}
+            onBlur={props.onAutoBlurBlur}
           />
         </FieldBox>
       </Card>
 
       <Card title="Keyboard Control" subtitle="Press enter to trigger confirm">
         <FieldBox>
-          <LxInput id="input-confirm" style={{ height: '36px' }} placeholder="Press enter" confirmType="done" bindInput="onInputChange" />
+          <LxInput id="input-confirm" style={{ height: '36px' }} placeholder="Press enter" confirmType="done" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
       <Card title="Number Input" subtitle="Only numeric characters should be accepted">
         <FieldBox>
-          <LxInput id="input-number" style={{ height: '36px' }} type="number" placeholder="Numbers only" bindInput="onInputChange" />
+          <LxInput id="input-number" style={{ height: '36px' }} type="number" placeholder="Numbers only" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
       <Card title="Password Input" subtitle="Password should stay masked while editing">
         <FieldBox>
-          <LxInput id="input-password" style={{ height: '36px' }} type="password" placeholder="Password" bindInput="onInputChange" />
+          <LxInput id="input-password" style={{ height: '36px' }} type="password" placeholder="Password" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
       <Card title="Digit Input" subtitle="Allows decimal point">
         <FieldBox>
-          <LxInput id="input-digit" style={{ height: '36px' }} type="digit" placeholder="Decimal number" bindInput="onInputChange" />
+          <LxInput id="input-digit" style={{ height: '36px' }} type="digit" placeholder="Decimal number" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
@@ -133,7 +150,7 @@ function InputDemo(props: { data?: PageData }) {
             style={{ height: '36px' }}
             placeholderStyle="color:#ef4444;"
             placeholder="Placeholder should be red"
-            bindInput="onInputChange"
+            onInput={props.onInputChange}
           />
         </FieldBox>
       </Card>
@@ -141,7 +158,11 @@ function InputDemo(props: { data?: PageData }) {
   );
 }
 
-function TextareaDemo(props: { data?: PageData }) {
+function TextareaDemo(props: {
+  data?: PageData;
+  onInputChange?: (detail: { value?: string }) => void;
+  onTextareaMaxLengthInput?: (detail: { value?: string }) => void;
+}) {
   return (
     <>
       <Card title="Basic Textarea" subtitle="Standard multi-line input">
@@ -151,14 +172,14 @@ function TextareaDemo(props: { data?: PageData }) {
             style={{ height: '64px' }}
             placeholder="Type here"
             adjustPosition={false}
-            bindInput="onInputChange"
+            onInput={props.onInputChange}
           />
         </FieldBox>
       </Card>
 
       <Card title="Auto-height Textarea" subtitle="Height grows with content">
         <FieldBox>
-          <LxTextarea id="textarea-autoheight" style={{ height: '96px' }} autoHeight placeholder="Type here" bindInput="onInputChange" />
+          <LxTextarea id="textarea-autoheight" style={{ height: '96px' }} autoHeight placeholder="Type here" onInput={props.onInputChange} />
         </FieldBox>
       </Card>
 
@@ -171,7 +192,7 @@ function TextareaDemo(props: { data?: PageData }) {
             maxlength={200}
             placeholder="Max length is 200"
             adjustPosition
-            bindInput="onTextareaMaxLengthInput"
+            onInput={props.onTextareaMaxLengthInput}
           />
         </FieldBox>
         <div className="text-xs text-gray-400 text-right">{(props.data?.textareaMaxLengthValue || '').length}/200</div>
@@ -181,7 +202,17 @@ function TextareaDemo(props: { data?: PageData }) {
 }
 
 export default function InputPage() {
-  const { data } = useLingXia() as PageActions;
+  const {
+    data,
+    onInputChange,
+    onMaxLengthInput,
+    onSyncInput,
+    onControlledInput,
+    onAutoBlurInput,
+    onAutoBlurFocus,
+    onAutoBlurBlur,
+    onTextareaMaxLengthInput,
+  } = useLingXia() as PageActions;
   const demoType: DemoType | null =
     data?.demoType === 'textarea' ? 'textarea' : data?.demoType === 'input' ? 'input' : null;
   const title = demoType === 'textarea' ? 'Textarea' : 'Input';
@@ -199,7 +230,20 @@ export default function InputPage() {
           <div className="text-xs text-white/85 mt-1">{subtitle}</div>
         </header>
 
-        {demoType === 'textarea' ? <TextareaDemo data={data} /> : <InputDemo data={data} />}
+        {demoType === 'textarea' ? (
+          <TextareaDemo data={data} onInputChange={onInputChange} onTextareaMaxLengthInput={onTextareaMaxLengthInput} />
+        ) : (
+          <InputDemo
+            data={data}
+            onInputChange={onInputChange}
+            onMaxLengthInput={onMaxLengthInput}
+            onSyncInput={onSyncInput}
+            onControlledInput={onControlledInput}
+            onAutoBlurInput={onAutoBlurInput}
+            onAutoBlurFocus={onAutoBlurFocus}
+            onAutoBlurBlur={onAutoBlurBlur}
+          />
+        )}
       </div>
     </div>
   );

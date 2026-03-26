@@ -1,6 +1,6 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/core/react';
-import { LxVideo } from '@lingxia/components/react';
+import { useLingXia } from '@lingxia/react';
+import { LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [

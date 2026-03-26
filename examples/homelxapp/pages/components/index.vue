@@ -146,7 +146,7 @@
 
 <script setup lang="ts">
 import '../../tailwind.css';
-import { useLingXia } from '@lingxia/core/vue';
+import { useLingXia } from '@lingxia/vue';
 
 type PageActions = {
   navigateTo(payload: { url: string }): void;

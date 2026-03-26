@@ -38,38 +38,33 @@ Page({
     }
   },
 
-  onInputChange: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onInputChange: function (detail) {
+    if (detail?.value === undefined) return;
   },
 
-  onMaxLengthInput: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onMaxLengthInput: function (detail) {
+    if (detail?.value === undefined) return;
     var nextValue = String(detail.value);
     if (nextValue === this.data.maxLengthValue) return;
     this.setData({ maxLengthValue: nextValue });
   },
 
-  onSyncInput: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onSyncInput: function (detail) {
+    if (detail?.value === undefined) return;
     var nextValue = String(detail.value);
     if (nextValue === this.data.syncValue) return;
     this.setData({ syncValue: nextValue });
   },
 
-  onControlledInput: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onControlledInput: function (detail) {
+    if (detail?.value === undefined) return;
     var value = String(detail.value).replace(/11/g, "2");
     if (value === this.data.controlledValue) return;
     this.setData({ controlledValue: value });
   },
 
-  onAutoBlurInput: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onAutoBlurInput: function (detail) {
+    if (detail?.value === undefined) return;
     var value = String(detail.value).replace(/\D/g, "").slice(0, 3);
     if (value === "123") {
       if (this.data.autoBlurValue === value && this.data.autoBlurFocus === false) return;
@@ -80,16 +75,14 @@ Page({
     this.setData({ autoBlurValue: value });
   },
 
-  onAutoBlurFocus: function (_event) {},
+  onAutoBlurFocus: function (_detail) {},
 
-  onAutoBlurBlur: function (_event) {},
+  onAutoBlurBlur: function (_detail) {},
 
-  onTextareaMaxLengthInput: function (event) {
-    var detail = event?.detail || {};
-    if (detail.value === undefined) return;
+  onTextareaMaxLengthInput: function (detail) {
+    if (detail?.value === undefined) return;
     var nextValue = String(detail.value);
     if (nextValue === this.data.textareaMaxLengthValue) return;
     this.setData({ textareaMaxLengthValue: nextValue });
   },
-
 });

@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
+import { useLingXia } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type PageActions = {

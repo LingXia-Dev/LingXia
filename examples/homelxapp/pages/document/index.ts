@@ -175,11 +175,11 @@ Page({
   },
 
   onLoad: async function (options) {
-    await this.refreshOfficeCachedState();
+    await this._refreshOfficeCachedState();
   },
 
   onShow: async function () {
-    await this.refreshOfficeCachedState();
+    await this._refreshOfficeCachedState();
   },
 
   onPdfUrlInput: function (event) {
@@ -194,13 +194,19 @@ Page({
       officeUrl: value,
       officeFileType: detectedType || this.data.officeFileType,
     });
-    void this.refreshOfficeCachedState(value, detectedType || this.data.officeFileType);
+    void this._refreshOfficeCachedState({
+      url: value,
+      fileType: detectedType || this.data.officeFileType,
+    });
   },
 
   onOfficeFileTypeInput: function (event) {
     const value = event?.detail?.value || "";
     this.setData({ officeFileType: value });
-    void this.refreshOfficeCachedState(this.data.officeUrl, value);
+    void this._refreshOfficeCachedState({
+      url: this.data.officeUrl,
+      fileType: value,
+    });
   },
 
   toggleShowMenu: function () {
@@ -388,14 +394,20 @@ Page({
     }
   },
 
-  refreshOfficeCachedState: async function (urlInput, fileTypeInput) {
-    const url = (urlInput ?? this.data.officeUrl ?? "").trim();
-    const fileType = (fileTypeInput ?? this.data.officeFileType ?? "").trim();
-    if (!url || !fileType) {
+  _refreshOfficeCachedState: async function ({
+    url,
+    fileType,
+  }: {
+    url?: string;
+    fileType?: string;
+  } = {}) {
+    const nextUrl = (url ?? this.data.officeUrl ?? "").trim();
+    const nextFileType = (fileType ?? this.data.officeFileType ?? "").trim();
+    if (!nextUrl || !nextFileType) {
       this.setData({ officeCached: false });
       return;
     }
-    const filePath = resolveOfficeFetchPath(url, fileType);
+    const filePath = resolveOfficeFetchPath(nextUrl, nextFileType);
     const stat = await Rong.stat(filePath).catch(() => null);
     this.setData({ officeCached: Boolean(stat) });
   },

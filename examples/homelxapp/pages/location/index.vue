@@ -83,7 +83,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
-import { useLingXia } from '@lingxia/core/vue';
+import { useLingXia } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const {
