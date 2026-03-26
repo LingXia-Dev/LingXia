@@ -2,10 +2,10 @@
 
 > Status: Active
 > Class: Normative internal specification
-> Scope: app bridge endpoint <-> `window.LingXiaBridge`
+> Scope: Bridge (Rust) <-> View (`window.LingXiaBridge`)
 > Version: protocol `v = 2`
 
-This document defines the current LingXia bridge contract. It is the single authority for on-wire behavior between the View runtime and the app-side bridge endpoint. When other notes, drafts, or implementation comments disagree with this document, this document wins.
+This document defines the current LingXia bridge contract. It is the single authority for on-wire behavior between the View runtime and the Bridge endpoint. When other notes, drafts, or implementation comments disagree with this document, this document wins.
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted as normative requirements.
 
@@ -30,83 +30,81 @@ The bridge does not define:
 
 ## 2. Topology
 
-The bridge boundary is between the View runtime and an app-side endpoint owned by Rust.
-
-Current repository profile:
-
-- the bridge-facing handler implementation is `PageSvc`
-- Host-backed unary `req` / `notify` are routed through that endpoint
-- Rust may initiate direct `req` / `res` exchanges with View-owned handlers
-- subscription and channel handling are currently `PageSvc`-owned
-
 ```mermaid
 flowchart LR
-  Host["Rust Host\nplatform + native capability"]
-  App["App bridge endpoint\nRust-owned protocol peer"]
-  JS["PageSvc / Logic JS\ncurrent bridge-facing handler"]
-  View["View runtime\nwindow.LingXiaBridge"]
+  View["View\nWebView · window.LingXiaBridge"]
+  Bridge["Bridge\nRust protocol endpoint"]
+  Host["Host\nRust native handlers"]
+  Logic["Logic\nJS runtime"]
 
-  Host --> App
-  App --> JS
-  View <--> App
-
-  App -. state.snapshot / state.patch .-> View
-  App -. event / res / ch.data / ch.close .-> View
-  App -. req / res .-> View
+  View <-->|frames| Bridge
+  Bridge -->|"host.*"| Host
+  Bridge <-->|forward| Logic
 ```
+
+**Bridge** is the Rust-owned protocol endpoint. It validates frames, enforces capabilities, and routes messages between View and two backends:
+
+- **Host** — Rust native handlers (device, navigation, etc.). Bridge dispatches `host.*` methods directly.
+- **Logic** — JS runtime. Bridge forwards all other methods, subscriptions, and channels.
+
+Routing rules:
+
+- `host.*` methods → Host registry (unary `req` and `notify` only)
+- all other `req`, `notify`, `sub`, `ch.open` → Logic
+- Bridge MAY initiate `req` to View-owned handlers (see 3.2)
+- state replication is produced by Logic and relayed through Bridge to View
 
 ### 2.1 Runtime Roles
 
 | Role | Responsibility |
 |---|---|
-| Rust Host | native capabilities, platform integration, process boundaries |
-| App bridge endpoint | protocol ownership, validation, routing, lifecycle, direct View calls |
-| PageSvc / Logic JS | current bridge-facing handler for page state, subscriptions, channels, and JS-owned methods |
+| Host | native capabilities, platform integration, process boundaries |
+| Bridge | protocol ownership, validation, routing, lifecycle, direct View calls |
+| Logic | page state, subscriptions, channels, JS-owned methods |
 | View | rendering, user interaction, stream consumption |
 
 ### 2.2 Authority Boundary
 
-- The app bridge endpoint is authoritative for protocol validation and routing.
-- In the current implementation, state replication, subscriptions, and channels are produced by `PageSvc`.
+- Bridge is authoritative for protocol validation and routing.
+- State replication, subscriptions, and channels are produced by Logic.
 - View is authoritative for user interaction and channel-originated input.
-- The protocol does not require JS to sit between Rust and View.
+- The protocol does not require JS to sit between Host and View; Host handlers MAY produce streams and responses directly.
 
 ## 3. Protocol Overview
 
-### 3.1 Interaction Families
+### 3.1 View-initiated Families
 
 | Family | Initiator API | Frame pattern | Cardinality |
 |---|---|---|---|
-| Notification | `notify()` | `notify` | one-way |
+| Notification | `notify()` | `notify` | one-way, no response |
 | Unary request | `call()` | `req -> res` | one terminal response |
 | Streaming request | `callStream()` | `req -> event* -> res` | zero or more events, one terminal response |
-| Subscription | `subscribe()` | `sub -> res -> event* -> unsub` | long-lived stream |
+| Subscription | `subscribe()` | `sub -> res -> event* -> unsub` | long-lived event stream |
 | Channel | `channel.open()` | `ch.open -> ch.ack -> ch.data* / ch.close` | long-lived bidirectional session |
-| State replication | `state.subscribe()` | `state.snapshot` / `state.patch` / `state.ack` | app -> View only |
 
-```mermaid
-flowchart TD
-  Start["View intent"] --> Notify["notify()"]
-  Start --> Call["call()"]
-  Start --> Stream["callStream()"]
-  Start --> Sub["subscribe()"]
-  Start --> Ch["channel.open()"]
+### 3.2 Bridge-initiated Families
 
-  Notify --> NotifyWire["notify"]
-  Call --> CallWire["req -> res"]
-  Stream --> StreamWire["req -> event* -> res"]
-  Sub --> SubWire["sub -> res -> event* -> unsub"]
-  Ch --> ChWire["ch.open -> ch.ack -> ch.data* / ch.close"]
-```
+| Family | Frame pattern | Description |
+|---|---|---|
+| Unary request | `req -> res` | Bridge calls a View-owned handler |
+| State replication | `state.snapshot` / `state.patch` / `state.ack` | Bridge pushes durable UI state to View |
 
-### 3.2 Symmetry
+`req`/`res` is the only symmetric family — both sides can initiate. Bridge-initiated `req` uses the same frame format as View-initiated requests.
 
-`req`/`res` is the only symmetric request family in the protocol.
+State replication is exclusively Bridge -> View. View registers a callback via `state.subscribe()` and receives snapshots and patches without sending requests.
 
-- View -> app bridge endpoint supports unary and streaming request handling.
-- app bridge endpoint -> View currently supports unary request handling for View-owned handlers.
+### 3.3 Data Flow Direction
 
-Subscriptions, channels, and state replication are currently defined from the View-facing API surface described in this document.
+Although subscriptions and streaming requests are View-initiated, the **data flows from Bridge to View**. View establishes the session; Bridge controls when and what to push.
+
+| Family | Who initiates | Who pushes data | Who terminates |
+|---|---|---|---|
+| Notification | View | — | — |
+| Unary request | either side | responder | responder (`res`) |
+| Streaming request | View | Bridge (`event*`) | Bridge (`res`) |
+| Subscription | View (`sub`) | Bridge (`event*`) | View (`unsub`) or Bridge (`sub.close`) |
+| Channel | View (`ch.open`) | both (`ch.data`) | either (`ch.close`) |
+| State replication | Bridge | Bridge | — (persistent) |
 
 ## 4. Common Wire Rules
 
@@ -139,7 +137,7 @@ Frames are JSON objects transported over an ordered bidirectional message path.
 
 Frames `req`, `notify`, `sub`, and `ch.open` MUST include `cap`.
 
-Capability is derived from the target name:
+Capability is derived from the target name (`method` for `req`/`notify`, `topic` for `sub`/`ch.open`):
 
 | Name pattern | Derived capability |
 |---|---|
@@ -156,18 +154,18 @@ Application traffic begins only after a successful handshake.
 
 | Step | Direction | Purpose |
 |---|---|---|
-| `hello` | View -> app bridge endpoint | advertise supported versions |
-| `helloAck` | app bridge endpoint -> View | confirm negotiated version and session id |
-| `ready` | app bridge endpoint -> View | open application traffic |
+| `hello` | View -> Bridge | advertise supported versions |
+| `helloAck` | Bridge -> View | confirm negotiated version and session id |
+| `ready` | Bridge -> View | open application traffic |
 
 ```mermaid
 sequenceDiagram
   participant View
-  participant App
-  View->>App: hello
-  App-->>View: helloAck
-  App-->>View: ready
-  Note over View,App: application traffic starts after ready
+  participant Bridge
+  View->>Bridge: hello
+  Bridge-->>View: helloAck
+  Bridge-->>View: ready
+  Note over View,Bridge: application traffic starts after ready
 ```
 
 ### 5.1 `hello`
@@ -208,15 +206,17 @@ sequenceDiagram
 
 Before `ready`, non-handshake traffic MUST be rejected or queued by runtime policy.
 
-Current LingXia profile:
+LingXia profile:
 
-- View queues outbound application frames.
-- queued operation timeouts begin when a frame is actually sent, not while it is waiting behind handshake readiness
-- The app bridge endpoint rejects premature frames with `BRIDGE_NOT_READY`.
+- View MUST queue outbound application frames until `ready` is received.
+- Queued operation timeouts begin when the frame is actually sent, not while queued.
+- Bridge MUST reject premature frames with `BRIDGE_NOT_READY`.
 
 ## 6. Frame Definitions
 
 ### 6.1 `req`
+
+Direction: View -> Bridge, or Bridge -> View (symmetric).
 
 Starts a unary or streaming request.
 
@@ -231,9 +231,14 @@ Starts a unary or streaming request.
 }
 ```
 
+- `params` is optional. If absent or `null`, the handler receives no input.
+- `cap` is required for View -> Bridge. Bridge -> View requests MAY omit `cap`.
+
 ### 6.2 `res`
 
-Terminal response for `req` or `sub`.
+Direction: responder -> initiator (symmetric, matches `req` direction).
+
+Terminal response for `req`. Also used to acknowledge `sub` establishment.
 
 Success:
 
@@ -271,7 +276,9 @@ Rules:
 
 ### 6.3 `notify`
 
-One-way invocation with no terminal response.
+Direction: View -> Bridge.
+
+One-way invocation. No response is produced.
 
 ```json
 {
@@ -283,7 +290,11 @@ One-way invocation with no terminal response.
 }
 ```
 
+- `params` is optional.
+
 ### 6.4 `cancel`
+
+Direction: initiator -> responder (same direction as the original `req`).
 
 Best-effort cancellation of an active request.
 
@@ -299,6 +310,8 @@ The initiator SHOULD still expect a terminal `res`, commonly `BRIDGE_CANCELED`.
 
 ### 6.5 `event`
 
+Direction: Bridge -> View (for streaming requests and subscriptions).
+
 Streaming payload bound to a request or subscription.
 
 ```json
@@ -313,11 +326,14 @@ Streaming payload bound to a request or subscription.
 
 Rules:
 
-- `event` is valid only after request dispatch or successful subscription acknowledgement and before `sub.close`.
-- `seq` MUST be monotonic per `id`.
-- `event` carries transient transport data, not durable replicated state.
+- For streaming requests: `event` is valid after `req` dispatch and before terminal `res`.
+- For subscriptions: `event` is valid after `res { ok: true }` acknowledgement and before `sub.close`.
+- `seq` MUST be monotonic per `id`, starting at `0`.
+- `event` carries transient transport data, not durable replicated state. Use `state.patch` for durable state.
 
 ### 6.6 `sub`
+
+Direction: View -> Bridge.
 
 Starts a subscription.
 
@@ -332,7 +348,11 @@ Starts a subscription.
 }
 ```
 
+- `params` is optional.
+
 ### 6.7 `unsub`
+
+Direction: View -> Bridge.
 
 Stops a subscription.
 
@@ -348,7 +368,9 @@ Stops a subscription.
 
 ### 6.8 `sub.close`
 
-Terminal subscription closure notification.
+Direction: Bridge -> View.
+
+Server-initiated subscription closure.
 
 Success / normal completion:
 
@@ -376,11 +398,13 @@ Failure:
 
 Rules:
 
-- `sub.close` is app bridge endpoint -> View only.
+- `sub.close` is Bridge -> View only.
 - After `sub.close`, no more `event` frames may be emitted for that subscription id.
 - If `error` is present, the View runtime MUST deliver it to subscription error listeners and retire the subscription locally.
 
 ### 6.9 `ch.open`
+
+Direction: View -> Bridge.
 
 Opens a bidirectional channel.
 
@@ -395,9 +419,15 @@ Opens a bidirectional channel.
 }
 ```
 
+- `params` is optional.
+
 ### 6.10 `ch.ack`
 
-Acknowledges channel establishment.
+Direction: Bridge -> View.
+
+Acknowledges or rejects channel establishment.
+
+Success:
 
 ```json
 {
@@ -408,7 +438,26 @@ Acknowledges channel establishment.
 }
 ```
 
+Failure:
+
+```json
+{
+  "v": 2,
+  "kind": "ch.ack",
+  "id": "<channel-id>",
+  "ok": false,
+  "error": {
+    "code": "BRIDGE_TOPIC_NOT_FOUND",
+    "message": "..."
+  }
+}
+```
+
+- If `ok` is `false`, the channel is not established. No `ch.data` or `ch.close` frames are valid for this `id`.
+
 ### 6.11 `ch.data`
+
+Direction: bidirectional (View <-> Bridge).
 
 Carries channel payload.
 
@@ -423,6 +472,8 @@ Carries channel payload.
 ```
 
 ### 6.12 `ch.close`
+
+Direction: bidirectional (either side MAY close).
 
 Closes a channel.
 
@@ -444,6 +495,8 @@ Rules:
 
 ### 6.13 `state.snapshot`
 
+Direction: Bridge -> View.
+
 Full replicated state snapshot.
 
 ```json
@@ -457,6 +510,8 @@ Full replicated state snapshot.
 ```
 
 ### 6.14 `state.patch`
+
+Direction: Bridge -> View.
 
 Incremental state update.
 
@@ -474,6 +529,8 @@ Incremental state update.
 
 ### 6.15 `state.ack`
 
+Direction: View -> Bridge.
+
 Acknowledges a replicated revision.
 
 ```json
@@ -484,8 +541,6 @@ Acknowledges a replicated revision.
   "rev": 2
 }
 ```
-
-State replication is app bridge endpoint -> View only.
 
 Use state replication for durable, recoverable UI state. Use `event` and `ch.data` for transient or high-frequency payloads.
 
@@ -498,12 +553,12 @@ This section is illustrative. It describes protocol shapes, not business-level c
 ```mermaid
 sequenceDiagram
   participant View
-  participant App
-  View->>App: req(method="<stream-method>")
-  App-->>View: event(seq=0, payload=<chunk>)
-  App-->>View: event(seq=1, payload=<chunk>)
-  App-->>View: event(seq=2, payload=<chunk>)
-  App-->>View: res(ok, result=<final-result>)
+  participant Bridge
+  View->>Bridge: req(method="<stream-method>")
+  Bridge-->>View: event(seq=0, payload=<chunk>)
+  Bridge-->>View: event(seq=1, payload=<chunk>)
+  Bridge-->>View: event(seq=2, payload=<chunk>)
+  Bridge-->>View: res(ok, result=<final-result>)
 ```
 
 ### 7.2 Subscription
@@ -511,12 +566,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant View
-  participant App
-  View->>App: sub(topic="<topic>")
-  App-->>View: res(ok, result=null)
-  App-->>View: event(seq=0, payload=<item>)
-  App-->>View: event(seq=1, payload=<item>)
-  View->>App: unsub
+  participant Bridge
+  View->>Bridge: sub(topic="<topic>")
+  Bridge-->>View: res(ok, result=null)
+  Bridge-->>View: event(seq=0, payload=<item>)
+  Bridge-->>View: event(seq=1, payload=<item>)
+  View->>Bridge: unsub
 ```
 
 ### 7.3 Channel
@@ -524,17 +579,51 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   participant View
-  participant App
-  View->>App: ch.open(topic="<topic>")
-  App-->>View: ch.ack(ok)
-  View->>App: ch.data(seq=0, payload=<frame>)
-  App-->>View: ch.data(seq=0, payload=<frame>)
-  View->>App: ch.close(code="done")
+  participant Bridge
+  View->>Bridge: ch.open(topic="<topic>")
+  Bridge-->>View: ch.ack(ok)
+  View->>Bridge: ch.data(seq=0, payload=<frame>)
+  Bridge-->>View: ch.data(seq=0, payload=<frame>)
+  View->>Bridge: ch.close(code="done")
+```
+
+### 7.4 Bridge-initiated Request
+
+```mermaid
+sequenceDiagram
+  participant View
+  participant Bridge
+  Bridge->>View: req(method="onThemeChange")
+  View-->>Bridge: res(ok, result=null)
+```
+
+### 7.5 State Replication
+
+```mermaid
+sequenceDiagram
+  participant View
+  participant Bridge
+  Bridge->>View: state.snapshot(scope="page", rev=1, state={...})
+  View-->>Bridge: state.ack(scope="page", rev=1)
+  Bridge->>View: state.patch(scope="page", baseRev=1, rev=2, ops=[...])
+  View-->>Bridge: state.ack(scope="page", rev=2)
+```
+
+### 7.6 Request Cancellation
+
+```mermaid
+sequenceDiagram
+  participant View
+  participant Bridge
+  View->>Bridge: req(method="longRunning")
+  Bridge-->>View: event(seq=0, payload=<partial>)
+  View->>Bridge: cancel(id)
+  Bridge-->>View: res(ok=false, error=BRIDGE_CANCELED)
 ```
 
 ## 8. Error Codes
 
-Bridge-level error codes are stable.
+Bridge-level error codes are part of the protocol contract and MUST NOT be removed or have their semantics redefined.
 
 | Code | Meaning |
 |---|---|
@@ -577,22 +666,10 @@ The CLI maps JS method shape to View wrapper behavior:
 | non-void return | `call()` |
 | `async function*`, `AsyncIterable`, `AsyncIterator`, `AsyncGenerator` | `callStream()` |
 
-### 9.3 PageSvc Implementation Profile
+### 9.3 Backend Capabilities
 
-The current repository profile supports the following `PageSvc`-backed contracts:
+| Backend | `req` | `notify` | `sub` | `ch.open` |
+|---|---|---|---|---|
+| Host | unary and streaming | yes | — | — |
+| Logic | unary and streaming | yes | yes | yes |
 
-- unary methods returning a value
-- streaming methods returning an async iterator or async generator
-- subscription targets returning an async iterator
-- channel targets receiving `(params, channel)` and optionally returning `{ onData, onClose }`
-
-This is the current implementation profile. Direct Rust-native handlers for subscriptions or channels are not part of the shipped runtime path described here.
-
-## 10. Adoption Rule
-
-Only the current v2 surface is supported:
-
-- `LingXiaBridge.subscribe(...)` is reserved for topic subscriptions
-- `LingXiaBridge.state.subscribe(...)` is the only state subscription API
-- generated page wrappers target the current API surface only
-- no compatibility alias or parallel legacy specification is maintained
