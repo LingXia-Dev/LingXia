@@ -1,0 +1,9 @@
+{
+  "name": "lingxia-browser",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "node ../../tools/lingxia-cli/npm/dist/index.js build --release --package",
+    "dev": "node ../../tools/lingxia-cli/npm/dist/index.js build"
+  }
+}
