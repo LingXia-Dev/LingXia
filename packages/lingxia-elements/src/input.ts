@@ -1,0 +1,817 @@
+import {
+  sendNativeComponentMessage,
+  registerNativeComponentHandler,
+  addNativeComponentLayoutInvalidationListener
+} from "./nativecomponent.js";
+import { ensureComponentId, NativeComponentUpdateState } from "./component.js";
+import { measureElement } from "./dom.js";
+import { isHarmony, isDesktop, isMacOS, isAndroid, isIOS } from "./platform.js";
+import {
+  getPropOrAttr as getSharedPropOrAttr,
+  getBoolAttr as getSharedBoolAttr,
+  getNumAttr as getSharedNumAttr,
+  parseNumberLike,
+  shouldRefreshForDataAttribute as shouldRefreshSharedDataAttribute,
+  collectDataset as collectSharedDataset,
+  ensureElementVisibleForKeyboard
+} from "./text_component_shared.js";
+
+const HARMONY_PROPS_PREFIX = "data:application/json,";
+
+// Type definitions
+export interface LxInputEventDetail {
+  value?: string;
+  cursor?: number;
+  keyCode?: number;
+  height?: number;
+  duration?: number;
+  encryptedValue?: string;
+  encryptError?: string;
+  pass?: boolean;
+  timeout?: boolean;
+}
+
+export interface LxInputEvent extends CustomEvent<LxInputEventDetail> {
+  detail: LxInputEventDetail;
+}
+
+export type LxInputAttributes = {
+  id?: string;
+  value?: string;
+  type?: 'text' | 'number' | 'password' | 'digit';
+  password?: boolean | string;
+  placeholder?: string;
+  'placeholder-style'?: string;
+  'placeholder-class'?: string;
+  maxlength?: number | string;
+  'cursor-spacing'?: number | string;
+  'auto-focus'?: boolean | string;
+  disabled?: boolean | string;
+  focus?: boolean | string;
+  'confirm-type'?: 'send' | 'search' | 'next' | 'go' | 'done';
+  'always-embed'?: boolean | string;
+  'confirm-hold'?: boolean | string;
+  cursor?: number | string;
+  'cursor-color'?: string;
+  'selection-start'?: number | string;
+  'selection-end'?: number | string;
+  'adjust-position'?: boolean | string;
+  'hold-keyboard'?: boolean | string;
+  className?: string;
+  style?: any;
+  ref?: any;
+  onInput?: (e: LxInputEvent) => void;
+  onChange?: (e: LxInputEvent) => void;
+  onFocus?: (e: LxInputEvent) => void;
+  onBlur?: (e: LxInputEvent) => void;
+  onConfirm?: (e: LxInputEvent) => void;
+  onKeyboardheightchange?: (e: LxInputEvent) => void;
+  onNicknamereview?: (e: LxInputEvent) => void;
+  pageBindings?: Record<string, string>;
+};
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      "lx-input": LxInputAttributes;
+    }
+  }
+}
+
+// Component implementation
+export class LxInputElement extends HTMLElement {
+  static get observedAttributes() {
+    return [
+      "id", "value", "type", "placeholder", "placeholder-style",
+      "placeholder-class", "password", "maxlength", "cursor-spacing",
+      "auto-focus", "disabled", "focus", "confirm-type", "always-embed",
+      "confirm-hold", "cursor", "cursor-color", "selection-start",
+      "selection-end", "adjust-position", "hold-keyboard"
+    ];
+  }
+
+  private componentId: string | null = null;
+  private mounted = false;
+  private unregister?: () => void;
+  private _handlers: Record<string, EventListenerOrEventListenerObject> = {};
+  private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
+  private harmonyEmbed?: HTMLEmbedElement;
+  private lastHarmonyProps?: string;
+  private pendingHarmonyProps?: Record<string, unknown>;
+  private pendingHarmonyRetryTimer: number | null = null;
+  private pendingHarmonyRetryCount = 0;
+  private attrObserver?: MutationObserver;
+  private shadow?: ShadowRoot;
+  private innerInput?: HTMLInputElement;
+  private lastKeyboardHeight = 0;
+  private readonly updateState = new NativeComponentUpdateState();
+  private resizeObserver?: ResizeObserver;
+  private pendingLayoutFrame: number | null = null;
+  private focusLayoutSyncTimer: number | null = null;
+  private readonly layoutEventListener: EventListenerObject = {
+    handleEvent: () => this.schedulePositionSync()
+  };
+  private removeLayoutInvalidationListener?: () => void;
+  private _pageBindings: Record<string, string> = {};
+
+  set pageBindings(bindings: Record<string, string>) {
+    this._pageBindings = bindings ?? {};
+    if (this.isConnected) {
+      this.mountInput();
+    }
+  }
+
+  get pageBindings(): Record<string, string> {
+    return this._pageBindings;
+  }
+
+  private upgradeProperty(propName: string): void {
+    const self = this as unknown as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(self, propName)) return;
+    const value = self[propName];
+    delete self[propName];
+    self[propName] = value;
+  }
+
+  private registerNativeHandler(): void {
+    if (!this.componentId) return;
+    if (this.unregister) {
+      this.unregister();
+      this.unregister = undefined;
+    }
+    this.unregister = registerNativeComponentHandler(this.componentId, (message) => {
+      if (typeof message.event === "string") {
+        const detail = (message.detail ?? {}) as LxInputEventDetail;
+        if (message.event === "keyboardheightchange") {
+          const nextKeyboardHeight = this.parseKeyboardHeight(detail);
+          if (nextKeyboardHeight !== undefined) {
+            this.lastKeyboardHeight = nextKeyboardHeight;
+          }
+          this.resyncHarmonyLayoutAfterFocus();
+          this.ensureVisibleForKeyboard(this.lastKeyboardHeight, false);
+        } else if (message.event === "focus") {
+          this.startFocusLayoutSync();
+          this.resyncHarmonyLayoutAfterFocus();
+          this.ensureVisibleForKeyboard(this.lastKeyboardHeight, false);
+        } else if (message.event === "blur") {
+          this.lastKeyboardHeight = 0;
+          this.stopFocusLayoutSync();
+        }
+        this.dispatchEvent(new CustomEvent(message.event, { detail, bubbles: true }));
+      }
+    });
+  }
+
+  private unmountNativeComponentById(componentId: string): void {
+    const useDesktopFallback = isDesktop() && !isMacOS();
+    if (!componentId || isHarmony() || useDesktopFallback) return;
+    sendNativeComponentMessage({
+      action: "component.unmount",
+      id: componentId
+    });
+  }
+
+  private teardownHarmonyEmbed(): void {
+    if (this.harmonyEmbed && this.contains(this.harmonyEmbed)) {
+      this.removeChild(this.harmonyEmbed);
+    }
+    this.harmonyEmbed = undefined;
+    this.lastHarmonyProps = undefined;
+    if (this.pendingHarmonyRetryTimer !== null) {
+      clearTimeout(this.pendingHarmonyRetryTimer);
+      this.pendingHarmonyRetryTimer = null;
+    }
+    this.pendingHarmonyProps = undefined;
+    this.pendingHarmonyRetryCount = 0;
+  }
+
+  connectedCallback() {
+    this.upgradeProperty("pageBindings");
+    this.upgradeProperty("oninput");
+    this.upgradeProperty("onchange");
+    this.upgradeProperty("onfocus");
+    this.upgradeProperty("onblur");
+    this.upgradeProperty("onconfirm");
+    this.upgradeProperty("onkeyboardheightchange");
+    this.upgradeProperty("onnicknamereview");
+
+    this.componentId = ensureComponentId(this, "lx-input", this.componentId);
+    if (!this.componentId) return;
+    this.registerNativeHandler();
+
+    this.startAttrObserver();
+    this.startTracking();
+    this.mountInput();
+    queueMicrotask(() => {
+      if (!this.isConnected) return;
+      this.mountInput();
+    });
+  }
+
+  disconnectedCallback() {
+    if (this.shadow) {
+      this.innerInput = undefined;
+      this.shadow = undefined;
+    }
+
+    if (this.componentId) {
+      this.unmountNativeComponentById(this.componentId);
+    }
+    if (this.unregister) {
+      this.unregister();
+      this.unregister = undefined;
+    }
+    this.teardownHarmonyEmbed();
+    this.lastKeyboardHeight = 0;
+    this.stopFocusLayoutSync();
+    this.stopTracking();
+    this.mounted = false;
+    this.updateState.reset();
+    this.stopAttrObserver();
+    Object.keys(this._handlers).forEach(name => {
+      this.removeEventListener(name, this._handlers[name]);
+    });
+    this._handlers = {};
+    this.rawHandlers = {};
+  }
+
+  attributeChangedCallback(name: string) {
+    if (name === "id") {
+      const prev = this.componentId;
+      this.componentId = ensureComponentId(this, "lx-input", this.componentId);
+      if (prev && this.componentId !== prev) {
+        this.mounted = false;
+        this.updateState.reset();
+        if (this.isConnected) {
+          this.unmountNativeComponentById(prev);
+          this.teardownHarmonyEmbed();
+          this.registerNativeHandler();
+        }
+      }
+    }
+    if (!this.isConnected) return;
+    this.mountInput();
+  }
+
+  private getAttr(name: string, fallback = "") {
+    const raw = this.getPropOrAttr(name);
+    if (raw === undefined || raw === null) return fallback;
+    return String(raw);
+  }
+
+  private getBoolAttr(name: string): boolean {
+    return getSharedBoolAttr(this, name);
+  }
+
+  private getNumAttr(name: string): number | undefined {
+    return getSharedNumAttr(this, name);
+  }
+
+  private getPropOrAttr(name: string): unknown {
+    return getSharedPropOrAttr(this, name);
+  }
+
+  private shouldTrackNativeLayout(): boolean {
+    return isAndroid() || isIOS() || isHarmony();
+  }
+
+  private startTracking(): void {
+    if (!this.shouldTrackNativeLayout()) return;
+    window.addEventListener("resize", this.layoutEventListener);
+    if (isAndroid()) {
+      // Android overlay can drift inside nested scrolling containers; capture phase catches element scroll events.
+      window.addEventListener("scroll", this.layoutEventListener, { capture: true, passive: true });
+    } else if (isHarmony()) {
+      // Harmony native embed coordinates need continuous sync while page scrolls.
+      window.addEventListener("scroll", this.layoutEventListener, { capture: true, passive: true });
+    } else if (isIOS()) {
+      // Match video behavior on iOS: track top-level page scrolling only.
+      window.addEventListener("scroll", this.layoutEventListener, { passive: true });
+    }
+    window.visualViewport?.addEventListener("resize", this.layoutEventListener);
+    window.visualViewport?.addEventListener("scroll", this.layoutEventListener);
+    if (isAndroid()) {
+      this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.layoutEventListener);
+    }
+    this.startSizeObserver();
+    this.schedulePositionSync();
+  }
+
+  private stopTracking(): void {
+    window.removeEventListener("resize", this.layoutEventListener);
+    window.removeEventListener("scroll", this.layoutEventListener, true);
+    window.removeEventListener("scroll", this.layoutEventListener);
+    window.visualViewport?.removeEventListener("resize", this.layoutEventListener);
+    window.visualViewport?.removeEventListener("scroll", this.layoutEventListener);
+    this.removeLayoutInvalidationListener?.();
+    this.removeLayoutInvalidationListener = undefined;
+    this.stopSizeObserver();
+    if (this.pendingLayoutFrame !== null) {
+      cancelAnimationFrame(this.pendingLayoutFrame);
+      this.pendingLayoutFrame = null;
+    }
+  }
+
+  private startSizeObserver(): void {
+    if (typeof ResizeObserver === "undefined" || this.resizeObserver) return;
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target !== this) continue;
+        this.schedulePositionSync();
+        break;
+      }
+    });
+    this.resizeObserver.observe(this);
+  }
+
+  private stopSizeObserver(): void {
+    if (!this.resizeObserver) return;
+    this.resizeObserver.disconnect();
+    this.resizeObserver = undefined;
+  }
+
+  private schedulePositionSync(): void {
+    if (!this.shouldTrackNativeLayout() || !this.isConnected) return;
+    if (this.pendingLayoutFrame !== null) return;
+    this.pendingLayoutFrame = requestAnimationFrame(() => {
+      this.pendingLayoutFrame = null;
+      if (!this.isConnected) return;
+      this.mountInput();
+    });
+  }
+
+  private collectProps() {
+    const autoFocus = this.getBoolAttr("auto-focus");
+    const password = this.getBoolAttr("password");
+    const value = this.getPropOrAttr("value");
+    const props: Record<string, any> = {
+      value: value === undefined || value === null ? undefined : String(value),
+      type: password ? "password" : this.getAttr("type", "text"),
+      password,
+      placeholder: this.getAttr("placeholder"),
+      placeholderStyle: this.getAttr("placeholder-style"),
+      // Use string values so "false" survives all bridge layers (some paths may drop falsy booleans).
+      focus: (this.getBoolAttr("focus") || autoFocus) ? "true" : "false",
+      autoFocus,
+      disabled: this.getBoolAttr("disabled"),
+      confirmType: this.getAttr("confirm-type", "done"),
+      alwaysEmbed: this.getBoolAttr("always-embed"),
+      confirmHold: this.getBoolAttr("confirm-hold"),
+      adjustPosition: this.getAttribute("adjust-position") !== "false",
+      holdKeyboard: this.getBoolAttr("hold-keyboard"),
+    };
+
+    const textColor = this.getHostTextColor();
+    if (textColor) props.textColor = textColor;
+
+    const placeholderClass = this.getAttr("placeholder-class");
+    if (placeholderClass) props.placeholderClass = placeholderClass;
+
+    const maxlength = this.getNumAttr("maxlength");
+    if (maxlength !== undefined) props.maxlength = maxlength;
+
+    const cursorSpacing = this.getNumAttr("cursor-spacing");
+    if (cursorSpacing !== undefined) props.cursorSpacing = cursorSpacing;
+
+    const cursor = this.getNumAttr("cursor");
+    if (cursor !== undefined) props.cursor = cursor;
+
+    const cursorColor = this.getAttr("cursor-color");
+    if (cursorColor) props.cursorColor = cursorColor;
+
+    const selStart = this.getNumAttr("selection-start");
+    if (selStart !== undefined) props.selectionStart = selStart;
+
+    const selEnd = this.getNumAttr("selection-end");
+    if (selEnd !== undefined) props.selectionEnd = selEnd;
+
+    return props;
+  }
+
+  private getHostTextColor(): string | undefined {
+    const color = getComputedStyle(this).color?.trim();
+    if (!color) return undefined;
+    if (color === "transparent" || color === "rgba(0, 0, 0, 0)") return undefined;
+    return color;
+  }
+
+  private shouldAdjustPosition(): boolean {
+    return this.getAttribute("adjust-position") !== "false";
+  }
+
+  private parseKeyboardHeight(detail: unknown): number | undefined {
+    if (!detail || typeof detail !== "object") return undefined;
+    const parsed = parseNumberLike((detail as { height?: unknown }).height);
+    return parsed === undefined ? undefined : Math.max(0, parsed);
+  }
+
+  private ensureVisibleForKeyboard(explicitKeyboardHeight = 0, forceCenter = false): void {
+    if (isHarmony() || isAndroid() || isIOS()) return;
+    if (!this.shouldAdjustPosition()) return;
+    ensureElementVisibleForKeyboard(this, explicitKeyboardHeight, forceCenter, [120, 220, 320]);
+  }
+
+  private resyncHarmonyLayoutAfterFocus(): void {
+    if (!isHarmony() || !this.isConnected) return;
+    this.mountInput();
+    setTimeout(() => {
+      if (!this.isConnected) return;
+      this.mountInput();
+    }, 32);
+    setTimeout(() => {
+      if (!this.isConnected) return;
+      this.mountInput();
+    }, 96);
+  }
+
+  private startFocusLayoutSync(): void {
+    if (!isHarmony()) return;
+    if (this.focusLayoutSyncTimer !== null) return;
+    this.focusLayoutSyncTimer = window.setInterval(() => {
+      if (!this.isConnected) {
+        this.stopFocusLayoutSync();
+        return;
+      }
+      this.mountInput();
+    }, 80);
+  }
+
+  private stopFocusLayoutSync(): void {
+    if (this.focusLayoutSyncTimer === null) return;
+    clearInterval(this.focusLayoutSyncTimer);
+    this.focusLayoutSyncTimer = null;
+  }
+
+  private shouldRefreshForAttribute(name: string): boolean {
+    return shouldRefreshSharedDataAttribute(name);
+  }
+
+  private startAttrObserver(): void {
+    if (typeof MutationObserver === "undefined" || this.attrObserver) return;
+    this.attrObserver = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        const attrName = mutation.attributeName;
+        if (!attrName || !this.shouldRefreshForAttribute(attrName)) continue;
+        this.mountInput();
+        break;
+      }
+    });
+    this.attrObserver.observe(this, { attributes: true });
+  }
+
+  private stopAttrObserver(): void {
+    if (!this.attrObserver) return;
+    this.attrObserver.disconnect();
+    this.attrObserver = undefined;
+  }
+
+  private collectDataset(): Record<string, string> {
+    return collectSharedDataset(this);
+  }
+
+  private getInputType(): string {
+    if (this.getBoolAttr("password")) return "password";
+    const type = this.getAttr("type", "text");
+    switch (type) {
+      case "digit": return "tel";
+      case "number": return "number";
+      case "password": return "password";
+      case "safe-password": return "password";
+      default: return "text";
+    }
+  }
+
+  private mountDesktopInput() {
+    if (!this.shadow) {
+      this.shadow = this.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = `
+        :host {
+          display: block;
+          width: 100%;
+        }
+        input {
+          display: block;
+          width: 100%;
+          box-sizing: border-box;
+          padding: 8px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 14px;
+          line-height: 1.5;
+          color: #111827;
+          background: #fff;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        input:focus {
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+        }
+        input:disabled {
+          background: #f3f4f6;
+          color: #9ca3af;
+          cursor: not-allowed;
+        }
+        input::placeholder {
+          color: #9ca3af;
+        }
+      `;
+      this.shadow.appendChild(style);
+
+      const input = document.createElement("input");
+      this.innerInput = input;
+      this.shadow.appendChild(input);
+
+      // Stop native composed events from leaking through shadow boundary
+      // to avoid double-firing (native retarget + our CustomEvent).
+      input.addEventListener("input", (e) => {
+        e.stopPropagation();
+        const detail: LxInputEventDetail = { value: input.value };
+        this.dispatchEvent(new CustomEvent("input", { detail, bubbles: true }));
+      });
+      input.addEventListener("change", (e) => {
+        e.stopPropagation();
+        const detail: LxInputEventDetail = { value: input.value };
+        this.dispatchEvent(new CustomEvent("change", { detail, bubbles: true }));
+      });
+      input.addEventListener("focus", (e) => {
+        e.stopPropagation();
+        const detail: LxInputEventDetail = { value: input.value };
+        this.dispatchEvent(new CustomEvent("focus", { detail, bubbles: true }));
+      });
+      input.addEventListener("blur", (e) => {
+        e.stopPropagation();
+        const detail: LxInputEventDetail = { value: input.value };
+        this.dispatchEvent(new CustomEvent("blur", { detail, bubbles: true }));
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          const detail: LxInputEventDetail = { value: input.value };
+          this.dispatchEvent(new CustomEvent("confirm", { detail, bubbles: true }));
+        }
+      });
+    }
+
+    // Sync attributes to inner input
+    const input = this.innerInput!;
+    const props = this.collectProps();
+    input.type = this.getInputType();
+    input.placeholder = props.placeholder || "";
+    input.disabled = props.disabled;
+    if (props.maxlength !== undefined) {
+      input.maxLength = props.maxlength;
+    } else {
+      input.removeAttribute("maxlength");
+    }
+
+    // Only sync value if it differs (avoid cursor jump)
+    if (props.value !== undefined && input.value !== props.value) {
+      input.value = props.value;
+    }
+
+    // Apply selection range
+    if (
+      typeof props.selectionStart === "number" &&
+      typeof props.selectionEnd === "number" &&
+      props.selectionStart >= 0 &&
+      props.selectionEnd >= props.selectionStart
+    ) {
+      input.setSelectionRange(props.selectionStart, props.selectionEnd);
+    }
+
+    // Apply placeholder style (replace on every update so dynamic changes work)
+    const placeholderStyle = props.placeholderStyle;
+    const styleEl = this.shadow!.querySelector("style")!;
+    const marker = "/* placeholder-style */";
+    const markerIdx = styleEl.textContent!.indexOf(marker);
+    if (placeholderStyle) {
+      const rule = `\n${marker}\ninput::placeholder { ${placeholderStyle} }`;
+      if (markerIdx >= 0) {
+        styleEl.textContent = styleEl.textContent!.substring(0, markerIdx) + rule;
+      } else {
+        styleEl.textContent += rule;
+      }
+    } else if (markerIdx >= 0) {
+      styleEl.textContent = styleEl.textContent!.substring(0, markerIdx);
+    }
+
+    if (props.focus && document.activeElement !== input) {
+      input.focus();
+    }
+  }
+
+  private mountInput() {
+    if (!this.componentId) return;
+    this.ensureHostLayout();
+
+    const props = this.collectProps();
+    const dataset = this.collectDataset();
+    props.dataset = dataset;
+    props.datasetJson = JSON.stringify(dataset);
+    props.pageFuncBindings = this._pageBindings;
+    props.pageFuncBindingsJson = JSON.stringify(this._pageBindings);
+    const { rect, cornerRadius } = measureElement(this);
+    props.__layoutX = rect.x;
+    props.__layoutY = rect.y;
+    props.__layoutWidth = rect.width;
+    props.__layoutHeight = rect.height;
+
+    if (isHarmony()) {
+      this.ensureHarmonyEmbed(rect, props, cornerRadius);
+      this.mounted = true;
+      return;
+    }
+
+    if (isDesktop() && !isMacOS()) {
+      this.mountDesktopInput();
+      this.mounted = true;
+      return;
+    }
+
+    const zIndex = 9999;
+    const decision = this.updateState.decide(rect, props, zIndex, !this.mounted);
+    if (!decision.shouldSend) {
+      this.mounted = true;
+      return;
+    }
+
+    const payload: any = {
+      action: this.mounted ? "component.update" : "component.mount",
+      id: this.componentId,
+      type: "input.native",
+      rect,
+      zIndex
+    };
+    if (!this.mounted || decision.propsChanged) {
+      payload.props = props;
+    }
+
+    if (cornerRadius !== undefined) {
+      payload.cornerRadius = cornerRadius;
+    }
+
+    sendNativeComponentMessage(payload);
+    this.mounted = true;
+  }
+
+  // Force a full native sync when host frameworks mutate properties without
+  // triggering observed attribute callbacks on custom elements.
+  syncNativeProps(): void {
+    if (!this.isConnected) return;
+    this.mountInput();
+  }
+
+  private ensureHostLayout(): void {
+    const computed = getComputedStyle(this);
+    if (computed.display === "inline") {
+      this.style.display = "block";
+    }
+    const height = Number.parseFloat(computed.height);
+    if (!Number.isFinite(height) || height <= 1) {
+      this.style.height = "40px";
+    }
+  }
+
+  // Event handler getter/setter for 'input' event
+  set oninput(cb: EventListener | null) {
+    const raw = cb as unknown;
+    const current = this._handlers['input'];
+    if (current) this.removeEventListener('input', current);
+
+    if (
+      typeof raw === "function" ||
+      (!!raw && typeof raw === "object" && typeof (raw as EventListenerObject).handleEvent === "function")
+    ) {
+      const listener =
+        typeof raw === "function"
+          ? ({ handleEvent: raw } as EventListenerObject)
+          : (raw as EventListenerOrEventListenerObject);
+      this._handlers['input'] = listener;
+      this.rawHandlers['input'] = raw as EventListenerOrEventListenerObject;
+      this.addEventListener('input', listener);
+    } else {
+      delete this._handlers['input'];
+      delete this.rawHandlers['input'];
+    }
+  }
+  get oninput() { return (this.rawHandlers['input'] as EventListener) || null; }
+
+  private ensureHarmonyEmbed(
+    rect: { width: number; height: number },
+    props: Record<string, unknown>,
+    cornerRadius?: number
+  ) {
+    if (!this.harmonyEmbed) {
+      const embed = document.createElement("embed");
+      embed.setAttribute("type", "native/input");
+      embed.setAttribute("width", `${rect.width}`);
+      embed.setAttribute("height", `${rect.height}`);
+      embed.setAttribute("id", this.componentId!);
+      embed.setAttribute("data-lx-component-id", this.componentId!);
+      embed.style.display = "block";
+      embed.style.width = "100%";
+      embed.style.height = "100%";
+      embed.style.border = "none";
+      if (cornerRadius !== undefined) {
+        embed.style.borderRadius = `${cornerRadius}px`;
+        embed.style.overflow = "hidden";
+      }
+      const encodedProps = this.encodeHarmonyProps(props);
+      embed.setAttribute("src", encodedProps);
+      this.lastHarmonyProps = encodedProps;
+      this.appendChild(embed);
+      this.harmonyEmbed = embed;
+      this.pendingHarmonyRetryCount = 0;
+      return;
+    }
+
+    const encodedProps = this.encodeHarmonyProps(props);
+    if (encodedProps !== this.lastHarmonyProps) {
+      const pushed = this.pushHarmonyPropsUpdate(props);
+      if (pushed) {
+        this.lastHarmonyProps = encodedProps;
+        this.pendingHarmonyProps = undefined;
+        this.pendingHarmonyRetryCount = 0;
+      } else {
+        // Fallback to src update path when proxy bridge is unavailable.
+        this.harmonyEmbed.setAttribute("src", encodedProps);
+        this.lastHarmonyProps = encodedProps;
+        this.scheduleHarmonyPropsRetry(props);
+      }
+    }
+
+    if (cornerRadius !== undefined && this.harmonyEmbed.style.borderRadius !== `${cornerRadius}px`) {
+      this.harmonyEmbed.style.borderRadius = `${cornerRadius}px`;
+      this.harmonyEmbed.style.overflow = "hidden";
+    }
+  }
+
+  private encodeHarmonyProps(props: Record<string, unknown>): string {
+    try {
+      const payload = { componentId: this.componentId, ...props };
+      return `${HARMONY_PROPS_PREFIX}${encodeURIComponent(JSON.stringify(payload))}`;
+    } catch (_e) {
+      return `${HARMONY_PROPS_PREFIX}%7B%7D`;
+    }
+  }
+
+  private pushHarmonyPropsUpdate(props: Record<string, unknown>): boolean {
+    if (!this.componentId || !isHarmony()) return false;
+    try {
+      const proxy = (window as unknown as Record<string, unknown>).LingXiaProxy as
+        | { nativeComponentUpdate?: ((componentId: string, payload: string) => void) | ((payload: string) => void) }
+        | undefined;
+      const updateFn = proxy?.nativeComponentUpdate;
+      if (typeof updateFn !== "function") {
+        return false;
+      }
+      const payload = JSON.stringify({ componentId: this.componentId, ...props });
+      try {
+        (updateFn as (payload: string) => void).call(proxy, payload);
+        return true;
+      } catch {
+        try {
+          (updateFn as (componentId: string, payload: string) => void).call(proxy, this.componentId, payload);
+          return true;
+        } catch {
+          return false;
+        }
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  private scheduleHarmonyPropsRetry(props: Record<string, unknown>): void {
+    this.pendingHarmonyProps = { ...props };
+    if (this.pendingHarmonyRetryTimer !== null) {
+      return;
+    }
+    this.pendingHarmonyRetryTimer = window.setTimeout(() => {
+      this.pendingHarmonyRetryTimer = null;
+      if (!this.isConnected || !this.pendingHarmonyProps) {
+        return;
+      }
+      const pendingProps = this.pendingHarmonyProps;
+      const pushed = this.pushHarmonyPropsUpdate(pendingProps);
+      if (pushed) {
+        this.lastHarmonyProps = this.encodeHarmonyProps(pendingProps);
+        this.pendingHarmonyProps = undefined;
+        this.pendingHarmonyRetryCount = 0;
+      } else {
+        this.pendingHarmonyRetryCount += 1;
+        if (this.pendingHarmonyRetryCount < 20) {
+          this.scheduleHarmonyPropsRetry(pendingProps);
+        }
+      }
+    }, 100);
+  }
+}
+
+// Register the custom element
+export function registerInputComponent() {
+  if (typeof window !== "undefined" && !customElements.get("lx-input")) {
+    customElements.define("lx-input", LxInputElement);
+  }
+}

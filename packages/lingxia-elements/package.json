@@ -1,0 +1,39 @@
+{
+  "name": "@lingxia/elements",
+  "version": "0.4.3",
+  "private": false,
+  "description": "LingXia custom elements — native-backed web components for LxApp pages",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@lingxia/bridge": "file:../lingxia-bridge",
+    "typescript": "^5.7.2"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "packages/lingxia-elements"
+  },
+  "license": "MIT"
+}
