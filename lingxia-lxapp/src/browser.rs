@@ -1,4 +1,4 @@
-use crate::appservice::bridge::IncomingMessage;
+use crate::bridge::IncomingMessage;
 use crate::page::Page;
 use crate::{LxApp, LxAppError, publish_app_event};
 use http::{Response, StatusCode};
@@ -16,8 +16,11 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
-use tokio::sync::oneshot;
+use tokio::sync::{broadcast, oneshot};
 use uuid::Uuid;
+
+use crate::download;
+use crate::download::{DownloadEvent, DownloadRecord, DownloadStatus, DownloadsSnapshot};
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
@@ -616,25 +619,24 @@ fn next_browser_create_token() -> u64 {
     BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
 }
 
-fn map_download_config_error(err: crate::download_manager::DownloadConfigError) -> LxAppError {
-    match err {
-        crate::download_manager::DownloadConfigError::InvalidParameter(msg) => {
-            LxAppError::InvalidParameter(msg)
-        }
-        crate::download_manager::DownloadConfigError::Runtime(msg) => LxAppError::Runtime(msg),
+pub fn set_download_dir(lxapp: &LxApp, path: impl Into<PathBuf>) -> Result<(), LxAppError> {
+    let path = path.into();
+    if path.as_os_str().is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "download directory cannot be empty".to_string(),
+        ));
     }
+    crate::settings::set_download_dir(&lxapp.app_data_dir(), Some(path))
 }
 
-pub fn set_browser_download_dir(path: impl Into<PathBuf>) -> Result<(), LxAppError> {
-    crate::download_manager::set_download_root_override(path).map_err(map_download_config_error)
+pub fn reset_download_dir(lxapp: &LxApp) -> Result<(), LxAppError> {
+    crate::settings::set_download_dir(&lxapp.app_data_dir(), None::<&Path>)
 }
 
-pub fn reset_browser_download_dir() -> Result<(), LxAppError> {
-    crate::download_manager::clear_download_root_override().map_err(map_download_config_error)
-}
-
-pub fn browser_download_dir() -> Option<PathBuf> {
-    crate::download_manager::download_root_override()
+pub fn download_dir(lxapp: &LxApp) -> Result<PathBuf, LxAppError> {
+    Ok(crate::download::manager::download_root(
+        &lxapp.app_data_dir(),
+    ))
 }
 
 fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) {
@@ -653,13 +655,13 @@ fn publish_browser_download_event(event_name: &str, payload: serde_json::Value) 
 /// from the currently active tab WebView to that shared startup Page.
 struct BrowserTabDelegate {
     appid: String,
-    startup_path: String,
+    page_path: String,
 }
 
 impl WebViewDelegate for BrowserTabDelegate {
     fn on_page_started(&self) {
         if let Some(browser) = crate::lxapp::try_get(&self.appid) {
-            if let Some(page) = browser.get_page(&self.startup_path) {
+            if let Some(page) = browser.get_page(&self.page_path) {
                 page.notify_page_started();
             }
         }
@@ -667,7 +669,7 @@ impl WebViewDelegate for BrowserTabDelegate {
 
     fn on_page_finished(&self) {
         if let Some(browser) = crate::lxapp::try_get(&self.appid) {
-            if let Some(page) = browser.get_page(&self.startup_path) {
+            if let Some(page) = browser.get_page(&self.page_path) {
                 page.notify_page_finished();
             }
         }
@@ -677,12 +679,18 @@ impl WebViewDelegate for BrowserTabDelegate {
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
                 if let Some(browser) = crate::lxapp::try_get(&self.appid) {
-                    if let Err(e) = browser.executor.handle_view_message(
-                        browser.clone(),
-                        self.startup_path.clone(),
-                        Arc::new(incoming),
-                    ) {
-                        crate::warn!("[InternalBrowser] Failed to handle bridge message: {}", e);
+                    if let Some(page) = browser.get_page(&self.page_path) {
+                        if let Err(e) = page.bridge().handle_incoming(&page, Arc::new(incoming)) {
+                            crate::warn!(
+                                "[InternalBrowser] Failed to handle bridge message: {}",
+                                e
+                            );
+                        }
+                    } else {
+                        crate::warn!(
+                            "[InternalBrowser] Failed to handle bridge message: page not found {}",
+                            self.page_path
+                        );
                     }
                 }
             }
@@ -701,7 +709,7 @@ impl WebViewDelegate for BrowserTabDelegate {
         };
         crate::log::LogBuilder::new(crate::log::LogTag::WebViewConsole, message)
             .with_level(log_level)
-            .with_path(&self.startup_path)
+            .with_path(&self.page_path)
             .with_appid(self.appid.clone());
     }
 }
@@ -764,33 +772,58 @@ fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError>
     Ok(page)
 }
 
-/// Attach the given tab WebView to the shared startup page and load an lx:// URL into it.
+fn ensure_browser_tab_page(browser: &Arc<LxApp>, path: &str) -> Result<Page, LxAppError> {
+    if let Some(page) = browser.get_page(path) {
+        return Ok(page);
+    }
+
+    let page = Page::new_headless(BUILTIN_BROWSER_APPID.to_string(), path.to_string(), browser);
+    browser.register_page(page.clone());
+
+    let (ack_tx, ack_rx) = oneshot::channel::<()>();
+    browser
+        .executor
+        .create_page_svc_with_ack(browser.clone_arc(), path.to_string(), ack_tx)?;
+
+    let page_clone = page.clone();
+    if let Err(e) = rong::bg::spawn(async move {
+        let result = ack_rx.await.map_err(|err| err.to_string());
+        page_clone.mark_webview_ready(result);
+    }) {
+        crate::warn!("[InternalBrowser] Failed to spawn tab page ack task: {}", e);
+        page.mark_webview_ready(Err(e.to_string()));
+    }
+
+    Ok(page)
+}
+
+/// Attach the given tab WebView to its headless page and load a lingxia:// URL into it.
 /// Waits for the PageSvc to be ready first.
 ///
 /// `page_url`: the `lx://` URL to load. `None` loads the default startup/newtab page;
 /// `Some(url)` loads a specific internal browser page (e.g. `lx://lxapp/.../downloads`).
-async fn browser_attach_startup_page(
+async fn browser_attach_tab_page(
     webview: Arc<WebView>,
+    page_path: &str,
     tab_id: &str,
     page_url: Option<&str>,
 ) -> Result<(), LxAppError> {
     let browser = ensure_browser_lxapp()?;
-    let startup_path = browser.config.get_initial_route();
-    let startup_page = browser
-        .get_page(&startup_path)
-        .ok_or_else(|| LxAppError::Runtime("browser startup page not found".to_string()))?;
+    let page = browser
+        .get_page(page_path)
+        .ok_or_else(|| LxAppError::Runtime(format!("browser tab page not found: {}", page_path)))?;
 
     // Wait until PageSvc signals ready (ack from JS worker).
-    if let Err(e) = startup_page.wait_webview_ready().await {
+    if let Err(e) = page.wait_webview_ready().await {
         crate::warn!(
-            "[InternalBrowser] Startup PageSvc not ready for tab {}: {}",
+            "[InternalBrowser] Tab PageSvc not ready for tab {}: {}",
             tab_id,
             e
         );
     }
 
     // Attach this tab's WebView so bridge responses are delivered here.
-    startup_page.attach_webview(webview.clone());
+    page.attach_webview(webview.clone());
 
     // Load the requested URL (or `lingxia://newtab` for the default startup page).
     let url_to_load = page_url
@@ -819,23 +852,16 @@ fn browser_create_webview(
     let tab_id_for_download = tab_id.to_string();
     let browser_owner = ensure_browser_lxapp()?;
 
-    // Ensure the shared startup page (+ PageSvc) exists before creating the tab WebView.
-    // This is idempotent and fast on subsequent calls.
+    // Ensure the JS worker and browser startup page exist before creating the tab WebView.
     ensure_browser_startup_page(&browser_owner)?;
+    let tab_page = ensure_browser_tab_page(&browser_owner, path)?;
 
     let startup_path = browser_owner.config.get_initial_route();
-    let startup_document_path = format!(
-        "/{}/{}",
-        BUILTIN_BROWSER_APPID,
-        startup_path.trim_start_matches('/')
-    );
-    let startup_page_for_lx = browser_owner.get_page(&startup_path).ok_or_else(|| {
-        LxAppError::Runtime("browser startup page not found for lx scheme handler".to_string())
-    })?;
-    let startup_page_for_lingxia = startup_page_for_lx.clone();
     let owner_for_lx = browser_owner.clone();
     let owner_for_lingxia = browser_owner.clone();
     let startup_path_for_lingxia = startup_path.clone();
+    let tab_page_for_lx = tab_page.clone();
+    let tab_page_for_lingxia = tab_page.clone();
     let runtime_for_nav = browser_owner.runtime.clone();
     let owner_appid_for_nav = browser_owner.appid.clone();
     let owner_session_for_nav = browser_owner.session_id();
@@ -846,39 +872,16 @@ fn browser_create_webview(
     let session = WebViewBuilder::browser(webtag)
         .delegate(Arc::new(BrowserTabDelegate {
             appid: BUILTIN_BROWSER_APPID.to_string(),
-            startup_path: startup_path.clone(),
+            page_path: path.to_string(),
         }))
         .on_scheme("lx", move |req| {
             let owner = owner_for_lx.clone();
-            let page = startup_page_for_lx.clone();
-            let startup_path = startup_path.clone();
-            let startup_document_path = startup_document_path.clone();
-            async move {
-                // Serve startup document dynamically (nonce-injected) via lx:// URL.
-                // Assets and other lx:// resources still go through standard lingxia_handler.
-                if req.uri().host() == Some("lxapp") && req.uri().path() == startup_document_path {
-                    let nonce = page.bridge_nonce();
-                    let html = owner.generate_page_html(&startup_path, nonce.as_deref());
-                    let response = Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", "text/html; charset=utf-8")
-                        .header("Access-Control-Allow-Origin", "null")
-                        .body(())
-                        .unwrap_or_else(|_| {
-                            Response::builder()
-                                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                .body(())
-                                .expect("Failed to build fallback startup response")
-                        });
-                    let (parts, _) = response.into_parts();
-                    return Some((parts, html).into()).into();
-                }
-                owner.lingxia_handler(&page, req).into()
-            }
+            let page = tab_page_for_lx.clone();
+            async move { owner.lingxia_handler(&page, req).into() }
         })
         .on_scheme(LINGXIA_SCHEME, move |req| {
             let owner = owner_for_lingxia.clone();
-            let page = startup_page_for_lingxia.clone();
+            let page = tab_page_for_lingxia.clone();
             let startup_path = startup_path_for_lingxia.clone();
             async move {
                 // Map the `lingxia://` host to the browser page path.
@@ -1013,7 +1016,7 @@ async fn browser_on_webview_ready(
                     extract_url_scheme(&url).as_deref() == Some(LINGXIA_SCHEME);
                 if is_browser_internal {
                     if let Err(e) =
-                        browser_attach_startup_page(webview.clone(), &tab_id, Some(&url)).await
+                        browser_attach_tab_page(webview.clone(), &path, &tab_id, Some(&url)).await
                     {
                         crate::warn!(
                             "[InternalBrowser] Failed to attach startup page for internal tab {}: {}",
@@ -1034,7 +1037,8 @@ async fn browser_on_webview_ready(
                 }
             } else {
                 // Startup page: attach WebView to shared startup Page, then load with nonce.
-                if let Err(e) = browser_attach_startup_page(webview.clone(), &tab_id, None).await {
+                if let Err(e) = browser_attach_tab_page(webview.clone(), &path, &tab_id, None).await
+                {
                     crate::warn!(
                         "[InternalBrowser] Failed to load startup page for tab {}: {}",
                         tab_id,
@@ -1112,22 +1116,34 @@ fn browser_destroy_webview(path: &str, session_id: u64) {
 
 async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: DownloadRequest) {
     let task_id = Uuid::new_v4().to_string();
-    let task = crate::download_manager::DownloadTask::for_browser(
+    let cancel_rx = download::register_active_download(&task_id);
+    let task = crate::download::manager::DownloadTask::for_browser(
         request,
-        crate::download_manager::browser_download_root(&owner.runtime.app_data_dir()),
+        crate::download::manager::browser_download_root(&owner.runtime.app_data_dir()),
         Some(rong::get_user_agent()),
-    );
+    )
+    .with_browser_persistence(owner.runtime.app_data_dir(), task_id.clone());
     let tab_id_for_event = tab_id.clone();
 
-    let result = crate::download_manager::run_browser_download_task(
+    let result = crate::download::manager::run_browser_download_task(
         task,
         &task_id,
         &tab_id_for_event,
+        cancel_rx,
         |event_name, payload| {
+            if let Err(err) = download::record_bridge_event(&owner.runtime.app_data_dir(), event_name, &payload) {
+                crate::warn!(
+                    "[InternalBrowser] failed to record download event task_id={} event={} error={}",
+                    task_id,
+                    event_name,
+                    err
+                );
+            }
             publish_browser_download_event(event_name, payload);
         },
     )
     .await;
+    download::unregister_active_download(&task_id);
     if let Err(err) = result {
         crate::warn!(
             "[InternalBrowser] download task failed tab_id={} url={} reason={}",
@@ -1136,6 +1152,199 @@ async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: D
             err.error
         );
     }
+}
+
+pub fn downloads_snapshot(lxapp: &LxApp) -> Result<DownloadsSnapshot, LxAppError> {
+    download::snapshot(&lxapp.app_data_dir())
+}
+
+pub fn subscribe_downloads(
+    lxapp: &LxApp,
+) -> Result<broadcast::Receiver<DownloadEvent>, LxAppError> {
+    download::subscribe(&lxapp.app_data_dir())
+}
+
+pub fn download_record(lxapp: &LxApp, task_id: &str) -> Result<Option<DownloadRecord>, LxAppError> {
+    download::get_record(&lxapp.app_data_dir(), task_id)
+}
+
+pub fn clear_completed_downloads(lxapp: &LxApp) -> Result<u64, LxAppError> {
+    download::clear_completed(&lxapp.app_data_dir())
+}
+
+pub fn remove_download(lxapp: &LxApp, task_id: &str) -> Result<(), LxAppError> {
+    let removed = download::remove(&lxapp.app_data_dir(), task_id)?;
+    if removed.is_none() {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "download not found: {}",
+            task_id
+        )));
+    }
+    Ok(())
+}
+
+pub fn cancel_download(lxapp: &LxApp, task_id: &str) -> Result<(), LxAppError> {
+    if download::cancel_active_download(task_id) {
+        crate::info!("[Downloads] cancel requested for task_id={}", task_id);
+        return Ok(());
+    }
+
+    let record = download::get_record(&lxapp.app_data_dir(), task_id)?
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("download not found: {}", task_id)))?;
+    if record.status != DownloadStatus::Downloading {
+        return Err(LxAppError::UnsupportedOperation(
+            "download is not active".to_string(),
+        ));
+    }
+    Err(LxAppError::UnsupportedOperation(
+        "download can no longer be canceled".to_string(),
+    ))
+}
+
+pub fn cancel_active_download_signal(task_id: &str) -> bool {
+    download::cancel_active_download(task_id)
+}
+
+pub fn retry_download(task_id: &str) -> Result<(), LxAppError> {
+    let owner = ensure_browser_lxapp()?;
+    let app_data_dir = owner.runtime.app_data_dir();
+    let record = download::get_record(&app_data_dir, task_id)?
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("download not found: {task_id}")))?;
+    if record.status != DownloadStatus::Failed {
+        return Err(LxAppError::UnsupportedOperation(
+            "download is not retryable".to_string(),
+        ));
+    }
+    if !record.retry {
+        return Err(LxAppError::UnsupportedOperation(
+            "download cannot be retried".to_string(),
+        ));
+    }
+    if download::has_active_download(task_id) {
+        return Err(LxAppError::UnsupportedOperation(
+            "download is already active".to_string(),
+        ));
+    }
+
+    let request_context =
+        download::get_request_context(&app_data_dir, task_id)?.ok_or_else(|| {
+            LxAppError::UnsupportedOperation("download retry context is unavailable".to_string())
+        })?;
+
+    if matches!(
+        record.owner.kind,
+        crate::download::manager::DownloadOwnerKind::LxDownloadFile
+    ) {
+        let user_cache_dir = PathBuf::from(&record.target_path)
+            .parent()
+            .map(Path::to_path_buf)
+            .ok_or_else(|| {
+                LxAppError::UnsupportedOperation(
+                    "download retry target path has no parent directory".to_string(),
+                )
+            })?;
+        let task_id_owned = task_id.to_string();
+        let app_data_dir_clone = app_data_dir.clone();
+        let owner_appid = record.owner.appid.clone();
+        let url = record.url.clone();
+        let headers = request_context.headers.clone();
+        let user_agent = request_context.user_agent.clone();
+
+        rong::bg::spawn(async move {
+            let persistence = crate::download::manager::DownloadPersistence::new(
+                app_data_dir_clone.clone(),
+                task_id_owned.clone(),
+                crate::download::manager::DownloadOwner {
+                    kind: crate::download::manager::DownloadOwnerKind::LxDownloadFile,
+                    appid: owner_appid,
+                    page_path: None,
+                    tab_id: None,
+                },
+                true,
+            );
+            let result = crate::download::manager::download_to_user_cache(
+                Some(persistence),
+                &user_cache_dir,
+                crate::download::manager::UserCacheDownloadRequest { url, headers },
+                user_agent,
+                |_| {},
+            )
+            .await;
+            if let Err(err) = result {
+                crate::warn!(
+                    "[Downloads] retry download task failed task_id={} url={} reason={}",
+                    task_id_owned,
+                    err.url,
+                    err.error
+                );
+            }
+        })
+        .map_err(|e| LxAppError::Runtime(format!("failed to spawn download retry task: {e}")))?;
+
+        return Ok(());
+    }
+
+    let request = DownloadRequest {
+        url: record.url.clone(),
+        user_agent: request_context.user_agent.clone(),
+        content_disposition: None,
+        mime_type: record.mime_type.clone(),
+        content_length: record.total_bytes,
+        suggested_filename: request_context
+            .suggested_filename
+            .clone()
+            .or_else(|| Some(record.file_name.clone())),
+        source_page_url: request_context.source_page_url.clone(),
+        cookie: request_context.cookie.clone(),
+    };
+    let cancel_rx = download::register_active_download(task_id);
+    let task = crate::download::manager::DownloadTask::for_browser(
+        request,
+        crate::download::manager::browser_download_root(&app_data_dir),
+        Some(rong::get_user_agent()),
+    )
+    .with_target_path(PathBuf::from(&record.target_path))
+    .with_browser_persistence(app_data_dir.clone(), task_id.to_string());
+    let owner_clone = owner.clone();
+    let task_id_owned = task_id.to_string();
+    let tab_id = record.tab_id.clone();
+
+    rong::bg::spawn(async move {
+        let result = crate::download::manager::run_browser_download_task(
+            task,
+            &task_id_owned,
+            &tab_id,
+            cancel_rx,
+            |event_name, payload| {
+                if let Err(err) = download::record_bridge_event(
+                    &owner_clone.runtime.app_data_dir(),
+                    event_name,
+                    &payload,
+                ) {
+                    crate::warn!(
+                        "[InternalBrowser] failed to record retry download event task_id={} event={} error={}",
+                        task_id_owned,
+                        event_name,
+                        err
+                    );
+                }
+                publish_browser_download_event(event_name, payload);
+            },
+        )
+        .await;
+        download::unregister_active_download(&task_id_owned);
+        if let Err(err) = result {
+            crate::warn!(
+                "[InternalBrowser] retry download task failed task_id={} url={} reason={}",
+                task_id_owned,
+                err.url,
+                err.error
+            );
+        }
+    })
+    .map_err(|e| LxAppError::Runtime(format!("failed to spawn browser retry task: {e}")))?;
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -1253,6 +1462,45 @@ pub fn browser_tab_path_for_id(tab_id: &str) -> String {
     format!("{INTERNAL_TAB_PATH_PREFIX}{}", sanitize_tab_id(tab_id))
 }
 
+fn browser_internal_page_path_for_url(browser: &LxApp, url: &str) -> Option<String> {
+    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+        return None;
+    }
+    let host = url
+        .splitn(2, "://")
+        .nth(1)
+        .unwrap_or("")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if host.is_empty() || host == "newtab" {
+        return Some(browser.config.get_initial_route());
+    }
+    let page_path = format!("pages/{host}/index.html");
+    Some(browser.find_page_path(&page_path).unwrap_or(page_path))
+}
+
+pub(crate) fn browser_logic_page_path_for_tab_path(
+    browser: &LxApp,
+    tab_path: &str,
+) -> Option<String> {
+    let tab_id = tab_path.strip_prefix(INTERNAL_TAB_PATH_PREFIX)?;
+    let normalized = sanitize_tab_id(tab_id);
+    if normalized.is_empty() {
+        return None;
+    }
+    let target_url = {
+        let state = lock_state();
+        let tab = state.tabs.get(&normalized)?;
+        tab.current_url
+            .as_ref()
+            .or(tab.pending_url.as_ref())
+            .cloned()?
+    };
+    browser_internal_page_path_for_url(browser, &target_url)
+}
+
 fn normalize_optional_string(value: Option<&str>) -> Option<String> {
     let text = value.unwrap_or_default().trim();
     if text.is_empty() {
@@ -1323,6 +1571,67 @@ pub fn browser_update_tab_info(
         tab.title = normalize_optional_string(title);
     }
     true
+}
+
+pub fn start_native_browser_download(
+    tab_id: &str,
+    url: &str,
+    user_agent: Option<&str>,
+    suggested_filename: Option<&str>,
+    source_page_url: Option<&str>,
+    cookie: Option<&str>,
+) -> Result<(), LxAppError> {
+    let normalized_tab_id = sanitize_tab_id(tab_id);
+    if normalized_tab_id.is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "tab_id is required".to_string(),
+        ));
+    }
+
+    let normalized_url = url.trim();
+    if normalized_url.is_empty() {
+        return Err(LxAppError::InvalidParameter("url is required".to_string()));
+    }
+    if !matches!(
+        extract_url_scheme(normalized_url).as_deref(),
+        Some("http" | "https")
+    ) {
+        return Err(LxAppError::InvalidParameter(
+            "browser download url must be http(s)".to_string(),
+        ));
+    }
+
+    let source_page_url = normalize_optional_string(source_page_url)
+        .or_else(|| browser_tab_info(&normalized_tab_id).and_then(|info| info.current_url));
+    if !browser_tab_exists(&normalized_tab_id) {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "browser tab not found: {}",
+            normalized_tab_id
+        )));
+    }
+
+    let owner = ensure_browser_lxapp()?;
+    let request = DownloadRequest {
+        url: normalized_url.to_string(),
+        user_agent: normalize_optional_string(user_agent),
+        content_disposition: None,
+        mime_type: None,
+        content_length: None,
+        suggested_filename: normalize_optional_string(suggested_filename),
+        source_page_url,
+        cookie: normalize_optional_string(cookie),
+    };
+
+    rong::bg::spawn({
+        let owner = owner.clone();
+        let tab_id = normalized_tab_id.clone();
+        async move {
+            browser_download_resource(owner, tab_id, request).await;
+        }
+    })
+    .map_err(|e| LxAppError::Runtime(format!("failed to spawn browser download task: {e}")))?;
+
+    Ok(())
 }
 
 pub fn open_internal_browser_tab(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {

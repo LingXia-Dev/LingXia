@@ -1,14 +1,15 @@
 mod app;
 mod appservice;
 mod archive;
+pub(crate) mod bridge;
 pub mod browser;
 mod cache;
 mod config;
 mod delegate;
-pub mod download_manager;
+pub mod download;
 mod error;
 mod executor;
-pub(crate) mod host;
+pub mod host;
 pub mod key_event;
 pub mod lifecycle;
 pub mod log;
@@ -28,6 +29,9 @@ mod update;
 /// This is used for update compatibility checks and can be reported to update services.
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+pub use download::manager as download_manager;
+
+pub use app::settings;
 pub use app::{app_config, lingxia_id, product_name, product_version};
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
@@ -36,16 +40,21 @@ pub use appservice::event_bus::{
 };
 pub use appservice::native_component::on_native_component_event;
 pub use browser::{
-    BUILTIN_BROWSER_APPID, BrowserTabInfo, browser_download_dir, browser_tab_exists,
-    browser_tab_info, browser_tab_info_json, browser_tab_infos, browser_tab_infos_json,
-    browser_tab_path_for_id, browser_update_tab_info, browser_url_is_hidden, close_browser_tab,
-    close_internal_browser_tab, generate_browser_startup_html, handle_browser_address_input,
-    handle_browser_address_input_json, handle_browser_navigation_policy_json,
-    open_internal_browser_tab, reset_browser_download_dir, resolve_owner_lxapp,
-    set_browser_download_dir,
+    BUILTIN_BROWSER_APPID, BrowserTabInfo, browser_tab_exists, browser_tab_info,
+    browser_tab_info_json, browser_tab_infos, browser_tab_infos_json, browser_tab_path_for_id,
+    browser_update_tab_info, browser_url_is_hidden, cancel_active_download_signal, cancel_download,
+    clear_completed_downloads, close_browser_tab, close_internal_browser_tab, download_dir,
+    download_record, downloads_snapshot, generate_browser_startup_html,
+    handle_browser_address_input, handle_browser_address_input_json,
+    handle_browser_navigation_policy_json, open_internal_browser_tab, remove_download,
+    reset_download_dir, resolve_owner_lxapp, retry_download, set_download_dir,
+    start_native_browser_download, subscribe_downloads,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
+pub use download::{
+    DownloadEvent, DownloadEventKind, DownloadRecord, DownloadStatus, DownloadsSnapshot,
+};
 pub use error::LxAppError;
 pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,

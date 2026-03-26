@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 use std::time::Instant;
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
@@ -22,7 +22,7 @@ const DOWNLOAD_PROGRESS_INTERVAL_MILLIS: u128 = 120;
 const DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES: u64 = 256 * 1024;
 const DOWNLOAD_SMALL_BODY_LIMIT: usize = 128 * 1024;
 const DOWNLOAD_STREAM_COALESCE_TARGET: usize = 64 * 1024;
-static DOWNLOAD_ROOT_OVERRIDE: OnceLock<RwLock<Option<PathBuf>>> = OnceLock::new();
+pub(crate) const DOWNLOAD_CANCELED_ERROR: &str = "Download canceled";
 static USER_CACHE_DOWNLOADS: OnceLock<DashMap<String, watch::Sender<SharedDownloadState>>> =
     OnceLock::new();
 
@@ -30,22 +30,6 @@ const BROWSER_DOWNLOAD_EVENT_STARTED: &str = "BrowserDownloadStarted";
 const BROWSER_DOWNLOAD_EVENT_PROGRESS: &str = "BrowserDownloadProgress";
 const BROWSER_DOWNLOAD_EVENT_COMPLETED: &str = "BrowserDownloadCompleted";
 const BROWSER_DOWNLOAD_EVENT_FAILED: &str = "BrowserDownloadFailed";
-
-#[derive(Debug, Clone)]
-pub(crate) enum DownloadConfigError {
-    InvalidParameter(String),
-    Runtime(String),
-}
-
-impl std::fmt::Display for DownloadConfigError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidParameter(msg) | Self::Runtime(msg) => write!(f, "{msg}"),
-        }
-    }
-}
-
-impl std::error::Error for DownloadConfigError {}
 
 /// A single HTTP(S) download job with resumable semantics.
 #[derive(Debug, Clone)]
@@ -55,6 +39,53 @@ pub(crate) struct DownloadTask {
     fallback_user_agent: Option<String>,
     request_headers: Vec<(String, String)>,
     target_path: Option<PathBuf>,
+    persistence: Option<DownloadPersistence>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DownloadOwnerKind {
+    #[default]
+    Unknown,
+    Browser,
+    LxDownloadFile,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadOwner {
+    #[serde(default)]
+    pub kind: DownloadOwnerKind,
+    #[serde(default)]
+    pub appid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tab_id: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DownloadPersistence {
+    pub app_data_dir: PathBuf,
+    pub task_id: String,
+    pub owner: DownloadOwner,
+    pub track_record: bool,
+}
+
+impl DownloadPersistence {
+    pub fn new(
+        app_data_dir: PathBuf,
+        task_id: impl Into<String>,
+        owner: DownloadOwner,
+        track_record: bool,
+    ) -> Self {
+        Self {
+            app_data_dir,
+            task_id: task_id.into(),
+            owner,
+            track_record,
+        }
+    }
 }
 
 /// Streaming updates emitted while a download task is running.
@@ -126,8 +157,8 @@ enum SharedDownloadState {
     Failed(DownloadFailure),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-struct ResumeMetadata {
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub(crate) struct ResumeMetadata {
     etag: Option<String>,
     last_modified: Option<String>,
     downloaded: u64,
@@ -144,47 +175,33 @@ struct DownloadProgress {
     last_emit_at: Instant,
 }
 
-fn download_root_store() -> &'static RwLock<Option<PathBuf>> {
-    DOWNLOAD_ROOT_OVERRIDE.get_or_init(|| RwLock::new(None))
-}
-
-pub(crate) fn set_download_root_override(
-    path: impl Into<PathBuf>,
-) -> Result<(), DownloadConfigError> {
-    let path = path.into();
-    if path.as_os_str().is_empty() {
-        return Err(DownloadConfigError::InvalidParameter(
-            "download root cannot be empty".to_string(),
-        ));
-    }
-    let mut guard = download_root_store().write().map_err(|_| {
-        DownloadConfigError::Runtime("download root override lock poisoned".to_string())
-    })?;
-    *guard = Some(path);
-    Ok(())
-}
-
-pub(crate) fn clear_download_root_override() -> Result<(), DownloadConfigError> {
-    let mut guard = download_root_store().write().map_err(|_| {
-        DownloadConfigError::Runtime("download root override lock poisoned".to_string())
-    })?;
-    *guard = None;
-    Ok(())
-}
-
-pub(crate) fn download_root_override() -> Option<PathBuf> {
-    download_root_store()
-        .read()
+fn resolve_download_root(app_data_dir: &Path, default_root: impl Into<PathBuf>) -> PathBuf {
+    crate::settings::get_download_dir(app_data_dir)
         .ok()
-        .and_then(|guard| guard.clone())
+        .flatten()
+        .unwrap_or_else(|| default_root.into())
 }
 
-fn resolve_download_root(default_root: impl Into<PathBuf>) -> PathBuf {
-    download_root_override().unwrap_or_else(|| default_root.into())
+fn default_download_root(app_data_dir: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            let candidate = PathBuf::from(home).join("Downloads");
+            if !candidate.as_os_str().is_empty() {
+                return candidate;
+            }
+        }
+    }
+
+    app_data_dir.join("downloads")
+}
+
+pub(crate) fn download_root(app_data_dir: &Path) -> PathBuf {
+    resolve_download_root(app_data_dir, default_download_root(app_data_dir))
 }
 
 pub(crate) fn browser_download_root(app_data_dir: &Path) -> PathBuf {
-    resolve_download_root(app_data_dir.join("browser").join("downloads"))
+    download_root(app_data_dir)
 }
 
 fn user_cache_download_root(user_cache_dir: &Path) -> PathBuf {
@@ -203,7 +220,35 @@ impl DownloadTask {
             fallback_user_agent,
             request_headers: Vec::new(),
             target_path: None,
+            persistence: None,
         }
+    }
+
+    pub(crate) fn with_target_path(mut self, target_path: PathBuf) -> Self {
+        self.target_path = Some(target_path);
+        self
+    }
+
+    pub(crate) fn with_persistence(mut self, persistence: DownloadPersistence) -> Self {
+        self.persistence = Some(persistence);
+        self
+    }
+
+    pub(crate) fn with_browser_persistence(
+        mut self,
+        app_data_dir: PathBuf,
+        task_id: impl Into<String>,
+    ) -> Self {
+        self.persistence = Some(DownloadPersistence {
+            app_data_dir,
+            task_id: task_id.into(),
+            owner: DownloadOwner {
+                kind: DownloadOwnerKind::Browser,
+                ..DownloadOwner::default()
+            },
+            track_record: false,
+        });
+        self
     }
 }
 
@@ -358,6 +403,10 @@ fn user_cache_download_key(request: &UserCacheDownloadRequest) -> String {
     hex_encode(digest.as_ref())
 }
 
+pub fn download_request_task_id(request: &UserCacheDownloadRequest) -> String {
+    user_cache_download_key(request)
+}
+
 fn build_user_cache_download_request(url: String) -> DownloadRequest {
     DownloadRequest {
         url,
@@ -432,10 +481,6 @@ fn part_path_for(target: &Path) -> PathBuf {
     target.with_extension("part")
 }
 
-fn meta_path_for(target: &Path) -> PathBuf {
-    target.with_extension("resume.json")
-}
-
 fn parse_content_range_total(value: &str) -> Option<u64> {
     let (_, total) = value.split_once('/')?;
     if total == "*" {
@@ -452,23 +497,142 @@ fn header_to_string(headers: &http::HeaderMap, name: http::header::HeaderName) -
         .map(|value| value.to_string())
 }
 
-async fn load_resume_metadata(path: &Path) -> Option<ResumeMetadata> {
-    let bytes = fs::read(path).await.ok()?;
-    serde_json::from_slice::<ResumeMetadata>(&bytes).ok()
+async fn load_resume_metadata(task: &DownloadTask) -> ResumeMetadata {
+    let Some(persistence) = task.persistence.as_ref() else {
+        return ResumeMetadata::default();
+    };
+    crate::download::load_resume_metadata(&persistence.app_data_dir, &persistence.task_id)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
 }
 
-async fn save_resume_metadata(path: &Path, meta: &ResumeMetadata) -> Result<(), String> {
-    let content =
-        serde_json::to_vec(meta).map_err(|e| format!("serialize resume metadata: {e}"))?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| format!("create resume metadata dir: {e}"))?;
+async fn save_resume_metadata(task: &DownloadTask, meta: &ResumeMetadata) {
+    let Some(persistence) = task.persistence.as_ref() else {
+        return;
+    };
+    let _ = crate::download::save_resume_metadata(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        meta.clone(),
+    );
+}
+
+async fn clear_resume_metadata(task: &DownloadTask) {
+    let Some(persistence) = task.persistence.as_ref() else {
+        return;
+    };
+    let _ = crate::download::clear_resume_metadata(&persistence.app_data_dir, &persistence.task_id);
+}
+
+fn track_persistent_record(task: &DownloadTask) -> Option<&DownloadPersistence> {
+    task.persistence
+        .as_ref()
+        .filter(|persistence| persistence.track_record)
+}
+
+fn record_started_for_persistence(
+    task: &DownloadTask,
+    file_name: &str,
+    target_path: &Path,
+    mime_type: Option<&str>,
+    total_bytes: Option<u64>,
+    resumed_bytes: u64,
+) {
+    let Some(persistence) = track_persistent_record(task) else {
+        return;
+    };
+    if let Err(err) = crate::download::record_managed_download_started(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        persistence.owner.clone(),
+        &task.request.url,
+        file_name,
+        target_path,
+        mime_type,
+        total_bytes,
+        resumed_bytes,
+        task.request_headers.clone(),
+        task.fallback_user_agent.clone(),
+    ) {
+        crate::warn!(
+            "[DownloadManager] failed to persist started task_id={} url={} error={}",
+            persistence.task_id,
+            task.request.url,
+            err
+        );
     }
-    fs::write(path, content)
-        .await
-        .map_err(|e| format!("write resume metadata: {e}"))?;
-    Ok(())
+}
+
+fn record_progress_for_persistence(
+    task: &DownloadTask,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(persistence) = track_persistent_record(task) else {
+        return;
+    };
+    if let Err(err) = crate::download::record_managed_download_progress(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        downloaded_bytes,
+        total_bytes,
+    ) {
+        crate::warn!(
+            "[DownloadManager] failed to persist progress task_id={} url={} error={}",
+            persistence.task_id,
+            task.request.url,
+            err
+        );
+    }
+}
+
+fn record_completed_for_persistence(
+    task: &DownloadTask,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(persistence) = track_persistent_record(task) else {
+        return;
+    };
+    if let Err(err) = crate::download::record_managed_download_completed(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        downloaded_bytes,
+        total_bytes,
+    ) {
+        crate::warn!(
+            "[DownloadManager] failed to persist completed task_id={} url={} error={}",
+            persistence.task_id,
+            task.request.url,
+            err
+        );
+    }
+}
+
+fn record_failed_for_persistence(
+    task: &DownloadTask,
+    error: &str,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(persistence) = track_persistent_record(task) else {
+        return;
+    };
+    if let Err(err) = crate::download::record_managed_download_failed(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        error,
+        downloaded_bytes,
+        total_bytes,
+    ) {
+        crate::warn!(
+            "[DownloadManager] failed to persist failed task_id={} url={} error={}",
+            persistence.task_id,
+            task.request.url,
+            err
+        );
+    }
 }
 
 fn emit_failed(
@@ -494,12 +658,12 @@ fn emit_failed(
 }
 
 async fn write_chunk(
+    task: &DownloadTask,
     file: &mut tokio::fs::File,
     chunk: &[u8],
     progress: &mut DownloadProgress,
     total_bytes: Option<u64>,
     resume_meta: &mut ResumeMetadata,
-    meta_path: &Path,
     url: &str,
     on_event: &mut impl FnMut(DownloadEvent),
 ) -> Result<(), String> {
@@ -539,29 +703,31 @@ async fn write_chunk(
             downloaded_bytes: progress.downloaded,
             total_bytes,
         });
+        record_progress_for_persistence(task, progress.downloaded, total_bytes);
     }
 
     if progress.downloaded.saturating_sub(progress.last_persisted)
         >= DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES
     {
         progress.last_persisted = progress.downloaded;
-        let _ = save_resume_metadata(meta_path, resume_meta).await;
+        save_resume_metadata(task, resume_meta).await;
     }
     Ok(())
 }
 
 async fn run_download_task(
     task: DownloadTask,
+    mut cancel_rx: Option<watch::Receiver<bool>>,
     mut on_event: impl FnMut(DownloadEvent),
 ) -> Result<DownloadSuccess, DownloadFailure> {
-    let request = task.request;
-    let request_headers = task.request_headers;
+    let request = task.request.clone();
+    let request_headers = task.request_headers.clone();
     let filename = suggest_filename(&request);
     let target_path = task
         .target_path
+        .clone()
         .unwrap_or_else(|| resolve_unique_download_path(&task.root_dir, &filename));
     let part_path = part_path_for(&target_path);
-    let meta_path = meta_path_for(&target_path);
     let url = request.url.clone();
 
     if let Err(e) = fs::create_dir_all(&task.root_dir).await {
@@ -589,7 +755,7 @@ async fn run_download_task(
         });
     }
 
-    let mut resume_meta = load_resume_metadata(&meta_path).await.unwrap_or_default();
+    let mut resume_meta = load_resume_metadata(&task).await;
     let mut resume_offset = fs::metadata(&part_path)
         .await
         .ok()
@@ -600,6 +766,7 @@ async fn run_download_task(
     if resume_offset > 0 && !has_resume_validator {
         let _ = fs::remove_file(&part_path).await;
         resume_offset = 0;
+        resume_meta = ResumeMetadata::default();
     }
 
     let mut request_builder = HttpRequest::builder()
@@ -745,7 +912,7 @@ async fn run_download_task(
     resume_meta.last_modified = last_modified;
     resume_meta.total = total_bytes;
     resume_meta.downloaded = resume_offset;
-    let _ = save_resume_metadata(&meta_path, &resume_meta).await;
+    save_resume_metadata(&task, &resume_meta).await;
 
     on_event(DownloadEvent::Started {
         url: request.url.clone(),
@@ -755,6 +922,14 @@ async fn run_download_task(
         total_bytes,
         resumed_bytes: resume_offset,
     });
+    record_started_for_persistence(
+        &task,
+        &filename,
+        &target_path,
+        request.mime_type.as_deref(),
+        total_bytes,
+        resume_offset,
+    );
 
     let mut progress = DownloadProgress {
         downloaded: resume_offset,
@@ -777,12 +952,12 @@ async fn run_download_task(
         HttpBody::Empty => Ok(()),
         HttpBody::Small(bytes) => {
             write_chunk(
+                &task,
                 &mut file,
                 bytes.as_ref(),
                 &mut progress,
                 total_bytes,
                 &mut resume_meta,
-                &meta_path,
                 &request.url,
                 &mut on_event,
             )
@@ -790,16 +965,39 @@ async fn run_download_task(
         }
         HttpBody::Stream(mut rx) => {
             let mut result = Ok(());
-            while let Some(chunk) = rx.recv().await {
+            loop {
+                let next_chunk = if let Some(cancel) = cancel_rx.as_mut() {
+                    if *cancel.borrow() {
+                        result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
+                        break;
+                    }
+                    tokio::select! {
+                        biased;
+                        changed = cancel.changed() => {
+                            if changed.is_ok() && *cancel.borrow() {
+                                result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
+                                break;
+                            }
+                            continue;
+                        }
+                        chunk = rx.recv() => chunk,
+                    }
+                } else {
+                    rx.recv().await
+                };
+
+                let Some(chunk) = next_chunk else {
+                    break;
+                };
                 match chunk {
                     Ok(bytes) => {
                         if let Err(e) = write_chunk(
+                            &task,
                             &mut file,
                             bytes.as_ref(),
                             &mut progress,
                             total_bytes,
                             &mut resume_meta,
-                            &meta_path,
                             &request.url,
                             &mut on_event,
                         )
@@ -822,17 +1020,35 @@ async fn run_download_task(
     if progress.downloaded > progress.last_emitted {
         progress.last_emitted = progress.downloaded;
         progress.last_emit_at = Instant::now();
-        let _ = save_resume_metadata(&meta_path, &resume_meta).await;
+        save_resume_metadata(&task, &resume_meta).await;
         on_event(DownloadEvent::Progress {
             url: request.url.clone(),
             downloaded_bytes: progress.downloaded,
             total_bytes,
         });
+        record_progress_for_persistence(&task, progress.downloaded, total_bytes);
     }
 
     if let Err(e) = stream_result {
         let _ = file.flush().await;
-        let _ = save_resume_metadata(&meta_path, &resume_meta).await;
+        if e == DOWNLOAD_CANCELED_ERROR {
+            save_resume_metadata(&task, &resume_meta).await;
+            record_failed_for_persistence(
+                &task,
+                DOWNLOAD_CANCELED_ERROR,
+                progress.downloaded,
+                total_bytes,
+            );
+            return Err(emit_failed(
+                &mut on_event,
+                request.url,
+                DOWNLOAD_CANCELED_ERROR.to_string(),
+                progress.downloaded,
+                total_bytes,
+            ));
+        }
+        save_resume_metadata(&task, &resume_meta).await;
+        record_failed_for_persistence(&task, &e, progress.downloaded, total_bytes);
         return Err(emit_failed(
             &mut on_event,
             request.url,
@@ -843,11 +1059,13 @@ async fn run_download_task(
     }
 
     if let Err(e) = file.flush().await {
-        let _ = save_resume_metadata(&meta_path, &resume_meta).await;
+        save_resume_metadata(&task, &resume_meta).await;
+        let error = format!("flush failed: {}", e);
+        record_failed_for_persistence(&task, &error, progress.downloaded, total_bytes);
         return Err(emit_failed(
             &mut on_event,
             request.url,
-            format!("flush failed: {}", e),
+            error,
             progress.downloaded,
             total_bytes,
         ));
@@ -855,17 +1073,20 @@ async fn run_download_task(
     drop(file);
 
     if let Err(e) = fs::rename(&part_path, &target_path).await {
-        let _ = save_resume_metadata(&meta_path, &resume_meta).await;
+        save_resume_metadata(&task, &resume_meta).await;
+        let error = format!("rename failed: {}", e);
+        record_failed_for_persistence(&task, &error, progress.downloaded, total_bytes);
         return Err(emit_failed(
             &mut on_event,
             request.url,
-            format!("rename failed: {}", e),
+            error,
             progress.downloaded,
             total_bytes,
         ));
     }
 
-    let _ = fs::remove_file(&meta_path).await;
+    clear_resume_metadata(&task).await;
+    record_completed_for_persistence(&task, progress.downloaded, total_bytes);
     let success = DownloadSuccess {
         file_name: filename.clone(),
         path: target_path.clone(),
@@ -884,6 +1105,7 @@ async fn run_download_task(
 fn map_browser_download_event(
     task_id: &str,
     tab_id: &str,
+    request: &DownloadRequest,
     event: DownloadEvent,
 ) -> (&'static str, serde_json::Value) {
     match event {
@@ -905,6 +1127,10 @@ fn map_browser_download_event(
                 "mimeType": mime_type,
                 "totalBytes": total_bytes,
                 "resumedBytes": resumed_bytes,
+                "userAgent": request.user_agent,
+                "suggestedFilename": request.suggested_filename,
+                "sourcePageUrl": request.source_page_url,
+                "cookie": request.cookie,
             }),
         ),
         DownloadEvent::Progress {
@@ -962,12 +1188,14 @@ pub(crate) async fn run_browser_download_task(
     task: DownloadTask,
     task_id: &str,
     tab_id: &str,
+    cancel_rx: watch::Receiver<bool>,
     mut on_event: impl FnMut(&'static str, serde_json::Value),
 ) -> Result<(), DownloadFailure> {
     let task_id = task_id.to_string();
     let tab_id = tab_id.to_string();
-    run_download_task(task, |event| {
-        let (event_name, payload) = map_browser_download_event(&task_id, &tab_id, event);
+    let request = task.request.clone();
+    run_download_task(task, Some(cancel_rx), |event| {
+        let (event_name, payload) = map_browser_download_event(&task_id, &tab_id, &request, event);
         on_event(event_name, payload);
     })
     .await
@@ -1030,6 +1258,7 @@ impl Drop for SharedDownloadLeaderGuard {
 }
 
 pub async fn download_to_user_cache(
+    persistence: Option<DownloadPersistence>,
     user_cache_dir: &Path,
     user_request: UserCacheDownloadRequest,
     fallback_user_agent: Option<String>,
@@ -1091,17 +1320,25 @@ pub async fn download_to_user_cache(
 
     let mut leader_guard = SharedDownloadLeaderGuard::new(key.clone());
 
-    let task = DownloadTask {
-        request,
-        root_dir,
-        fallback_user_agent,
-        request_headers: sanitize_header_list(user_request.headers),
-        target_path: Some(target_path),
-    };
-    let result = run_download_task(task, |event| {
+    let persistence_task_id = persistence.as_ref().map(|value| value.task_id.clone());
+    let cancel_rx = persistence_task_id
+        .as_deref()
+        .map(crate::download::register_active_download);
+
+    let mut task = DownloadTask::for_browser(request, root_dir, fallback_user_agent)
+        .with_target_path(target_path);
+    task.request_headers = sanitize_header_list(user_request.headers);
+    if let Some(persistence) = persistence {
+        task = task.with_persistence(persistence);
+    }
+    let result = run_download_task(task, cancel_rx, |event| {
         on_event(event);
     })
     .await;
+
+    if let Some(task_id) = persistence_task_id.as_deref() {
+        crate::download::unregister_active_download(task_id);
+    }
 
     if let Some(entry) = tracker.get(&key) {
         match &result {
@@ -1130,10 +1367,8 @@ pub async fn clear_user_cache_download_artifacts(
 ) {
     let target_path = user_cache_target_path(user_cache_dir, user_request);
     let part_path = part_path_for(&target_path);
-    let meta_path = meta_path_for(&target_path);
 
     let _ = fs::remove_file(&part_path).await;
-    let _ = fs::remove_file(&meta_path).await;
     let _ = fs::remove_file(&target_path).await;
 }
 
