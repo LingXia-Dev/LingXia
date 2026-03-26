@@ -929,7 +929,6 @@ impl PageBridge {
         self.inner.active_sub_cancel.lock().unwrap().remove(id)
     }
 
-
     fn dispatch_host_req(
         &self,
         page: &Page,

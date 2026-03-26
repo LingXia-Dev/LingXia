@@ -498,6 +498,10 @@ impl LxApp {
         self.release_type
     }
 
+    pub fn app_data_dir(&self) -> PathBuf {
+        self.runtime.app_data_dir()
+    }
+
     pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
         self.session.set_status(s);
     }
