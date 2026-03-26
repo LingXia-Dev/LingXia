@@ -1,4 +1,3 @@
-use super::register_host;
 use crate::LxApp;
 use crate::LxAppError;
 use lingxia_platform::PlatformError;
@@ -59,7 +58,7 @@ struct OpenUrlOptions {
 fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppError> {
     if options.url.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
-            "openURL requires url".to_string(),
+            "openUrl requires url".to_string(),
         ));
     }
 
@@ -72,15 +71,17 @@ fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppErr
             url: options.url.clone(),
             target,
         })
-        .map_err(|e| map_platform_error("openURL", e))?;
+        .map_err(|e| map_platform_error("openUrl", e))?;
     Ok(())
 }
 
-host_api!(OpenURL, OpenUrlOptions, (), |lxapp, options| {
+host_api!(OpenUrl, OpenUrlOptions, (), |lxapp, options| {
     open_url_impl(&lxapp, &options)
 });
 
 pub(crate) fn register_all() {
-    register_host("makePhoneCall", Arc::new(MakePhoneCall));
-    register_host("openURL", Arc::new(OpenURL));
+    register_host_module!("device", {
+        "makePhoneCall" => Arc::new(MakePhoneCall),
+        "openUrl" => Arc::new(OpenUrl)
+    });
 }

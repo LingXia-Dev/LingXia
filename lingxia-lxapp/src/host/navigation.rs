@@ -1,4 +1,4 @@
-use super::{HostCancel, await_or_cancel, register_host};
+use super::{HostCancel, await_or_cancel};
 use crate::LxApp;
 use crate::{LxAppError, NavigationType};
 use serde::Deserialize;
@@ -200,9 +200,11 @@ host_api_async!(
 );
 
 pub(crate) fn register_all() {
-    register_host("navigateTo", Arc::new(NavigateTo));
-    register_host("navigateBack", Arc::new(NavigateBack));
-    register_host("redirectTo", Arc::new(RedirectTo));
-    register_host("switchTab", Arc::new(SwitchTab));
-    register_host("reLaunch", Arc::new(ReLaunch));
+    register_host_module!("navigation", {
+        "navigateTo" => Arc::new(NavigateTo),
+        "navigateBack" => Arc::new(NavigateBack),
+        "redirectTo" => Arc::new(RedirectTo),
+        "switchTab" => Arc::new(SwitchTab),
+        "reLaunch" => Arc::new(ReLaunch)
+    });
 }

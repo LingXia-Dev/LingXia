@@ -1,4 +1,4 @@
-use super::bridge::{BRIDGE_CANCELED, Bridge, RpcError};
+use crate::bridge::{BRIDGE_CANCELED, BRIDGE_TIMEOUT, RpcError, required_cap_for_name};
 use crate::error::LxAppError;
 use crate::page::Page;
 use serde::Serialize;
@@ -62,7 +62,7 @@ pub(crate) fn call_view(
     let id = format!("lv_{}", seq);
     let page_path = page.path();
 
-    let cap = Bridge::required_cap_for_name(method);
+    let cap = required_cap_for_name(method);
     let msg = ViewReq {
         v: 2,
         kind: "req",
@@ -115,8 +115,7 @@ pub(crate) async fn await_pending_view_call(
             );
             Err(LxAppError::Bridge(format!(
                 "{}: View call timed out after {:?}",
-                super::bridge::BRIDGE_TIMEOUT,
-                timeout
+                BRIDGE_TIMEOUT, timeout
             )))
         }
     }
@@ -251,7 +250,7 @@ mod tests {
 
         match err {
             LxAppError::Bridge(message) => {
-                assert!(message.contains(super::super::bridge::BRIDGE_TIMEOUT));
+                assert!(message.contains(BRIDGE_TIMEOUT));
             }
             other => panic!("unexpected error: {other:?}"),
         }

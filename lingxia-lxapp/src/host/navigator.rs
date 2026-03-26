@@ -1,4 +1,4 @@
-use super::{await_or_cancel, parse_release_type, register_host};
+use super::{await_or_cancel, parse_release_type};
 use crate::LxApp;
 use crate::lxapp::ReleaseType;
 use crate::startup::LxAppStartupOptions;
@@ -109,6 +109,8 @@ host_api!(NavigateBackLxApp, (), |lxapp| {
 });
 
 pub(crate) fn register_all() {
-    register_host("navigateToLxApp", Arc::new(NavigateToLxApp));
-    register_host("navigateBackLxApp", Arc::new(NavigateBackLxApp));
+    register_host_module!("navigator", {
+        "navigateToLxApp" => Arc::new(NavigateToLxApp),
+        "navigateBackLxApp" => Arc::new(NavigateBackLxApp)
+    });
 }

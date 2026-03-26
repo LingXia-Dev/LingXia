@@ -89,3 +89,11 @@ macro_rules! host_api_async {
         }
     };
 }
+
+macro_rules! register_host_module {
+    ($namespace:literal, { $($method:literal => $handler:expr),+ $(,)? }) => {{
+        $(
+            $crate::host::register_host_route($namespace, $method, $handler);
+        )+
+    }};
+}

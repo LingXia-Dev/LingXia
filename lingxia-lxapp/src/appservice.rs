@@ -1,3 +1,4 @@
+use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
 use crate::log::{LogBuilder, LogLevel, LogTag};
 use crate::lx;
@@ -16,8 +17,6 @@ use tokio::sync::oneshot;
 
 mod app;
 use crate::lifecycle::AppServiceEvent;
-
-pub mod bridge;
 
 pub(crate) mod event_bus;
 
@@ -85,11 +84,10 @@ pub(crate) enum ServiceMessage {
 }
 
 /// Enum representing different sources of Page service calls
-#[derive(Clone)]
 pub enum PageSvcSource {
-    /// Call from view layer via bridge
-    View {
-        incoming: Arc<bridge::IncomingMessage>,
+    /// Call from view layer after the top-level bridge has parsed and routed it.
+    Bridge {
+        message: crate::bridge::AppServiceCommand,
     },
     /// Call from native layer with explicit function name and args
     Native {
@@ -136,15 +134,106 @@ async fn handle_app_service_event(
     }
 }
 
-// Handles a message from the view layer to a Page service
-async fn handle_view_source(
-    page_svc_ref: &PageSvc,
-    incoming: Arc<bridge::IncomingMessage>,
+// Handles a bridge-routed message that must enter the JS runtime worker.
+async fn handle_bridge_source(
+    page_svc: &PageSvc,
+    message: AppServiceCommand,
 ) -> Result<(), LxAppError> {
-    page_svc_ref
-        .as_bridge()
-        .process_incoming_message(page_svc_ref, page_svc_ref, incoming)
-        .await
+    match message {
+        AppServiceCommand::Ready => {
+            page_svc.handle_bridge_ready().await;
+            Ok(())
+        }
+        AppServiceCommand::StateSnapshot { id, scope } => {
+            let bridge = page_svc.bridge();
+            match page_svc.get_state_snapshot(scope.as_deref()).await {
+                Ok(snapshot) => bridge.send_res_ok(page_svc, id, snapshot)?,
+                Err(err) => bridge.send_res_err(
+                    page_svc,
+                    id,
+                    bridge::BRIDGE_INTERNAL_ERROR,
+                    Some(err.to_string()),
+                    None,
+                )?,
+            }
+            Ok(())
+        }
+        AppServiceCommand::Req {
+            id,
+            method,
+            params_json,
+            cancel_rx,
+        } => {
+            let bridge = page_svc.bridge();
+            match page_svc
+                .handle_req(&id, &method, params_json.as_deref(), cancel_rx)
+                .await
+            {
+                Ok(json) => bridge.send_res_ok(page_svc, id, json)?,
+                Err(err) => bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?,
+            }
+            Ok(())
+        }
+        AppServiceCommand::Notify {
+            method,
+            params_json,
+        } => {
+            page_svc
+                .handle_notify(&method, params_json.as_deref())
+                .await;
+            Ok(())
+        }
+        AppServiceCommand::Sub {
+            id,
+            topic,
+            params_json,
+            cancel_rx,
+        } => {
+            let bridge = page_svc.bridge();
+            if let Err(err) = page_svc
+                .handle_sub(&id, &topic, params_json.as_deref(), cancel_rx)
+                .await
+            {
+                bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?;
+            }
+            Ok(())
+        }
+        AppServiceCommand::ChOpen {
+            id,
+            topic,
+            params_json,
+        } => {
+            let bridge = page_svc.bridge();
+            match page_svc
+                .handle_ch_open(&id, &topic, params_json.as_deref())
+                .await
+            {
+                Ok(()) => bridge.send_ch_ack_ok(page_svc, id)?,
+                Err(err) => {
+                    bridge.send_ch_ack_err(page_svc, id, &err.code, err.message, err.data)?
+                }
+            }
+            Ok(())
+        }
+        AppServiceCommand::ChData { id, payload_json } => {
+            if let Err(err) = page_svc.handle_ch_data(&id, &payload_json).await {
+                error!("channel '{}' data handler failed: {}", id, err.code)
+                    .with_appid(page_svc.page.appid())
+                    .with_path(page_svc.page.path());
+            }
+            Ok(())
+        }
+        AppServiceCommand::ChClose { id, code, reason } => {
+            page_svc
+                .handle_ch_close(&id, code.as_deref(), reason.as_deref())
+                .await;
+            Ok(())
+        }
+        AppServiceCommand::StateAck { scope, rev } => {
+            page_svc.handle_state_ack(scope, rev).await;
+            Ok(())
+        }
+    }
 }
 
 // Handles a call from native code to a Page service function
@@ -187,9 +276,30 @@ pub(crate) async fn lxapp_service_handler(
             register_app_ctx(&runtime, &ctx, &lxapp);
 
             // register Page, App and getApp function
-            let _ = app::init(&ctx);
-            let _ = page::init(&ctx);
-            let _ = plugin::init(&ctx);
+            if let Err(e) = app::init(&ctx) {
+                error!(
+                    "[Worker {}] Failed to initialize App runtime: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
+            if let Err(e) = page::init(&ctx) {
+                error!(
+                    "[Worker {}] Failed to initialize Page runtime: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
+            if let Err(e) = plugin::init(&ctx) {
+                error!(
+                    "[Worker {}] Failed to initialize Plugin runtime: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
             event_bus::init(&ctx);
 
             let app_ctx = LxAppCtx::new(lxapp.clone());
@@ -345,22 +455,21 @@ pub(crate) async fn lxapp_service_handler(
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 match source {
-                    PageSvcSource::View { incoming } => {
+                    PageSvcSource::Bridge { message } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
                             Ok(page_svc_map.borrow().get(&path).cloned())
                         })
                         .unwrap_or(None);
 
                         if let Some(page_svc) = page_svc {
-                            if let Err(e) = handle_view_source(&page_svc, incoming).await {
-                                error!(
-                                    "[Worker {}] Handle incoming message error: {}",
-                                    worker_id, e
-                                );
+                            if let Err(e) = handle_bridge_source(&page_svc, message).await {
+                                error!("[Worker {}] Handle bridge message error: {}", worker_id, e)
+                                    .with_appid(lxapp.appid.clone())
+                                    .with_path(path.clone());
                             }
                         } else {
                             info!(
-                                "[Worker {}] Dropping view message: page service not loaded",
+                                "[Worker {}] Dropping bridge message: page service not loaded",
                                 worker_id
                             )
                             .with_appid(lxapp.appid.clone())

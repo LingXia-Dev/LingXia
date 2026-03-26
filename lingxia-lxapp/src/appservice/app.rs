@@ -1,8 +1,8 @@
 use crate::appservice::set_app_svc_for_ctx;
 use crate::lifecycle::AppServiceEvent;
 use rong::{
-    JSContext, JSFunc, JSObject, JSResult, JSValue, Source, error::HostError, js_class, js_export,
-    js_method,
+    JSContext, JSFunc, JSObject, JSResult, JSValue, Source, error::HostError, function::Optional,
+    js_class, js_export, js_method,
 };
 use std::collections::HashMap;
 
@@ -15,14 +15,13 @@ pub(crate) struct LxAppSvc {
 #[js_class]
 impl LxAppSvc {
     #[js_method(constructor)]
-    fn _new(ctx: JSContext, obj: JSObject) -> JSResult<Self> {
+    fn _new(ctx: JSContext, obj: JSObject, handler_names_json: Optional<String>) -> JSResult<Self> {
         let mut app_svc = LxAppSvc {
             event_handlers: HashMap::new(),
             this: obj.clone(),
         };
 
-        // Extract all functions from the object
-        app_svc.assign_funcs(&obj)?;
+        app_svc.assign_funcs(&obj, handler_names_json.0.as_deref())?;
 
         // Bind this AppSvc instance to the LxApp runtime context associated with ctx.
         set_app_svc_for_ctx(&ctx, app_svc.clone())?;
@@ -43,27 +42,34 @@ impl LxAppSvc {
 }
 
 impl LxAppSvc {
-    fn assign_funcs(&mut self, obj: &JSObject) -> JSResult<()> {
-        for key_value in obj.keys()? {
-            // obj.keys() returns JSValue, not String
-            if let Ok(key_string) = key_value.try_into::<String>() {
-                if key_string.starts_with('_') {
-                    continue;
-                }
+    fn assign_funcs(&mut self, obj: &JSObject, handler_names_json: Option<&str>) -> JSResult<()> {
+        let handler_names: Vec<String> = handler_names_json
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
+            .unwrap_or_default();
 
-                if let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str())
-                    && let Some(evt) = AppServiceEvent::from_name(&key_string)
-                {
-                    // Only lifecycle events should be stored here; update events are internal
-                    match evt {
-                        AppServiceEvent::OnLaunch
-                        | AppServiceEvent::OnShow
-                        | AppServiceEvent::OnHide
-                        | AppServiceEvent::OnUserCaptureScreen => {
-                            self.event_handlers.insert(evt, func);
-                        }
-                    }
-                }
+        for key_string in handler_names {
+            if let Some(evt) = AppServiceEvent::from_name(&key_string)
+                && let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str())
+            {
+                self.event_handlers.insert(evt, func);
+            }
+        }
+
+        // Metadata is a fast path, but still reflect over the realized object so
+        // spread-derived and aliased lifecycle handlers remain compatible.
+        for key_value in obj.keys()? {
+            let Ok(key_string) = key_value.try_into::<String>() else {
+                continue;
+            };
+            if key_string.starts_with('_') {
+                continue;
+            }
+            if let Some(evt) = AppServiceEvent::from_name(&key_string)
+                && let Ok(func) = obj.get::<_, JSFunc>(key_string.as_str())
+            {
+                self.event_handlers.insert(evt, func);
             }
         }
         Ok(())

@@ -313,21 +313,6 @@ impl LxAppExecutor {
         Ok(())
     }
 
-    /// Handle a message from the view layer to a Page service
-    pub fn handle_view_message(
-        &self,
-        lxapp: Arc<crate::lxapp::LxApp>,
-        path: String,
-        incoming: Arc<crate::appservice::bridge::IncomingMessage>,
-    ) -> Result<(), LxAppError> {
-        self.sender.send(ServiceMessage::CallPageSvc {
-            lxapp,
-            path,
-            source: crate::appservice::PageSvcSource::View { incoming },
-        })?;
-        Ok(())
-    }
-
     /// Call a function on a Page service from native code
     pub fn call_page_service(
         &self,
@@ -369,6 +354,22 @@ impl LxAppExecutor {
     ) -> Result<(), LxAppError> {
         self.sender
             .send(ServiceMessage::DispatchAppBusEvent { lxapp, event })?;
+        Ok(())
+    }
+}
+
+impl crate::bridge::AppServiceBackend for LxAppExecutor {
+    fn forward(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+        path: String,
+        message: crate::bridge::AppServiceCommand,
+    ) -> Result<(), LxAppError> {
+        self.sender.send(ServiceMessage::CallPageSvc {
+            lxapp,
+            path,
+            source: crate::appservice::PageSvcSource::Bridge { message },
+        })?;
         Ok(())
     }
 }

@@ -1,44 +1,37 @@
-// Enhanced Page function with unified logic.js support:
-// - Path syntax support for setData
-// - Debouncing for performance optimization
-// - Diff/Patch generation for optimized data transfer
-// - Page registration system for unified loading
-
 (function () {
-  // Page configuration registry for unified logic.js
-  const __PAGE_REGISTRY__ = {};
+  const pageDefinitions = new Map();
 
-  // Core Page instance creation function
-  function createPageInstance(pageConfig, pagePath) {
+  function createPageInstance(definition, pagePath) {
+    const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
     }
 
-    const pageSvc = new PageSvc(pageConfig, pagePath);
+    const pageSvc = new PageSvc(
+      pageConfig,
+      pagePath,
+      definition.bindingMetaJson || '{"handlers":[]}',
+    );
 
-    // Initialize data
-    pageSvc.data = JSON.parse(JSON.stringify(pageConfig.data || {}));
-    pageSvc._lastData = JSON.parse(JSON.stringify(pageSvc.data));
+    pageSvc.data = cloneJsonValue(pageConfig.data || {});
 
-    // Copy all page properties to pageSvc instance so they can access each other via this
     for (const [key, value] of Object.entries(pageConfig)) {
-      if (key !== "data") {
-        // Skip private properties and data (already handled)
-        if (typeof value === "function") {
-          pageSvc[key] = value.bind(pageSvc);
-        } else {
-          pageSvc[key] = value; // Copy non-function properties like STORAGE_KEYS
-        }
+      if (key === "data") {
+        continue;
+      }
+      if (typeof value === "function") {
+        pageSvc[key] = value.bind(pageSvc);
+      } else {
+        pageSvc[key] = value;
       }
     }
 
-    // Setup state management
     let updateTimer = null;
-    let pendingData = null;
+    const pendingBaseState = new Map();
+    const pendingOps = new Map();
     let pendingCallbacks = [];
-    const DEBOUNCE_WAIT = 16; // 16ms ≈ 60fps, better for UI updates
+    const DEBOUNCE_WAIT = 16;
 
-    // Enhanced setData with debouncing and diff optimization
     pageSvc.setData = function (updates, callback) {
       if (!updates || typeof updates !== "object") {
         throw new Error("setData: Invalid updates");
@@ -46,59 +39,49 @@
 
       const self = this;
 
-      // Keep `this.data` up-to-date immediately, but still debounce
-      // the expensive diff/patch generation and bridge transfer for performance.
       try {
         for (const [path, value] of Object.entries(updates)) {
-          setValueByPath(self.data, path, value);
+          applyUpdate(self.data, pendingBaseState, pendingOps, path, value);
         }
       } catch (err) {
         console.error("Error in setData:", err);
         return;
       }
 
-      pendingData = pendingData ? { ...pendingData, ...updates } : updates;
       if (typeof callback === "function") {
         pendingCallbacks.push(callback);
       }
 
       clearTimeout(updateTimer);
       updateTimer = setTimeout(() => {
-        const currentUpdates = pendingData;
+        const ops = Array.from(pendingOps.values()).map(toJsonPatchOp);
         const callbacks = pendingCallbacks;
 
-        // Reset state for next batch
-        pendingData = null;
+        pendingBaseState.clear();
+        pendingOps.clear();
         pendingCallbacks = [];
 
         try {
-          if (!currentUpdates) {
+          if (ops.length === 0) {
+            callbacks.forEach((cb) => cb());
             return;
           }
 
-          // Generate and send patch if needed
-          const ops = diffToJsonPatchOps(self._lastData, self.data);
-          if (ops.length > 0) {
-            const combinedCallback =
-              callbacks.length === 0
-                ? undefined
-                : callbacks.length === 1
-                  ? callbacks[0]
-                  : () => callbacks.forEach((cb) => cb());
+          const combinedCallback =
+            callbacks.length === 0
+              ? undefined
+              : callbacks.length === 1
+                ? callbacks[0]
+                : () => callbacks.forEach((cb) => cb());
 
-            const maybePromise = combinedCallback
-              ? self._setData(JSON.stringify({ ops }), combinedCallback)
-              : self._setData(JSON.stringify({ ops }));
+          const maybePromise = combinedCallback
+            ? self._setData(JSON.stringify(ops), combinedCallback)
+            : self._setData(JSON.stringify(ops));
 
-            if (maybePromise && typeof maybePromise.then === "function") {
-              maybePromise.catch((err) => {
-                console.error("Error in setData:", err);
-              });
-            }
-
-            self._lastData = JSON.parse(JSON.stringify(self.data));
-          } else {
-            callbacks.forEach((cb) => cb());
+          if (maybePromise && typeof maybePromise.then === "function") {
+            maybePromise.catch((err) => {
+              console.error("Error in setData:", err);
+            });
           }
         } catch (err) {
           console.error("Error in setData:", err);
@@ -109,43 +92,104 @@
     return pageSvc;
   }
 
-  // Enhanced Page function with registration support
-  globalThis.Page = function (pageConfig, pagePath) {
-    if (pagePath) {
-      // Register page configuration for unified logic.js
-      __PAGE_REGISTRY__[pagePath] = pageConfig;
-    } else {
-      // This should not happen in production builds
+  globalThis.__registerPage = function (
+    pagePath,
+    pageConfig,
+    bindingMetaJson,
+  ) {
+    if (!pagePath) {
       throw new Error(
-        "Page() called without path parameter. This indicates a build configuration issue.",
+        "__registerPage() called without page path. This indicates a build configuration issue.",
       );
     }
+    pageDefinitions.set(pagePath, {
+      config: pageConfig,
+      bindingMetaJson: bindingMetaJson || '{"handlers":[]}',
+    });
   };
 
-  // Page instance creation function (called by Rust)
-  globalThis.__CREATE_PAGE__ = function (pagePath) {
-    const pageConfig = __PAGE_REGISTRY__[pagePath];
-    if (pageConfig) {
-      pageConfig.route = pagePath;
-      return createPageInstance(pageConfig, pagePath);
-    } else {
-      throw new Error(`Page not found: ${pagePath}`);
+  globalThis.Page = function () {
+    throw new Error(
+      "Page() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.",
+    );
+  };
+
+  globalThis.__LX_CREATE_PAGE__ = function (pagePath, definitionPath) {
+    const resolvedDefinitionPath = definitionPath || pagePath;
+    const definition = pageDefinitions.get(resolvedDefinitionPath);
+    if (!definition) {
+      throw new Error(`Page not found: ${resolvedDefinitionPath}`);
     }
+    definition.config.route = pagePath;
+    return createPageInstance(definition, pagePath);
   };
-
-  globalThis.__PAGE_REGISTRY__ = __PAGE_REGISTRY__;
 })();
 
-// Sets a value in an object using a path string (e.g., 'a.b[0].c')
-function setValueByPath(obj, path, value) {
-  if (!path) throw new Error("setData: Invalid path");
+function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
+  const segments = parseDataPath(path);
+  captureBaseState(root, pendingBaseState, segments);
 
-  const parts = path.replace(/\[(\d+)\]/g, ".$1").split(".");
-  let current = obj;
+  const previous = getValueAtPath(root, segments);
+  const pointer = segmentsToJsonPointer(segments);
+  const pendingBaseEntry = pendingBaseState.get(pointer);
+  const existedBefore =
+    pendingBaseEntry && typeof pendingBaseEntry.exists === "boolean"
+      ? pendingBaseEntry.exists
+      : previous.exists;
 
-  for (let i = 0; i < parts.length - 1; i++) {
-    const key = parts[i];
-    const nextKey = parts[i + 1];
+  if (nextValue === undefined) {
+    if (!previous.exists && !existedBefore) {
+      return;
+    }
+  } else if (previous.exists && isDeepEqual(previous.value, nextValue)) {
+    return;
+  }
+
+  setValueBySegments(root, segments, nextValue);
+  enqueuePendingPatch(root, pendingOps, segments, existedBefore);
+}
+
+function parseDataPath(path) {
+  if (!path) {
+    throw new Error("setData: Invalid path");
+  }
+
+  return path.replace(/\[(\d+)\]/g, ".$1").split(".");
+}
+
+function getValueAtPath(root, segments) {
+  let current = root;
+
+  for (let i = 0; i < segments.length; i++) {
+    const key = segments[i];
+    if (!current || typeof current !== "object") {
+      return { exists: false, value: undefined };
+    }
+
+    if (Array.isArray(current)) {
+      const index = parseInt(key, 10);
+      if (Number.isNaN(index) || index < 0 || index >= current.length) {
+        return { exists: false, value: undefined };
+      }
+      current = current[index];
+      continue;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(current, key)) {
+      return { exists: false, value: undefined };
+    }
+    current = current[key];
+  }
+
+  return { exists: true, value: current };
+}
+
+function setValueBySegments(root, segments, value) {
+  let current = root;
+
+  for (let i = 0; i < segments.length - 1; i++) {
+    const key = segments[i];
+    const nextKey = segments[i + 1];
     const isNextKeyArrayIndex = /^\d+$/.test(nextKey);
 
     if (current[key] === undefined || current[key] === null) {
@@ -166,7 +210,7 @@ function setValueByPath(obj, path, value) {
     }
   }
 
-  const finalKey = parts[parts.length - 1];
+  const finalKey = segments[segments.length - 1];
   if (value === undefined) {
     if (Array.isArray(current)) {
       const index = parseInt(finalKey, 10);
@@ -177,13 +221,32 @@ function setValueByPath(obj, path, value) {
           `setData: Invalid array index "${finalKey}" for deletion`,
         );
       }
-    } else if (current && typeof current === "object") {
-      delete current[finalKey];
-    } else {
-      throw new Error(`setData: Cannot delete property "${finalKey}"`);
+      return;
     }
-  } else {
-    current[finalKey] = value;
+
+    if (current && typeof current === "object") {
+      delete current[finalKey];
+      return;
+    }
+
+    throw new Error(`setData: Cannot delete property "${finalKey}"`);
+  }
+
+  current[finalKey] = value;
+}
+
+function captureBaseState(root, pendingBaseState, segments) {
+  for (let depth = 1; depth <= segments.length; depth++) {
+    const partialSegments = segments.slice(0, depth);
+    const pointer = segmentsToJsonPointer(partialSegments);
+    if (pendingBaseState.has(pointer)) {
+      continue;
+    }
+
+    const snapshot = getValueAtPath(root, partialSegments);
+    pendingBaseState.set(pointer, {
+      exists: snapshot.exists,
+    });
   }
 }
 
@@ -197,64 +260,152 @@ function joinJsonPointer(base, seg) {
   return `${base}/${escaped}`;
 }
 
+function segmentsToJsonPointer(segments) {
+  let pointer = "";
+  for (const seg of segments) {
+    pointer = joinJsonPointer(pointer, seg);
+  }
+  return pointer;
+}
+
+function enqueuePendingPatch(root, pendingOps, segments, existedBefore) {
+  const existingEntry = pendingOps.get(segmentsToJsonPointer(segments));
+  const hadExisted =
+    existingEntry && typeof existingEntry.hadExisted === "boolean"
+      ? existingEntry.hadExisted
+      : existedBefore;
+
+  for (let i = segments.length - 1; i > 0; i--) {
+    const ancestorPointer = segmentsToJsonPointer(segments.slice(0, i));
+    const ancestorEntry = pendingOps.get(ancestorPointer);
+    if (!ancestorEntry) {
+      continue;
+    }
+
+    const refreshedAncestor = buildPendingPatchEntry(
+      root,
+      ancestorEntry.segments,
+      ancestorEntry.hadExisted,
+    );
+    if (refreshedAncestor) {
+      pendingOps.set(ancestorPointer, refreshedAncestor);
+    } else {
+      pendingOps.delete(ancestorPointer);
+    }
+    return;
+  }
+
+  for (const [pointer, entry] of pendingOps.entries()) {
+    if (
+      pointer !== segmentsToJsonPointer(segments) &&
+      isDescendantPointer(pointer, segments)
+    ) {
+      pendingOps.delete(pointer);
+    }
+  }
+
+  const nextEntry = buildPendingPatchEntry(root, segments, hadExisted);
+  if (!nextEntry) {
+    pendingOps.delete(segmentsToJsonPointer(segments));
+    return;
+  }
+  pendingOps.set(nextEntry.path, nextEntry);
+}
+
+function buildPendingPatchEntry(root, segments, hadExisted) {
+  const current = getValueAtPath(root, segments);
+  if (!current.exists) {
+    if (!hadExisted) {
+      return null;
+    }
+    return {
+      path: segmentsToJsonPointer(segments),
+      segments: [...segments],
+      hadExisted,
+      op: "remove",
+    };
+  }
+
+  return {
+    path: segmentsToJsonPointer(segments),
+    segments: [...segments],
+    hadExisted,
+    op: hadExisted ? "replace" : "add",
+    value: cloneJsonValue(current.value),
+  };
+}
+
+function isDescendantPointer(candidatePointer, ancestorSegments) {
+  const ancestorPointer = segmentsToJsonPointer(ancestorSegments);
+  return candidatePointer.startsWith(`${ancestorPointer}/`);
+}
+
+function toJsonPatchOp(entry) {
+  if (entry.op === "remove") {
+    return {
+      op: entry.op,
+      path: entry.path,
+    };
+  }
+
+  return {
+    op: entry.op,
+    path: entry.path,
+    value: entry.value,
+  };
+}
+
+function cloneJsonValue(value) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof structuredClone === "function") {
+    return structuredClone(value);
+  }
+
+  return JSON.parse(JSON.stringify(value));
+}
+
 function isPlainObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-// Generates JSON Patch ops (RFC 6902 subset: add/replace/remove).
-// Arrays are treated as atomic values (replaced as a whole) for simplicity and correctness.
-function diffToJsonPatchOps(oldValue, newValue, basePath = "") {
-  const ops = [];
-  diffToJsonPatchOpsInto(oldValue, newValue, basePath, ops);
-  return ops;
-}
-
-function diffToJsonPatchOpsInto(oldValue, newValue, path, ops) {
-  if (oldValue === newValue) return;
-
-  const oldIsArr = Array.isArray(oldValue);
-  const newIsArr = Array.isArray(newValue);
-  const oldIsObj = isPlainObject(oldValue);
-  const newIsObj = isPlainObject(newValue);
-
-  // Different kinds => replace at this path (including root '').
-  if (oldIsArr !== newIsArr || oldIsObj !== newIsObj) {
-    ops.push({ op: "replace", path, value: newValue });
-    return;
+function isDeepEqual(a, b) {
+  if (a === b) {
+    return true;
   }
 
-  // Arrays are atomic: replace when changed.
-  if (newIsArr) {
-    if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-      ops.push({ op: "replace", path, value: newValue });
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
     }
-    return;
+    for (let i = 0; i < a.length; i++) {
+      if (!isDeepEqual(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
   }
 
-  // Primitives (including null): replace when changed.
-  if (!newIsObj) {
-    ops.push({ op: "replace", path, value: newValue });
-    return;
+  if (!isPlainObject(a) || !isPlainObject(b)) {
+    return false;
   }
 
-  // Both plain objects: recurse.
-  const oldKeys = Object.keys(oldValue || {});
-  const newKeys = Object.keys(newValue || {});
-  const oldSet = new Set(oldKeys);
-  const newSet = new Set(newKeys);
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
 
-  for (const key of oldKeys) {
-    if (!newSet.has(key)) {
-      ops.push({ op: "remove", path: joinJsonPointer(path, key) });
+  for (const key of keysA) {
+    if (!Object.prototype.hasOwnProperty.call(b, key)) {
+      return false;
+    }
+    if (!isDeepEqual(a[key], b[key])) {
+      return false;
     }
   }
 
-  for (const key of newKeys) {
-    const childPath = joinJsonPointer(path, key);
-    if (!oldSet.has(key)) {
-      ops.push({ op: "add", path: childPath, value: newValue[key] });
-    } else {
-      diffToJsonPatchOpsInto(oldValue[key], newValue[key], childPath, ops);
-    }
-  }
+  return true;
 }

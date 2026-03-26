@@ -1,11 +1,10 @@
-use super::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_STREAM_CLOSED, Bridge,
-    MessageHandler, MessageTransport, RpcError, ServiceType,
-};
 use crate::PageServiceEvent;
+use crate::bridge::{
+    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_STREAM_CLOSED,
+    BRIDGE_TOPIC_NOT_FOUND, PageBridge, RpcError, ViewTransport,
+};
 use crate::error;
 use crate::error::LxAppError;
-use crate::host::get_host;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 use rong::{
@@ -25,8 +24,6 @@ pub struct PageSvc {
     this: JSObject,
 
     pub(crate) page: Page,
-    bridge: Bridge,
-
     event_emitter: EventEmitter,
 
     // state of PageSvc
@@ -44,6 +41,12 @@ struct PageSvcState {
 struct ChannelState {
     handler: Option<JSObject>,
     outbound_seq: u64,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct PageBindingMeta {
+    #[serde(default)]
+    handlers: Vec<String>,
 }
 
 fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
@@ -145,7 +148,7 @@ struct AsyncIteratorStep {
     value: Option<Box<RawValue>>,
 }
 
-impl MessageTransport for PageSvc {
+impl ViewTransport for PageSvc {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.page.webview_controller() {
             controller
@@ -157,22 +160,11 @@ impl MessageTransport for PageSvc {
     }
 }
 
-impl MessageHandler for PageSvc {
-    fn get_service_type(&self, service_name: &str) -> ServiceType {
-        if let Some(api_name) = service_name.strip_prefix("host.")
-            && let Some(handler) = get_host(api_name)
-        {
-            return ServiceType::HostAPI(handler);
-        }
-
-        if let Some(js_func) = self.functions.get(service_name) {
-            return ServiceType::JSFunc(js_func.clone());
-        }
-
-        ServiceType::None
-    }
-
-    async fn get_state_snapshot(&self, _scope: Option<&str>) -> Result<String, LxAppError> {
+impl PageSvc {
+    pub(crate) async fn get_state_snapshot(
+        &self,
+        _scope: Option<&str>,
+    ) -> Result<String, LxAppError> {
         let data_obj = self
             .this
             .get::<_, JSObject>("data")
@@ -180,16 +172,15 @@ impl MessageHandler for PageSvc {
         let data_json = data_obj
             .json_stringify()
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let rev = self.state.try_lock().map(|s| s.state_rev).unwrap_or(0);
+        let rev = self.state.lock().await.state_rev;
         Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
     }
 
-    async fn handle_req(
+    pub(crate) async fn handle_req(
         &self,
         req_id: &str,
         method: &str,
         params_json: Option<&str>,
-        service_type: ServiceType,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<String, RpcError> {
         let ctx = self.get_ctx();
@@ -202,113 +193,56 @@ impl MessageHandler for PageSvc {
             json.json_to_js_value(&ctx).ok()
         };
 
-        match service_type {
-            ServiceType::JSFunc(js_func) => {
-                let call_arg = build_call_arg(params_json);
-                let fut = async {
-                    match call_arg {
-                        Some(val) => {
-                            js_func
-                                .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
-                                .await
-                        }
-                        None => {
-                            js_func
-                                .call_async::<_, JSValue>(Some(self.this.clone()), ())
-                                .await
-                        }
-                    }
-                };
-
-                let value = tokio::select! {
-                    _ = &mut cancel_rx => {
-                        return Err(RpcError::new(BRIDGE_CANCELED, None));
-                    }
-                    res = fut => {
-                        match res {
-                            Ok(v) => v,
-                            Err(e) => return Err(rpc_error_from_rong(e)),
-                        }
-                    }
-                };
-
-                if let Some(iterator) = maybe_get_async_iterator(&ctx, &value)? {
-                    return self
-                        .consume_async_iterator(req_id, iterator, &mut cancel_rx)
-                        .await;
-                }
-
-                js_value_to_json_str(value)
-            }
-            ServiceType::HostAPI(handler) => {
-                let lxapp = LxApp::from_ctx(&ctx)
-                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
-                let input = params_json.map(|s| s.to_string());
-
-                // Allow immediate cancel response while still forwarding cancellation to Host.
-                // NOTE: This runs inside a per-request task (bridge spawns Req handling), so
-                // awaiting here will not block the bridge message pump.
-                let start = std::time::Instant::now();
-                let (host_cancel_tx, host_cancel_rx) = tokio::sync::oneshot::channel();
-                let mut host_fut = handler.call(lxapp, input, host_cancel_rx);
-
-                let json_result: Result<String, RpcError> = tokio::select! {
-                    biased;
-                    res = &mut host_fut => {
-                        match res {
-                            Ok(json) => RawValue::from_string(json)
-                                .map(|raw| raw.get().to_owned())
-                                .map_err(|e| {
-                                    RpcError::new(
-                                        BRIDGE_INTERNAL_ERROR,
-                                        Some(format!("Host handler returned invalid JSON: {}", e)),
-                                    )
-                                }),
-                            Err(e) => {
-                                // Host handlers are expected to return a cancel error when they
-                                // observe `cancel`. Map that to BRIDGE_CANCELED so view callers
-                                // can handle it consistently.
-                                if matches!(&e, LxAppError::Bridge(msg) if msg == "Canceled") {
-                                    Err(RpcError::new(BRIDGE_CANCELED, None))
-                                } else {
-                                    Err(rpc_error_from_lxapp_error(&e))
-                                }
-                            }
-                        }
-                    }
-                    _ = &mut cancel_rx => {
-                        let _ = host_cancel_tx.send(());
-                        Err(RpcError::new(BRIDGE_CANCELED, None))
-                    }
-                };
-
-                let elapsed = start.elapsed();
-                if elapsed > std::time::Duration::from_secs(3) {
-                    crate::warn!(
-                        "[{}] host req '{}' slow: {:?}",
-                        self.page.path(),
-                        method,
-                        elapsed
-                    );
-                }
-
-                json_result
-            }
-            ServiceType::None => Err(RpcError::new(
+        let Some(js_func) = self.get_js_func(method) else {
+            return Err(RpcError::new(
                 BRIDGE_METHOD_NOT_FOUND,
                 Some(format!("Method not found: {}", method)),
-            )),
+            ));
+        };
+
+        let call_arg = build_call_arg(params_json);
+        let fut = async {
+            match call_arg {
+                Some(val) => {
+                    js_func
+                        .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
+                        .await
+                }
+                None => {
+                    js_func
+                        .call_async::<_, JSValue>(Some(self.this.clone()), ())
+                        .await
+                }
+            }
+        };
+
+        let value = tokio::select! {
+            _ = &mut cancel_rx => {
+                return Err(RpcError::new(BRIDGE_CANCELED, None));
+            }
+            res = fut => {
+                match res {
+                    Ok(v) => v,
+                    Err(e) => return Err(rpc_error_from_rong(e)),
+                }
+            }
+        };
+
+        if let Some(iterator) = maybe_get_async_iterator(&ctx, &value)? {
+            return self
+                .consume_async_iterator(req_id, iterator, &mut cancel_rx)
+                .await;
         }
+
+        js_value_to_json_str(value)
     }
 
-    async fn handle_notify(
-        &self,
-        method: &str,
-        params_json: Option<&str>,
-        service_type: ServiceType,
-    ) {
-        let ctx = self.get_ctx();
+    pub(crate) async fn handle_notify(&self, method: &str, params_json: Option<&str>) {
+        let Some(js_func) = self.get_js_func(method) else {
+            return;
+        };
 
+        let ctx = self.get_ctx();
         let call_arg = params_json.and_then(|json| {
             if json == "null" {
                 return None;
@@ -316,54 +250,35 @@ impl MessageHandler for PageSvc {
             json.json_to_js_value(&ctx).ok()
         });
 
-        match service_type {
-            ServiceType::JSFunc(js_func) => {
-                let this_obj = self.this.clone();
-                let method_name = method.to_string();
-                let page_path = self.page.path().to_string();
-                let task = async move {
-                    let result = match call_arg {
-                        Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
-                        None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
-                    };
-                    if let Err(e) = result {
-                        error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
-                    }
-                };
-                rong::spawn(task);
+        let this_obj = self.this.clone();
+        let method_name = method.to_string();
+        let page_path = self.page.path().to_string();
+        let task = async move {
+            let result = match call_arg {
+                Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
+                None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
+            };
+            if let Err(e) = result {
+                error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
             }
-            ServiceType::HostAPI(handler) => {
-                let lxapp = match LxApp::from_ctx(&ctx) {
-                    Ok(app) => app,
-                    Err(e) => {
-                        error!("notify '{}' missing LxApp: {}", method, e);
-                        return;
-                    }
-                };
-                let input = params_json.map(|s| s.to_string());
-                let method_name = method.to_string();
-
-                // Notify calls are fire-and-forget but must not spuriously "cancel" themselves.
-                let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-                rong::spawn(async move {
-                    let _keep_alive = cancel_tx;
-                    if let Err(e) = handler.call(lxapp, input, cancel_rx).await {
-                        error!("notify '{}' failed: {}", method_name, e);
-                    }
-                });
-            }
-            ServiceType::None => {}
-        }
+        };
+        rong::spawn(task);
     }
 
-    async fn handle_sub(
+    pub(crate) async fn handle_sub(
         &self,
         id: &str,
         topic: &str,
         params_json: Option<&str>,
-        service_type: ServiceType,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<(), RpcError> {
+        let Some(js_func) = self.get_js_func(topic) else {
+            return Err(RpcError::new(
+                BRIDGE_TOPIC_NOT_FOUND,
+                Some(format!("Topic not found: {}", topic)),
+            ));
+        };
+
         let ctx = self.get_ctx();
         let call_arg = params_json.and_then(|json| {
             if json == "null" {
@@ -372,37 +287,27 @@ impl MessageHandler for PageSvc {
             json.json_to_js_value(&ctx).ok()
         });
 
-        let iterator = match service_type {
-            ServiceType::JSFunc(js_func) => {
-                let value = match call_arg {
-                    Some(val) => js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
-                        .await
-                        .map_err(rpc_error_from_rong)?,
-                    None => js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), ())
-                        .await
-                        .map_err(rpc_error_from_rong)?,
-                };
-                maybe_get_async_iterator(&ctx, &value)?.ok_or_else(|| {
-                    RpcError::new(
-                        BRIDGE_INTERNAL_ERROR,
-                        Some(format!(
-                            "Subscription '{}' must return an async iterator",
-                            topic
-                        )),
-                    )
-                })?
-            }
-            ServiceType::HostAPI(_) | ServiceType::None => {
-                return Err(RpcError::new(
-                    BRIDGE_METHOD_NOT_FOUND,
-                    Some(format!("Topic not found: {}", topic)),
-                ));
-            }
+        let value = match call_arg {
+            Some(val) => js_func
+                .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
+                .await
+                .map_err(rpc_error_from_rong)?,
+            None => js_func
+                .call_async::<_, JSValue>(Some(self.this.clone()), ())
+                .await
+                .map_err(rpc_error_from_rong)?,
         };
+        let iterator = maybe_get_async_iterator(&ctx, &value)?.ok_or_else(|| {
+            RpcError::new(
+                BRIDGE_INTERNAL_ERROR,
+                Some(format!(
+                    "Subscription '{}' must return an async iterator",
+                    topic
+                )),
+            )
+        })?;
 
-        self.bridge
+        self.bridge()
             .send_res_ok(self, id.to_string(), "null".to_string())
             .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
 
@@ -411,14 +316,14 @@ impl MessageHandler for PageSvc {
             .await
         {
             Ok(()) => {
-                self.bridge
+                self.bridge()
                     .send_sub_close(self, id.to_string(), None, None, None)
                     .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             }
             Err(e) if e.code == BRIDGE_CANCELED => {}
             Err(e) => {
                 crate::warn!("subscription '{}' stopped with error: {}", topic, e.code);
-                self.bridge
+                self.bridge()
                     .send_sub_close(self, id.to_string(), Some(&e.code), e.message, e.data)
                     .map_err(|send_err| {
                         RpcError::new(BRIDGE_INTERNAL_ERROR, Some(send_err.to_string()))
@@ -428,13 +333,19 @@ impl MessageHandler for PageSvc {
         Ok(())
     }
 
-    async fn handle_ch_open(
+    pub(crate) async fn handle_ch_open(
         &self,
         id: &str,
         topic: &str,
         params_json: Option<&str>,
-        service_type: ServiceType,
     ) -> Result<(), RpcError> {
+        let Some(js_func) = self.get_js_func(topic) else {
+            return Err(RpcError::new(
+                BRIDGE_TOPIC_NOT_FOUND,
+                Some(format!("Topic not found: {}", topic)),
+            ));
+        };
+
         let ctx = self.get_ctx();
         let call_arg = params_json.and_then(|json| {
             if json == "null" {
@@ -443,56 +354,52 @@ impl MessageHandler for PageSvc {
             json.json_to_js_value(&ctx).ok()
         });
 
-        match service_type {
-            ServiceType::JSFunc(js_func) => {
-                let channel_ctx = self.create_channel_context(id)?;
-                {
-                    let mut state = self.state.lock().await;
-                    state.channels.insert(
-                        id.to_string(),
-                        ChannelState {
-                            handler: None,
-                            outbound_seq: 0,
-                        },
-                    );
-                }
-                let value = match match call_arg {
-                    Some(val) => {
-                        js_func
-                            .call_async::<_, JSValue>(Some(self.this.clone()), (val, channel_ctx))
-                            .await
-                    }
-                    None => {
-                        js_func
-                            .call_async::<_, JSValue>(
-                                Some(self.this.clone()),
-                                (JSObject::new(&ctx), channel_ctx),
-                            )
-                            .await
-                    }
-                } {
-                    Ok(value) => value,
-                    Err(err) => {
-                        let mut state = self.state.lock().await;
-                        state.channels.remove(id);
-                        return Err(rpc_error_from_rong(err));
-                    }
-                };
-                let handler = value.into_object();
-                let mut state = self.state.lock().await;
-                if let Some(channel) = state.channels.get_mut(id) {
-                    channel.handler = handler;
-                }
-                Ok(())
-            }
-            ServiceType::HostAPI(_) | ServiceType::None => Err(RpcError::new(
-                BRIDGE_METHOD_NOT_FOUND,
-                Some(format!("Topic not found: {}", topic)),
-            )),
+        let channel_ctx = self.create_channel_context(id)?;
+        {
+            let mut state = self.state.lock().await;
+            state.channels.insert(
+                id.to_string(),
+                ChannelState {
+                    handler: None,
+                    outbound_seq: 0,
+                },
+            );
         }
+        let value = match match call_arg {
+            Some(val) => {
+                js_func
+                    .call_async::<_, JSValue>(Some(self.this.clone()), (val, channel_ctx))
+                    .await
+            }
+            None => {
+                js_func
+                    .call_async::<_, JSValue>(
+                        Some(self.this.clone()),
+                        (JSObject::new(&ctx), channel_ctx),
+                    )
+                    .await
+            }
+        } {
+            Ok(value) => value,
+            Err(err) => {
+                let mut state = self.state.lock().await;
+                state.channels.remove(id);
+                return Err(rpc_error_from_rong(err));
+            }
+        };
+        let handler = value.into_object();
+        let mut state = self.state.lock().await;
+        if let Some(channel) = state.channels.get_mut(id) {
+            channel.handler = handler;
+        }
+        Ok(())
     }
 
-    async fn handle_ch_data(&self, id: &str, payload_json: &str) -> Result<(), RpcError> {
+    pub(crate) async fn handle_ch_data(
+        &self,
+        id: &str,
+        payload_json: &str,
+    ) -> Result<(), RpcError> {
         let handler = {
             let state = self.state.lock().await;
             state
@@ -518,7 +425,7 @@ impl MessageHandler for PageSvc {
             .map_err(rpc_error_from_rong)
     }
 
-    async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>) {
+    pub(crate) async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>) {
         let handler = {
             let mut state = self.state.lock().await;
             state
@@ -540,38 +447,33 @@ impl MessageHandler for PageSvc {
             .await;
     }
 
-    async fn handle_bridge_ready(&self) {
+    pub(crate) async fn handle_bridge_ready(&self) {
         let mut page_svc_clone = self.clone();
         let _ = page_svc_clone.handle_bridge_ready_internal().await;
     }
 
-    fn expected_bridge_nonce(&self) -> Option<String> {
-        self.page.bridge_nonce()
-    }
-
-    fn bridge_page_path(&self) -> Option<String> {
-        Some(self.page.path())
-    }
-
-    fn is_cap_allowed(&self, _cap: &str) -> bool {
-        // Capability control is delegated to host app, not lxapp config.
-        // Host app should handle permission checks in its HostHandler implementations.
-        true
-    }
-
-    async fn handle_state_ack(&self, _scope: Option<String>, rev: u64) {
+    pub(crate) async fn handle_state_ack(&self, _scope: Option<String>, rev: u64) {
         let mut state = self.state.lock().await;
         if let Some(cb) = state.state_callback.remove(&rev) {
             drop(state);
             let _ = cb.call::<_, ()>(None, ());
         }
     }
+
+    fn get_js_func(&self, service_name: &str) -> Option<JSFunc> {
+        self.functions.get(service_name).cloned()
+    }
 }
 
 #[js_class]
 impl PageSvc {
     #[js_method(constructor)]
-    fn _new(ctx: JSContext, config: JSObject, path: String) -> JSResult<JSObject> {
+    fn _new(
+        ctx: JSContext,
+        config: JSObject,
+        path: String,
+        meta_json: Optional<String>,
+    ) -> JSResult<JSObject> {
         let lxapp = LxApp::from_ctx(&ctx)?;
 
         let page = lxapp.get_page(&path).ok_or_else(|| {
@@ -594,7 +496,6 @@ impl PageSvc {
             functions: HashMap::new(),
             this: config.clone(),
             page,
-            bridge: Bridge::new(),
             event_emitter: EventEmitter::default(),
             state: Rc::new(Mutex::new(PageSvcState {
                 callback: HashMap::new(),
@@ -605,7 +506,7 @@ impl PageSvc {
             })),
         };
 
-        page_svc.register_functions(&config)?;
+        page_svc.register_functions(&config, meta_json.0.as_deref())?;
 
         {
             let mut state = page_svc.state.try_lock().unwrap();
@@ -630,8 +531,9 @@ impl PageSvc {
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
         let mut state = self.state.lock().await;
+        let bridge = self.bridge();
 
-        if !self.bridge.is_ready() {
+        if !bridge.is_ready() {
             return Err(RongJSError::from(HostError::new(
                 rong::error::E_INTERNAL,
                 format!("Bridge of {} is not ready", self.page.path()),
@@ -642,18 +544,12 @@ impl PageSvc {
         let new_rev = base_rev + 1;
         state.state_rev = new_rev;
 
-        // Parse { ops: [...] } format from Page.js. Keep the original JSON for forwarding,
-        // but still validate that it is a well-formed patch array before sending it onward.
-        #[derive(Deserialize)]
-        struct OpsWrapper {
-            ops: Box<RawValue>,
-        }
-        let wrapper: OpsWrapper = serde_json::from_str(&ops_json).map_err(|e| {
+        let ops = RawValue::from_string(ops_json).map_err(|e| {
             RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
         })?;
-        serde_json::from_str::<Vec<super::bridge::JsonPatchOp>>(wrapper.ops.get()).map_err(
-            |e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string())),
-        )?;
+        serde_json::from_str::<Vec<crate::bridge::JsonPatchOp>>(ops.get()).map_err(|e| {
+            RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
+        })?;
 
         let ack = if let Some(cb) = callback.0 {
             state.state_callback.insert(new_rev, cb);
@@ -664,8 +560,8 @@ impl PageSvc {
 
         drop(state);
 
-        self.bridge
-            .send_state_patch(self, None, base_rev, new_rev, wrapper.ops, ack)
+        bridge
+            .send_state_patch(self, None, base_rev, new_rev, ops, ack)
             .map_err(|e| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
             })?;
@@ -705,15 +601,33 @@ impl PageSvc {
 }
 
 impl PageSvc {
-    fn register_functions(&mut self, obj: &JSObject) -> JSResult<()> {
+    fn register_functions(&mut self, obj: &JSObject, meta_json: Option<&str>) -> JSResult<()> {
+        let meta: PageBindingMeta = meta_json
+            .map(serde_json::from_str)
+            .transpose()
+            .map_err(|e| HostError::new(rong::error::E_INTERNAL, e.to_string()))?
+            .unwrap_or_default();
+
+        for function_name in meta.handlers {
+            if function_name.starts_with('_') {
+                continue;
+            }
+            if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
+                self.functions.insert(function_name, func);
+            }
+        }
+
+        // Metadata is intentionally conservative; fall back to runtime
+        // reflection so spreads and aliased handlers still register.
         for key_value in obj.keys()? {
-            if let Ok(function_name) = key_value.try_into::<String>() {
-                if function_name.starts_with('_') {
-                    continue;
-                }
-                if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
-                    self.functions.insert(function_name.clone(), func);
-                }
+            let Ok(function_name) = key_value.try_into::<String>() else {
+                continue;
+            };
+            if function_name.starts_with('_') {
+                continue;
+            }
+            if let Ok(func) = obj.get::<_, JSFunc>(function_name.as_str()) {
+                self.functions.insert(function_name, func);
             }
         }
         Ok(())
@@ -762,7 +676,7 @@ impl PageSvc {
                 return Ok(value_json);
             }
 
-            self.bridge
+            self.bridge()
                 .send_event(self, stream_id.to_string(), seq, value_json)
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             seq += 1;
@@ -812,7 +726,7 @@ impl PageSvc {
                 .value
                 .map(|value| value.get().to_owned())
                 .unwrap_or_else(|| "null".to_string());
-            self.bridge
+            self.bridge()
                 .send_event(self, sub_id.to_string(), seq, payload_json)
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             seq += 1;
@@ -851,7 +765,7 @@ impl PageSvc {
                     seq
                 };
                 page_svc
-                    .bridge
+                    .bridge()
                     .send_ch_data(&page_svc, channel_id.clone(), seq, payload_json)
                     .map_err(|e| {
                         RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
@@ -877,7 +791,7 @@ impl PageSvc {
                         state.channels.remove(&channel_id);
                     }
                     page_svc
-                        .bridge
+                        .bridge()
                         .send_ch_close(&page_svc, channel_id, code.0, reason.0)
                         .map_err(|e| {
                             RongJSError::from(HostError::new(
@@ -956,7 +870,7 @@ impl PageSvc {
             state.state_rev = 1;
             drop(state);
 
-            self.bridge
+            self.bridge()
                 .send_state_snapshot(self, None, 1, data_json)
                 .map_err(|e| {
                     RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
@@ -970,8 +884,8 @@ impl PageSvc {
         Ok(())
     }
 
-    pub(crate) fn as_bridge(&self) -> &Bridge {
-        &self.bridge
+    pub(crate) fn bridge(&self) -> PageBridge {
+        self.page.bridge()
     }
 
     pub(crate) fn get_ctx(&self) -> JSContext {
@@ -982,16 +896,19 @@ impl PageSvc {
 impl PageSvc {
     pub async fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
         super::plugin::ensure_plugin_logic_loaded_for_page_path(ctx, path).await?;
+        let lxapp = LxApp::from_ctx(ctx)?;
+        let definition_path = crate::browser::browser_logic_page_path_for_tab_path(&lxapp, path)
+            .unwrap_or_else(|| path.to_string());
 
         let create_page = ctx
             .global()
-            .get::<_, JSFunc>("__CREATE_PAGE__")
+            .get::<_, JSFunc>("__LX_CREATE_PAGE__")
             .map_err(|e| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
             })?;
 
         create_page
-            .call::<_, ()>(None, (path.to_string(),))
+            .call::<_, ()>(None, (path.to_string(), definition_path))
             .map_err(|e: RongJSError| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
             })
@@ -1028,13 +945,18 @@ impl LxApp {
 }
 
 fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
-    let registry = ctx.global().get::<_, JSObject>("__PAGE_REGISTRY__")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let paths = lxapp.get_page_stack();
     let mut pages = Vec::new();
     for p in paths {
-        let obj = registry.get::<_, JSObject>(p.as_str())?;
-        pages.push(obj);
+        if let Some(page_obj) = super::with_page_svc_map(&ctx, |page_svc_map| {
+            Ok(page_svc_map
+                .borrow()
+                .get(&p)
+                .map(|page_svc| page_svc.this.clone()))
+        })? {
+            pages.push(page_obj);
+        }
     }
     Ok(pages)
 }

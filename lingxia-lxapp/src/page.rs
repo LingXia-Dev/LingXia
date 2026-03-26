@@ -1,4 +1,4 @@
-use crate::appservice::bridge::IncomingMessage;
+use crate::bridge::{IncomingMessage, PageBridge};
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{
     self,
@@ -48,6 +48,7 @@ pub(crate) struct PageInner {
 
     // Per-page bridge nonce (used to validate the View<->Logic wiring)
     bridge_nonce: Arc<Mutex<Option<String>>>,
+    bridge: PageBridge,
 
     // notify when WebView wiring is ready (delegate set & setup ran)
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
@@ -222,6 +223,7 @@ impl Page {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let bridge_nonce = Self::generate_bridge_nonce();
+        let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
@@ -230,6 +232,7 @@ impl Page {
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
+            bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
         });
@@ -352,6 +355,7 @@ impl Page {
     pub(crate) fn new_headless(appid: String, path: String, lxapp: &LxApp) -> Self {
         let page_state = Self::build_page_state(lxapp, &path);
         let bridge_nonce = Self::generate_bridge_nonce();
+        let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let inner = Arc::new(PageInner {
             appid,
@@ -360,6 +364,7 @@ impl Page {
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
             bridge_nonce: Arc::new(Mutex::new(Some(bridge_nonce))),
+            bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
         });
@@ -368,6 +373,10 @@ impl Page {
 
     pub(crate) fn bridge_nonce(&self) -> Option<String> {
         self.inner.bridge_nonce.lock().ok().and_then(|v| v.clone())
+    }
+
+    pub(crate) fn bridge(&self) -> PageBridge {
+        self.inner.bridge.clone()
     }
 
     /// Attach WebView to this page (called when WebView is ready)
@@ -982,15 +991,9 @@ impl WebViewDelegate for Page {
 
     /// Handles a postMessage from the WebView
     fn handle_post_message(&self, msg: String) {
-        // Parse the message and forward to executor safely
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
-                let lxapp = lxapp::get(self.inner.appid.clone());
-                if let Err(e) = lxapp.executor.handle_view_message(
-                    lxapp.clone(),
-                    self.inner.path.clone(),
-                    Arc::new(incoming),
-                ) {
+                if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
                     error!("Failed to handle view message: {}", e)
                         .with_appid(self.inner.appid.clone());
                 }
