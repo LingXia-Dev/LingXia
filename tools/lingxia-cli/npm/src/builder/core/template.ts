@@ -26,6 +26,50 @@ export function assertBridgeMethodCompatible(
   }
 }
 
+
+function normalizeBridgeMethods(
+  functions: PageBridgeMethod[] | string[],
+): PageBridgeMethod[] {
+  return functions.map((entry) =>
+    typeof entry === "string"
+      ? { name: entry, mode: "notify" as PageBridgeMode }
+      : entry,
+  );
+}
+
+/**
+ * Payload filter function source lines (no leading indent).
+ * Filters out React/DOM event objects and enforces single-payload constraint.
+ */
+const PAYLOAD_FILTER_LINES = [
+  `function _fp(name, args) {`,
+  `  var clean = [];`,
+  `  for (var i = 0; i < args.length; i++) {`,
+  `    var a = args[i];`,
+  `    if (a instanceof Event) continue;`,
+  `    if (a && typeof a === 'object' && typeof a.stopPropagation === 'function') continue;`,
+  `    clean.push(a);`,
+  `  }`,
+  `  if (clean.length > 1) throw new Error("Page action '" + name + "' accepts at most one payload argument");`,
+  `  return clean.length === 0 ? undefined : clean[0];`,
+  `}`,
+];
+
+function indentPayloadFilter(indent: string): string {
+  return PAYLOAD_FILTER_LINES.map((l) => indent + l).join("\n");
+}
+
+function bridgeCallExpression(funcName: string, mode: PageBridgeMode): string {
+  if (mode === "stream") {
+    return `return window.LingXiaBridge.callStream('${funcName}', payload);`;
+  }
+  if (mode === "call") {
+    return `return window.LingXiaBridge.call('${funcName}', payload);`;
+  }
+  return `window.LingXiaBridge.notify('${funcName}', payload);`;
+}
+
+
 export class TemplateManager {
   copyFrameworkTemplates(framework: string, buildDir: string): void {
     if (!FrameworkRegistry.isSupported(framework)) {
@@ -53,63 +97,97 @@ export class TemplateManager {
       throw new Error(`Framework templates not found: ${framework}`);
     }
 
-    const functionBridge = this.generateFunctionBridge(pageFunctions);
+    // For standalone template generation, inline the bridge as window.__pageBridge
+    const bridgeCode = this.generateFunctionBridge(pageFunctions);
     return templates.mainEntry.replace(
-      "/* {{PAGE_FUNCTIONS}} */",
-      functionBridge,
+      "/* {{PAGE_BRIDGE_IMPORT}} */",
+      bridgeCode,
     );
   }
 
+  /**
+   * Generate an inline `<script>` body that defines `window.__pageBridge`.
+   * Used for HTML pages (no bundler) and as the post-build inline fallback
+   * for React/Vue pages.
+   */
   generateFunctionBridge(functions: PageBridgeMethod[] | string[]): string {
     if (functions.length === 0) {
-      return "window.__PAGE_FUNCTIONS = [];";
+      return "window.__pageBridge = { __names: [] };";
     }
 
-    const normalized = functions.map((entry) =>
-      typeof entry === "string"
-        ? { name: entry, mode: "notify" as PageBridgeMode }
-        : entry,
-    );
-    const functionList = JSON.stringify(normalized.map((entry) => entry.name));
+    const normalized = normalizeBridgeMethods(functions);
+    const nameList = JSON.stringify(normalized.map((entry) => entry.name));
 
-    // Generate explicit function wrappers for better debugging and runtime safety
     const wrappers = normalized
       .map(
         ({ name: funcName, mode }) => `
-window['${funcName}'] = function(...args) {
-  // Filter out React/DOM event objects to prevent circular reference errors
-  const cleanArgs = args.filter(arg => {
-    if (arg && typeof arg === 'object') {
-      return !(arg.nativeEvent || arg.target || arg.currentTarget ||
-               arg instanceof Event || arg.constructor.name.includes('Event'));
-    }
-    return true;
-  });
-
-  try {
-    if (cleanArgs.length > 1) {
-      throw new Error("Page action '${funcName}' accepts at most one payload argument");
-    }
-    const payload = cleanArgs.length === 0 ? undefined : cleanArgs[0];
-    ${
-      mode === "stream"
-        ? `return window.LingXiaBridge.callStream('${funcName}', payload);`
-        : mode === "call"
-          ? `return window.LingXiaBridge.call('${funcName}', payload);`
-          : `window.LingXiaBridge.notify('${funcName}', payload);`
-    }
-  } catch (e) {
-    console.warn('[PageFunc] ${funcName} failed:', e && e.message ? e.message : e);
-    throw e;
-  }
-};`,
+  var ${funcName} = function(...args) {
+    var payload = _fp('${funcName}', args);
+    ${bridgeCallExpression(funcName, mode)}
+  };
+  ${funcName}.__logicFunc = true;
+  ${funcName}.__funcName = '${funcName}';
+  ${funcName}.__bridgeMode = '${mode}';`,
       )
       .join("\n");
 
-    return `window.__PAGE_FUNCTIONS = ${functionList};
+    const exports = normalized.map((e) => e.name).join(", ");
 
-// Generate bridge functions
-${wrappers}`;
+    return `window.__pageBridge = (function() {
+${indentPayloadFilter("  ")}
+${wrappers}
+
+  return { __names: ${nameList}, ${exports} };
+})();`;
+  }
+
+  /**
+   * Generate a metadata-only inline script (just the names array).
+   * Used for the inline `<script>` in React/Vue builds where the full
+   * bridge is already bundled in the module via __page_bridge__ import.
+   */
+  generateBridgeMetadata(functions: PageBridgeMethod[]): string {
+    if (functions.length === 0) {
+      return "window.__pageBridge = { __names: [] };";
+    }
+    const nameList = JSON.stringify(functions.map((f) => f.name));
+    return `window.__pageBridge = { __names: ${nameList} };`;
+  }
+
+  /**
+   * Generate an ES module file that exports each bridge function as a
+   * named export.  Written to `__page_bridge__.js` in the Vite build
+   * directory so the entry module can `import * as` and re-export onto
+   * `window.__pageBridge`.
+   */
+  generatePageBridgeModule(functions: PageBridgeMethod[]): string {
+    if (functions.length === 0) {
+      return "export var __names = [];\n";
+    }
+
+    const lines = [
+      "// Auto-generated by lingxia-cli. Do not edit.",
+      indentPayloadFilter(""),
+      "",
+    ];
+
+    for (const { name, mode } of functions) {
+      lines.push(
+        `export function ${name}(...args) {`,
+        `  var payload = _fp('${name}', args);`,
+        `  ${bridgeCallExpression(name, mode)}`,
+        `}`,
+        `${name}.__logicFunc = true;`,
+        `${name}.__funcName = '${name}';`,
+        `${name}.__bridgeMode = '${mode}';`,
+        "",
+      );
+    }
+
+    const nameList = JSON.stringify(functions.map((f) => f.name));
+    lines.push(`export var __names = ${nameList};`);
+
+    return lines.join("\n");
   }
 
   inferBridgeMethods(methods: Record<string, MethodInfo>): PageBridgeMethod[] {

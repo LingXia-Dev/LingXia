@@ -165,9 +165,10 @@ export class PageProcessor {
       const entryHtml = path.join("pages", entryName, "index.html");
       const entryJs = path.join("pages", entryName, `${entryName}.js`);
 
-      // Generate bridge and output via updated processor API
+      // Full bridge is bundled via __page_bridge__ module import.
+      // Inline script only needs metadata (names) for early access.
       const bridgeScript =
-        this.templateManager.generateFunctionBridge(pageFunctions);
+        this.templateManager.generateBridgeMetadata(pageFunctions);
       await processor.generateOutput(
         page,
         pageFiles,

@@ -32,11 +32,7 @@ describe("TemplateManager.generateFunctionBridge", () => {
       "window",
       "Event",
       `${script}
-return {
-  notifyOnly: window["notifyOnly"],
-  compute: window["compute"],
-  streamJob: window["streamJob"],
-};`,
+return window.__pageBridge;`,
     );
     const actions = install(fakeWindow, class Event {});
 
@@ -67,7 +63,7 @@ return {
     const install = new Function(
       "window",
       "Event",
-      `${script}; return window["compute"];`,
+      `${script}; return window.__pageBridge.compute;`,
     );
     const compute = install(fakeWindow, class Event {});
 
@@ -112,7 +108,7 @@ describe("TypeGenerator.generatePageTypes", () => {
     });
 
     expect(output).toContain(
-      'import type { StreamHandle } from "@lingxia/core";',
+      'import type { StreamHandle } from "@lingxia/bridge";',
     );
     expect(output).toContain(
       "streamJob(payload: { id: string }): StreamHandle<Chunk, FinalResult>;",

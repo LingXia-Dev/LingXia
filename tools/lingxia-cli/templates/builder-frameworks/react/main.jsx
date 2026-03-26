@@ -1,9 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 /* {{APP_IMPORT}} */
-
-// Page functions injection
-/* {{PAGE_FUNCTIONS}} */
+/* {{PAGE_BRIDGE_IMPORT}} */
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

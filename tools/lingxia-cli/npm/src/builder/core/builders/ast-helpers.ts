@@ -1,7 +1,11 @@
-import { parse, type ParserOptions } from "@babel/parser";
-import { generate } from "@babel/generator";
+import type { ParserOptions } from "@babel/parser";
 
-const AST_PARSE_OPTIONS: ParserOptions = {
+export type BabelNode = {
+  type?: string;
+  [key: string]: any;
+};
+
+export const AST_PARSE_OPTIONS: ParserOptions = {
   sourceType: "module",
   plugins: [
     "typescript",
@@ -16,54 +20,20 @@ const AST_PARSE_OPTIONS: ParserOptions = {
   ],
 };
 
-export interface InjectPagePathOptions {
-  pluginId?: string;
-}
+/**
+ * Page lifecycle hook names that are dispatched by the runtime.
+ * These are excluded from handler metadata and bridge generation.
+ */
+export const PAGE_LIFECYCLE_NAMES = new Set([
+  "onLoad",
+  "onShow",
+  "onReady",
+  "onHide",
+  "onUnload",
+  "onPullDownRefresh",
+]);
 
-export const injectPagePath = (
-  logicContent: string,
-  pagePath: string,
-  options?: InjectPagePathOptions,
-): string => {
-  // Add plugin/<pluginId>/ prefix for plugin mode
-  const finalPath = options?.pluginId
-    ? `plugin/${options.pluginId}/${pagePath}`
-    : pagePath;
-  const ast = parse(logicContent, AST_PARSE_OPTIONS);
-  let modified = false;
-
-  traverseAst(ast.program as BabelNode, (node) => {
-    if (!isPageCall(node)) {
-      return;
-    }
-
-    const args: BabelNode[] = node.arguments ?? [];
-    if (args.length >= 2) {
-      return;
-    }
-
-    const firstArg = unwrapExpression(args[0]);
-    if (!firstArg || firstArg.type !== "ObjectExpression") {
-      return;
-    }
-
-    node.arguments = [...args, stringLiteral(finalPath)];
-    modified = true;
-  });
-
-  if (!modified) {
-    return logicContent;
-  }
-
-  return generate(ast, { retainLines: true }).code;
-};
-
-type BabelNode = {
-  type?: string;
-  [key: string]: any;
-};
-
-const traverseAst = (
+export const traverseAst = (
   node: BabelNode | null | undefined,
   visitor: (node: BabelNode) => void,
 ): void => {
@@ -91,7 +61,7 @@ const traverseAst = (
   }
 };
 
-const isPageCall = (node: BabelNode): node is BabelNode => {
+export const isPageCall = (node: BabelNode): boolean => {
   if (node.type !== "CallExpression") {
     return false;
   }
@@ -101,10 +71,14 @@ const isPageCall = (node: BabelNode): node is BabelNode => {
   );
 };
 
-const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
+export const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
   let current: BabelNode | null = node ?? null;
 
   while (current) {
+    if (current.type === "SpreadElement") {
+      return null;
+    }
+
     if (
       current.type === "TSAsExpression" ||
       current.type === "TSTypeAssertion" ||
@@ -126,7 +100,10 @@ const unwrapExpression = (node?: BabelNode | null): BabelNode | null => {
   return current;
 };
 
-const stringLiteral = (value: string): BabelNode => ({
-  type: "StringLiteral",
-  value,
-});
+export const getPropertyName = (key?: BabelNode | null): string | null => {
+  if (!key) return null;
+  if (key.type === "Identifier") return key.name as string;
+  if (key.type === "StringLiteral") return key.value as string;
+  if (key.type === "NumericLiteral") return String(key.value);
+  return null;
+};

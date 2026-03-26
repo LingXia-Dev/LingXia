@@ -1,3 +1,4 @@
+import * as path from "path";
 import { FrameworkProcessor } from "./base.js";
 import { ReactProcessor } from "./react.js";
 import { VueProcessor } from "./vue.js";
@@ -78,6 +79,3 @@ export class FrameworkFactory {
     return this.processors.has(framework.toLowerCase());
   }
 }
-
-// Import path for detectFramework method
-import * as path from "path";

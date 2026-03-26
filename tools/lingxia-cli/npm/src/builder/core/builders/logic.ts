@@ -3,7 +3,10 @@ import path from "path";
 import { FileUtils } from "../utils/file.js";
 import { ConfigManager } from "../config.js";
 import type { BuildOptions } from "../../types/index.js";
-import { injectPagePath } from "./page-path-injector.js";
+import {
+  transformAppRegistration,
+  transformPageRegistration,
+} from "./logic-registration-transformer.js";
 import {
   DEFAULT_SOURCE_DIRS,
   resolveSourceDirs,
@@ -122,12 +125,9 @@ export class LogicBuilder {
     this.fileUtils.cleanDirectory(buildDir);
     await this.copySourceDirectories(buildDir);
 
-    // Create entry file that imports all logic files
+    // Create entry file that imports all transformed logic files
     const entryContent = this.createLogicEntry(logicFiles, pages);
     fs.writeFileSync(path.join(buildDir, "main.js"), entryContent);
-
-    // Copy lxapp file so entry import resolves correctly
-    this.copyLxappFile(logicFiles, buildDir);
 
     // Build with bundled Vite
     await this.runViteLogicBuild(buildDir, options);
@@ -139,7 +139,7 @@ export class LogicBuilder {
   }
 
   /**
-   * Create entry file that imports all logic files
+   * Create entry file that imports all transformed logic files
    */
   private createLogicEntry(logicFiles: string[], pages: string[]): string {
     const imports: string[] = [];
@@ -148,15 +148,14 @@ export class LogicBuilder {
       const logicFile = logicFiles[i];
       const fileName = path.basename(logicFile);
 
-      // Process the logic file to add path parameter to Page calls
+      // Process the logic file to emit explicit runtime registration calls.
       if (fileName !== "lxapp.js" && fileName !== "lxapp.ts") {
         const pagePath = this.getPagePathFromConfig(logicFile, pages);
-        const importPath = this.processLogicFileForPath(logicFile, pagePath);
+        const importPath = this.processPageLogicFile(logicFile, pagePath);
         imports.push(`import './${importPath}';`);
       } else {
-        // For lxapp files, import as-is
-        const relativePath = `./${fileName}`;
-        imports.push(`import '${relativePath}';`);
+        const importPath = this.processAppLogicFile(logicFile);
+        imports.push(`import './${importPath}';`);
       }
     }
 
@@ -164,9 +163,9 @@ export class LogicBuilder {
   }
 
   /**
-   * Process logic file to add path parameter to Page calls
+   * Transform a page logic module so runtime registration is explicit.
    */
-  private processLogicFileForPath(
+  private processPageLogicFile(
     sourceFile: string,
     pagePath: string,
   ): string {
@@ -185,7 +184,9 @@ export class LogicBuilder {
     const targetPath = path.join(destDir, targetBase);
 
     const content = fs.readFileSync(sourceFile, "utf-8");
-    const transformedContent = injectPagePath(content, pagePath, {
+    const transformedContent = transformPageRegistration({
+      logicContent: content,
+      pagePath,
       pluginId: this.pluginId,
     });
     fs.writeFileSync(targetPath, transformedContent);
@@ -194,6 +195,24 @@ export class LogicBuilder {
         ? relativeDir.split(path.sep).join("/")
         : "";
     return posixDir ? `${posixDir}/${targetBase}` : targetBase;
+  }
+
+  /**
+   * Transform lxapp.ts/js so App() becomes an explicit registration call.
+   */
+  private processAppLogicFile(sourceFile: string): string {
+    const buildDir = path.join(this.projectPath, ".lingxia", "build", "logic");
+    const ext = path.extname(sourceFile);
+    const targetBase = `${path.basename(sourceFile, ext)}_processed${ext}`;
+    const targetPath = path.join(buildDir, targetBase);
+
+    const content = fs.readFileSync(sourceFile, "utf-8");
+    const transformedContent = transformAppRegistration({
+      logicContent: content,
+    });
+    fs.writeFileSync(targetPath, transformedContent);
+
+    return targetBase;
   }
 
   /**
@@ -230,25 +249,6 @@ export class LogicBuilder {
   /**
    * Create Vite config for logic build using TemplateManager
    */
-  /**
-   * Copy lxapp.js/ts to build directory so entry import works.
-   * Other page files are referenced through their processed copies.
-   */
-  private copyLxappFile(logicFiles: string[], buildDir: string): void {
-    const lxappFile = logicFiles.find((file) => {
-      const base = path.basename(file).toLowerCase();
-      return base === "lxapp.js" || base === "lxapp.ts";
-    });
-
-    if (!lxappFile) {
-      return;
-    }
-
-    const fileName = path.basename(lxappFile);
-    const destPath = path.join(buildDir, fileName);
-    fs.copyFileSync(lxappFile, destPath);
-  }
-
   private async copySourceDirectories(buildDir: string): Promise<void> {
     for (const dir of this.sourceDirs) {
       const srcDir = path.join(this.projectPath, dir);

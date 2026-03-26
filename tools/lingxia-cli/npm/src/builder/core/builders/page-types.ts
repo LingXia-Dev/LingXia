@@ -1,32 +1,13 @@
-import { parse, type ParserOptions } from "@babel/parser";
-
-const LIFECYCLE_FUNCTIONS = new Set([
-  "onLoad",
-  "onShow",
-  "onHide",
-  "onUnload",
-  "onReady",
-  "onPullDownRefresh",
-  "onReachBottom",
-  "onShareAppMessage",
-  "onPageScroll",
-  "onTabItemTap",
-]);
-
-const AST_PARSE_OPTIONS: ParserOptions = {
-  sourceType: "module",
-  plugins: [
-    "typescript",
-    "jsx",
-    "classProperties",
-    "decorators-legacy",
-    "dynamicImport",
-    "objectRestSpread",
-    "optionalChaining",
-    "nullishCoalescingOperator",
-    "topLevelAwait",
-  ],
-};
+import { parse } from "@babel/parser";
+import {
+  type BabelNode,
+  AST_PARSE_OPTIONS,
+  PAGE_LIFECYCLE_NAMES,
+  traverseAst,
+  isPageCall,
+  unwrapExpression,
+  getPropertyName,
+} from "./ast-helpers.js";
 
 export interface TypeInfo {
   type: string; // "string" | "number" | "boolean" | "object" | "array" | "null" | "unknown"
@@ -53,16 +34,11 @@ export interface PageTypeInfo {
   methods: Record<string, MethodInfo>;
 }
 
-type BabelNode = {
-  type?: string;
-  [key: string]: unknown;
-};
-
 export function extractPageTypes(source: string): PageTypeInfo {
   const ast = parse(source, AST_PARSE_OPTIONS);
   const result: PageTypeInfo = { data: {}, methods: {} };
 
-  traverseAst(ast.program as unknown as BabelNode, (node) => {
+  traverseAst(ast.program as BabelNode, (node) => {
     if (!isPageCall(node)) return;
 
     const firstArg = unwrapExpression(node.arguments?.[0] as BabelNode | undefined);
@@ -94,7 +70,7 @@ function extractFromPageObject(node: BabelNode, result: PageTypeInfo): void {
     }
 
     // Skip lifecycle functions
-    if (LIFECYCLE_FUNCTIONS.has(name)) continue;
+    if (PAGE_LIFECYCLE_NAMES.has(name)) continue;
 
     // Extract method
     if (prop.type === "ObjectMethod") {
@@ -364,75 +340,4 @@ function extractReturnType(node: BabelNode): string | undefined {
   }
 
   return undefined;
-}
-
-// Helper functions (same as page-functions.ts)
-
-function traverseAst(
-  node: BabelNode | null | undefined,
-  visitor: (node: BabelNode) => void
-): void {
-  if (!node || typeof node.type !== "string") return;
-
-  visitor(node);
-
-  for (const value of Object.values(node)) {
-    if (!value) continue;
-
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        if (child && typeof (child as BabelNode).type === "string") {
-          traverseAst(child as BabelNode, visitor);
-        }
-      }
-      continue;
-    }
-
-    if (value && typeof (value as BabelNode).type === "string") {
-      traverseAst(value as BabelNode, visitor);
-    }
-  }
-}
-
-function isPageCall(node: BabelNode): node is BabelNode {
-  if (node.type !== "CallExpression") return false;
-  const callee = node.callee as BabelNode | undefined;
-  return Boolean(callee && callee.type === "Identifier" && callee.name === "Page");
-}
-
-function unwrapExpression(node?: BabelNode | null): BabelNode | null {
-  let current: BabelNode | null = node ?? null;
-
-  while (current) {
-    if (current.type === "SpreadElement") return null;
-
-    if (
-      current.type === "TSAsExpression" ||
-      current.type === "TSTypeAssertion" ||
-      current.type === "TSNonNullExpression" ||
-      current.type === "TypeCastExpression"
-    ) {
-      current = current.expression as BabelNode;
-      continue;
-    }
-
-    if (current.type === "ParenthesizedExpression") {
-      current = current.expression as BabelNode;
-      continue;
-    }
-
-    break;
-  }
-
-  return current;
-}
-
-function getPropertyName(key?: BabelNode | null): string | null {
-  if (!key) return null;
-
-  if (key.type === "Identifier") return key.name as string;
-  if (key.type === "StringLiteral") return key.value as string;
-  if (key.type === "NumericLiteral") return String(key.value);
-
-  return null;
 }

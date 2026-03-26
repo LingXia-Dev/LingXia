@@ -5,7 +5,7 @@ import { FrameworkProcessor } from "./base.js";
 import type { Page, PageFiles } from "../../types/index.js";
 import { getPageTitle } from "../utils/page.js";
 import { FileUtils } from "../utils/file.js";
-import { TemplateManager, type PageBridgeMethod } from "../template.js";
+import type { PageBridgeMethod } from "../template.js";
 
 /**
  * Vue framework processor
@@ -13,12 +13,10 @@ import { TemplateManager, type PageBridgeMethod } from "../template.js";
  */
 export class VueProcessor extends FrameworkProcessor {
   private fileUtils: FileUtils;
-  private templateManager: TemplateManager;
 
   constructor(projectPath: string, outputDir: string) {
     super(projectPath, outputDir);
     this.fileUtils = new FileUtils();
-    this.templateManager = new TemplateManager();
   }
 
   getFrameworkName(): string {
@@ -100,13 +98,15 @@ export class VueProcessor extends FrameworkProcessor {
     );
     htmlContent = this.injectRuntimeScript(htmlContent);
 
-    // Inject bridge script BEFORE the module script, not after
-    // This ensures window.__PAGE_FUNCTIONS and window[funcName] are defined
-    // when Vue component setup() calls useLingXia()
-    htmlContent = htmlContent.replace(
-      '<script type="module"',
-      `<script>\n${bridgeScript}\n</script>\n<script type="module"`,
-    );
+    // Bridge functions are bundled in the module via __page_bridge__ import,
+    // which sets window.__pageBridge before app.mount(). Inject minimal
+    // metadata as a non-module script for any early-access needs.
+    if (bridgeScript) {
+      htmlContent = htmlContent.replace(
+        '<script type="module"',
+        `<script>\n${bridgeScript}\n</script>\n<script type="module"`,
+      );
+    }
 
     // Write final component file
     const componentOutputPath = path.join(pageOutputDir, `${baseName}.vue`);
@@ -129,15 +129,13 @@ export class VueProcessor extends FrameworkProcessor {
       fs.writeFileSync(indexHtmlPath, indexHtml);
     }
 
+    const bridgeImport = this.writeBridgeModule(buildDir, pageFunctions);
+
     // Process main.js
     const mainJsPath = path.join(buildDir, "main.js");
     if (fs.existsSync(mainJsPath)) {
       let mainJs = fs.readFileSync(mainJsPath, "utf-8");
-
-      // Inject page functions
-      const bridgeScript =
-        this.templateManager.generateFunctionBridge(pageFunctions);
-      mainJs = mainJs.replace("/* {{PAGE_FUNCTIONS}} */", bridgeScript);
+      mainJs = mainJs.replace("/* {{PAGE_BRIDGE_IMPORT}} */", bridgeImport);
 
       const appImport = `import App from '${this.resolveSourceImportPath(buildDir, pageFiles.view.path)}';`;
       if (mainJs.includes("/* {{APP_IMPORT}} */")) {

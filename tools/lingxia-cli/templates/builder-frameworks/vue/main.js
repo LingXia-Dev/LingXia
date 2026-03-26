@@ -1,8 +1,6 @@
 import { createApp } from "vue";
 /* {{APP_IMPORT}} */
-
-// Page functions injection
-/* {{PAGE_FUNCTIONS}} */
+/* {{PAGE_BRIDGE_IMPORT}} */
 
 // Create and configure Vue app
 const app = createApp(App);

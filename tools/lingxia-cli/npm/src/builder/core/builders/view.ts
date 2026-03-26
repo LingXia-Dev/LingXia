@@ -387,16 +387,19 @@ export class ViewBuilder {
       const isViewScript = /^\/view\/.+\.js$/.test(src);
       const isLibScript = /^\/lib\/.+\.js$/.test(src);
       const isLocalScript = /^[^/]+\.js$/.test(src); // Same directory, no path separator
+      const isInternalSchemeScript = /^(?:lingxia|lx):\/\//.test(src);
 
-      if (!isViewScript && !isLibScript && !isLocalScript) {
+      if (!isViewScript && !isLibScript && !isLocalScript && !isInternalSchemeScript) {
         throw new Error(
           `Invalid script reference in ${pagePath}:\n` +
           `  <script src="${src}">\n\n` +
           `HTML pages can only reference:\n` +
+          `  - lingxia://* or lx://*\n` +
           `  - /view/*.js (shared components)\n` +
           `  - /lib/*.js (libraries)\n` +
           `  - <name>.js (page-local scripts in same directory)\n\n` +
           `Example:\n` +
+          `  <script src="lingxia://lxapp/pages/home/client.js"></script>\n` +
           `  <script src="/view/components.js"></script>\n` +
           `  <script src="/lib/utils.js"></script>\n` +
           `  <script src="view.js"></script>`

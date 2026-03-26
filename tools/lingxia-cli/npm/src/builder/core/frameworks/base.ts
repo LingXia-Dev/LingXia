@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { Page, PageFiles } from "../../types/index.js";
 import { getFrameworkTemplates } from "../framework-templates.js";
-import type { PageBridgeMethod } from "../template.js";
+import { TemplateManager, type PageBridgeMethod } from "../template.js";
 
 /**
  * Abstract base class for framework processors
@@ -12,7 +12,7 @@ export abstract class FrameworkProcessor {
   protected projectPath: string;
   protected outputDir: string;
 
-  constructor(projectPath: string, outputDir: string, _templatesDir?: string) {
+  constructor(projectPath: string, outputDir: string) {
     this.projectPath = projectPath;
     this.outputDir = outputDir;
   }
@@ -87,6 +87,23 @@ export abstract class FrameworkProcessor {
       path.join(buildDir, templates.mainEntryFilename),
       templates.mainEntry,
     );
+  }
+
+  /**
+   * Write __page_bridge__.js module and return the import statement
+   * to replace into the main entry file.
+   */
+  protected writeBridgeModule(
+    buildDir: string,
+    pageFunctions: PageBridgeMethod[],
+  ): string {
+    if (pageFunctions.length > 0) {
+      const tm = new TemplateManager();
+      const bridgeModulePath = path.join(buildDir, "__page_bridge__.js");
+      fs.writeFileSync(bridgeModulePath, tm.generatePageBridgeModule(pageFunctions));
+      return `import * as __pageBridge from './__page_bridge__.js';\nwindow.__pageBridge = { ...__pageBridge };`;
+    }
+    return `window.__pageBridge = { __names: [] };`;
   }
 
   protected normalizeAssetDir(dir?: string): string {
