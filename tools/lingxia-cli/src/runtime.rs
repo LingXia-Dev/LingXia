@@ -7,9 +7,8 @@ use std::io::Cursor;
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
-pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/core";
+pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/bridge";
 pub(crate) const DEFAULT_TYPES_PACKAGE: &str = "@lingxia/types";
-pub(crate) const DEFAULT_COMPONENTS_PACKAGE: &str = "@lingxia/components";
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,9 +35,8 @@ pub(crate) struct ResolvedRuntime {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ScaffoldPackageVersions {
-    pub core: String,
+    pub bridge: String,
     pub types: String,
-    pub components: String,
 }
 
 pub(crate) fn target_from_build_targets(build_targets: &[String]) -> RuntimeEcmaTarget {
@@ -80,9 +78,8 @@ pub(crate) fn ensure_npm_package_version_exists(package: &str, version: &str) ->
 
 pub(crate) fn fetch_latest_scaffold_versions() -> Result<ScaffoldPackageVersions> {
     Ok(ScaffoldPackageVersions {
-        core: fetch_latest_npm_package_version(DEFAULT_RUNTIME_PACKAGE)?,
+        bridge: fetch_latest_npm_package_version(DEFAULT_RUNTIME_PACKAGE)?,
         types: fetch_latest_npm_package_version(DEFAULT_TYPES_PACKAGE)?,
-        components: fetch_latest_npm_package_version(DEFAULT_COMPONENTS_PACKAGE)?,
     })
 }
 

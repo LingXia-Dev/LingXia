@@ -89,14 +89,13 @@ pub fn execute(
     let scaffold_versions = runtime::fetch_latest_scaffold_versions()
         .map_err(|e| anyhow!("Failed to fetch latest scaffold package versions: {e}"))?;
     println!(
-        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Runtime: {}, Types: {}, Components: {}",
+        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Bridge: {}, Types: {}",
         "✓".green(),
         versions.sdk.cyan(),
         versions.rong.cyan(),
         versions.lingxia_crate.cyan(),
-        scaffold_versions.core.cyan(),
+        scaffold_versions.bridge.cyan(),
         scaffold_versions.types.cyan(),
-        scaffold_versions.components.cyan()
     );
     println!();
 
@@ -113,9 +112,8 @@ pub fn execute(
             &product_name,
             &framework,
             &versions,
-            &scaffold_versions.core,
+            &scaffold_versions.bridge,
             &scaffold_versions.types,
-            &scaffold_versions.components,
         )?;
 
         println!();
@@ -176,11 +174,10 @@ pub fn execute(
         &lxapp_dir_name,
         &lxapp_framework,
         &versions,
-        &scaffold_versions.core,
+        &scaffold_versions.bridge,
         &scaffold_versions.types,
-        &scaffold_versions.components,
     )?;
-    generate_config_file(&config, &lxapp_info, &scaffold_versions.core)?;
+    generate_config_file(&config, &lxapp_info, &scaffold_versions.bridge)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());
