@@ -24,6 +24,8 @@ lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
 log = { workspace = true }
+lingxia-host-macros = { workspace = true }
+paste = "1.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22.1"
