@@ -99,6 +99,10 @@ export interface StreamHandle<TData = unknown, TResult = unknown> {
   readonly result: Promise<TResult>;
 }
 
+export interface HostApi {
+  [namespace: string]: unknown;
+}
+
 export interface Subscription<TData = unknown> {
   on(event: 'data', listener: (payload: TData) => void): this;
   on(event: 'error', listener: (error: LxBridgeError) => void): this;
@@ -119,7 +123,7 @@ declare global {
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
-    __PAGE_FUNCTIONS?: string[];
+    __pageBridge?: { __names: string[]; [key: string]: unknown };
     __LingXiaRecvMessage?: (message: string) => void;
     LingXiaBridge?: LingXiaBridgeInterface;
     LingXiaProxy?: {
@@ -130,7 +134,7 @@ declare global {
     NativeComponentBridge?: {
       postMessage: (message: string) => void;
     };
-    host?: Record<string, (...args: unknown[]) => Promise<unknown>>;
+    host?: HostApi;
     webkit?: {
       messageHandlers: {
         [key: string]: {

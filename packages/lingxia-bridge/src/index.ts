@@ -15,6 +15,7 @@ export type {
   ChannelEventName,
   DataSubscriber,
   ErrorInfo,
+  HostApi,
   LingXiaBridgeInterface,
   LxBridgeError,
   LxMethod,

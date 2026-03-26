@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelOpenOptions,
   DataSubscriber,
+  HostApi,
   LingXiaBridgeInterface,
   LxBridgeError,
   LxMethod,
@@ -40,6 +41,30 @@ const JS_INTERFACE_TYPE = "jsinterface";
 const OUTBOX_LIMIT = 256;
 
 const debugFlags = { data: false, proto: false, all: false };
+const earlyNativeMessages: string[] = [];
+
+function installEarlyReceiver(): void {
+  if (typeof window === "undefined") return;
+  if (typeof window[GLOBAL_RECEIVER_NAME] === "function") return;
+  window[GLOBAL_RECEIVER_NAME] = (message: string): void => {
+    earlyNativeMessages.push(message);
+  };
+}
+
+function activateReceiver(receiver: (message: string) => void): void {
+  if (typeof window === "undefined") return;
+  window[GLOBAL_RECEIVER_NAME] = receiver;
+  if (earlyNativeMessages.length === 0) return;
+
+  const queued = earlyNativeMessages.splice(0, earlyNativeMessages.length);
+  for (const message of queued) {
+    try {
+      receiver(message);
+    } catch (err) {
+      warn("Failed to replay queued native message:", err);
+    }
+  }
+}
 
 function isDebugEnabled(flag: keyof typeof debugFlags): boolean {
   return debugFlags.all || debugFlags[flag];
@@ -68,6 +93,14 @@ function safeStringify(obj: unknown, space?: number): string {
     },
     space,
   );
+}
+
+function stringifyForNative(obj: unknown): string {
+  try {
+    return JSON.stringify(obj);
+  } catch {
+    return safeStringify(obj);
+  }
 }
 
 function deepCopy<T>(data: T): T {
@@ -110,6 +143,8 @@ function unknownToError(err: unknown, fallbackMsg: string): LxBridgeError {
 }
 
 const communicationMethod = getCommunicationMethod();
+
+installEarlyReceiver();
 
 // Transport
 let messagePort: MessagePort | null = null;
@@ -190,7 +225,7 @@ function postToNative(message: unknown): void {
       window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(message);
       return;
     }
-    const messageString = safeStringify(message);
+    const messageString = stringifyForNative(message);
     if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
       messagePort.postMessage(messageString);
       return;
@@ -225,7 +260,7 @@ type HelloAck = {
   protocol: number;
   sessionId: string;
 };
-type Ready = { v: 2; kind: "ready"; sessionId: string };
+type Ready = { v: 2; kind: "ready"; sessionId: string; hostMethods?: Record<string, string> };
 type Req = {
   v: 2;
   kind: "req";
@@ -352,6 +387,10 @@ let helloSent = false;
 let handshakeRetryCount = 0;
 let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Host method schema — populated from handshake `Ready` message.
+// Maps "namespace.method" → "call" | "stream".
+const hostMethodKinds: Record<string, string> = {};
+
 // Request tracking
 let requestCounter = 0;
 type BridgeListenerBuckets = {
@@ -448,6 +487,10 @@ function createStreamHandle(
   };
 
   return handle;
+}
+
+function callHost(method: string, params?: unknown): Promise<unknown> {
+  return LingXiaBridge.call(`host.${method}`, params, { cap: "host" });
 }
 
 type InternalSubscription = Subscription & {
@@ -736,6 +779,13 @@ function rejectPendingOperation(id: string, err: LxBridgeError): void {
 function armRequestTimer(reqId: string): void {
   const info = pendingReq.get(reqId);
   if (!info) return;
+  if (!Number.isFinite(info.timeoutMs) || info.timeoutMs <= 0) {
+    if (info.timerId !== null) {
+      clearTimeout(info.timerId);
+      info.timerId = null;
+    }
+    return;
+  }
   if (info.timerId !== null) clearTimeout(info.timerId);
   info.timerId = setTimeout(() => {
     if (!pendingReq.has(reqId)) return;
@@ -1074,7 +1124,12 @@ function handleIncomingMessage(msg: unknown): void {
       clearHandshakeTimer();
       handshakeDone = true;
       handshakeRetryCount = 0;
-      if (isDebugEnabled("proto")) log("Handshake complete");
+      if (message.hostMethods) {
+        for (const [k, v] of Object.entries(message.hostMethods)) {
+          hostMethodKinds[k] = v;
+        }
+      }
+      if (isDebugEnabled("proto")) log("Handshake complete, hostMethods:", Object.keys(hostMethodKinds).length);
       flushOutbox();
       return;
 
@@ -1314,7 +1369,7 @@ function postNativeComponentMessage(message: NativeComponentMessage): void {
       return;
     }
     if (window.NativeComponentBridge?.postMessage) {
-      window.NativeComponentBridge.postMessage(safeStringify(message));
+      window.NativeComponentBridge.postMessage(stringifyForNative(message));
       return;
     }
   } catch (e) {
@@ -1694,23 +1749,49 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 };
 
-export const host: Record<string, (...args: unknown[]) => Promise<unknown>> =
-  new Proxy(
-    {},
-    {
-      get(_target, prop: string) {
-        return (...args: unknown[]): Promise<unknown> => {
-          const payload =
-            args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
-          return LingXiaBridge.call(`host.${prop}`, payload, { cap: "host" });
-        };
-      },
+function createHostPathProxy(path: string[]): unknown {
+  const callable = (): void => {};
+  return new Proxy(callable, {
+    apply(_target, _thisArg, args: unknown[]) {
+      const method = path.join(".");
+      const payload =
+        args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
+      // Always use callStream — works for both unary and stream host handlers.
+      // Unary handlers return a single `res`; stream handlers emit `event`s then `res`.
+      // The returned handle is also thenable so `await host.x.y()` just works.
+      const handle = LingXiaBridge.callStream(`host.${method}`, payload, { cap: "host", timeoutMs: 0 });
+      // Make thenable: `await host.x.y()` resolves to the final result,
+      // while `host.x.y().on('data', ...)` works for streams.
+      const result = handle.result;
+      return new Proxy(handle, {
+        get(target, prop) {
+          if (prop === "then") return result.then.bind(result);
+          if (prop === "catch") return result.catch.bind(result);
+          const val = (target as unknown as Record<string | symbol, unknown>)[prop];
+          return typeof val === "function" ? (val as Function).bind(target) : val;
+        },
+      });
     },
-  );
+    get(_target, prop) {
+      if (prop === "then") return undefined;
+      if (typeof prop !== "string") return undefined;
+      return createHostPathProxy([...path, prop]);
+    },
+  });
+}
+
+export const host: HostApi = new Proxy({} as HostApi, {
+  get(_target, prop) {
+    if (typeof prop !== "string") {
+      return undefined;
+    }
+    return createHostPathProxy([prop]);
+  },
+}) as HostApi;
 
 export function initBridge(): void {
   log(`Method: ${communicationMethod}`);
-  window[GLOBAL_RECEIVER_NAME] = LingXiaBridge._receiveEvaluateMessage;
+  activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 
   if (communicationMethod === MESSAGE_PORT_TYPE) {
     installMessagePortInitListener();
