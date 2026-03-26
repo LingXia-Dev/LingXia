@@ -14,7 +14,7 @@ Usage:
 Commands:
   doctor              Show key versions and release script locations
   crates              Release crates.io packages
-  npm                 Release npm packages (@lingxia/core/types/components)
+  npm                 Release npm packages (@lingxia/bridge/elements/react/vue/types)
   cli                 Release @lingxia/cli packages
   sdk                 Build/package SDK release artifacts
   all [--publish]     Run crates -> npm -> cli -> sdk in order
@@ -40,19 +40,23 @@ workspace_version() {
 }
 
 doctor() {
-  local ws_v cli_v core_v types_v components_v
+  local ws_v cli_v bridge_v elements_v react_v vue_v types_v
   ws_v="$(workspace_version)"
   cli_v="$(node -p "require('$ROOT_DIR/tools/lingxia-cli/npm/package.json').version" 2>/dev/null || echo "N/A")"
-  core_v="$(node -p "require('$ROOT_DIR/packages/lingxia-core/package.json').version" 2>/dev/null || echo "N/A")"
+  bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
+  elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
+  react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
+  vue_v="$(node -p "require('$ROOT_DIR/packages/lingxia-vue/package.json').version" 2>/dev/null || echo "N/A")"
   types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
-  components_v="$(node -p "require('$ROOT_DIR/packages/lingxia-components/package.json').version" 2>/dev/null || echo "N/A")"
 
   cat <<EOF
-Workspace version: $ws_v
-CLI npm version:   $cli_v
-NPM core version:  $core_v
-NPM types version: $types_v
-NPM comp version:  $components_v
+Workspace version:    $ws_v
+CLI npm version:      $cli_v
+NPM bridge version:   $bridge_v
+NPM elements version: $elements_v
+NPM react version:    $react_v
+NPM vue version:      $vue_v
+NPM types version:    $types_v
 
 Scripts:
   crates: scripts/release/crates.sh

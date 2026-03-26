@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package core|types|components|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|types|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -39,18 +39,22 @@ if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
 fi
 
 case "$PACKAGE_SET" in
-  core) targets=("core") ;;
+  bridge) targets=("bridge") ;;
+  elements) targets=("elements") ;;
+  react) targets=("react") ;;
+  vue) targets=("vue") ;;
   types) targets=("types") ;;
-  components) targets=("components") ;;
-  all) targets=("core" "types" "components") ;;
+  all) targets=("bridge" "elements" "react" "vue" "types") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
 pkg_dir() {
   case "$1" in
-    core) echo "$ROOT_DIR/packages/lingxia-core" ;;
+    bridge) echo "$ROOT_DIR/packages/lingxia-bridge" ;;
+    elements) echo "$ROOT_DIR/packages/lingxia-elements" ;;
+    react) echo "$ROOT_DIR/packages/lingxia-react" ;;
+    vue) echo "$ROOT_DIR/packages/lingxia-vue" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
-    components) echo "$ROOT_DIR/packages/lingxia-components" ;;
     *) return 1 ;;
   esac
 }
