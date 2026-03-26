@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "jsx": "preserve",
+    "jsx": "{{JSX_MODE}}",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -18,6 +18,6 @@
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "**/*.vue", ".lingxia/types/**/*.d.ts"],
+  "include": [{{TSCONFIG_INCLUDE}}],
   "exclude": ["node_modules", "dist"]
 }

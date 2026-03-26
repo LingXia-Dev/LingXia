@@ -11,7 +11,7 @@ body {
   user-select: none;
   -webkit-touch-callout: none;
 }
-#root { min-height: 100%; }
+{{APP_ROOT_SELECTOR}} { min-height: 100%; }
 input, button { font: inherit; }
 button:disabled { opacity: 0.5; }
 

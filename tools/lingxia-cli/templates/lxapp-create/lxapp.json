@@ -3,6 +3,6 @@
   "appName": "__APP_DISPLAY_NAME__",
   "version": "0.0.1",
   "pages": [
-    "pages/home/index.vue"
+    "pages/home/index.{{PAGE_EXT}}"
   ]
 }

@@ -1,28 +1,26 @@
 {
-  "name": "__APP_PACKAGE_NAME__",
+  "name": "{{APP_PACKAGE_NAME}}",
   "version": "0.1.0",
-  "description": "A LingXia mini app powered by Vue",
+  "description": "A LingXia mini app powered by {{FRAMEWORK_DISPLAY}}",
   "type": "module",
   "scripts": {
     "dev": "lingxia build",
     "build": "lingxia build --release",
     "release": "lingxia build --release --package"
   },
-  "keywords": ["lingxia", "miniapp", "vue"],
+  "keywords": ["lingxia", "miniapp", "{{FRAMEWORK}}"],
   "author": "",
   "license": "MIT",
   "lingxia": {
-    "framework": "vue"
+    "framework": "{{FRAMEWORK}}"
   },
   "dependencies": {
-    "@lingxia/components": "^{{LINGXIA_COMPONENTS_VERSION}}",
+    "{{FRAMEWORK_PKG}}": "^{{LINGXIA_BRIDGE_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
-    "@lingxia/core": "^{{LINGXIA_CORE_VERSION}}",
-    "vue": "^3.5.0"
+    {{FRAMEWORK_RUNTIME_DEPS}}
   },
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "vue-tsc": "^3.2.4"
+    {{FRAMEWORK_DEV_DEPS_PREFIX}}"typescript": "^5.9.3"
   }
 }
