@@ -46,9 +46,9 @@ pub(crate) struct DownloadTask {
 #[serde(rename_all = "snake_case")]
 pub enum DownloadOwnerKind {
     #[default]
-    Unknown,
+    #[serde(alias = "unknown")]
     Browser,
-    LxDownloadFile,
+    LxApp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

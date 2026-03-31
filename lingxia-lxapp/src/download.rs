@@ -430,10 +430,6 @@ impl DownloadsStore {
 
     fn reconcile_record(&self, mut record: DownloadRecord) -> Result<DownloadRecord, LxAppError> {
         let mut changed = reconcile_download_record(&mut record);
-        if record.owner.kind == DownloadOwnerKind::Unknown && !record.tab_id.trim().is_empty() {
-            record.owner = browser_download_owner(&record.tab_id);
-            changed = true;
-        }
         let retry = self.get_request_context(&record.task_id).is_some()
             && download_should_allow_retry(&record);
         if record.retry != retry {
