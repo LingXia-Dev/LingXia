@@ -70,13 +70,9 @@ internal class NativeComponentManager(
     private val rectSyncRetries = mutableMapOf<String, Int>()
     private val rectSyncRetryRunnables = mutableMapOf<String, Runnable>()
     private val focusVisibilityRunnables = mutableMapOf<String, MutableList<Runnable>>()
-    private val textInputAdjustPositionRunnables = mutableMapOf<String, MutableList<Runnable>>()
     private val pageInactiveStopRunnables = mutableMapOf<String, Runnable>()
     private val componentPlaybackIntent = mutableMapOf<String, Boolean>()
     private val componentsPendingAutoResume = mutableSetOf<String>()
-    private var focusedTextInputComponentId: String? = null
-    private var activeTextInputViewportComponentId: String? = null
-    private var activeTextInputViewportTranslationY: Float = 0f
 
     fun register(type: String, factory: LxNativeComponentFactory) {
         factories[type] = factory
@@ -161,12 +157,6 @@ internal class NativeComponentManager(
         parsePageFuncBindings(props)?.let { componentPageFuncBindings[id] = it }
         parseDataset(props)?.let { componentDataset[id] = it }
         componentAdjustPosition[id] = parseAdjustPosition(props)
-        if (type == "input.native") {
-            Log.d(
-                logTag,
-                "mount input id=$id type=${props["type"]} password=${props["password"]} adjustPosition=${componentAdjustPosition[id]}"
-            )
-        }
         componentContentRects[id] = contentRect
         componentScreenRects[id] = screenRect
         pageComponents.getOrPut(pageId) { mutableSetOf() }.add(id)
@@ -199,9 +189,6 @@ internal class NativeComponentManager(
                 val screenRect = componentScreenRects.getOrPut(id) { RectF() }
                 updateScreenRect(screenRect, newContentRect)
                 component.setFrame(screenRect)
-                if (focusedTextInputComponentId == id) {
-                    applyTextInputAdjustPosition(id)
-                }
             }
         }
 
@@ -224,12 +211,6 @@ internal class NativeComponentManager(
             }
             if ("adjustPosition" in props || "adjust-position" in props) {
                 componentAdjustPosition[id] = parseAdjustPosition(props)
-            }
-            if (componentType[id] == "input.native" && ("type" in props || "password" in props)) {
-                Log.d(
-                    logTag,
-                    "update input id=$id type=${props["type"]} password=${props["password"]} adjustPosition=${componentAdjustPosition[id]}"
-                )
             }
             component.update(props)
         }
@@ -254,7 +235,6 @@ internal class NativeComponentManager(
     private fun handleBlur(params: Map<String, Any?>) {
         val id = params["id"] as? String ?: return
         focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
-        clearTextInputAdjustPosition(id)
         components[id]?.blur()
     }
 
@@ -281,8 +261,6 @@ internal class NativeComponentManager(
         pageInactiveStopRunnables.clear()
         focusVisibilityRunnables.values.flatten().forEach { mainHandler.removeCallbacks(it) }
         focusVisibilityRunnables.clear()
-        cancelAllTextInputAdjustPositionTasks()
-        clearTextInputViewportTranslation()
         componentsPendingAutoResume.clear()
         componentPlaybackIntent.clear()
         val allIds = components.keys.toList()
@@ -314,9 +292,6 @@ internal class NativeComponentManager(
             )
             component.setFrame(screenRect)
         }
-        focusedTextInputComponentId?.let { componentId ->
-            applyTextInputAdjustPosition(componentId)
-        }
     }
 
     /**
@@ -335,9 +310,6 @@ internal class NativeComponentManager(
         val screenRect = componentScreenRects.getOrPut(componentId) { RectF() }
         updateScreenRect(screenRect, aligned)
         component.setFrame(screenRect)
-        if (focusedTextInputComponentId == componentId) {
-            applyTextInputAdjustPosition(componentId)
-        }
         return true
     }
 
@@ -454,7 +426,6 @@ internal class NativeComponentManager(
         payload["componentId"] = componentId
         componentPage[componentId]?.let { payload["pageId"] = it }
         val eventName = payload["event"] as? String
-        handleTextInputAdjustPositionEvent(componentId, eventName)
         if (eventName == "focus") {
             scheduleEnsureFocusedComponentVisible(componentId)
         }
@@ -579,135 +550,6 @@ internal class NativeComponentManager(
         }
     }
 
-    private fun isTextInputComponent(componentId: String): Boolean {
-        val type = componentType[componentId]
-        return type == "input.native" || type == "textarea.native"
-    }
-
-    private fun handleTextInputAdjustPositionEvent(componentId: String, eventName: String?) {
-        if (!isTextInputComponent(componentId)) return
-        when (eventName) {
-            "focus" -> {
-                focusedTextInputComponentId = componentId
-                scheduleTextInputAdjustPosition(componentId)
-            }
-            "blur" -> clearTextInputAdjustPosition(componentId)
-        }
-    }
-
-    private fun scheduleTextInputAdjustPosition(componentId: String) {
-        if (componentAdjustPosition[componentId] == false) {
-            clearTextInputAdjustPosition(componentId)
-            return
-        }
-        cancelAllTextInputAdjustPositionTasks()
-        val tasks = mutableListOf<Runnable>()
-        longArrayOf(0L, 80L, 160L, 260L, 420L).forEach { delay ->
-            val task = Runnable {
-                applyTextInputAdjustPosition(componentId)
-            }
-            tasks.add(task)
-            if (delay == 0L) {
-                mainHandler.post(task)
-            } else {
-                mainHandler.postDelayed(task, delay)
-            }
-        }
-        textInputAdjustPositionRunnables[componentId] = tasks
-    }
-
-    private fun cancelAllTextInputAdjustPositionTasks() {
-        textInputAdjustPositionRunnables.values.flatten().forEach { mainHandler.removeCallbacks(it) }
-        textInputAdjustPositionRunnables.clear()
-    }
-
-    private fun clearTextInputAdjustPosition(componentId: String? = null) {
-        if (componentId == null) {
-            cancelAllTextInputAdjustPositionTasks()
-            focusedTextInputComponentId = null
-            clearTextInputViewportTranslation()
-            return
-        }
-        textInputAdjustPositionRunnables.remove(componentId)?.forEach { mainHandler.removeCallbacks(it) }
-        if (focusedTextInputComponentId == componentId) {
-            focusedTextInputComponentId = null
-        }
-        if (activeTextInputViewportComponentId == componentId) {
-            clearTextInputViewportTranslation()
-        }
-    }
-
-    private fun applyTextInputAdjustPosition(componentId: String) {
-        if (componentAdjustPosition[componentId] == false) {
-            clearTextInputAdjustPosition(componentId)
-            return
-        }
-        val webView = webViewRef?.get() ?: return
-        val host = hostViewRef.get() ?: return
-        val contentRect = componentContentRects[componentId] ?: return
-
-        val rootInsets = ViewCompat.getRootWindowInsets(host)
-        val imeBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
-        val navBottom = rootInsets?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
-        val keyboardHeight = (imeBottom - navBottom).coerceAtLeast(0).toFloat()
-        if (keyboardHeight <= 0f) {
-            if (activeTextInputViewportComponentId == componentId) {
-                clearTextInputViewportTranslation()
-            }
-            return
-        }
-
-        val viewportHeight = webView.height.toFloat()
-        if (viewportHeight <= 0f) return
-
-        val scrollY = webView.scrollY.toFloat()
-        val screenTop = contentRect.top - scrollY
-        val screenBottom = contentRect.bottom - scrollY
-        val topSafe = 12f * density
-        val bottomSafe = 24f * density
-        val visibleBottom = (viewportHeight - keyboardHeight - bottomSafe).coerceAtLeast(topSafe)
-
-        var translationY = 0f
-        if (screenBottom > visibleBottom) {
-            translationY = visibleBottom - screenBottom
-        }
-        val maxUpwardTranslation = topSafe - screenTop
-        if (translationY < maxUpwardTranslation) {
-            translationY = maxUpwardTranslation
-        }
-        if (translationY > 0f) {
-            translationY = 0f
-        }
-
-        setTextInputViewportTranslation(componentId, translationY)
-    }
-
-    private fun setTextInputViewportTranslation(componentId: String, translationY: Float) {
-        val webView = webViewRef?.get()
-        val host = hostViewRef.get()
-        if (webView == null && host == null) return
-        val nextTranslationY = if (abs(translationY) < 0.5f) 0f else translationY
-        val sameTranslation = abs(activeTextInputViewportTranslationY - nextTranslationY) < 0.5f
-        val sameComponent = activeTextInputViewportComponentId == componentId
-        if (sameTranslation && sameComponent) return
-        activeTextInputViewportComponentId = componentId
-        activeTextInputViewportTranslationY = nextTranslationY
-        webView?.translationY = nextTranslationY
-        host?.translationY = nextTranslationY
-    }
-
-    private fun clearTextInputViewportTranslation() {
-        if (focusedTextInputComponentId == null &&
-            activeTextInputViewportComponentId == null &&
-            abs(activeTextInputViewportTranslationY) < 0.5f) {
-            return
-        }
-        activeTextInputViewportComponentId = focusedTextInputComponentId
-        activeTextInputViewportTranslationY = 0f
-        webViewRef?.get()?.translationY = 0f
-        hostViewRef.get()?.translationY = 0f
-    }
-
     private fun scheduleEnsureFocusedComponentVisible(componentId: String) {
         if (componentAdjustPosition[componentId] == false) {
             return
@@ -718,11 +560,6 @@ internal class NativeComponentManager(
         focusVisibilityRunnables.keys.toList().forEach { id ->
             focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
         }
-        // JS already handles keyboard avoidance for input/textarea via ensureVisibleForKeyboard.
-        // Adding a native scroll on top causes double-scrolling and position chaos.
-        val type = componentType[componentId]
-        if (type == "input.native" || type == "textarea.native") return
-
         val tasks = mutableListOf<Runnable>()
         val delays = longArrayOf(120L, 260L)
         delays.forEach { delay ->
@@ -935,7 +772,6 @@ internal class NativeComponentManager(
     }
 
     private fun pausePage(pageId: String) {
-        clearTextInputAdjustPosition()
         pageComponents[pageId]?.forEach { id ->
             components[id]?.apply {
                 if (componentPlaybackIntent[id] == true) {
@@ -988,7 +824,6 @@ internal class NativeComponentManager(
     private fun unmountComponent(id: String, pageId: String?) {
         webOverlayCoverageRestore.remove(id)
         focusVisibilityRunnables.remove(id)?.forEach { mainHandler.removeCallbacks(it) }
-        clearTextInputAdjustPosition(id)
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.remove(id)
         readyComponentIds.remove(id)

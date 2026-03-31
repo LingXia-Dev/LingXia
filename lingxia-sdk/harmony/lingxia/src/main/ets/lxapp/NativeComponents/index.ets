@@ -27,4 +27,3 @@ export {
 export { registerVideoBuilder } from './Builders/VideoBuilder';
 export { registerPickerBuilder } from './Builders/PickerBuilder';
 export { registerInputBuilder } from './Builders/InputBuilder';
-export { registerTextareaBuilder } from './Builders/TextareaBuilder';

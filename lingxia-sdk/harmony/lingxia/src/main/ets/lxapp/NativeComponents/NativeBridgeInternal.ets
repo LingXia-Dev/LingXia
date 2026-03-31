@@ -9,7 +9,6 @@ import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
 import { registerInputBuilder } from './Builders/InputBuilder';
-import { registerTextareaBuilder } from './Builders/TextareaBuilder';
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
@@ -111,7 +110,6 @@ function registerDefaultBuilders(): void {
   registerVideoBuilder();
   registerPickerBuilder();
   registerInputBuilder();
-  registerTextareaBuilder();
 }
 
 function resolveLogicalWebTag(webTag: string): string {

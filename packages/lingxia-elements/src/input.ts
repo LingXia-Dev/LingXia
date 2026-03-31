@@ -1,7 +1,6 @@
 import {
   sendNativeComponentMessage,
   registerNativeComponentHandler,
-  addNativeComponentLayoutInvalidationListener
 } from "./nativecomponent.js";
 import { ensureComponentId, NativeComponentUpdateState } from "./component.js";
 import { measureElement } from "./dom.js";
@@ -10,10 +9,8 @@ import {
   getPropOrAttr as getSharedPropOrAttr,
   getBoolAttr as getSharedBoolAttr,
   getNumAttr as getSharedNumAttr,
-  parseNumberLike,
   shouldRefreshForDataAttribute as shouldRefreshSharedDataAttribute,
   collectDataset as collectSharedDataset,
-  ensureElementVisibleForKeyboard
 } from "./text_component_shared.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
@@ -103,7 +100,6 @@ export class LxInputElement extends HTMLElement {
   private attrObserver?: MutationObserver;
   private shadow?: ShadowRoot;
   private innerInput?: HTMLInputElement;
-  private lastKeyboardHeight = 0;
   private readonly updateState = new NativeComponentUpdateState();
   private resizeObserver?: ResizeObserver;
   private pendingLayoutFrame: number | null = null;
@@ -111,7 +107,6 @@ export class LxInputElement extends HTMLElement {
   private readonly layoutEventListener: EventListenerObject = {
     handleEvent: () => this.schedulePositionSync()
   };
-  private removeLayoutInvalidationListener?: () => void;
   private _pageBindings: Record<string, string> = {};
 
   set pageBindings(bindings: Record<string, string>) {
@@ -143,18 +138,11 @@ export class LxInputElement extends HTMLElement {
       if (typeof message.event === "string") {
         const detail = (message.detail ?? {}) as LxInputEventDetail;
         if (message.event === "keyboardheightchange") {
-          const nextKeyboardHeight = this.parseKeyboardHeight(detail);
-          if (nextKeyboardHeight !== undefined) {
-            this.lastKeyboardHeight = nextKeyboardHeight;
-          }
           this.resyncHarmonyLayoutAfterFocus();
-          this.ensureVisibleForKeyboard(this.lastKeyboardHeight, false);
         } else if (message.event === "focus") {
           this.startFocusLayoutSync();
           this.resyncHarmonyLayoutAfterFocus();
-          this.ensureVisibleForKeyboard(this.lastKeyboardHeight, false);
         } else if (message.event === "blur") {
-          this.lastKeyboardHeight = 0;
           this.stopFocusLayoutSync();
         }
         this.dispatchEvent(new CustomEvent(message.event, { detail, bubbles: true }));
@@ -163,8 +151,7 @@ export class LxInputElement extends HTMLElement {
   }
 
   private unmountNativeComponentById(componentId: string): void {
-    const useDesktopFallback = isDesktop() && !isMacOS();
-    if (!componentId || isHarmony() || useDesktopFallback) return;
+    if (!componentId || isHarmony() || isDesktop() || isAndroid()) return;
     sendNativeComponentMessage({
       action: "component.unmount",
       id: componentId
@@ -222,7 +209,6 @@ export class LxInputElement extends HTMLElement {
       this.unregister = undefined;
     }
     this.teardownHarmonyEmbed();
-    this.lastKeyboardHeight = 0;
     this.stopFocusLayoutSync();
     this.stopTracking();
     this.mounted = false;
@@ -272,16 +258,13 @@ export class LxInputElement extends HTMLElement {
   }
 
   private shouldTrackNativeLayout(): boolean {
-    return isAndroid() || isIOS() || isHarmony();
+    return isIOS() || isHarmony();
   }
 
   private startTracking(): void {
     if (!this.shouldTrackNativeLayout()) return;
     window.addEventListener("resize", this.layoutEventListener);
-    if (isAndroid()) {
-      // Android overlay can drift inside nested scrolling containers; capture phase catches element scroll events.
-      window.addEventListener("scroll", this.layoutEventListener, { capture: true, passive: true });
-    } else if (isHarmony()) {
+    if (isHarmony()) {
       // Harmony native embed coordinates need continuous sync while page scrolls.
       window.addEventListener("scroll", this.layoutEventListener, { capture: true, passive: true });
     } else if (isIOS()) {
@@ -290,9 +273,6 @@ export class LxInputElement extends HTMLElement {
     }
     window.visualViewport?.addEventListener("resize", this.layoutEventListener);
     window.visualViewport?.addEventListener("scroll", this.layoutEventListener);
-    if (isAndroid()) {
-      this.removeLayoutInvalidationListener = addNativeComponentLayoutInvalidationListener(this.layoutEventListener);
-    }
     this.startSizeObserver();
     this.schedulePositionSync();
   }
@@ -303,8 +283,6 @@ export class LxInputElement extends HTMLElement {
     window.removeEventListener("scroll", this.layoutEventListener);
     window.visualViewport?.removeEventListener("resize", this.layoutEventListener);
     window.visualViewport?.removeEventListener("scroll", this.layoutEventListener);
-    this.removeLayoutInvalidationListener?.();
-    this.removeLayoutInvalidationListener = undefined;
     this.stopSizeObserver();
     if (this.pendingLayoutFrame !== null) {
       cancelAnimationFrame(this.pendingLayoutFrame);
@@ -395,22 +373,6 @@ export class LxInputElement extends HTMLElement {
     return color;
   }
 
-  private shouldAdjustPosition(): boolean {
-    return this.getAttribute("adjust-position") !== "false";
-  }
-
-  private parseKeyboardHeight(detail: unknown): number | undefined {
-    if (!detail || typeof detail !== "object") return undefined;
-    const parsed = parseNumberLike((detail as { height?: unknown }).height);
-    return parsed === undefined ? undefined : Math.max(0, parsed);
-  }
-
-  private ensureVisibleForKeyboard(explicitKeyboardHeight = 0, forceCenter = false): void {
-    if (isHarmony() || isAndroid() || isIOS()) return;
-    if (!this.shouldAdjustPosition()) return;
-    ensureElementVisibleForKeyboard(this, explicitKeyboardHeight, forceCenter, [120, 220, 320]);
-  }
-
   private resyncHarmonyLayoutAfterFocus(): void {
     if (!isHarmony() || !this.isConnected) return;
     this.mountInput();
@@ -485,38 +447,51 @@ export class LxInputElement extends HTMLElement {
     if (!this.shadow) {
       this.shadow = this.attachShadow({ mode: "open" });
       const style = document.createElement("style");
-      style.textContent = `
-        :host {
-          display: block;
-          width: 100%;
-        }
-        input {
-          display: block;
-          width: 100%;
-          box-sizing: border-box;
-          padding: 8px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: 14px;
-          line-height: 1.5;
-          color: #111827;
-          background: #fff;
-          outline: none;
-          transition: border-color 0.2s;
-        }
-        input:focus {
-          border-color: #3b82f6;
-          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
-        }
-        input:disabled {
-          background: #f3f4f6;
-          color: #9ca3af;
-          cursor: not-allowed;
-        }
-        input::placeholder {
-          color: #9ca3af;
-        }
-      `;
+      if (isAndroid() || isMacOS()) {
+        // Native app context: page provides visual container; keep the input bare
+        style.textContent = `
+          :host { display: block; width: 100%; height: 100%; }
+          input {
+            display: block; width: 100%; height: 100%;
+            box-sizing: border-box; padding: 0; margin: 0;
+            background: transparent; border: none; outline: none;
+            color: inherit; font: inherit;
+          }
+        `;
+      } else {
+        style.textContent = `
+          :host {
+            display: block;
+            width: 100%;
+          }
+          input {
+            display: block;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #111827;
+            background: #fff;
+            outline: none;
+            transition: border-color 0.2s;
+          }
+          input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+          }
+          input:disabled {
+            background: #f3f4f6;
+            color: #9ca3af;
+            cursor: not-allowed;
+          }
+          input::placeholder {
+            color: #9ca3af;
+          }
+        `;
+      }
       this.shadow.appendChild(style);
 
       const input = document.createElement("input");
@@ -596,8 +571,15 @@ export class LxInputElement extends HTMLElement {
       styleEl.textContent = styleEl.textContent!.substring(0, markerIdx);
     }
 
-    if (props.focus && document.activeElement !== input) {
+    if (isAndroid() || isMacOS()) {
+      const confirmType = this.getAttr("confirm-type", "done");
+      input.setAttribute("enterkeyhint", confirmType);
+    }
+
+    if (props.focus === "true" && document.activeElement !== input) {
       input.focus();
+    } else if (props.focus === "false" && document.activeElement === input) {
+      input.blur();
     }
   }
 
@@ -623,7 +605,7 @@ export class LxInputElement extends HTMLElement {
       return;
     }
 
-    if (isDesktop() && !isMacOS()) {
+    if (isDesktop() || isAndroid()) {
       this.mountDesktopInput();
       this.mounted = true;
       return;

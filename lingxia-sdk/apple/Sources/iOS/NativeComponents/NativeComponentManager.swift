@@ -674,7 +674,7 @@ final class NativeComponentManager {
 
     private func isTextInputComponent(_ componentId: String) -> Bool {
         let type = componentTypes[componentId]
-        return type == "input.native" || type == "textarea.native"
+        return type == "input.native"
     }
 
     private func handleTextInputFocusState(componentId: String, eventName: String, payload: [String: Any]) {

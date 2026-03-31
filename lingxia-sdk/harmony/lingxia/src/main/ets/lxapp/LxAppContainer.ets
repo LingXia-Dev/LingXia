@@ -27,7 +27,6 @@ import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { LxFullscreenVideoOverlay } from './media/LxFullscreenVideoOverlay';
 import { RefreshHeader } from './RefreshHeader';
 import { CapsuleMenuManager, CapsuleMenuBottomSheetComponent } from './CapsuleMenuBottomSheet';
-import { getFocusedNativeComponentType, getFocusedNativeComponentAdjustPosition } from './NativeComponents/NativeBridgeInternal';
 
 // Container-specific constants
 const SYSTEM_STATUS_BAR_HEIGHT = 44;     // Default status bar height
@@ -1639,13 +1638,6 @@ export struct LxAppContainer {
     }
     if (webTag !== this.currentWebTag) {
       return 0;
-    }
-    // Only shift for native textarea components that explicitly request position adjustment.
-    // Regular WebView inputs (focusedType is null/empty) are handled by the Web component itself.
-    const focusedType = getFocusedNativeComponentType(webTag);
-    const focusedAdjustPosition = getFocusedNativeComponentAdjustPosition(webTag);
-    if (focusedType === 'textarea.native' && focusedAdjustPosition) {
-      return -this.keyboardOffsetVp;
     }
     return 0;
   }
