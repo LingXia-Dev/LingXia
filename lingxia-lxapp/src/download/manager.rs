@@ -6,7 +6,7 @@ use http::header;
 use http_body_util::{BodyExt, Full};
 use lingxia_webview::DownloadRequest;
 use ring::digest::{SHA256, digest};
-use rong_http::{HttpBody, send_request_with_coalesce};
+use rong_rt::http::{self as host_http, HttpBody, RequestOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::Error as IoError;
@@ -21,7 +21,6 @@ const DOWNLOAD_PROGRESS_INTERVAL_BYTES: u64 = 64 * 1024;
 const DOWNLOAD_PROGRESS_INTERVAL_MILLIS: u128 = 120;
 const DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES: u64 = 256 * 1024;
 const DOWNLOAD_SMALL_BODY_LIMIT: usize = 128 * 1024;
-const DOWNLOAD_STREAM_COALESCE_TARGET: usize = 64 * 1024;
 pub(crate) const DOWNLOAD_CANCELED_ERROR: &str = "Download canceled";
 static USER_CACHE_DOWNLOADS: OnceLock<DashMap<String, watch::Sender<SharedDownloadState>>> =
     OnceLock::new();
@@ -843,17 +842,22 @@ async fn run_download_task(
         }
     };
 
-    let response = match send_request_with_coalesce(
+    let response = match host_http::send_with_small_body_limit(
         request_obj,
         DOWNLOAD_SMALL_BODY_LIMIT,
-        None,
-        DOWNLOAD_STREAM_COALESCE_TARGET,
+        RequestOptions::new(),
     )
     .await
     {
         Ok(response) => response,
         Err(e) => {
-            return Err(emit_failed(&mut on_event, url, e, resume_offset, None));
+            return Err(emit_failed(
+                &mut on_event,
+                url,
+                e.to_string(),
+                resume_offset,
+                None,
+            ));
         }
     };
 

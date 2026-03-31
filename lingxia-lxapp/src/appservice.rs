@@ -1,6 +1,5 @@
 use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
-use crate::log::{LogBuilder, LogLevel, LogTag};
 use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
@@ -257,7 +256,7 @@ async fn handle_native_source(
                 .with_path(page_svc_clone.page.path());
         }
     };
-    rong::spawn(task);
+    rong::spawn_local(task);
 }
 
 /// The core logic for a persistent worker task.
@@ -304,8 +303,13 @@ pub(crate) async fn lxapp_service_handler(
 
             let app_ctx = LxAppCtx::new(lxapp.clone());
 
-            // Set console writer
-            console::set_writer(Box::new(app_ctx.clone()));
+            console::set_trace_context(
+                &ctx,
+                console::ConsoleTraceContext {
+                    namespace: Some(lxapp.appid.clone()),
+                    scope: Some("appservice".to_string()),
+                },
+            );
 
             // Set file access guard to prevent cross-app file access (Context-scoped)
             fs::set_file_access_guard(Box::new(app_ctx.clone()));
@@ -374,13 +378,15 @@ pub(crate) async fn lxapp_service_handler(
         ServiceMessage::TerminateAppSvc { lxapp, ack_tx } => {
             // Drop the JSContext directly to release all JS/PageSvc resources.
             if current_ctx.is_some() {
+                if let Some(ctx) = current_ctx.as_ref() {
+                    console::clear_trace_context(ctx);
+                }
                 *current_ctx = None;
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
             // Clear guards on app terminate so the previous LxAppCtx is dropped
             // immediately (this shuts down its per-app cache capacity worker).
-            console::set_writer(Box::new(NoopConsoleWriter));
             fs::set_file_access_guard(Box::new(DenyAllFileAccessGuard));
             http::set_network_access_guard(Box::new(DenyAllNetworkAccessGuard));
             // Remove runtime context for this app so that all associated resources can be dropped.
@@ -449,7 +455,7 @@ pub(crate) async fn lxapp_service_handler(
                     // and other view messages, causing "Handshake timeout" even when transport is OK.
                     let ctx = ctx.clone();
                     let appid = lxapp.appid.clone();
-                    rong::spawn(async move {
+                    rong::spawn_local(async move {
                         handle_app_service_event(worker_id, &ctx, appid, event, args).await;
                     });
                 }
@@ -547,7 +553,7 @@ pub(crate) async fn lxapp_service_handler(
                     // otherwise starve view messages (including handshake retries).
                     let ctx = ctx.clone();
                     let appid = lxapp.appid.clone();
-                    rong::spawn(async move {
+                    rong::spawn_local(async move {
                         if let Err(e) = event_bus::dispatch_app_bus_event(&ctx, &event).await {
                             error!(
                                 "[Worker {}] Dispatch app bus event failed: {}",
@@ -663,9 +669,6 @@ struct DenyAllFileAccessGuard;
 #[derive(Debug)]
 struct DenyAllNetworkAccessGuard;
 
-#[derive(Debug)]
-struct NoopConsoleWriter;
-
 impl fs::FileAccessGuard for DenyAllFileAccessGuard {
     fn resolve_access(&self, _path: &str) -> JSResult<std::path::PathBuf> {
         Err(RongJSError::from(HostError::new(
@@ -681,14 +684,6 @@ impl http::NetworkAccessGuard for DenyAllNetworkAccessGuard {
             rong::error::E_INTERNAL,
             "Access denied",
         )))
-    }
-}
-
-impl console::ConsoleWriter for NoopConsoleWriter {
-    fn write(&self, _level: console::LogLevel, _message: String) {}
-
-    fn is_tty(&self) -> bool {
-        false
     }
 }
 
@@ -712,33 +707,6 @@ impl std::fmt::Debug for LxAppCtx {
         f.debug_struct("LxAppCtx")
             .field("appid", &self.lxapp.appid)
             .finish()
-    }
-}
-
-impl console::ConsoleWriter for LxAppCtx {
-    fn write(&self, level: console::LogLevel, message: String) {
-        let log = LogBuilder::new(LogTag::LxAppServiceConsole, message);
-        match level {
-            console::LogLevel::Verbose => log
-                .with_level(LogLevel::Verbose)
-                .with_appid(self.lxapp.appid.clone()),
-            console::LogLevel::Info => log
-                .with_level(LogLevel::Info)
-                .with_appid(self.lxapp.appid.clone()),
-            console::LogLevel::Debug => log
-                .with_level(LogLevel::Debug)
-                .with_appid(self.lxapp.appid.clone()),
-            console::LogLevel::Error => log
-                .with_level(LogLevel::Error)
-                .with_appid(self.lxapp.appid.clone()),
-            console::LogLevel::Warn => log
-                .with_level(LogLevel::Warn)
-                .with_appid(self.lxapp.appid.clone()),
-        };
-    }
-
-    fn is_tty(&self) -> bool {
-        false
     }
 }
 

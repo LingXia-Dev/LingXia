@@ -272,7 +272,7 @@ impl LxApps {
 
             let mgr_weak = Arc::downgrade(self);
             let task_appid = appid.clone();
-            let _ = rong::bg::spawn(async move {
+            let _ = crate::global_executor::spawn(async move {
                 let sleep = time::sleep(Duration::from_secs(1800));
                 tokio::pin!(rx);
                 tokio::pin!(sleep);
@@ -1157,7 +1157,7 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let _ = rong::bg::spawn(async move {
+        let _ = crate::global_executor::spawn(async move {
             let wait_deadline = Instant::now() + Duration::from_millis(1500);
             loop {
                 let Some(current) = crate::lxapp::try_get(&appid) else {
@@ -1652,7 +1652,7 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
         return;
     }
 
-    let _ = rong::bg::spawn(async move {
+    let _ = crate::global_executor::spawn(async move {
         let cache_base_dir = runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
@@ -1698,17 +1698,13 @@ pub fn init(runtime: Platform) -> Option<String> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
+    // Install the host executor before any JS runtime starts so platform code
+    // and background services can submit async work during early app startup.
+    crate::global_executor::init_global();
+
     // Register built-in Host API set. This ensures view->host calls work regardless of
     // which logic extensions are loaded.
     crate::host::register_all();
-
-    // Inject the tokio runtime handle into lingxia-platform so it can spawn async/blocking tasks.
-    match rong::bg::handle() {
-        Some(handle) => lingxia_platform::init(handle),
-        None => {
-            error!("rong::bg not started; using fallback threads");
-        }
-    }
 
     let runtime_arc = Arc::new(runtime.clone());
     let _ = RUNTIME.set(runtime_arc.clone());

@@ -325,7 +325,7 @@ impl Page {
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
-        if let Err(e) = rong::bg::spawn(async move {
+        crate::global_executor::spawn(async move {
             match session.wait_ready().await {
                 Ok(webview_controller) => {
                     // First attach WebView to page
@@ -344,12 +344,7 @@ impl Page {
                     page_for_task.mark_webview_ready(Err(e.to_string()));
                 }
             }
-        }) {
-            error!("Failed to spawn async task for WebView creation: {}", e)
-                .with_appid(appid.clone())
-                .with_path(path.clone());
-            page.mark_webview_ready(Err(e.to_string()));
-        }
+        });
 
         page
     }

@@ -60,7 +60,7 @@ impl LxAppSvc {
         // Metadata is a fast path, but still reflect over the realized object so
         // spread-derived and aliased lifecycle handlers remain compatible.
         for key_value in obj.keys()? {
-            let Ok(key_string) = key_value.try_into::<String>() else {
+            let Ok(key_string) = key_value.to_rust::<String>() else {
                 continue;
             };
             if key_string.starts_with('_') {

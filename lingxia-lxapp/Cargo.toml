@@ -10,8 +10,8 @@ categories = ["web-programming", "api-bindings"]
 
 [features]
 default = ["tls-aws-lc"]
-tls-aws-lc = ["rong_modules/tls-aws-lc", "rong_http/tls-aws-lc"]
-tls-ring = ["rong_modules/tls-ring", "rong_http/tls-ring"]
+tls-aws-lc = ["rong_modules/tls-aws-lc", "rong_http/tls-aws-lc", "rong_rt/tls-aws-lc"]
+tls-ring = ["rong_modules/tls-ring", "rong_http/tls-ring", "rong_rt/tls-ring"]
 
 [dependencies]
 # Use workspace dependencies
@@ -34,7 +34,8 @@ filetime = "0.2"
 uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
-rong_modules = { workspace = true, features = ["timer", "navigator", "path", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
+rong_modules = { workspace = true, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
+rong_rt = { workspace = true }
 rong_http = { workspace = true }
 rong_fs = { workspace = true }
 rong_console = { workspace = true }

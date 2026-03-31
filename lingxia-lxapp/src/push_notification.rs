@@ -20,7 +20,7 @@ pub async fn bind_push_token(token: String) -> Result<(), ProviderError> {
 ///
 /// Returns:
 /// - `0` when task queued successfully
-/// - `1` when validation/scheduling failed
+/// - `1` when validation failed
 pub fn bind_push_token_for_ffi(token: String) -> i32 {
     let token = match normalize_token(token) {
         Ok(token) => token,
@@ -30,13 +30,10 @@ pub fn bind_push_token_for_ffi(token: String) -> i32 {
         }
     };
 
-    if let Err(e) = rong::bg::spawn(async move {
+    crate::global_executor::spawn(async move {
         if let Err(err) = provider::bind_push_token(token).await {
             crate::warn!("[Push] bind_push_token failed: {}", err);
         }
-    }) {
-        crate::error!("[Push] Failed to schedule bind_push_token task: {}", e);
-        return 1;
-    }
+    });
     0
 }

@@ -348,7 +348,7 @@ impl LxApp {
 
                 let appid = self.appid.clone();
                 let lxapp = self.clone();
-                let _ = rong::bg::spawn(async move {
+                let _ = crate::global_executor::spawn(async move {
                     let updater = UpdateManager::new(lxapp);
                     if let Err(e) = updater.uninstall_all(&appid) {
                         error!("Failed to uninstall app: {}", e).with_appid(appid);

@@ -9,6 +9,7 @@ mod delegate;
 pub mod download;
 mod error;
 mod executor;
+mod global_executor;
 pub mod host;
 pub mod key_event;
 pub mod lifecycle;
@@ -46,9 +47,9 @@ pub use browser::{
     clear_completed_downloads, close_browser_tab, close_internal_browser_tab, download_dir,
     download_record, downloads_snapshot, generate_browser_startup_html,
     handle_browser_address_input, handle_browser_address_input_json,
-    handle_browser_navigation_policy_json, open_internal_browser_tab, remove_download,
-    reset_download_dir, resolve_owner_lxapp, retry_download, set_download_dir,
-    start_native_browser_download, subscribe_downloads,
+    handle_browser_navigation_policy_json, open_internal_browser_tab,
+    open_internal_browser_tab_for_owner, remove_download, reset_download_dir, resolve_owner_lxapp,
+    retry_download, set_download_dir, start_native_browser_download, subscribe_downloads,
 };
 pub use cache::{LxAppCache, ResolveResult};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};

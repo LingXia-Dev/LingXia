@@ -101,7 +101,7 @@ fn js_value_to_json_str(v: JSValue) -> Result<String, RpcError> {
     }
     if let Some(obj) = v.into_object() {
         return obj
-            .json_stringify()
+            .to_json_string()
             .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())));
     }
 
@@ -170,7 +170,7 @@ impl PageSvc {
             .get::<_, JSObject>("data")
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let data_json = data_obj
-            .json_stringify()
+            .to_json_string()
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let rev = self.state.lock().await.state_rev;
         Ok(format!(r#"{{"rev":{},"state":{}}}"#, rev, data_json))
@@ -262,7 +262,7 @@ impl PageSvc {
                 error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
             }
         };
-        rong::spawn(task);
+        rong::spawn_local(task);
     }
 
     pub(crate) async fn handle_sub(
@@ -513,7 +513,7 @@ impl PageSvc {
             state.init_data = Some(init_data);
         }
 
-        let class = Class::get::<PageSvc>(&ctx).unwrap();
+        let class = Class::lookup::<PageSvc>(&ctx).unwrap();
         let instance = class.instance(page_svc);
 
         let binding = instance.clone();
@@ -620,7 +620,7 @@ impl PageSvc {
         // Metadata is intentionally conservative; fall back to runtime
         // reflection so spreads and aliased handlers still register.
         for key_value in obj.keys()? {
-            let Ok(function_name) = key_value.try_into::<String>() else {
+            let Ok(function_name) = key_value.to_rust::<String>() else {
                 continue;
             };
             if function_name.starts_with('_') {
@@ -659,7 +659,7 @@ impl PageSvc {
             };
 
             let step_json = step_obj
-                .json_stringify()
+                .to_json_string()
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             let step: AsyncIteratorStep = serde_json::from_str(&step_json).map_err(|e| {
                 RpcError::new(
@@ -709,7 +709,7 @@ impl PageSvc {
             };
 
             let step_json = step_obj
-                .json_stringify()
+                .to_json_string()
                 .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
             let step: AsyncIteratorStep = serde_json::from_str(&step_json).map_err(|e| {
                 RpcError::new(
@@ -864,8 +864,8 @@ impl PageSvc {
             // Extract the "data" field - this is the actual page data
             let page_data = init_data
                 .get::<_, JSObject>("data")
-                .unwrap_or_else(|_| JSObject::new(&self.this.get_ctx()));
-            let data_json = page_data.json_stringify()?;
+                .unwrap_or_else(|_| JSObject::new(&self.this.context()));
+            let data_json = page_data.to_json_string()?;
 
             state.state_rev = 1;
             drop(state);
@@ -889,7 +889,7 @@ impl PageSvc {
     }
 
     pub(crate) fn get_ctx(&self) -> JSContext {
-        self.this.get_ctx()
+        self.this.context()
     }
 }
 

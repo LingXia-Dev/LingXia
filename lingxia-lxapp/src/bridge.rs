@@ -956,7 +956,7 @@ impl PageBridge {
         let task_id = id.clone();
         let task_host_method = host_method.clone();
 
-        if let Err(err) = rong::bg::spawn(async move {
+        crate::global_executor::spawn(async move {
             let started_at = std::time::Instant::now();
             let (tx, rx) = oneshot::channel();
             let mut host_cancel_tx = Some(tx);
@@ -1029,16 +1029,7 @@ impl PageBridge {
                     .with_appid(task_page.appid())
                     .with_path(task_page.path());
             }
-        }) {
-            self.take_pending_req_cancel(&id);
-            let _ = self.send_res_err(
-                &page,
-                id,
-                BRIDGE_INTERNAL_ERROR,
-                Some(format!("failed to spawn host request task: {}", err)),
-                None,
-            );
-        }
+        });
 
         Ok(())
     }
@@ -1057,7 +1048,7 @@ impl PageBridge {
         let appid = page.appid();
         let path = page.path();
         let task_host_method = host_method.clone();
-        if let Err(err) = rong::bg::spawn(async move {
+        crate::global_executor::spawn(async move {
             let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
             let _keep_alive = cancel_tx;
             match handler.call(lxapp, params_json, cancel_rx).await {
@@ -1076,15 +1067,7 @@ impl PageBridge {
                         .with_path(path);
                 }
             }
-        }) {
-            crate::warn!(
-                "failed to spawn host notify task '{}': {}",
-                host_method,
-                err
-            )
-            .with_appid(page.appid())
-            .with_path(page.path());
-        }
+        });
         Ok(())
     }
 

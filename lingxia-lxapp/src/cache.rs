@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use filetime::FileTime;
-use rong_http::{self as net, BodySink};
+use rong_rt::download::{self as net, BodySink};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
@@ -308,7 +308,7 @@ impl LxAppCache {
                     sleep(Duration::from_millis(200)).await;
                 }
             };
-            let _ = rong::bg::spawn(task);
+            let _ = crate::global_executor::spawn(task);
         }
 
         target_path
@@ -485,20 +485,13 @@ impl CacheCapacityManager {
         let max_age = self.max_age;
         let min_check_interval = self.min_check_interval;
 
-        match rong::bg::spawn(async move {
+        let _ = crate::global_executor::spawn(async move {
             run_cache_capacity_worker(cache_dir, max_bytes, max_age, min_check_interval, rx).await;
-        }) {
-            Ok(_) => {
-                // Send initial access event so cleanup runs once at startup
-                let _ = tx.try_send(CacheCapacityEvent::Access);
-                *worker = Some(CacheCapacityWorker { tx: tx.clone() });
-                Some(tx)
-            }
-            Err(e) => {
-                crate::error!("Failed to spawn cache capacity worker: {}", e);
-                None
-            }
-        }
+        });
+        // Send initial access event so cleanup runs once at startup
+        let _ = tx.try_send(CacheCapacityEvent::Access);
+        *worker = Some(CacheCapacityWorker { tx: tx.clone() });
+        Some(tx)
     }
 }
 
@@ -530,29 +523,24 @@ async fn run_cache_capacity_worker(
                 last_check = Some(now);
 
                 let cache_dir_clone = cache_dir.clone();
-                let blocking = rong::bg::spawn_blocking(move || {
+                let blocking = crate::global_executor::spawn_blocking(move || {
                     enforce_cache_limits(&cache_dir_clone, max_bytes, max_age)
                 });
 
-                match blocking {
-                    Ok(handle) => match handle.await {
-                        Ok(outcome) => {
-                            if outcome.files_removed > 0 {
-                                crate::info!(
-                                    "Cache cleanup: removed {} files, freed {} bytes (limit={} bytes, max_age={}s)",
-                                    outcome.files_removed,
-                                    outcome.bytes_freed,
-                                    max_bytes,
-                                    max_age.as_secs()
-                                );
-                            }
+                match blocking.await {
+                    Ok(outcome) => {
+                        if outcome.files_removed > 0 {
+                            crate::info!(
+                                "Cache cleanup: removed {} files, freed {} bytes (limit={} bytes, max_age={}s)",
+                                outcome.files_removed,
+                                outcome.bytes_freed,
+                                max_bytes,
+                                max_age.as_secs()
+                            );
                         }
-                        Err(e) => {
-                            crate::error!("Cache cleanup task failed: {}", e);
-                        }
-                    },
+                    }
                     Err(e) => {
-                        crate::error!("Failed to spawn blocking cache cleanup: {}", e);
+                        crate::error!("Cache cleanup task failed: {}", e);
                     }
                 }
             }

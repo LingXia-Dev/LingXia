@@ -34,7 +34,7 @@ pub fn open_lxapp_for_panel(panel_id: &str, appid: &str, path: &str) {
     let panel_id = panel_id.to_string();
     let appid = appid.to_string();
     let path = path.to_string();
-    let _ = rong::bg::spawn(async move {
+    let _ = crate::global_executor::spawn(async move {
         if let Err(e) = do_open_lxapp_for_panel(&panel_id, &appid, &path).await {
             error!("open_lxapp_for_panel failed for {}: {}", appid, e).with_appid(appid.clone());
         }

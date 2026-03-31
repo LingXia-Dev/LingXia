@@ -758,16 +758,10 @@ fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError>
         .create_page_svc_with_ack(browser.clone_arc(), startup_path, ack_tx)?;
 
     let page_clone = page.clone();
-    if let Err(e) = rong::bg::spawn(async move {
+    crate::global_executor::spawn(async move {
         let result = ack_rx.await.map_err(|e| e.to_string());
         page_clone.mark_webview_ready(result);
-    }) {
-        crate::warn!(
-            "[InternalBrowser] Failed to spawn startup page ack task: {}",
-            e
-        );
-        page.mark_webview_ready(Err(e.to_string()));
-    }
+    });
 
     Ok(page)
 }
@@ -786,12 +780,10 @@ fn ensure_browser_tab_page(browser: &Arc<LxApp>, path: &str) -> Result<Page, LxA
         .create_page_svc_with_ack(browser.clone_arc(), path.to_string(), ack_tx)?;
 
     let page_clone = page.clone();
-    if let Err(e) = rong::bg::spawn(async move {
+    crate::global_executor::spawn(async move {
         let result = ack_rx.await.map_err(|err| err.to_string());
         page_clone.mark_webview_ready(result);
-    }) {
-        crate::warn!("[InternalBrowser] Failed to spawn tab page ack task: {}", e);
-        page.mark_webview_ready(Err(e.to_string()));
+    });
     }
 
     Ok(page)
@@ -955,24 +947,17 @@ fn browser_create_webview(
         .on_download(move |request| {
             let tab_id = tab_id_for_download.clone();
             let owner = owner_for_download.clone();
-            if let Err(e) = rong::bg::spawn(async move {
+            crate::global_executor::spawn(async move {
                 browser_download_resource(owner, tab_id, request).await;
-            }) {
-                crate::warn!("[InternalBrowser] spawn download task failed: {}", e);
-            }
+            });
         })
         .create();
     let path_owned = path.to_string();
     let tab_id_owned = tab_id.to_string();
 
-    if let Err(e) = rong::bg::spawn(async move {
+    crate::global_executor::spawn(async move {
         browser_on_webview_ready(path_owned, session_id, tab_id_owned, create_token, session).await;
-    }) {
-        return Err(LxAppError::Runtime(format!(
-            "failed to spawn browser webview ready task: {}",
-            e
-        )));
-    }
+    });
     Ok(())
 }
 
@@ -1250,12 +1235,12 @@ pub fn retry_download(task_id: &str) -> Result<(), LxAppError> {
         let headers = request_context.headers.clone();
         let user_agent = request_context.user_agent.clone();
 
-        rong::bg::spawn(async move {
+        crate::global_executor::spawn(async move {
             let persistence = crate::download::manager::DownloadPersistence::new(
                 app_data_dir_clone.clone(),
                 task_id_owned.clone(),
                 crate::download::manager::DownloadOwner {
-                    kind: crate::download::manager::DownloadOwnerKind::LxDownloadFile,
+                    kind: crate::download::manager::DownloadOwnerKind::LxApp,
                     appid: owner_appid,
                     page_path: None,
                     tab_id: None,
@@ -1278,8 +1263,7 @@ pub fn retry_download(task_id: &str) -> Result<(), LxAppError> {
                     err.error
                 );
             }
-        })
-        .map_err(|e| LxAppError::Runtime(format!("failed to spawn download retry task: {e}")))?;
+        });
 
         return Ok(());
     }
@@ -1309,7 +1293,7 @@ pub fn retry_download(task_id: &str) -> Result<(), LxAppError> {
     let task_id_owned = task_id.to_string();
     let tab_id = record.tab_id.clone();
 
-    rong::bg::spawn(async move {
+    crate::global_executor::spawn(async move {
         let result = crate::download::manager::run_browser_download_task(
             task,
             &task_id_owned,
@@ -1341,8 +1325,7 @@ pub fn retry_download(task_id: &str) -> Result<(), LxAppError> {
                 err.error
             );
         }
-    })
-    .map_err(|e| LxAppError::Runtime(format!("failed to spawn browser retry task: {e}")))?;
+    });
 
     Ok(())
 }
@@ -1622,14 +1605,13 @@ pub fn start_native_browser_download(
         cookie: normalize_optional_string(cookie),
     };
 
-    rong::bg::spawn({
+    crate::global_executor::spawn({
         let owner = owner.clone();
         let tab_id = normalized_tab_id.clone();
         async move {
             browser_download_resource(owner, tab_id, request).await;
         }
-    })
-    .map_err(|e| LxAppError::Runtime(format!("failed to spawn browser download task: {e}")))?;
+    });
 
     Ok(())
 }

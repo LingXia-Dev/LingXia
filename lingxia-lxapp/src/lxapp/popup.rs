@@ -75,7 +75,7 @@ impl LxApp {
             })
             .create();
 
-        if let Err(e) = rong::bg::spawn(async move {
+        crate::global_executor::spawn(async move {
             match session.wait_ready().await {
                 Ok(webview) => {
                     if let Err(load_err) = webview.load_url(&target_url_for_ready) {
@@ -98,12 +98,7 @@ impl LxApp {
                     ));
                 }
             }
-        }) {
-            return Err(LxAppError::Runtime(format!(
-                "failed to spawn external popup webview task: {}",
-                e
-            )));
-        }
+        });
 
         Ok(())
     }

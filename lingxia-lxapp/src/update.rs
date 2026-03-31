@@ -12,7 +12,8 @@ use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::update::UpdateService;
-use rong_http::{self as service_executor, BodySink};
+use rong_rt::download::{self as service_executor, BodySink};
+use rong_rt::http as host_http;
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -314,7 +315,7 @@ impl UpdateManager {
         start_delay: Duration,
         bypass_cooldown: bool,
     ) {
-        let _ = rong::bg::spawn(async move {
+        let _ = crate::global_executor::spawn(async move {
             if !start_delay.is_zero() {
                 sleep(start_delay).await;
             }
@@ -341,7 +342,7 @@ impl UpdateManager {
         bypass_cooldown: bool,
     ) {
         let update_check_target = format!("lxapp:{}@{}", target_appid, release_type.as_str());
-        let _ = rong::bg::spawn(async move {
+        let _ = crate::global_executor::spawn(async move {
             if !bypass_cooldown && !try_acquire_update_check_window(&update_check_target) {
                 return;
             }
@@ -1416,7 +1417,7 @@ pub async fn ensure_force_update_for_installed(
             let checksum_bg = pkg.checksum_sha256.clone();
             let version_bg = pkg.version.clone();
 
-            let _ = rong::bg::spawn(async move {
+            let _ = crate::global_executor::spawn(async move {
                 let result = manager_bg
                     .download_archive_with_checksum(
                         &target_appid_bg,
@@ -1526,9 +1527,10 @@ async fn get_content_length(url: &str) -> Result<u64, String> {
         )
         .map_err(|e| format!("Failed to build HEAD request: {}", e))?;
 
-    let response = service_executor::send_request(request, 1024, None)
-        .await
-        .map_err(|e| format!("HEAD request failed: {}", e))?;
+    let response =
+        host_http::send_with_small_body_limit(request, 1024, host_http::RequestOptions::new())
+            .await
+            .map_err(|e| format!("HEAD request failed: {}", e))?;
 
     if let Some(content_length) = response
         .headers

@@ -4,7 +4,7 @@ use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageServiceEvent;
 use crate::{LxAppError, error, info};
 
-use rong::{JSContext, Rong, RongJS, Worker, WorkerMessage};
+use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};
 use tokio::sync::oneshot::Sender;
@@ -109,28 +109,23 @@ impl LxAppExecutor {
     ) {
         info!("Starting LxApp async executor with {} workers", num_workers);
 
-        // Initialize Rong JS engine with workers
+        // Initialize the shared Rong worker pool. LxApp keeps its own dedicated
+        // app->worker assignment layer on top, so we explicitly choose `shared`
+        // here instead of relying on Rong placement semantics.
         let rong = Rong::<RongJS>::builder()
-            .with_service_threads(3)
-            .with_num_workers(num_workers)
-            .build();
+            .shared()
+            .workers(num_workers)
+            .build()
+            .expect("Failed to build shared Rong worker pool");
+        let workers = rong.workers();
 
-        // Acquire all workers upfront
-        let mut workers = Vec::with_capacity(num_workers);
-        for _i in 0..num_workers {
-            if let Ok(worker) = rong.get_worker().await {
-                workers.push(worker);
-            }
-        }
+        // Start one long-lived service loop per Rong worker.
+        let worker_tasks = Self::setup_js_workers(&workers).await;
 
-        // Create worker map for ID-based lookups
-        let workers_map: HashMap<usize, Worker<RongJS>> =
-            workers.iter().map(|w| (w.id(), w.clone())).collect();
-
-        // Initialize free workers with worker IDs
+        // Initialize free workers with worker IDs that successfully started.
         {
             let mut free_workers_guard = free_workers.lock().unwrap();
-            let mut ids: Vec<usize> = workers_map.keys().copied().collect();
+            let mut ids: Vec<usize> = worker_tasks.keys().copied().collect();
             ids.sort_unstable();
             *free_workers_guard = VecDeque::from(ids);
 
@@ -138,28 +133,26 @@ impl LxAppExecutor {
             barrier.wait();
         }
 
-        // Set up JS worker tasks
-        Self::setup_js_workers(&workers).await;
-
         // Start message dispatch loop
-        Self::run_message_dispatch_loop(receiver, instance_assignments, workers_map).await;
+        Self::run_message_dispatch_loop(receiver, instance_assignments, worker_tasks).await;
 
         // Clean up
-        let _ = rong.join_all().await;
+        let _ = rong.join().await;
         info!("LxApp async executor shutdown complete");
     }
 
     /// Set up individual JS worker tasks
-    async fn setup_js_workers(workers: &[Worker<RongJS>]) {
+    async fn setup_js_workers(workers: &[Worker<RongJS>]) -> HashMap<usize, TaskHandle<()>> {
+        let mut worker_tasks = HashMap::with_capacity(workers.len());
         for worker in workers {
             let worker_id = worker.id();
 
-            if worker
-                .spawn_future(async move |runtime, mut receiver| {
+            match worker
+                .spawn(async move |runtime, mut receiver| -> rong::JSResult<()> {
                     // JSContext is not Send, so each worker maintains its own context
                     let mut current_ctx: Option<JSContext> = None;
 
-                    while let Some(WorkerMessage::Custom(cmd)) = receiver.recv().await {
+                    while let Some(TaskMessage::Custom(cmd)) = receiver.recv().await {
                         if let Ok(service) = cmd.downcast::<WorkerService>() {
                             lxapp_service_handler(
                                 worker_id,
@@ -175,24 +168,30 @@ impl LxAppExecutor {
                     current_ctx.take();
                     Ok(())
                 })
-                .is_err()
+                .await
             {
-                error!("Failed to spawn JS worker {}", worker_id);
+                Ok(task) => {
+                    worker_tasks.insert(worker_id, task);
+                }
+                Err(err) => {
+                    error!("Failed to spawn JS worker {}: {}", worker_id, err);
+                }
             }
         }
+        worker_tasks
     }
 
     /// Main message dispatch loop
     async fn run_message_dispatch_loop(
         receiver: Arc<Mutex<mpsc::Receiver<ServiceMessage>>>,
         instance_assignments: Arc<Mutex<HashMap<usize, usize>>>,
-        workers_map: HashMap<usize, Worker<RongJS>>,
+        worker_tasks: HashMap<usize, TaskHandle<()>>,
     ) {
         loop {
             let msg = receiver.lock().unwrap().recv();
             match msg {
                 Ok(message) => {
-                    Self::dispatch_message(message, &instance_assignments, &workers_map).await;
+                    Self::dispatch_message(message, &instance_assignments, &worker_tasks).await;
                 }
                 Err(_) => {
                     error!("Service message channel closed");
@@ -206,17 +205,17 @@ impl LxAppExecutor {
     async fn dispatch_message(
         message: ServiceMessage,
         instance_assignments: &Arc<Mutex<HashMap<usize, usize>>>,
-        workers_map: &HashMap<usize, Worker<RongJS>>,
+        worker_tasks: &HashMap<usize, TaskHandle<()>>,
     ) {
         let appid = match &message {
-            ServiceMessage::CreateAppSvc { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::TerminateAppSvc { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::TerminatePage { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::CallAppSvcEvent { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::CallPageSvc { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::CreatePage { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::CallPageSvcEvent { lxapp, .. } => &lxapp.appid,
-            ServiceMessage::DispatchAppBusEvent { lxapp, .. } => &lxapp.appid,
+            ServiceMessage::CreateAppSvc { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::TerminateAppSvc { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::TerminatePage { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::CallAppSvcEvent { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::CallPageSvc { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::CreatePage { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::CallPageSvcEvent { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::DispatchAppBusEvent { lxapp, .. } => lxapp.appid.clone(),
         };
 
         // Resolve target worker strictly from instance mapping (object identity)
@@ -237,12 +236,23 @@ impl LxAppExecutor {
             instance_key.and_then(|k| instance_assignments.lock().unwrap().get(&k).copied());
 
         if let Some(worker_id) = target_worker_id {
-            if let Some(worker) = workers_map.get(&worker_id) {
-                let _ = worker.post_message(WorkerMessage::Custom(Box::new(WorkerService {
-                    svc: message,
-                })));
+            if let Some(worker_task) = worker_tasks.get(&worker_id) {
+                if let Err(err) = worker_task
+                    .send(TaskMessage::Custom(Box::new(WorkerService {
+                        svc: message,
+                    })))
+                    .await
+                {
+                    error!(
+                        "Failed to send service message to worker {} for appid {}: {}",
+                        worker_id, appid, err
+                    );
+                }
             } else {
-                error!("Worker {} not found in map for appid {}", worker_id, appid);
+                error!(
+                    "Worker {} not found in task map for appid {}",
+                    worker_id, appid
+                );
             }
         } else {
             // No instance mapping found; drop message to avoid misrouting.
