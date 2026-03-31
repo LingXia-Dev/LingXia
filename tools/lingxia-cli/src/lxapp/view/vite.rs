@@ -14,6 +14,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
+use tempfile::TempDir;
+
+const VITE_CONFIG_TEMPLATE: &str =
+    include_str!("../../../templates/builder-frameworks/vite.config.mts");
 
 #[derive(Debug, Clone)]
 struct ComponentPageBuild {
@@ -28,6 +32,7 @@ pub fn build(
     options: &BuildOptions,
     progress: Option<ViewProgress>,
 ) -> Result<ViewBuildReport> {
+    cleanup_legacy_view_artifacts(project.root.as_path())?;
     match project.framework {
         ProjectFramework::React | ProjectFramework::Vue => {
             let install_duration =
@@ -68,15 +73,10 @@ fn build_component_pages(
     install_duration: Option<Duration>,
     progress: Option<ViewProgress>,
 ) -> Result<ViewBuildReport> {
-    let build_root = project
-        .root
-        .join(".lingxia")
-        .join("build")
+    let temp_root = create_temp_build_root(project.root.as_path())?;
+    let build_root = temp_root
+        .path()
         .join(format!("view-{}", project.framework.as_str()));
-    if build_root.exists() {
-        fs::remove_dir_all(&build_root)
-            .with_context(|| format!("Failed to clean {}", build_root.display()))?;
-    }
     fs::create_dir_all(&build_root)?;
     fs::write(
         build_root.join("__page_bridge_runtime__.js"),
@@ -147,6 +147,7 @@ fn build_component_pages(
     }
     finalize_component_pages(project, &build_root.join("dist"), &pages)?;
     let finalize_duration = finalize_started.elapsed();
+    drop(temp_root);
     Ok(ViewBuildReport {
         framework: project.framework,
         page_count: total,
@@ -315,28 +316,7 @@ fn write_vite_config(
     framework: ProjectFramework,
     inputs: &BTreeMap<String, PathBuf>,
 ) -> Result<PathBuf> {
-    let generated_root = project
-        .root
-        .join(".lingxia")
-        .join("vite")
-        .join(sanitize_page_id(
-            project
-                .root
-                .strip_prefix(project.root.parent().unwrap_or_else(|| Path::new("/")))
-                .unwrap_or(&project.root)
-                .to_string_lossy()
-                .as_ref(),
-        ));
-    fs::create_dir_all(&generated_root)?;
-    let config_path = generated_root.join(format!(
-        "{}.vite.config.mts",
-        sanitize_page_id(
-            build_dir
-                .file_name()
-                .and_then(|value| value.to_str())
-                .unwrap_or("page")
-        )
-    ));
+    let config_path = build_dir.join("vite.config.mts");
 
     let plugin_import = match framework {
         ProjectFramework::React => {
@@ -365,23 +345,62 @@ fn write_vite_config(
             .collect::<BTreeMap<_, _>>(),
     )?;
 
-    let config = format!(
-        "import fs from 'node:fs';\nimport path from 'node:path';\nimport {{ defineConfig }} from 'vite';\n{plugin_import}\nconst projectRoot = {project_root};\nconst buildDir = {build_dir};\nconst inputEntries = {input_entries};\nconst resolveWorkspaceSourceEntry = (packageName, sourceEntry) => {{\n  const packageDir = path.resolve(projectRoot, 'node_modules', ...packageName.split('/'));\n  const entryPath = path.join(packageDir, sourceEntry);\n  return fs.existsSync(entryPath) ? entryPath : null;\n}};\nconst manualChunks = (id) => {{\n  if (id.includes('__page_bridge_runtime__.js')) return 'page-bridge-runtime';\n  if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/scheduler/')) return 'react-runtime';\n  if (id.includes('/node_modules/vue/')) return 'vue-runtime';\n  if (id.includes('/@lingxia/react/') || id.includes('/@lingxia/vue/') || id.includes('/@lingxia/bridge/') || id.includes('/@lingxia/elements/')) return 'lingxia-runtime';\n  return undefined;\n}};\n{maybe_config_import}const viewConfig = projectConfig.view ?? {{}};\nconst css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;\nconst workspaceAliases = [\n  ['@lingxia/react', resolveWorkspaceSourceEntry('@lingxia/react', 'src/index.ts')],\n  ['@lingxia/vue', resolveWorkspaceSourceEntry('@lingxia/vue', 'src/index.ts')],\n].filter(([, replacement]) => typeof replacement === 'string').map(([find, replacement]) => ({{ find, replacement }}));\nconst alias = [\n  {{ find: /^@\\//, replacement: `${{projectRoot}}/` }},\n  {{ find: /^\\/public\\//, replacement: `${{path.resolve(projectRoot, 'public')}}/` }},\n  ...workspaceAliases,\n  ...Object.entries(projectConfig.alias ?? {{}}).map(([find, replacement]) => {{\n    if (typeof replacement !== 'string') return null;\n    if (find === '@') {{\n      const normalized = replacement.endsWith('/') ? replacement : `${{replacement}}/`;\n      return {{ find: /^@\\//, replacement: path.resolve(projectRoot, normalized) }};\n    }}\n    return {{ find, replacement: path.resolve(projectRoot, replacement) }};\n  }}).filter(Boolean),\n];\nexport default defineConfig({{\n  root: buildDir,\n  base: '/',\n  logLevel: 'warn',\n  plugins: frameworkPlugins,\n  css,\n  resolve: {{ alias, dedupe: ['react', 'react-dom', 'vue'] }},\n  build: {{\n    target: 'esnext',\n    outDir: path.join(buildDir, 'dist'),\n    emptyOutDir: true,\n    sourcemap: {sourcemap},\n    minify: {minify},\n    cssMinify: {css_minify},\n    rollupOptions: {{\n      input: inputEntries,\n      output: {{\n        entryFileNames: 'pages/[name]/[name].js',\n        chunkFileNames: 'assets/[name]-[hash].js',\n        assetFileNames: 'assets/[name]-[hash][extname]',\n        manualChunks,\n      }},\n    }},\n  }},\n}});\n",
-        project_root = serde_json::to_string(&project.root.to_string_lossy())
-            .unwrap_or_else(|_| "\"\"".to_string()),
-        build_dir = serde_json::to_string(&build_dir.to_string_lossy())
-            .unwrap_or_else(|_| "\"\"".to_string()),
-        input_entries = input_json,
-        sourcemap = if options.release { "false" } else { "true" },
-        minify = if options.release { "'oxc'" } else { "false" },
-        css_minify = if options.release {
-            "'lightningcss'"
-        } else {
-            "false"
-        },
-    );
+    let config = VITE_CONFIG_TEMPLATE
+        .replace("__PLUGIN_IMPORT__", plugin_import)
+        .replace(
+            "__PROJECT_ROOT_JSON__",
+            &serde_json::to_string(&project.root.to_string_lossy())
+                .unwrap_or_else(|_| "\"\"".to_string()),
+        )
+        .replace(
+            "__BUILD_DIR_JSON__",
+            &serde_json::to_string(&build_dir.to_string_lossy())
+                .unwrap_or_else(|_| "\"\"".to_string()),
+        )
+        .replace("__INPUT_ENTRIES_JSON__", &input_json)
+        .replace("__MAYBE_CONFIG_IMPORT__", &maybe_config_import)
+        .replace(
+            "__SOURCEMAP__",
+            if options.release { "false" } else { "true" },
+        )
+        .replace(
+            "__MINIFY__",
+            if options.release { "'oxc'" } else { "false" },
+        )
+        .replace(
+            "__CSS_MINIFY__",
+            if options.release {
+                "'lightningcss'"
+            } else {
+                "false"
+            },
+        );
     fs::write(&config_path, config)?;
     Ok(config_path)
+}
+
+fn create_temp_build_root(project_root: &Path) -> Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix(".lingxia-view-")
+        .tempdir_in(project_root)
+        .with_context(|| {
+            format!(
+                "Failed to create temporary view build directory in {}",
+                project_root.display()
+            )
+        })
+}
+
+fn cleanup_legacy_view_artifacts(project_root: &Path) -> Result<()> {
+    let lingxia_dir = project_root.join(".lingxia");
+    for relative in ["build", "vite"] {
+        let path = lingxia_dir.join(relative);
+        if path.exists() {
+            fs::remove_dir_all(&path)
+                .with_context(|| format!("Failed to remove legacy {}", path.display()))?;
+        }
+    }
+    Ok(())
 }
 
 fn run_vite_build(project_root: &Path, config_path: &Path, working_dir: &Path) -> Result<()> {
