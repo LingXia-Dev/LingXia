@@ -158,7 +158,7 @@ impl Location for Platform {
         config: crate::traits::location::LocationRequestConfig,
     ) -> Result<String, PlatformError> {
         let platform = self.clone();
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let request_config = config.clone();
 
             let handler_id_cell = Arc::new(AtomicU64::new(0));

@@ -36,8 +36,8 @@ impl Location for Platform {
         &self,
         config: crate::traits::location::LocationRequestConfig,
     ) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
-            match || -> Result<(), Box<dyn std::error::Error>> {
+        crate::rt::native_call(
+            |callback_id| match || -> Result<(), Box<dyn std::error::Error>> {
                 let location_class: &jni::objects::JClass =
                     super::get_cached_class(super::CachedClass::LxAppLocation)?.as_ref();
 
@@ -69,8 +69,8 @@ impl Location for Platform {
                     "Failed to request location via JNI: {}",
                     e
                 ))),
-            }
-        })
+            },
+        )
         .await
     }
 }

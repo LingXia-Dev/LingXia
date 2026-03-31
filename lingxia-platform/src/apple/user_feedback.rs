@@ -27,7 +27,7 @@ impl UserFeedback for Platform {
     }
 
     async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             // Convert our ModalOptions to the FFI ModalOptions
             let ffi_options = ffi::ModalOptions {
                 title: options.title,
@@ -52,7 +52,7 @@ impl UserFeedback for Platform {
         cancel_text: String,
         item_color: String,
     ) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             // Convert our options to the FFI ActionSheetOptions
             let ffi_options = ffi::ActionSheetOptions {
                 options,

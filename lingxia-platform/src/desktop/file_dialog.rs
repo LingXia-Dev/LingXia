@@ -6,7 +6,7 @@ use crate::traits::file::{
 pub async fn choose_file_desktop(
     request: ChooseFileRequest,
 ) -> Result<FileDialogResult, PlatformError> {
-    let handle = crate::bg_runtime::spawn_blocking(move || run_file_dialog(&request));
+    let handle = crate::rt::spawn_blocking(move || run_file_dialog(&request));
     match handle {
         Some(h) => h
             .await
@@ -20,7 +20,7 @@ pub async fn choose_file_desktop(
 pub async fn choose_directory_desktop(
     request: ChooseDirectoryRequest,
 ) -> Result<FileDialogResult, PlatformError> {
-    let handle = crate::bg_runtime::spawn_blocking(move || run_directory_dialog(&request));
+    let handle = crate::rt::spawn_blocking(move || run_directory_dialog(&request));
     match handle {
         Some(h) => h.await.map_err(|e| {
             PlatformError::Platform(format!("choose_directory task panicked: {}", e))

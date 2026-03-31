@@ -51,7 +51,7 @@ impl MediaInteraction for Platform {
     }
 
     async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             choose_media_impl(request, callback_id)
                 .map_err(|e| PlatformError::Platform(format!("Failed to choose media: {}", e)))
         })
@@ -59,7 +59,7 @@ impl MediaInteraction for Platform {
     }
 
     async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             scan_code_impl(request, callback_id)
                 .map_err(|e| PlatformError::Platform(format!("Failed to start scanCode: {}", e)))
         })
@@ -70,7 +70,7 @@ impl MediaInteraction for Platform {
         &self,
         request: SaveMediaRequest,
     ) -> Result<(), PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             save_media_impl(request, "saveImageToPhotosAlbum", callback_id)
         })
         .await
@@ -81,7 +81,7 @@ impl MediaInteraction for Platform {
         &self,
         request: SaveMediaRequest,
     ) -> Result<(), PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             save_media_impl(request, "saveVideoToPhotosAlbum", callback_id)
         })
         .await

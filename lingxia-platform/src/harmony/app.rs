@@ -595,7 +595,7 @@ impl AppRuntime for Platform {
     }
 
     async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let callback_id_str = callback_id.to_string();
             lingxia_webview::platform::harmony::tsfn::call_arkts(
                 "getCapsuleRect",

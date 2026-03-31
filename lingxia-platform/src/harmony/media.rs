@@ -111,7 +111,7 @@ impl MediaInteraction for Platform {
             ));
         }
 
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let mode_str = match request.mode {
                 ChooseMediaMode::Images => "images",
                 ChooseMediaMode::Videos => "videos",
@@ -155,7 +155,7 @@ impl MediaInteraction for Platform {
     }
 
     async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let scan_types: Vec<String> = request
                 .scan_types
                 .iter()
@@ -190,7 +190,7 @@ impl MediaInteraction for Platform {
         &self,
         request: SaveMediaRequest,
     ) -> Result<(), PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             save_media_resource(&request.file_uri, MEDIA_LIBRARY_IMAGE_RESOURCE, callback_id)
         })
         .await
@@ -201,7 +201,7 @@ impl MediaInteraction for Platform {
         &self,
         request: SaveMediaRequest,
     ) -> Result<(), PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             save_media_resource(&request.file_uri, MEDIA_LIBRARY_VIDEO_RESOURCE, callback_id)
         })
         .await

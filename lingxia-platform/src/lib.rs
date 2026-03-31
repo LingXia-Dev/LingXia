@@ -28,13 +28,8 @@ pub struct ScreenInfo {
     pub scale: f64,
 }
 
-pub(crate) mod bg_runtime;
+pub(crate) mod rt;
 pub mod traits;
-
-/// Initialize the platform layer with a tokio runtime handle.
-pub fn init(handle: tokio::runtime::Handle) {
-    bg_runtime::set_handle(handle);
-}
 
 #[cfg(target_os = "android")]
 mod android;

@@ -557,7 +557,7 @@ impl AppRuntime for Platform {
     }
 
     async fn get_capsule_rect(&self) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             with_env(|env| -> Result<(), PlatformError> {
                 let capsule_class: &JClass =
                     super::get_cached_class(super::CachedClass::LxAppCapsule).map_err(|e| {

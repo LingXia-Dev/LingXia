@@ -50,7 +50,7 @@ impl UserFeedback for Platform {
     }
 
     async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let modal_class: &JClass = super::get_cached_class(super::CachedClass::LxAppModal)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
@@ -101,7 +101,7 @@ impl UserFeedback for Platform {
         cancel_text: String,
         item_color: String,
     ) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             let action_sheet_class: &JClass =
                 super::get_cached_class(super::CachedClass::LxAppActionSheet)
                     .map_err(|e| PlatformError::Platform(e.to_string()))?;

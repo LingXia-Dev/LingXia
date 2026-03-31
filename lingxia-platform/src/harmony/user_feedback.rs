@@ -32,7 +32,7 @@ impl UserFeedback for Platform {
     }
 
     async fn show_modal(&self, options: ModalOptions) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             // Convert ModalOptions to individual string parameters for TSFN call
             let title = &options.title;
             let content = &options.content;
@@ -66,7 +66,7 @@ impl UserFeedback for Platform {
         cancel_text: String,
         item_color: String,
     ) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
+        crate::rt::native_call(|callback_id| {
             // Convert options to JSON string
             let options_json = serde_json::to_string(&options).map_err(|e| {
                 PlatformError::Platform(format!("Failed to serialize options: {}", e))

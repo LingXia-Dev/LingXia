@@ -309,7 +309,7 @@ pub(crate) mod ios {
         // Set up timeout monitoring if requested.
         if let Some(timeout_ms) = config.high_accuracy_expire_time {
             let callbacks = callbacks().clone();
-            let _ = crate::bg_runtime::spawn(async move {
+            let _ = crate::rt::spawn(async move {
                 tokio::time::sleep(Duration::from_millis(timeout_ms as u64)).await;
                 let should_timeout = {
                     let mut guard = callbacks.lock().unwrap();
@@ -413,9 +413,7 @@ impl Location for Platform {
         &self,
         config: crate::traits::location::LocationRequestConfig,
     ) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| {
-            ios::request_location_with_config(callback_id, config)
-        })
-        .await
+        crate::rt::native_call(|callback_id| ios::request_location_with_config(callback_id, config))
+            .await
     }
 }

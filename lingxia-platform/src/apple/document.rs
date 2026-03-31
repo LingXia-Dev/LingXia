@@ -19,7 +19,7 @@ fn open_document_sync(request: OpenDocumentRequest) -> Result<(), PlatformError>
 
 impl FileInteraction for Platform {
     async fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
-        crate::bg_runtime::blocking(move || open_document_sync(request)).await
+        crate::rt::blocking(move || open_document_sync(request)).await
     }
 
     #[cfg(target_os = "macos")]

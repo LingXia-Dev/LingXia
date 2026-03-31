@@ -10,7 +10,7 @@ impl Network for Platform {
     async fn get_network_info(&self) -> Result<String, PlatformError> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         {
-            crate::bg_runtime::await_callback(|callback_id| {
+            crate::rt::native_call(|callback_id| {
                 ffi::get_network_info(callback_id);
                 Ok(())
             })

@@ -97,17 +97,13 @@ impl MediaInteraction for Platform {
     }
 
     async fn choose_media(&self, request: ChooseMediaRequest) -> Result<String, PlatformError> {
-        crate::bg_runtime::await_callback(|callback_id| choose_media_impl(request, callback_id))
-            .await
+        crate::rt::native_call(|callback_id| choose_media_impl(request, callback_id)).await
     }
 
     async fn scan_code(&self, request: ScanCodeRequest) -> Result<String, PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            crate::bg_runtime::await_callback(|callback_id| {
-                ios::scan_code_impl(request, callback_id)
-            })
-            .await
+            crate::rt::native_call(|callback_id| ios::scan_code_impl(request, callback_id)).await
         }
 
         #[cfg(target_os = "macos")]
@@ -122,7 +118,7 @@ impl MediaInteraction for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            crate::bg_runtime::blocking(move || ios::save_image_to_album(&request.file_uri)).await
+            crate::rt::blocking(move || ios::save_image_to_album(&request.file_uri)).await
         }
 
         #[cfg(not(target_os = "ios"))]
@@ -140,7 +136,7 @@ impl MediaInteraction for Platform {
     ) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            crate::bg_runtime::blocking(move || ios::save_video_to_album(&request.file_uri)).await
+            crate::rt::blocking(move || ios::save_video_to_album(&request.file_uri)).await
         }
 
         #[cfg(not(target_os = "ios"))]

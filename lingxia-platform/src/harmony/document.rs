@@ -4,7 +4,7 @@ use crate::traits::file::{FileInteraction, OpenDocumentRequest};
 
 impl FileInteraction for Platform {
     async fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
-        crate::bg_runtime::blocking(move || open_document_sync(request)).await
+        crate::rt::blocking(move || open_document_sync(request)).await
     }
 }
 

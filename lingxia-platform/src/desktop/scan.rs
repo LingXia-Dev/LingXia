@@ -5,7 +5,7 @@ use rxing::BarcodeFormat;
 /// Desktop implementation of scan_code: opens a file dialog to pick an image, then scans it.
 pub async fn scan_code_desktop(request: ScanCodeRequest) -> Result<String, PlatformError> {
     let scan_types = request.scan_types.clone();
-    let result = crate::bg_runtime::blocking(move || pick_and_scan(&scan_types)).await?;
+    let result = crate::rt::blocking(move || pick_and_scan(&scan_types)).await?;
     let (scan_result, scan_type) = result.ok_or(PlatformError::BusinessError(2000))?;
     Ok(format!(
         r#"{{"scanResult":"{}","scanType":"{}"}}"#,
