@@ -8,7 +8,6 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_RUNTIME_PACKAGE: &str = "@lingxia/bridge";
-pub(crate) const DEFAULT_TYPES_PACKAGE: &str = "@lingxia/types";
 const NPM_REGISTRY: &str = "https://registry.npmjs.org";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,22 +64,12 @@ pub(crate) fn resolve_runtime_js(
     }
 }
 
-pub(crate) fn fetch_latest_npm_package_version(package: &str) -> Result<String> {
-    Ok(fetch_npm_manifest(package, None)?.version)
-}
-
-pub(crate) fn ensure_npm_package_version_exists(package: &str, version: &str) -> Result<()> {
-    let _ = fetch_npm_manifest(package, Some(version)).with_context(|| {
-        format!("Failed to resolve npm package {package}@{version} from npm registry")
-    })?;
-    Ok(())
-}
-
-pub(crate) fn fetch_latest_scaffold_versions() -> Result<ScaffoldPackageVersions> {
-    Ok(ScaffoldPackageVersions {
-        bridge: fetch_latest_npm_package_version(DEFAULT_RUNTIME_PACKAGE)?,
-        types: fetch_latest_npm_package_version(DEFAULT_TYPES_PACKAGE)?,
-    })
+pub(crate) fn current_scaffold_versions() -> ScaffoldPackageVersions {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    ScaffoldPackageVersions {
+        bridge: version.clone(),
+        types: version,
+    }
 }
 
 fn resolve_runtime_from_spec(

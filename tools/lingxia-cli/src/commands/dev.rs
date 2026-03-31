@@ -1,6 +1,7 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::LingXiaConfig;
 use crate::host_assets::prepare_host_assets;
+use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{Context, Result, anyhow};
@@ -14,6 +15,8 @@ pub struct DevExecuteOptions {
     pub build_native: bool,
     pub abis: Vec<String>,
     pub macos_arch: Option<String>,
+    pub framework: Option<String>,
+    pub progress: Option<String>,
     pub device: Option<String>,
     pub platform_arg: Option<String>,
     pub reinstall: bool,
@@ -26,6 +29,8 @@ struct DevContext {
     build_profile: BuildProfile,
     features: Vec<String>,
     build_native: bool,
+    framework: Option<ProjectFramework>,
+    progress: Option<String>,
     device: Option<String>,
     reinstall: bool,
 }
@@ -108,6 +113,12 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         build_profile,
         features: options.features,
         build_native: options.build_native,
+        framework: options
+            .framework
+            .as_deref()
+            .map(parse_lxapp_framework)
+            .transpose()?,
+        progress: options.progress,
         device: options.device,
         reinstall: options.reinstall,
     };
@@ -132,6 +143,8 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
+        ctx.framework,
+        ctx.progress.as_deref(),
         &platforms_to_build,
         &build_targets,
         true,
@@ -205,6 +218,8 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
+        ctx.framework,
+        ctx.progress.as_deref(),
         &platforms_to_build,
         &[],
         true,
@@ -291,6 +306,8 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
+        ctx.framework,
+        ctx.progress.as_deref(),
         &platforms_to_build,
         &[],
         true,
@@ -344,6 +361,8 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
+        ctx.framework,
+        ctx.progress.as_deref(),
         &platforms_to_build,
         &[],
         true,
@@ -409,6 +428,17 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     println!();
 
     Ok(())
+}
+
+fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
+    match value {
+        "react" => Ok(ProjectFramework::React),
+        "vue" => Ok(ProjectFramework::Vue),
+        "html" => Ok(ProjectFramework::Html),
+        _ => Err(anyhow!(
+            "Unsupported framework {value:?}; expected react, vue, or html"
+        )),
+    }
 }
 
 fn resolve_installed_harmony_hap(built_hap: &Path) -> PathBuf {

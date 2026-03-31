@@ -86,6 +86,7 @@ pub(super) fn build_framework_vars(
         fw_app_root_selector,
         fw_runtime_deps,
         fw_dev_deps_prefix,
+        fw_vite_dev_deps,
     ) = match fw.as_str() {
         "react" => (
             "React",
@@ -96,6 +97,7 @@ pub(super) fn build_framework_vars(
             "#root",
             "\"react\": \"^19.2.4\",\n    \"react-dom\": \"^19.2.4\"",
             "\"@types/react\": \"^19.2.10\",\n    \"@types/react-dom\": \"^19.2.3\",\n    ",
+            "\"@vitejs/plugin-react\": \"^6.0.1\",\n    \"esbuild\": \"^0.27.0\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         "vue" => (
             "Vue",
@@ -106,6 +108,7 @@ pub(super) fn build_framework_vars(
             "#app",
             "\"vue\": \"^3.5.0\"",
             "\"vue-tsc\": \"^3.2.4\",\n    ",
+            "\"@vitejs/plugin-vue\": \"^6.0.5\",\n    \"esbuild\": \"^0.27.0\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         other => {
             return Err(anyhow!(
@@ -134,6 +137,10 @@ pub(super) fn build_framework_vars(
     vars.insert(
         "FRAMEWORK_DEV_DEPS_PREFIX".to_string(),
         fw_dev_deps_prefix.to_string(),
+    );
+    vars.insert(
+        "FRAMEWORK_VITE_DEV_DEPS".to_string(),
+        fw_vite_dev_deps.to_string(),
     );
 
     Ok(vars)
@@ -213,7 +220,7 @@ mod tests {
 
         fs::write(
             lxapp.join("package.json"),
-            r#"{"name":"{{APP_PACKAGE_NAME}}","lingxia":{"framework":"{{FRAMEWORK}}"},"dependencies":{"{{FRAMEWORK_PKG}}":"^{{LINGXIA_BRIDGE_VERSION}}","@lingxia/rong":"^{{RONG_VERSION}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}"typescript":"^5"}}"#,
+            r#"{"name":"{{APP_PACKAGE_NAME}}","lingxia":{"framework":"{{FRAMEWORK}}"},"dependencies":{"{{FRAMEWORK_PKG}}":"^{{LINGXIA_BRIDGE_VERSION}}","@lingxia/rong":"^{{RONG_VERSION}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
@@ -313,6 +320,9 @@ mod tests {
         assert!(!vars["TSCONFIG_INCLUDE"].contains("**/*.vue"));
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("react-dom"));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("@types/react"));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-react"));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"esbuild\""));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
     }
 
     #[test]
@@ -334,6 +344,9 @@ mod tests {
         assert!(vars["TSCONFIG_INCLUDE"].contains("**/*.vue"));
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("\"vue\""));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("vue-tsc"));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-vue"));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"esbuild\""));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
     }
 
     #[test]
@@ -382,6 +395,12 @@ mod tests {
         assert!(
             !s.contains("@lingxia/vue"),
             "must not reference @lingxia/vue"
+        );
+        assert!(s.contains("\"vite\""), "must include vite");
+        assert!(s.contains("\"esbuild\""), "must include esbuild");
+        assert!(
+            s.contains("@vitejs/plugin-react"),
+            "must include react vite plugin"
         );
     }
 
@@ -437,6 +456,12 @@ mod tests {
         assert!(
             !s.contains("@lingxia/react"),
             "must not reference @lingxia/react"
+        );
+        assert!(s.contains("\"vite\""), "must include vite");
+        assert!(s.contains("\"esbuild\""), "must include esbuild");
+        assert!(
+            s.contains("@vitejs/plugin-vue"),
+            "must include vue vite plugin"
         );
     }
 

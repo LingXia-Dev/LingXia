@@ -9,17 +9,15 @@ mod macos;
 mod native;
 mod prompts;
 mod template;
+mod template_assets;
 mod types;
 mod validation;
 
 use crate::runtime;
-use crate::versions::fetch_latest_versions;
-use anyhow::{Result, anyhow};
+use crate::versions::current_versions;
+use anyhow::Result;
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
-use indicatif::{ProgressBar, ProgressStyle};
-use std::env;
-use std::io::{IsTerminal, Write};
 use std::path::PathBuf;
 
 use self::config_files::generate_config_file;
@@ -31,17 +29,9 @@ use self::prompts::{
 };
 use self::types::ProjectType;
 
-/// Locate the templates directory via LINGXIA_TEMPLATES_DIR environment variable.
+/// Locate the extracted embedded template assets directory.
 pub(super) fn locate_templates_dir() -> Result<PathBuf> {
-    let path = env::var("LINGXIA_TEMPLATES_DIR")
-        .map(PathBuf::from)
-        .map_err(|_| anyhow!("LINGXIA_TEMPLATES_DIR not set"))?;
-
-    if path.exists() {
-        Ok(path)
-    } else {
-        Err(anyhow!("Templates directory not found: {}", path.display()))
-    }
+    template_assets::locate_templates_dir()
 }
 
 /// Execute the new project command
@@ -56,38 +46,8 @@ pub fn execute(
     println!("{}", "Create a new LingXia project".bold());
     println!();
 
-    // Fetch LingXia versions from registries
-    // Use spinner only in TTY (interactive terminal), skip in CI/non-TTY to avoid log pollution
-    let is_tty = std::io::stdout().is_terminal();
-    let spinner: Option<ProgressBar> = if is_tty {
-        let sp = ProgressBar::new_spinner();
-        sp.set_style(
-            ProgressStyle::default_spinner()
-                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-                .template("{spinner:.cyan} {msg}")
-                .expect("Invalid spinner template"),
-        );
-        sp.set_message("Fetching SDK information...");
-        sp.enable_steady_tick(std::time::Duration::from_millis(80));
-        Some(sp)
-    } else {
-        print!("  Fetching SDK information...");
-        std::io::stdout().flush().ok();
-        None
-    };
-
-    let fetch_result = fetch_latest_versions();
-    if let Some(sp) = spinner {
-        sp.finish_and_clear();
-    } else if fetch_result.is_ok() {
-        println!(" done");
-    } else {
-        println!(" failed");
-    }
-
-    let versions = fetch_result?;
-    let scaffold_versions = runtime::fetch_latest_scaffold_versions()
-        .map_err(|e| anyhow!("Failed to fetch latest scaffold package versions: {e}"))?;
+    let versions = current_versions();
+    let scaffold_versions = runtime::current_scaffold_versions();
     println!(
         "  {} SDK: {}, Rong: {}, LingXia crate: {}, Bridge: {}, Types: {}",
         "✓".green(),

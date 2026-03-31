@@ -1,5 +1,6 @@
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::lxapp;
+use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Context, Result, anyhow};
@@ -47,6 +48,8 @@ pub(crate) fn prepare_host_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
+    framework_override: Option<ProjectFramework>,
+    progress_override: Option<&str>,
     platforms: &[platform::detector::PlatformType],
     build_targets: &[String],
     _explicit_platforms: bool,
@@ -69,8 +72,14 @@ pub(crate) fn prepare_host_assets(
         ));
     }
 
-    let prepared_lxapp_assets =
-        prepare_embedded_lxapp_assets(project_root, config, build_profile, &mut cache)?;
+    let prepared_lxapp_assets = prepare_embedded_lxapp_assets(
+        project_root,
+        config,
+        build_profile,
+        framework_override,
+        progress_override,
+        &mut cache,
+    )?;
     let app_json = build_app_json_from_config(config, &prepared_lxapp_assets)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
 
@@ -515,6 +524,8 @@ fn prepare_embedded_lxapp_assets(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
+    framework_override: Option<ProjectFramework>,
+    progress_override: Option<&str>,
     cache: &mut HostAssetsCache,
 ) -> Result<PreparedLxAppAssets> {
     let app = config
@@ -554,6 +565,14 @@ fn prepare_embedded_lxapp_assets(
     let mut args = vec!["build".to_string()];
     if matches!(build_profile, BuildProfile::Release) {
         args.push("--release".to_string());
+    }
+    if let Some(framework) = framework_override {
+        args.push("--framework".to_string());
+        args.push(framework.as_str().to_string());
+    }
+    if let Some(progress) = progress_override {
+        args.push("--progress".to_string());
+        args.push(progress.to_string());
     }
     let cache_key = format!("{}|{}", path_key(&lxapp_dir), build_profile.as_str(),);
 

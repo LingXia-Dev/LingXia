@@ -15,6 +15,7 @@ dialoguer = { version = "0.12", features = ["completion"] }
 console = "0.16"
 colored = "3.1"
 indicatif = "0.18"
+include_dir = "0.7"
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -57,3 +58,16 @@ urlencoding = "2.1"
 image = { version = "0.25", default-features = false, features = ["png", "webp"] }
 
 openssl = { version = "0.10", features = ["vendored"] }
+
+# LxApp build — oxc-based JS/TS compilation
+oxc_parser = "0.123.0"
+oxc_resolver = "11.19.1"
+oxc_transformer = "0.123.0"
+oxc_codegen = "0.123.0"
+oxc_minifier = "0.123.0"
+oxc_allocator = "0.123.0"
+oxc_span = "0.123.0"
+oxc_ast = "0.123.0"
+oxc_syntax = "0.123.0"
+oxc_sourcemap = "6.1.1"
+oxc_semantic = "0.123.0"

@@ -51,6 +51,14 @@ struct BuildOptions {
     /// macOS architecture for native build
     #[arg(long, value_parser = ["arm64", "x86_64"])]
     macos_arch: Option<String>,
+
+    /// Override LxApp view framework detection
+    #[arg(long, value_parser = ["react", "vue", "html"])]
+    framework: Option<String>,
+
+    /// LxApp progress output mode
+    #[arg(long, value_parser = ["task", "plain"])]
+    progress: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -362,6 +370,8 @@ fn main() -> Result<()> {
                 build_native: !build_options.skip_native,
                 abis: build_options.abis,
                 macos_arch: build_options.macos_arch,
+                framework: build_options.framework,
+                progress: build_options.progress,
                 platforms: platform,
                 all_platforms,
                 ipa,
@@ -406,6 +416,8 @@ fn main() -> Result<()> {
                 build_native: !build_options.skip_native,
                 abis: build_options.abis,
                 macos_arch: build_options.macos_arch,
+                framework: build_options.framework,
+                progress: build_options.progress,
                 device,
                 platform_arg: platform,
                 reinstall,

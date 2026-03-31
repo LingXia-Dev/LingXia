@@ -13,9 +13,6 @@ use std::env;
 /// GitHub repository owner/name
 const GITHUB_REPO: &str = "LingXia-Dev/LingXia";
 
-/// Default timeout for quick requests (seconds)
-const DEFAULT_TIMEOUT_SECS: u64 = 10;
-
 /// Timeout for large file downloads (seconds)
 const DOWNLOAD_TIMEOUT_SECS: u64 = 300;
 
@@ -40,102 +37,6 @@ fn create_agent(timeout_secs: u64) -> ureq::Agent {
 /// Get GitHub token from environment
 fn get_token() -> Option<String> {
     env::var("GITHUB_TOKEN").ok()
-}
-
-/// Fetch file content from GitHub repository.
-///
-/// Strategy:
-/// 1. Try raw.githubusercontent.com first (works for public repos)
-/// 2. If failed and GITHUB_TOKEN is set, retry with GitHub API (for private repos)
-pub fn fetch_file_content(path: &str, git_ref: &str) -> Result<String> {
-    let token = get_token();
-    let agent = create_agent(DEFAULT_TIMEOUT_SECS);
-
-    // Try raw URL first (works for public repos)
-    let raw_url = format!(
-        "https://raw.githubusercontent.com/{}/{}/{}",
-        GITHUB_REPO, git_ref, path
-    );
-
-    let mut response = agent
-        .get(&raw_url)
-        .header("User-Agent", "lingxia-cli")
-        .call()
-        .map_err(|e| {
-            anyhow!(
-                "Failed to connect to GitHub, please check your network connection\n  Cause: {}",
-                e
-            )
-        })?;
-
-    let status = response.status().as_u16();
-
-    // If raw URL failed and we have a token, try GitHub API
-    if status != 200 {
-        if let Some(ref token) = token {
-            return fetch_file_via_api(&agent, path, git_ref, token);
-        }
-
-        let hint = match status {
-            404 => "File not found. For private repos, set GITHUB_TOKEN environment variable",
-            401 | 403 => "Access denied. Set GITHUB_TOKEN environment variable for private repos",
-            500..=599 => "GitHub service temporarily unavailable, please try again later",
-            _ => "Request failed",
-        };
-        return Err(anyhow!(
-            "Failed to fetch file (HTTP {}): {}\n  Path: {}",
-            status,
-            hint,
-            path
-        ));
-    }
-
-    response
-        .body_mut()
-        .read_to_string()
-        .context("Failed to read response body")
-}
-
-/// Fetch file content via GitHub API (for private repos)
-fn fetch_file_via_api(
-    agent: &ureq::Agent,
-    path: &str,
-    git_ref: &str,
-    token: &str,
-) -> Result<String> {
-    let api_url = format!(
-        "https://api.github.com/repos/{}/contents/{}?ref={}",
-        GITHUB_REPO, path, git_ref
-    );
-
-    let mut response = agent
-        .get(&api_url)
-        .header("User-Agent", "lingxia-cli")
-        .header("Authorization", &format!("Bearer {}", token))
-        .header("Accept", "application/vnd.github.raw+json")
-        .call()
-        .map_err(|e| anyhow!("Failed to connect to GitHub API\n  Cause: {}", e))?;
-
-    let status = response.status().as_u16();
-    if status != 200 {
-        let hint = match status {
-            404 => "File not found, or GITHUB_TOKEN lacks 'repo' scope",
-            401 | 403 => "Access denied. Check GITHUB_TOKEN has 'repo' scope for private repos",
-            500..=599 => "GitHub service temporarily unavailable, please try again later",
-            _ => "Request failed",
-        };
-        return Err(anyhow!(
-            "Failed to fetch file via API (HTTP {}): {}\n  Path: {}",
-            status,
-            hint,
-            path
-        ));
-    }
-
-    response
-        .body_mut()
-        .read_to_string()
-        .context("Failed to read response body")
 }
 
 /// Download a release asset from GitHub.

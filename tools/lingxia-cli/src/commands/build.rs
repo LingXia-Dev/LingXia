@@ -2,6 +2,7 @@ use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::prepare_host_assets;
 use crate::lxapp;
+use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildConfig};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -13,6 +14,8 @@ pub struct BuildExecuteOptions {
     pub build_native: bool,
     pub abis: Vec<String>,
     pub macos_arch: Option<String>,
+    pub framework: Option<String>,
+    pub progress: Option<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
     pub ipa: bool,
@@ -31,6 +34,8 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         build_native,
         abis,
         macos_arch,
+        framework,
+        progress,
         platforms,
         all_platforms,
         ipa,
@@ -45,9 +50,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let mut skip_host_assets = false;
     let lxapp_json_exists = current_dir.join("lxapp.json").exists();
     let lxplugin_json_exists = current_dir.join("lxplugin.json").exists();
-
-    println!("{}", "🚀 LingXia Build".bold().cyan());
-    println!();
 
     let host_config_exists = current_dir.join(HOST_CONFIG_FILE).exists();
 
@@ -64,6 +66,14 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         }
         if package {
             args.push("--package".to_string());
+        }
+        if let Some(framework) = framework.as_deref() {
+            args.push("--framework".to_string());
+            args.push(framework.to_string());
+        }
+        if let Some(progress) = progress.as_deref() {
+            args.push("--progress".to_string());
+            args.push(progress.to_string());
         }
 
         return lxapp::run(&args);
@@ -258,6 +268,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             &project_root,
             &config,
             build_profile,
+            framework
+                .as_deref()
+                .map(parse_lxapp_framework)
+                .transpose()?,
+            progress.as_deref(),
             &platforms_to_build,
             &build_targets,
             constrained_platforms,
@@ -326,4 +341,15 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     Ok(())
+}
+
+fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
+    match value {
+        "react" => Ok(ProjectFramework::React),
+        "vue" => Ok(ProjectFramework::Vue),
+        "html" => Ok(ProjectFramework::Html),
+        _ => Err(anyhow!(
+            "Unsupported framework {value:?}; expected react, vue, or html"
+        )),
+    }
 }

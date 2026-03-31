@@ -21,6 +21,6 @@
     {{FRAMEWORK_RUNTIME_DEPS}}
   },
   "devDependencies": {
-    {{FRAMEWORK_DEV_DEPS_PREFIX}}"typescript": "^5.9.3"
+    {{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript": "^5.9.3"
   }
 }

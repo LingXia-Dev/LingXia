@@ -1,9 +1,0 @@
-# Auto-synced from ../templates/ during prepack
-templates/
-
-# Binary downloaded during postinstall
-vendor/lingxia
-vendor/lingxia.exe
-
-# Build output
-dist/
