@@ -1427,11 +1427,11 @@ function attachAbortSignal(
   signal.addEventListener("abort", abortListener);
 }
 
-function bridgeSubscribe(
+function bridgeSubscribe<TData = unknown>(
   topic: string,
   params?: unknown,
   options?: SubscribeOptions,
-): Promise<Subscription> {
+): Promise<Subscription<TData>> {
   if (!topic || typeof topic !== "string") {
     return Promise.reject({
       code: BRIDGE_ERROR.MALFORMED_MESSAGE,
@@ -1448,11 +1448,11 @@ function bridgeSubscribe(
       if (pending && pending.timerId !== null) clearTimeout(pending.timerId);
       pendingSubs.delete(id);
       send({ v: 2, kind: "unsub", id } as Unsub);
-    });
+    }) as InternalSubscription & Subscription<TData>;
     pendingSubs.set(id, {
       topic,
       subscription,
-      resolve,
+      resolve: resolve as (subscription: Subscription<TData>) => void,
       reject,
       timerId: null,
     });
@@ -1592,11 +1592,11 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 
   channel: {
-    open(
+    open<TData = unknown>(
       topic: string,
       params?: unknown,
       options?: ChannelOpenOptions,
-    ): Promise<Channel> {
+    ): Promise<Channel<TData>> {
       if (!topic || typeof topic !== "string") {
         return Promise.reject({
           code: BRIDGE_ERROR.MALFORMED_MESSAGE,
@@ -1620,11 +1620,11 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
             activeChannels.delete(id);
             send({ v: 2, kind: "ch.close", id, code, reason } as ChClose);
           },
-        );
+        ) as InternalChannel & Channel<TData>;
         pendingChannels.set(id, {
           topic,
           channel,
-          resolve,
+          resolve: resolve as (channel: Channel<TData>) => void,
           reject,
           timerId: null,
         });

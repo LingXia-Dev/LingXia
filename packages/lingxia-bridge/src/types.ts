@@ -151,12 +151,12 @@ export interface LingXiaBridgeInterface {
   callStream(method: string, params?: unknown, options?: StreamCallOptions): StreamHandle<unknown, unknown>;
   callStream<M extends LxMethod>(method: M, params?: LxMethodParams<M>, options?: StreamCallOptions): StreamHandle<LxMethodStreamData<M>, LxMethodResult<M>>;
   notify(method: string, params?: unknown, options?: NotifyOptions): void;
-  subscribe(topic: string, params?: unknown, options?: SubscribeOptions): Promise<Subscription>;
+  subscribe<TData = unknown>(topic: string, params?: unknown, options?: SubscribeOptions): Promise<Subscription<TData>>;
   state: {
     subscribe(callback: DataSubscriber): () => void;
   };
   channel: {
-    open(topic: string, params?: unknown, options?: ChannelOpenOptions): Promise<Channel>;
+    open<TData = unknown>(topic: string, params?: unknown, options?: ChannelOpenOptions): Promise<Channel<TData>>;
   };
   _connectWebMessagePort(port: MessagePort): void;
   _receiveEvaluateMessage(messageString: string): void;

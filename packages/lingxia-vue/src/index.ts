@@ -1,4 +1,15 @@
-export { useLingXia } from "./hook.js";
+export {
+  useLxPage,
+  useLxStream,
+  useLxSubscription,
+  useLxChannel,
+  type LxStreamOptions,
+  type LxStreamState,
+  type LxSubscriptionOptions,
+  type LxSubscriptionState,
+  type LxChannelOptions,
+  type LxChannelState,
+} from "./hook.js";
 export { default as LxVideo } from "./LxVideo.vue";
 export { default as LxPicker } from "./LxPicker.vue";
 export { default as LxNavigator } from "./LxNavigator.vue";
