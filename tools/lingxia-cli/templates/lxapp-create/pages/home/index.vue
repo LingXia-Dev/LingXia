@@ -1,20 +1,20 @@
 <script setup lang="ts">
 import '../../app.css';
 import { LxNavigator } from '@lingxia/vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import { computed, ref } from 'vue';
 
 type PageState = { greeting?: string; greetCount?: number };
 type PageActions = { greet(payload: { name: string }): void };
 
-const { data, greet } = useLingXia<PageState, PageActions>();
+const { data, actions } = useLxPage<PageState, PageActions>();
 const state = computed(() => data ?? { greeting: '', greetCount: 0 });
 const inputName = ref('');
 const canSubmit = computed(() => inputName.value.trim().length > 0);
 
 function handleSubmit() {
   const v = inputName.value.trim();
-  if (v) greet({ name: v });
+  if (v) actions.greet({ name: v });
 }
 </script>
 

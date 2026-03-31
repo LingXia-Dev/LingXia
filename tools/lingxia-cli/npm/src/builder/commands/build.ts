@@ -98,6 +98,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     }
 
     await ensureDependencies(projectPath);
+    await ensureLocalFileDependenciesBuilt(projectPath);
 
     const buildConfig = !isPluginMode
       ? loadLxappConfig(projectPath)
@@ -117,6 +118,8 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       isPluginMode,
       frameworkForPages,
     );
+    const logicEntry = isPluginMode ? "logic.js" : configManager.getLogicEntry();
+    const logicEnabled = logicEntry !== null;
     const pageNames = pages.map((p) => p.name).join(", ");
     const detectedFramework = pages[0]?.type ?? "unknown";
     console.log(` Found ${pages.length} pages: ${pageNames}`);
@@ -139,14 +142,18 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     const resolvedPagePaths = pages.map((p) => p.path);
 
     if (only === "logic") {
-      console.log("▶ Building logic layer only...");
-      const logicBuilder = new LogicBuilder(
-        projectPath,
-        outputDir,
-        pluginId,
-        buildConfig,
-      );
-      await logicBuilder.buildLogic(buildOptions, resolvedPagePaths);
+      if (!logicEnabled) {
+        console.log("▶ Logic disabled in lxapp.json; skipping logic layer.");
+      } else {
+        console.log("▶ Building logic layer only...");
+        const logicBuilder = new LogicBuilder(
+          projectPath,
+          outputDir,
+          pluginId,
+          buildConfig,
+        );
+        await logicBuilder.buildLogic(buildOptions, resolvedPagePaths);
+      }
     } else if (only === "view") {
       console.log("▶ Building view layer only...");
       const viewBuilder = new ViewBuilder(
@@ -157,12 +164,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
       );
       await viewBuilder.buildPages(pages, buildOptions);
     } else {
-      console.log("▶ Building logic and view layers in parallel...");
-      const logicBuilder = new LogicBuilder(
-        projectPath,
-        outputDir,
-        pluginId,
-        buildConfig,
+      console.log(
+        logicEnabled
+          ? "▶ Building logic and view layers in parallel..."
+          : "▶ Building view layer only (logic disabled)...",
       );
       const viewBuilder = new ViewBuilder(
         projectPath,
@@ -170,15 +175,25 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
         buildConfig,
         framework,
       );
-
-      await Promise.all([
-        logicBuilder
-          .buildLogic(buildOptions, resolvedPagePaths)
-          .then(() => console.log("  ✔ Logic layer built")),
+      const tasks: Array<Promise<void>> = [
         viewBuilder
           .buildPages(pages, buildOptions)
           .then(() => console.log("  ✔ View layer built")),
-      ]);
+      ];
+      if (logicEnabled) {
+        const logicBuilder = new LogicBuilder(
+          projectPath,
+          outputDir,
+          pluginId,
+          buildConfig,
+        );
+        tasks.push(
+          logicBuilder
+            .buildLogic(buildOptions, resolvedPagePaths)
+            .then(() => console.log("  ✔ Logic layer built")),
+        );
+      }
+      await Promise.all(tasks);
     }
 
     const endTime = Date.now();
@@ -372,6 +387,19 @@ function readOptionalJsonFile(
 
 type PackageManager = "npm" | "pnpm" | "yarn";
 
+type PackageJsonLike = {
+  name?: unknown;
+  version?: unknown;
+  main?: unknown;
+  types?: unknown;
+  exports?: unknown;
+  scripts?: Record<string, unknown>;
+  dependencies?: Record<string, unknown>;
+  devDependencies?: Record<string, unknown>;
+  peerDependencies?: Record<string, unknown>;
+  optionalDependencies?: Record<string, unknown>;
+};
+
 async function ensureDependencies(projectPath: string): Promise<void> {
   if (isSkipInstall()) return;
 
@@ -409,7 +437,9 @@ async function ensureDependencies(projectPath: string): Promise<void> {
     hasLockfileFor(packageManager, hasPnpmLock, hasYarnLock, hasNpmLock),
   );
 
-  console.log(`  ⏳ Installing LxApp dependencies (${packageManager})...`);
+  console.log(
+    `  ⏳ Installing dependencies for ${path.basename(projectPath)} (${packageManager})...`,
+  );
 
   try {
     await runCommand(packageManager, args, projectPath);
@@ -426,6 +456,231 @@ async function ensureDependencies(projectPath: string): Promise<void> {
       return;
     }
     throw error;
+  }
+}
+
+async function ensureLocalFileDependenciesBuilt(
+  projectPath: string,
+): Promise<void> {
+  const visited = new Set<string>();
+  const activeFramework = resolveFrameworkPreference(projectPath);
+  await ensureLocalFileDependenciesBuiltInternal(
+    projectPath,
+    visited,
+    true,
+    projectPath,
+    activeFramework,
+  );
+}
+
+async function ensureLocalFileDependenciesBuiltInternal(
+  projectPath: string,
+  visited: Set<string>,
+  includeDevDependencies: boolean,
+  rootProjectPath: string,
+  activeFramework?: FrameworkType,
+): Promise<void> {
+  const packageJsonPath = path.join(projectPath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return;
+
+  const packageJson = JSON.parse(
+    fs.readFileSync(packageJsonPath, "utf-8"),
+  ) as PackageJsonLike;
+  const localPackages = collectLocalFileDependencyPaths(
+    projectPath,
+    packageJson,
+    includeDevDependencies,
+    projectPath === rootProjectPath ? activeFramework : undefined,
+  );
+
+  for (const packagePath of localPackages) {
+    const normalized = path.resolve(packagePath);
+    if (visited.has(normalized)) continue;
+    visited.add(normalized);
+
+    await ensureDependencies(normalized);
+    await ensureLocalFileDependenciesBuiltInternal(
+      normalized,
+      visited,
+      true,
+      rootProjectPath,
+      activeFramework,
+    );
+
+    const buildArgs = resolveLocalPackageBuildArgs(normalized);
+    if (!buildArgs) continue;
+
+    const packageManager = detectPackageManagerForProject(normalized);
+    console.log(
+      `  ⏳ Building local package ${path.basename(normalized)} (${packageManager})...`,
+    );
+
+    try {
+      await runCommand(packageManager, buildArgs, normalized);
+    } catch (error: any) {
+      if (error?.code === "ENOENT" && packageManager !== "npm") {
+        console.warn(
+          `⚠️ ${packageManager} not found for ${path.basename(normalized)}, falling back to npm run build.`,
+        );
+        await runCommand("npm", buildArgs, normalized);
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+function collectLocalFileDependencyPaths(
+  projectPath: string,
+  packageJson: PackageJsonLike,
+  includeDevDependencies: boolean,
+  activeFramework?: FrameworkType,
+): string[] {
+  const sections: Array<Record<string, unknown> | undefined> = [
+    packageJson.dependencies,
+    packageJson.optionalDependencies,
+  ];
+  if (includeDevDependencies) {
+    sections.push(packageJson.devDependencies);
+  }
+
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  for (const section of sections) {
+    if (!section) continue;
+    for (const [dependencyName, value] of Object.entries(section)) {
+      if (typeof value !== "string" || !value.startsWith("file:")) continue;
+      if (
+        dependencyName === "lingxia-types" ||
+        dependencyName === "@lingxia/types"
+      ) {
+        continue;
+      }
+      if (activeFramework === "react" && dependencyName === "@lingxia/vue") {
+        continue;
+      }
+      if (activeFramework === "vue" && dependencyName === "@lingxia/react") {
+        continue;
+      }
+      const rawPath = value.slice("file:".length).trim();
+      if (!rawPath) continue;
+      const resolved = path.resolve(projectPath, rawPath);
+      if (seen.has(resolved)) continue;
+      if (!fs.existsSync(path.join(resolved, "package.json"))) continue;
+      seen.add(resolved);
+      results.push(resolved);
+    }
+  }
+
+  return results;
+}
+
+function resolveLocalPackageBuildArgs(packagePath: string): string[] | null {
+  const packageJsonPath = path.join(packagePath, "package.json");
+  if (!fs.existsSync(packageJsonPath)) return null;
+
+  const packageJson = JSON.parse(
+    fs.readFileSync(packageJsonPath, "utf-8"),
+  ) as PackageJsonLike;
+  if (!packageJson.scripts?.build) return null;
+
+  const outputs = resolveBuildOutputs(packagePath, packageJson);
+  if (outputs.length === 0) return null;
+
+  const newestInput = getNewestRelevantMtime(packagePath, [
+    "package.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "tsconfig.json",
+    "rollup.config.js",
+    "rollup.config.mjs",
+    "vite.config.ts",
+    "vite.config.js",
+  ]);
+  const newestSource = Math.max(
+    newestInput,
+    getNewestPathMtime(path.join(packagePath, "src")),
+  );
+  const affectedOutputs = outputs.filter(
+    (output) => !fs.existsSync(output) || newestSource > getMtime(output),
+  );
+  if (affectedOutputs.length === 0) return null;
+
+  if (
+    packageJson.scripts["build:types"] &&
+    affectedOutputs.every((output) => output.endsWith(".d.ts"))
+  ) {
+    return ["run", "build:types"];
+  }
+
+  return ["run", "build"];
+}
+
+function resolveBuildOutputs(
+  packagePath: string,
+  packageJson: PackageJsonLike,
+): string[] {
+  const outputs = new Set<string>();
+
+  const addRelativeOutput = (value: unknown) => {
+    if (typeof value !== "string") return;
+    if (!value.startsWith("dist/")) return;
+    outputs.add(path.join(packagePath, value));
+  };
+
+  addRelativeOutput(packageJson.main);
+  addRelativeOutput(packageJson.types);
+
+  const visitExports = (value: unknown) => {
+    if (typeof value === "string") {
+      addRelativeOutput(value.replace(/^\.\//, ""));
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      visitExports(child);
+    }
+  };
+
+  if (
+    packageJson.exports &&
+    typeof packageJson.exports === "object" &&
+    "." in (packageJson.exports as Record<string, unknown>)
+  ) {
+    visitExports((packageJson.exports as Record<string, unknown>)["."]);
+  } else {
+    visitExports(packageJson.exports);
+  }
+  return Array.from(outputs);
+}
+
+function getNewestRelevantMtime(projectPath: string, files: string[]): number {
+  let newest = 0;
+  for (const file of files) {
+    newest = Math.max(newest, getMtime(path.join(projectPath, file)));
+  }
+  return newest;
+}
+
+function getNewestPathMtime(targetPath: string): number {
+  try {
+    const stat = fs.statSync(targetPath);
+    if (!stat.isDirectory()) {
+      return stat.mtimeMs || 0;
+    }
+
+    let newest = stat.mtimeMs || 0;
+    for (const entry of fs.readdirSync(targetPath, { withFileTypes: true })) {
+      newest = Math.max(
+        newest,
+        getNewestPathMtime(path.join(targetPath, entry.name)),
+      );
+    }
+    return newest;
+  } catch {
+    return 0;
   }
 }
 
@@ -450,6 +705,13 @@ function detectPackageManager(
   if (hasPnpmLock) return "pnpm";
   if (hasYarnLock) return "yarn";
   return "npm";
+}
+
+function detectPackageManagerForProject(projectPath: string): PackageManager {
+  return detectPackageManager(
+    fs.existsSync(path.join(projectPath, "pnpm-lock.yaml")),
+    fs.existsSync(path.join(projectPath, "yarn.lock")),
+  );
 }
 
 function hasLockfileFor(

@@ -136,6 +136,7 @@ export class PageProcessor {
     const target = options.target ?? frameworkConfig.target;
     const esbuild = frameworkConfig.esbuild;
 
+    console.log(`  ⏳ Bundling ${framework} view pages with Vite...`);
     await this.runViteBuild(buildDir, framework, {
       options,
       inputs,
@@ -146,6 +147,7 @@ export class PageProcessor {
       esbuild,
       alias: this.alias,
     });
+    console.log(`  ✔ Vite bundle finished for ${framework} pages`);
 
     const distDir = path.join(buildDir, "dist");
 
@@ -156,6 +158,7 @@ export class PageProcessor {
       this.fileUtils.ensureDirectory(finalAssetsDir);
       await this.fileUtils.copyDirectory(buildAssetsDir, finalAssetsDir);
     }
+    console.log(`  ✔ Copied shared ${framework} view assets`);
 
     // For each entry, pass explicit file paths to the processor
     for (const { page, pageFiles, pageFunctions } of items) {
@@ -181,6 +184,7 @@ export class PageProcessor {
         bridgeScript,
       );
     }
+    console.log(`  ✔ Finalized ${items.length} ${framework} page output(s)`);
   }
 
   private async runViteBuild(

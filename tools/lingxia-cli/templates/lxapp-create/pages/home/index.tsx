@@ -1,15 +1,15 @@
 import React from 'react';
 import { LxNavigator } from '@lingxia/react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../app.css';
 
 type PageState = { greeting: string; greetCount: number };
 type PageActions = { greet(payload: { name: string }): void };
 
 export default function HomePage() {
-  const { data, greet } = useLingXia<PageState, PageActions>();
+  const { data, actions } = useLxPage<PageState, PageActions>();
   const [name, setName] = React.useState('');
-  const submit = () => name.trim() && greet({ name: name.trim() });
+  const submit = () => name.trim() && actions.greet({ name: name.trim() });
 
   return (
     <div style={S.page}>

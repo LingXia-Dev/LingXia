@@ -16,6 +16,7 @@ tls-ring = ["lingxia/tls-ring"]
 
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false }
+lingxia-macro = { version = "{{LINGXIA_VERSION}}" }
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]

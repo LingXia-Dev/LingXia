@@ -35,7 +35,7 @@ ${actionMethods}
 }
 
 declare global {
-  function useLingXia(): { data: PageData } & PageActions;
+  function useLxPage(): { data: PageData; actions: PageActions };
 }
 
 export {};

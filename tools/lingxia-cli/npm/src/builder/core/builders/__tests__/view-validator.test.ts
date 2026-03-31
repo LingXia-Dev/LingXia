@@ -33,7 +33,7 @@ describe("view-validator", () => {
 
   describe("PASS cases", () => {
     it.each([
-      ["useLingXia() usage", `const { data } = useLingXia(); return data.x;`],
+      ["useLxPage() usage", `const { data } = useLxPage(); return data.x;`],
       ["lx in // comment", `// lx.storage\nreturn null;`],
       ["lx in /* comment */", `/* lx.request */ return null;`],
       ["lx in string", `const s = "lx.storage"; return s;`],
@@ -90,7 +90,7 @@ describe("view-validator", () => {
         expect.fail("Should throw");
       } catch (e: any) {
         expect(e.message).toContain("lx.storage");
-        expect(e.message).toContain("useLingXia()");
+        expect(e.message).toContain("useLxPage()");
       }
     });
   });

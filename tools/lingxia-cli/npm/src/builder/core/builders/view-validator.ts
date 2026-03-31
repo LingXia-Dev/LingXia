@@ -28,7 +28,7 @@ export function validateViewFile(pageFiles: PageFiles): void {
   throw new Error(
     `\n❌ \`lx.*\` API cannot be used in view files: ${fileName}\n\n` +
       `${lines}\n\n` +
-      `Move these calls to the logic layer, then access data via useLingXia().\n`,
+      `Move these calls to the logic layer, then access data via useLxPage().\n`,
   );
 }
 

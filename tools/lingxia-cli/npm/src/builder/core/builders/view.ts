@@ -91,7 +91,7 @@ export class ViewBuilder {
     // Copy root files with actual page paths (with extensions)
     await this.copyRootFiles(pagesToBuild);
 
-    // Generate TypeScript type definitions for useLingXia
+    // Generate TypeScript type definitions for useLxPage
     await this.generatePageTypes(pagesToBuild);
 
     // Batch build pages using multi-entry
@@ -99,7 +99,7 @@ export class ViewBuilder {
       if (subset.length === 0) return;
       const items = subset.map((page) => {
         const pageFiles = this.detectPageFiles(page);
-        // Validate that view files don't use lx.* APIs (must use useLingXia() instead)
+        // Validate that view files don't use lx.* APIs (must use useLxPage() instead)
         validateViewFile(pageFiles);
         const pageFunctions = this.extractPageBridgeMethods(pageFiles);
         return { page, pageFiles, pageFunctions };
@@ -442,7 +442,7 @@ export class ViewBuilder {
   }
 
   /**
-   * Generate TypeScript type definitions for each page's useLingXia hook.
+   * Generate TypeScript type definitions for each page's useLxPage hook.
    * Types are extracted from the Logic layer (index.ts) and written to .lingxia/types/
    */
   private async generatePageTypes(pages: Page[]): Promise<void> {

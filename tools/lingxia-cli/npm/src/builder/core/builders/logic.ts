@@ -26,6 +26,7 @@ export class LogicBuilder {
   private sourceDirs: string[];
   private isPlugin: boolean;
   private pluginId?: string;
+  private logicEntry: string | null;
 
   constructor(
     projectPath: string,
@@ -42,6 +43,7 @@ export class LogicBuilder {
       resolveSourceDirs(projectPath, buildConfig) ?? DEFAULT_SOURCE_DIRS;
     this.isPlugin = pluginId !== undefined;
     this.pluginId = pluginId;
+    this.logicEntry = this.isPlugin ? "logic.js" : this.configManager.getLogicEntry();
   }
 
   async buildLogic(
@@ -134,7 +136,9 @@ export class LogicBuilder {
 
     // Copy built logic.js to output
     const builtLogicPath = path.join(buildDir, "dist", "main.iife.js");
-    const outputPath = path.join(this.outputDir, "logic.js");
+    if (!this.logicEntry) return;
+    const outputPath = path.join(this.outputDir, this.logicEntry);
+    this.fileUtils.ensureDirectory(path.dirname(outputPath));
     fs.copyFileSync(builtLogicPath, outputPath);
   }
 

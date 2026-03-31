@@ -2,6 +2,19 @@ import * as fs from "fs";
 import * as path from "path";
 import type { LxPluginConfig } from "../types/index.js";
 
+function isSafeLogicEntry(entry: string): boolean {
+  if (!entry || entry.includes("\\")) {
+    return false;
+  }
+
+  const normalized = path.posix.normalize(entry);
+  if (normalized === "." || normalized.startsWith("../") || normalized.includes("/../")) {
+    return false;
+  }
+
+  return !path.posix.isAbsolute(normalized);
+}
+
 /**
  * Centralized configuration manager for LingXia projects
  * Handles lxapp.json, lxplugin.json, and other configuration files
@@ -60,6 +73,28 @@ export class ConfigManager {
 
     const config = this.getLxappConfig();
     return Array.isArray(config.pages) ? config.pages : [];
+  }
+
+  getLogicEntry(): string | null {
+    const config = this.getLxappConfig();
+    if (config.logic === false) {
+      return null;
+    }
+    if (config.logic === true || config.logic === undefined || config.logic === null) {
+      if (config.appService === false) {
+        return null;
+      }
+      return "logic.js";
+    }
+    if (typeof config.logic === "string") {
+      const logicEntry = config.logic.trim();
+      if (!isSafeLogicEntry(logicEntry)) {
+        console.warn(`[lxapp config] Invalid logic entry ${JSON.stringify(logicEntry)}; falling back to "logic.js"`);
+        return "logic.js";
+      }
+      return logicEntry;
+    }
+    return "logic.js";
   }
 
   /**
