@@ -1,12 +1,9 @@
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function PullDownRefreshPage() {
-  const {
-    data,
-    startRefresh,
-    stopRefresh,
-  } = useLingXia();
+  const { data, actions } = useLxPage();
+  const { startRefresh, stopRefresh } = actions;
 
   const {
     refreshCount = 0,

@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type PageActions = {
@@ -44,10 +44,8 @@ type PageActions = {
   sendPopupMessage(payload: { message: string }): void;
 };
 
-const {
-  data,
-  sendPopupMessage,
-} = useLingXia() as PageActions;
+const { data, actions } = useLxPage();
+const { sendPopupMessage } = actions;
 
 const inputRef = ref<HTMLInputElement | null>(null);
 

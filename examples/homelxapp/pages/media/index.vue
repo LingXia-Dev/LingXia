@@ -814,7 +814,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import { LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -907,8 +907,8 @@ type PreviewSessionResult = {
   lastIndex: number;
 };
 
+const { data, actions } = useLxPage();
 const {
-  data,
   launchMediaDemo,
   previewSelectedMedia,
   openSourcePicker,
@@ -947,10 +947,7 @@ const {
   previewCompressedVideo,
   captureImageForAlbum,
   captureVideoForAlbum,
-} = useLingXia() as {
-  data?: Record<string, any>;
-  [key: string]: any;
-};
+} = actions;
 
 const mediaTypeInput = computed(() => data?.mediaType || 'image');
 const isImageInfoMode = computed(() => mediaTypeInput.value === 'imageInfo');

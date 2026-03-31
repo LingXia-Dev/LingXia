@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import { LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
@@ -39,8 +39,8 @@ type PageActions = {
 const SEEK_STEP_SECONDS = 10;
 
 export default function App() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     play,
     pause,
     stop,
@@ -55,7 +55,7 @@ export default function App() {
     onFullscreenChange,
     onQualityChange,
     onRateChange,
-  } = useLingXia() as unknown as PageActions;
+  } = actions;
   const video = data?.videos?.[0];
   const eventLog = data?.eventLog || 'Ready';
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;

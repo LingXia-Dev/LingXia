@@ -139,7 +139,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import { LxPicker } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -168,17 +168,8 @@ const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')
 const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 const tabs: ModeTab[] = ['selector', 'multiSelector', 'time', 'date'];
 
-const {
-  data,
-  setActiveTab,
-  onPickerConfirm,
-  onPickerScroll,
-} = useLingXia() as {
-  data?: PickerPageData;
-  setActiveTab: (params: { tab: ModeTab }) => void;
-  onPickerConfirm: (params: { field: string; value: string | string[] }) => void;
-  onPickerScroll: (params: { field: string; value: string | string[] }) => void;
-};
+const { data, actions } = useLxPage();
+const { setActiveTab, onPickerConfirm, onPickerScroll } = actions;
 const activeTab = computed<ModeTab>(() => data?.activeTab || 'selector');
 const coffee = computed(() => data?.coffee);
 const location = computed(() => data?.location);

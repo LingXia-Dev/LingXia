@@ -1,8 +1,9 @@
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function ComponentsPage() {
-  const { navigateTo } = useLingXia();
+  const { actions } = useLxPage();
+  const { navigateTo } = actions;
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -120,30 +121,6 @@ export default function ComponentsPage() {
             </div>
           </div>
 
-          {/* Textarea */}
-          <div
-            className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/input/index?type=textarea' })}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-cyan-500 to-sky-600 rounded-lg flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="w-5 h-5">
-                  <rect x="3" y="5" width="18" height="14" rx="2" />
-                  <line x1="7" y1="9" x2="17" y2="9" />
-                  <line x1="7" y1="13" x2="15" y2="13" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-gray-900">Textarea</div>
-                <div className="text-xs text-gray-500">Native multi-line input demos</div>
-              </div>
-            </div>
-            <div className="w-5 h-5 text-gray-400 group-hover:text-cyan-500 transition-colors">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M9 18l6-6-6-6" />
-              </svg>
-            </div>
-          </div>
         </div>
 
       </div>

@@ -1,9 +1,10 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function PopupPage() {
-  const { data, sendPopupMessage } = useLingXia();
+  const { data, actions } = useLxPage();
+  const { sendPopupMessage } = actions;
   const queryString = data.queryString ?? '';
   const [message, setMessage] = React.useState('');
 

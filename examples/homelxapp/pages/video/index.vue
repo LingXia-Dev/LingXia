@@ -135,7 +135,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import { LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -152,7 +152,9 @@ type PageData = {
 };
 
 const {
-  data,
+  data, actions,
+} = useLxPage();
+const {
   play,
   pause,
   stop,
@@ -167,23 +169,7 @@ const {
   onFullscreenChange,
   onQualityChange,
   onRateChange,
-} = useLingXia() as {
-  data?: Record<string, unknown>;
-  play: () => void;
-  pause: () => void;
-  stop: () => void;
-  seek: (position: number) => void;
-  requestFullScreen: () => void;
-  onPlaying: (e: Event) => void;
-  onPause: (e: Event) => void;
-  onStop: (e: Event) => void;
-  onEnded: (e: Event) => void;
-  onWaiting: (e: Event) => void;
-  onTimeUpdate: (e: Event) => void;
-  onFullscreenChange: (e: Event) => void;
-  onQualityChange: (e: Event) => void;
-  onRateChange: (e: Event) => void;
-};
+} = actions;
 
 const SEEK_STEP_SECONDS = 10;
 const eventLog = computed(() => data?.eventLog || 'Ready');

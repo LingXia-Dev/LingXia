@@ -1,14 +1,10 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
-import { LxInput, LxTextarea } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
+import { LxInput } from '@lingxia/react';
 import '../../tailwind.css';
 
-type DemoType = 'input' | 'textarea';
-
 type PageData = {
-  demoType?: DemoType;
   maxLengthValue?: string;
-  textareaMaxLengthValue?: string;
   syncValue?: string;
   controlledValue?: string;
   autoBlurValue?: string;
@@ -24,7 +20,6 @@ type PageActions = {
   onAutoBlurInput?: (detail: { value?: string }) => void;
   onAutoBlurFocus?: (detail: { value?: string }) => void;
   onAutoBlurBlur?: (detail: { value?: string }) => void;
-  onTextareaMaxLengthInput?: (detail: { value?: string }) => void;
 };
 
 function Card(props: { title: string; subtitle?: string; children: React.ReactNode }) {
@@ -45,165 +40,9 @@ function FieldBox(props: { children: React.ReactNode }) {
   );
 }
 
-function InputDemo(props: {
-  data?: PageData;
-  onInputChange?: (detail: { value?: string }) => void;
-  onMaxLengthInput?: (detail: { value?: string }) => void;
-  onSyncInput?: (detail: { value?: string }) => void;
-  onControlledInput?: (detail: { value?: string }) => void;
-  onAutoBlurInput?: (detail: { value?: string }) => void;
-  onAutoBlurFocus?: (detail: { value?: string }) => void;
-  onAutoBlurBlur?: (detail: { value?: string }) => void;
-}) {
-  return (
-    <>
-      <Card title="Basic Input" subtitle="Tap inside the box below">
-        <FieldBox>
-          <LxInput id="input-basic" style={{ height: '36px' }} placeholder="Type here" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Max Length" subtitle="Input length limited to 10">
-        <FieldBox>
-          <LxInput
-            id="input-maxlength"
-            style={{ height: '36px' }}
-            value={props.data?.maxLengthValue || ''}
-            maxlength={10}
-            placeholder="Max length is 10"
-            onInput={props.onMaxLengthInput}
-          />
-        </FieldBox>
-        <div className="text-xs text-gray-400 text-right">{(props.data?.maxLengthValue || '').length}/10</div>
-      </Card>
-
-      <Card title="Realtime Sync" subtitle="Input value is synced back to the view each change">
-        <FieldBox>
-          <LxInput
-            id="input-sync"
-            style={{ height: '36px' }}
-            value={props.data?.syncValue || ''}
-            placeholder="Synced to view"
-            onInput={props.onSyncInput}
-          />
-        </FieldBox>
-        <div className="text-xs text-gray-500">Current value: {props.data?.syncValue || ''}</div>
-      </Card>
-
-      <Card title="Controlled Input" subtitle="Two consecutive 1 become a single 2">
-        <FieldBox>
-          <LxInput
-            id="input-controlled"
-            style={{ height: '36px' }}
-            value={props.data?.controlledValue || ''}
-            placeholder="Try typing 1111"
-            onInput={props.onControlledInput}
-          />
-        </FieldBox>
-      </Card>
-
-      <Card title="Rule Auto Blur" subtitle="Type 123 to auto hide keyboard">
-        <FieldBox>
-          <LxInput
-            id="input-autoblur"
-            style={{ height: '36px' }}
-            value={props.data?.autoBlurValue || ''}
-            focus={props.data?.autoBlurFocus}
-            type="number"
-            maxlength={3}
-            placeholder="Type 123"
-            onInput={props.onAutoBlurInput}
-            onFocus={props.onAutoBlurFocus}
-            onBlur={props.onAutoBlurBlur}
-          />
-        </FieldBox>
-      </Card>
-
-      <Card title="Keyboard Control" subtitle="Press enter to trigger confirm">
-        <FieldBox>
-          <LxInput id="input-confirm" style={{ height: '36px' }} placeholder="Press enter" confirmType="done" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Number Input" subtitle="Only numeric characters should be accepted">
-        <FieldBox>
-          <LxInput id="input-number" style={{ height: '36px' }} type="number" placeholder="Numbers only" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Password Input" subtitle="Password should stay masked while editing">
-        <FieldBox>
-          <LxInput id="input-password" style={{ height: '36px' }} type="password" placeholder="Password" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Digit Input" subtitle="Allows decimal point">
-        <FieldBox>
-          <LxInput id="input-digit" style={{ height: '36px' }} type="digit" placeholder="Decimal number" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Placeholder Color" subtitle="Placeholder text color can be customized">
-        <FieldBox>
-          <LxInput
-            id="input-placeholder-color"
-            style={{ height: '36px' }}
-            placeholderStyle="color:#ef4444;"
-            placeholder="Placeholder should be red"
-            onInput={props.onInputChange}
-          />
-        </FieldBox>
-      </Card>
-    </>
-  );
-}
-
-function TextareaDemo(props: {
-  data?: PageData;
-  onInputChange?: (detail: { value?: string }) => void;
-  onTextareaMaxLengthInput?: (detail: { value?: string }) => void;
-}) {
-  return (
-    <>
-      <Card title="Basic Textarea" subtitle="Standard multi-line input">
-        <FieldBox>
-          <LxTextarea
-            id="textarea-basic"
-            style={{ height: '64px' }}
-            placeholder="Type here"
-            adjustPosition={false}
-            onInput={props.onInputChange}
-          />
-        </FieldBox>
-      </Card>
-
-      <Card title="Auto-height Textarea" subtitle="Height grows with content">
-        <FieldBox>
-          <LxTextarea id="textarea-autoheight" style={{ height: '96px' }} autoHeight placeholder="Type here" onInput={props.onInputChange} />
-        </FieldBox>
-      </Card>
-
-      <Card title="Max Length" subtitle="Input length limited to 200">
-        <FieldBox>
-          <LxTextarea
-            id="textarea-maxlength"
-            style={{ height: '64px' }}
-            value={props.data?.textareaMaxLengthValue || ''}
-            maxlength={200}
-            placeholder="Max length is 200"
-            adjustPosition
-            onInput={props.onTextareaMaxLengthInput}
-          />
-        </FieldBox>
-        <div className="text-xs text-gray-400 text-right">{(props.data?.textareaMaxLengthValue || '').length}/200</div>
-      </Card>
-    </>
-  );
-}
-
 export default function InputPage() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     onInputChange,
     onMaxLengthInput,
     onSyncInput,
@@ -211,39 +50,113 @@ export default function InputPage() {
     onAutoBlurInput,
     onAutoBlurFocus,
     onAutoBlurBlur,
-    onTextareaMaxLengthInput,
-  } = useLingXia() as PageActions;
-  const demoType: DemoType | null =
-    data?.demoType === 'textarea' ? 'textarea' : data?.demoType === 'input' ? 'input' : null;
-  const title = demoType === 'textarea' ? 'Textarea' : 'Input';
-  const subtitle = demoType === 'textarea' ? 'Native textarea behavior' : 'Native input behavior';
-
-  if (!demoType) {
-    return <div className="min-h-screen bg-gray-100" />;
-  }
+  } = actions;
 
   return (
     <div className="min-h-screen bg-gray-100">
       <div className="px-4 py-5 space-y-4">
         <header className="bg-gradient-to-r from-blue-500 to-cyan-600 rounded-xl px-4 py-4">
-          <div className="text-lg text-white font-bold">{title}</div>
-          <div className="text-xs text-white/85 mt-1">{subtitle}</div>
+          <div className="text-lg text-white font-bold">Input</div>
+          <div className="text-xs text-white/85 mt-1">Cross-platform input component</div>
         </header>
 
-        {demoType === 'textarea' ? (
-          <TextareaDemo data={data} onInputChange={onInputChange} onTextareaMaxLengthInput={onTextareaMaxLengthInput} />
-        ) : (
-          <InputDemo
-            data={data}
-            onInputChange={onInputChange}
-            onMaxLengthInput={onMaxLengthInput}
-            onSyncInput={onSyncInput}
-            onControlledInput={onControlledInput}
-            onAutoBlurInput={onAutoBlurInput}
-            onAutoBlurFocus={onAutoBlurFocus}
-            onAutoBlurBlur={onAutoBlurBlur}
-          />
-        )}
+        <Card title="Basic Input" subtitle="Tap inside the box below">
+          <FieldBox>
+            <LxInput id="input-basic" style={{ height: '36px' }} placeholder="Type here" onInput={onInputChange} />
+          </FieldBox>
+        </Card>
+
+        <Card title="Max Length" subtitle="Input length limited to 10">
+          <FieldBox>
+            <LxInput
+              id="input-maxlength"
+              style={{ height: '36px' }}
+              value={data?.maxLengthValue || ''}
+              maxlength={10}
+              placeholder="Max length is 10"
+              onInput={onMaxLengthInput}
+            />
+          </FieldBox>
+          <div className="text-xs text-gray-400 text-right">{(data?.maxLengthValue || '').length}/10</div>
+        </Card>
+
+        <Card title="Realtime Sync" subtitle="Input value is synced back to the view each change">
+          <FieldBox>
+            <LxInput
+              id="input-sync"
+              style={{ height: '36px' }}
+              value={data?.syncValue || ''}
+              placeholder="Synced to view"
+              onInput={onSyncInput}
+            />
+          </FieldBox>
+          <div className="text-xs text-gray-500">Current value: {data?.syncValue || ''}</div>
+        </Card>
+
+        <Card title="Controlled Input" subtitle="Two consecutive 1 become a single 2">
+          <FieldBox>
+            <LxInput
+              id="input-controlled"
+              style={{ height: '36px' }}
+              value={data?.controlledValue || ''}
+              placeholder="Try typing 1111"
+              onInput={onControlledInput}
+            />
+          </FieldBox>
+        </Card>
+
+        <Card title="Rule Auto Blur" subtitle="Type 123 to auto hide keyboard">
+          <FieldBox>
+            <LxInput
+              id="input-autoblur"
+              style={{ height: '36px' }}
+              value={data?.autoBlurValue || ''}
+              focus={data?.autoBlurFocus}
+              type="number"
+              maxlength={3}
+              placeholder="Type 123"
+              onInput={onAutoBlurInput}
+              onFocus={onAutoBlurFocus}
+              onBlur={onAutoBlurBlur}
+            />
+          </FieldBox>
+        </Card>
+
+        <Card title="Keyboard Control" subtitle="Press enter to trigger confirm">
+          <FieldBox>
+            <LxInput id="input-confirm" style={{ height: '36px' }} placeholder="Press enter" confirmType="done" onInput={onInputChange} />
+          </FieldBox>
+        </Card>
+
+        <Card title="Number Input" subtitle="Only numeric characters should be accepted">
+          <FieldBox>
+            <LxInput id="input-number" style={{ height: '36px' }} type="number" placeholder="Numbers only" onInput={onInputChange} />
+          </FieldBox>
+        </Card>
+
+        <Card title="Password Input" subtitle="Password should stay masked while editing">
+          <FieldBox>
+            <LxInput id="input-password" style={{ height: '36px' }} type="password" placeholder="Password" onInput={onInputChange} />
+          </FieldBox>
+        </Card>
+
+        <Card title="Digit Input" subtitle="Allows decimal point">
+          <FieldBox>
+            <LxInput id="input-digit" style={{ height: '36px' }} type="digit" placeholder="Decimal number" onInput={onInputChange} />
+          </FieldBox>
+        </Card>
+
+        <Card title="Placeholder Color" subtitle="Placeholder text color can be customized">
+          <FieldBox>
+            <LxInput
+              id="input-placeholder-color"
+              style={{ height: '36px' }}
+              placeholderStyle="color:#ef4444;"
+              placeholder="Placeholder should be red"
+              onInput={onInputChange}
+            />
+          </FieldBox>
+        </Card>
       </div>
     </div>
   );

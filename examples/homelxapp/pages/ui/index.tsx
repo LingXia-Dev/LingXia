@@ -1,11 +1,11 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function UIPage() {
   // Use LingXia hook to get data and functions
+  const { data, actions } = useLxPage();
   const {
-    data,
     demoNavigateTo,
     demoNavigateBack,
     demoSwitchTab,
@@ -28,7 +28,7 @@ export default function UIPage() {
     chooseToastPosition,
     showDemoActionSheet,
     showPopupDemo,
-  } = useLingXia();
+  } = actions;
   const {
     currentType = 'navigation',
     pageStack = [],

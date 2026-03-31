@@ -83,18 +83,11 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
-const {
-  data,
-  getLocation,
-  clearLocation,
-} = useLingXia() as {
-  data?: Record<string, unknown>;
-  getLocation: () => void;
-  clearLocation: () => void;
-};
+const { data, actions } = useLxPage();
+const { getLocation, clearLocation } = actions;
 
 const location = computed(() => data.location ?? null);
 const isLoading = computed(() => data.isLoading ?? false);

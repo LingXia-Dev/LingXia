@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 import './index.css';
 
@@ -26,14 +26,14 @@ type PageActions = {
 };
 
 export default function TodoPage() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     addTodo,
     toggleTodo,
     deleteTodo,
     clearCompleted,
     setFilter,
-  } = useLingXia();
+  } = actions;
   const todos = data?.todos ?? [];
   const currentFilter = data?.currentFilter ?? 'all';
 

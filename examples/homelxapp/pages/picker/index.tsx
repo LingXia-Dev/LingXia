@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import { LxPicker } from '@lingxia/react';
 import '../../tailwind.css';
 
@@ -38,7 +38,8 @@ type PageActions = {
 const tabs: ModeTab[] = ['selector', 'multiSelector', 'time', 'date'];
 
 export default function PickerPage() {
-  const { data, setActiveTab, onPickerConfirm, onPickerScroll } = useLingXia() as PageActions;
+  const { data, actions } = useLxPage();
+  const { setActiveTab, onPickerConfirm, onPickerScroll } = actions;
   const activeTab: ModeTab = data?.activeTab || 'selector';
   const coffee = data?.coffee;
   const location = data?.location;

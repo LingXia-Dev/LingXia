@@ -89,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 import './index.css';
 
@@ -115,14 +115,14 @@ type PageActions = {
   setFilter(params: { filter: TodoFilter }): void;
 };
 
+const { data, actions } = useLxPage();
 const {
-  data,
   addTodo,
   toggleTodo,
   deleteTodo,
   clearCompleted,
   setFilter,
-} = useLingXia() as PageActions;
+} = actions;
 
 const newTodo = ref('');
 

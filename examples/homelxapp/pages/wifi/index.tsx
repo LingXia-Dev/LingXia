@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 type WifiInfo = {
@@ -46,8 +46,8 @@ type PageActions = {
 };
 
 export default function WifiPage() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     startWifi,
     stopWifi,
     getWifiList,
@@ -56,7 +56,7 @@ export default function WifiPage() {
     onWifiConnected,
     offWifiConnected,
     clearWifiConnectedEvents,
-  } = useLingXia();
+  } = actions;
 
   const {
     wifiList = null,

@@ -114,30 +114,6 @@
           </div>
         </div>
 
-        <!-- Textarea -->
-        <div
-          class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-          @click="navigateTo({ url: 'pages/input/index?type=textarea' })"
-        >
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 bg-gradient-to-br from-cyan-500 to-sky-600 rounded-lg flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" class="w-5 h-5">
-                <rect x="3" y="5" width="18" height="14" rx="2" />
-                <line x1="7" y1="9" x2="17" y2="9" />
-                <line x1="7" y1="13" x2="15" y2="13" />
-              </svg>
-            </div>
-            <div>
-              <div class="text-sm font-medium text-gray-900">Textarea</div>
-              <div class="text-xs text-gray-500">Native multi-line input demos</div>
-            </div>
-          </div>
-          <div class="w-5 h-5 text-gray-400 group-hover:text-cyan-500 transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </div>
-        </div>
       </div>
 
     </div>
@@ -146,11 +122,12 @@
 
 <script setup lang="ts">
 import '../../tailwind.css';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 
 type PageActions = {
   navigateTo(payload: { url: string }): void;
 };
 
-const { navigateTo } = useLingXia() as PageActions;
+const { actions } = useLxPage();
+const { navigateTo } = actions;
 </script>

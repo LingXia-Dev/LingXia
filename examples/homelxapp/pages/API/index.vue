@@ -449,7 +449,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type ExpandedSections = {
@@ -477,8 +477,8 @@ type PageActions = {
   navigateToPullDownRefreshPage(): void;
 };
 
+const { data, actions } = useLxPage();
 const {
-  data,
   toggleSection,
   navigateToUIPage,
   navigateToDevicePage,
@@ -490,7 +490,7 @@ const {
   navigateToTestMiniApp,
   openDeepSeek,
   navigateToPullDownRefreshPage,
-} = useLingXia() as PageActions;
+} = actions;
 
 const expandedSections = computed(() => data.expandedSections ?? {
   interface: false,

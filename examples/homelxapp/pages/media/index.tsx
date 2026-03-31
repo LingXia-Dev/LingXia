@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import { LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
@@ -384,8 +384,8 @@ const formatFileSize = (bytes: number): string => {
 };
 
 export default function MediaPage() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     launchMediaDemo,
     previewSelectedMedia,
     openSourcePicker,
@@ -424,7 +424,7 @@ export default function MediaPage() {
     previewCompressedImage,
     captureImageForAlbum,
     captureVideoForAlbum,
-  } = useLingXia();
+  } = actions;
 
   const mediaTypeInput = data?.mediaType || 'image';
   const isImageInfoMode = mediaTypeInput === 'imageInfo';

@@ -1,10 +1,10 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function DevicePage() {
+  const { data, actions } = useLxPage();
   const {
-    data,
     getDeviceInfo,
     getScreenInfo,
     vibrateShort,
@@ -18,7 +18,7 @@ export default function DevicePage() {
     startDeviceOrientationListen,
     stopDeviceOrientationListen,
     clearOrientationEvents,
-  } = useLingXia();
+  } = actions;
 
   const {
     currentType = 'device',

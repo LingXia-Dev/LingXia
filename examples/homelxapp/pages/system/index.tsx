@@ -1,8 +1,9 @@
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function SystemPage() {
-  const { data, getAppBaseInfo, getSystemSetting } = useLingXia();
+  const { data, actions } = useLxPage();
+  const { getAppBaseInfo, getSystemSetting } = actions;
   const { currentType = 'appBaseInfo', appBaseInfo = null, systemSetting = null } = data;
 
   return (

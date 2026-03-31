@@ -247,7 +247,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type WifiInfo = {
@@ -275,7 +275,9 @@ type WifiEvent = {
 };
 
 const {
-  data,
+  data, actions,
+} = useLxPage();
+const {
   startWifi,
   stopWifi,
   getWifiList,
@@ -284,17 +286,7 @@ const {
   onWifiConnected,
   offWifiConnected,
   clearWifiConnectedEvents,
-} = useLingXia() as {
-  data?: Record<string, any>;
-  startWifi: () => void;
-  stopWifi: () => void;
-  getWifiList: () => void;
-  getConnectedWifi: () => void;
-  connectWifi: (params: { SSID: string; password?: string }) => void;
-  onWifiConnected: () => void;
-  offWifiConnected: () => void;
-  clearWifiConnectedEvents: () => void;
-};
+} = actions;
 
 const wifiSsid = ref('');
 const wifiPassword = ref('');

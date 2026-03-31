@@ -1,10 +1,11 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function LocationPage() {
   // Use LingXia hook to get data and functions
-  const { data, getLocation, clearLocation } = useLingXia();
+  const { data, actions } = useLxPage();
+  const { getLocation, clearLocation } = actions;
   const { location = null, isLoading = false } = data;
 
   React.useEffect(() => {

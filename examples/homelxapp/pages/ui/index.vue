@@ -348,11 +348,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const {
-  data,
+  data, actions,
+} = useLxPage();
+const {
   demoNavigateTo,
   demoNavigateBack,
   demoSwitchTab,
@@ -375,10 +377,7 @@ const {
   chooseToastPosition,
   showDemoActionSheet,
   showPopupDemo,
-} = useLingXia() as {
-  data?: Record<string, any>;
-  [key: string]: any;
-};
+} = actions;
 
 const currentType = computed(() => data.currentType ?? 'navigation');
 const pageStack = computed(() => data.pageStack ?? []);

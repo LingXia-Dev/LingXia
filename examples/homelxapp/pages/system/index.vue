@@ -104,18 +104,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
-const {
-  data,
-  getAppBaseInfo,
-  getSystemSetting,
-} = useLingXia() as {
-  data?: Record<string, unknown>;
-  getAppBaseInfo: () => void;
-  getSystemSetting: () => void;
-};
+const { data, actions } = useLxPage();
+const { getAppBaseInfo, getSystemSetting } = actions;
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
 const appBaseInfo = computed(() => data.appBaseInfo ?? null);

@@ -72,18 +72,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
-const {
-  data,
-  startRefresh,
-  stopRefresh,
-} = useLingXia() as {
-  data?: Record<string, unknown>;
-  startRefresh: () => void;
-  stopRefresh: () => void;
-};
+const { data, actions } = useLxPage();
+const { startRefresh, stopRefresh } = actions;
 
 const refreshCount = computed(() => data.refreshCount ?? 0);
 const lastRefreshTime = computed(() => data.lastRefreshTime ?? null);

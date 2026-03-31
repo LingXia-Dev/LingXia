@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type PageData = {
@@ -89,10 +89,8 @@ type PageActions = {
   greet(payload: { name: string }): void;
 };
 
-const {
-  data,
-  greet,
-} = useLingXia() as PageActions;
+const { data, actions } = useLxPage();
+const { greet } = actions;
 const name = ref('');
 const isSending = ref(false);
 

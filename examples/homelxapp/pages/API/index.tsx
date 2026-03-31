@@ -1,10 +1,10 @@
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
+  const { data, actions } = useLxPage();
   const {
-    data,
     toggleSection,
     navigateToUIPage,
     navigateToDevicePage,
@@ -17,7 +17,7 @@ export default function APIPage() {
     navigateToCloudPage,
     openDeepSeek,
     navigateToPullDownRefreshPage,
-  } = useLingXia();
+  } = actions;
   const { expandedSections = { interface: false, device: false, system: false, cloud: false, navigation: false, media: false, document: false } } = data;
 
   return (

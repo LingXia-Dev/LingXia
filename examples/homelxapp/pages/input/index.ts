@@ -1,38 +1,15 @@
 Page({
   data: {
-    demoType: "",
     maxLengthValue: "",
-    textareaMaxLengthValue: "",
     syncValue: "",
     controlledValue: "",
     autoBlurValue: "",
     autoBlurFocus: false,
   },
 
-  onLoad: function (options) {
-    var mode = options && options.type === "textarea" ? "textarea" : "input";
-    this.setData({
-      demoType: mode,
-      maxLengthValue: "",
-      textareaMaxLengthValue: "",
-      syncValue: "",
-      controlledValue: "",
-      autoBlurValue: "",
-      autoBlurFocus: false,
-    });
-    this.applyNavigationTitle(mode);
-  },
-
-  onShow: function () {
-    if (this.data.demoType) {
-      this.applyNavigationTitle(this.data.demoType);
-    }
-  },
-
-  applyNavigationTitle: function (mode) {
-    var title = mode === "textarea" ? "Textarea" : "Input";
+  onLoad: function () {
     try {
-      lx.setNavigationBarTitle({ title: title });
+      lx.setNavigationBarTitle({ title: "Input" });
     } catch (error) {
       console.warn("setNavigationBarTitle failed:", error);
     }
@@ -78,11 +55,4 @@ Page({
   onAutoBlurFocus: function (_detail) {},
 
   onAutoBlurBlur: function (_detail) {},
-
-  onTextareaMaxLengthInput: function (detail) {
-    if (detail?.value === undefined) return;
-    var nextValue = String(detail.value);
-    if (nextValue === this.data.textareaMaxLengthValue) return;
-    this.setData({ textareaMaxLengthValue: nextValue });
-  },
 });

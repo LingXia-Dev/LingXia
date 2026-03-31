@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLingXia } from '@lingxia/react';
+import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 type PageData = {
@@ -14,7 +14,8 @@ type PageActions = {
 };
 
 export default function HomePage() {
-  const { data, greet } = useLingXia<PageData, PageActions>();
+  const { data, actions } = useLxPage<PageData, PageActions>();
+  const { greet } = actions;
   const [name, setName] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
 
