@@ -45,7 +45,7 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
     }
 
     let options = storage_options();
-    let storage = RongStorage::open_with_options(lxapp.storage_file_path.clone(), options)?;
+    let storage = RongStorage::new(lxapp.storage_file_path.clone(), options)?;
 
     // Cache Storage instance on JSContext so that:
     // - Subsequent getStorage() calls reuse the same database handle.

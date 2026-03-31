@@ -35,7 +35,7 @@ fn parse_stream_params(params: Option<JSObject>) -> JSResult<Value> {
     let Some(obj) = params else {
         return Ok(Value::Null);
     };
-    let json = obj.json_stringify()?;
+    let json = obj.to_json_string()?;
     serde_json::from_str(&json)
         .map_err(|e| js_invalid_parameter_error(format!("params must be JSON-compatible: {}", e)))
 }

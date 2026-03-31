@@ -10,7 +10,9 @@ use lingxia_platform::traits::media_interaction::{
     PreviewMediaRequest,
 };
 use lxapp::{LxApp, lx};
-use rong::{HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError};
+use rong::{
+    HostError, IntoJSObj, JSArray, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
+};
 use serde::Deserialize;
 
 #[derive(Debug, Clone)]
@@ -157,7 +159,7 @@ fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPrev
     if options.is_string() {
         let path = options
             .clone()
-            .try_into::<String>()
+            .to_rust::<String>()
             .map_err(|_| js_invalid_parameter_error("previewMedia path must be a string"))?;
         let item = parse_media_source(
             lxapp,
@@ -230,8 +232,11 @@ fn parse_sequence_options(
     sources_value: JSValue,
 ) -> JSResult<RawPreviewMediaSequenceOptions> {
     let source_values: Vec<JSValue> = sources_value
-        .try_into()
-        .map_err(|_| js_invalid_parameter_error("previewMedia sources must be an array"))?;
+        .into_object()
+        .and_then(JSArray::from_object)
+        .ok_or_else(|| js_invalid_parameter_error("previewMedia sources must be an array"))?
+        .iter_values()?
+        .collect::<JSResult<Vec<_>>>()?;
 
     let mut sources = Vec::with_capacity(source_values.len());
     for (index, value) in source_values.into_iter().enumerate() {
@@ -305,7 +310,7 @@ fn read_optional_string_field(
         return Err(invalid_preview_field(context, field, "a string"));
     }
     value
-        .try_into::<String>()
+        .to_rust::<String>()
         .map(Some)
         .map_err(|_| invalid_preview_field(context, field, "a string"))
 }
@@ -322,7 +327,7 @@ fn read_optional_number_field(
         return Err(invalid_preview_field(context, field, "a number"));
     }
     value
-        .try_into::<f64>()
+        .to_rust::<f64>()
         .map(Some)
         .map_err(|_| invalid_preview_field(context, field, "a number"))
 }
@@ -339,7 +344,7 @@ fn read_optional_bool_field(
         return Err(invalid_preview_field(context, field, "a boolean"));
     }
     value
-        .try_into::<bool>()
+        .to_rust::<bool>()
         .map(Some)
         .map_err(|_| invalid_preview_field(context, field, "a boolean"))
 }
@@ -356,7 +361,7 @@ fn read_optional_u16_field(
         return Err(invalid_preview_field(context, field, "an integer"));
     }
     let number = value
-        .try_into::<f64>()
+        .to_rust::<f64>()
         .map_err(|_| invalid_preview_field(context, field, "an integer"))?;
     if !number.is_finite() || number.fract() != 0.0 || number < 0.0 || number > u16::MAX as f64 {
         return Err(invalid_preview_field(context, field, "an integer"));

@@ -232,7 +232,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
             return Ok(manager);
         }
 
-        let class = Class::get::<JSUpdateManager>(&ctx)?;
+        let class = Class::lookup::<JSUpdateManager>(&ctx)?;
         let instance = class.instance(JSUpdateManager::new(current_appid.clone()));
         with_update_state(&ctx, |state| {
             state.lxappid = Some(current_appid);
