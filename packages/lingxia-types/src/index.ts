@@ -52,8 +52,8 @@ import type {
   ChooseDirectoryResult,
   ChooseFileOptions,
   ChooseFileResult,
-  DownloadTask,
   DownloadOptions,
+  DownloadResult,
 } from './file';
 
 import type {
@@ -146,7 +146,7 @@ export interface Lx {
   offDeviceOrientationChange(callback?: (event: DeviceOrientationChangeEvent) => void): void;
 
   openDocument(options: OpenDocumentOptions): void;
-  downloadFile(options: DownloadOptions): DownloadTask;
+  downloadFile(options: DownloadOptions): Promise<DownloadResult>;
 
   getStorage(): Storage;
 
