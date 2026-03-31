@@ -664,7 +664,7 @@ const pendingSubs = new Map<
   {
     topic: string;
     subscription: InternalSubscription;
-    resolve: (subscription: Subscription) => void;
+    resolve: (subscription: Subscription<any>) => void;
     reject: (err: LxBridgeError) => void;
     timerId: ReturnType<typeof setTimeout> | null;
   }
@@ -675,7 +675,7 @@ const pendingChannels = new Map<
   {
     topic: string;
     channel: InternalChannel;
-    resolve: (channel: Channel) => void;
+    resolve: (channel: Channel<any>) => void;
     reject: (err: LxBridgeError) => void;
     timerId: ReturnType<typeof setTimeout> | null;
   }
