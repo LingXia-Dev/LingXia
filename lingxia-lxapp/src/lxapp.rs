@@ -768,6 +768,16 @@ impl LxApp {
             .unwrap_or_else(|| DEFAULT_VERSION.to_string())
     }
 
+    pub fn logic_enabled(&self) -> bool {
+        self.config.logic_entry().is_some()
+    }
+
+    pub fn logic_entry_path(&self) -> Option<PathBuf> {
+        self.config
+            .logic_entry()
+            .map(|entry| self.lxapp_dir.join(entry))
+    }
+
     pub fn get_app_orientation(&self) -> OrientationConfig {
         let state = self.state.lock().unwrap();
         state.orientation_override.unwrap_or_default()
@@ -1590,6 +1600,9 @@ impl LxApp {
         event: AppServiceEvent,
         payload_json: Option<String>,
     ) -> Result<(), LxAppError> {
+        if !self.logic_enabled() {
+            return Ok(());
+        }
         self.executor
             .call_app_service_event(self.clone_arc(), event, payload_json)
     }
@@ -1760,6 +1773,7 @@ pub fn init(runtime: Platform) -> Option<String> {
 
             // Prepare built-in browser assets at init-time (best effort).
             crate::browser::preload_builtin_browser_assets(runtime_arc.clone());
+            crate::shell::preload_builtin_shell_assets(runtime_arc.clone());
 
             let num_workers = get_num_workers();
             let executor = LxAppExecutor::init(num_workers);

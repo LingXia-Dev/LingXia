@@ -255,6 +255,11 @@ impl LxAppExecutor {
 
     /// Create a new lxapp service (worker reads session id from LxApp state).
     pub fn create_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
+        if !lxapp.logic_enabled() {
+            info!("Logic disabled in lxapp.json; skipping worker startup")
+                .with_appid(lxapp.appid.clone());
+            return Ok(());
+        }
         crate::appservice::create_app_svc(
             lxapp,
             &self.sender,
@@ -282,6 +287,10 @@ impl LxAppExecutor {
         path: String,
         ack_tx: Sender<()>,
     ) -> Result<(), LxAppError> {
+        if !lxapp.logic_enabled() {
+            let _ = ack_tx.send(());
+            return Ok(());
+        }
         self.sender.send(ServiceMessage::CreatePage {
             lxapp,
             path,

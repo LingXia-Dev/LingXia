@@ -199,7 +199,13 @@ impl Page {
     /// Build PageState from JSON config
     /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
-        let page_config = PageConfig::from_json(lxapp, path);
+        let page_config = if lxapp.logic_enabled() {
+            PageConfig::from_json(lxapp, path)
+        } else {
+            // When logic is disabled, page.json is intentionally ignored.
+            // In this mode pages talk directly to Rust without JS/page config.
+            PageConfig::default()
+        };
         PageState {
             event: PageLifecycleEvent::Unknown,
             render_status: PageRenderStatus::Unstarted,

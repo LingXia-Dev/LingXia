@@ -77,24 +77,30 @@ export class ConfigManager {
 
   getLogicEntry(): string | null {
     const config = this.getLxappConfig();
+    if (Object.prototype.hasOwnProperty.call(config, "appService")) {
+      throw new Error('"appService" is no longer supported; use "logic" instead');
+    }
     if (config.logic === false) {
       return null;
     }
     if (config.logic === true || config.logic === undefined || config.logic === null) {
-      if (config.appService === false) {
-        return null;
-      }
       return "logic.js";
     }
     if (typeof config.logic === "string") {
       const logicEntry = config.logic.trim();
+      if (!logicEntry) {
+        throw new Error('"logic" entry must not be empty');
+      }
       if (!isSafeLogicEntry(logicEntry)) {
-        console.warn(`[lxapp config] Invalid logic entry ${JSON.stringify(logicEntry)}; falling back to "logic.js"`);
-        return "logic.js";
+        throw new Error(
+          `"logic" entry must stay within the lxapp package: ${JSON.stringify(logicEntry)}`,
+        );
       }
       return logicEntry;
     }
-    return "logic.js";
+    throw new Error(
+      `"logic" must be false, true, a string entry path, or omitted`,
+    );
   }
 
   /**
