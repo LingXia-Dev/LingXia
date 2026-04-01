@@ -5,7 +5,7 @@ use crate::lxapp::project::{Project, ProjectKind};
 use crate::lxapp::view::{
     ViewBuildReport, ViewProgress, bridge_metadata_script, extract_page_actions, page_logic_path,
     page_title, render_page_bridge_import, render_page_bridge_module,
-    render_page_bridge_runtime_module,
+    render_page_bridge_runtime_module, validate_component_view_bindings,
 };
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
@@ -95,6 +95,19 @@ fn build_component_pages(
         let page_title = page_title(project, page_path)?;
         let logic_path = page_logic_path(project, page_path)?;
         let actions = extract_page_actions(logic_path.as_deref())?;
+        let usage_audit = validate_component_view_bindings(project, page_path, &actions)?;
+        let unused_actions = actions
+            .iter()
+            .map(|action| action.name.as_str())
+            .filter(|name| !usage_audit.used_actions.contains(*name))
+            .collect::<Vec<_>>();
+        if !unused_actions.is_empty() {
+            eprintln!(
+                "Warning: view {} does not reference Page(...) actions: {}",
+                page_path,
+                unused_actions.join(", ")
+            );
+        }
         let page_id = sanitize_page_id(&strip_ext(page_path));
         let build_dir = build_root.join("pages").join(&page_id);
         fs::create_dir_all(&build_dir)?;
