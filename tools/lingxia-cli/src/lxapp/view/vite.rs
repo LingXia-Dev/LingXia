@@ -161,11 +161,15 @@ fn build_component_pages(
 fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     let source_path = project.root.join(page_path);
     let output_path = project.output_dir.join(page_path);
+    let page_dir = source_path.parent().unwrap_or_else(|| Path::new(""));
+    let output_dir = output_path.parent().unwrap_or_else(|| Path::new(""));
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::copy(&source_path, &output_path)
-        .with_context(|| format!("Failed to copy {}", source_path.display()))?;
+    let html = fs::read_to_string(&source_path)
+        .with_context(|| format!("Failed to read {}", source_path.display()))?;
+    fs::write(&output_path, inject_runtime_script(html))
+        .with_context(|| format!("Failed to write {}", output_path.display()))?;
 
     let base = Path::new(page_path)
         .file_stem()
@@ -182,6 +186,50 @@ fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
             .join(format!("{base}.json"));
         fs::copy(&config_path, output_config)?;
     }
+
+    copy_html_page_support_files(page_dir, output_dir, base)?;
+    Ok(())
+}
+
+fn copy_html_page_support_files(source_dir: &Path, output_dir: &Path, base: &str) -> Result<()> {
+    if !source_dir.exists() {
+        return Ok(());
+    }
+
+    let html_name = format!("{base}.html");
+    let config_name = format!("{base}.json");
+    let logic_ts_name = format!("{base}.ts");
+    let logic_js_name = format!("{base}.js");
+
+    for entry in fs::read_dir(source_dir)? {
+        let entry = entry?;
+        let source_path = entry.path();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+        let destination_path = output_dir.join(&file_name);
+
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&source_path, &destination_path)?;
+            continue;
+        }
+
+        if file_name_str == html_name
+            || file_name_str == config_name
+            || file_name_str == logic_ts_name
+            || file_name_str == logic_js_name
+        {
+            continue;
+        }
+
+        fs::copy(&source_path, &destination_path).with_context(|| {
+            format!(
+                "Failed to copy {} -> {}",
+                source_path.display(),
+                destination_path.display()
+            )
+        })?;
+    }
+
     Ok(())
 }
 
@@ -731,11 +779,7 @@ mod tests {
     #[test]
     fn react_view_tooling_requires_project_vite_dependency() {
         let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "package.json",
-            r#"{ "name": "demo", "lingxia": { "framework": "react" } }"#,
-        );
+        write_file(temp.path(), "package.json", r#"{ "name": "demo" }"#);
         fs::create_dir_all(temp.path().join("node_modules")).unwrap();
 
         let error = ensure_component_view_tooling(
@@ -752,11 +796,7 @@ mod tests {
     #[test]
     fn vue_view_tooling_requires_framework_plugin() {
         let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "package.json",
-            r#"{ "name": "demo", "lingxia": { "framework": "vue" } }"#,
-        );
+        write_file(temp.path(), "package.json", r#"{ "name": "demo" }"#);
         write_file(
             temp.path(),
             "node_modules/vite/bin/vite.js",
@@ -778,11 +818,7 @@ mod tests {
     #[test]
     fn react_view_tooling_accepts_project_scoped_vite_setup() {
         let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "package.json",
-            r#"{ "name": "demo", "lingxia": { "framework": "react" } }"#,
-        );
+        write_file(temp.path(), "package.json", r#"{ "name": "demo" }"#);
         write_file(
             temp.path(),
             "node_modules/vite/bin/vite.js",
@@ -802,5 +838,69 @@ mod tests {
         .unwrap();
 
         assert_eq!(install_duration, None);
+    }
+
+    #[test]
+    fn html_page_copy_injects_runtime_script() {
+        let temp = tempdir().unwrap();
+        let project = Project {
+            root: temp.path().to_path_buf(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::Html,
+            output_dir: temp.path().join("dist"),
+            pages: vec!["pages/settings/index.html".to_string()],
+            logic_entry: None,
+            plugin_id: None,
+            package_name: Some("demo".to_string()),
+            version: "1.0.0".to_string(),
+        };
+        write_file(
+            temp.path(),
+            "pages/settings/index.html",
+            "<!DOCTYPE html><html><head><title>Settings</title></head><body></body></html>",
+        );
+
+        copy_html_page(&project, "pages/settings/index.html").unwrap();
+
+        let output =
+            fs::read_to_string(project.output_dir.join("pages/settings/index.html")).unwrap();
+        assert!(output.contains("lx://assets/runtime.js"));
+    }
+
+    #[test]
+    fn html_page_copy_preserves_support_files() {
+        let temp = tempdir().unwrap();
+        let project = Project {
+            root: temp.path().to_path_buf(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::Html,
+            output_dir: temp.path().join("dist"),
+            pages: vec!["pages/downloads/index.html".to_string()],
+            logic_entry: None,
+            plugin_id: None,
+            package_name: Some("demo".to_string()),
+            version: "1.0.0".to_string(),
+        };
+        write_file(
+            temp.path(),
+            "pages/downloads/index.html",
+            "<!DOCTYPE html><html><body><script src=\"./download.js\"></script></body></html>",
+        );
+        write_file(
+            temp.path(),
+            "pages/downloads/download.js",
+            "console.log('download helper');",
+        );
+        write_file(temp.path(), "pages/downloads/index.ts", "Page({});");
+
+        copy_html_page(&project, "pages/downloads/index.html").unwrap();
+
+        assert!(
+            project
+                .output_dir
+                .join("pages/downloads/download.js")
+                .exists()
+        );
+        assert!(!project.output_dir.join("pages/downloads/index.ts").exists());
     }
 }
