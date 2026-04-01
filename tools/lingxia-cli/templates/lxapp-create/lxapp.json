@@ -2,6 +2,7 @@
   "appId": "__APP_ID__",
   "appName": "__APP_DISPLAY_NAME__",
   "version": "0.0.1",
+  "framework": "{{FRAMEWORK}}",
   "pages": [
     "pages/home/index.{{PAGE_EXT}}"
   ]

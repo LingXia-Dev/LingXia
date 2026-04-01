@@ -220,11 +220,11 @@ mod tests {
 
         fs::write(
             lxapp.join("package.json"),
-            r#"{"name":"{{APP_PACKAGE_NAME}}","lingxia":{"framework":"{{FRAMEWORK}}"},"dependencies":{"{{FRAMEWORK_PKG}}":"^{{LINGXIA_BRIDGE_VERSION}}","@lingxia/rong":"^{{RONG_VERSION}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
+            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"^{{LINGXIA_BRIDGE_VERSION}}","@lingxia/rong":"^{{RONG_VERSION}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
-            r#"{"pages":["pages/home/index.{{PAGE_EXT}}"]}"#,
+            r#"{"framework":"{{FRAMEWORK}}","pages":["pages/home/index.{{PAGE_EXT}}"]}"#,
         )
         .unwrap();
         fs::write(

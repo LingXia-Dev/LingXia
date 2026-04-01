@@ -5,7 +5,7 @@ mod vue;
 use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectFramework {
@@ -69,20 +69,7 @@ pub fn scaffold(
 }
 
 pub fn detect_project_framework(project_root: &Path) -> Result<ProjectFramework> {
-    let package_json = project_root.join("package.json");
-    if package_json.exists() {
-        let content = fs::read_to_string(&package_json)?;
-        let value: Value = serde_json::from_str(&content)?;
-        if let Some(framework) = value
-            .get("lingxia")
-            .and_then(|value| value.get("framework"))
-            .and_then(Value::as_str)
-        {
-            return parse_framework(framework);
-        }
-    }
-
-    detect_framework_from_pages(project_root)
+    detect_framework_from_manifest(project_root)?
         .ok_or_else(|| anyhow!("Cannot determine LingXia project framework"))
 }
 
@@ -119,6 +106,29 @@ pub fn resolve_page_path(
     None
 }
 
+fn detect_framework_from_manifest(project_root: &Path) -> Result<Option<ProjectFramework>> {
+    for manifest_name in ["lxapp.json", "lxplugin.json"] {
+        let manifest_path = project_root.join(manifest_name);
+        if !manifest_path.exists() {
+            continue;
+        }
+
+        let content = fs::read_to_string(&manifest_path)?;
+        let manifest: Value = serde_json::from_str(&content)?;
+        if let Some(framework) = manifest.get("framework").and_then(Value::as_str) {
+            return Ok(Some(parse_framework(framework)?));
+        }
+        let Some(page_path) = extract_first_manifest_page_entry(&manifest)? else {
+            continue;
+        };
+        if let Some(framework) = detect_framework_for_page_path(project_root, page_path)? {
+            return Ok(Some(framework));
+        }
+    }
+
+    Ok(None)
+}
+
 fn parse_framework(value: &str) -> Result<ProjectFramework> {
     match value {
         "react" => Ok(ProjectFramework::React),
@@ -128,38 +138,73 @@ fn parse_framework(value: &str) -> Result<ProjectFramework> {
     }
 }
 
-fn detect_framework_from_pages(project_root: &Path) -> Option<ProjectFramework> {
-    let pages_dir = project_root.join("pages");
-    let entries = fs::read_dir(&pages_dir).ok()?;
+fn extract_first_manifest_page_entry(manifest: &Value) -> Result<Option<&str>> {
+    let Some(pages) = manifest.get("pages") else {
+        return Ok(None);
+    };
 
-    for entry in entries.flatten() {
-        let file_type = entry.file_type().ok()?;
-        if !file_type.is_dir() {
-            continue;
-        }
-        let dir = entry.path();
-        if find_first_file_with_ext(&dir, &["tsx", "jsx"]).is_some() {
-            return Some(ProjectFramework::React);
-        }
-        if find_first_file_with_ext(&dir, &["vue"]).is_some() {
-            return Some(ProjectFramework::Vue);
-        }
-        if find_first_file_with_ext(&dir, &["html"]).is_some() {
-            return Some(ProjectFramework::Html);
-        }
+    match pages {
+        Value::Array(entries) => entries
+            .first()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("manifest pages entries must be strings"))
+            })
+            .transpose(),
+        Value::Object(entries) => entries
+            .values()
+            .next()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("manifest named pages entries must be strings"))
+            })
+            .transpose(),
+        _ => Err(anyhow!("manifest pages must be an array or object")),
     }
-
-    None
 }
 
-fn find_first_file_with_ext(dir: &Path, extensions: &[&str]) -> Option<PathBuf> {
-    for ext in extensions {
-        let candidate = dir.join(format!("index.{ext}"));
-        if candidate.exists() {
-            return Some(candidate);
+fn detect_framework_for_page_path(
+    project_root: &Path,
+    page_path: &str,
+) -> Result<Option<ProjectFramework>> {
+    let page_path = Path::new(page_path);
+    if let Some(extension) = page_path.extension().and_then(|ext| ext.to_str()) {
+        return Ok(framework_for_extension(extension));
+    }
+
+    let mut candidates = Vec::new();
+    for (framework, extensions) in [
+        (ProjectFramework::React, &["tsx", "jsx"][..]),
+        (ProjectFramework::Vue, &["vue"][..]),
+        (ProjectFramework::Html, &["html"][..]),
+    ] {
+        if extensions
+            .iter()
+            .any(|ext| project_root.join(page_path).with_extension(ext).exists())
+        {
+            candidates.push(framework);
         }
     }
-    None
+
+    match candidates.as_slice() {
+        [] => Ok(None),
+        [framework] => Ok(Some(*framework)),
+        _ => Err(anyhow!(
+            "Multiple framework candidates found for {}. Pass --framework react|vue|html.",
+            normalize_relative_path(page_path)
+        )),
+    }
+}
+
+fn framework_for_extension(extension: &str) -> Option<ProjectFramework> {
+    match extension {
+        "tsx" | "jsx" => Some(ProjectFramework::React),
+        "vue" => Some(ProjectFramework::Vue),
+        "html" => Some(ProjectFramework::Html),
+        _ => None,
+    }
 }
 
 fn preferred_extensions(framework: ProjectFramework) -> &'static [&'static str] {

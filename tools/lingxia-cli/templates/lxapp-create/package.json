@@ -11,9 +11,6 @@
   "keywords": ["lingxia", "miniapp", "{{FRAMEWORK}}"],
   "author": "",
   "license": "MIT",
-  "lingxia": {
-    "framework": "{{FRAMEWORK}}"
-  },
   "dependencies": {
     "{{FRAMEWORK_PKG}}": "^{{LINGXIA_BRIDGE_VERSION}}",
     "@lingxia/rong": "^{{RONG_VERSION}}",

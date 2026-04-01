@@ -33,20 +33,11 @@ impl Project {
 
         if lxapp_path.exists() {
             let manifest = read_json(&lxapp_path)?;
-            let framework = framework_override.unwrap_or(detect_project_framework(project_root)?);
-            let raw_pages = manifest
-                .get("pages")
-                .and_then(Value::as_array)
-                .ok_or_else(|| anyhow!("lxapp.json pages must be an array"))?;
-            let mut pages = Vec::with_capacity(raw_pages.len());
-            for value in raw_pages {
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
-                let resolved = resolve_page_path(project_root, page, framework)
-                    .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
-                pages.push(resolved);
-            }
+            let framework = match framework_override {
+                Some(framework) => framework,
+                None => detect_project_framework(project_root)?,
+            };
+            let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
             let logic_entry = resolve_logic_entry(&manifest)?;
             let version = non_empty_str(manifest.get("version"), "version in lxapp.json")?;
             let package_name = read_package_name(project_root)?;
@@ -65,7 +56,10 @@ impl Project {
 
         if lxplugin_path.exists() {
             let manifest = read_json(&lxplugin_path)?;
-            let framework = framework_override.unwrap_or(detect_project_framework(project_root)?);
+            let framework = match framework_override {
+                Some(framework) => framework,
+                None => detect_project_framework(project_root)?,
+            };
             let pages_obj = manifest
                 .get("pages")
                 .and_then(Value::as_object)
@@ -121,6 +115,40 @@ fn read_package_name(project_root: &Path) -> Result<Option<String>> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned))
+}
+
+fn resolve_lxapp_pages(
+    project_root: &Path,
+    manifest: &Value,
+    framework: ProjectFramework,
+) -> Result<Vec<String>> {
+    match manifest.get("pages") {
+        Some(Value::Array(raw_pages)) => {
+            let mut pages = Vec::with_capacity(raw_pages.len());
+            for value in raw_pages {
+                let page = value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
+                let resolved = resolve_page_path(project_root, page, framework)
+                    .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
+                pages.push(resolved);
+            }
+            Ok(pages)
+        }
+        Some(Value::Object(raw_pages)) => {
+            let mut pages = Vec::with_capacity(raw_pages.len());
+            for value in raw_pages.values() {
+                let page = value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("lxapp.json named pages entries must be strings"))?;
+                let resolved = resolve_page_path(project_root, page, framework)
+                    .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
+                pages.push(resolved);
+            }
+            Ok(pages)
+        }
+        _ => Err(anyhow!("lxapp.json pages must be an array or object")),
+    }
 }
 
 fn resolve_logic_entry(manifest: &Value) -> Result<Option<String>> {
@@ -204,8 +232,7 @@ mod tests {
             temp.path(),
             "package.json",
             r#"{
-              "name": "@demo/home",
-              "lingxia": { "framework": "vue" }
+              "name": "@demo/home"
             }"#,
         );
         write_file(temp.path(), "pages/home/index.vue", "<template />");
@@ -221,6 +248,85 @@ mod tests {
     }
 
     #[test]
+    fn discovers_lxapp_with_named_pages() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "logic": false,
+              "pages": {
+                "newtab": "pages/newtab/index.html",
+                "settings": "pages/settings/index.html"
+              }
+            }"#,
+        );
+        write_file(
+            temp.path(),
+            "package.json",
+            r#"{
+              "name": "@demo/browser"
+            }"#,
+        );
+        write_file(temp.path(), "pages/newtab/index.html", "<!doctype html>");
+        write_file(temp.path(), "pages/settings/index.html", "<!doctype html>");
+
+        let project = Project::discover(temp.path(), None).unwrap();
+
+        assert_eq!(project.kind, ProjectKind::LxApp);
+        assert_eq!(project.framework, ProjectFramework::Html);
+        assert_eq!(
+            project.pages,
+            vec![
+                "pages/newtab/index.html".to_string(),
+                "pages/settings/index.html".to_string()
+            ]
+        );
+        assert_eq!(project.logic_entry, None);
+    }
+
+    #[test]
+    fn discovers_named_html_pages_without_framework_metadata() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "logic": false,
+              "pages": {
+                "newtab": "pages/newtab/index.html",
+                "settings": "pages/settings/index.html"
+              }
+            }"#,
+        );
+        write_file(
+            temp.path(),
+            "package.json",
+            r#"{
+              "name": "@demo/browser"
+            }"#,
+        );
+        write_file(temp.path(), "pages/newtab/index.html", "<!doctype html>");
+        write_file(temp.path(), "pages/settings/index.html", "<!doctype html>");
+
+        let project = Project::discover(temp.path(), None).unwrap();
+
+        assert_eq!(project.kind, ProjectKind::LxApp);
+        assert_eq!(project.framework, ProjectFramework::Html);
+        assert_eq!(
+            project.pages,
+            vec![
+                "pages/newtab/index.html".to_string(),
+                "pages/settings/index.html".to_string()
+            ]
+        );
+        assert_eq!(project.logic_entry, None);
+        assert_eq!(project.package_name.as_deref(), Some("@demo/browser"));
+    }
+
+    #[test]
     fn rejects_legacy_appservice_field() {
         let temp = tempdir().unwrap();
         write_file(
@@ -230,13 +336,6 @@ mod tests {
               "version": "1.0.0",
               "appService": false,
               "pages": ["pages/home/index"]
-            }"#,
-        );
-        write_file(
-            temp.path(),
-            "package.json",
-            r#"{
-              "lingxia": { "framework": "react" }
             }"#,
         );
         write_file(
@@ -290,18 +389,87 @@ mod tests {
               "pages": ["pages/home/index"]
             }"#,
         );
-        write_file(
-            temp.path(),
-            "package.json",
-            r#"{
-              "lingxia": { "framework": "html" }
-            }"#,
-        );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
 
         let error = Project::discover(temp.path(), None)
             .unwrap_err()
             .to_string();
         assert!(error.contains("\"logic\" entry must stay within the lxapp package"));
+    }
+
+    #[test]
+    fn rejects_ambiguous_extensionless_page_without_framework_override() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "logic": false,
+              "pages": ["pages/home/index"]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(
+            temp.path(),
+            "pages/home/index.tsx",
+            "export default function Page() {}",
+        );
+
+        let error = Project::discover(temp.path(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Pass --framework react|vue|html"));
+    }
+
+    #[test]
+    fn allows_framework_override_for_ambiguous_extensionless_page() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "logic": false,
+              "pages": ["pages/home/index"]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(
+            temp.path(),
+            "pages/home/index.tsx",
+            "export default function Page() {}",
+        );
+
+        let project = Project::discover(temp.path(), Some(ProjectFramework::Vue)).unwrap();
+
+        assert_eq!(project.framework, ProjectFramework::Vue);
+        assert_eq!(project.pages, vec!["pages/home/index.vue".to_string()]);
+    }
+
+    #[test]
+    fn prefers_framework_declared_in_lxapp_manifest() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "framework": "react",
+              "logic": false,
+              "pages": ["pages/home/index"]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.vue", "<template />");
+        write_file(
+            temp.path(),
+            "pages/home/index.tsx",
+            "export default function Page() {}",
+        );
+
+        let project = Project::discover(temp.path(), None).unwrap();
+
+        assert_eq!(project.framework, ProjectFramework::React);
+        assert_eq!(project.pages, vec!["pages/home/index.tsx".to_string()]);
     }
 }

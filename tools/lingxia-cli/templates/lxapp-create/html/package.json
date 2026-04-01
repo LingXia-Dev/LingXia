@@ -11,9 +11,6 @@
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
   "license": "MIT",
-  "lingxia": {
-    "framework": "html"
-  },
   "devDependencies": {
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
     "typescript": "^5.9.3"
