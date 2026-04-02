@@ -11,7 +11,6 @@ use crate::LxAppError;
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
 const APP_META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("app_meta");
-const APP_VERSION_KEY: &str = "app_version";
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -234,14 +233,6 @@ pub(crate) fn remove(lxappid: &str, release_type: ReleaseType) -> Result<(), LxA
     txn.commit()
         .map_err(|e| metadata_error("commit installed delete", e))?;
     Ok(())
-}
-
-pub(crate) fn app_version_get() -> Result<Option<String>, LxAppError> {
-    app_meta_get(APP_VERSION_KEY)
-}
-
-pub(crate) fn app_version_set(version: &str) -> Result<(), LxAppError> {
-    app_meta_set(APP_VERSION_KEY, version)
 }
 
 pub(crate) fn app_meta_get(key: &str) -> Result<Option<String>, LxAppError> {

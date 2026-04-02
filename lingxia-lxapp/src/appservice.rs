@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSResult, JSRuntime, RongJSError, Source, error::HostError};
+use rong::{JSContext, JSResult, JSRuntime, RongJSError, error::HostError};
 use rong_console as console;
 use rong_fs as fs;
 use rong_http as http;
@@ -343,34 +343,28 @@ pub(crate) async fn lxapp_service_handler(
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 
-            if let Some(js_path) = lxapp.logic_entry_path() {
-                if js_path.exists() {
-                    if let Ok(js) = Source::from_path(&ctx, &js_path).await {
-                        match ctx.eval::<()>(js) {
-                            Ok(_) => {
-                                info!("[Worker {}] Successfully loaded logic JS", worker_id)
-                                    .with_appid(lxapp.appid.clone());
-                            }
-                            Err(e) => {
-                                info!("[Worker {}] eval logic JS  failed: {}", worker_id, e)
-                                    .with_appid(lxapp.appid.clone());
-                            }
-                        }
+            match lxapp.logic_entry_source(&ctx).await {
+                Ok(Some(js)) => match ctx.eval::<()>(js) {
+                    Ok(_) => {
+                        info!("[Worker {}] Successfully loaded logic JS", worker_id)
+                            .with_appid(lxapp.appid.clone());
                     }
-                } else {
-                    error!(
-                        "[Worker {}] Not found JS file: '{}'",
-                        worker_id,
-                        js_path.display()
+                    Err(e) => {
+                        info!("[Worker {}] eval logic JS  failed: {}", worker_id, e)
+                            .with_appid(lxapp.appid.clone());
+                    }
+                },
+                Ok(None) => {
+                    info!(
+                        "[Worker {}] Logic disabled; skipping JS bootstrap",
+                        worker_id
                     )
                     .with_appid(lxapp.appid.clone());
                 }
-            } else {
-                info!(
-                    "[Worker {}] Logic disabled; skipping JS bootstrap",
-                    worker_id
-                )
-                .with_appid(lxapp.appid.clone());
+                Err(e) => {
+                    error!("[Worker {}] Failed to load logic source: {}", worker_id, e)
+                        .with_appid(lxapp.appid.clone());
+                }
             }
 
             *current_ctx = Some(ctx.clone());

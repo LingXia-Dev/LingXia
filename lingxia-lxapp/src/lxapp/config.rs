@@ -1,4 +1,5 @@
 use crate::lxapp::tabbar::TabBar;
+use crate::lxapp::version::Version;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,7 +31,7 @@ pub(crate) struct LxPlugin {
     /// If empty, defaults to `logic.js`.
     #[serde(default)]
     pub main: String,
-    /// Page alias mapping: { "alias": "internal/path" }
+    /// Page alias mapping: { "alias": "pages/path" }
     /// e.g., { "home": "pages/home/index" }
     #[serde(default)]
     pub pages: BTreeMap<String, String>,
@@ -44,6 +45,38 @@ pub(crate) enum LxAppLogicEntry {
     Entry(String),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum LxAppPages {
+    Ordered(Vec<String>),
+    Named(BTreeMap<String, String>),
+}
+
+impl Default for LxAppPages {
+    fn default() -> Self {
+        Self::Ordered(Vec::new())
+    }
+}
+
+impl LxAppPages {
+    pub fn initial_route(&self) -> Option<String> {
+        match self {
+            Self::Ordered(pages) => pages.first().cloned(),
+            Self::Named(pages) => ["index", "home", "newtab"]
+                .iter()
+                .find_map(|name| pages.get(*name).cloned())
+                .or_else(|| pages.values().next().cloned()),
+        }
+    }
+
+    pub fn page_paths(&self) -> Vec<String> {
+        match self {
+            Self::Ordered(pages) => pages.clone(),
+            Self::Named(pages) => pages.values().cloned().collect(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
 pub(crate) struct LxAppConfig {
@@ -52,7 +85,7 @@ pub(crate) struct LxAppConfig {
     pub appId: String,
 
     /// LingXia App name
-    #[serde(default)]
+    #[serde(default, alias = "name")]
     pub appName: String,
 
     /// LingXia App version
@@ -69,7 +102,8 @@ pub(crate) struct LxAppConfig {
     pub logic: Option<LxAppLogicEntry>,
 
     /// List of page paths (relative to app root)
-    pub(crate) pages: Vec<String>,
+    #[serde(default)]
+    pub(crate) pages: LxAppPages,
 
     /// Tab bar configuration
     pub(crate) tabBar: Option<TabBar>,
@@ -99,9 +133,12 @@ impl LxAppConfig {
     /// Get the initial route (first page in the pages array)
     pub fn get_initial_route(&self) -> String {
         self.pages
-            .first()
-            .cloned()
+            .initial_route()
             .unwrap_or("PagesEmpty".to_string())
+    }
+
+    pub fn page_paths(&self) -> Vec<String> {
+        self.pages.page_paths()
     }
 
     pub fn logic_entry(&self) -> Option<String> {
@@ -123,6 +160,14 @@ impl LxAppConfig {
     }
 
     fn validate(&mut self) -> Result<(), serde_json::Error> {
+        if self.version.trim().is_empty() {
+            return Err(serde_json::Error::custom(r#""version" must not be empty"#));
+        }
+        Version::parse(self.version.trim()).map_err(|_| {
+            serde_json::Error::custom(r#""version" must be a semantic version (major.minor.patch)"#)
+        })?;
+        self.version = self.version.trim().to_string();
+
         if let Some(LxAppLogicEntry::Entry(entry)) = &mut self.logic {
             let trimmed = entry.trim();
             if trimmed.is_empty() {

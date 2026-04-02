@@ -104,6 +104,12 @@ impl From<PlatformError> for LxAppError {
     }
 }
 
+impl From<lingxia_settings::SettingsError> for LxAppError {
+    fn from(error: lingxia_settings::SettingsError) -> Self {
+        LxAppError::Runtime(error.to_string())
+    }
+}
+
 fn error_data_to_json(data: &ErrorData) -> Value {
     match data {
         ErrorData::Null => Value::Null,

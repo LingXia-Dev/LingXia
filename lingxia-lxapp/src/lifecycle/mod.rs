@@ -1,3 +1,5 @@
+pub mod key_events;
+
 use serde::Serialize;
 use std::fmt;
 use std::hash::Hash;

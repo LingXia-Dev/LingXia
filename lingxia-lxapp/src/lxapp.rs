@@ -2,11 +2,13 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -16,14 +18,13 @@ use tokio::sync::oneshot;
 use tokio::time;
 
 use self::navbar::NavigationBarState;
-use crate::app::load_app_config;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
-use crate::executor::LxAppExecutor;
 use crate::lxapp::page_config::OrientationConfig;
 use crate::page::{Page, ViewCallOptions};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
+use crate::workers::LxAppWorkers;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
 
@@ -45,6 +46,7 @@ use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
 pub use popup::PopupMode;
 pub(crate) use popup::WEB_POPUP_PATH;
+use version::Version;
 
 /// Constants for lxapp storage layout
 pub(crate) const LINGXIA_DIR: &str = "lingxia";
@@ -60,8 +62,10 @@ const DEFAULT_VERSION: &str = "0.0.1";
 const LXAPP_STACK_MAX: usize = 5;
 const PAGE_STACK_MAX: usize = 10;
 
-/// Configured worker/stack count override. Must be set before `init()`.
+/// Configured worker/stack count override. Must be set before runtime initialization.
 static NUM_WORKERS: OnceLock<usize> = OnceLock::new();
+static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>>> =
+    OnceLock::new();
 
 /// Set the number of JS workers (and lxapp navigation stack capacity).
 ///
@@ -77,6 +81,29 @@ pub fn set_num_workers(n: usize) {
 /// Read the configured worker count, falling back to `LXAPP_STACK_MAX`.
 fn get_num_workers() -> usize {
     NUM_WORKERS.get().copied().unwrap_or(LXAPP_STACK_MAX)
+}
+
+pub fn register_builtin_asset_bundle(appid: impl Into<String>, asset_root: impl Into<String>) {
+    register_lxapp_bundle_source(
+        appid,
+        LxAppBundleSource::BuiltinAssets {
+            asset_root: asset_root.into(),
+        },
+    );
+}
+
+fn register_lxapp_bundle_source(appid: impl Into<String>, source: LxAppBundleSource) {
+    let appid = appid.into();
+    let registry = LXAPP_SOURCE_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = registry.lock().unwrap_or_else(|e| e.into_inner());
+    guard.insert(appid, source);
+}
+
+fn lxapp_bundle_source_for(appid: &str) -> Option<LxAppBundleSource> {
+    LXAPP_SOURCE_OVERRIDES
+        .get()
+        .and_then(|registry| registry.lock().ok())
+        .and_then(|guard| guard.get(appid).cloned())
 }
 
 /// Development path override for home lxapp (macOS only)
@@ -151,14 +178,14 @@ pub struct LxApps {
 
     /// Reference to the executor
     /// Handles async task execution for lxapp apps
-    pub(crate) executor: Arc<LxAppExecutor>,
+    pub(crate) executor: Arc<LxAppWorkers>,
 
     /// Pending delayed-destroy timers keyed by appid
     pending_destroy: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 impl LxApps {
-    fn new(runtime: Platform, executor: Arc<LxAppExecutor>, capacity: usize) -> Self {
+    fn new(runtime: Platform, executor: Arc<LxAppWorkers>, capacity: usize) -> Self {
         info!("LxApps manager initialized with {} workers", capacity);
         let runtime = Arc::new(runtime);
 
@@ -272,7 +299,7 @@ impl LxApps {
 
             let mgr_weak = Arc::downgrade(self);
             let task_appid = appid.clone();
-            let _ = crate::global_executor::spawn(async move {
+            let _ = crate::executor::spawn(async move {
                 let sleep = time::sleep(Duration::from_secs(1800));
                 tokio::pin!(rx);
                 tokio::pin!(sleep);
@@ -396,11 +423,28 @@ impl LxAppState {
 }
 
 /// Represents a single lxapplication
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LxAppBundleSource {
+    Installed,
+    DevPath { root: PathBuf },
+    BuiltinAssets { asset_root: String },
+}
+
+impl LxAppBundleSource {
+    fn builtin_asset_root(&self) -> Option<&str> {
+        match self {
+            Self::BuiltinAssets { asset_root } => Some(asset_root.as_str()),
+            _ => None,
+        }
+    }
+}
+
 pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
     pub runtime: Arc<Platform>,
     pub lxapp_dir: PathBuf,
+    pub(crate) bundle_source: LxAppBundleSource,
     pub storage_file_path: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
@@ -408,7 +452,7 @@ pub struct LxApp {
     pub is_home_lxapp: bool,
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
-    pub(crate) executor: Arc<LxAppExecutor>,
+    pub(crate) executor: Arc<LxAppWorkers>,
     home_update_check_dispatched: AtomicBool,
     pending_restart_request: AtomicBool,
 
@@ -540,7 +584,7 @@ impl LxApp {
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
         self.set_status(LxAppSessionStatus::Closing);
-        crate::key_event::clear(&self.appid, self.session.id);
+        crate::lifecycle::key_events::clear(&self.appid, self.session.id);
 
         // Close UI window
         if !skip_hide {
@@ -595,14 +639,16 @@ impl LxApp {
     fn _new(
         appid: String,
         runtime: Arc<Platform>,
-        executor: Arc<LxAppExecutor>,
+        executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
     ) -> Self {
         let session = LxAppSession::new();
+        let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
         Self {
             appid,
             runtime,
             lxapp_dir: PathBuf::new(),
+            bundle_source,
             storage_file_path: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
@@ -623,7 +669,7 @@ impl LxApp {
     pub(crate) fn new(
         appid: String,
         runtime: Arc<Platform>,
-        executor: Arc<LxAppExecutor>,
+        executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
     ) -> Self {
         let mut app = Self::_new(appid, runtime, executor, release_type);
@@ -635,7 +681,7 @@ impl LxApp {
     }
 
     /// Create a new LxApp instance marked as the home lxapp
-    fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppExecutor>) -> Self {
+    fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppWorkers>) -> Self {
         let mut app = Self::_new(appid, runtime, executor, ReleaseType::Release);
 
         // Mark as home lxapp
@@ -667,11 +713,20 @@ impl LxApp {
             .join(LXAPPS_DIR);
         self.lxapp_dir = base_dir.join(&dir_name);
 
-        // For home lxapp, override with dev path if explicitly set via API
-        if self.is_home_lxapp {
-            if let Some(dev_path) = get_home_lxapp_dev_path() {
-                info!("Using dev path for home lxapp: {}", dev_path.display());
-                self.lxapp_dir = dev_path.clone();
+        match &self.bundle_source {
+            LxAppBundleSource::Installed => {}
+            LxAppBundleSource::DevPath { root } => {
+                info!("Using dev path for lxapp bundle: {}", root.display())
+                    .with_appid(self.appid.clone());
+                self.lxapp_dir = root.clone();
+            }
+            LxAppBundleSource::BuiltinAssets { .. } => {
+                self.lxapp_dir = self
+                    .runtime
+                    .app_data_dir()
+                    .join(LINGXIA_DIR)
+                    .join("builtin")
+                    .join(&dir_name);
             }
         }
 
@@ -772,10 +827,48 @@ impl LxApp {
         self.config.logic_entry().is_some()
     }
 
-    pub fn logic_entry_path(&self) -> Option<PathBuf> {
-        self.config
-            .logic_entry()
-            .map(|entry| self.lxapp_dir.join(entry))
+    pub async fn logic_entry_source(&self, ctx: &JSContext) -> JSResult<Option<Source>> {
+        let Some(entry) = self.config.logic_entry() else {
+            return Ok(None);
+        };
+        if Path::new(&entry).extension().and_then(|ext| ext.to_str()) != Some("js") {
+            return Err(HostError::new(
+                rong::error::E_NOT_SUPPORTED,
+                format!("lxapp logic entry must be a .js file: {}", entry),
+            )
+            .into());
+        }
+
+        match &self.bundle_source {
+            LxAppBundleSource::Installed | LxAppBundleSource::DevPath { .. } => {
+                let source_path = self.lxapp_dir.join(&entry);
+                Source::from_path(ctx, &source_path).await.map(Some)
+            }
+            LxAppBundleSource::BuiltinAssets { asset_root } => {
+                let asset_path = format!(
+                    "{}/{}",
+                    asset_root.trim_end_matches('/'),
+                    entry.trim_start_matches('/')
+                );
+                let mut reader = self.runtime.read_asset(&asset_path).map_err(|err| {
+                    HostError::new(
+                        rong::error::E_NOT_FOUND,
+                        format!("builtin lxapp logic not found: {} ({})", asset_path, err),
+                    )
+                })?;
+                let mut data = Vec::new();
+                reader.read_to_end(&mut data).map_err(|err| {
+                    HostError::new(
+                        rong::error::E_IO,
+                        format!(
+                            "failed to read builtin lxapp logic: {} ({})",
+                            asset_path, err
+                        ),
+                    )
+                })?;
+                Ok(Some(Source::from_bytes(data).with_name(asset_path)))
+            }
+        }
     }
 
     pub fn get_app_orientation(&self) -> OrientationConfig {
@@ -807,7 +900,28 @@ impl LxApp {
             relative_path,
         )? {
             Some(path) => path,
-            None => self.lxapp_dir.join(relative_path),
+            None => {
+                if let Some(asset_root) = self.bundle_source.builtin_asset_root() {
+                    let asset_path = format!(
+                        "{}/{}",
+                        asset_root.trim_end_matches('/'),
+                        relative_path.trim_start_matches('/')
+                    );
+                    let mut reader = self.runtime.read_asset(&asset_path).map_err(|e| {
+                        LxAppError::ResourceNotFound(format!(
+                            "{relative_path}:{e} (asset: {asset_path})"
+                        ))
+                    })?;
+                    let mut data = Vec::new();
+                    reader.read_to_end(&mut data).map_err(|e| {
+                        LxAppError::ResourceNotFound(format!(
+                            "{relative_path}:{e} (asset: {asset_path})"
+                        ))
+                    })?;
+                    return Ok(data);
+                }
+                self.lxapp_dir.join(relative_path)
+            }
         };
 
         // Try to read from the filesystem
@@ -990,7 +1104,11 @@ impl LxApp {
             .cloned()
     }
 
-    /// Register an externally created page (e.g. headless browser startup page).
+    pub fn initial_route(&self) -> String {
+        self.config.get_initial_route()
+    }
+
+    /// Register an externally created page owned by another runtime surface.
     /// Does not trigger eviction or route resolution; the caller owns the lifecycle.
     pub(crate) fn register_page(&self, page: Page) {
         let state = self.state.lock().unwrap();
@@ -1000,6 +1118,31 @@ impl LxApp {
             .unwrap()
             .entry(page.path())
             .or_insert(page);
+    }
+
+    pub fn ensure_app_service_running(&self) -> Result<(), LxAppError> {
+        self.executor.create_app_svc(self.clone_arc())
+    }
+
+    pub fn ensure_headless_page_service(&self, path: &str) -> Result<Page, LxAppError> {
+        if let Some(page) = self.get_page(path) {
+            return Ok(page);
+        }
+
+        let page = Page::new_headless(self.appid.clone(), path.to_string(), self);
+        self.register_page(page.clone());
+
+        let (ack_tx, ack_rx) = oneshot::channel::<()>();
+        self.executor
+            .create_page_svc_with_ack(self.clone_arc(), path.to_string(), ack_tx)?;
+
+        let page_clone = page.clone();
+        crate::executor::spawn(async move {
+            let result = ack_rx.await.map_err(|err| err.to_string());
+            page_clone.mark_webview_ready(result);
+        });
+
+        Ok(page)
     }
 
     /// Check if pull-to-refresh is enabled for a specific page
@@ -1157,7 +1300,7 @@ impl LxApp {
         let relaunch_path = self.config.get_initial_route();
         let appid = self.appid.clone();
         let release_type = self.release_type;
-        let _ = crate::global_executor::spawn(async move {
+        let _ = crate::executor::spawn(async move {
             let wait_deadline = Instant::now() + Duration::from_millis(1500);
             loop {
                 let Some(current) = crate::lxapp::try_get(&appid) else {
@@ -1207,7 +1350,8 @@ impl LxApp {
     /// Find the actual configured page path that matches the given path.
     /// Returns the path with proper extension if found.
     pub fn find_page_path(&self, path: &str) -> Option<String> {
-        find_matching_page_path(&self.config.pages, path).map(|s| s.to_string())
+        let pages = self.config.page_paths();
+        find_matching_page_path(&pages, path).map(|s| s.to_string())
     }
 
     /// Validate that a page URL resolves to a configured page before navigation.
@@ -1242,8 +1386,8 @@ impl LxApp {
     }
 
     fn is_configured_page(&self, path: &str) -> bool {
-        !path.trim_start_matches('/').is_empty()
-            && find_matching_page_path(&self.config.pages, path).is_some()
+        let pages = self.config.page_paths();
+        !path.trim_start_matches('/').is_empty() && find_matching_page_path(&pages, path).is_some()
     }
 
     fn is_plugin_page_configured(
@@ -1312,7 +1456,7 @@ impl LxApp {
             let page_clone = page.clone();
             async move {
                 // Ensure PageSvc exists before loading HTML (for both regular and plugin pages)
-                let (ack_tx, ack_rx) = oneshot::channel();
+                let (ack_tx, ack_rx) = oneshot::channel::<()>();
                 if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
                     lxapp_arc.clone(),
                     page_clone.path(),
@@ -1458,7 +1602,7 @@ impl LxApp {
     }
 
     /// Remove specific pages from the page map and terminate their PageSvc.
-    pub(crate) fn remove_pages(&self, paths: &[String]) {
+    pub fn remove_pages(&self, paths: &[String]) {
         crate::appservice::view_call::cancel_view_calls_for_pages(
             paths,
             "Page removed while waiting for view response",
@@ -1652,7 +1796,7 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
         return;
     }
 
-    let _ = crate::global_executor::spawn(async move {
+    let _ = crate::executor::spawn(async move {
         let cache_base_dir = runtime
             .app_cache_dir()
             .join(LINGXIA_DIR)
@@ -1673,14 +1817,37 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
     });
 }
 
+fn installed_home_version(
+    appid: &str,
+    release_type: ReleaseType,
+) -> Result<Option<Version>, LxAppError> {
+    let Some(record) = metadata::get(appid, release_type)? else {
+        return Ok(None);
+    };
+
+    let install_path = Path::new(&record.install_path);
+    let manifest_path = install_path.join("lxapp.json");
+    if record.install_path.trim().is_empty() || !install_path.is_dir() || !manifest_path.is_file() {
+        let _ = metadata::remove(appid, release_type);
+        return Ok(None);
+    }
+
+    Ok(Some(Version {
+        major: record.version.major,
+        minor: record.version.minor,
+        patch: record.version.patch,
+    }))
+}
+
 // Global instance of LxApps manager
 static LXAPPS_MANAGER: OnceLock<Arc<LxApps>> = OnceLock::new();
-// Global runtime available as soon as init() starts.
+// Global runtime available as soon as facade-driven runtime initialization starts.
 static RUNTIME: OnceLock<Arc<Platform>> = OnceLock::new();
 
-/// Initialize the LxApps singleton
-/// Returns an Option of home_app_id on success.
-pub fn init(runtime: Platform) -> Option<String> {
+/// Initialize the LxApps singleton using explicit runtime config prepared by the facade layer.
+pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option<String> {
+    crate::app::set_runtime_config(config.clone());
+
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -1698,10 +1865,6 @@ pub fn init(runtime: Platform) -> Option<String> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
-    // Install the host executor before any JS runtime starts so platform code
-    // and background services can submit async work during early app startup.
-    crate::global_executor::init_global();
-
     // Register built-in Host API set. This ensures view->host calls work regardless of
     // which logic extensions are loaded.
     crate::host::register_all();
@@ -1715,131 +1878,178 @@ pub fn init(runtime: Platform) -> Option<String> {
         return None;
     }
 
-    match load_app_config(runtime_arc.clone()) {
-        Ok(config) => {
-            let home_lxapp_appid = config.home_lxapp_appid.clone();
-            let home_lxapp_version = &config.home_lxapp_version;
+    let home_lxapp_appid = config.home_appid.clone();
+    let home_lxapp_version = &config.home_app_version;
 
-            let app_version = config.product_version.clone();
-            let stored_app_version = match metadata::app_version_get() {
-                Ok(version) => version,
-                Err(e) => {
-                    warn!("Failed to read host app version metadata: {}", e);
-                    None
-                }
-            };
-            let app_version_changed = stored_app_version
-                .as_deref()
-                .map_or(true, |version| version != app_version);
-
-            if app_version_changed {
-                if let Err(e) = crate::update::UpdateManager::install_from_assets(
-                    runtime_arc.clone(),
-                    &home_lxapp_appid,
-                    home_lxapp_version,
-                ) {
-                    error!("Failed to install home LxApp: {}", e);
-                    return None;
-                }
-            } else {
-                let has_pending_home_update =
-                    metadata::downloaded_get(&home_lxapp_appid, ReleaseType::Release)
-                        .map(|record| record.is_some())
-                        .unwrap_or(false);
-                if has_pending_home_update {
-                    match crate::update::UpdateManager::apply_downloaded_update(
-                        runtime_arc.clone(),
-                        &home_lxapp_appid,
-                        ReleaseType::Release,
-                    ) {
-                        Ok(()) => {
-                            info!("Applied pending home lxapp update before startup")
-                                .with_appid(home_lxapp_appid.clone());
-                        }
-                        Err(e) => {
-                            warn!("Failed to apply pending home lxapp update: {}", e)
-                                .with_appid(home_lxapp_appid.clone());
-                        }
-                    }
-                }
-            }
-            if let Err(e) = metadata::app_version_set(&app_version) {
-                warn!("Failed to persist host app version: {}", e);
-            }
-
-            // Prepare built-in browser assets at init-time (best effort).
-            crate::browser::preload_builtin_browser_assets(runtime_arc.clone());
-            crate::shell::preload_builtin_shell_assets(runtime_arc.clone());
-
-            let num_workers = get_num_workers();
-            let executor = LxAppExecutor::init(num_workers);
-
-            // Create LxApps manager BEFORE creating home_lxapp
-            // This makes get_platform() available as early as possible
-            let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
-
-            // Set global instance early so get_platform() works
-            if LXAPPS_MANAGER.set(lxapps_manager.clone()).is_err() {
-                error!("LxApps manager singleton had been initialized by another instance");
-                return None;
-            }
-
-            // Create the home LxApp instance (loads lxapp.json once)
-            let home_lxapp = LxApp::new_as_home(
-                home_lxapp_appid.clone(),
-                runtime_arc.clone(),
-                executor.clone(),
-            );
-
-            let initial_route = home_lxapp.config.get_initial_route();
-            home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
-
-            // Add home lxapp to the manager
-            let home_lxapp_arc = Arc::new(home_lxapp);
-            lxapps_manager
-                .lxapps
-                .insert(home_lxapp_appid.clone(), home_lxapp_arc.clone());
-
-            // Pre-create JS worker for home lxapp
-            if let Err(e) = home_lxapp_arc
-                .executor
-                .create_app_svc(home_lxapp_arc.clone())
-            {
-                error!("Failed to trigger home app service: {}", e)
-                    .with_appid(home_lxapp_appid.clone());
-            }
-
-            info!("LxApps initialized successfully");
-
-            spawn_cache_cleanup(runtime_arc.clone());
-            UpdateManager::spawn_app_update_flow(runtime_arc.clone(), Some(app_version.clone()));
-            Some(home_lxapp_appid)
-        }
-
+    let bundled_home_version = match Version::parse(home_lxapp_version) {
+        Ok(version) => version,
         Err(e) => {
-            // Provide more detailed error messages for different error types
-            let error_message = match e {
-                LxAppError::InvalidParameter(msg) => {
-                    format!("Configuration validation failed: {}", msg)
-                }
-                LxAppError::InvalidJsonFile(msg) => {
-                    format!("Invalid app.json file: {}", msg)
-                }
-                LxAppError::IoError(msg) => {
-                    format!("I/O error while reading configuration: {}", msg)
-                }
-                _ => format!("Failed to load app configuration: {}", e),
-            };
+            error!(
+                "Invalid bundled home lxapp version '{}': {}",
+                home_lxapp_version, e
+            )
+            .with_appid(home_lxapp_appid.clone());
+            return None;
+        }
+    };
+    let installed_home_version =
+        match installed_home_version(&home_lxapp_appid, ReleaseType::Release) {
+            Ok(version) => version,
+            Err(e) => {
+                warn!("Failed to inspect installed home lxapp version: {}", e)
+                    .with_appid(home_lxapp_appid.clone());
+                None
+            }
+        };
 
-            error!("{}", error_message);
-            None
+    let should_reinstall_home = installed_home_version
+        .as_ref()
+        .map(|installed| installed < &bundled_home_version)
+        .unwrap_or(true);
+
+    if should_reinstall_home {
+        let reason = match installed_home_version {
+            None => "home lxapp is not installed or install is invalid".to_string(),
+            Some(installed) => format!(
+                "bundled version {} is newer than installed {}",
+                bundled_home_version, installed
+            ),
+        };
+        info!("Installing home lxapp from bundled assets: {}", reason)
+            .with_appid(home_lxapp_appid.clone());
+        if let Err(e) = crate::update::UpdateManager::install_from_assets(
+            runtime_arc.clone(),
+            &home_lxapp_appid,
+            home_lxapp_version,
+        ) {
+            error!("Failed to install home LxApp: {}", e);
+            return None;
+        }
+    } else {
+        let has_pending_home_update =
+            metadata::downloaded_get(&home_lxapp_appid, ReleaseType::Release)
+                .map(|record| record.is_some())
+                .unwrap_or(false);
+        if has_pending_home_update {
+            match crate::update::UpdateManager::apply_downloaded_update(
+                runtime_arc.clone(),
+                &home_lxapp_appid,
+                ReleaseType::Release,
+            ) {
+                Ok(()) => {
+                    info!("Applied pending home lxapp update before startup")
+                        .with_appid(home_lxapp_appid.clone());
+                }
+                Err(e) => {
+                    warn!("Failed to apply pending home lxapp update: {}", e)
+                        .with_appid(home_lxapp_appid.clone());
+                }
+            }
         }
     }
+    let num_workers = get_num_workers();
+    let executor = LxAppWorkers::init(num_workers);
+
+    if let Some(dev_path) = get_home_lxapp_dev_path() {
+        register_lxapp_bundle_source(
+            home_lxapp_appid.clone(),
+            LxAppBundleSource::DevPath {
+                root: dev_path.clone(),
+            },
+        );
+    }
+
+    // Create LxApps manager BEFORE creating home_lxapp
+    // This makes get_platform() available as early as possible
+    let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
+
+    // Set global instance early so get_platform() works
+    if LXAPPS_MANAGER.set(lxapps_manager.clone()).is_err() {
+        error!("LxApps manager singleton had been initialized by another instance");
+        return None;
+    }
+
+    // Create the home LxApp instance (loads lxapp.json once)
+    let home_lxapp = LxApp::new_as_home(
+        home_lxapp_appid.clone(),
+        runtime_arc.clone(),
+        executor.clone(),
+    );
+
+    let initial_route = home_lxapp.config.get_initial_route();
+    home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
+
+    // Add home lxapp to the manager
+    let home_lxapp_arc = Arc::new(home_lxapp);
+    lxapps_manager
+        .lxapps
+        .insert(home_lxapp_appid.clone(), home_lxapp_arc.clone());
+
+    // Pre-create JS worker for home lxapp
+    if let Err(e) = home_lxapp_arc
+        .executor
+        .create_app_svc(home_lxapp_arc.clone())
+    {
+        error!("Failed to trigger home app service: {}", e).with_appid(home_lxapp_appid.clone());
+    }
+
+    info!("LxApps initialized successfully");
+
+    spawn_cache_cleanup(runtime_arc.clone());
+    UpdateManager::spawn_app_update_flow(runtime_arc.clone(), None);
+    Some(home_lxapp_appid)
 }
 
 /// Get access to the LxApps manager for navigation stack operations
 pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
     LXAPPS_MANAGER.get().cloned()
+}
+
+pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>, LxAppError> {
+    let manager = get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    Ok(manager.ensure_lxapp(appid.to_string(), release_type))
+}
+
+pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+    let manager = get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    if let Some(app) = manager.lxapps.get(appid) {
+        return Ok(app.clone());
+    }
+    if !matches!(
+        lxapp_bundle_source_for(appid),
+        Some(LxAppBundleSource::BuiltinAssets { .. })
+    ) {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "builtin lxapp asset bundle not registered: {appid}"
+        )));
+    }
+
+    let app = Arc::new(LxApp::new(
+        appid.to_string(),
+        manager.runtime.clone(),
+        manager.executor.clone(),
+        ReleaseType::Release,
+    ));
+    manager.lxapps.insert(appid.to_string(), app.clone());
+    Ok(app)
+}
+
+pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp>, LxAppError> {
+    let manager = get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+
+    let app = manager.ensure_lxapp(appid.to_string(), options.release_type);
+    app.open(options)?;
+    Ok(app)
+}
+
+pub fn installed_lxapp_path(appid: &str, release_type: ReleaseType) -> Option<String> {
+    metadata::get(appid, release_type)
+        .ok()
+        .flatten()
+        .map(|record| record.install_path)
 }
 
 /// Get the platform runtime instance.

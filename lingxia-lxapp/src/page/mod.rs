@@ -1,3 +1,7 @@
+pub(crate) mod definition;
+
+pub use definition::{register_page_resolver, resolve_page_path};
+
 use crate::bridge::{IncomingMessage, PageBridge};
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{
@@ -277,7 +281,7 @@ impl Page {
                     };
                     let lxapp = lxapp::get(appid_for_lx);
                     let page = Page::from_inner(inner);
-                    lxapp.lingxia_handler(&page, req).into()
+                    lxapp.handle_lingxia_request(&page, req).into()
                 }
             })
             .on_scheme("https", move |req| {
@@ -325,7 +329,7 @@ impl Page {
         let appid_clone = appid.clone();
         let path_clone = path.clone();
 
-        crate::global_executor::spawn(async move {
+        crate::executor::spawn(async move {
             match session.wait_ready().await {
                 Ok(webview_controller) => {
                     // First attach WebView to page
@@ -351,8 +355,8 @@ impl Page {
 
     /// Create a headless page (nonce allocated, no WebView created).
     ///
-    /// Used for browser tab startup page, where a single logical page is shared
-    /// across all tab WebViews (one tab is attach_webview'd at a time).
+    /// Used for a shared logical page that can be attached to externally
+    /// managed WebViews one at a time.
     pub(crate) fn new_headless(appid: String, path: String, lxapp: &LxApp) -> Self {
         let page_state = Self::build_page_state(lxapp, &path);
         let bridge_nonce = Self::generate_bridge_nonce();
@@ -372,7 +376,7 @@ impl Page {
         Self { inner }
     }
 
-    pub(crate) fn bridge_nonce(&self) -> Option<String> {
+    pub fn bridge_nonce(&self) -> Option<String> {
         self.inner.bridge_nonce.lock().ok().and_then(|v| v.clone())
     }
 
@@ -381,10 +385,16 @@ impl Page {
     }
 
     /// Attach WebView to this page (called when WebView is ready)
-    pub(crate) fn attach_webview(&self, webview: Arc<WebView>) {
+    pub fn attach_webview(&self, webview: Arc<WebView>) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             *webview_guard = Some(webview);
         }
+    }
+
+    pub fn handle_incoming_message_json(&self, msg: &str) -> Result<(), LxAppError> {
+        let incoming = IncomingMessage::from_json_str(msg)
+            .map_err(|err| LxAppError::Bridge(format!("Invalid bridge message JSON: {}", err)))?;
+        self.inner.bridge.handle_incoming(self, Arc::new(incoming))
     }
 
     /// Get complete page state
@@ -547,7 +557,7 @@ impl Page {
     }
 
     /// Get WebView if available
-    pub(crate) fn webview(&self) -> Option<Arc<WebView>> {
+    pub fn webview(&self) -> Option<Arc<WebView>> {
         if let Ok(webview_guard) = self.inner.webview.lock() {
             webview_guard.clone()
         } else {
@@ -561,14 +571,14 @@ impl Page {
     }
 
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
-    /// Used by BrowserTabDelegate to forward events to the shared startup page.
-    pub(crate) fn notify_page_started(&self) {
+    /// Used by external delegates to forward events to a shared page.
+    pub fn notify_page_started(&self) {
         self.set_render_status(PageRenderStatus::Started);
     }
 
     /// Notify that the page's WebView finished loading (mirrors WebViewDelegate::on_page_finished).
-    /// Used by BrowserTabDelegate to forward events to the shared startup page.
-    pub(crate) fn notify_page_finished(&self) {
+    /// Used by external delegates to forward events to a shared page.
+    pub fn notify_page_finished(&self) {
         self.set_render_status(PageRenderStatus::Finished);
         self.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnReady);
     }
@@ -601,7 +611,7 @@ impl Page {
     /// Detach and drop the WebView held by this page.
     /// This breaks Page -> WebView strong reference and triggers platform Drop when
     /// combined with registry removal.
-    pub(crate) fn detach_webview(&self) {
+    pub fn detach_webview(&self) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
             // Drop the Arc by taking it out
             let _ = webview_guard.take();

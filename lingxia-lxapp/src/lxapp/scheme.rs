@@ -19,10 +19,15 @@ use crate::error::LxAppError;
 use crate::lxapp::LxApp;
 use crate::page::Page;
 
+enum ResolvedLxAsset {
+    FilePath(PathBuf),
+    BuiltinAsset(String),
+}
+
 impl LxApp {
     /// Handler for lx:// scheme requests to access static app assets (images, CSS, JS, etc.)
     /// HTML files are handled separately through generate_page_html and load_data
-    pub(crate) fn lingxia_handler(
+    pub fn handle_lingxia_request(
         &self,
         page: &Page,
         req: Request<Vec<u8>>,
@@ -68,7 +73,10 @@ impl LxApp {
         }
 
         let asset_path = match self.resolve_lx_uri(page, uri) {
-            Ok(path) => path,
+            Ok(ResolvedLxAsset::BuiltinAsset(relative)) => {
+                return self.handle_builtin_lxapp_asset(&relative);
+            }
+            Ok(ResolvedLxAsset::FilePath(path)) => path,
             Err(e) => {
                 error!("resolve_lx_uri failed for {}: {}", uri.path(), e)
                     .with_appid(self.appid.clone());
@@ -240,14 +248,87 @@ impl LxApp {
         Uri::from_str(decoded_str).ok()
     }
 
-    fn resolve_lx_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_lx_uri(&self, page: &Page, uri: &Uri) -> Result<ResolvedLxAsset, LxAppError> {
         match uri.host() {
-            Some(lx_uri::HOST_LXAPP) => self.resolve_lxapp_uri(page, uri),
-            Some(lx_uri::HOST_PLUGIN) => self.resolve_plugin_uri(page, uri),
-            Some(lx_uri::HOST_USER_CACHE) => self.resolve_user_dir_uri(uri, &self.user_cache_dir),
-            Some(lx_uri::HOST_USER_DATA) => self.resolve_user_dir_uri(uri, &self.user_data_dir),
+            Some(lx_uri::HOST_LXAPP) => {
+                if matches!(
+                    self.bundle_source,
+                    crate::lxapp::LxAppBundleSource::BuiltinAssets { .. }
+                ) {
+                    self.resolve_lxapp_relative_path(page, uri)
+                        .map(ResolvedLxAsset::BuiltinAsset)
+                } else {
+                    self.resolve_lxapp_uri(page, uri)
+                        .map(ResolvedLxAsset::FilePath)
+                }
+            }
+            Some(lx_uri::HOST_PLUGIN) => self
+                .resolve_plugin_uri(page, uri)
+                .map(ResolvedLxAsset::FilePath),
+            Some(lx_uri::HOST_USER_CACHE) => self
+                .resolve_user_dir_uri(uri, &self.user_cache_dir)
+                .map(ResolvedLxAsset::FilePath),
+            Some(lx_uri::HOST_USER_DATA) => self
+                .resolve_user_dir_uri(uri, &self.user_data_dir)
+                .map(ResolvedLxAsset::FilePath),
             _ => Err(LxAppError::ResourceNotFound(uri.to_string())),
         }
+    }
+
+    fn handle_builtin_lxapp_asset(&self, relative_path: &str) -> Option<WebResourceResponse> {
+        let asset_root = self.bundle_source.builtin_asset_root()?;
+        let asset_path = format!(
+            "{}/{}",
+            asset_root.trim_end_matches('/'),
+            relative_path.trim_start_matches('/')
+        );
+
+        let mut reader = match self.runtime.read_asset(&asset_path) {
+            Ok(reader) => reader,
+            Err(e) => {
+                error!("Failed to read builtin lxapp asset {}: {}", asset_path, e)
+                    .with_appid(self.appid.clone());
+                return Some(self.create_error_response(
+                    StatusCode::NOT_FOUND,
+                    "Asset Not Found",
+                    &format!(
+                        "The requested asset '{}' could not be found.",
+                        relative_path
+                    ),
+                ));
+            }
+        };
+
+        let mut data = Vec::new();
+        if let Err(e) = reader.read_to_end(&mut data) {
+            error!("Failed to read builtin lxapp asset {}: {}", asset_path, e)
+                .with_appid(self.appid.clone());
+            return Some(self.create_error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Asset Read Error",
+                "Failed to read asset data.",
+            ));
+        }
+
+        let mime_type = Self::infer_mime_type(relative_path);
+        let mut builder = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime_type)
+            .header("Access-Control-Allow-Origin", "null");
+
+        if let Ok(value) = http::HeaderValue::from_str(&data.len().to_string()) {
+            builder = builder.header("Content-Length", value);
+        }
+
+        let response = builder.body(()).unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build fallback empty response")
+        });
+
+        let (parts, _) = response.into_parts();
+        Some((parts, data).into())
     }
 
     fn resolve_user_dir_uri(&self, uri: &Uri, base_dir: &Path) -> Result<PathBuf, LxAppError> {
@@ -267,10 +348,28 @@ impl LxApp {
     }
 
     fn resolve_lxapp_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+        let relative = self.resolve_lxapp_relative_path(page, uri)?;
+        if let Ok(local_path) = self.resolve_accessible_path(&relative) {
+            return Ok(local_path);
+        }
+
+        let absolute_path = format!("/{}", relative);
+        if let Ok(local_path) = self.resolve_accessible_path(&absolute_path) {
+            return Ok(local_path);
+        }
+
+        Err(LxAppError::ResourceNotFound(uri.to_string()))
+    }
+
+    fn resolve_lxapp_relative_path(&self, _page: &Page, uri: &Uri) -> Result<String, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         if Path::new(&decoded_path).is_absolute() {
             if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
-                return Ok(local_path);
+                let relative = local_path
+                    .strip_prefix(&self.lxapp_dir)
+                    .map(|path| path.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| decoded_path.trim_start_matches('/').to_string());
+                return Ok(relative);
             }
         }
         let raw_path = decoded_path.trim_start_matches('/');
@@ -292,28 +391,12 @@ impl LxApp {
         if lx_uri::has_invalid_segment(normalized) {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
+        let normalized = normalized.to_string();
 
-        if let Ok(local_path) = self.resolve_accessible_path(normalized) {
-            return Ok(local_path);
-        }
-
-        if let Some(stripped) =
-            lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_LXAPP, &self.appid)
-        {
-            if let Ok(local_path) = self.resolve_accessible_path(&stripped) {
-                return Ok(local_path);
-            }
-        }
-
-        let absolute_path = format!("/{}", normalized);
-        if let Ok(local_path) = self.resolve_accessible_path(&absolute_path) {
-            return Ok(local_path);
-        }
-
-        Err(LxAppError::ResourceNotFound(uri.to_string()))
+        Ok(normalized)
     }
 
-    fn resolve_plugin_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_plugin_uri(&self, _page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         let raw_path = decoded_path.trim_start_matches('/');
         let (plugin_name, rest) = raw_path
@@ -328,7 +411,7 @@ impl LxApp {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
 
-        let mut last_err = match plugin::resolve_plugin_resource_path(
+        let last_err = match plugin::resolve_plugin_resource_path(
             &self.runtime,
             &self.config.plugins,
             plugin_name,
@@ -337,20 +420,6 @@ impl LxApp {
             Ok(local_path) => return Ok(local_path),
             Err(e) => e,
         };
-
-        if let Some(stripped) =
-            lx_uri::strip_base_dir(page, normalized, lx_uri::HOST_PLUGIN, plugin_name)
-        {
-            match plugin::resolve_plugin_resource_path(
-                &self.runtime,
-                &self.config.plugins,
-                plugin_name,
-                &stripped,
-            ) {
-                Ok(local_path) => return Ok(local_path),
-                Err(e) => last_err = e,
-            }
-        }
 
         Err(last_err)
     }
@@ -563,7 +632,7 @@ impl LxApp {
                                         Ok(rx) => {
                                             let cleanup_tmp_dest_path = tmp_dest_path.clone();
                                             let cleanup_tmp_part_path = tmp_part_path.clone();
-                                            let _ = crate::global_executor::spawn(async move {
+                                            let _ = crate::executor::spawn(async move {
                                                 let _ = rx.await;
                                                 let _ = fs::remove_file(&cleanup_tmp_dest_path);
                                                 let _ = fs::remove_file(&cleanup_tmp_part_path);
@@ -633,7 +702,7 @@ impl LxApp {
                                     Ok(rx) => {
                                         let cleanup_lock_path = lock_path.clone();
                                         let cleanup_part_path = part_path.clone();
-                                        let _ = crate::global_executor::spawn(async move {
+                                        let _ = crate::executor::spawn(async move {
                                             let res = rx.await.unwrap_or_else(|_| {
                                                 Err("download dropped".to_string())
                                             });

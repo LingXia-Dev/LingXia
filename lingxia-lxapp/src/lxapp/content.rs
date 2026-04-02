@@ -14,7 +14,7 @@ impl LxApp {
     ///
     /// # Returns
     /// * `Vec<u8>` - Processed HTML content or 404 page
-    pub(crate) fn generate_page_html(&self, path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
+    pub fn generate_page_html(&self, path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
         // Try to read the file
         let data = match self.read_bytes(path) {
             Ok(data) => data,

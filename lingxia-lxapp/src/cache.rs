@@ -308,7 +308,7 @@ impl LxAppCache {
                     sleep(Duration::from_millis(200)).await;
                 }
             };
-            let _ = crate::global_executor::spawn(task);
+            let _ = crate::executor::spawn(task);
         }
 
         target_path
@@ -485,7 +485,7 @@ impl CacheCapacityManager {
         let max_age = self.max_age;
         let min_check_interval = self.min_check_interval;
 
-        let _ = crate::global_executor::spawn(async move {
+        let _ = crate::executor::spawn(async move {
             run_cache_capacity_worker(cache_dir, max_bytes, max_age, min_check_interval, rx).await;
         });
         // Send initial access event so cleanup runs once at startup
@@ -523,7 +523,7 @@ async fn run_cache_capacity_worker(
                 last_check = Some(now);
 
                 let cache_dir_clone = cache_dir.clone();
-                let blocking = crate::global_executor::spawn_blocking(move || {
+                let blocking = crate::executor::spawn_blocking(move || {
                     enforce_cache_limits(&cache_dir_clone, max_bytes, max_age)
                 });
 

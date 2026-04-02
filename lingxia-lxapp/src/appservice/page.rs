@@ -897,8 +897,8 @@ impl PageSvc {
     pub async fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
         super::plugin::ensure_plugin_logic_loaded_for_page_path(ctx, path).await?;
         let lxapp = LxApp::from_ctx(ctx)?;
-        let definition_path = crate::browser::browser_logic_page_path_for_tab_path(&lxapp, path)
-            .unwrap_or_else(|| path.to_string());
+        let definition_path =
+            crate::resolve_page_path(&lxapp, path).unwrap_or_else(|| path.to_string());
 
         let create_page = ctx
             .global()

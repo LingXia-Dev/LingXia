@@ -69,23 +69,13 @@ async fn navigate_with_url(
     let current_path = current_page_path(&lxapp)?;
     let target_page = lxapp.get_or_create_page(&target_url);
 
-    if wait_ready && nav_type != NavigationType::Launch {
-        await_or_cancel(cancel, async {
-            target_page
-                .wait_webview_ready()
-                .await
-                .map_err(LxAppError::WebView)
-        })
-        .await?;
-    }
-
     let Some(page) = lxapp.get_page(&current_path) else {
         return Err(LxAppError::Runtime("Current page not found".to_string()));
     };
 
     let target_page = page.navigate_to(target_page, nav_type)?;
 
-    if wait_ready && nav_type == NavigationType::Launch {
+    if wait_ready {
         await_or_cancel(cancel, async {
             target_page
                 .wait_webview_ready()

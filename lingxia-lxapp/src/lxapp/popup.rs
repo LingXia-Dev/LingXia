@@ -13,6 +13,43 @@ use crate::lxapp::LxApp;
 /// Safe to be a constant because only one popup can be active at a time.
 pub(crate) const WEB_POPUP_PATH: &str = "__web_popup__";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExternalWebNavigationDecision {
+    InWebview,
+    OpenExternal,
+    Deny,
+}
+
+fn extract_url_scheme(raw: &str) -> Option<String> {
+    let (scheme, _) = raw.split_once(':')?;
+    if scheme.is_empty() {
+        return None;
+    }
+    let is_valid = scheme
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    if !is_valid {
+        return None;
+    }
+    Some(scheme.to_ascii_lowercase())
+}
+
+fn classify_external_web_navigation(raw_url: &str) -> ExternalWebNavigationDecision {
+    let trimmed = raw_url.trim();
+    if trimmed.is_empty() || trimmed.chars().any(|c| c.is_whitespace()) {
+        return ExternalWebNavigationDecision::Deny;
+    }
+
+    match extract_url_scheme(trimmed).as_deref() {
+        Some("http" | "https" | "lx" | "lingxia") => ExternalWebNavigationDecision::InWebview,
+        Some("about" | "data" | "blob" | "javascript" | "file") => {
+            ExternalWebNavigationDecision::Deny
+        }
+        Some(_) => ExternalWebNavigationDecision::OpenExternal,
+        None => ExternalWebNavigationDecision::Deny,
+    }
+}
+
 /// Controls what content is loaded in the popup.
 /// Both modes display an in-app popup overlay; they differ only in content source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,41 +70,50 @@ pub(crate) enum ActivePopup {
 }
 
 impl LxApp {
-    fn create_web_popup_webview(self: &Arc<Self>, target_url: &str) -> Result<(), LxAppError> {
+    fn show_web_popup_webview(
+        self: &Arc<Self>,
+        request: PopupRequest,
+        target_url: &str,
+    ) -> Result<(), LxAppError> {
+        let app = self.clone();
+        let target_url = target_url.to_string();
+        crate::executor::spawn(async move {
+            if let Err(err) = app.show_web_popup_webview_async(request, &target_url).await {
+                crate::warn!(
+                    "[Popup] failed to show external popup url={} err={}",
+                    target_url,
+                    err
+                );
+            }
+        });
+        Ok(())
+    }
+
+    async fn show_web_popup_webview_async(
+        self: &Arc<Self>,
+        request: PopupRequest,
+        target_url: &str,
+    ) -> Result<(), LxAppError> {
         let owner_appid_for_nav = self.appid.clone();
         let owner_session_for_nav = self.session_id();
         let runtime_for_nav = self.runtime.clone();
-        let owner_appid_for_ready = self.appid.clone();
-        let owner_session_for_ready = self.session_id();
-        let target_url_for_ready = target_url.to_string();
+        let owner_appid = self.appid.clone();
+        let owner_session = self.session_id();
 
         let webtag = WebTag::new(&self.appid, WEB_POPUP_PATH, Some(self.session_id()));
         let session = WebViewBuilder::browser(webtag)
-            .on_navigation(move |url| {
-                let decision = crate::browser::handle_browser_navigation_policy(
-                    crate::browser::BrowserNavigationPolicyRequest {
-                        raw_url: url.to_string(),
-                        has_user_gesture: true,
-                        is_main_frame: true,
-                    },
-                );
-                match decision.decision {
-                    crate::browser::BrowserNavigationPolicyDecision::InWebview => {
-                        NavigationPolicy::Allow
-                    }
-                    crate::browser::BrowserNavigationPolicyDecision::OpenExternal => {
-                        let _ = runtime_for_nav.open_url(OpenUrlRequest {
-                            owner_appid: owner_appid_for_nav.clone(),
-                            owner_session_id: owner_session_for_nav,
-                            url: url.to_string(),
-                            target: OpenUrlTarget::External,
-                        });
-                        NavigationPolicy::Cancel
-                    }
-                    crate::browser::BrowserNavigationPolicyDecision::Deny => {
-                        NavigationPolicy::Cancel
-                    }
+            .on_navigation(move |url| match classify_external_web_navigation(url) {
+                ExternalWebNavigationDecision::InWebview => NavigationPolicy::Allow,
+                ExternalWebNavigationDecision::OpenExternal => {
+                    let _ = runtime_for_nav.open_url(OpenUrlRequest {
+                        owner_appid: owner_appid_for_nav.clone(),
+                        owner_session_id: owner_session_for_nav,
+                        url: url.to_string(),
+                        target: OpenUrlTarget::External,
+                    });
+                    NavigationPolicy::Cancel
                 }
+                ExternalWebNavigationDecision::Deny => NavigationPolicy::Cancel,
             })
             .on_new_window(move |url| {
                 let _ = url;
@@ -75,32 +121,81 @@ impl LxApp {
             })
             .create();
 
-        crate::global_executor::spawn(async move {
-            match session.wait_ready().await {
-                Ok(webview) => {
-                    if let Err(load_err) = webview.load_url(&target_url_for_ready) {
-                        crate::warn!(
-                            "[Popup] failed to load external url url={} err={}",
-                            target_url_for_ready,
-                            load_err
-                        );
-                    }
-                }
-                Err(wait_err) => {
-                    crate::warn!(
-                        "[Popup] failed to create external popup webview err={}",
-                        wait_err
-                    );
-                    destroy_webview(&WebTag::new(
-                        &owner_appid_for_ready,
-                        WEB_POPUP_PATH,
-                        Some(owner_session_for_ready),
-                    ));
-                }
+        let cleanup = || {
+            destroy_webview(&WebTag::new(
+                &owner_appid,
+                WEB_POPUP_PATH,
+                Some(owner_session),
+            ));
+        };
+
+        let webview = match session.wait_ready().await {
+            Ok(webview) => webview,
+            Err(wait_err) => {
+                cleanup();
+                return Err(LxAppError::WebView(format!(
+                    "failed to create external popup webview: {}",
+                    wait_err
+                )));
             }
-        });
+        };
+
+        if let Err(show_err) = self.runtime.show_popup(request) {
+            cleanup();
+            return Err(LxAppError::from(show_err));
+        }
+
+        if let Ok(mut state) = self.state.lock() {
+            state.current_popup = Some(ActivePopup::WebPage);
+        }
+
+        if let Err(load_err) = webview.load_url(target_url) {
+            let _ = self.runtime.hide_popup(&self.appid);
+            if let Ok(mut state) = self.state.lock() {
+                state.current_popup = None;
+            }
+            cleanup();
+            return Err(LxAppError::WebView(format!(
+                "failed to load external popup url: {}",
+                load_err
+            )));
+        }
 
         Ok(())
+    }
+
+    pub async fn show_popup_with_mode_async(
+        self: &Arc<Self>,
+        mode: PopupMode,
+        mut request: PopupRequest,
+    ) -> Result<(), LxAppError> {
+        self.hide_popup()?;
+        request.app_id = self.appid.clone();
+
+        if !request.width_ratio.is_nan() {
+            request.width_ratio = request.width_ratio.clamp(0.0, 1.0);
+        }
+        if !request.height_ratio.is_nan() {
+            request.height_ratio = request.height_ratio.clamp(0.0, 1.0);
+        }
+
+        match mode {
+            PopupMode::LxAppPage => self.show_popup_with_mode(mode, request),
+            PopupMode::WebPage => {
+                let target_url = request.path.trim().to_string();
+                let scheme = extract_url_scheme(&target_url);
+                if !matches!(scheme.as_deref(), Some("http" | "https")) {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "WebPage popup only supports http/https URLs, got '{}'",
+                        request.path
+                    )));
+                }
+
+                request.path = WEB_POPUP_PATH.to_string();
+                self.show_web_popup_webview_async(request, &target_url)
+                    .await
+            }
+        }
     }
 
     /// Show a popup with explicit mode control.
@@ -140,8 +235,8 @@ impl LxApp {
                 ActivePopup::LxAppPage(path)
             }
             PopupMode::WebPage => {
-                let target_url = crate::browser::normalize_browser_target_url(&request.path);
-                let scheme = crate::browser::extract_url_scheme(&target_url);
+                let target_url = request.path.trim().to_string();
+                let scheme = extract_url_scheme(&target_url);
                 if !matches!(scheme.as_deref(), Some("http" | "https")) {
                     return Err(LxAppError::InvalidParameter(format!(
                         "WebPage popup only supports http/https URLs, got '{}'",
@@ -149,9 +244,9 @@ impl LxApp {
                     )));
                 }
 
-                self.create_web_popup_webview(&target_url)?;
                 request.path = WEB_POPUP_PATH.to_string();
-                ActivePopup::WebPage
+                self.show_web_popup_webview(request, &target_url)?;
+                return Ok(());
             }
         };
 

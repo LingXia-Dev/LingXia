@@ -5,7 +5,6 @@ use std::str::FromStr;
 use urlencoding::{decode, encode};
 
 use super::LxApp;
-use crate::page::Page;
 
 pub(crate) const LX_SCHEME: &str = "lx";
 pub(crate) const HOST_LXAPP: &str = "lxapp";
@@ -219,31 +218,4 @@ pub(crate) fn build_plugin_page_path(plugin_name: &str, page_path: &str) -> Stri
     } else {
         format!("{}{}/{}", PLUGIN_PAGE_PATH_PREFIX, name, path)
     }
-}
-
-pub(crate) fn strip_base_dir(
-    page: &Page,
-    normalized: &str,
-    expected_host: &str,
-    expected_owner: &str,
-) -> Option<String> {
-    let base_uri = Uri::from_str(&page.base_url()).ok()?;
-    if base_uri.host() != Some(expected_host) {
-        return None;
-    }
-    let base_path = base_uri.path().trim_start_matches('/');
-    let (owner, rest) = base_path.split_once('/')?;
-    if owner != expected_owner {
-        return None;
-    }
-    let idx = rest.rfind('/')?;
-    let base_dir = &rest[..idx];
-    let prefix = format!("{}/", base_dir.trim_matches('/'));
-    if normalized.starts_with(&prefix) {
-        let stripped = normalized[prefix.len()..].trim_start_matches('/');
-        if !stripped.is_empty() {
-            return Some(stripped.to_string());
-        }
-    }
-    None
 }

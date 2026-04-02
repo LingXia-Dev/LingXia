@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout};
 
 /// Tracks download progress and reports to the UI layer
 struct ProgressSink {
@@ -78,6 +78,22 @@ pub struct UpdateManager {
     lxapp: Arc<lxapp::LxApp>,
     /// Directory where archives are downloaded before installation.
     downloads_dir: PathBuf,
+}
+
+const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+
+async fn with_foreground_update_timeout<T, F>(future: F, context: &str) -> Result<T, LxAppError>
+where
+    F: std::future::Future<Output = Result<T, LxAppError>>,
+{
+    match timeout(FOREGROUND_UPDATE_CHECK_TIMEOUT, future).await {
+        Ok(result) => result,
+        Err(_) => Err(LxAppError::Runtime(format!(
+            "{} timed out after {}s",
+            context,
+            FOREGROUND_UPDATE_CHECK_TIMEOUT.as_secs()
+        ))),
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -280,10 +296,7 @@ impl UpdateManager {
                 let release_type = ReleaseType::Release;
                 let context_lxapp = lxapp::try_get(&target_appid)
                     .filter(|app| app.release_type == release_type)
-                    .or_else(|| {
-                        crate::app::app_config()
-                            .and_then(|config| lxapp::try_get(&config.home_lxapp_appid))
-                    });
+                    .or_else(|| crate::app::home_appid().and_then(lxapp::try_get));
 
                 let Some(context_lxapp) = context_lxapp else {
                     crate::warn!(
@@ -315,7 +328,7 @@ impl UpdateManager {
         start_delay: Duration,
         bypass_cooldown: bool,
     ) {
-        let _ = crate::global_executor::spawn(async move {
+        let _ = crate::executor::spawn(async move {
             if !start_delay.is_zero() {
                 sleep(start_delay).await;
             }
@@ -342,7 +355,7 @@ impl UpdateManager {
         bypass_cooldown: bool,
     ) {
         let update_check_target = format!("lxapp:{}@{}", target_appid, release_type.as_str());
-        let _ = crate::global_executor::spawn(async move {
+        let _ = crate::executor::spawn(async move {
             if !bypass_cooldown && !try_acquire_update_check_window(&update_check_target) {
                 return;
             }
@@ -526,7 +539,6 @@ impl UpdateManager {
             release_type,
             query,
         };
-
         provider.check_update(target).await.map_err(|e| {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
             e.to_lxapp_error()
@@ -1209,15 +1221,17 @@ pub(crate) async fn ensure_first_install(
         return Ok(());
     }
 
-    let pkg = manager
-        .check_latest_update(target_appid, release_type, None)
-        .await?
-        .ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!(
-                "No package available for first install of {}",
-                target_appid
-            ))
-        })?;
+    let pkg = with_foreground_update_timeout(
+        manager.check_latest_update(target_appid, release_type, None),
+        &format!("first install update check for {}", target_appid),
+    )
+    .await?
+    .ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!(
+            "No package available for first install of {}",
+            target_appid
+        ))
+    })?;
 
     ensure_runtime_version_compatible(target_appid, &pkg)?;
 
@@ -1268,9 +1282,11 @@ pub(crate) async fn ensure_target_version_ready(
         None
     };
     if release_type == ReleaseType::Release {
-        match manager
-            .check_latest_update(target_appid, release_type, current_version.as_deref())
-            .await
+        match with_foreground_update_timeout(
+            manager.check_latest_update(target_appid, release_type, current_version.as_deref()),
+            &format!("force-update gate check for {}", target_appid),
+        )
+        .await
         {
             Ok(Some(pkg)) if pkg.is_force_update => {
                 let force_version = Version::parse(&pkg.version).map_err(|_| {
@@ -1304,18 +1320,22 @@ pub(crate) async fn ensure_target_version_ready(
         return Ok(());
     }
 
-    let pkg = manager
-        .check_exact_update(target_appid, release_type, target_version)
-        .await?
-        .ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!(
-                "No package available for {}@{} ({})",
-                target_appid,
-                target_version,
-                release_type.as_str()
-            ))
-        })?;
-
+    let pkg = with_foreground_update_timeout(
+        manager.check_exact_update(target_appid, release_type, target_version),
+        &format!(
+            "exact version update check for {}@{}",
+            target_appid, target_version
+        ),
+    )
+    .await?
+    .ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!(
+            "No package available for {}@{} ({})",
+            target_appid,
+            target_version,
+            release_type.as_str()
+        ))
+    })?;
     ensure_runtime_version_compatible(target_appid, &pkg)?;
 
     let already_downloaded_same = matches!(
@@ -1369,9 +1389,11 @@ pub async fn ensure_force_update_for_installed(
         return Ok(());
     };
 
-    let update = match manager
-        .check_latest_update(target_appid, release_type, Some(current_version.as_str()))
-        .await
+    let update = match with_foreground_update_timeout(
+        manager.check_latest_update(target_appid, release_type, Some(current_version.as_str())),
+        &format!("installed app force-update check for {}", target_appid),
+    )
+    .await
     {
         Ok(update) => update,
         Err(err) => {
@@ -1417,7 +1439,7 @@ pub async fn ensure_force_update_for_installed(
             let checksum_bg = pkg.checksum_sha256.clone();
             let version_bg = pkg.version.clone();
 
-            let _ = crate::global_executor::spawn(async move {
+            let _ = crate::executor::spawn(async move {
                 let result = manager_bg
                     .download_archive_with_checksum(
                         &target_appid_bg,
@@ -1486,6 +1508,31 @@ pub async fn ensure_force_update_for_installed(
         // Allow scheduler to make progress before retrying to acquire the downloader slot.
         tokio::task::yield_now().await;
     }
+}
+
+/// Prepare an lxapp package so shell surfaces can open it immediately.
+pub async fn prepare_lxapp_open(
+    target_appid: &str,
+    release_type: ReleaseType,
+) -> Result<(), LxAppError> {
+    let home_appid = crate::app::home_appid()
+        .map(str::to_string)
+        .ok_or_else(|| LxAppError::ResourceNotFound("app not initialized".to_string()))?;
+
+    let home_lxapp = lxapp::try_get(&home_appid).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))
+    })?;
+
+    ensure_first_install(&home_lxapp, target_appid, release_type).await?;
+    ensure_force_update_for_installed(&home_lxapp, target_appid, release_type).await?;
+    Ok(())
+}
+
+pub fn schedule_lxapp_update_check(target_appid: &str, release_type: ReleaseType) {
+    if release_type != ReleaseType::Release {
+        return;
+    }
+    UpdateManager::spawn_release_lxapp_update_check(target_appid.to_string());
 }
 
 fn filename_from_url_or_hash(url: &str) -> String {

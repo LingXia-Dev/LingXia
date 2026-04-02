@@ -956,7 +956,7 @@ impl PageBridge {
         let task_id = id.clone();
         let task_host_method = host_method.clone();
 
-        crate::global_executor::spawn(async move {
+        crate::executor::spawn(async move {
             let started_at = std::time::Instant::now();
             let (tx, rx) = oneshot::channel();
             let mut host_cancel_tx = Some(tx);
@@ -1048,7 +1048,7 @@ impl PageBridge {
         let appid = page.appid();
         let path = page.path();
         let task_host_method = host_method.clone();
-        crate::global_executor::spawn(async move {
+        crate::executor::spawn(async move {
             let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
             let _keep_alive = cancel_tx;
             match handler.call(lxapp, params_json, cancel_rx).await {
