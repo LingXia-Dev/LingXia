@@ -8,12 +8,12 @@ use crate::i18n::{
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
     js_resource_not_found_error,
 };
+use lingxia_media::get_stream_provider;
 use lingxia_platform::traits::stream_decoder::{
     VideoStreamDecoderHandle, VideoStreamDecoderManager,
 };
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use log::{info, warn};
-use lxapp::stream_source::get_stream_provider;
 use rong::{FromJSObj, JSObject, JSResult, JSValue, js_class, js_method};
 use serde_json::Value;
 use std::sync::Arc;

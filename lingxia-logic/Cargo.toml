@@ -18,6 +18,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 lxapp = { workspace = true }
+lingxia-transfer = { workspace = true }
+lingxia-media = { workspace = true }
+lingxia-app-context = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-messaging = { workspace = true }
 futures = { workspace = true }

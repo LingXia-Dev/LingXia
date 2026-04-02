@@ -1,4 +1,5 @@
-use lxapp::{LxApp, key_event, lx, register_app_handler, unregister_app_handler};
+use lxapp::lifecycle::key_events;
+use lxapp::{LxApp, lx, register_app_handler, unregister_app_handler};
 use rong::function::Optional;
 use rong::{JSContext, JSFunc, JSResult};
 
@@ -8,28 +9,28 @@ const KEY_UP_EVENT: &str = "KeyUp";
 fn on_key_down(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
     register_app_handler(&ctx, KEY_DOWN_EVENT, callback)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    key_event::inc_key_down(&lxapp.appid, lxapp.session_id());
+    key_events::inc_key_down(&lxapp.appid, lxapp.session_id());
     Ok(())
 }
 
 fn off_key_down(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
     let remaining = unregister_app_handler(&ctx, KEY_DOWN_EVENT, callback.0);
     let lxapp = LxApp::from_ctx(&ctx)?;
-    key_event::set_key_down(&lxapp.appid, lxapp.session_id(), remaining);
+    key_events::set_key_down(&lxapp.appid, lxapp.session_id(), remaining);
     Ok(())
 }
 
 fn on_key_up(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
     register_app_handler(&ctx, KEY_UP_EVENT, callback)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    key_event::inc_key_up(&lxapp.appid, lxapp.session_id());
+    key_events::inc_key_up(&lxapp.appid, lxapp.session_id());
     Ok(())
 }
 
 fn off_key_up(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
     let remaining = unregister_app_handler(&ctx, KEY_UP_EVENT, callback.0);
     let lxapp = LxApp::from_ctx(&ctx)?;
-    key_event::set_key_up(&lxapp.appid, lxapp.session_id(), remaining);
+    key_events::set_key_up(&lxapp.appid, lxapp.session_id(), remaining);
     Ok(())
 }
 

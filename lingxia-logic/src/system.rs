@@ -4,6 +4,7 @@ use crate::i18n::{
     host_error_from_platform_error, js_error_from_business_code_with_detail,
     js_error_from_platform_error, js_service_unavailable_error,
 };
+use lingxia_app_context::app_config;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
@@ -37,8 +38,8 @@ pub struct SystemSettingInfo {
 fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
-    let app_cfg = lxapp::app_config()
-        .ok_or_else(|| js_service_unavailable_error("app config not available"))?;
+    let app_cfg =
+        app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(AppBaseInfo {
         language: locale.to_string(),
         product_name: app_cfg.product_name.clone(),

@@ -1,4 +1,5 @@
 use crate::i18n::{js_error_from_business_code_with_detail, js_internal_error};
+use lingxia_transfer::user_cache;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 
@@ -28,15 +29,15 @@ async fn download_file(ctx: JSContext, options: JSDownloadOptions) -> JSResult<J
         ));
     }
 
-    let request = lxapp::download_manager::UserCacheDownloadRequest {
+    let request = user_cache::UserCacheDownloadRequest {
         url,
         headers: Vec::new(),
     };
-    let persistence = lxapp::download_manager::DownloadPersistence::new(
+    let persistence = user_cache::DownloadPersistence::new(
         lxapp.app_data_dir(),
-        lxapp::download_manager::download_request_task_id(&request),
-        lxapp::download_manager::DownloadOwner {
-            kind: lxapp::download_manager::DownloadOwnerKind::LxApp,
+        user_cache::download_request_task_id(&request),
+        user_cache::DownloadOwner {
+            kind: user_cache::DownloadOwnerKind::LxApp,
             appid: lxapp.appid.clone(),
             page_path: None,
             tab_id: None,
@@ -44,7 +45,7 @@ async fn download_file(ctx: JSContext, options: JSDownloadOptions) -> JSResult<J
         true,
     );
 
-    let result = lxapp::download_manager::download_to_user_cache(
+    let result = user_cache::download_to_user_cache(
         Some(persistence),
         &lxapp.user_cache_dir,
         request,

@@ -1,11 +1,11 @@
 use super::events::handle_player_event;
 use super::stream::seek_stream_session_sync_shared;
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
+use lingxia_media::StreamSession;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
 use lingxia_platform::traits::video_player::{VideoPlayerHandle, VideoPlayerManager};
-use lxapp::stream_source::StreamSession;
 use lxapp::{LxApp, lx};
 use rong::{JSContext, JSFunc, JSResult, js_export};
 use serde_json::Value;
@@ -168,7 +168,7 @@ impl JSVideoContext {
         if !shared.seek_callback_registered.swap(true, Ordering::AcqRel) {
             let shared_for_seek = shared.clone();
             let component_id_for_seek = component_id.clone();
-            lxapp::stream_source::register_stream_seek_callback(&component_id, move |position| {
+            lingxia_media::register_stream_seek_callback(&component_id, move |position| {
                 seek_stream_session_sync_shared(&shared_for_seek, &component_id_for_seek, position)
             });
         }
