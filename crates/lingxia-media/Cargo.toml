@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-media"
+version.workspace = true
+edition.workspace = true
+description = "Shared media streaming abstractions for LingXia"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+lingxia-platform = { workspace = true }
+serde_json = { workspace = true }
+dashmap = { workspace = true }
+log = { workspace = true }
