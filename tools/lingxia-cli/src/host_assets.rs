@@ -5,6 +5,7 @@ use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::collections::{HashMap, HashSet};
@@ -699,6 +700,12 @@ fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow!("version missing in {}", path.display()))?;
+    Version::parse(version).map_err(|_| {
+        anyhow!(
+            "version in {} must be a semantic version (major.minor.patch)",
+            path.display()
+        )
+    })?;
 
     Ok(LxAppMetadata {
         app_id: app_id.to_string(),

@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -217,6 +218,7 @@ impl LingXiaConfig {
 
         let config: LingXiaConfig = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse {}", HOST_CONFIG_FILE))?;
+        config.validate()?;
 
         Ok(config)
     }
@@ -263,6 +265,24 @@ impl LingXiaConfig {
             splash: None,
             panels: None,
         }
+    }
+
+    fn validate(&self) -> Result<()> {
+        if let Some(app) = &self.app {
+            if app.project_name.trim().is_empty() {
+                return Err(anyhow!("app.projectName must not be empty"));
+            }
+            if app.product_name.trim().is_empty() {
+                return Err(anyhow!("app.productName must not be empty"));
+            }
+            if app.home_lxapp_id.trim().is_empty() {
+                return Err(anyhow!("app.homeLxAppID must not be empty"));
+            }
+            Version::parse(app.product_version.trim()).map_err(|_| {
+                anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
+            })?;
+        }
+        Ok(())
     }
 }
 
