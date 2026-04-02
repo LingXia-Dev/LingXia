@@ -1,9 +1,10 @@
 [package]
-name = "lingxia-host-macros"
+name = "lingxia-macro"
 version.workspace = true
 edition.workspace = true
 description = "Procedural macros for LingXia host extensions"
 license = "MIT"
+readme = "README.md"
 
 [lib]
 proc-macro = true
