@@ -1,0 +1,14 @@
+[package]
+name = "lingxia-settings"
+version.workspace = true
+edition.workspace = true
+description = "Shared settings/preferences store for LingXia"
+license = "MIT"
+readme = "README.md"
+
+[dependencies]
+lingxia-app-context = { workspace = true }
+dashmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
