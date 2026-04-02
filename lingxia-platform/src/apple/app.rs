@@ -13,6 +13,7 @@ pub struct Platform {
     pub data_dir: String,
     pub cache_dir: String,
     pub locale: String,
+    pub(crate) market_name: String,
 }
 
 unsafe impl Send for Platform {}
@@ -27,6 +28,7 @@ impl Platform {
             data_dir,
             cache_dir,
             locale,
+            market_name: super::device::load_platform_market_name(),
         })
     }
 }

@@ -39,7 +39,6 @@ impl Device for Platform {
     fn device_info(&self) -> DeviceInfo {
         let brand = "Apple".to_string(); // Fixed for Apple devices
         let model = get_device_model();
-        let market_name = get_device_market_name(&model);
         let os_name = if cfg!(target_os = "ios") {
             "iOS".to_string()
         } else {
@@ -49,7 +48,7 @@ impl Device for Platform {
         DeviceInfo {
             brand,
             model,
-            market_name,
+            market_name: self.market_name.clone(),
             os_name,
             os_version,
         }
@@ -310,9 +309,10 @@ fn sysctl_string(name: &[u8]) -> Option<String> {
     }
 }
 
-fn get_device_market_name(model_identifier: &str) -> String {
+pub(super) fn load_platform_market_name() -> String {
     #[cfg(target_os = "ios")]
     {
+        let model_identifier = get_device_model();
         let device = UIDevice::current();
         let localized = device.localized_model().to_string();
         if localized.is_empty() {
@@ -324,7 +324,8 @@ fn get_device_market_name(model_identifier: &str) -> String {
 
     #[cfg(target_os = "macos")]
     {
-        get_macos_market_name().unwrap_or_else(|| model_identifier.to_string())
+        let model_identifier = get_device_model();
+        get_macos_market_name().unwrap_or(model_identifier)
     }
 }
 
