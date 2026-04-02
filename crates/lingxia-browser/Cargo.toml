@@ -1,0 +1,25 @@
+[package]
+name = "lingxia-browser"
+version.workspace = true
+edition.workspace = true
+description = "Browser runtime capability crate for LingXia"
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lxapp/tls-aws-lc", "lingxia-transfer/tls-aws-lc"]
+tls-ring = ["lxapp/tls-ring", "lingxia-transfer/tls-ring"]
+
+[dependencies]
+lxapp = { workspace = true, default-features = false }
+lingxia-transfer = { workspace = true }
+lingxia-settings = { workspace = true }
+lingxia-platform = { workspace = true }
+lingxia-webview = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+http = { workspace = true }
+rong = { workspace = true, default-features = false }
+uuid = { version = "1.20", features = ["v4"] }
