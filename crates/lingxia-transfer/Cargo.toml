@@ -1,0 +1,29 @@
+[package]
+name = "lingxia-transfer"
+version.workspace = true
+edition.workspace = true
+description = "Shared file transfer domain/runtime for LingXia"
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["rong_rt/tls-aws-lc"]
+tls-ring = ["rong_rt/tls-ring"]
+
+[dependencies]
+lingxia-settings = { workspace = true }
+lingxia-webview = { workspace = true }
+tokio = { workspace = true }
+http = { workspace = true }
+dashmap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+ring = "0.17.14"
+bytes = "1.11"
+http-body-util = "0.1"
+redb = "3.1.0"
+rong_rt = { workspace = true }
+rong = { workspace = true, default-features = false }
