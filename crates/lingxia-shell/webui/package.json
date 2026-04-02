@@ -1,0 +1,9 @@
+{
+  "name": "lingxia-shell",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "cargo run -p lingxia-cli -- build --release --package",
+    "dev": "cargo run -p lingxia-cli -- build"
+  }
+}

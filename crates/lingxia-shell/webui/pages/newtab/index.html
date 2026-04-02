@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Tab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --panel-bg: rgba(255, 255, 255, 0.16);
+      --panel-border: rgba(255, 255, 255, 0.28);
+      --text-primary: #f8fbff;
+      --text-secondary: rgba(248, 251, 255, 0.82);
+      --input-bg: rgba(10, 20, 34, 0.36);
+      --input-border: rgba(255, 255, 255, 0.22);
+      --button-bg: #0a66d9;
+      --button-bg-hover: #0856b8;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      font-family: "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--text-primary);
+      background:
+        linear-gradient(rgba(6, 17, 30, 0.36), rgba(6, 17, 30, 0.62)),
+        url("https://cn.bing.com/th?id=OHR.OloupenaFalls_ZH-CN2980118660_UHD.jpg") center center / cover no-repeat;
+    }
+
+    .shell {
+      width: min(100%, 760px);
+      padding: 32px;
+      border: 1px solid var(--panel-border);
+      border-radius: 28px;
+      background: var(--panel-bg);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      -webkit-backdrop-filter: blur(22px);
+    }
+
+    .title {
+      margin: 0 0 10px;
+      font-size: clamp(30px, 4vw, 48px);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    .subtitle {
+      margin: 0 0 28px;
+      color: var(--text-secondary);
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .search-form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 56px;
+      padding: 0 18px;
+      border: 1px solid var(--input-border);
+      border-radius: 16px;
+      background: var(--input-bg);
+      color: var(--text-primary);
+      font-size: 16px;
+      outline: none;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .search-input::placeholder {
+      color: rgba(248, 251, 255, 0.6);
+    }
+
+    .search-input:focus {
+      border-color: rgba(255, 255, 255, 0.42);
+      background: rgba(10, 20, 34, 0.48);
+    }
+
+    .search-button {
+      height: 56px;
+      padding: 0 22px;
+      border: 0;
+      border-radius: 16px;
+      background: var(--button-bg);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 120ms ease, transform 120ms ease;
+    }
+
+    .search-button:hover {
+      background: var(--button-bg-hover);
+    }
+
+    .search-button:active {
+      transform: translateY(1px);
+    }
+
+    .footer {
+      margin-top: 18px;
+      color: rgba(248, 251, 255, 0.72);
+      font-size: 13px;
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        padding: 22px;
+        border-radius: 22px;
+      }
+
+      .search-form {
+        grid-template-columns: 1fr;
+      }
+
+      .search-button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <h1 class="title">Bing Search</h1>
+    <p class="subtitle">Type a query and press Enter to search with Bing.</p>
+    <form class="search-form" action="https://cn.bing.com/search" method="get">
+      <input
+        class="search-input"
+        type="search"
+        name="q"
+        placeholder="Search the web, images, videos, and more"
+        autocomplete="off"
+        autofocus
+      >
+      <button class="search-button" type="submit">Search</button>
+    </form>
+    <div class="footer">Background image by Bing</div>
+  </main>
+</body>
+</html>

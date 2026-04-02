@@ -1,0 +1,28 @@
+[package]
+name = "lingxia-shell"
+version.workspace = true
+edition.workspace = true
+description = "Shell product module and host registrations for LingXia"
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = ["tls-aws-lc"]
+tls-aws-lc = ["lxapp/tls-aws-lc", "lingxia-browser/tls-aws-lc", "lingxia-transfer/tls-aws-lc"]
+tls-ring = ["lxapp/tls-ring", "lingxia-browser/tls-ring", "lingxia-transfer/tls-ring"]
+
+[dependencies]
+lxapp = { workspace = true }
+lingxia-app-context = { workspace = true }
+lingxia-browser = { workspace = true }
+lingxia-transfer = { workspace = true }
+lingxia-settings = { workspace = true }
+lingxia-macro = { workspace = true }
+lingxia-platform = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+rong = { workspace = true, default-features = false }
+paste = "1.0"

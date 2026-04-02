@@ -1,0 +1,24 @@
+# lingxia-shell
+
+Shell product module and host registration crate for LingXia.
+
+## What it wires together
+
+- Browser capability from `lingxia-browser`
+- Download/settings host APIs
+- Address-bar resolution and navigation helpers
+- Embedded browser Web UI assets and internal pages
+- Panel-related helpers for shell-hosted lxapps
+
+## Key APIs
+
+- `register()` and `warmup()`
+- `open(...)`, `open_for_app(...)`, `close(...)`, `download(...)`
+- `resolve_input(...)`, `classify_navigation(...)`
+- `open_panel_lxapp(...)`, `panel_item_for_id(...)`, `panels_config_json()`
+- `register_hosts!(...)` macro for host handler registration
+
+## Notes
+
+This crate is the product-facing assembly layer. Lower-level reusable runtime
+pieces live in `lingxia-browser`, `lingxia-transfer`, and `lingxia-settings`.
