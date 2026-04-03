@@ -243,12 +243,12 @@ pub fn resolve_lx_uri(appid: String, input: String) -> Option<String> {
 
 #[napi]
 pub fn handle_browser_address_input(request_json: String) -> Option<String> {
-    lxapp::handle_browser_address_input_json(&request_json)
+    crate::browser::resolve_input_json(&request_json)
 }
 
 #[napi]
 pub fn handle_browser_navigation_policy(request_json: String) -> Option<String> {
-    lxapp::handle_browser_navigation_policy_json(&request_json)
+    crate::browser::classify_navigation_json(&request_json)
 }
 
 #[napi]
@@ -256,23 +256,22 @@ pub fn open_browser_tab(appid: String, session_id: i64, url: String) -> Option<S
     if session_id <= 0 {
         return None;
     }
-    let _owner = lxapp::resolve_owner_lxapp(&appid, session_id as u64).ok()?;
-    lxapp::open_internal_browser_tab(&url, None).ok()
+    crate::browser::open_for_app(&appid, session_id as u64, &url, None).ok()
 }
 
 #[napi]
 pub fn browser_tab_close(tab_id: String) -> bool {
-    lxapp::close_browser_tab(&tab_id).is_ok()
+    crate::browser::close(&tab_id).is_ok()
 }
 
 #[napi]
 pub fn get_builtin_browser_app_id() -> String {
-    lxapp::BUILTIN_BROWSER_APPID.to_string()
+    crate::browser::APP_ID.to_string()
 }
 
 #[napi]
 pub fn browser_tab_path_for_id(tab_id: String) -> String {
-    lxapp::browser_tab_path_for_id(&tab_id)
+    crate::browser::tab_path(&tab_id)
 }
 
 /// Get complete TabBar state with items array
@@ -470,7 +469,7 @@ pub fn on_applink_received(applink_url: String) -> i32 {
 /// Push: device token from ArkTS
 #[napi]
 pub fn on_push_token_received(token: String) -> i32 {
-    lxapp::push_notification::bind_push_token_for_ffi(token)
+    crate::push::bind_push_token_for_ffi(token)
 }
 
 /// Push: link/message from ArkTS (trigger: 0=Background,1=Tap,2=Launch)
@@ -864,7 +863,7 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
         let position_s = position_ms / 1000.0;
 
         // Call lxapp layer to perform actual stream seek (via registered callback)
-        let seek_result = lxapp::stream_source::seek_stream_session(&component_id, position_s);
+        let seek_result = lingxia_media::seek_stream_session(&component_id, position_s);
         if !seek_result {
             log::warn!(
                 "[Harmony.VideoPlayer] video_player_seek: stream seek failed, no callback registered for component_id={}",

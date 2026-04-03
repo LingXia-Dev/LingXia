@@ -1,14 +1,27 @@
 //! LingXia framework.
 
-pub use lxapp::{FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider};
+extern crate self as lingxia;
+pub use lingxia_app_context::{AppConfig, app_config, lingxia_id, product_name, product_version};
+pub use lingxia_macro::host;
+#[doc(hidden)]
+pub use paste;
 
-pub use lxapp::lingxia_id;
+pub use lingxia_media::{
+    FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
+};
+
+pub use lxapp::host;
+pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
+#[doc(hidden)]
+pub use lxapp::host::{HostRegistrationEntry, register_host_entry};
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    BoxFuture, FingerprintProvider, NoOpProvider, Provider, ProviderError,
+    BoxFuture, FingerprintProvider, LxApp, NoOpProvider, Provider, ProviderError,
     PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
 };
+
+mod bootstrap;
 
 #[cfg(target_os = "android")]
 pub mod android;
@@ -19,9 +32,19 @@ pub mod apple;
 #[cfg(target_env = "ohos")]
 pub mod harmony;
 
-/// Common initialization after Platform is created.
-/// Registers built-in runtime and initializes the lxapp system.
-pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
-    lingxia_logic::register_logic_runtime();
-    lxapp::init(platform)
+pub(crate) mod browser;
+pub mod push;
+pub(crate) use bootstrap::init_with_platform;
+#[doc(hidden)]
+pub use tokio;
+
+#[macro_export]
+macro_rules! register_hosts {
+    ($($handler:ident),+ $(,)?) => {{
+        $crate::paste::paste! {
+            $(
+                $crate::register_host_entry([<$handler _host>]());
+            )+
+        }
+    }};
 }

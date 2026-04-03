@@ -148,6 +148,14 @@ mod bridge {
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "openBrowserTabWithId")]
+        fn open_browser_tab_with_id(
+            appid: &str,
+            session_id: u64,
+            url: &str,
+            tab_id: &str,
+        ) -> Option<String>;
+
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
@@ -159,6 +167,16 @@ mod bridge {
 
         #[swift_bridge(swift_name = "updateBrowserTabInfo")]
         fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool;
+
+        #[swift_bridge(swift_name = "startBrowserTabDownload")]
+        fn start_browser_tab_download(
+            tab_id: &str,
+            url: &str,
+            user_agent: &str,
+            suggested_filename: &str,
+            source_page_url: &str,
+            cookie: &str,
+        ) -> bool;
 
         #[swift_bridge(swift_name = "toggleWebViewDevtoolsByPtr")]
         fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool;
@@ -321,11 +339,11 @@ pub fn resolve_lx_uri(appid: &str, input: &str) -> Option<String> {
 }
 
 pub fn handle_browser_address_input(request_json: &str) -> Option<String> {
-    lxapp::handle_browser_address_input_json(request_json)
+    crate::browser::resolve_input_json(request_json)
 }
 
 pub fn browser_url_is_hidden(raw: &str) -> bool {
-    lxapp::browser_url_is_hidden(raw)
+    crate::browser::should_hide_url(raw)
 }
 
 /// Catch panics at FFI boundary and return a default value on failure.
@@ -395,8 +413,8 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
     match event_type {
         self::bridge::AppUiEventType::PanelIconClick => {
             // data = panelId; look up config and ask Rust to load the lxapp if needed
-            if let Some((app_id, path)) = lxapp::panel_item_for_id(data) {
-                lxapp::open_lxapp_for_panel(data, &app_id, &path);
+            if let Some((app_id, path)) = lingxia_shell::panel_item_for_id(data) {
+                lingxia_shell::open_panel_lxapp(data, &app_id, &path);
                 true
             } else {
                 false
@@ -425,16 +443,27 @@ pub fn on_native_component_event(
 
 pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String> {
     ffi_catch_unwind!("open_browser_tab", None, || {
-        match lxapp::resolve_owner_lxapp(appid, session_id) {
-            Ok(_owner) => match lxapp::open_internal_browser_tab(url, None) {
-                Ok(tab_id) => Some(tab_id),
-                Err(e) => {
-                    log::error!("open_browser_tab failed: {}", e);
-                    None
-                }
-            },
+        match crate::browser::open_for_app(appid, session_id, url, None) {
+            Ok(tab_id) => Some(tab_id),
             Err(e) => {
-                log::error!("open_browser_tab owner resolve failed: {}", e);
+                log::error!("open_browser_tab failed: {}", e);
+                None
+            }
+        }
+    })
+}
+
+pub fn open_browser_tab_with_id(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: &str,
+) -> Option<String> {
+    ffi_catch_unwind!("open_browser_tab_with_id", None, || {
+        match crate::browser::open_for_app(appid, session_id, url, Some(tab_id)) {
+            Ok(tab_id) => Some(tab_id),
+            Err(e) => {
+                log::error!("open_browser_tab_with_id failed: {}", e);
                 None
             }
         }
@@ -443,16 +472,16 @@ pub fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<Strin
 
 pub fn browser_tab_close(tab_id: &str) -> bool {
     ffi_catch_unwind!("browser_tab_close", false, || {
-        lxapp::close_browser_tab(tab_id).is_ok()
+        crate::browser::close(tab_id).is_ok()
     })
 }
 
 pub fn get_builtin_browser_app_id() -> String {
-    lxapp::BUILTIN_BROWSER_APPID.to_string()
+    crate::browser::APP_ID.to_string()
 }
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
-    lxapp::browser_tab_path_for_id(tab_id)
+    crate::browser::tab_path(tab_id)
 }
 
 pub fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool {
@@ -467,7 +496,45 @@ pub fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> 
         } else {
             Some(title)
         };
-        lxapp::browser_update_tab_info(tab_id, current_url, title)
+        crate::browser::update_tab(tab_id, current_url, title)
+    })
+}
+
+pub fn start_browser_tab_download(
+    tab_id: &str,
+    url: &str,
+    user_agent: &str,
+    suggested_filename: &str,
+    source_page_url: &str,
+    cookie: &str,
+) -> bool {
+    ffi_catch_unwind!("start_browser_tab_download", false, || {
+        match crate::browser::download(
+            tab_id,
+            url,
+            Some(user_agent),
+            Some(suggested_filename),
+            Some(source_page_url),
+            Some(cookie),
+        ) {
+            Ok(()) => {
+                log::info!(
+                    "start_browser_tab_download accepted tab_id={} url={}",
+                    tab_id,
+                    url
+                );
+                true
+            }
+            Err(err) => {
+                log::warn!(
+                    "start_browser_tab_download failed tab_id={} url={} error={}",
+                    tab_id,
+                    url,
+                    err
+                );
+                false
+            }
+        }
     })
 }
 
@@ -677,7 +744,7 @@ pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i3
 
 /// Handle push notification device token
 pub fn on_push_token_received(token: &str) -> i32 {
-    lxapp::push_notification::bind_push_token_for_ffi(token.to_string())
+    crate::push::bind_push_token_for_ffi(token.to_string())
 }
 
 /// Callback from platform (called from Swift/Objective-C)
@@ -755,11 +822,11 @@ pub fn set_home_lxapp_dev_path(path: &str) -> bool {
 /// Get panels config as a JSON string.
 /// Returns None if no panels are configured in app.json.
 pub fn get_panels_config_json() -> Option<String> {
-    lxapp::panels_config_json()
+    lingxia_shell::panels_config_json()
 }
 
 /// Open a lxapp for a panel without pushing it to the navigation stack.
 /// panel_id is used by Rust as the panel slot context for presentation routing.
 pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
-    lxapp::open_lxapp_for_panel(panel_id, appid, path);
+    lingxia_shell::open_panel_lxapp(panel_id, appid, path);
 }

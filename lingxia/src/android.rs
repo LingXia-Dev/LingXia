@@ -437,8 +437,8 @@ pub extern "C" fn Java_com_lingxia_lxapp_NativeApi_onKeyEvent(
         const KEY_EVENT_UP: jint = 1;
 
         let should_dispatch = match event_type {
-            KEY_EVENT_DOWN => lxapp::key_event::has_key_down(&appid, session_id),
-            KEY_EVENT_UP => lxapp::key_event::has_key_up(&appid, session_id),
+            KEY_EVENT_DOWN => lxapp::lifecycle::key_events::has_key_down(&appid, session_id),
+            KEY_EVENT_UP => lxapp::lifecycle::key_events::has_key_up(&appid, session_id),
             _ => false,
         };
 
@@ -1029,16 +1029,10 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_openBrowserTab<'a>(
             return Ok(JString::null());
         }
 
-        let tab_id = match lxapp::resolve_owner_lxapp(&appid, session_id as u64) {
-            Ok(_owner) => match lxapp::open_internal_browser_tab(&url, None) {
-                Ok(tab_id) => tab_id,
-                Err(e) => {
-                    error!("[Android] openBrowserTab failed: {}", e);
-                    return Ok(JString::null());
-                }
-            },
+        let tab_id = match crate::browser::open_for_app(&appid, session_id as u64, &url, None) {
+            Ok(tab_id) => tab_id,
             Err(e) => {
-                error!("[Android] openBrowserTab owner resolve failed: {}", e);
+                error!("[Android] openBrowserTab failed: {}", e);
                 return Ok(JString::null());
             }
         };
@@ -1059,7 +1053,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabClose(
             Ok(s) => s.to_string(),
             Err(_) => return Ok(false),
         };
-        Ok(lxapp::close_browser_tab(&tab_id).is_ok())
+        Ok(crate::browser::close(&tab_id).is_ok())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -1070,7 +1064,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getBuiltinBrowserAppId<'
     _class: JClass<'a>,
 ) -> JString<'a> {
     env.with_env(|env| -> Result<JString, jni::errors::Error> {
-        env.new_string(lxapp::BUILTIN_BROWSER_APPID)
+        env.new_string(crate::browser::APP_ID)
             .or_else(|_| Ok(JString::null()))
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -1087,7 +1081,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_browserTabPathForId<'a>(
             Ok(s) => s.to_string(),
             Err(_) => return Ok(JString::null()),
         };
-        let path = lxapp::browser_tab_path_for_id(&tab_id);
+        let path = crate::browser::tab_path(&tab_id);
         env.new_string(path).or_else(|_| Ok(JString::null()))
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -1105,7 +1099,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserAddressInpu
             Err(_) => return Ok(JString::null()),
         };
 
-        let Some(response_json) = lxapp::handle_browser_address_input_json(&request_json) else {
+        let Some(response_json) = crate::browser::resolve_input_json(&request_json) else {
             return Ok(JString::null());
         };
 
@@ -1127,8 +1121,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_handleBrowserNavigationP
             Err(_) => return Ok(JString::null()),
         };
 
-        let Some(response_json) = lxapp::handle_browser_navigation_policy_json(&request_json)
-        else {
+        let Some(response_json) = crate::browser::classify_navigation_json(&request_json) else {
             return Ok(JString::null());
         };
 
