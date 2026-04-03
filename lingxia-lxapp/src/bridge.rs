@@ -13,9 +13,7 @@
 
 mod protocol;
 
-pub(crate) use protocol::{
-    ChOpenMsg, HelloMsg, IncomingMessage, JsonPatchOp, NotifyMsg, ReqMsg, SubMsg,
-};
+pub(crate) use protocol::{ChOpenMsg, HelloMsg, IncomingMessage, JsonPatchOp, NotifyMsg, ReqMsg};
 
 use protocol::*;
 
@@ -49,12 +47,6 @@ pub(crate) enum AppServiceCommand {
     Notify {
         method: String,
         params_json: Option<String>,
-    },
-    Sub {
-        id: String,
-        topic: String,
-        params_json: Option<String>,
-        cancel_rx: oneshot::Receiver<()>,
     },
     ChOpen {
         id: String,
@@ -145,7 +137,7 @@ struct PageBridgeState {
     msg_counter: AtomicUsize,
     handshake: Mutex<HandshakeState>,
     pending_req_cancel: Mutex<HashMap<String, oneshot::Sender<()>>>,
-    active_sub_cancel: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    active_host_channels: Mutex<HashMap<String, host::ChannelContextSender>>,
 }
 
 #[derive(Clone)]
@@ -175,7 +167,7 @@ impl PageBridge {
                 msg_counter: AtomicUsize::new(0),
                 handshake: Mutex::new(HandshakeState::default()),
                 pending_req_cancel: Mutex::new(HashMap::new()),
-                active_sub_cancel: Mutex::new(HashMap::new()),
+                active_host_channels: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -221,19 +213,12 @@ impl PageBridge {
                 Ok(())
             }
             IncomingMessage::Notify(msg) => self.handle_notify(page, msg),
-            IncomingMessage::Sub(msg) => self.handle_sub(page, msg),
-            IncomingMessage::Unsub(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
-                if let Some(tx) = self.take_active_sub_cancel(&msg.id) {
-                    let _ = tx.send(());
-                }
-                Ok(())
-            }
             IncomingMessage::ChOpen(msg) => self.handle_ch_open(page, msg),
             IncomingMessage::ChData(msg) => {
                 if msg.v != 2 {
+                    return Ok(());
+                }
+                if self.send_data_to_host_channel(&msg.id, msg.payload.get().to_owned()) {
                     return Ok(());
                 }
                 self.forward_js_message(
@@ -246,6 +231,10 @@ impl PageBridge {
             }
             IncomingMessage::ChClose(msg) => {
                 if msg.v != 2 {
+                    return Ok(());
+                }
+                if self.close_host_channel_from_view(&msg.id, msg.code.clone(), msg.reason.clone())
+                {
                     return Ok(());
                 }
                 self.forward_js_message(
@@ -458,64 +447,6 @@ impl PageBridge {
         )
     }
 
-    fn handle_sub(&self, page: &Page, msg: &SubMsg) -> Result<(), LxAppError> {
-        if msg.v != 2 {
-            let _ = self.send_res_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_PROTOCOL_MISMATCH,
-                Some(format!("Unsupported protocol: {}", msg.v)),
-                None,
-            );
-            return Ok(());
-        }
-        if !self.is_ready() {
-            let _ = self.send_res_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_NOT_READY,
-                Some("Bridge not ready".to_string()),
-                None,
-            );
-            return Ok(());
-        }
-
-        let required_cap = required_cap_for_name(&msg.topic);
-        if msg.cap.is_empty() || msg.cap != required_cap {
-            let _ = self.send_res_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_MALFORMED_MESSAGE,
-                Some(format!("Capability mismatch: expected '{}'", required_cap)),
-                None,
-            );
-            return Ok(());
-        }
-        if msg.topic.starts_with("host.") {
-            let _ = self.send_res_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_TOPIC_NOT_FOUND,
-                Some(format!("Topic not found: {}", msg.topic)),
-                None,
-            );
-            return Ok(());
-        }
-
-        let (cancel_tx, cancel_rx) = oneshot::channel();
-        self.register_active_sub_cancel(msg.id.clone(), cancel_tx);
-        self.forward_js_sub(
-            page,
-            msg.id.clone(),
-            AppServiceCommand::Sub {
-                id: msg.id.clone(),
-                topic: msg.topic.clone(),
-                params_json: msg.params.as_ref().map(|v| v.get().to_owned()),
-                cancel_rx,
-            },
-        )
-    }
-
     fn handle_ch_open(&self, page: &Page, msg: &ChOpenMsg) -> Result<(), LxAppError> {
         if msg.v != 2 {
             let _ = self.send_ch_ack_err(
@@ -550,14 +481,13 @@ impl PageBridge {
             return Ok(());
         }
         if msg.topic.starts_with("host.") {
-            let _ = self.send_ch_ack_err(
+            let host_topic = &msg.topic["host.".len()..];
+            return self.dispatch_host_ch_open(
                 page,
                 msg.id.clone(),
-                BRIDGE_TOPIC_NOT_FOUND,
-                Some(format!("Topic not found: {}", msg.topic)),
-                None,
+                host_topic,
+                msg.params.as_ref().map(|v| v.get().to_owned()),
             );
-            return Ok(());
         }
 
         self.forward_js_channel_open(
@@ -589,19 +519,6 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         if let Err(err) = self.forward_js_message(page, message) {
             self.take_pending_req_cancel(&id);
-            let _ = self.send_res_err(page, id, BRIDGE_INTERNAL_ERROR, Some(err.to_string()), None);
-        }
-        Ok(())
-    }
-
-    fn forward_js_sub(
-        &self,
-        page: &Page,
-        id: String,
-        message: AppServiceCommand,
-    ) -> Result<(), LxAppError> {
-        if let Err(err) = self.forward_js_message(page, message) {
-            self.take_active_sub_cancel(&id);
             let _ = self.send_res_err(page, id, BRIDGE_INTERNAL_ERROR, Some(err.to_string()), None);
         }
         Ok(())
@@ -724,27 +641,6 @@ impl PageBridge {
             id: id.into(),
             seq,
             payload,
-        };
-        self.send_json(transport, &msg)
-    }
-
-    pub(crate) fn send_sub_close<T: ViewTransport>(
-        &self,
-        transport: &T,
-        id: impl Into<String>,
-        code: Option<&str>,
-        message: Option<String>,
-        data: Option<Value>,
-    ) -> Result<(), LxAppError> {
-        let msg = SubCloseOut {
-            v: 2,
-            kind: "sub.close",
-            id: id.into(),
-            error: code.map(|code| BridgeError {
-                code: Value::String(code.to_string()),
-                message,
-                data,
-            }),
         };
         self.send_json(transport, &msg)
     }
@@ -882,12 +778,17 @@ impl PageBridge {
             let _ = cancel_tx.send(());
         }
 
-        let active_sub = {
-            let mut active = self.inner.active_sub_cancel.lock().unwrap();
-            std::mem::take(&mut *active)
+        // Drop all host channel senders; their ChannelContext receivers will get None,
+        // signalling the handler that the session ended.
+        let active_host_channels = {
+            let mut channels = self.inner.active_host_channels.lock().unwrap();
+            std::mem::take(&mut *channels)
         };
-        for (_, cancel_tx) in active_sub {
-            let _ = cancel_tx.send(());
+        for (_, sender) in active_host_channels {
+            sender.send_close(
+                Some(BRIDGE_CANCELED.to_string()),
+                Some("Session reset".to_string()),
+            );
         }
     }
 
@@ -917,16 +818,105 @@ impl PageBridge {
         self.inner.pending_req_cancel.lock().unwrap().remove(id)
     }
 
-    fn register_active_sub_cancel(&self, id: impl Into<String>, cancel_tx: oneshot::Sender<()>) {
+    fn register_host_channel(&self, id: impl Into<String>, sender: host::ChannelContextSender) {
         self.inner
-            .active_sub_cancel
+            .active_host_channels
             .lock()
             .unwrap()
-            .insert(id.into(), cancel_tx);
+            .insert(id.into(), sender);
     }
 
-    fn take_active_sub_cancel(&self, id: &str) -> Option<oneshot::Sender<()>> {
-        self.inner.active_sub_cancel.lock().unwrap().remove(id)
+    fn take_host_channel(&self, id: &str) -> Option<host::ChannelContextSender> {
+        self.inner.active_host_channels.lock().unwrap().remove(id)
+    }
+
+    /// Forward inbound `ch.data` payload to the matching host channel sender.
+    /// Returns `true` if the channel was found (message consumed), `false` otherwise.
+    fn send_data_to_host_channel(&self, id: &str, payload_json: String) -> bool {
+        let lock = self.inner.active_host_channels.lock().unwrap();
+        if let Some(sender) = lock.get(id) {
+            sender.send_data(payload_json);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Forward a View-initiated `ch.close` to the matching host channel sender.
+    /// Removes the sender from the map and returns `true` if found.
+    fn close_host_channel_from_view(
+        &self,
+        id: &str,
+        code: Option<String>,
+        reason: Option<String>,
+    ) -> bool {
+        let sender = self.inner.active_host_channels.lock().unwrap().remove(id);
+        if let Some(sender) = sender {
+            sender.send_close(code, reason);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn dispatch_host_ch_open(
+        &self,
+        page: &Page,
+        id: String,
+        host_topic: &str,
+        params_json: Option<String>,
+    ) -> Result<(), LxAppError> {
+        let Some(handler) = host::get_channel_handler(host_topic) else {
+            let _ = self.send_ch_ack_err(
+                page,
+                id,
+                BRIDGE_TOPIC_NOT_FOUND,
+                Some(format!("Channel not found: host.{}", host_topic)),
+                None,
+            );
+            return Ok(());
+        };
+
+        let (ctx, sender, mut outbound_rx) = host::new_channel_context(id.clone());
+        self.register_host_channel(id.clone(), sender);
+
+        // Acknowledge the channel open before invoking the handler.
+        self.send_ch_ack_ok(page, id.clone())?;
+
+        // Spawn an outbound forwarding task that relays ChannelOutbound messages
+        // from the handler back to the View as ch.data / ch.close wire messages.
+        let bridge = self.clone();
+        let task_page = page.clone();
+        let task_id = id.clone();
+        crate::executor::spawn(async move {
+            let mut seq = 0u64;
+            while let Some(msg) = outbound_rx.recv().await {
+                match msg {
+                    host::ChannelOutbound::Data(payload_json) => {
+                        if let Err(e) =
+                            bridge.send_ch_data(&task_page, task_id.clone(), seq, payload_json)
+                        {
+                            crate::warn!("host channel '{}' data send failed: {}", task_id, e)
+                                .with_appid(task_page.appid())
+                                .with_path(task_page.path());
+                        }
+                        seq += 1;
+                    }
+                    host::ChannelOutbound::Close { code, reason } => {
+                        bridge.take_host_channel(&task_id);
+                        let _ = bridge.send_ch_close(&task_page, task_id.clone(), code, reason);
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Call handler.on_open synchronously; the handler is expected to spawn
+        // its own async task if it needs to do long-running work.
+        let lxapp = self.lxapp();
+        handler.on_open(lxapp, ctx, params_json);
+
+        Ok(())
     }
 
     fn dispatch_host_req(

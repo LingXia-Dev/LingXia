@@ -1,12 +1,9 @@
 export {
   useLxPage,
   useLxStream,
-  useLxSubscription,
   useLxChannel,
   type LxStreamOptions,
   type LxStreamState,
-  type LxSubscriptionOptions,
-  type LxSubscriptionState,
   type LxChannelOptions,
   type LxChannelState,
 } from "./hook.js";

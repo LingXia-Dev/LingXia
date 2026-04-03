@@ -182,21 +182,6 @@ async fn handle_bridge_source(
                 .await;
             Ok(())
         }
-        AppServiceCommand::Sub {
-            id,
-            topic,
-            params_json,
-            cancel_rx,
-        } => {
-            let bridge = page_svc.bridge();
-            if let Err(err) = page_svc
-                .handle_sub(&id, &topic, params_json.as_deref(), cancel_rx)
-                .await
-            {
-                bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?;
-            }
-            Ok(())
-        }
         AppServiceCommand::ChOpen {
             id,
             topic,

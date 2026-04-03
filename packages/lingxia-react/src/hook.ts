@@ -1,14 +1,31 @@
 import * as React from "react";
 import type {
-  StreamHandle,
-  Subscription as BridgeSubscription,
-  Channel as BridgeChannel,
+  LxChannel,
   LxBridgeError,
+  LxStream,
 } from "@lingxia/bridge";
 
 type ActionMap = Record<string, (...args: unknown[]) => unknown>;
 type Snapshot = Record<string, unknown>;
 type Listener = () => void;
+type ParamsSource<T> = T | (() => T);
+type MethodParams<TMethod> = TMethod extends () => any
+  ? undefined
+  : TMethod extends (params: infer P) => any
+    ? P
+    : never;
+type StreamData<TMethod> = TMethod extends (...args: any[]) => LxStream<infer TData, any>
+  ? TData
+  : never;
+type StreamResult<TMethod> = TMethod extends (...args: any[]) => LxStream<any, infer TResult>
+  ? TResult
+  : never;
+type ChannelIn<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<infer TIn, any>>
+  ? TIn
+  : never;
+type ChannelOut<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<any, infer TOut>>
+  ? TOut
+  : never;
 
 let snapshot: Snapshot = {};
 let subscribed = false;
@@ -17,22 +34,42 @@ let initialSnapshotResolved = false;
 let snapshotRequestInFlight = false;
 const listeners = new Set<Listener>();
 
-function getParamsSignature(params: unknown): string {
+function toBridgeError(err: unknown): LxBridgeError {
+  return err && typeof err === "object" && "code" in err
+    ? (err as LxBridgeError)
+    : { code: "BRIDGE_INTERNAL_ERROR", message: err instanceof Error ? err.message : String(err) };
+}
+
+function resolveParams<T>(source?: ParamsSource<T>): T | undefined {
+  if (typeof source === "function") {
+    return (source as () => T)();
+  }
+  return source;
+}
+
+function stableParamKey(value: unknown): string {
+  if (value === undefined) return "undefined";
   try {
-    return JSON.stringify(params) ?? "undefined";
+    return JSON.stringify(value) ?? "undefined";
   } catch {
-    return "__nonserializable__";
+    return String(value);
   }
 }
 
-function toBridgeError(
-  err: unknown,
-  fallbackCode: string,
-  fallbackMessage: string,
-): LxBridgeError {
-  return err && typeof err === "object" && "code" in err
-    ? (err as LxBridgeError)
-    : { code: fallbackCode, message: String(err ?? fallbackMessage) };
+function invokeMethod<TMethod extends (...args: any[]) => any>(
+  method: TMethod,
+  params: unknown,
+): ReturnType<TMethod> {
+  if (params === undefined) {
+    return method() as ReturnType<TMethod>;
+  }
+  return method(params) as ReturnType<TMethod>;
+}
+
+function getMethodKey(method: unknown): string | undefined {
+  if (typeof method !== "function") return undefined;
+  const candidate = (method as { __funcName?: unknown }).__funcName;
+  return typeof candidate === "string" && candidate !== "" ? candidate : undefined;
 }
 
 function notifyListeners(): void {
@@ -123,7 +160,6 @@ export function useLxPage<
     ensureBridgeSubscription();
     const listener: Listener = () => setVersion((v) => v + 1);
     listeners.add(listener);
-    // Pull latest snapshot that may arrive before this component subscribes.
     setVersion((v) => v + 1);
     return () => {
       listeners.delete(listener);
@@ -135,33 +171,35 @@ export function useLxPage<
 }
 
 export interface LxStreamOptions<TData, TReduced> {
-  /** Don't auto-call the factory on mount. Use `call()` to start manually. */
+  params?: unknown | (() => unknown);
   manual?: boolean;
-  /** Accumulate chunks into a single value. */
   reduce?: (accumulated: TReduced, chunk: TData) => TReduced;
-  /** Initial value for the accumulator. Required when `reduce` is provided. */
   initial?: TReduced;
 }
 
 export interface LxStreamState<TData, TResult = unknown> {
-  /** Latest chunk (no reduce) or accumulated value (with reduce). */
   data: TData | undefined;
-  /** Final result when the stream completes. */
   result: TResult | undefined;
-  /** Stream error, if any. */
   error: LxBridgeError | undefined;
-  /** Whether the stream is currently active. */
   streaming: boolean;
-  /** Cancel the active stream. */
   cancel: () => void;
-  /** Start (or restart) the stream. Only useful with `manual: true`. */
-  call: () => void;
+  start: () => void;
 }
 
-export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData>(
-  factory: () => StreamHandle<TData, TResult>,
-  options?: LxStreamOptions<TData, TReduced>,
-): LxStreamState<TReduced extends TData ? TData : TReduced, TResult> {
+export function useLxStream<
+  TMethod extends (...args: any[]) => LxStream<any, any>,
+  TReduced = StreamData<TMethod>,
+>(
+  method: TMethod,
+  options?: LxStreamOptions<StreamData<TMethod>, TReduced> & {
+    params?: ParamsSource<MethodParams<TMethod>>;
+  },
+): LxStreamState<
+  TReduced extends StreamData<TMethod> ? StreamData<TMethod> : TReduced,
+  StreamResult<TMethod>
+> {
+  type TData = StreamData<TMethod>;
+  type TResult = StreamResult<TMethod>;
   type TOut = TReduced extends TData ? TData : TReduced;
 
   const [state, setState] = React.useState<{
@@ -176,13 +214,18 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     streaming: false,
   });
 
-  const handleRef = React.useRef<StreamHandle<TData, TResult> | null>(null);
+  const handleRef = React.useRef<LxStream<TData, TResult> | null>(null);
   const accRef = React.useRef<TReduced | undefined>(options?.initial);
   const optionsRef = React.useRef(options);
-  const factoryRef = React.useRef(factory);
+  const methodRef = React.useRef(method);
+  const paramsRef = React.useRef(resolveParams(options?.params));
   const runIdRef = React.useRef(0);
-  factoryRef.current = factory;
+  const paramsKey = stableParamKey(resolveParams(options?.params));
+  const methodDep = getMethodKey(method) ?? method;
+
   optionsRef.current = options;
+  methodRef.current = method;
+  paramsRef.current = resolveParams(options?.params);
 
   const cancel = React.useCallback(() => {
     runIdRef.current += 1;
@@ -191,8 +234,7 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     setState((prev) => ({ ...prev, streaming: false }));
   }, []);
 
-  const call = React.useCallback(() => {
-    // Cancel any previous stream.
+  const start = React.useCallback(() => {
     handleRef.current?.cancel();
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
@@ -206,15 +248,15 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
       streaming: true,
     });
 
-    let handle: StreamHandle<TData, TResult>;
+    let handle: LxStream<TData, TResult>;
     try {
-      handle = factoryRef.current();
+      handle = invokeMethod(methodRef.current, paramsRef.current) as LxStream<TData, TResult>;
     } catch (err: unknown) {
       if (runIdRef.current !== runId) return;
       handleRef.current = null;
       setState((prev) => ({
         ...prev,
-        error: toBridgeError(err, "STREAM_CALL_FAILED", "Failed to start stream"),
+        error: toBridgeError(err),
         streaming: false,
       }));
       return;
@@ -262,181 +304,138 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     });
   }, []);
 
-  // Auto-start on mount when not manual.
   React.useEffect(() => {
     if (!options?.manual) {
-      call();
+      start();
     }
     return () => {
       runIdRef.current += 1;
       handleRef.current?.cancel();
       handleRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [methodDep, options?.manual, paramsKey, start]);
 
-  return { ...state, cancel, call };
-}
-
-export interface LxSubscriptionOptions {
-  params?: Record<string, unknown>;
-}
-
-export interface LxSubscriptionState<TData> {
-  data: TData | undefined;
-  error: LxBridgeError | undefined;
-  active: boolean;
-  close: () => void;
-}
-
-export function useLxSubscription<TData = unknown>(
-  topic: string,
-  options?: LxSubscriptionOptions,
-): LxSubscriptionState<TData> {
-  const [state, setState] = React.useState<{
-    data: TData | undefined;
-    error: LxBridgeError | undefined;
-    active: boolean;
-  }>({
-    data: undefined,
-    error: undefined,
-    active: false,
-  });
-
-  const subRef = React.useRef<BridgeSubscription<TData> | null>(null);
-  const paramsSignature = getParamsSignature(options?.params);
-
-  const close = React.useCallback(() => {
-    subRef.current?.close();
-    subRef.current = null;
-    setState((prev) => ({ ...prev, active: false }));
-  }, []);
-
-  React.useEffect(() => {
-    const bridge = window.LingXiaBridge;
-    if (!bridge?.subscribe) return;
-
-    let cancelled = false;
-    setState((prev) => ({ ...prev, error: undefined, active: false }));
-    bridge.subscribe<TData>(topic, options?.params)
-      .then((sub) => {
-        if (cancelled) {
-          sub.close();
-          return;
-        }
-        subRef.current = sub;
-        setState((prev) => ({ ...prev, active: true }));
-
-        sub.on("data", (payload) => {
-          setState((prev) => ({ ...prev, data: payload }));
-        });
-        sub.on("error", (err: LxBridgeError) => {
-          subRef.current = null;
-          setState((prev) => ({ ...prev, error: err, active: false }));
-        });
-      })
-      .catch((err: unknown) => {
-        const error = toBridgeError(
-          err,
-          "SUBSCRIBE_FAILED",
-          "Failed to subscribe",
-        );
-        setState((prev) => ({ ...prev, error, active: false }));
-      });
-
-    return () => {
-      cancelled = true;
-      subRef.current?.close();
-      subRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topic, paramsSignature]);
-
-  return { ...state, close };
+  return { ...state, cancel, start };
 }
 
 export interface LxChannelOptions {
-  params?: Record<string, unknown>;
+  params?: unknown | (() => unknown);
+  manual?: boolean;
 }
 
-export interface LxChannelState<TData> {
-  data: TData | undefined;
+export interface LxChannelState<TData, TOut = TData> {
+  last: TData | undefined;
   error: LxBridgeError | undefined;
+  connecting: boolean;
   connected: boolean;
-  send: (payload: unknown) => void;
+  send: (payload: TOut) => void;
   close: (code?: string, reason?: string) => void;
+  reopen: () => void;
 }
 
-export function useLxChannel<TData = unknown>(
-  topic: string,
-  options?: LxChannelOptions,
-): LxChannelState<TData> {
+export function useLxChannel<
+  TMethod extends (...args: any[]) => Promise<LxChannel<any, any>>,
+>(
+  method: TMethod,
+  options?: LxChannelOptions & {
+    params?: ParamsSource<MethodParams<TMethod>>;
+  },
+): LxChannelState<ChannelIn<TMethod>, ChannelOut<TMethod>> {
+  type TIn = ChannelIn<TMethod>;
+  type TOut = ChannelOut<TMethod>;
+
   const [state, setState] = React.useState<{
-    data: TData | undefined;
+    last: TIn | undefined;
     error: LxBridgeError | undefined;
+    connecting: boolean;
     connected: boolean;
   }>({
-    data: undefined,
+    last: undefined,
     error: undefined,
+    connecting: false,
     connected: false,
   });
 
-  const chRef = React.useRef<BridgeChannel<TData> | null>(null);
-  const paramsSignature = getParamsSignature(options?.params);
+  const chRef = React.useRef<LxChannel<TIn, TOut> | null>(null);
+  const methodRef = React.useRef(method);
+  const paramsRef = React.useRef(resolveParams(options?.params));
+  const runIdRef = React.useRef(0);
+  const paramsKey = stableParamKey(resolveParams(options?.params));
+  const methodDep = getMethodKey(method) ?? method;
 
-  const send = React.useCallback((payload: unknown) => {
+  methodRef.current = method;
+  paramsRef.current = resolveParams(options?.params);
+
+  const send = React.useCallback((payload: TOut) => {
     chRef.current?.send(payload);
   }, []);
 
   const close = React.useCallback((code?: string, reason?: string) => {
+    runIdRef.current += 1;
     chRef.current?.close(code, reason);
     chRef.current = null;
-    setState((prev) => ({ ...prev, connected: false }));
+    setState((prev) => ({ ...prev, connecting: false, connected: false }));
   }, []);
 
-  React.useEffect(() => {
-    const bridge = window.LingXiaBridge;
-    if (!bridge?.channel?.open) return;
+  const reopen = React.useCallback(() => {
+    chRef.current?.close();
+    chRef.current = null;
 
-    let cancelled = false;
-    setState((prev) => ({ ...prev, error: undefined, connected: false }));
-    bridge.channel.open<TData>(topic, options?.params)
+    const runId = ++runIdRef.current;
+    setState({
+      last: undefined,
+      error: undefined,
+      connecting: true,
+      connected: false,
+    });
+
+    Promise.resolve(
+      invokeMethod(methodRef.current, paramsRef.current) as Promise<LxChannel<TIn, TOut>>,
+    )
       .then((ch) => {
-        if (cancelled) {
+        if (runIdRef.current !== runId) {
           ch.close();
           return;
         }
         chRef.current = ch;
-        setState((prev) => ({ ...prev, connected: true }));
+        setState((prev) => ({ ...prev, connecting: false, connected: true }));
 
         ch.on("data", (payload) => {
-          setState((prev) => ({ ...prev, data: payload }));
+          if (runIdRef.current !== runId) return;
+          setState((prev) => ({ ...prev, last: payload as TIn }));
         });
         ch.on("close", () => {
+          if (runIdRef.current !== runId) return;
           chRef.current = null;
-          setState((prev) => ({ ...prev, connected: false }));
+          setState((prev) => ({ ...prev, connecting: false, connected: false }));
         });
         ch.on("error", (err: LxBridgeError) => {
+          if (runIdRef.current !== runId) return;
           chRef.current = null;
-          setState((prev) => ({ ...prev, error: err, connected: false }));
+          setState((prev) => ({ ...prev, error: err, connecting: false, connected: false }));
         });
       })
       .catch((err: unknown) => {
-        const error = toBridgeError(
-          err,
-          "CHANNEL_OPEN_FAILED",
-          "Failed to open channel",
-        );
-        setState((prev) => ({ ...prev, error, connected: false }));
+        if (runIdRef.current !== runId) return;
+        setState({
+          last: undefined,
+          error: toBridgeError(err),
+          connecting: false,
+          connected: false,
+        });
       });
+  }, []);
 
+  React.useEffect(() => {
+    if (!options?.manual) {
+      reopen();
+    }
     return () => {
-      cancelled = true;
+      runIdRef.current += 1;
       chRef.current?.close();
       chRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topic, paramsSignature]);
+  }, [methodDep, options?.manual, paramsKey, reopen]);
 
-  return { ...state, send, close };
+  return { ...state, send, close, reopen };
 }

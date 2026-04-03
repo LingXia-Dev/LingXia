@@ -1,21 +1,20 @@
 import type {
   CallOptions,
-  Channel,
   ChannelOpenOptions,
   DataSubscriber,
+  HostChannelApi,
   HostApi,
   LingXiaBridgeInterface,
+  LxChannel,
   LxBridgeError,
   LxMethod,
   LxMethodParams,
   LxMethodResult,
   LxMethodStreamData,
+  LxStream,
   NativeComponentMessage,
   NotifyOptions,
   StreamCallOptions,
-  StreamHandle,
-  Subscription,
-  SubscribeOptions,
 } from "./types";
 import { BRIDGE_ERROR } from "./types";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
@@ -112,34 +111,36 @@ function deepCopy<T>(data: T): T {
   }
 }
 
-function unknownToError(err: unknown, fallbackMsg: string): LxBridgeError {
+class BridgeError extends Error implements LxBridgeError {
+  code: string | number;
+  data?: unknown;
+
+  constructor(code: string | number, message: string, data?: unknown) {
+    super(message);
+    this.name = "BridgeError";
+    this.code = code;
+    this.data = data;
+  }
+}
+
+function toBridgeError(err: unknown): BridgeError {
+  if (err instanceof BridgeError) return err;
   if (err && typeof err === "object") {
     const source = err as { code?: unknown; message?: unknown; data?: unknown };
     let code: string | number = BRIDGE_ERROR.INTERNAL_ERROR;
     if (typeof source.code === "string" && source.code.trim() !== "") {
       code = source.code;
-    } else if (
-      typeof source.code === "number" &&
-      Number.isFinite(source.code)
-    ) {
+    } else if (typeof source.code === "number" && Number.isFinite(source.code)) {
       code = source.code;
     }
     const message =
       typeof source.message === "string" && source.message.trim() !== ""
         ? source.message
-        : fallbackMsg;
-    const output: LxBridgeError = { code, message };
-    if ("data" in source) output.data = source.data;
-    return output;
+        : "Unknown error";
+    return new BridgeError(code, message, "data" in source ? source.data : undefined);
   }
-
-  const message =
-    err instanceof Error
-      ? err.message
-      : typeof err === "string"
-        ? err
-        : fallbackMsg;
-  return { code: BRIDGE_ERROR.INTERNAL_ERROR, message };
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
+  return new BridgeError(BRIDGE_ERROR.INTERNAL_ERROR, message);
 }
 
 const communicationMethod = getCommunicationMethod();
@@ -296,23 +297,6 @@ type StreamEventMsg = {
   payload: unknown;
   trace?: Trace;
 };
-type Sub = {
-  v: 2;
-  kind: "sub";
-  id: string;
-  topic: string;
-  params?: unknown;
-  cap: string;
-  trace?: Trace;
-};
-type Unsub = { v: 2; kind: "unsub"; id: string };
-type SubClose = {
-  v: 2;
-  kind: "sub.close";
-  id: string;
-  error?: LxBridgeError;
-  trace?: Trace;
-};
 type StateSnapshot = {
   v: 2;
   kind: "state.snapshot";
@@ -373,7 +357,6 @@ type Incoming =
   | Res
   | Req
   | StreamEventMsg
-  | SubClose
   | StateSnapshot
   | StatePatch
   | ChAck
@@ -409,7 +392,7 @@ function createListenerBuckets(): BridgeListenerBuckets {
   };
 }
 
-type InternalStreamHandle = StreamHandle & {
+type InternalStreamHandle = LxStream & {
   _emitData: (payload: unknown) => void;
   _resolve: (result: unknown) => void;
   _reject: (err: LxBridgeError) => void;
@@ -423,6 +406,11 @@ function createStreamHandle(
   let done = false;
   let resolveResult: (value: unknown) => void = () => {};
   let rejectResult: (reason: unknown) => void = () => {};
+  const pendingData: unknown[] = [];
+  const pendingReads: Array<{
+    resolve: (value: IteratorResult<unknown, unknown>) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
   const result = new Promise<unknown>((resolve, reject) => {
     resolveResult = resolve;
     rejectResult = reject;
@@ -446,12 +434,38 @@ function createStreamHandle(
         listeners.error.add(listener as (error: LxBridgeError) => void);
       return this;
     },
+    [Symbol.asyncIterator](): AsyncIterator<unknown, unknown, void> {
+      return {
+        next(): Promise<IteratorResult<unknown, unknown>> {
+          if (pendingData.length > 0) {
+            return Promise.resolve({
+              done: false,
+              value: pendingData.shift(),
+            });
+          }
+          if (done) {
+            return result.then(
+              (finalValue) => ({ done: true, value: finalValue }),
+              (err) => Promise.reject(err),
+            );
+          }
+          return new Promise<IteratorResult<unknown, unknown>>((resolve, reject) => {
+            pendingReads.push({ resolve, reject });
+          });
+        },
+      };
+    },
     cancel(): void {
       if (done) return;
       cancelFn();
     },
     _emitData(payload: unknown): void {
       if (done) return;
+      if (pendingReads.length > 0) {
+        pendingReads.shift()!.resolve({ done: false, value: payload });
+      } else {
+        pendingData.push(payload);
+      }
       for (const listener of listeners.data) {
         try {
           listener(payload);
@@ -464,6 +478,9 @@ function createStreamHandle(
       if (done) return;
       done = true;
       resolveResult(resultValue);
+      while (pendingReads.length > 0) {
+        pendingReads.shift()!.resolve({ done: true, value: resultValue });
+      }
       for (const listener of listeners.end) {
         try {
           listener(resultValue);
@@ -476,6 +493,9 @@ function createStreamHandle(
       if (done) return;
       done = true;
       rejectResult(err);
+      while (pendingReads.length > 0) {
+        pendingReads.shift()!.reject(err);
+      }
       for (const listener of listeners.error) {
         try {
           listener(err);
@@ -489,74 +509,7 @@ function createStreamHandle(
   return handle;
 }
 
-function callHost(method: string, params?: unknown): Promise<unknown> {
-  return LingXiaBridge.call(`host.${method}`, params, { cap: "host" });
-}
-
-type InternalSubscription = Subscription & {
-  _emitData: (payload: unknown) => void;
-  _reject: (err: LxBridgeError) => void;
-  _markActive: () => void;
-  _markInactive: () => void;
-  _isActive: () => boolean;
-};
-
-function createSubscription(
-  id: string,
-  closeFn: () => void,
-): InternalSubscription {
-  const listeners = createListenerBuckets();
-  let active = false;
-  const subscription: InternalSubscription = {
-    id,
-    on(
-      event: "data" | "error",
-      listener: ((payload: unknown) => void) | ((error: LxBridgeError) => void),
-    ) {
-      if (event === "data")
-        listeners.data.add(listener as (payload: unknown) => void);
-      if (event === "error")
-        listeners.error.add(listener as (error: LxBridgeError) => void);
-      return this;
-    },
-    close(): void {
-      if (!active) return;
-      active = false;
-      closeFn();
-    },
-    _emitData(payload: unknown): void {
-      if (!active) return;
-      for (const listener of listeners.data) {
-        try {
-          listener(payload);
-        } catch (e) {
-          warn("Subscription listener failed:", e);
-        }
-      }
-    },
-    _reject(err: LxBridgeError): void {
-      for (const listener of listeners.error) {
-        try {
-          listener(err);
-        } catch (e) {
-          warn("Subscription error listener failed:", e);
-        }
-      }
-    },
-    _markActive(): void {
-      active = true;
-    },
-    _markInactive(): void {
-      active = false;
-    },
-    _isActive(): boolean {
-      return active;
-    },
-  };
-  return subscription;
-}
-
-type InternalChannel = Channel & {
+type InternalChannel = LxChannel & {
   _emitData: (payload: unknown) => void;
   _emitClose: (code?: string, reason?: string) => void;
   _reject: (err: LxBridgeError) => void;
@@ -573,6 +526,12 @@ function createChannel(
   const listeners = createListenerBuckets();
   let open = false;
   let outboundSeq = 0;
+  let closed = false;
+  const pendingData: unknown[] = [];
+  const pendingReads: Array<{
+    resolve: (value: IteratorResult<unknown, void>) => void;
+    reject: (reason: unknown) => void;
+  }> = [];
   const channel: InternalChannel = {
     id,
     send(payload: unknown): void {
@@ -602,14 +561,38 @@ function createChannel(
         listeners.error.add(listener as (error: LxBridgeError) => void);
       return this;
     },
+    [Symbol.asyncIterator](): AsyncIterator<unknown, void, void> {
+      return {
+        next(): Promise<IteratorResult<unknown, void>> {
+          if (pendingData.length > 0) {
+            return Promise.resolve({
+              done: false,
+              value: pendingData.shift(),
+            });
+          }
+          if (closed) {
+            return Promise.resolve({ done: true, value: undefined });
+          }
+          return new Promise<IteratorResult<unknown, void>>((resolve, reject) => {
+            pendingReads.push({ resolve, reject });
+          });
+        },
+      };
+    },
     close(code?: string, reason?: string): void {
       if (!open) return;
       open = false;
+      closed = true;
       closeFn(code, reason);
       channel._emitClose(code, reason);
     },
     _emitData(payload: unknown): void {
       if (!open) return;
+      if (pendingReads.length > 0) {
+        pendingReads.shift()!.resolve({ done: false, value: payload });
+      } else {
+        pendingData.push(payload);
+      }
       for (const listener of listeners.data) {
         try {
           listener(payload);
@@ -619,6 +602,10 @@ function createChannel(
       }
     },
     _emitClose(code?: string, reason?: string): void {
+      closed = true;
+      while (pendingReads.length > 0) {
+        pendingReads.shift()!.resolve({ done: true, value: undefined });
+      }
       for (const listener of listeners.close) {
         try {
           listener(code, reason);
@@ -628,6 +615,10 @@ function createChannel(
       }
     },
     _reject(err: LxBridgeError): void {
+      closed = true;
+      while (pendingReads.length > 0) {
+        pendingReads.shift()!.reject(err);
+      }
       for (const listener of listeners.error) {
         try {
           listener(err);
@@ -638,6 +629,7 @@ function createChannel(
     },
     _markOpen(): void {
       open = true;
+      closed = false;
     },
     _isOpen(): boolean {
       return open;
@@ -659,23 +651,12 @@ interface PendingRequest {
   timerId: ReturnType<typeof setTimeout> | null;
 }
 const pendingReq = new Map<string, PendingRequest>();
-const pendingSubs = new Map<
-  string,
-  {
-    topic: string;
-    subscription: InternalSubscription;
-    resolve: (subscription: Subscription<any>) => void;
-    reject: (err: LxBridgeError) => void;
-    timerId: ReturnType<typeof setTimeout> | null;
-  }
->();
-const activeSubs = new Map<string, InternalSubscription>();
 const pendingChannels = new Map<
   string,
   {
     topic: string;
     channel: InternalChannel;
-    resolve: (channel: Channel<any>) => void;
+    resolve: (channel: LxChannel<any, any>) => void;
     reject: (err: LxBridgeError) => void;
     timerId: ReturnType<typeof setTimeout> | null;
   }
@@ -736,21 +717,13 @@ function rejectPendingRequest(reqId: string, err: LxBridgeError): void {
   if (info) {
     pendingReq.delete(reqId);
     if (info.timerId !== null) clearTimeout(info.timerId);
+    const normalized = toBridgeError(err);
     if (info.mode === "stream" && info.stream) {
-      info.stream._reject(err);
+      info.stream._reject(normalized);
       return;
     }
-    info.reject?.(err);
+    info.reject?.(normalized);
   }
-}
-
-function rejectPendingSubscription(id: string, err: LxBridgeError): void {
-  const pending = pendingSubs.get(id);
-  if (!pending) return;
-  pendingSubs.delete(id);
-  if (pending.timerId !== null) clearTimeout(pending.timerId);
-  pending.subscription._reject(err);
-  pending.reject(err);
 }
 
 function rejectPendingChannel(id: string, err: LxBridgeError): void {
@@ -758,17 +731,14 @@ function rejectPendingChannel(id: string, err: LxBridgeError): void {
   if (!pending) return;
   pendingChannels.delete(id);
   if (pending.timerId !== null) clearTimeout(pending.timerId);
-  pending.channel._reject(err);
-  pending.reject(err);
+  const normalized = toBridgeError(err);
+  pending.channel._reject(normalized);
+  pending.reject(normalized);
 }
 
 function rejectPendingOperation(id: string, err: LxBridgeError): void {
   if (pendingReq.has(id)) {
     rejectPendingRequest(id, err);
-    return;
-  }
-  if (pendingSubs.has(id)) {
-    rejectPendingSubscription(id, err);
     return;
   }
   if (pendingChannels.has(id)) {
@@ -789,29 +759,11 @@ function armRequestTimer(reqId: string): void {
   if (info.timerId !== null) clearTimeout(info.timerId);
   info.timerId = setTimeout(() => {
     if (!pendingReq.has(reqId)) return;
-    pendingReq.delete(reqId);
-    const err = {
-      code: BRIDGE_ERROR.TIMEOUT,
-      message: `'${info.method}' timed out`,
-    };
-    if (info.mode === "stream" && info.stream) {
-      info.stream._reject(err);
-      return;
-    }
-    info.reject?.(err);
+    rejectPendingRequest(reqId, new BridgeError(
+      BRIDGE_ERROR.TIMEOUT,
+      `'${info.method}' timed out`,
+    ));
   }, info.timeoutMs);
-}
-
-function armSubscriptionTimer(id: string): void {
-  const pending = pendingSubs.get(id);
-  if (!pending) return;
-  if (pending.timerId !== null) clearTimeout(pending.timerId);
-  pending.timerId = setTimeout(() => {
-    rejectPendingSubscription(id, {
-      code: BRIDGE_ERROR.TIMEOUT,
-      message: `Subscription '${pending.topic}' timed out`,
-    });
-  }, DEFAULT_TIMEOUT_MS);
 }
 
 function armChannelTimer(id: string): void {
@@ -829,10 +781,6 @@ function armChannelTimer(id: string): void {
 function armPendingOperationTimer(id: string): void {
   if (pendingReq.has(id)) {
     armRequestTimer(id);
-    return;
-  }
-  if (pendingSubs.has(id)) {
-    armSubscriptionTimer(id);
     return;
   }
   if (pendingChannels.has(id)) {
@@ -928,12 +876,6 @@ function startHandshake(): void {
             message: "Bridge handshake failed",
           });
         }
-      }
-      for (const id of Array.from(pendingSubs.keys())) {
-        rejectPendingSubscription(id, {
-          code: BRIDGE_ERROR.HANDSHAKE_FAILED,
-          message: "Bridge handshake failed",
-        });
       }
       for (const id of Array.from(pendingChannels.keys())) {
         rejectPendingChannel(id, {
@@ -1134,25 +1076,6 @@ function handleIncomingMessage(msg: unknown): void {
       return;
 
     case "res": {
-      const pendingSub = pendingSubs.get(message.id);
-      if (pendingSub) {
-        pendingSubs.delete(message.id);
-        if (pendingSub.timerId !== null) clearTimeout(pendingSub.timerId);
-        if (message.ok) {
-          pendingSub.subscription._markActive();
-          activeSubs.set(message.id, pendingSub.subscription);
-          pendingSub.resolve(pendingSub.subscription);
-        } else {
-          const err = message.error ?? {
-            code: BRIDGE_ERROR.INTERNAL_ERROR,
-            message: `Subscription '${pendingSub.topic}' failed`,
-          };
-          pendingSub.subscription._reject(err);
-          pendingSub.reject(err);
-        }
-        return;
-      }
-
       const info = pendingReq.get(message.id);
       if (!info) return;
       pendingReq.delete(message.id);
@@ -1169,10 +1092,7 @@ function handleIncomingMessage(msg: unknown): void {
         }
         info.resolve?.(message.result);
       } else {
-        const err = message.error ?? {
-          code: BRIDGE_ERROR.INTERNAL_ERROR,
-          message: `Call '${info.method}' failed`,
-        };
+        const err = toBridgeError(message.error);
         if (info.mode === "stream" && info.stream) {
           info.stream._reject(err);
           return;
@@ -1194,22 +1114,6 @@ function handleIncomingMessage(msg: unknown): void {
         return;
       }
 
-      const sub = activeSubs.get(message.id);
-      if (sub) {
-        sub._emitData(message.payload);
-        return;
-      }
-      return;
-    }
-
-    case "sub.close": {
-      const sub = activeSubs.get(message.id);
-      if (!sub) return;
-      activeSubs.delete(message.id);
-      sub._markInactive();
-      if (message.error) {
-        sub._reject(message.error);
-      }
       return;
     }
 
@@ -1263,10 +1167,7 @@ function handleIncomingMessage(msg: unknown): void {
         activeChannels.set(message.id, pendingChannel.channel);
         pendingChannel.resolve(pendingChannel.channel);
       } else {
-        const err = message.error ?? {
-          code: BRIDGE_ERROR.INTERNAL_ERROR,
-          message: `Channel '${pendingChannel.topic}' failed`,
-        };
+        const err = toBridgeError(message.error);
         pendingChannel.channel._reject(err);
         pendingChannel.reject(err);
       }
@@ -1335,10 +1236,7 @@ function handleIncomingMessage(msg: unknown): void {
             kind: "res",
             id: reqMsg.id,
             ok: false,
-            error: unknownToError(
-              err,
-              `View handler '${reqMsg.method}' failed`,
-            ),
+            error: toBridgeError(err),
           } as Res);
         });
       return;
@@ -1427,49 +1325,6 @@ function attachAbortSignal(
   signal.addEventListener("abort", abortListener);
 }
 
-function bridgeSubscribe<TData = unknown>(
-  topic: string,
-  params?: unknown,
-  options?: SubscribeOptions,
-): Promise<Subscription<TData>> {
-  if (!topic || typeof topic !== "string") {
-    return Promise.reject({
-      code: BRIDGE_ERROR.MALFORMED_MESSAGE,
-      message: "Topic name must be a non-empty string",
-    } satisfies LxBridgeError);
-  }
-  if (!helloSent) startHandshake();
-
-  return new Promise((resolve, reject) => {
-    const id = nextMessageId("s");
-    const subscription = createSubscription(id, () => {
-      activeSubs.delete(id);
-      const pending = pendingSubs.get(id);
-      if (pending && pending.timerId !== null) clearTimeout(pending.timerId);
-      pendingSubs.delete(id);
-      send({ v: 2, kind: "unsub", id } as Unsub);
-    }) as InternalSubscription & Subscription<TData>;
-    pendingSubs.set(id, {
-      topic,
-      subscription,
-      resolve: resolve as (subscription: Subscription<TData>) => void,
-      reject,
-      timerId: null,
-    });
-    send(
-      {
-        v: 2,
-        kind: "sub",
-        id,
-        topic,
-        params: normalizeParams(params),
-        cap: options?.cap || inferCap(topic),
-      } as Sub,
-      id,
-    );
-  });
-}
-
 // Public interface
 export const LingXiaBridge: LingXiaBridgeInterface = {
   call<M extends LxMethod>(
@@ -1479,10 +1334,12 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   ): Promise<LxMethodResult<M> | unknown> {
     return new Promise((resolve, reject) => {
       if (!method || typeof method !== "string") {
-        reject({
-          code: BRIDGE_ERROR.MALFORMED_MESSAGE,
-          message: "Method name must be a non-empty string",
-        });
+        reject(
+          new BridgeError(
+            BRIDGE_ERROR.MALFORMED_MESSAGE,
+            "Method name must be a non-empty string",
+          ),
+        );
         return;
       }
       if (!helloSent) startHandshake();
@@ -1521,18 +1378,18 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     });
   },
 
-  callStream<M extends LxMethod>(
+  stream<M extends LxMethod>(
     method: M | string,
     params?: LxMethodParams<M> | unknown,
     options?: StreamCallOptions,
-  ): StreamHandle<LxMethodStreamData<M>, LxMethodResult<M>> | StreamHandle {
+  ): LxStream<LxMethodStreamData<M>, LxMethodResult<M>> | LxStream {
     if (!method || typeof method !== "string") {
       const invalid = createStreamHandle("invalid", () => {});
       invalid._reject({
         code: BRIDGE_ERROR.MALFORMED_MESSAGE,
         message: "Method name must be a non-empty string",
       });
-      return invalid as StreamHandle<LxMethodStreamData<M>, LxMethodResult<M>>;
+      return invalid as LxStream<LxMethodStreamData<M>, LxMethodResult<M>>;
     }
     if (!helloSent) startHandshake();
 
@@ -1570,7 +1427,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
       id,
     );
     attachAbortSignal(id, options?.signal, () => handle.cancel());
-    return handle as StreamHandle<LxMethodStreamData<M>, LxMethodResult<M>>;
+    return handle as LxStream<LxMethodStreamData<M>, LxMethodResult<M>>;
   },
 
   notify(method: string, params?: unknown, options?: NotifyOptions): void {
@@ -1585,23 +1442,23 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     } as Notify);
   },
 
-  subscribe: bridgeSubscribe,
-
   state: {
     subscribe: subscribeState,
   },
 
   channel: {
-    open<TData = unknown>(
+    open<TIn = unknown, TOut = TIn>(
       topic: string,
       params?: unknown,
       options?: ChannelOpenOptions,
-    ): Promise<Channel<TData>> {
+    ): Promise<LxChannel<TIn, TOut>> {
       if (!topic || typeof topic !== "string") {
-        return Promise.reject({
-          code: BRIDGE_ERROR.MALFORMED_MESSAGE,
-          message: "Topic name must be a non-empty string",
-        } satisfies LxBridgeError);
+        return Promise.reject(
+          new BridgeError(
+            BRIDGE_ERROR.MALFORMED_MESSAGE,
+            "Topic name must be a non-empty string",
+          ),
+        );
       }
       if (!helloSent) startHandshake();
 
@@ -1620,11 +1477,11 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
             activeChannels.delete(id);
             send({ v: 2, kind: "ch.close", id, code, reason } as ChClose);
           },
-        ) as InternalChannel & Channel<TData>;
+        ) as InternalChannel & LxChannel<TIn, TOut>;
         pendingChannels.set(id, {
           topic,
           channel,
-          resolve: resolve as (channel: Channel<TData>) => void,
+          resolve: resolve as (channel: LxChannel<TIn, TOut>) => void,
           reject,
           timerId: null,
         });
@@ -1756,10 +1613,10 @@ function createHostPathProxy(path: string[]): unknown {
       const method = path.join(".");
       const payload =
         args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
-      // Always use callStream — works for both unary and stream host handlers.
+      // Always use stream — it works for both unary and stream host handlers.
       // Unary handlers return a single `res`; stream handlers emit `event`s then `res`.
       // The returned handle is also thenable so `await host.x.y()` just works.
-      const handle = LingXiaBridge.callStream(`host.${method}`, payload, { cap: "host", timeoutMs: 0 });
+      const handle = LingXiaBridge.stream(`host.${method}`, payload, { cap: "host", timeoutMs: 0 });
       // Make thenable: `await host.x.y()` resolves to the final result,
       // while `host.x.y().on('data', ...)` works for streams.
       const result = handle.result;
@@ -1774,8 +1631,37 @@ function createHostPathProxy(path: string[]): unknown {
     },
     get(_target, prop) {
       if (prop === "then") return undefined;
+      if (prop === "__funcName") return `host.${path.join(".")}`;
+      if (prop === "__bridgeMode") return "stream";
       if (typeof prop !== "string") return undefined;
       return createHostPathProxy([...path, prop]);
+    },
+  });
+}
+
+function createHostChannelProxy(path: string[]): unknown {
+  const callable = (): void => {};
+  return new Proxy(callable, {
+    apply(_target, _thisArg, args: unknown[]) {
+      const method = path.join(".");
+      const payload =
+        args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
+      return LingXiaBridge.channel.open(`host.${method}`, payload, { cap: "host" });
+    },
+    get(_target, prop) {
+      if (prop === "then") return undefined;
+      if (prop === "__funcName") return `host.${path.join(".")}`;
+      if (prop === "__bridgeMode") return "channel";
+      if (prop === "open") {
+        return (...args: unknown[]) => {
+          const method = path.join(".");
+          const payload =
+            args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
+          return LingXiaBridge.channel.open(`host.${method}`, payload, { cap: "host" });
+        };
+      }
+      if (typeof prop !== "string") return undefined;
+      return createHostChannelProxy([...path, prop]);
     },
   });
 }
@@ -1784,6 +1670,16 @@ export const host: HostApi = new Proxy({} as HostApi, {
   get(_target, prop) {
     if (typeof prop !== "string") {
       return undefined;
+    }
+    if (prop === "channel") {
+      return new Proxy({} as HostChannelApi, {
+        get(_target, channelProp) {
+          if (typeof channelProp !== "string") {
+            return undefined;
+          }
+          return createHostChannelProxy([channelProp]);
+        },
+      }) as HostChannelApi;
     }
     return createHostPathProxy([prop]);
   },

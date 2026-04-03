@@ -2,42 +2,85 @@ import {
   reactive,
   ref,
   onUnmounted,
+  unref,
   watch,
   type Ref,
 } from "vue";
 import type {
-  StreamHandle,
-  Subscription as BridgeSubscription,
-  Channel as BridgeChannel,
+  LxChannel,
   LxBridgeError,
+  LxStream,
 } from "@lingxia/bridge";
 
 type ActionMap = Record<string, (...args: unknown[]) => unknown>;
 type Snapshot = Record<string, unknown>;
+type MethodSource<T> = T | Ref<T>;
+type ParamsSource<T> = T | (() => T);
+type MethodParams<TMethod> = TMethod extends () => any
+  ? undefined
+  : TMethod extends (params: infer P) => any
+    ? P
+    : never;
+type StreamData<TMethod> = TMethod extends (...args: any[]) => LxStream<infer TData, any>
+  ? TData
+  : never;
+type StreamResult<TMethod> = TMethod extends (...args: any[]) => LxStream<any, infer TResult>
+  ? TResult
+  : never;
+type ChannelIn<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<infer TIn, any>>
+  ? TIn
+  : never;
+type ChannelOut<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<any, infer TOut>>
+  ? TOut
+  : never;
+
+function toBridgeError(err: unknown): LxBridgeError {
+  return err && typeof err === "object" && "code" in err
+    ? (err as LxBridgeError)
+    : { code: "BRIDGE_INTERNAL_ERROR", message: err instanceof Error ? err.message : String(err) };
+}
+
+function resolveParams<T>(source?: ParamsSource<T>): T | undefined {
+  if (typeof source === "function") {
+    return (source as () => T)();
+  }
+  return source;
+}
+
+function stableParamKey(value: unknown): string {
+  if (value === undefined) return "undefined";
+  try {
+    return JSON.stringify(value) ?? "undefined";
+  } catch {
+    return String(value);
+  }
+}
+
+function invokeMethod<TMethod extends (...args: any[]) => any>(
+  method: TMethod,
+  params: unknown,
+): ReturnType<TMethod> {
+  if (params === undefined) {
+    return method() as ReturnType<TMethod>;
+  }
+  return method(params) as ReturnType<TMethod>;
+}
+
+function resolveMethod<TMethod>(source: MethodSource<TMethod>): TMethod {
+  return unref(source) as TMethod;
+}
+
+function getMethodKey(method: unknown): string | undefined {
+  if (typeof method !== "function") return undefined;
+  const candidate = (method as { __funcName?: unknown }).__funcName;
+  return typeof candidate === "string" && candidate !== "" ? candidate : undefined;
+}
 
 const reactiveSnapshot = reactive<Snapshot>({});
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let initialSnapshotResolved = false;
 let snapshotRequestInFlight = false;
-
-function getParamsSignature(params: unknown): string {
-  try {
-    return JSON.stringify(params) ?? "undefined";
-  } catch {
-    return "__nonserializable__";
-  }
-}
-
-function toBridgeError(
-  err: unknown,
-  fallbackCode: string,
-  fallbackMessage: string,
-): LxBridgeError {
-  return err && typeof err === "object" && "code" in err
-    ? (err as LxBridgeError)
-    : { code: fallbackCode, message: String(err ?? fallbackMessage) };
-}
 
 function replaceReactiveSnapshot(next: unknown): void {
   const normalized: Snapshot =
@@ -118,6 +161,7 @@ export function useLxPage<
 }
 
 export interface LxStreamOptions<TData, TReduced> {
+  params?: unknown | (() => unknown);
   manual?: boolean;
   reduce?: (accumulated: TReduced, chunk: TData) => TReduced;
   initial?: TReduced;
@@ -129,13 +173,23 @@ export interface LxStreamState<TData, TResult = unknown> {
   error: Ref<LxBridgeError | undefined>;
   streaming: Ref<boolean>;
   cancel: () => void;
-  call: () => void;
+  start: () => void;
 }
 
-export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData>(
-  factory: () => StreamHandle<TData, TResult>,
-  options?: LxStreamOptions<TData, TReduced>,
-): LxStreamState<TReduced extends TData ? TData : TReduced, TResult> {
+export function useLxStream<
+  TMethod extends (...args: any[]) => LxStream<any, any>,
+  TReduced = StreamData<TMethod>,
+>(
+  method: MethodSource<TMethod>,
+  options?: LxStreamOptions<StreamData<TMethod>, TReduced> & {
+    params?: ParamsSource<MethodParams<TMethod>>;
+  },
+): LxStreamState<
+  TReduced extends StreamData<TMethod> ? StreamData<TMethod> : TReduced,
+  StreamResult<TMethod>
+> {
+  type TData = StreamData<TMethod>;
+  type TResult = StreamResult<TMethod>;
   type TOut = TReduced extends TData ? TData : TReduced;
 
   const data = ref<TOut | undefined>(
@@ -145,7 +199,7 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
   const error = ref<LxBridgeError | undefined>(undefined);
   const streaming = ref(false);
 
-  let handle: StreamHandle<TData, TResult> | null = null;
+  let handle: LxStream<TData, TResult> | null = null;
   let acc: TReduced | undefined = options?.initial;
   let runId = 0;
 
@@ -156,8 +210,7 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     streaming.value = false;
   }
 
-  function call(): void {
-    // Cancel any previous stream.
+  function start(): void {
     handle?.cancel();
     const currentRunId = runId + 1;
     runId = currentRunId;
@@ -168,21 +221,21 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     error.value = undefined;
     streaming.value = true;
 
+    let nextHandle: LxStream<TData, TResult>;
     try {
-      handle = factory();
+      const params = resolveParams(options?.params);
+      nextHandle = invokeMethod(resolveMethod(method), params) as LxStream<TData, TResult>;
     } catch (err: unknown) {
       if (runId !== currentRunId) return;
       handle = null;
-      error.value = toBridgeError(
-        err,
-        "STREAM_CALL_FAILED",
-        "Failed to start stream",
-      );
+      error.value = toBridgeError(err);
       streaming.value = false;
       return;
     }
 
-    handle.on("data", (chunk: TData) => {
+    handle = nextHandle;
+
+    nextHandle.on("data", (chunk: TData) => {
       if (runId !== currentRunId) return;
       if (options?.reduce) {
         acc = options.reduce(acc as TReduced, chunk);
@@ -192,14 +245,14 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
       }
     });
 
-    handle.on("end", (res: TResult) => {
+    nextHandle.on("end", (res: TResult) => {
       if (runId !== currentRunId) return;
       handle = null;
       result.value = res;
       streaming.value = false;
     });
 
-    handle.on("error", (err: LxBridgeError) => {
+    nextHandle.on("error", (err: LxBridgeError) => {
       if (runId !== currentRunId) return;
       handle = null;
       error.value = err;
@@ -207,9 +260,22 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     });
   }
 
-  if (!options?.manual) {
-    call();
-  }
+  watch(
+    () => {
+      if (options?.manual) return null;
+      const resolvedMethod = resolveMethod(method);
+      return [
+        getMethodKey(resolvedMethod) ?? resolvedMethod,
+        stableParamKey(resolveParams(options?.params)),
+      ];
+    },
+    () => {
+      if (!options?.manual) {
+        start();
+      }
+    },
+    { immediate: !options?.manual },
+  );
 
   onUnmounted(() => {
     runId += 1;
@@ -217,190 +283,127 @@ export function useLxStream<TData = unknown, TResult = unknown, TReduced = TData
     handle = null;
   });
 
-  return { data, result, error, streaming, cancel, call };
-}
-
-export interface LxSubscriptionOptions {
-  params?: Record<string, unknown>;
-}
-
-export interface LxSubscriptionState<TData> {
-  data: Ref<TData | undefined>;
-  error: Ref<LxBridgeError | undefined>;
-  active: Ref<boolean>;
-  close: () => void;
-}
-
-export function useLxSubscription<TData = unknown>(
-  topic: string | Ref<string>,
-  options?: LxSubscriptionOptions,
-): LxSubscriptionState<TData> {
-  const data = ref<TData | undefined>(undefined) as Ref<TData | undefined>;
-  const error = ref<LxBridgeError | undefined>(undefined);
-  const active = ref(false);
-
-  let sub: BridgeSubscription<TData> | null = null;
-  let subscribeVersion = 0;
-
-  function close(): void {
-    subscribeVersion += 1;
-    sub?.close();
-    sub = null;
-    active.value = false;
-  }
-
-  function subscribe(topicValue: string): void {
-    const currentVersion = subscribeVersion + 1;
-    subscribeVersion = currentVersion;
-    sub?.close();
-    sub = null;
-    error.value = undefined;
-    active.value = false;
-    const bridge = window.LingXiaBridge;
-    if (!bridge?.subscribe) return;
-
-    bridge
-      .subscribe<TData>(topicValue, options?.params)
-      .then((s) => {
-        if (subscribeVersion !== currentVersion) {
-          s.close();
-          return;
-        }
-        sub = s;
-        active.value = true;
-
-        s.on("data", (payload: TData) => {
-          if (subscribeVersion !== currentVersion) return;
-          data.value = payload;
-        });
-        s.on("error", (err: LxBridgeError) => {
-          if (subscribeVersion !== currentVersion) return;
-          sub = null;
-          error.value = err;
-          active.value = false;
-        });
-      })
-      .catch((err: unknown) => {
-        if (subscribeVersion !== currentVersion) return;
-        error.value = toBridgeError(
-          err,
-          "SUBSCRIBE_FAILED",
-          "Failed to subscribe",
-        );
-        active.value = false;
-      });
-  }
-
-  const topicRef = typeof topic === "string" ? ref(topic) : topic;
-  watch(
-    [topicRef, () => getParamsSignature(options?.params)],
-    ([topicValue]) => subscribe(topicValue),
-    { immediate: true },
-  );
-
-  onUnmounted(() => {
-    subscribeVersion += 1;
-    sub?.close();
-    sub = null;
-  });
-
-  return { data, error, active, close };
+  return { data, result, error, streaming, cancel, start };
 }
 
 export interface LxChannelOptions {
-  params?: Record<string, unknown>;
+  params?: unknown | (() => unknown);
+  manual?: boolean;
 }
 
-export interface LxChannelState<TData> {
-  data: Ref<TData | undefined>;
+export interface LxChannelState<TData, TOut = TData> {
+  last: Ref<TData | undefined>;
   error: Ref<LxBridgeError | undefined>;
+  connecting: Ref<boolean>;
   connected: Ref<boolean>;
-  send: (payload: unknown) => void;
+  send: (payload: TOut) => void;
   close: (code?: string, reason?: string) => void;
+  reopen: () => void;
 }
 
-export function useLxChannel<TData = unknown>(
-  topic: string | Ref<string>,
-  options?: LxChannelOptions,
-): LxChannelState<TData> {
-  const data = ref<TData | undefined>(undefined) as Ref<TData | undefined>;
+export function useLxChannel<
+  TMethod extends (...args: any[]) => Promise<LxChannel<any, any>>,
+>(
+  method: MethodSource<TMethod>,
+  options?: LxChannelOptions & {
+    params?: ParamsSource<MethodParams<TMethod>>;
+  },
+): LxChannelState<ChannelIn<TMethod>, ChannelOut<TMethod>> {
+  type TIn = ChannelIn<TMethod>;
+  type TOut = ChannelOut<TMethod>;
+
+  const last = ref<TIn | undefined>(undefined) as Ref<TIn | undefined>;
   const error = ref<LxBridgeError | undefined>(undefined);
+  const connecting = ref(false);
   const connected = ref(false);
 
-  let ch: BridgeChannel<TData> | null = null;
-  let channelVersion = 0;
+  let ch: LxChannel<TIn, TOut> | null = null;
+  let runId = 0;
 
-  function send(payload: unknown): void {
+  function send(payload: TOut): void {
     ch?.send(payload);
   }
 
   function close(code?: string, reason?: string): void {
-    channelVersion += 1;
+    runId += 1;
     ch?.close(code, reason);
     ch = null;
+    connecting.value = false;
     connected.value = false;
   }
 
-  function openChannel(topicValue: string): void {
-    const currentVersion = channelVersion + 1;
-    channelVersion = currentVersion;
+  function reopen(): void {
     ch?.close();
     ch = null;
+
+    const thisRunId = ++runId;
+    last.value = undefined;
     error.value = undefined;
+    connecting.value = true;
     connected.value = false;
 
-    const bridge = window.LingXiaBridge;
-    if (!bridge?.channel?.open) return;
-
-    bridge.channel
-      .open<TData>(topicValue, options?.params)
-      .then((c) => {
-        if (channelVersion !== currentVersion) {
-          c.close();
+    Promise.resolve(
+      invokeMethod(resolveMethod(method), resolveParams(options?.params)) as Promise<LxChannel<TIn, TOut>>,
+    )
+      .then((nextChannel) => {
+        if (runId !== thisRunId) {
+          nextChannel.close();
           return;
         }
-        ch = c;
+        ch = nextChannel;
+        connecting.value = false;
         connected.value = true;
 
-        c.on("data", (payload: TData) => {
-          if (channelVersion !== currentVersion) return;
-          data.value = payload;
+        nextChannel.on("data", (payload) => {
+          if (runId !== thisRunId) return;
+          last.value = payload as TIn;
         });
-        c.on("close", () => {
-          if (channelVersion !== currentVersion) return;
+
+        nextChannel.on("close", () => {
+          if (runId !== thisRunId) return;
           ch = null;
+          connecting.value = false;
           connected.value = false;
         });
-        c.on("error", (err: LxBridgeError) => {
-          if (channelVersion !== currentVersion) return;
+
+        nextChannel.on("error", (err: LxBridgeError) => {
+          if (runId !== thisRunId) return;
           ch = null;
           error.value = err;
+          connecting.value = false;
           connected.value = false;
         });
       })
       .catch((err: unknown) => {
-        if (channelVersion !== currentVersion) return;
-        error.value = toBridgeError(
-          err,
-          "CHANNEL_OPEN_FAILED",
-          "Failed to open channel",
-        );
+        if (runId !== thisRunId) return;
+        error.value = toBridgeError(err);
+        connecting.value = false;
         connected.value = false;
       });
   }
 
-  const topicRef = typeof topic === "string" ? ref(topic) : topic;
   watch(
-    [topicRef, () => getParamsSignature(options?.params)],
-    ([topicValue]) => openChannel(topicValue),
-    { immediate: true },
+    () => {
+      if (options?.manual) return null;
+      const resolvedMethod = resolveMethod(method);
+      return [
+        getMethodKey(resolvedMethod) ?? resolvedMethod,
+        stableParamKey(resolveParams(options?.params)),
+      ];
+    },
+    () => {
+      if (!options?.manual) {
+        reopen();
+      }
+    },
+    { immediate: !options?.manual },
   );
 
   onUnmounted(() => {
-    channelVersion += 1;
+    runId += 1;
     ch?.close();
     ch = null;
   });
 
-  return { data, error, connected, send, close };
+  return { last, error, connecting, connected, send, close, reopen };
 }

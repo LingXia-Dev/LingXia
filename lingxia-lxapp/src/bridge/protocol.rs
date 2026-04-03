@@ -45,22 +45,6 @@ pub struct CancelMsg {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct SubMsg {
-    pub v: u8,
-    pub id: String,
-    pub topic: String,
-    pub params: Option<Box<RawValue>>,
-    #[serde(default)]
-    pub cap: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct UnsubMsg {
-    pub v: u8,
-    pub id: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
 pub struct ChOpenMsg {
     pub v: u8,
     pub id: String,
@@ -137,8 +121,6 @@ pub enum IncomingMessage {
     Res(ResMsg),
     Notify(NotifyMsg),
     Cancel(CancelMsg),
-    Sub(SubMsg),
-    Unsub(UnsubMsg),
     ChOpen(ChOpenMsg),
     ChData(ChDataMsg),
     ChClose(ChCloseMsg),
@@ -173,8 +155,6 @@ impl IncomingMessage {
             "res" => serde_json::from_str::<ResMsg>(json_str).map(Self::Res),
             "notify" => serde_json::from_str::<NotifyMsg>(json_str).map(Self::Notify),
             "cancel" => serde_json::from_str::<CancelMsg>(json_str).map(Self::Cancel),
-            "sub" => serde_json::from_str::<SubMsg>(json_str).map(Self::Sub),
-            "unsub" => serde_json::from_str::<UnsubMsg>(json_str).map(Self::Unsub),
             "ch.open" => serde_json::from_str::<ChOpenMsg>(json_str).map(Self::ChOpen),
             "ch.data" => serde_json::from_str::<ChDataMsg>(json_str).map(Self::ChData),
             "ch.close" => serde_json::from_str::<ChCloseMsg>(json_str).map(Self::ChClose),
@@ -249,15 +229,6 @@ pub(super) struct EventMsg {
     pub id: String,
     pub seq: u64,
     pub payload: Box<RawValue>,
-}
-
-#[derive(Serialize)]
-pub(super) struct SubCloseOut {
-    pub v: u8,
-    pub kind: &'static str,
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<BridgeError>,
 }
 
 #[derive(Serialize)]
