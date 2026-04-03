@@ -160,46 +160,20 @@ impl Device for Platform {
     fn make_phone_call(&self, phone_number: &str) -> Result<(), PlatformError> {
         #[cfg(target_os = "ios")]
         {
-            use objc2::rc::Retained;
-            use objc2::{ClassType, extern_class, msg_send};
-            use objc2_foundation::{NSObject, NSString, NSURL};
-
-            extern_class!(
-                #[derive(Debug, PartialEq, Eq, Hash)]
-                #[unsafe(super(NSObject))]
-                pub struct UIApplication;
-            );
-
-            impl UIApplication {
-                pub fn shared() -> Retained<Self> {
-                    unsafe { msg_send![Self::class(), sharedApplication] }
-                }
-
-                pub fn can_open_url(&self, url: &NSURL) -> bool {
-                    unsafe { msg_send![self, canOpenURL: url] }
-                }
-
-                pub fn open_url(&self, url: &NSURL) {
-                    unsafe { msg_send![self, openURL: url] }
-                }
+            let phone_number = phone_number.trim();
+            if phone_number.is_empty() {
+                return Err(PlatformError::InvalidParameter(
+                    "Invalid phone number format".to_string(),
+                ));
             }
 
             let tel_url_string = format!("tel:{}", phone_number);
-            let url_string = NSString::from_str(&tel_url_string);
-
-            let url = unsafe {
-                let url_ptr: *mut NSURL = msg_send![NSURL::class(), URLWithString: &*url_string];
-                if url_ptr.is_null() {
-                    return Err(PlatformError::InvalidParameter(
-                        "Invalid phone number format".to_string(),
-                    ));
-                }
-                Retained::retain(url_ptr).unwrap()
-            };
-
-            let app = UIApplication::shared();
-            if app.can_open_url(&url) {
-                app.open_url(&url);
+            if super::ffi::open_url(
+                "",
+                0,
+                &tel_url_string,
+                crate::traits::app_runtime::OpenUrlTarget::External as i32,
+            ) {
                 Ok(())
             } else {
                 Err(PlatformError::Platform(
