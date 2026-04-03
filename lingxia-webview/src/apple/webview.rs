@@ -18,6 +18,7 @@ use objc2_web_kit::{
 };
 #[cfg(target_os = "ios")]
 use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
+use std::cell::RefCell;
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -285,6 +286,7 @@ unsafe fn ns_error_to_load_error(error: *mut NSError) -> LoadError {
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
     intercept_https_navigation: bool,
+    pending_browser_download_url: RefCell<Option<String>>,
 }
 
 define_class!(
@@ -396,7 +398,6 @@ define_class!(
             // Helper function to allow navigation
             let allow_navigation = || call_decision_handler(1); // WKNavigationActionPolicyAllow = 1
             let cancel_navigation = || call_decision_handler(0); // WKNavigationActionPolicyCancel = 0
-
             // Extract URL from navigation action
             let url = match self.extract_url_from_navigation_action(navigation_action) {
                 Some(url) => url,
@@ -433,6 +434,29 @@ define_class!(
                 );
                 allow_navigation();
                 return;
+            }
+
+            let should_perform_download = unsafe {
+                let value: objc2::runtime::Bool =
+                    msg_send![navigation_action, shouldPerformDownload];
+                value.as_bool()
+            };
+            if should_perform_download {
+                if let Some(managed_webview) = find_webview(webtag)
+                    && managed_webview.effective_options().profile
+                        == SecurityProfile::BrowserRelaxed
+                {
+                    self.ivars()
+                        .pending_browser_download_url
+                        .replace(Some(url.clone()));
+                    log::info!(
+                        "Apple decidePolicy mark browser download webtag={} url={}",
+                        webtag,
+                        url
+                    );
+                    allow_navigation();
+                    return;
+                }
             }
 
             // Check closure-based navigation handler first
@@ -535,7 +559,15 @@ define_class!(
                 .as_ref()
                 .map(|value| value.to_ascii_lowercase().contains("attachment"))
                 .unwrap_or(false);
-            let should_download = disposition_is_attachment || !can_show_mime.as_bool();
+            let forced_download = self
+                .ivars()
+                .pending_browser_download_url
+                .borrow_mut()
+                .take()
+                .as_ref()
+                .is_some_and(|pending_url| pending_url == &request.url);
+            let should_download =
+                forced_download || disposition_is_attachment || !can_show_mime.as_bool();
             if !should_download {
                 allow_navigation();
                 return;
@@ -704,6 +736,7 @@ impl LingXiaNavigationDelegate {
                 .set_ivars(LingXiaNavigationDelegateIvars {
                     webtag,
                     intercept_https_navigation,
+                    pending_browser_download_url: RefCell::new(None),
                 });
 
         unsafe { msg_send![super(delegate), init] }
@@ -1253,6 +1286,34 @@ impl WebViewInner {
             };
 
             // Get WKWebView class
+            #[cfg(target_os = "macos")]
+            let webview_class = if effective_options.profile == SecurityProfile::BrowserRelaxed {
+                let class_name = "LingXiaBrowserContextMenuWebView";
+                match CString::new(class_name)
+                    .ok()
+                    .and_then(|name| objc2::runtime::AnyClass::get(name.as_c_str()))
+                {
+                    Some(class) => {
+                        log::info!(
+                            "Using browser context menu webview subclass webtag={} class={}",
+                            webtag.as_str(),
+                            class_name
+                        );
+                        class
+                    }
+                    None => {
+                        log::warn!(
+                            "Browser context menu webview subclass unavailable; falling back to WKWebView webtag={} class={}",
+                            webtag.as_str(),
+                            class_name
+                        );
+                        objc2::class!(WKWebView)
+                    }
+                }
+            } else {
+                objc2::class!(WKWebView)
+            };
+            #[cfg(not(target_os = "macos"))]
             let webview_class = objc2::class!(WKWebView);
 
             // Allocate WebView
@@ -1490,7 +1551,6 @@ impl WebViewInner {
             let console_name = NSString::from_str("LingXiaConsole");
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
-
             Ok(message_handler)
         }
     }

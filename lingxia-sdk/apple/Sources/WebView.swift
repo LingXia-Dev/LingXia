@@ -89,6 +89,16 @@ private struct AssociatedKeys {
 class WebViewManager {
     private static let log = OSLog(subsystem: "LingXia", category: "WebView")
     private static var debuggingEnabled = false
+    #if os(macOS)
+    // Keep the Objective-C-visible browser subclass linked so Rust can instantiate it by name.
+    private static let browserContextMenuWebViewClass: AnyClass = BrowserContextMenuWebView.self
+    #endif
+
+    static func registerRuntimeClasses() {
+        #if os(macOS)
+        _ = browserContextMenuWebViewClass
+        #endif
+    }
 
     /// Find WebView from Rust layer
     static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {

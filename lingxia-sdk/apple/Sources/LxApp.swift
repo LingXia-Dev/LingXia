@@ -274,6 +274,8 @@ public class LxAppCore {
             return
         }
 
+        WebViewManager.registerRuntimeClasses()
+
         // Register extensions once before initialization
         if !extensionsRegistered {
             registerExtensions?()
