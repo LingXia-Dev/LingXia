@@ -87,6 +87,17 @@ export default function APIPage() {
                   </svg>
                 </div>
               </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToCloudPage({ type: 'functions' })}
+              >
+                <div className="text-sm text-gray-700">Cloud Functions Demo</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
             </div>
           )}
         </div>

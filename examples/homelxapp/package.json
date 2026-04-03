@@ -4,10 +4,8 @@
   "description": "LingXia LxApp demo",
   "type": "module",
   "scripts": {
-    "build": "node ../../tools/lingxia-cli/npm/dist/index.js build --release",
-    "build:react": "npm run build -- --framework react",
-    "build:vue": "npm run build -- --framework vue",
-    "dev": "node ../../tools/lingxia-cli/npm/dist/index.js build"
+    "build:react": "../../target/debug/lingxia build --framework react",
+    "build:vue": "../../target/debug/lingxia build --framework vue"
   },
   "keywords": [
     "lingxia",
@@ -16,10 +14,10 @@
   "author": "LingXia Team",
   "license": "MIT",
   "dependencies": {
-    "@lingxia/rong": "^0.0.1",
     "@lingxia/bridge": "file:../../packages/lingxia-bridge",
     "@lingxia/elements": "file:../../packages/lingxia-elements",
     "@lingxia/react": "file:../../packages/lingxia-react",
+    "@lingxia/rong": "^0.0.1",
     "@lingxia/vue": "file:../../packages/lingxia-vue",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
@@ -35,8 +33,12 @@
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.10",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-vue": "^6.0.5",
     "autoprefixer": "^10.4.20",
+    "esbuild": "^0.27.0",
     "postcss": "^8.4.41",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "^8.0.0"
   }
 }

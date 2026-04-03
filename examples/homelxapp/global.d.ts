@@ -13,8 +13,8 @@ import type * as RongProcess from '@lingxia/rong/process';
 declare global {
   namespace Rong {
     // File System APIs
-    const writeTextFile: typeof RongFS.writeTextFile;
     const readTextFile: typeof RongFS.readTextFile;
+    const writeFile: typeof RongFS.writeFile;
     const mkdir: typeof RongFS.mkdir;
     const readDir: typeof RongFS.readDir;
     const remove: typeof RongFS.remove;

@@ -4,16 +4,50 @@
       <template v-if="type === 'mqtt'">
         <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="px-5 py-5 border-b border-gray-100">
-            <div class="text-sm text-gray-800 font-semibold">Subscription</div>
+            <div class="text-sm text-gray-800 font-semibold">Runtime Connection</div>
             <div class="text-xs text-gray-500 mt-0.5">
-              Publish to this short topic from the demo environment and watch the latest frame appear below.
+              MQTT runtime status for the shared cloud session.
+            </div>
+          </div>
+          <div class="p-5">
+            <div class="grid gap-2 rounded-xl bg-sky-50/70 p-4 text-xs text-gray-600">
+              <div class="flex items-center justify-between gap-3">
+                <span>Connection state</span>
+                <span class="flex items-center gap-1.5">
+                  <span class="inline-block w-2 h-2 rounded-full" :class="mqttStateDotClass" />
+                  <span class="font-mono font-semibold" :class="mqttStateColorClass">{{ mqttRuntimeState }}</span>
+                </span>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <span>Last error</span>
+                <span class="font-mono text-right" :class="mqttLastError ? 'text-red-600' : 'text-gray-800'">{{ mqttLastError || '-' }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-gray-100">
+            <div class="text-sm text-gray-800 font-semibold">Topic Subscription</div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              Manage the demo topic subscription and inspect how many messages this page has received.
             </div>
           </div>
           <div class="p-5 space-y-4">
             <div class="rounded-xl border border-gray-200 bg-emerald-50/60 p-4">
-              <div class="text-xs uppercase tracking-wide text-emerald-700">Status</div>
-              <div class="mt-2 text-sm font-semibold text-gray-800">{{ mqttStatus }}</div>
-              <div class="mt-2 text-xs text-gray-500">Messages received: {{ mqttMessageCount }}</div>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="text-xs uppercase tracking-wide text-emerald-700">Topic</div>
+                  <div class="mt-2 font-mono text-sm text-gray-900 break-all">{{ mqttTopicFilter }}</div>
+                </div>
+                <span
+                  class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold"
+                  :class="mqttSubscribed ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'"
+                >
+                  {{ mqttSubscribed ? 'active' : 'inactive' }}
+                </span>
+              </div>
+              <div class="mt-3 text-sm font-semibold text-gray-800">{{ mqttStatus }}</div>
               <div class="mt-4 grid grid-cols-2 gap-3">
                 <button
                   @click="startMqttDemo"
@@ -41,11 +75,17 @@
                 </button>
               </div>
             </div>
-            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <div class="text-xs uppercase tracking-wide text-gray-500">Topic</div>
-              <div class="mt-2 font-mono text-sm text-gray-800 break-all">{{ mqttTopicFilter }}</div>
-              <div class="mt-3 text-xs text-gray-500">
-                QoS 1 guarantees delivery after subscribe. It does not replay messages published before subscribe.
+
+            <div class="grid gap-2 rounded-xl bg-white p-4 text-xs text-gray-600 border border-gray-200">
+              <div class="flex items-center justify-between gap-3">
+                <span>Subscription state</span>
+                <span class="font-mono font-semibold" :class="mqttSubscribed ? 'text-emerald-600' : 'text-gray-500'">
+                  {{ mqttSubscribed ? 'active' : 'inactive' }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between gap-3">
+                <span>Messages received</span>
+                <span class="font-mono text-gray-800">{{ mqttMessageCount }}</span>
               </div>
             </div>
           </div>
@@ -93,7 +133,7 @@
               <div>
                 <div class="text-sm text-gray-800 font-semibold">Cloud Authentication</div>
                 <div class="text-xs text-gray-500 mt-0.5">
-                  Use the home lxapp to start login and inspect auth state.
+                  Any lxapp may start interactive login and inspect the shared auth state.
                 </div>
               </div>
             </div>
@@ -105,14 +145,8 @@
                 Interactive Login
               </button>
               <button
-                @click="getAccessToken"
-                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
-              >
-                Get Access Token
-              </button>
-              <button
                 @click="logoutCurrentTenant"
-                class="col-span-2 py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
+                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 text-white"
               >
                 Logout Current Tenant
               </button>
@@ -138,7 +172,7 @@
               </div>
               <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
                 <span class="text-sm text-gray-600">Status</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg text-right">{{ status }}</span>
+                <span class="text-sm font-semibold px-3 py-1 rounded-lg text-right" :class="authStatusColorClass">{{ status }}</span>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-gray-200 gap-4">
                 <span class="text-sm text-gray-600">Active Tenant</span>
@@ -154,12 +188,8 @@
                   </span>
                 </div>
               </div>
-              <div class="py-3">
-                <div class="text-sm text-gray-600 mb-2">Access Token</div>
-                <div class="text-sm font-medium text-gray-800 px-3 py-3 bg-emerald-50 rounded-lg break-all">
-                  {{ summarizeToken(accessToken) }}
-                </div>
-              </div>
+
+
             </div>
           </div>
         </div>
@@ -220,7 +250,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLingXia } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type TenantLike = {
@@ -237,8 +267,9 @@ type PageData = {
   status?: string;
   tenant?: TenantLike | null;
   tenants?: TenantLike[];
-  accessToken?: string;
   mqttStatus?: string;
+  mqttRuntimeState?: string;
+  mqttLastError?: string;
   mqttSubscribed?: boolean;
   mqttTopicFilter?: string;
   mqttMessageCount?: number;
@@ -249,36 +280,65 @@ type PageData = {
 
 type PageActions = {
   loginInteractive: () => void | Promise<void>;
-  getAccessToken: () => void | Promise<void>;
   logoutCurrentTenant: () => void | Promise<void>;
   switchTenant: (params: { tenantId: string }) => void | Promise<void>;
   startMqttDemo: () => void | Promise<void>;
   stopMqttDemo: () => void | Promise<void>;
 };
 
+const { data, actions } = useLxPage<PageData, PageActions>();
 const {
-  data,
   loginInteractive,
-  getAccessToken,
   logoutCurrentTenant,
   switchTenant,
   startMqttDemo,
   stopMqttDemo,
-} = useLingXia<PageData, PageActions>();
+} = actions;
 
-const type = computed(() => data.value.type || 'auth');
-const status = computed(() => data.value.status || 'Idle');
-const tenant = computed(() => data.value.tenant || null);
-const tenants = computed(() => data.value.tenants || []);
-const accessToken = computed(() => data.value.accessToken || '');
-const mqttStatus = computed(() => data.value.mqttStatus || 'Idle');
-const mqttSubscribed = computed(() => !!data.value.mqttSubscribed);
-const mqttTopicFilter = computed(() => data.value.mqttTopicFilter || 'demo/mqtt');
-const mqttMessageCount = computed(() => data.value.mqttMessageCount || 0);
-const mqttLastTopic = computed(() => data.value.mqttLastTopic || '');
-const mqttLastPayload = computed(() => data.value.mqttLastPayload || '');
-const mqttLastReceivedAt = computed(() => data.value.mqttLastReceivedAt || '');
+const type = computed(() => data.type || 'auth');
+const status = computed(() => data.status || 'Idle');
+const tenant = computed(() => data.tenant || null);
+const tenants = computed(() => data.tenants || []);
+const mqttStatus = computed(() => data.mqttStatus || 'Idle');
+const mqttRuntimeState = computed(() => data.mqttRuntimeState || 'idle');
+const mqttLastError = computed(() => data.mqttLastError || '');
+const mqttSubscribed = computed(() => !!data.mqttSubscribed);
+const mqttTopicFilter = computed(() => data.mqttTopicFilter || 'demo/mqtt');
+const mqttMessageCount = computed(() => data.mqttMessageCount || 0);
+const mqttLastTopic = computed(() => data.mqttLastTopic || '');
+const mqttLastPayload = computed(() => data.mqttLastPayload || '');
+const mqttLastReceivedAt = computed(() => data.mqttLastReceivedAt || '');
 const activeTenantId = computed(() => getTenantId(tenant.value));
+
+const mqttStateColorClass = computed(() => {
+  switch (mqttRuntimeState.value) {
+    case 'connected': return 'text-emerald-600';
+    case 'connecting':
+    case 'reconnecting': return 'text-amber-600';
+    case 'disconnected':
+    case 'error': return 'text-red-600';
+    default: return 'text-gray-600';
+  }
+});
+
+const mqttStateDotClass = computed(() => {
+  switch (mqttRuntimeState.value) {
+    case 'connected': return 'bg-emerald-500';
+    case 'connecting':
+    case 'reconnecting': return 'bg-amber-500';
+    case 'disconnected':
+    case 'error': return 'bg-red-500';
+    default: return 'bg-gray-400';
+  }
+});
+
+const authStatusColorClass = computed(() => {
+  const s = status.value.toLowerCase();
+  if (s.includes('failed') || s.includes('error')) return 'text-red-600 bg-red-50';
+  if (s.includes('succeeded') || s === 'ready') return 'text-emerald-700 bg-emerald-50';
+  if (s.includes('...') || s.includes('starting') || s.includes('switching') || s.includes('logging')) return 'text-amber-700 bg-amber-50';
+  return 'text-gray-800 bg-blue-50';
+});
 
 function getTenantId(item: TenantLike | null | undefined): string {
   return item?.tenantId || '';
@@ -292,13 +352,5 @@ function getTenantLogoUrl(item: TenantLike | null | undefined): string {
   return item?.logoUrl || '';
 }
 
-function summarizeToken(token: string): string {
-  if (!token) {
-    return 'No token fetched yet';
-  }
-  if (token.length <= 24) {
-    return token;
-  }
-  return `${token.slice(0, 12)}...${token.slice(-8)}`;
-}
+
 </script>
