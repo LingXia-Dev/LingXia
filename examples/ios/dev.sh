@@ -26,11 +26,6 @@ for arg in "$@"; do
     fi
 done
 
-# Mobile builds default to ring unless TLS backend is explicitly chosen.
-ensure_tls_feature_default "tls-ring"
-# Align cloud JS engine with lxapp on Apple platforms.
-ensure_cloud_engine_feature_default "jscore"
-
 # Define the resources directory for iOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/lxapp/Resources"
 echo "RESOURCES_DIR: $RESOURCES_DIR"
@@ -38,35 +33,8 @@ echo "RESOURCES_DIR: $RESOURCES_DIR"
 # Generate Swift bridge bindings before staging the Apple SDK into target/spm/lingxia.
 # This creates/updates: lingxia-sdk/apple/Sources/generated/...
 if [ "$SKIP_RUST" = false ]; then
-    echo "[0/5] Generating Swift bridge bindings..."
-    cd "$WORKSPACE_ROOT"
-
     TARGET="aarch64-apple-ios"
-    # `lingxia` only accepts TLS features; filter out extension features such as `cloud`
-    # that belong to `lingxia-lib`.
-    BRIDGE_LXAPP_FEATURES="$(
-        printf '%s' "$LXAPP_FEATURES" \
-            | tr ',' '\n' \
-            | sed 's/[[:space:]]//g' \
-            | awk '$0=="tls-ring" || $0=="tls-aws-lc"' \
-            | paste -sd, -
-    )"
-    if [ -n "$LXAPP_FEATURES" ] && [ "$BRIDGE_LXAPP_FEATURES" != "${LXAPP_FEATURES// /}" ]; then
-        echo "  → Bridge build features filtered for lingxia: ${BRIDGE_LXAPP_FEATURES:-<none>}"
-    fi
-
-    BRIDGE_LOG="$(mktemp -t lingxia_ios_bridge.XXXXXX)"
-    if (
-        LXAPP_FEATURES="$BRIDGE_LXAPP_FEATURES"
-        run_cargo_with_lxapp_features env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target $TARGET --release
-    ) >"$BRIDGE_LOG" 2>&1; then
-        grep -E "Generated|warning:" "$BRIDGE_LOG" | head -5 || true
-    else
-        cat "$BRIDGE_LOG" >&2
-        rm -f "$BRIDGE_LOG"
-        exit 1
-    fi
-    rm -f "$BRIDGE_LOG"
+    generate_apple_swift_bridges "$TARGET" "[0/5]" "$WORKSPACE_ROOT"
 fi
 
 echo "[1/5] Preparing iOS SDK resources..."

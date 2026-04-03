@@ -18,79 +18,49 @@ init_common_vars() {
     EXPECT_LXAPP=false
 }
 
-# Ensure a default TLS feature is present in LXAPP_FEATURES.
-# If user already specified tls-ring or tls-aws-lc, keep user choice.
-ensure_tls_feature_default() {
-    local default_tls_feature="$1"
+# TLS backend is selected automatically by target:
+# - mobile targets use ring
+# - desktop and other non-mobile targets use aws-lc-rs
+reject_legacy_tls_features() {
     local features="${LXAPP_FEATURES// /}"
-
     if [[ "$features" =~ (^|,)tls-ring(,|$) ]] || [[ "$features" =~ (^|,)tls-aws-lc(,|$) ]]; then
-        LXAPP_FEATURES="$features"
-        return 0
+        echo "❌ TLS backend is selected automatically by target (mobile = ring, desktop = aws-lc-rs)." >&2
+        echo "   Remove tls-ring/tls-aws-lc from LXAPP_FEATURES." >&2
+        return 1
     fi
-
-    if [ -z "$features" ]; then
-        LXAPP_FEATURES="$default_tls_feature"
-    else
-        LXAPP_FEATURES="$features,$default_tls_feature"
-    fi
-    echo "🔐 Default TLS feature enabled: $default_tls_feature"
+    return 0
 }
 
-# Ensure cloud JS engine feature is present when cloud is enabled.
-# If user already specified an engine feature, keep user choice.
-ensure_cloud_engine_feature_default() {
-    local default_engine_feature="$1"
-    local features="${LXAPP_FEATURES// /}"
-
-    if [[ ! "$features" =~ (^|,)cloud(,|$) ]]; then
-        LXAPP_FEATURES="$features"
-        return 0
-    fi
-
-    if [[ "$features" =~ (^|,)quickjs(,|$) ]] || [[ "$features" =~ (^|,)jscore(,|$) ]]; then
-        LXAPP_FEATURES="$features"
-        return 0
-    fi
-
-    if [ -z "$features" ]; then
-        LXAPP_FEATURES="$default_engine_feature"
-    else
-        LXAPP_FEATURES="$features,$default_engine_feature"
-    fi
-    echo "⚙️ Default cloud JS engine feature enabled: $default_engine_feature"
-}
-
-# Run cargo command with LXAPP feature policy:
-# - if both tls-ring and tls-aws-lc are set: fail fast
-# - if only tls-ring is set: add --no-default-features to avoid default tls-aws-lc conflict
-# - otherwise: pass --features as-is
 run_cargo_with_lxapp_features() {
     local features="${LXAPP_FEATURES// /}"
+    reject_legacy_tls_features || return 1
     if [ -z "$features" ]; then
         "$@"
         return $?
     fi
+    "$@" --features "$features"
+}
 
-    local has_ring=false
-    local has_aws=false
-    if [[ ",$features," == *",tls-ring,"* ]]; then
-        has_ring=true
-    fi
-    if [[ ",$features," == *",tls-aws-lc,"* ]]; then
-        has_aws=true
-    fi
+generate_apple_swift_bridges() {
+    local target="$1"
+    local step_label="${2:-}"
+    local workspace_root="${3:-$LINGXIA_ROOT}"
 
-    if [ "$has_ring" = true ] && [ "$has_aws" = true ]; then
-        echo "❌ Conflicting TLS features: tls-ring and tls-aws-lc cannot be enabled together" >&2
+    echo "${step_label} Generating Swift bridge bindings..."
+    cd "$workspace_root"
+
+    local bridge_log
+    bridge_log="$(mktemp -t lingxia_apple_bridge.XXXXXX)"
+    if (
+        env LINGXIA_GENERATE_BRIDGE=1 cargo build -p lingxia --target "$target" --release
+    ) >"$bridge_log" 2>&1; then
+        grep -E "Generated|warning:" "$bridge_log" | head -5 || true
+    else
+        cat "$bridge_log" >&2
+        rm -f "$bridge_log"
         return 1
     fi
-
-    if [ "$has_ring" = true ] && [ "$has_aws" = false ]; then
-        "$@" --no-default-features --features "$features"
-    else
-        "$@" --features "$features"
-    fi
+    rm -f "$bridge_log"
 }
 
 # Parse a single argument
@@ -259,6 +229,35 @@ build_and_copy_homelxapp() {
     copy_static_lxapp_to_assets "$dist_dir" "$target_dir"
 }
 
+# Build a packaged lxapp webui and copy its dist output into target assets.
+# Usage: build_and_copy_packaged_lxapp "$PACKAGE_DIR" "$TARGET_DIR" [ASSET_APP_DIR]
+build_and_copy_packaged_lxapp() {
+    local package_dir="$1"
+    local target_dir="$2"
+    local asset_app_dir="${3:-}"
+    local dist_dir="$package_dir/dist"
+
+    if [ -z "$package_dir" ] || [ -z "$target_dir" ]; then
+        echo "❌ Usage: build_and_copy_packaged_lxapp <package_dir> <target_dir> [asset_app_dir]"
+        exit 1
+    fi
+
+    if [ ! -f "$package_dir/package.json" ]; then
+        echo "❌ Error: package.json not found: $package_dir/package.json"
+        exit 1
+    fi
+
+    echo "Building packaged lxapp: $package_dir"
+    (cd "$package_dir" && npm run build)
+
+    if [ ! -d "$dist_dir" ]; then
+        echo "❌ Error: dist directory not found in $package_dir"
+        exit 1
+    fi
+
+    copy_static_lxapp_to_assets "$dist_dir" "$target_dir" "$asset_app_dir"
+}
+
 # Build web runtime and copy runtime.js to target directory
 # Usage: build_and_copy_runtime "$TARGET_DIR" [es2020|es5] [all|desktop|mobile]
 build_and_copy_runtime() {
@@ -296,9 +295,15 @@ build_and_copy_runtime() {
         echo "❌ Error: Runtime package not found: $runtime_dir/package.json"
         exit 1
     fi
-    if [ ! -d "$runtime_dir/node_modules" ]; then
-        echo "❌ Error: Missing $runtime_dir/node_modules (run: cd $runtime_dir && npm ci)"
-        exit 1
+
+    local node_modules_dir="$runtime_dir/node_modules"
+    if [ ! -d "$node_modules_dir" ]; then
+        echo "Installing web runtime dependencies..."
+        if [ -f "$runtime_dir/package-lock.json" ]; then
+            (cd "$runtime_dir" && npm ci)
+        else
+            (cd "$runtime_dir" && npm install)
+        fi
     fi
 
     echo "Building web runtime ($ecma_target, platform=$runtime_platform)..."

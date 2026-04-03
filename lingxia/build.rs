@@ -7,6 +7,8 @@
 //! For normal builds (Android, user apps), this does nothing.
 
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     let target = env::var("TARGET").unwrap_or_default();
@@ -25,10 +27,9 @@ fn main() {
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 fn generate_swift_bridge() {
-    use std::fs;
-    use std::path::PathBuf;
-
     println!("cargo:rerun-if-changed=src/apple.rs");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+    println!("cargo:rerun-if-changed=build.rs");
 
     let package_name = "LingXiaRustAPI";
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());

@@ -45,11 +45,6 @@ for arg in "$@"; do
     fi
 done
 
-# Mobile builds default to ring unless TLS backend is explicitly chosen.
-ensure_tls_feature_default "tls-ring"
-# Align cloud JS engine with lxapp on Android.
-ensure_cloud_engine_feature_default "quickjs"
-
 require_dir_env() {
     local var_name="$1"
     local example="$2"
@@ -142,11 +137,6 @@ build_rust_android() {
             exit 1
             ;;
     esac
-
-    # Clean CMake cache for aws-lc-sys to avoid cross-compilation issues
-    # (CMake caches host toolchain settings that conflict with Android NDK)
-    rm -rf "$WORKSPACE_ROOT/target/$target/release/build/aws-lc-sys-"*/out/build/CMakeCache.txt
-    rm -rf "$WORKSPACE_ROOT/target/$target/release/build/aws-lc-sys-"*/out/build/CMakeFiles
 
     # Build lingxia-lib (native library + user extensions)
     if [ -n "$LXAPP_FEATURES" ]; then

@@ -26,9 +26,6 @@ for arg in "$@"; do
     fi
 done
 
-# Align cloud JS engine with lxapp on Apple platforms.
-ensure_cloud_engine_feature_default "jscore"
-
 # Define the resources directory for macOS
 RESOURCES_DIR="$SCRIPT_DIR/Sources/Resources"
 
@@ -36,11 +33,11 @@ RESOURCES_DIR="$SCRIPT_DIR/Sources/Resources"
 if [ "$(uname -m)" = "arm64" ]; then
     ARCH="arm64"
     RUST_TARGET="aarch64-apple-darwin"
-    BUILD_DIR=".build/arm64-apple-macosx/debug"
+    BUILD_DIR=".build/arm64-apple-macosx/release"
 else
     ARCH="x86_64"
     RUST_TARGET="x86_64-apple-darwin"
-    BUILD_DIR=".build/x86_64-apple-macosx/debug"
+    BUILD_DIR=".build/x86_64-apple-macosx/release"
 fi
 
 echo "[0/5] Preparing macOS SDK resources..."
@@ -57,7 +54,7 @@ if [ "$SKIP_RUST" = false ]; then
     # Build lingxia-lib as staticlib for macOS
     if [ -n "$LXAPP_FEATURES" ]; then
         echo "  → Building lingxia-lib (staticlib) with features: $LXAPP_FEATURES"
-        cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib --features "$LXAPP_FEATURES"
+        run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib
     else
         echo "  → Building lingxia-lib (staticlib)..."
         cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib
@@ -72,10 +69,15 @@ fi
 echo "[2/5] Preparing app resources..."
 mkdir -p "$RESOURCES_DIR"
 rm -rf "$RESOURCES_DIR/homelxapp" 2>/dev/null || true
+rm -rf "$RESOURCES_DIR/app.lingxia.browser" 2>/dev/null || true
 
 generate_app_config "$RESOURCES_DIR"
 build_and_copy_runtime "$RESOURCES_DIR" "es2020" "desktop"
 build_and_copy_homelxapp "$RESOURCES_DIR"
+build_and_copy_packaged_lxapp \
+    "$LINGXIA_ROOT/crates/lingxia-shell/webui" \
+    "$RESOURCES_DIR" \
+    "app.lingxia.browser"
 
 echo "[3/5] Resetting SwiftPM build artifacts..."
 cd "$SCRIPT_DIR"
@@ -86,8 +88,10 @@ cd "$SCRIPT_DIR"
 
 # Set the project root environment variable for Package.swift
 export LINGXIA_PROJECT_ROOT="$LINGXIA_ROOT"
+export LINGXIA_BUILD_CONFIG="release"
+unset SDKROOT
 
-swift build --arch $ARCH
+swift build --arch $ARCH -c release
 
 BINARY_PATH="$BUILD_DIR/LingXiaDemo"
 
@@ -123,6 +127,10 @@ fi
 if [ -d "$BUILD_DIR/lingxia_lingxia.bundle" ]; then
     cp -r "$BUILD_DIR/lingxia_lingxia.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi
+
+echo "Signing app bundle (ad-hoc)..."
+codesign --force --deep --sign - "$APP_BUNDLE"
+codesign --verify --deep --strict "$APP_BUNDLE"
 
 echo "✅ App bundle created at $APP_BUNDLE"
 echo ""

@@ -25,11 +25,6 @@ for arg in "$@"; do
   fi
 done
 
-# Mobile builds default to ring unless TLS backend is explicitly chosen.
-ensure_tls_feature_default "tls-ring"
-# Align cloud JS engine with lxapp on HarmonyOS.
-ensure_cloud_engine_feature_default "quickjs"
-
 # Native library paths
 # Note: SDK HAR does NOT bundle .so; example app directly includes it
 RUST_SO_OUTPUT="$LINGXIA_ROOT/target/aarch64-unknown-linux-ohos/release/liblingxia.so"
@@ -96,8 +91,8 @@ if [ ! -f "$SDK_HAR_PATH" ]; then
   echo "❌ SDK HAR not found after build: $SDK_HAR_PATH" >&2; exit 1
 fi
 
-# 3) Prepare example app assets (app.json + homelxapp)
-echo "Preparing example app assets (app.json + homelxapp) ..."
+# 3) Prepare example app assets (app.json + runtime + homelxapp)
+echo "Preparing example app assets (app.json + runtime + homelxapp) ..."
 RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
 
@@ -127,9 +122,6 @@ if [ "$CLEAN_INSTALL" = true ]; then
 fi
 hdc install -r "$HAP_PATH" >/dev/null
 
-echo "Starting app ..."
-hdc shell aa start -a "$APP_ABILITY" -b "$APP_PACKAGE" >/dev/null
-
 echo "Showing logs (Ctrl-C to stop; auto-stop after ${HILOG_DURATION:-60}s)..."
 
 DURATION="${HILOG_DURATION:-60}"
@@ -156,6 +148,9 @@ HILOG_PID=$!
 if [ "$DURATION" -gt 0 ] 2>/dev/null; then
   ( sleep "$DURATION"; cleanup_logs ) &
 fi
+
+echo "Starting app ..."
+hdc shell aa start -a "$APP_ABILITY" -b "$APP_PACKAGE" >/dev/null
 
 grep -E "(${PATTERN})" < "$PIPE" || true
 cleanup_logs

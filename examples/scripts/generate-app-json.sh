@@ -39,6 +39,8 @@ generate_app_json() {
         return 1
     fi
 
+    local semver_pattern='^[0-9]+\.[0-9]+\.[0-9]+$'
+
     local selected_home_lxapp="${HOME_LXAPP:-}"
     local home_lxapp_id=""
     local home_lxapp_json=""
@@ -73,6 +75,21 @@ generate_app_json() {
     home_lxapp_version=$(jq -r '.version // empty' "$home_lxapp_json")
     if [ -z "$home_lxapp_version" ]; then
         echo "Error: version missing in $home_lxapp_json" >&2
+        return 1
+    fi
+    if ! [[ "$home_lxapp_version" =~ $semver_pattern ]]; then
+        echo "Error: version in $home_lxapp_json must be semantic version (major.minor.patch)" >&2
+        return 1
+    fi
+
+    local product_version
+    product_version=$(jq -r '.app.productVersion // empty' "$config_file")
+    if [ -z "$product_version" ]; then
+        echo "Error: app.productVersion missing in $config_file" >&2
+        return 1
+    fi
+    if ! [[ "$product_version" =~ $semver_pattern ]]; then
+        echo "Error: app.productVersion in $config_file must be semantic version (major.minor.patch)" >&2
         return 1
     fi
 
