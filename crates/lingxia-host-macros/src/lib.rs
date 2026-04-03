@@ -3,7 +3,7 @@ use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::{
-    Expr, FnArg, GenericArgument, ItemFn, Lit, LitStr, PatType, PathArguments, Token, Type,
+    Expr, FnArg, GenericArgument, ItemFn, Lit, LitStr, PatType, Path, PathArguments, Token, Type,
     parse_macro_input,
 };
 
@@ -52,6 +52,26 @@ pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
         HostMode::Channel => expand_channel(route_lit.clone(), namespace, method, input_fn).into(),
         HostMode::Unary => expand_host(route_lit.clone(), namespace, method, mode, input_fn).into(),
     }
+}
+
+#[proc_macro]
+pub fn register_hosts(input: TokenStream) -> TokenStream {
+    let parser = Punctuated::<Path, Token![,]>::parse_terminated;
+    let paths = parse_macro_input!(input with parser);
+
+    let registrations = match paths
+        .iter()
+        .map(expand_register_host_path)
+        .collect::<syn::Result<Vec<_>>>()
+    {
+        Ok(registrations) => registrations,
+        Err(err) => return err.to_compile_error().into(),
+    };
+
+    quote!({
+        #(#registrations)*
+    })
+    .into()
 }
 
 fn parse_host_attr(args: Punctuated<Expr, Token![,]>) -> syn::Result<(LitStr, HostMode)> {
@@ -112,6 +132,28 @@ enum HostMode {
     Unary,
     Stream,
     Channel,
+}
+
+fn expand_register_host_path(path: &Path) -> syn::Result<proc_macro2::TokenStream> {
+    let mut helper_path = path.clone();
+    let Some(last_segment) = helper_path.segments.last_mut() else {
+        return Err(syn::Error::new_spanned(
+            path,
+            "register_hosts! expects a handler function path",
+        ));
+    };
+
+    if !matches!(last_segment.arguments, PathArguments::None) {
+        return Err(syn::Error::new_spanned(
+            &last_segment.arguments,
+            "register_hosts! does not accept generic arguments",
+        ));
+    }
+
+    last_segment.ident = format_ident!("{}_host", last_segment.ident);
+    Ok(quote! {
+        ::lingxia::register_host_entry(#helper_path());
+    })
 }
 
 fn expand_host(
