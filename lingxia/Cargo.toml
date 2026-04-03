@@ -27,7 +27,6 @@ lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
 lingxia-macro = { workspace = true }
 log = { workspace = true }
-paste = "1.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

@@ -55,7 +55,10 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
         }
     };
     install_global_executor();
-    lingxia_app_context::set_app_config(app_config.clone());
+    if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
+        log::error!("Failed to initialize app configuration: {}", err);
+        return None;
+    }
     lingxia_browser::register_bundled_app();
     crate::browser::register_builtin();
     lingxia_logic::register_logic_runtime();

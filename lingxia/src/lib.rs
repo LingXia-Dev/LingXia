@@ -2,9 +2,7 @@
 
 extern crate self as lingxia;
 pub use lingxia_app_context::{AppConfig, app_config, lingxia_id, product_name, product_version};
-pub use lingxia_macro::host;
-#[doc(hidden)]
-pub use paste;
+pub use lingxia_macro::{host, register_hosts};
 
 pub use lingxia_media::{
     FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
@@ -37,14 +35,3 @@ pub mod push;
 pub(crate) use bootstrap::init_with_platform;
 #[doc(hidden)]
 pub use tokio;
-
-#[macro_export]
-macro_rules! register_hosts {
-    ($($handler:ident),+ $(,)?) => {{
-        $crate::paste::paste! {
-            $(
-                $crate::register_host_entry([<$handler _host>]());
-            )+
-        }
-    }};
-}
