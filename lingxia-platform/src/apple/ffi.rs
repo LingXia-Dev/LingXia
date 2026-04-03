@@ -185,6 +185,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openDocument")]
         fn open_document(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.revealInFileManager")]
+        fn reveal_in_file_manager(path: &str) -> bool;
+
         #[swift_bridge(swift_name = "LxAppMedia.chooseMedia")]
         fn choose_media(
             max_count: u32,
@@ -318,6 +321,8 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
+#[cfg(target_os = "macos")]
+pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
     cancel_preview_media, close_lxapp, hide_popup, hide_toast, navigate, open_document, open_lxapp,

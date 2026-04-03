@@ -10,6 +10,11 @@ pub struct OpenDocumentRequest {
 }
 
 #[derive(Debug, Clone)]
+pub struct RevealInFileManagerRequest {
+    pub path: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct FileDialogFilter {
     pub name: Option<String>,
     pub extensions: Vec<String>,
@@ -40,6 +45,17 @@ pub trait FileInteraction: Send + Sync + 'static {
         &self,
         request: OpenDocumentRequest,
     ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+
+    fn reveal_in_file_manager(
+        &self,
+        _request: RevealInFileManagerRequest,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async {
+            Err(PlatformError::NotSupported(
+                "reveal_in_file_manager is not supported on this platform".into(),
+            ))
+        }
+    }
 
     fn choose_file(
         &self,

@@ -770,6 +770,28 @@ extension LxApp {
         #endif
     }
 
+    /// Reveal a file or directory in the system file manager.
+    nonisolated public static func revealInFileManager(path: RustStr) -> Bool {
+        let pathString = path.toString()
+        #if os(macOS)
+        return executeOnMain {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: pathString, isDirectory: &isDirectory) else {
+                return false
+            }
+            let url = URL(fileURLWithPath: pathString)
+            if isDirectory.boolValue {
+                return NSWorkspace.shared.open(url)
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+            return true
+        }
+        #else
+        let _ = pathString
+        return false
+        #endif
+    }
+
     /// Hide current toast immediately
     nonisolated public static func hideToast() {
         executeOnMain {
