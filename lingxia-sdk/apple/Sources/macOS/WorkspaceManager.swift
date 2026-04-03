@@ -191,9 +191,9 @@ class WorkspaceManager: NSObject {
     let contentContainer = NSView()
 
     /// Toolbar + contentContainer wrapper; placed inside the WebView card by WindowController.
-    let centerPanelView = NSView()
+    let workspaceView = NSView()
 
-    var rootView: NSView { centerPanelView }
+    var rootView: NSView { workspaceView }
 
     private weak var overlayParent: NSView?
     private weak var sidebarRef: NSView?
@@ -210,10 +210,10 @@ class WorkspaceManager: NSObject {
 
     override init() {
         super.init()
-        centerPanelView.wantsLayer = true
+        workspaceView.wantsLayer = true
         contentContainer.wantsLayer = true
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
-        centerPanelView.addSubview(contentContainer)
+        workspaceView.addSubview(contentContainer)
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
@@ -229,13 +229,13 @@ class WorkspaceManager: NSObject {
         self.onCardEdgesChanged = onCardEdgesChanged
     }
 
-    /// Constrains `contentContainer` to fill `centerPanelView` below the toolbar.
+    /// Constrains `contentContainer` to fill `workspaceView` below the toolbar.
     func attachBelowToolbar(_ toolbarView: NSView) {
         NSLayoutConstraint.activate([
             contentContainer.topAnchor.constraint(equalTo: toolbarView.bottomAnchor),
-            contentContainer.leadingAnchor.constraint(equalTo: centerPanelView.leadingAnchor),
-            contentContainer.trailingAnchor.constraint(equalTo: centerPanelView.trailingAnchor),
-            contentContainer.bottomAnchor.constraint(equalTo: centerPanelView.bottomAnchor),
+            contentContainer.leadingAnchor.constraint(equalTo: workspaceView.leadingAnchor),
+            contentContainer.trailingAnchor.constraint(equalTo: workspaceView.trailingAnchor),
+            contentContainer.bottomAnchor.constraint(equalTo: workspaceView.bottomAnchor),
         ])
     }
 

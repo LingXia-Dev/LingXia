@@ -213,8 +213,8 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             }
         }
         navigationToolbar = toolbar
-        let centerPanel = workspaceManager.centerPanelView
-        centerPanel.addSubview(toolbar)
+        let workspace = workspaceManager.workspaceView
+        workspace.addSubview(toolbar)
         workspaceManager.attachBelowToolbar(toolbar)
 
         // Wire up WorkspaceManager: panel cards float in contentView as siblings of the WebView
@@ -275,10 +275,10 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             right.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             right.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
 
-            // Toolbar: spans full top of centerPanelView
-            toolbar.topAnchor.constraint(equalTo: centerPanel.topAnchor),
-            toolbar.leadingAnchor.constraint(equalTo: centerPanel.leadingAnchor),
-            toolbar.trailingAnchor.constraint(equalTo: centerPanel.trailingAnchor),
+            // Toolbar: spans full top of workspaceView
+            toolbar.topAnchor.constraint(equalTo: workspace.topAnchor),
+            toolbar.leadingAnchor.constraint(equalTo: workspace.leadingAnchor),
+            toolbar.trailingAnchor.constraint(equalTo: workspace.trailingAnchor),
 
             // Workspace root fills the entire WebView card
             workspaceRoot.topAnchor.constraint(equalTo: right.topAnchor),
