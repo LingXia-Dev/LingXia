@@ -19,29 +19,18 @@ pub use lingxia_browser::{
     BrowserNavigationPolicyResponse, BrowserTabInfo,
 };
 #[doc(hidden)]
-pub use lingxia_macro::host;
+pub use lingxia_macro::{host, register_hosts};
 #[doc(hidden)]
 pub use lxapp::LxApp;
 #[doc(hidden)]
 pub use lxapp::host;
-pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 #[doc(hidden)]
-pub use paste;
+pub use lxapp::host::register_host_entry;
+pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 #[doc(hidden)]
 pub use tokio;
-
-#[macro_export]
-macro_rules! register_hosts {
-    ($($handler:ident),+ $(,)?) => {{
-        $crate::paste::paste! {
-            $(
-                $crate::host::register_host_entry([<$handler _host>]());
-            )+
-        }
-    }};
-}
 
 /// Browser context menu script installed into each browser tab after page load.
 const BROWSER_CONTEXT_MENU_JS: &str = include_str!("../webui/public/browser-context-menu.js");

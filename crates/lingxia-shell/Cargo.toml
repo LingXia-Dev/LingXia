@@ -20,4 +20,3 @@ tokio = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 rong = { workspace = true, default-features = false }
-paste = "1.0"
