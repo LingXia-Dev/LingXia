@@ -1,8 +1,5 @@
-use crate::host::{
-    HostCancel, HostResult, HostTypedStreamItem, await_or_cancel, stream_event, stream_return,
-};
+use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
-use futures::stream;
 use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::file::{
@@ -16,7 +13,7 @@ use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,49 +221,29 @@ async fn reveal_download_route(
 }
 
 #[lingxia::host("downloads.watch", stream)]
-fn watch_downloads(
+async fn watch_downloads(
     app: Arc<LxApp>,
-    cancel: HostCancel,
-) -> HostResult<impl futures::Stream<Item = HostTypedStreamItem<DownloadEvent, ()>> + Send + 'static>
-{
+    mut stream: StreamContext<DownloadEvent>,
+) -> HostResult<()> {
     let mut rx: broadcast::Receiver<DownloadEvent> =
         lingxia_transfer::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
-    let (tx, out_rx) = mpsc::unbounded_channel::<HostTypedStreamItem<DownloadEvent, ()>>();
 
-    let _ = rong::RongExecutor::global().spawn(async move {
-        let mut cancel = cancel;
-        loop {
-            tokio::select! {
-                _ = &mut cancel => {
-                    let _ = tx.send(Ok(stream_return(())));
-                    break;
-                }
-                recv = rx.recv() => {
-                    match recv {
-                        Ok(event) => {
-                            if tx.send(Ok(stream_event(event))).is_err() {
-                                break;
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(skipped)) => {
-                            let _ = tx.send(Err(LxAppError::Bridge(format!(
-                                "download stream lagged by {skipped} events"
-                            ))));
-                            break;
-                        }
-                        Err(broadcast::error::RecvError::Closed) => {
-                            let _ = tx.send(Ok(stream_return(())));
-                            break;
-                        }
+    loop {
+        tokio::select! {
+            _ = stream.canceled() => return Ok(()),
+            recv = rx.recv() => {
+                match recv {
+                    Ok(event) => stream.send(event)?,
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        return Err(LxAppError::Bridge(format!(
+                            "download stream lagged by {skipped} events"
+                        )));
                     }
+                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
                 }
             }
         }
-    });
-
-    Ok(stream::unfold(out_rx, |mut rx| async move {
-        rx.recv().await.map(|item| (item, rx))
-    }))
+    }
 }
 
 pub(crate) fn register() {

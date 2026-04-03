@@ -122,20 +122,12 @@
     }
   }
 
-  // Build the payload sent to native.
-  // mimeTypeHint lets the native downloader:
-  //   1. Set the correct UTI / file association when saving.
-  //   2. Append the right extension if the server omits Content-Disposition
-  //      or sends a bare Content-Type without a filename.
-  // Native MUST still validate against the actual response Content-Type and
-  // prefer that over mimeTypeHint when they differ.
   function candidate(url, kind, fallbackName, mimeOverride) {
     if (!url) return null;
     var mime = mimeOverride || mimeFromUrl(url) || null;
     return {
       url: url,
       suggestedFilename: inferFilename(url, mime, fallbackName || null),
-      mimeTypeHint: mime,
       menuTitle: titleFor(url, kind),
     };
   }

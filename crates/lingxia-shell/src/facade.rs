@@ -1,13 +1,9 @@
 use lingxia_browser::{
-    BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest,
-    BrowserNavigationPolicyResponse, LxAppError,
+    BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse, LxAppError,
 };
-use serde_json;
 
 pub const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
 const LINGXIA_SCHEME: &str = "lingxia";
-const BROWSER_IN_WEBVIEW_SCHEMES: &[&str] = &["http", "https", "lx", "lingxia"];
-const BROWSER_NON_EXTERNAL_SCHEMES: &[&str] = &["about", "data", "blob", "javascript", "file"];
 
 fn extract_url_scheme(raw: &str) -> Option<String> {
     let (scheme, _) = raw.split_once(':')?;
@@ -38,75 +34,14 @@ fn is_lingxia_startup_url(url: &str) -> Option<bool> {
     Some(host.is_empty() || host == "newtab")
 }
 
-fn scheme_in_list(scheme: &str, candidates: &[&str]) -> bool {
-    candidates
-        .iter()
-        .any(|candidate| candidate.eq_ignore_ascii_case(scheme))
-}
-
-fn browser_policy_response(
-    decision: BrowserNavigationPolicyDecision,
-    reason: Option<&str>,
-) -> BrowserNavigationPolicyResponse {
-    BrowserNavigationPolicyResponse {
-        decision,
-        reason: reason.map(str::to_string),
-    }
-}
-
 pub fn classify_navigation(
     request: BrowserNavigationPolicyRequest,
 ) -> BrowserNavigationPolicyResponse {
-    let trimmed = request.raw_url.trim();
-    if trimmed.is_empty() {
-        return browser_policy_response(BrowserNavigationPolicyDecision::Deny, Some("empty"));
-    }
-
-    if trimmed.chars().any(|c| c.is_whitespace()) {
-        return browser_policy_response(
-            BrowserNavigationPolicyDecision::Deny,
-            Some("whitespace_url"),
-        );
-    }
-
-    let Some(scheme) = extract_url_scheme(trimmed) else {
-        return browser_policy_response(
-            BrowserNavigationPolicyDecision::Deny,
-            Some("missing_scheme"),
-        );
-    };
-
-    if scheme_in_list(&scheme, BROWSER_IN_WEBVIEW_SCHEMES) {
-        return browser_policy_response(BrowserNavigationPolicyDecision::InWebview, None);
-    }
-
-    if scheme_in_list(&scheme, BROWSER_NON_EXTERNAL_SCHEMES) {
-        return browser_policy_response(
-            BrowserNavigationPolicyDecision::Deny,
-            Some("non_external_scheme"),
-        );
-    }
-
-    if !request.is_main_frame {
-        return browser_policy_response(
-            BrowserNavigationPolicyDecision::Deny,
-            Some("non_main_frame_external"),
-        );
-    }
-
-    if !request.has_user_gesture {
-        return browser_policy_response(
-            BrowserNavigationPolicyDecision::Deny,
-            Some("gesture_required"),
-        );
-    }
-
-    browser_policy_response(BrowserNavigationPolicyDecision::OpenExternal, None)
+    lingxia_browser::classify_navigation(request)
 }
 
 pub fn classify_navigation_json(request_json: &str) -> Option<String> {
-    let request: BrowserNavigationPolicyRequest = serde_json::from_str(request_json).ok()?;
-    serde_json::to_string(&classify_navigation(request)).ok()
+    lingxia_browser::classify_navigation_json(request_json)
 }
 
 pub fn should_hide_url(raw: &str) -> bool {

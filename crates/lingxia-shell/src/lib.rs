@@ -29,13 +29,15 @@ pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 pub use paste;
 use serde::Deserialize;
 use std::collections::BTreeMap;
+#[doc(hidden)]
+pub use tokio;
 
 #[macro_export]
 macro_rules! register_hosts {
     ($($handler:ident),+ $(,)?) => {{
         $crate::paste::paste! {
             $(
-                $crate::host::register_host([<$handler _host>]());
+                $crate::host::register_host_entry([<$handler _host>]());
             )+
         }
     }};

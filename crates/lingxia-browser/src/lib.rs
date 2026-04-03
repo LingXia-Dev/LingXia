@@ -11,8 +11,13 @@ pub use runtime::{
 
 pub use lxapp::LxAppError;
 
-#[cfg_attr(not(any(target_os = "android", target_env = "ohos")), allow(dead_code))]
-pub(crate) fn classify_navigation_json(request_json: &str) -> Option<String> {
+pub fn classify_navigation(
+    request: BrowserNavigationPolicyRequest,
+) -> BrowserNavigationPolicyResponse {
+    runtime::handle_browser_navigation_policy(request)
+}
+
+pub fn classify_navigation_json(request_json: &str) -> Option<String> {
     runtime::handle_browser_navigation_policy_json(request_json)
 }
 

@@ -369,7 +369,7 @@ fn browser_policy_response(
 /// - `http/https/lx` stay in webview.
 /// - Potential external schemes require user gesture + main-frame navigation.
 /// - Non-external internal schemes (`javascript:`, `data:`, etc.) are denied.
-fn handle_browser_navigation_policy(
+pub(crate) fn handle_browser_navigation_policy(
     request: BrowserNavigationPolicyRequest,
 ) -> BrowserNavigationPolicyResponse {
     let trimmed = request.raw_url.trim();
