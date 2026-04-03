@@ -45,12 +45,12 @@ flowchart LR
 **Bridge** is the Rust-owned protocol endpoint. It validates frames, enforces capabilities, and routes messages between View and two backends:
 
 - **Host** — Rust native handlers (device, navigation, etc.). Bridge dispatches `host.*` methods directly.
-- **Logic** — JS runtime. Bridge forwards all other methods, subscriptions, and channels.
+- **Logic** — JS runtime. Bridge forwards all other methods and channels.
 
 Routing rules:
 
 - `host.*` methods → Host registry (unary `req` and `notify` only)
-- all other `req`, `notify`, `sub`, `ch.open` → Logic
+- all other `req`, `notify`, `ch.open` → Logic
 - Bridge MAY initiate `req` to View-owned handlers (see 3.2)
 - state replication is produced by Logic and relayed through Bridge to View
 
@@ -79,7 +79,6 @@ Routing rules:
 | Notification | `notify()` | `notify` | one-way, no response |
 | Unary request | `call()` | `req -> res` | one terminal response |
 | Streaming request | `callStream()` | `req -> event* -> res` | zero or more events, one terminal response |
-| Subscription | `subscribe()` | `sub -> res -> event* -> unsub` | long-lived event stream |
 | Channel | `channel.open()` | `ch.open -> ch.ack -> ch.data* / ch.close` | long-lived bidirectional session |
 
 ### 3.2 Bridge-initiated Families
@@ -95,14 +94,13 @@ State replication is exclusively Bridge -> View. View registers a callback via `
 
 ### 3.3 Data Flow Direction
 
-Although subscriptions and streaming requests are View-initiated, the **data flows from Bridge to View**. View establishes the session; Bridge controls when and what to push.
+Although streaming requests are View-initiated, the **data flows from Bridge to View**. View establishes the session; Bridge controls when and what to push.
 
 | Family | Who initiates | Who pushes data | Who terminates |
 |---|---|---|---|
 | Notification | View | — | — |
 | Unary request | either side | responder | responder (`res`) |
 | Streaming request | View | Bridge (`event*`) | Bridge (`res`) |
-| Subscription | View (`sub`) | Bridge (`event*`) | View (`unsub`) or Bridge (`sub.close`) |
 | Channel | View (`ch.open`) | both (`ch.data`) | either (`ch.close`) |
 | State replication | Bridge | Bridge | — (persistent) |
 
@@ -129,13 +127,13 @@ Frames are JSON objects transported over an ordered bidirectional message path.
 
 ### 4.4 Ordering
 
-- `seq` is monotonic per request stream, per subscription, or per channel direction.
+- `seq` is monotonic per request stream or per channel direction.
 - `seq` begins at `0`.
-- Receivers MUST tolerate already-in-flight frames arriving after `cancel`, `unsub`, or `ch.close`.
+- Receivers MUST tolerate already-in-flight frames arriving after `cancel` or `ch.close`.
 
 ### 4.5 Capability Derivation
 
-Frames `req`, `notify`, `sub`, and `ch.open` MUST include `cap`.
+Frames `req`, `notify`, and `ch.open` MUST include `cap`.
 
 Capability is derived from the target name (`method` for `req`/`notify`, `topic` for `sub`/`ch.open`):
 
@@ -331,78 +329,7 @@ Rules:
 - `seq` MUST be monotonic per `id`, starting at `0`.
 - `event` carries transient transport data, not durable replicated state. Use `state.patch` for durable state.
 
-### 6.6 `sub`
-
-Direction: View -> Bridge.
-
-Starts a subscription.
-
-```json
-{
-  "v": 2,
-  "kind": "sub",
-  "id": "<sub-id>",
-  "topic": "<topic>",
-  "params": {},
-  "cap": "page"
-}
-```
-
-- `params` is optional.
-
-### 6.7 `unsub`
-
-Direction: View -> Bridge.
-
-Stops a subscription.
-
-```json
-{
-  "v": 2,
-  "kind": "unsub",
-  "id": "<sub-id>"
-}
-```
-
-`unsub` is idempotent.
-
-### 6.8 `sub.close`
-
-Direction: Bridge -> View.
-
-Server-initiated subscription closure.
-
-Success / normal completion:
-
-```json
-{
-  "v": 2,
-  "kind": "sub.close",
-  "id": "<sub-id>"
-}
-```
-
-Failure:
-
-```json
-{
-  "v": 2,
-  "kind": "sub.close",
-  "id": "<sub-id>",
-  "error": {
-    "code": "BRIDGE_INTERNAL_ERROR",
-    "message": "..."
-  }
-}
-```
-
-Rules:
-
-- `sub.close` is Bridge -> View only.
-- After `sub.close`, no more `event` frames may be emitted for that subscription id.
-- If `error` is present, the View runtime MUST deliver it to subscription error listeners and retire the subscription locally.
-
-### 6.9 `ch.open`
+### 6.6 `ch.open`
 
 Direction: View -> Bridge.
 
@@ -421,7 +348,7 @@ Opens a bidirectional channel.
 
 - `params` is optional.
 
-### 6.10 `ch.ack`
+### 6.7 `ch.ack`
 
 Direction: Bridge -> View.
 
@@ -455,7 +382,7 @@ Failure:
 
 - If `ok` is `false`, the channel is not established. No `ch.data` or `ch.close` frames are valid for this `id`.
 
-### 6.11 `ch.data`
+### 6.8 `ch.data`
 
 Direction: bidirectional (View <-> Bridge).
 
@@ -471,7 +398,7 @@ Carries channel payload.
 }
 ```
 
-### 6.12 `ch.close`
+### 6.9 `ch.close`
 
 Direction: bidirectional (either side MAY close).
 
@@ -493,7 +420,7 @@ Rules:
 - `seq` is monotonic per direction per channel.
 - After sending `ch.close`, the sender MUST stop sending `ch.data` for that id.
 
-### 6.13 `state.snapshot`
+### 6.10 `state.snapshot`
 
 Direction: Bridge -> View.
 
@@ -509,7 +436,7 @@ Full replicated state snapshot.
 }
 ```
 
-### 6.14 `state.patch`
+### 6.11 `state.patch`
 
 Direction: Bridge -> View.
 
@@ -527,7 +454,7 @@ Incremental state update.
 }
 ```
 
-### 6.15 `state.ack`
+### 6.12 `state.ack`
 
 Direction: View -> Bridge.
 
@@ -561,20 +488,7 @@ sequenceDiagram
   Bridge-->>View: res(ok, result=<final-result>)
 ```
 
-### 7.2 Subscription
-
-```mermaid
-sequenceDiagram
-  participant View
-  participant Bridge
-  View->>Bridge: sub(topic="<topic>")
-  Bridge-->>View: res(ok, result=null)
-  Bridge-->>View: event(seq=0, payload=<item>)
-  Bridge-->>View: event(seq=1, payload=<item>)
-  View->>Bridge: unsub
-```
-
-### 7.3 Channel
+### 7.2 Channel
 
 ```mermaid
 sequenceDiagram
@@ -587,7 +501,7 @@ sequenceDiagram
   View->>Bridge: ch.close(code="done")
 ```
 
-### 7.4 Bridge-initiated Request
+### 7.3 Bridge-initiated Request
 
 ```mermaid
 sequenceDiagram
@@ -597,7 +511,7 @@ sequenceDiagram
   View-->>Bridge: res(ok, result=null)
 ```
 
-### 7.5 State Replication
+### 7.4 State Replication
 
 ```mermaid
 sequenceDiagram
@@ -609,7 +523,7 @@ sequenceDiagram
   View-->>Bridge: state.ack(scope="page", rev=2)
 ```
 
-### 7.6 Request Cancellation
+### 7.5 Request Cancellation
 
 ```mermaid
 sequenceDiagram
@@ -634,7 +548,7 @@ Bridge-level error codes are part of the protocol contract and MUST NOT be remov
 | `BRIDGE_HANDSHAKE_FAILED` | handshake failed |
 | `BRIDGE_MALFORMED_MESSAGE` | invalid frame |
 | `BRIDGE_METHOD_NOT_FOUND` | request method missing |
-| `BRIDGE_TOPIC_NOT_FOUND` | subscription or channel topic missing |
+| `BRIDGE_TOPIC_NOT_FOUND` | channel topic missing |
 | `BRIDGE_CAPABILITY_DENIED` | capability denied |
 | `BRIDGE_INTERNAL_ERROR` | unexpected internal error |
 | `BRIDGE_OUTBOX_FULL` | sender outbox overflow |
@@ -651,7 +565,6 @@ The View runtime exposes:
 LingXiaBridge.call(method, params?, options?): Promise<result>
 LingXiaBridge.callStream(method, params?, options?): StreamHandle<data, result>
 LingXiaBridge.notify(method, params?, options?): void
-LingXiaBridge.subscribe(topic, params?, options?): Promise<Subscription<data>>
 LingXiaBridge.channel.open(topic, params?, options?): Promise<Channel<data>>
 LingXiaBridge.state.subscribe((data, info) => void): () => void
 ```
@@ -668,8 +581,8 @@ The CLI maps JS method shape to View wrapper behavior:
 
 ### 9.3 Backend Capabilities
 
-| Backend | `req` | `notify` | `sub` | `ch.open` |
-|---|---|---|---|---|
-| Host | unary and streaming | yes | — | — |
-| Logic | unary and streaming | yes | yes | yes |
+| Backend | `req` | `notify` | `ch.open` |
+|---|---|---|---|
+| Host | unary and streaming | yes | — |
+| Logic | unary and streaming | yes | yes |
 
