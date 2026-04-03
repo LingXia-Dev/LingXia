@@ -219,10 +219,12 @@ Page({
   refreshSnapshot: async function () {
     try {
       const tenants = await lx.auth.getTenants();
-      const currentTenant = normalizeTenant(lx.auth.tenant);
+      const currentTenant = lx.auth.tenant;
       this.setData({
-        status: "Ready",
-        tenant: currentTenant,
+        status: currentTenant
+          ? "Ready"
+          : "Authentication required. Call lx.auth.login() first.",
+        tenant: normalizeTenant(currentTenant),
         tenants: normalizeTenants(tenants),
       });
     } catch (error) {
@@ -232,7 +234,7 @@ Page({
   },
 
   refreshFunctionsDemo: async function () {
-    const currentTenant = normalizeTenant(lx.auth.tenant);
+    const currentTenant = lx.auth.tenant;
     this.setData({
       functionsAvailable: [...DEMO_FUNCTIONS],
       functionsStatus: currentTenant
@@ -257,8 +259,10 @@ Page({
   logoutCurrentTenant: async function () {
     this.setData({ status: "Logging out..." });
     try {
+      await this.stopMqttDemo();
       await lx.auth.logout();
       this.setData({ status: "Logged out" });
+      this.refreshMqttStatusSnapshot();
       await this.refreshSnapshot();
       await this.refreshFunctionsDemo();
     } catch (error) {
