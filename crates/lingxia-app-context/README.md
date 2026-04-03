@@ -12,7 +12,7 @@ Shared app/product context primitives for LingXia workspace crates.
 ## Key APIs
 
 - `AppConfig::parse_and_validate(...)`
-- `set_app_config(...)`
+- `set_app_config(...) -> Result<(), AppContextError>`
 - `app_config()`
 - `product_name()`, `product_version()`, `lingxia_id()`
 - `app_state_dir(...)`, `app_state_file(...)`

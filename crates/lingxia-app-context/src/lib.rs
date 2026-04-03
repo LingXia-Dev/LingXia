@@ -16,7 +16,7 @@ pub enum AppContextError {
     InvalidConfig(String),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AppConfig {
     #[serde(rename = "productName")]
     pub product_name: String,
@@ -45,7 +45,7 @@ pub struct AppConfig {
     pub panels: Option<PanelsConfig>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PanelsConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub items: Vec<PanelItem>,
@@ -59,7 +59,7 @@ pub enum PanelPosition {
     Bottom,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PanelItem {
     pub id: String,
     pub label: String,
@@ -69,7 +69,7 @@ pub struct PanelItem {
     pub content: PanelContent,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PanelContent {
     #[serde(rename = "appId")]
     pub app_id: String,
@@ -133,8 +133,24 @@ impl AppConfig {
     }
 }
 
-pub fn set_app_config(config: AppConfig) {
-    let _ = APP_CONFIG.set(config);
+pub fn set_app_config(config: AppConfig) -> Result<(), AppContextError> {
+    if let Some(existing) = APP_CONFIG.get() {
+        if existing == &config {
+            return Ok(());
+        }
+        return Err(AppContextError::InvalidConfig(
+            "app config is already initialized with different values".to_string(),
+        ));
+    }
+
+    APP_CONFIG
+        .set(config)
+        .map_err(|_| {
+            AppContextError::InvalidConfig(
+                "app config was initialized concurrently with different values".to_string(),
+            )
+        })
+        .map(|_| ())
 }
 
 pub fn app_config() -> Option<&'static AppConfig> {
@@ -234,5 +250,33 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
         PanelPosition::Left => "left",
         PanelPosition::Right => "right",
         PanelPosition::Bottom => "bottom",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppConfig, AppContextError, set_app_config};
+
+    fn test_config(product_name: &str) -> AppConfig {
+        AppConfig {
+            product_name: product_name.to_string(),
+            product_version: "1.0.0".to_string(),
+            lingxia_id: Some("lingxia".to_string()),
+            api_server: None,
+            home_lxapp_appid: "home".to_string(),
+            home_lxapp_version: "1.0.0".to_string(),
+            cache_max_age_days: 7,
+            cache_max_size_mb: 1024,
+            panels: None,
+        }
+    }
+
+    #[test]
+    fn set_app_config_rejects_mismatched_value_after_initialization() {
+        let cfg = test_config("LingXia");
+        assert!(set_app_config(cfg.clone()).is_ok());
+        assert!(set_app_config(cfg).is_ok());
+        let err = set_app_config(test_config("Other")).unwrap_err();
+        assert!(matches!(err, AppContextError::InvalidConfig(_)));
     }
 }
