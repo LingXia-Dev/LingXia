@@ -39,7 +39,7 @@ android {
         getByName("main") {
             java.srcDirs(
                 "src/main/java",
-                "../../../lingxia-webview/src/android/java"
+                "../../../crates/lingxia-webview/src/android/java"
             )
         }
     }

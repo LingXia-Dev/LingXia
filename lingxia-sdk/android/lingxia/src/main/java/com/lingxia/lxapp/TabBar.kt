@@ -35,7 +35,7 @@ internal data class TabBarState(
 
     companion object {
         // These values MUST match exactly with Rust TabBarPosition enum!
-        // See: lingxia-lxapp/src/lxapp/config/tabbar.rs
+        // See: crates/lingxia-lxapp/src/lxapp/config/tabbar.rs
 
         /** Tab bar at the bottom (default) - MUST match Rust Bottom = 0 */
         const val POSITION_BOTTOM = 0

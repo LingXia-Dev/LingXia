@@ -18,7 +18,7 @@
 Ensure your `i18n` source YAML files are prepared.
 
 #### Automated Build (Rust)
-Projects like `lingxia-logic` integrate `lingxia-gen` via `build.rs` as a library and emit generated Rust into `OUT_DIR`.
+Projects like `crates/lingxia-logic` integrate `lingxia-gen` via `build.rs` as a library and emit generated Rust into `OUT_DIR`.
 
 #### Manual Execution (CLI)
 Run from the project root:
@@ -26,7 +26,7 @@ Run from the project root:
 ```bash
  cargo run -p lingxia-gen -- i18n \
   --input i18n \
-  --rust-out /tmp/i18n_generated.rs \
+  --rust-out crates/lingxia-logic/src/i18n_generated.rs \
   --ts-out packages/lingxia-types/src/generated \
   --android-out lingxia-sdk/android/lingxia/src/main/res \
   --ios-out lingxia-sdk/apple/Sources/Resources \

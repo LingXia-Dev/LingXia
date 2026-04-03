@@ -2,7 +2,7 @@
  * LingXiaWebView - Self-contained WebView component for same-level rendering
  *
  * Note:
- * - WebView registry/lifecycle core is sourced from `lingxia-webview/src/harmony/arkts/WebViewCore.ets`
+ * - WebView registry/lifecycle core is sourced from `crates/lingxia-webview/src/harmony/arkts/WebViewCore.ets`
  *   and synced into this module during SDK packaging.
  * - This component remains in SDK because it binds SDK-specific NativeComponents.
  *

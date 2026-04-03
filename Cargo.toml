@@ -6,13 +6,13 @@ members = [
     "crates/lingxia-browser",
     "crates/lingxia-transfer",
     "crates/lingxia-settings",
-    "lingxia-lxapp",
     "crates/lingxia-host-macros",
-    "lingxia-webview",
-    "lingxia-platform",
-    "lingxia-logic",
-    "lingxia-messaging",
-    "lingxia",
+    "crates/lingxia-lxapp",
+    "crates/lingxia-webview",
+    "crates/lingxia-platform",
+    "crates/lingxia-logic",
+    "crates/lingxia-messaging",
+    "crates/lingxia",
     "crates/lingxia-proxy",
     "examples/lingxia-lib",
     "tools/lingxia-cli",
@@ -40,15 +40,15 @@ base64 = "0.22.1"
 log = "0.4.29"
 
 # Workspace-local crates
-lingxia-lxapp = { path = "lingxia-lxapp", version = "0.4.3" }
-lxapp = { package = "lingxia-lxapp", path = "lingxia-lxapp", version = "0.4.3" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.4.3" }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.4.3" }
 lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.4.3" }
 lingxia-media = { path = "crates/lingxia-media", version = "0.4.3" }
-lingxia-webview = { path = "lingxia-webview", version = "0.4.3" }
-lingxia-platform = { path = "lingxia-platform", version = "0.4.3" }
-lingxia-messaging = { path = "lingxia-messaging", version = "0.4.3" }
-lingxia-logic = { path = "lingxia-logic", version = "0.4.3" }
-lingxia = { path = "lingxia", version = "0.4.3" }
+lingxia-webview = { path = "crates/lingxia-webview", version = "0.4.3" }
+lingxia-platform = { path = "crates/lingxia-platform", version = "0.4.3" }
+lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.4.3" }
+lingxia-logic = { path = "crates/lingxia-logic", version = "0.4.3" }
+lingxia = { path = "crates/lingxia", version = "0.4.3" }
 lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.0" }
 lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.4.3" }
 lingxia-macro = { path = "crates/lingxia-host-macros", version = "0.4.3" }

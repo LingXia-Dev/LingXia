@@ -31,16 +31,16 @@ We need a design that enforces limits without adding latency to JS file access p
 ## Scope
 
 - Cache root per lxapp: `<host_cache>/lingxia/lxapps/usercache/<lxapp_hash>/`
-- Manager implementation: `lingxia-lxapp/src/cache.rs`
-- Runtime integration: `lingxia-lxapp/src/appservice.rs`
-- Startup sweep hook: `lingxia-lxapp/src/lxapp.rs`
+- Manager implementation: `crates/lingxia-lxapp/src/cache.rs`
+- Runtime integration: `crates/lingxia-lxapp/src/appservice.rs`
+- Startup sweep hook: `crates/lingxia-lxapp/src/lxapp.rs`
 
 ## Configuration Model
 
 Source of truth (developer-facing): `lingxia.config.json`.
 
 At build time, CLI maps host cache settings into generated `app.json`.
-Runtime (`lingxia-lxapp`) reads effective values from `app.json`.
+Runtime (`crates/lingxia-lxapp`) reads effective values from `app.json`.
 
 - `cacheMaxAgeDays` (default `7`)
 - `cacheMaxSizeMB` (default `1024`)

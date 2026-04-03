@@ -13,7 +13,7 @@ crate-type = ["cdylib", "staticlib"]
 cloud = ["dep:lingxia-cloud", "lingxia-cloud/all"]
 
 [dependencies]
-lingxia = { path = "../../lingxia" }
+lingxia = { path = "../../crates/lingxia" }
 # lingxia-cloud = { git = "https://gitea.julibits.com/lingxia/lingxia-cloud.git", optional = true }
 lingxia-cloud = { path = "../../lingxia-device-cloud", optional = true }
 rong = { workspace = true, default-features = false }

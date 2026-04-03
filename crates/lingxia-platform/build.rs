@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -21,7 +21,7 @@ fn main() {
         let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
 
         // Generate to lingxia-sdk/apple/Sources/generated/platform
-        let lingxia_root = manifest_dir.parent().unwrap();
+        let lingxia_root = workspace_root(&manifest_dir);
         let sources_dir = lingxia_root
             .join("lingxia-sdk")
             .join("apple")
@@ -102,4 +102,11 @@ fn main() {
             platform_dir.display()
         );
     }
+}
+
+fn workspace_root(manifest_dir: &Path) -> &Path {
+    manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/<name> layout expected for workspace members")
 }

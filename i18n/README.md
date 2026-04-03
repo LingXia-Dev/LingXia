@@ -25,7 +25,7 @@ This directory contains internationalization (i18n) resource files for LingXia.
 
 ## When To Regenerate
 
-You must regenerate `lingxia-logic/src/i18n_generated.rs` when any of the following changes:
+You must regenerate `crates/lingxia-logic/src/i18n_generated.rs` when any of the following changes:
 
 - Any locale source YAML under `i18n/ui/`, `i18n/error/`, or `i18n/permission/runtime/`
 - Schema files under `i18n/schema/`
@@ -34,10 +34,10 @@ You must regenerate `lingxia-logic/src/i18n_generated.rs` when any of the follow
 Use this command:
 
 ```bash
-cargo run -p lingxia-gen -- i18n --input i18n --rust-out lingxia-logic/src/i18n_generated.rs --ts-out packages/lingxia-types/src/generated
+cargo run -p lingxia-gen -- i18n --input i18n --rust-out crates/lingxia-logic/src/i18n_generated.rs --ts-out packages/lingxia-types/src/generated
 ```
 
-This regenerates both Rust (`lingxia-logic/src/i18n_generated.rs`) and TypeScript (`packages/lingxia-types/src/generated/*`) artifacts.
+This regenerates both Rust (`crates/lingxia-logic/src/i18n_generated.rs`) and TypeScript (`packages/lingxia-types/src/generated/*`) artifacts.
 
 Generation is strict:
 - Locale key sets must be identical.
@@ -56,7 +56,7 @@ Generation is strict:
 2. Copy the structure from `ui/en-US.yaml`
 3. Translate all values
 4. Run the `lingxia-gen i18n` command above to validate generation
-5. Regenerate `lingxia-logic/src/i18n_generated.rs` and commit both source + generated files
+5. Regenerate `crates/lingxia-logic/src/i18n_generated.rs` and commit both source + generated files
 
 ## Adding/Updating Error Codes
 

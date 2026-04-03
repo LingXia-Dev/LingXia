@@ -129,7 +129,10 @@ ANDROID_RES_DIR="$ANDROID_SDK_DIR/lingxia/src/main/res"
 ANDROID_DRAWABLE_DIR="$ANDROID_RES_DIR/drawable"
 ANDROID_WEBVIEW_JAR_DIR="$ANDROID_SDK_DIR/lingxia/build/generated/lingxia-webview"
 ANDROID_WEBVIEW_JAR="$ANDROID_WEBVIEW_JAR_DIR/lingxia-webview.jar"
-ANDROID_WEBVIEW_JAVA_SRC="$ROOT_DIR/lingxia-webview/src/android/java"
+LINGXIA_CRATES_DIR="$ROOT_DIR/crates"
+LINGXIA_CORE_CRATE_DIR="$LINGXIA_CRATES_DIR/lingxia"
+LINGXIA_WEBVIEW_CRATE_DIR="$LINGXIA_CRATES_DIR/lingxia-webview"
+ANDROID_WEBVIEW_JAVA_SRC="$LINGXIA_WEBVIEW_CRATE_DIR/src/android/java"
 
 APPLE_SDK_DIR="$ROOT_DIR/lingxia-sdk/apple"
 APPLE_RES_DIR="$APPLE_SDK_DIR/Sources/Resources"
@@ -142,7 +145,7 @@ HARMONY_SDK_DIR="$ROOT_DIR/lingxia-sdk/harmony"
 HARMONY_RES_DIR="$HARMONY_SDK_DIR/lingxia/src/main/resources"
 HARMONY_RAWFILE_DIR="$HARMONY_RES_DIR/rawfile"
 HARMONY_ICONS_DIR="$HARMONY_RAWFILE_DIR/icons"
-HARMONY_WEBVIEW_CORE_SRC="$ROOT_DIR/lingxia-webview/src/harmony/arkts/WebViewCore.ets"
+HARMONY_WEBVIEW_CORE_SRC="$LINGXIA_WEBVIEW_CRATE_DIR/src/harmony/arkts/WebViewCore.ets"
 HARMONY_WEBVIEW_CORE_DST="$HARMONY_SDK_DIR/lingxia/src/main/ets/lxapp/WebViewCore.ets"
 
 run() {
@@ -373,13 +376,13 @@ refresh_ios_generated() {
   else
     local needs=false
 
-    if [[ -d "$ROOT_DIR/lingxia/src" ]] && find "$ROOT_DIR/lingxia/src" -type f -newer "$sentinel" | head -n 1 | grep -q .; then
+    if [[ -d "$LINGXIA_CORE_CRATE_DIR/src" ]] && find "$LINGXIA_CORE_CRATE_DIR/src" -type f -newer "$sentinel" | head -n 1 | grep -q .; then
       needs=true
     fi
-    if [[ -f "$ROOT_DIR/lingxia/Cargo.toml" ]] && [[ "$ROOT_DIR/lingxia/Cargo.toml" -nt "$sentinel" ]]; then
+    if [[ -f "$LINGXIA_CORE_CRATE_DIR/Cargo.toml" ]] && [[ "$LINGXIA_CORE_CRATE_DIR/Cargo.toml" -nt "$sentinel" ]]; then
       needs=true
     fi
-    if [[ -f "$ROOT_DIR/lingxia/build.rs" ]] && [[ "$ROOT_DIR/lingxia/build.rs" -nt "$sentinel" ]]; then
+    if [[ -f "$LINGXIA_CORE_CRATE_DIR/build.rs" ]] && [[ "$LINGXIA_CORE_CRATE_DIR/build.rs" -nt "$sentinel" ]]; then
       needs=true
     fi
     if [[ -f "$ROOT_DIR/Cargo.lock" ]] && [[ "$ROOT_DIR/Cargo.lock" -nt "$sentinel" ]]; then

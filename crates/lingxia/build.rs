@@ -8,7 +8,7 @@
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn main() {
     let target = env::var("TARGET").unwrap_or_default();
@@ -25,6 +25,13 @@ fn main() {
     }
 }
 
+fn workspace_root(manifest_dir: &Path) -> &Path {
+    manifest_dir
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/<name> layout expected for workspace members")
+}
+
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 fn generate_swift_bridge() {
     println!("cargo:rerun-if-changed=src/apple.rs");
@@ -33,10 +40,7 @@ fn generate_swift_bridge() {
 
     let package_name = "LingXiaRustAPI";
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let generated_dir = manifest_dir
-        .parent()
-        .unwrap()
-        .join("lingxia-sdk/apple/Sources/generated");
+    let generated_dir = workspace_root(&manifest_dir).join("lingxia-sdk/apple/Sources/generated");
     let lib_dir = generated_dir.join("LingXiaRustAPI");
 
     fs::create_dir_all(&lib_dir).expect("Failed to create directory");

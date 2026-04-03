@@ -45,7 +45,7 @@ internal class ScanCodeFragment : Fragment() {
         private const val ARG_SCAN_TYPES = "scan_types"
         private const val ARG_CALLBACK_ID = "callback_id"
 
-        // Group codes from Rust bridge (see lingxia-platform/src/android/media.rs)
+        // Group codes from Rust bridge (see crates/lingxia-platform/src/android/media.rs)
         const val TYPE_QR = 1
         const val TYPE_BAR = 2 // 1D barcodes
         const val TYPE_DATA_MATRIX = 3
