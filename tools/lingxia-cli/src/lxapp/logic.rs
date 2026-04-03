@@ -589,7 +589,7 @@ fn rewrite_registration_call(
                 .arguments
                 .first()
                 .ok_or_else(|| anyhow!("App() must be called with a configuration object"))?;
-            let config_expr = argument_source(source, first_arg.span())?;
+            let config_expr = slice(source, first_arg.span())?;
             let handler_names = match unwrap_expression(first_arg.to_expression()) {
                 Expression::ObjectExpression(object) => collect_app_handler_names(object),
                 _ => Vec::new(),
@@ -609,7 +609,7 @@ fn rewrite_registration_call(
                 .arguments
                 .first()
                 .ok_or_else(|| anyhow!("Page() must be called with a configuration expression"))?;
-            let config_expr = argument_source(source, first_arg.span())?;
+            let config_expr = slice(source, first_arg.span())?;
             let binding_meta_json = match unwrap_expression(first_arg.to_expression()) {
                 Expression::ObjectExpression(object) => serde_json::to_string(&BindingMeta {
                     handlers: collect_page_handler_names(object),
@@ -646,23 +646,8 @@ struct BindingMeta {
 }
 
 fn collect_page_handler_names(object: &oxc_ast::ast::ObjectExpression<'_>) -> Vec<String> {
-    let lifecycle_names: HashSet<&str> = [
-        "onLoad",
-        "onShow",
-        "onReady",
-        "onHide",
-        "onUnload",
-        "onPullDownRefresh",
-        "onReachBottom",
-        "onShareAppMessage",
-        "onPageScroll",
-        "onResize",
-        "onTabItemTap",
-    ]
-    .into_iter()
-    .collect();
     collect_object_handler_names(object, |name| {
-        name != "data" && !name.starts_with('_') && !lifecycle_names.contains(name)
+        name != "data" && !name.starts_with('_') && !super::is_page_lifecycle(name)
     })
 }
 
@@ -739,10 +724,6 @@ fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
         Expression::TSNonNullExpression(expr) => unwrap_expression(&expr.expression),
         _ => expression,
     }
-}
-
-fn argument_source<'a>(source: &'a str, span: oxc_span::Span) -> Result<&'a str> {
-    slice(source, span)
 }
 
 fn transpile_module(path: &Path, source: &str) -> Result<String> {

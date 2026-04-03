@@ -718,7 +718,7 @@ pub(crate) fn extract_page_actions(logic_path: Option<&Path>) -> Result<Vec<Page
             let Some(name) = property_name(&property.key) else {
                 continue;
             };
-            if name == "data" || name.starts_with('_') || is_page_lifecycle(&name) {
+            if name == "data" || name.starts_with('_') || super::is_page_lifecycle(&name) {
                 continue;
             }
             if !is_function_like_property(property, &function_bindings) {
@@ -850,7 +850,7 @@ export function __lx_define_page_bridge(name, mode) {\n\
   function fn(...args) {\n\
     const payload = __lx_filter_payload(name, args);\n\
     if (mode === 'stream') {\n\
-      const handle = window.LingXiaBridge.callStream(name, payload);\n\
+      const handle = window.LingXiaBridge.stream(name, payload);\n\
       if (handle && handle.result && typeof handle.result.catch === 'function') {\n\
         handle.result.catch((err) => {\n\
           console.warn(`[PageFunc] ${name} failed:`, err && err.message ? err.message : err);\n\
@@ -1042,23 +1042,6 @@ fn property_name(key: &PropertyKey<'_>) -> Option<String> {
         PropertyKey::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
         _ => None,
     }
-}
-
-fn is_page_lifecycle(name: &str) -> bool {
-    matches!(
-        name,
-        "onLoad"
-            | "onShow"
-            | "onReady"
-            | "onHide"
-            | "onUnload"
-            | "onPullDownRefresh"
-            | "onReachBottom"
-            | "onShareAppMessage"
-            | "onPageScroll"
-            | "onResize"
-            | "onTabItemTap"
-    )
 }
 
 fn is_function_like_property(
