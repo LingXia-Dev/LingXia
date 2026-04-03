@@ -2,7 +2,7 @@
 name = "lingxia-lib"
 version = "0.1.0"
 edition = "2024"
-description = "Native library for the example app (builds to .so/.a)"
+description = "Native library for LingXia example App (builds to .so/.a)"
 
 [lib]
 name = "lingxia"
@@ -10,19 +10,26 @@ name = "lingxia"
 crate-type = ["cdylib", "staticlib"]
 
 [features]
-default = ["tls-aws-lc"]
-tls-aws-lc = ["lingxia/tls-aws-lc", "lingxia-cloud/tls-aws-lc"]
-tls-ring = ["lingxia/tls-ring", "lingxia-cloud/tls-ring"]
+cloud = ["dep:lingxia-cloud", "lingxia-cloud/all"]
 
 [dependencies]
-lingxia = { path = "../../lingxia", default-features = false }
-rong = { workspace = true }
+lingxia = { path = "../../lingxia" }
+# lingxia-cloud = { git = "https://gitea.julibits.com/lingxia/lingxia-cloud.git", optional = true }
+lingxia-cloud = { path = "../../lingxia-device-cloud", optional = true }
+rong = { workspace = true, default-features = false }
 log = { workspace = true }
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21.1"
+jni = "0.22.1"
 
 [target.'cfg(target_env = "ohos")'.dependencies]
-napi-ohos = { workspace = true }
-napi-derive-ohos = { workspace = true }
+napi-ohos = "1.1"
+napi-derive-ohos = "1.1"
+
+# Release profile: optimize for size
+[profile.release]
+opt-level = 'z'
+lto = true
+codegen-units = 1
+strip = true

@@ -1,14 +1,20 @@
 # lingxia-lib
 
-Example native extension crate for LingXia based App. This builds to a platform library (`.so` for Android/Harmony, `.a` for iOS) and exposes your custom JS extensions to the host app.
+Native library for your LingXia app. Re-exports LingXia SDK symbols and registers custom JS extensions.
 
-## What it does
-- Re-exports LingXia platform FFI symbols so the host can link a single library.
-- Registers app-specific extensions (see `src/hello.rs`).
-- Optionally initializes the cloud provider when the `cloud` feature is enabled.
+## JS Extensions
 
-## How the host calls it
-- Android: Kotlin `MainActivity.registerNativeExtensions()` calls the exported JNI symbol `Java_com_lingxia_example_lxapp_MainActivity_registerNativeExtensions`.
-- Harmony/iOS/macOS: call `lingxia_register_extensions()` (exported by this crate) before `LxApp.initialize`.
+Register native extensions via `LxLogicExtension`, accessible as `lx.*` from page code.
+See [`src/extension.rs`](./src/extension.rs) for an example.
 
-Use this as a template for your own app-specific extension crate. Keep user extensions isolated here so the core SDK stays unchanged.
+```ts
+const greeting = lx.hello.sayHello("LingXia"); // "Hello, LingXia!"
+```
+
+## Optional Cloud Runtime
+
+Enable the `cloud` feature to opt into `lingxia-device-cloud`.
+
+```bash
+LXAPP_FEATURES=cloud ./examples/macos/dev.sh --framework react
+```
