@@ -6,13 +6,8 @@ description = "Browser runtime capability crate for LingXia"
 license = "MIT"
 readme = "README.md"
 
-[features]
-default = ["tls-aws-lc"]
-tls-aws-lc = ["lxapp/tls-aws-lc", "lingxia-transfer/tls-aws-lc"]
-tls-ring = ["lxapp/tls-ring", "lingxia-transfer/tls-ring"]
-
 [dependencies]
-lxapp = { workspace = true, default-features = false }
+lxapp = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }

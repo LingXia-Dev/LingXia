@@ -8,11 +8,6 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "lxapp", "lightweight-app", "webview"]
 categories = ["web-programming", "api-bindings"]
 
-[features]
-default = ["tls-aws-lc"]
-tls-aws-lc = ["rong_modules/tls-aws-lc", "rong_http/tls-aws-lc", "rong_rt/tls-aws-lc"]
-tls-ring = ["rong_modules/tls-ring", "rong_http/tls-ring", "rong_rt/tls-ring"]
-
 [dependencies]
 # Use workspace dependencies
 http = { workspace = true }
@@ -34,9 +29,9 @@ filetime = "0.2"
 uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
-rong_modules = { workspace = true, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
-rong_rt = { workspace = true }
-rong_http = { workspace = true }
+rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
+rong_rt = { workspace = true, default-features = false }
+rong_http = { workspace = true, default-features = false }
 rong_fs = { workspace = true }
 rong_console = { workspace = true }
 rong_event = { workspace = true }
@@ -51,19 +46,29 @@ lingxia-messaging = { workspace = true }
 # Apple platforms use JavaScriptCore.
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"] }
-rong_modules = { workspace = true, features = ["jscore"] }
+rong_modules = { workspace = true, default-features = false, features = ["jscore"] }
 
 # Android currently uses QuickJS.
 [target.'cfg(target_os = "android")'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
 
 # HarmonyOS currently uses QuickJS; keep this explicit for future engine split.
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
 
 # Fallback for other targets.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, features = ["quickjs"] }
+rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
+
+[target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]
+rong_modules = { workspace = true, default-features = false, features = ["tls-ring"] }
+rong_http = { workspace = true, default-features = false, features = ["tls-ring"] }
+rong_rt = { workspace = true, default-features = false, features = ["tls-ring"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
+rong_modules = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
+rong_http = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
+rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }

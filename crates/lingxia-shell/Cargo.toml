@@ -6,11 +6,6 @@ description = "Shell product module and host registrations for LingXia"
 license = "MIT"
 readme = "README.md"
 
-[features]
-default = ["tls-aws-lc"]
-tls-aws-lc = ["lxapp/tls-aws-lc", "lingxia-browser/tls-aws-lc", "lingxia-transfer/tls-aws-lc"]
-tls-ring = ["lxapp/tls-ring", "lingxia-browser/tls-ring", "lingxia-transfer/tls-ring"]
-
 [dependencies]
 lxapp = { workspace = true }
 lingxia-app-context = { workspace = true }
