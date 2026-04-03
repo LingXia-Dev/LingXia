@@ -99,11 +99,12 @@ fn build_component_pages(
         let unused_actions = actions
             .iter()
             .map(|action| action.name.as_str())
-            .filter(|name| !usage_audit.used_actions.contains(*name))
+            .filter(|name| !name.starts_with('_') && !usage_audit.used_actions.contains(*name))
             .collect::<Vec<_>>();
         if !unused_actions.is_empty() {
             eprintln!(
-                "Warning: view {} does not reference Page(...) actions: {}",
+                "Warning: view {} does not reference Page(...) actions: {}\n  \
+                 → Prefix with _ to suppress, or remove if unused.",
                 page_path,
                 unused_actions.join(", ")
             );
