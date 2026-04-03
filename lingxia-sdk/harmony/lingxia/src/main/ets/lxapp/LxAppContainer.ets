@@ -487,12 +487,30 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
-        // If popup overlay is currently using this webtag, skip attaching in base to avoid double-attach
         const activePopup: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
         if (activePopup) {
           const popupLogical = toWebTag(activePopup.appId, activePopup.path);
           if (info.webtag === popupLogical || info.webtag.startsWith(`${popupLogical}#`)) {
-            hilog.info(DOMAIN, TAG, `Skip base attach for popup webtag: ${info.webtag}`);
+            this.webViewComponents.set(info.webtag, info.controller);
+            this.webViewKeys = Array.from(this.webViewComponents.keys());
+            if (!this.popupPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
+              this.popupPreviousWebTag = this.currentWebTag;
+            }
+            this.currentWebTag = info.webtag;
+            if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
+              this.keepAliveTags = this.keepAliveTags.filter((tag: string) => tag !== info.webtag);
+            }
+            this.applyOverlayState(
+              info.webtag,
+              true,
+              activePopup.widthVp,
+              activePopup.heightVp,
+              activePopup.position as number,
+              activePopup.bottomInset,
+              activePopup.fullWidth,
+              activePopup.fullHeight
+            );
+            hilog.info(DOMAIN, TAG, `Attach popup webtag on create: ${info.webtag}`);
             break;
           }
         }
