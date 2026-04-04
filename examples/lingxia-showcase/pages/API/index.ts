@@ -14,21 +14,21 @@ Page({
     },
   },
 
-  onLoad: function (options) {
+  onLoad: function(options) {
     console.log("Options in onLoad: ", options);
   },
 
-  onShow: function (options) {
+  onShow: function(options) {
     console.log("API page onShow");
     console.log("App data:", app.globalData);
   },
 
-  onHide: function () {
+  onHide: function() {
     console.log("API page onHide");
   },
 
   // Toggle category expansion state
-  toggleSection: function (params = {}) {
+  toggleSection: function(params = {}) {
     const { section } = params;
     if (
       !section ||
@@ -44,7 +44,7 @@ Page({
   },
 
   // Navigate to UI API page with specific type parameter
-  navigateToUIPage: async function (params) {
+  navigateToUIPage: async function(params) {
     const { type = "navigation" } = params || {};
     await lx.navigateTo({
       url: `pages/ui/index?type=${type}`,
@@ -52,7 +52,7 @@ Page({
   },
 
   // Navigate to Device API page with specific type parameter
-  navigateToDevicePage: async function (params) {
+  navigateToDevicePage: async function(params) {
     const { type = "device" } = params || {};
     await lx.navigateTo({
       url: `pages/device/index?type=${type}`,
@@ -60,14 +60,14 @@ Page({
   },
 
   // Navigate to WiFi API page
-  navigateToWifiPage: async function () {
+  navigateToWifiPage: async function() {
     await lx.navigateTo({
       url: `pages/wifi/index`,
     });
   },
 
   // Navigate to System API page with specific type parameter
-  navigateToSystemPage: async function (params) {
+  navigateToSystemPage: async function(params) {
     const { type = "appBaseInfo" } = params || {};
     await lx.navigateTo({
       url: `pages/system/index?type=${type}`,
@@ -75,14 +75,14 @@ Page({
   },
 
   // Navigate to Location API page
-  navigateToLocationPage: async function () {
+  navigateToLocationPage: async function() {
     await lx.navigateTo({
       url: `pages/location/index`,
     });
   },
 
   // Navigate to Media API page with specific type parameter
-  navigateToMediaPage: async function (params) {
+  navigateToMediaPage: async function(params) {
     const { type = "Pictures" } = params || {};
     await lx.navigateTo({
       url: `pages/media/index?type=${type}`,
@@ -90,16 +90,16 @@ Page({
   },
 
   // Navigate to Document API page
-  navigateToDocumentPage: async function () {
+  navigateToDocumentPage: async function() {
     await lx.navigateTo({
       url: `pages/document/index`,
     });
   },
 
-  navigateToTestMiniApp: async function () {
+  navigateToTestMiniApp: async function() {
     try {
       await lx.navigateToLxApp({
-        appId: "testminiapp",
+        appId: "lingxia-chat",
       });
     } catch (err) {
       console.error("navigateToLxApp failed", err);
@@ -107,14 +107,14 @@ Page({
     }
   },
 
-  navigateToCloudPage: async function (params) {
+  navigateToCloudPage: async function(params) {
     const { type = "auth" } = params || {};
     await lx.navigateTo({
       url: `pages/cloud/index?type=${type}`,
     });
   },
 
-  openDeepSeek: async function () {
+  openDeepSeek: async function() {
     const targets: Array<"self" | "external"> = ["self", "external"];
 
     try {
@@ -138,7 +138,7 @@ Page({
   },
 
   // Navigate to PullDownRefresh API page
-  navigateToPullDownRefreshPage: async function () {
+  navigateToPullDownRefreshPage: async function() {
     await lx.navigateTo({
       url: `pages/pulltorefresh/index`,
     });

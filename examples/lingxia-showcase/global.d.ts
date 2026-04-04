@@ -1,5 +1,5 @@
 /**
- * Global type declarations for homelxapp
+ * Global type declarations for lingxia-showcase
  */
 
 /// <reference types="lingxia-types" />

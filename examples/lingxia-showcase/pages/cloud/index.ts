@@ -8,7 +8,7 @@ const MQTT_SHORT_TOPIC = "demo/mqtt";
 const DEMO_FUNCTIONS = ["echo", "whoami", "fail"] as const;
 const FUNCTION_ECHO_PAYLOAD = {
   hello: "world",
-  source: "homelxapp",
+  source: "lingxia-showcase",
 };
 
 type CloudPageType =

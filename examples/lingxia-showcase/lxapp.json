@@ -1,6 +1,6 @@
 {
-  "appId": "homelxapp",
-  "appName": "Home LxApp Demo",
+  "appId": "lingxia-showcase",
+  "appName": "LingXia Showcase",
   "version": "1.0.0",
   "pages": [
     "pages/home/index",

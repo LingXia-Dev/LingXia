@@ -1,7 +1,7 @@
 {
-  "name": "homelxapp",
+  "name": "lingxia-showcase",
   "version": "1.0.0",
-  "description": "LingXia LxApp demo",
+  "description": "LingXia Showcase LxApp",
   "type": "module",
   "scripts": {
     "build:react": "../../target/debug/lingxia build --framework react",
