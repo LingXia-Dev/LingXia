@@ -88,7 +88,7 @@ class WindowSizeEventTargetWrapper {
 export class LingxiaBaseAbility extends UIAbility {
   private isBackHandling: boolean = false;
   private lastBackHandledAt: number = 0;
-  private static extensionsRegistered: boolean = false;
+  private static hostAddonInstalled: boolean = false;
   private mainWindow: window.Window | null = null;
   private hasEnteredBackground: boolean = false;
   private gestureBackConfigInProgress: boolean = false;
@@ -96,9 +96,9 @@ export class LingxiaBaseAbility extends UIAbility {
   private lastReportedDeviceOrientation: string = '';
 
   /**
-   * Override to register custom native extensions.
+   * Override to install native host addon.
    */
-  protected registerExtensions(): void {
+  protected installHostAddon(): void {
   }
 
   private handleBackPressInternal(): boolean {
@@ -325,10 +325,10 @@ export class LingxiaBaseAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     super.onWindowStageCreate(windowStage);
 
-    // Register extensions (once only)
-    if (!LingxiaBaseAbility.extensionsRegistered) {
-      this.registerExtensions();
-      LingxiaBaseAbility.extensionsRegistered = true;
+    // Install native host addon (once only)
+    if (!LingxiaBaseAbility.hostAddonInstalled) {
+      this.installHostAddon();
+      LingxiaBaseAbility.hostAddonInstalled = true;
     }
     this.registerWindowBackInterceptor(windowStage);
     this.registerScreenshotListener();

@@ -8,7 +8,7 @@ import UIKit
 #endif
 
 @MainActor
-class NavigationBarStateManager: ObservableObject {
+final class NavigationBarStateManager: ObservableObject {
     @Published var currentState: NavigationBarState? = nil
     @Published var currentAppId: String? = nil
     static let shared = NavigationBarStateManager()

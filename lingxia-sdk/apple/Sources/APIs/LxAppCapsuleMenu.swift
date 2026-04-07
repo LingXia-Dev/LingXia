@@ -25,7 +25,6 @@ class LxAppCapsuleMenu {
             showIOSCapsuleMenu(appId: appId, appInfo: appInfo)
         }
     }
-
     @MainActor
     private static func showIOSCapsuleMenu(appId: String, appInfo: LxAppInfo) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -356,6 +355,10 @@ class LxAppCapsuleMenu {
             menuView.removeFromSuperview()
             completion()
         }
+    }
+    #else
+    public static func show(appId: String) {
+        os_log("Capsule menu is not implemented on macOS for %{public}@", log: log, type: .info, appId)
     }
     #endif
 }

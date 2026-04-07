@@ -1,10 +1,11 @@
 # lingxia-lib
 
-Native library for your LingXia app. Re-exports LingXia SDK symbols and registers custom JS extensions.
+Native library for your LingXia app. Re-exports LingXia SDK symbols and installs a host addon.
 
-## JS Extensions
+## Host Addon
 
-Register native extensions via `LxLogicExtension`, accessible as `lx.*` from page code.
+Implement `lingxia::HostAddon` to contribute bootstrap behavior and JS APIs.
+Logic extensions registered from that addon are accessible as `lx.*` from page code.
 See [`src/extension.rs`](./src/extension.rs) for an example.
 
 ```ts

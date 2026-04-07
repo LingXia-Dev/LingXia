@@ -3,9 +3,56 @@
 import PackageDescription
 import Foundation
 
-// Get library paths using environment variable or fallback to relative paths
-let projectRoot = ProcessInfo.processInfo.environment["LINGXIA_PROJECT_ROOT"] ??
-                  URL(fileURLWithPath: #file).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().path
+func findProjectRoot() -> String {
+    let fm = FileManager.default
+
+    func isWorkspaceRoot(_ path: String) -> Bool {
+        fm.fileExists(atPath: "\(path)/Cargo.toml")
+            && fm.fileExists(atPath: "\(path)/crates/lingxia/Cargo.toml")
+    }
+
+    func firstWorkspaceRoot(startingAt path: String) -> String? {
+        var url = URL(fileURLWithPath: path).standardizedFileURL
+        var isDirectory: ObjCBool = false
+        if !fm.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+            return nil
+        }
+        if !isDirectory.boolValue {
+            url.deleteLastPathComponent()
+        }
+
+        while true {
+            if isWorkspaceRoot(url.path) {
+                return url.path
+            }
+            let parent = url.deletingLastPathComponent()
+            if parent.path == url.path {
+                return nil
+            }
+            url = parent
+        }
+    }
+
+    let candidates: [String] = [
+        ProcessInfo.processInfo.environment["LINGXIA_PROJECT_ROOT"],
+        URL(fileURLWithPath: #filePath).deletingLastPathComponent().path,
+        fm.currentDirectoryPath,
+    ].compactMap { $0 }
+
+    for candidate in candidates {
+        if let root = firstWorkspaceRoot(startingAt: candidate) {
+            return root
+        }
+    }
+
+    return URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .path
+}
+
+let projectRoot = findProjectRoot()
 
 let buildConfig = ProcessInfo.processInfo.environment["LINGXIA_BUILD_CONFIG"] ?? "release"
 
@@ -59,6 +106,8 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags([iosLibraryPath], .when(platforms: [.iOS])),
                 .unsafeFlags([macosLibraryPath], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_install_host_addon"], .when(platforms: [.iOS])),
+                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_install_host_addon"], .when(platforms: [.macOS])),
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("WebKit"),
                 .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),

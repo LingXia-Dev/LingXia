@@ -91,8 +91,8 @@ if [ ! -f "$SDK_HAR_PATH" ]; then
   echo "❌ SDK HAR not found after build: $SDK_HAR_PATH" >&2; exit 1
 fi
 
-# 3) Prepare example app assets (app.json + runtime + homelxapp)
-echo "Preparing example app assets (app.json + runtime + homelxapp) ..."
+# 3) Prepare example app assets (app.json + runtime + lingxia-showcase)
+echo "Preparing example app assets (app.json + runtime + lingxia-showcase) ..."
 RAWFILE_DIR="$SCRIPT_DIR/entry/src/main/resources/rawfile"
 mkdir -p "$RAWFILE_DIR" && rm -rf "$RAWFILE_DIR"/*
 

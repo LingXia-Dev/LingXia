@@ -3,6 +3,7 @@ import OSLog
 import WebKit
 import CLingXiaRustAPI
 import CLingXiaSwiftAPI
+import Darwin
 
 #if os(iOS)
 import UIKit
@@ -69,12 +70,30 @@ public enum LxAppDirectoryError: Error {
 /// Simplified directory provider for all platforms
 public struct LxAppDirectoryFactory {
 
+    private static func resolveBundleIdentifier() -> String {
+        if let bundleId = Bundle.main.bundleIdentifier, !bundleId.isEmpty {
+            return bundleId
+        }
+
+        if let infoBundleId = Bundle.main.object(forInfoDictionaryKey: "CFBundleIdentifier") as? String,
+           !infoBundleId.isEmpty
+        {
+            return infoBundleId
+        }
+
+        let processName = ProcessInfo.processInfo.processName
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !processName.isEmpty {
+            return "com.lingxia.\(processName.lowercased())"
+        }
+
+        return "com.lingxia.app"
+    }
+
     /// Create platform-specific directory configuration
     public static func createDirectoryConfig() -> LxAppDirectoryConfig {
         do {
-            guard let bundleId = Bundle.main.bundleIdentifier else {
-                throw LxAppDirectoryError.bundleIdentifierNotFound
-            }
+            let bundleId = resolveBundleIdentifier()
 
             #if os(iOS)
             let dataDirectory: FileManager.SearchPathDirectory = .documentDirectory
@@ -153,6 +172,7 @@ class LxAppViewHierarchyHelper {
 /// Core LxApp management logic shared between platforms
 @MainActor
 public class LxAppCore {
+    private typealias NativeHostAddonInstaller = @convention(c) () -> Void
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppCore")
     public static var resourceBundle: Bundle {
 #if SWIFT_PACKAGE
@@ -252,10 +272,7 @@ public class LxAppCore {
         #endif
     }
 
-    /// Closure to register custom extensions. Set this before calling initialize().
-    nonisolated(unsafe) internal static var registerExtensions: (() -> Void)?
-
-    nonisolated(unsafe) private static var extensionsRegistered = false
+    nonisolated(unsafe) private static var nativeRegistrationPerformed = false
 
     /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows)
     nonisolated(unsafe) internal static var skipAutoOpenWindow = false
@@ -276,10 +293,10 @@ public class LxAppCore {
 
         WebViewManager.registerRuntimeClasses()
 
-        // Register extensions once before initialization
-        if !extensionsRegistered {
-            registerExtensions?()
-            extensionsRegistered = true
+        // Discover and invoke native host registration once before initialization.
+        if !nativeRegistrationPerformed {
+            installNativeHostAddon()
+            nativeRegistrationPerformed = true
         }
 
         performInitialization()
@@ -323,13 +340,39 @@ public class LxAppCore {
         WebViewManager.enableDebugging()
     }
 
+    private static func installNativeHostAddon() {
+        guard let installer = resolveNativeHostAddonInstaller() else {
+            os_log("Native host addon installer not found", log: log, type: .info)
+            return
+        }
+        os_log("Installing native host addon", log: log, type: .info)
+        installer()
+    }
+
+    /// Discover the native host addon installer symbol via `dlsym(RTLD_DEFAULT, ...)`.
+    ///
+    /// The host app (or its static Rust library) is expected to define:
+    /// ```c
+    /// void lingxia_install_host_addon(void);
+    /// ```
+    /// The corresponding `-u` linker flag in Package.swift ensures the symbol is
+    /// not stripped even when the only reference is this runtime lookup.
+    private static func resolveNativeHostAddonInstaller() -> NativeHostAddonInstaller? {
+        // RTLD_DEFAULT (-2): search all loaded images in default order.
+        let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)
+        guard let raw = dlsym(rtldDefault, "lingxia_install_host_addon") else {
+            return nil
+        }
+        return unsafeBitCast(raw, to: NativeHostAddonInstaller.self)
+    }
+
     /// Check if app is home LxApp
     public static func isHomeLxApp(_ appId: String) -> Bool {
         return appId == homeLxAppId
     }
 
     /// Set current app state - shared across platforms
-    public static func setCurrentApp(appId: String, path: String) {
+    static func setCurrentApp(appId: String, path: String) {
         currentAppId = appId
         currentPath = path
 
@@ -348,7 +391,7 @@ public class LxAppCore {
     }
 
     /// Update current path
-    public static func setCurrentPath(_ path: String) {
+    static func setCurrentPath(_ path: String) {
         guard let appId = currentAppId else { return }
         currentPath = path
 
@@ -361,26 +404,26 @@ public class LxAppCore {
     }
 
     /// Get current WebView - cached for efficiency
-    public static func getCurrentWebView() -> WKWebView? {
+    static func getCurrentWebView() -> WKWebView? {
         return currentWebView
     }
 
     /// Get home LxApp ID
-    public static func getHomeLxAppId() -> String? {
+    static func getHomeLxAppId() -> String? {
         return homeLxAppId
     }
 
-    internal static func sessionId(for appId: String) -> UInt64? {
+    static func sessionId(for appId: String) -> UInt64? {
         return appSessions[appId]
     }
 
-    internal static func setSessionId(_ sessionId: UInt64, for appId: String) {
+    static func setSessionId(_ sessionId: UInt64, for appId: String) {
         if sessionId > 0 {
             appSessions[appId] = sessionId
         }
     }
 
-    internal static func removeSessionId(for appId: String) {
+    static func removeSessionId(for appId: String) {
         appSessions.removeValue(forKey: appId)
     }
 }
@@ -405,12 +448,6 @@ public class LxApp {
                 }
             }
         }
-    }
-
-    /// Closure to register custom extensions. Set this before calling initialize().
-    nonisolated(unsafe) public static var registerExtensions: (() -> Void)? {
-        get { LxAppCore.registerExtensions }
-        set { LxAppCore.registerExtensions = newValue }
     }
 
     /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows)
@@ -749,27 +786,39 @@ extension LxApp {
         }
     }
 
-    /// Open a document using the system viewer
-    nonisolated public static func openDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
-        #if os(iOS)
+    /// Review a document using the native in-app viewer when supported.
+    nonisolated public static func reviewDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
         let pathString = filePath.toString()
         let mimeString = mimeType.toString()
         return executeOnMain {
-            LxAppDocument.openDocument(
+            LxAppDocument.reviewDocument(
                 path: pathString,
                 mimeType: mimeString.isEmpty ? nil : mimeString,
                 showMenu: showMenu
             )
         }
-        #elseif os(macOS)
+    }
+
+    /// Open a document with the system / external app.
+    nonisolated public static func openDocumentExternal(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
         let pathString = filePath.toString()
-        let url = URL(fileURLWithPath: pathString)
-        let _ = (mimeType, showMenu)
-        return NSWorkspace.shared.open(url)
-        #else
-        let _ = (filePath, mimeType, showMenu)
-        return false
-        #endif
+        let mimeString = mimeType.toString()
+        return executeOnMain {
+            LxAppDocument.openExternal(
+                path: pathString,
+                mimeType: mimeString.isEmpty ? nil : mimeString,
+                showMenu: showMenu
+            )
+        }
+    }
+
+    /// Legacy compatibility wrapper kept for older bridge callers.
+    /// Tries native review first, then falls back to external open.
+    nonisolated public static func openDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {
+        if reviewDocument(file_path: filePath, mime_type: mimeType, show_menu: showMenu) {
+            return true
+        }
+        return openDocumentExternal(file_path: filePath, mime_type: mimeType, show_menu: showMenu)
     }
 
     /// Reveal a file or directory in the system file manager.

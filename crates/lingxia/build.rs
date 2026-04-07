@@ -42,44 +42,100 @@ fn generate_swift_bridge() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let generated_dir = workspace_root(&manifest_dir).join("lingxia-sdk/apple/Sources/generated");
     let lib_dir = generated_dir.join("LingXiaRustAPI");
+    let temp_dir = PathBuf::from(env::var("OUT_DIR").unwrap()).join("swift-bridge-generated");
 
     fs::create_dir_all(&lib_dir).expect("Failed to create directory");
+    fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
 
     swift_bridge_build::parse_bridges(vec!["src/apple.rs"])
-        .write_all_concatenated(&lib_dir, package_name);
-
-    // Move shared files
-    for file in ["SwiftBridgeCore.swift", "SwiftBridgeCore.h"] {
-        let src = lib_dir.join(file);
-        if src.exists() {
-            fs::rename(&src, generated_dir.join(file)).ok();
-        }
-    }
+        .write_all_concatenated(&temp_dir, package_name);
 
     // Add imports to generated Swift files
     for path in [
-        lib_dir
+        temp_dir
             .join(package_name)
             .join(format!("{}.swift", package_name)),
-        generated_dir.join("SwiftBridgeCore.swift"),
+        temp_dir.join("SwiftBridgeCore.swift"),
     ] {
         if let Ok(content) = fs::read_to_string(&path) {
             if !content.contains("import CLingXiaRustAPI") {
                 let new_content =
                     format!("import Foundation\nimport CLingXiaRustAPI\n\n{}", content);
-                fs::write(&path, new_content).ok();
+                write_if_changed(&path, new_content.as_bytes());
             }
         }
     }
 
     // Write module map
-    fs::write(lib_dir.join("module.modulemap"), format!(
+    write_if_changed(&temp_dir.join("module.modulemap"), format!(
         "module CLingXiaRustAPI {{\n    header \"../SwiftBridgeCore.h\"\n    header \"{0}/{0}.h\"\n    export *\n}}",
         package_name
-    )).ok();
+    ).as_bytes());
+
+    // Move shared files after all in-place fixes are applied.
+    for file in ["SwiftBridgeCore.swift", "SwiftBridgeCore.h"] {
+        let src = temp_dir.join(file);
+        if src.exists() {
+            copy_if_changed(&src, &generated_dir.join(file));
+        }
+    }
+
+    copy_if_changed(
+        &temp_dir
+            .join(package_name)
+            .join(format!("{}.h", package_name)),
+        &lib_dir
+            .join(package_name)
+            .join(format!("{}.h", package_name)),
+    );
+    copy_if_changed(
+        &temp_dir
+            .join(package_name)
+            .join(format!("{}.swift", package_name)),
+        &lib_dir
+            .join(package_name)
+            .join(format!("{}.swift", package_name)),
+    );
+    copy_if_changed(
+        &temp_dir.join("module.modulemap"),
+        &lib_dir.join("module.modulemap"),
+    );
 
     println!(
         "cargo:warning=Generated Swift bridge to {}",
         lib_dir.display()
     );
+}
+
+fn write_if_changed(path: &Path, contents: &[u8]) {
+    match fs::read(path) {
+        Ok(existing) if existing == contents => return,
+        _ => {}
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create parent directory");
+    }
+    fs::write(path, contents).expect("Failed to write generated file");
+}
+
+fn copy_if_changed(source: &Path, destination: &Path) {
+    let source_bytes = fs::read(source)
+        .unwrap_or_else(|_| panic!("Failed to read generated source file {}", source.display()));
+
+    match fs::read(destination) {
+        Ok(existing) if existing == source_bytes => return,
+        _ => {}
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("Failed to create destination directory");
+    }
+    fs::write(destination, source_bytes).unwrap_or_else(|_| {
+        panic!(
+            "Failed to copy generated file {} to {}",
+            source.display(),
+            destination.display()
+        )
+    });
 }

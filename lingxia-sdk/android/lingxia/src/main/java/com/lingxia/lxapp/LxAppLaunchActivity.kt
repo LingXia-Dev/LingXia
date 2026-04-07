@@ -18,17 +18,17 @@ import androidx.appcompat.app.AppCompatActivity
  *         // Your app logic here - LxApp is fully ready
  *     }
  *
- *     // Register custom JS extensions
- *     override fun registerExtensions() {
- *         registerNativeExtensions()
+ *     // Install native host addon
+ *     override fun installHostAddon() {
+ *         nativeInstallHostAddon()
  *     }
  *
- *     private external fun registerNativeExtensions()
+ *     private external fun nativeInstallHostAddon()
  * }
  * ```
  *
  * Automatically provides:
- * - User extension registration (via registerExtensions())
+ * - Native host addon installation (via installHostAddon())
  * - LxApp SDK initialization
  * - Home LxApp automatic opening
  * - Edge-to-edge transparent system bars
@@ -36,13 +36,13 @@ import androidx.appcompat.app.AppCompatActivity
 abstract class LxAppLaunchActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "LxAppLaunchActivity"
-        private var extensionsRegistered = false
+        private var hostAddonInstalled = false
     }
 
     /**
-     * Override to register custom native extensions.
+     * Override to install native host addon.
      */
-    protected open fun registerExtensions() {
+    protected open fun installHostAddon() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,15 +50,15 @@ abstract class LxAppLaunchActivity : AppCompatActivity() {
 
         Log.d(TAG, "Initializing LxApp...")
 
-        // Register user extensions (once only)
+        // Install native host addon (once only)
         synchronized(Companion::class.java) {
-            if (!extensionsRegistered) {
+            if (!hostAddonInstalled) {
                 val nativeReady = NativeApi.ensureLoaded()
                 if (nativeReady) {
-                    registerExtensions()
-                    extensionsRegistered = true
+                    installHostAddon()
+                    hostAddonInstalled = true
                 } else {
-                    Log.w(TAG, "Native library unavailable; skipping registerExtensions()")
+                    Log.w(TAG, "Native library unavailable; skipping installHostAddon()")
                 }
             }
         }

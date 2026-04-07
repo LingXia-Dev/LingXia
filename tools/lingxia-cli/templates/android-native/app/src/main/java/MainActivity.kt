@@ -9,14 +9,14 @@ class MainActivity : LxAppLaunchActivity() {
     private val TAG = "MainActivity"
 
     /**
-     * Register custom native extensions.
+     * Install native host addon.
      * Called once before LxApp initialization.
      */
-    override fun registerExtensions() {
-        registerNativeExtensions()
+    override fun installHostAddon() {
+        nativeInstallHostAddon()
     }
 
-    private external fun registerNativeExtensions()
+    private external fun nativeInstallHostAddon()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Enable WebView debugging BEFORE calling super.onCreate()

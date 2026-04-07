@@ -34,6 +34,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     use std::io::Read;
     use std::time::Duration;
 
+    crate::host_addon::run_before_init();
+
     let runtime = std::sync::Arc::new(platform.clone());
     let mut reader = match runtime.read_asset("app.json") {
         Ok(reader) => reader,
@@ -47,18 +49,24 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
         log::error!("Failed to read app.json: {}", e);
         return None;
     }
-    let app_config = match lingxia_app_context::AppConfig::parse_and_validate(&content) {
+    let mut app_config = match lingxia_app_context::AppConfig::parse_and_validate(&content) {
         Ok(config) => config,
         Err(e) => {
             log::error!("Failed to load app configuration: {}", e);
             return None;
         }
     };
+    if let Some(identity) = lxapp::home_lxapp_dev_identity() {
+        app_config.home_lxapp_appid = identity.appid;
+        app_config.home_lxapp_version = identity.version;
+    }
     install_global_executor();
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
         log::error!("Failed to initialize app configuration: {}", err);
         return None;
     }
+    crate::host_addon::run_install_logic_extensions();
+    crate::host_addon::run_install_host_apis();
     lingxia_browser::register_bundled_app();
     crate::browser::register_builtin();
     lingxia_logic::register_logic_runtime();
@@ -71,6 +79,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
             cache_max_size_bytes: app_config.cache_max_size_mb.saturating_mul(1024 * 1024),
         },
     );
+    crate::host_addon::run_after_init();
     crate::browser::warmup();
+    crate::host_addon::run_start_services();
     home_app_id
 }

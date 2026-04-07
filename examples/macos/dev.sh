@@ -68,7 +68,7 @@ fi
 
 echo "[2/5] Preparing app resources..."
 mkdir -p "$RESOURCES_DIR"
-rm -rf "$RESOURCES_DIR/homelxapp" 2>/dev/null || true
+rm -rf "$RESOURCES_DIR/lingxia-showcase" 2>/dev/null || true
 rm -rf "$RESOURCES_DIR/app.lingxia.browser" 2>/dev/null || true
 
 generate_app_config "$RESOURCES_DIR"
@@ -118,7 +118,7 @@ if [ -f "Sources/Resources/AppIcon.png" ]; then
     cp "Sources/Resources/AppIcon.png" "$APP_BUNDLE/Contents/Resources/"
 fi
 
-# Copy app bundle (homelxapp, app.json, etc.) - keep as bundle for detect_app_bundle
+# Copy app bundle (lingxia-showcase, app.json, etc.) - keep as bundle for detect_app_bundle
 if [ -d "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" ]; then
     cp -r "$BUILD_DIR/LingXiaDemo_LingXiaDemo.bundle" "$APP_BUNDLE/Contents/Resources/"
 fi

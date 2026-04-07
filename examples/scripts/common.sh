@@ -14,7 +14,7 @@ init_common_vars() {
     FRAMEWORK=""
     EXPECT_FRAMEWORK=false
     CLEAN_INSTALL=false
-    HOME_LXAPP="${HOME_LXAPP:-homelxapp}"  # Configurable home lxapp name
+    HOME_LXAPP="${HOME_LXAPP:-lingxia-showcase}"  # Configurable home lxapp name
     EXPECT_LXAPP=false
 }
 
@@ -127,7 +127,7 @@ show_help() {
     echo "Usage: $0 [options]"
     echo "Options:"
     echo "  --framework react|vue   Specify framework (default: auto-detect)"
-    echo "  --lxapp <name>          Specify home lxapp to build (default: homelxapp)"
+    echo "  --lxapp <name>          Specify home lxapp to build (default: lingxia-showcase)"
     echo "  --reinstall             Uninstall app before install (clean install)"
     echo "  --skip-rust             Skip Rust compilation"
     if [ -n "$extra_options" ]; then
@@ -194,10 +194,10 @@ copy_static_lxapp_to_assets() {
 
 # Build home lxapp and copy to target directory
 # Usage: build_and_copy_homelxapp "$TARGET_DIR"
-# Uses HOME_LXAPP variable (default: homelxapp)
+# Uses HOME_LXAPP variable (default: lingxia-showcase)
 build_and_copy_homelxapp() {
     local target_dir="$1"
-    local lxapp_name="${HOME_LXAPP:-homelxapp}"
+    local lxapp_name="${HOME_LXAPP:-lingxia-showcase}"
     local lxapp_dir="$LINGXIA_ROOT/examples/$lxapp_name"
     local dist_dir="$lxapp_dir/dist"
 
