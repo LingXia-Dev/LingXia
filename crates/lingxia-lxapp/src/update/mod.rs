@@ -155,11 +155,11 @@ fn filename_from_url_or_hash(url: &str) -> String {
 }
 
 impl UpdateManager {
-    /// Handle OTA update signal.
+    /// Trigger OTA update flow.
     ///
     /// - App: prompt/download/install flow, immediate and cooldown-bypassed.
-    /// - LxApp: release-channel background check for package preparation.
-    pub fn handle_ota_update(target: OtaUpdateTarget) {
+    /// - LxApp: immediate latest-package check flow, cooldown-bypassed.
+    pub fn trigger_ota_update(target: OtaUpdateTarget) {
         match target {
             OtaUpdateTarget::App {
                 runtime,
@@ -170,27 +170,24 @@ impl UpdateManager {
             OtaUpdateTarget::LxApp { target_appid } => {
                 let release_type = ReleaseType::Release;
                 let context_lxapp = lxapp_runtime::try_get(&target_appid)
-                    .filter(|app| app.release_type == release_type)
-                    .or_else(|| crate::app::home_appid().and_then(lxapp_runtime::try_get));
+                    .filter(|app| app.release_type == release_type);
 
                 let Some(context_lxapp) = context_lxapp else {
                     crate::warn!(
-                        "No available lxapp context for OTA-triggered update check: {}@{}",
+                        "Target lxapp is not active for OTA-triggered update check: {}@{}",
                         target_appid,
                         release_type.as_str()
                     );
                     return;
                 };
 
-                let current_version = lxapp_runtime::try_get(&target_appid)
-                    .filter(|app| app.release_type == release_type)
-                    .map(|app| app.current_version());
+                let current_version = context_lxapp.current_version();
 
                 Self::spawn_background_update_check_internal(
                     context_lxapp,
                     target_appid,
                     release_type,
-                    current_version,
+                    Some(current_version),
                     true,
                 );
             }

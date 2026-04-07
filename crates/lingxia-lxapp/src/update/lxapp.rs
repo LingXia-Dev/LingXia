@@ -1,6 +1,49 @@
 use super::*;
 use tokio::task::yield_now;
 
+fn emit_update_ready_event(
+    target_appid: &str,
+    release_type: ReleaseType,
+    version: &str,
+    is_force_update: bool,
+) {
+    let payload = serde_json::json!({
+        "version": version,
+        "isForceUpdate": is_force_update,
+        "releaseType": release_type.as_str(),
+    });
+    let _ = publish_app_event(target_appid, "UpdateReady", Some(payload.to_string()));
+}
+
+fn emit_update_failed_event(
+    target_appid: &str,
+    release_type: ReleaseType,
+    pkg: &UpdatePackageInfo,
+    error: &str,
+) {
+    let payload = serde_json::json!({
+        "version": pkg.version,
+        "isForceUpdate": pkg.is_force_update,
+        "releaseType": release_type.as_str(),
+        "minRuntimeVersion": pkg.required_runtime_version,
+        "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
+        "error": error,
+    });
+    let _ = publish_app_event(target_appid, "UpdateFailed", Some(payload.to_string()));
+}
+
+fn is_same_downloaded_update(
+    manager: &UpdateManager,
+    target_appid: &str,
+    release_type: ReleaseType,
+    version: &str,
+) -> bool {
+    matches!(
+        manager.has_downloaded_update(target_appid, release_type),
+        Ok(Some(info)) if info.version == version && info.archive_path.exists()
+    )
+}
+
 impl UpdateManager {
     pub(super) fn spawn_background_update_check_internal(
         context_lxapp: Arc<lxapp_runtime::LxApp>,
@@ -38,25 +81,20 @@ impl UpdateManager {
                     }
 
                     if let Err(err) = ensure_runtime_version_compatible(&target_appid, &pkg) {
-                        let payload = serde_json::json!({
-                            "version": pkg.version,
-                            "isForceUpdate": pkg.is_force_update,
-                            "releaseType": release_type.as_str(),
-                            "minRuntimeVersion": pkg.required_runtime_version,
-                            "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
-                            "error": err.to_string(),
-                        });
-                        let _ = publish_app_event(
+                        emit_update_failed_event(
                             &target_appid,
-                            "UpdateFailed",
-                            Some(payload.to_string()),
+                            release_type,
+                            &pkg,
+                            &err.to_string(),
                         );
                         return;
                     }
 
-                    let already_downloaded_same = matches!(
-                        manager.has_downloaded_update(&target_appid, release_type),
-                        Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
+                    let already_downloaded_same = is_same_downloaded_update(
+                        &manager,
+                        &target_appid,
+                        release_type,
+                        &pkg.version,
                     );
 
                     if already_downloaded_same {
@@ -65,15 +103,11 @@ impl UpdateManager {
                             pkg.version
                         )
                         .with_appid(target_appid.clone());
-                        let payload = serde_json::json!({
-                            "version": pkg.version,
-                            "isForceUpdate": pkg.is_force_update,
-                            "releaseType": release_type.as_str(),
-                        });
-                        let _ = publish_app_event(
+                        emit_update_ready_event(
                             &target_appid,
-                            "UpdateReady",
-                            Some(payload.to_string()),
+                            release_type,
+                            &pkg.version,
+                            pkg.is_force_update,
                         );
                         return;
                     }
@@ -89,28 +123,18 @@ impl UpdateManager {
                         .await;
 
                     if download_res.is_ok() {
-                        let payload = serde_json::json!({
-                            "version": pkg.version,
-                            "isForceUpdate": pkg.is_force_update,
-                            "releaseType": release_type.as_str(),
-                        });
-                        let _ = publish_app_event(
+                        emit_update_ready_event(
                             &target_appid,
-                            "UpdateReady",
-                            Some(payload.to_string()),
+                            release_type,
+                            &pkg.version,
+                            pkg.is_force_update,
                         );
                     } else {
-                        let payload = serde_json::json!({
-                            "version": pkg.version,
-                            "isForceUpdate": pkg.is_force_update,
-                            "releaseType": release_type.as_str(),
-                            "error": download_res.err().map(|e| e.to_string()).unwrap_or_else(|| "download failed".to_string()),
-                        });
-                        let _ = publish_app_event(
-                            &target_appid,
-                            "UpdateFailed",
-                            Some(payload.to_string()),
-                        );
+                        let error = download_res
+                            .err()
+                            .map(|e| e.to_string())
+                            .unwrap_or_else(|| "download failed".to_string());
+                        emit_update_failed_event(&target_appid, release_type, &pkg, &error);
                     }
                 }
                 Ok(None) => {}
