@@ -220,12 +220,13 @@ export function useLxStream<
   const methodRef = React.useRef(method);
   const paramsRef = React.useRef(resolveParams(options?.params));
   const runIdRef = React.useRef(0);
-  const paramsKey = stableParamKey(resolveParams(options?.params));
+  const resolvedParams = resolveParams(options?.params);
+  const paramsKey = options?.manual ? "" : stableParamKey(resolvedParams);
   const methodDep = getMethodKey(method) ?? method;
 
   optionsRef.current = options;
   methodRef.current = method;
-  paramsRef.current = resolveParams(options?.params);
+  paramsRef.current = resolvedParams;
 
   const cancel = React.useCallback(() => {
     runIdRef.current += 1;
@@ -360,11 +361,12 @@ export function useLxChannel<
   const methodRef = React.useRef(method);
   const paramsRef = React.useRef(resolveParams(options?.params));
   const runIdRef = React.useRef(0);
-  const paramsKey = stableParamKey(resolveParams(options?.params));
+  const resolvedParams = resolveParams(options?.params);
+  const paramsKey = options?.manual ? "" : stableParamKey(resolvedParams);
   const methodDep = getMethodKey(method) ?? method;
 
   methodRef.current = method;
-  paramsRef.current = resolveParams(options?.params);
+  paramsRef.current = resolvedParams;
 
   const send = React.useCallback((payload: TOut) => {
     chRef.current?.send(payload);
