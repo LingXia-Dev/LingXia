@@ -1,5 +1,5 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
-use crate::config::LingXiaConfig;
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::prepare_host_assets;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -8,8 +8,20 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
-pub struct DevExecuteOptions {
+const RUNNER_APP_NAME: &str = "LingXia Runner.app";
+const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
+const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
+const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub struct LxAppDevOptions {
+    pub release: bool,
+    pub framework: Option<String>,
+    pub progress: Option<String>,
+}
+
+pub struct RunExecuteOptions {
     pub release: bool,
     pub features: Vec<String>,
     pub build_native: bool,
@@ -41,16 +53,22 @@ struct DevContext {
 /// 1. Build the project
 /// 2. Install to device
 /// 3. Launch the application
-pub fn execute(options: DevExecuteOptions) -> Result<()> {
+pub fn execute_run(options: RunExecuteOptions) -> Result<()> {
+    // Detect project root (current directory)
+    let project_root = env::current_dir()?;
+
+    if is_standalone_lxapp_project(&project_root) {
+        return Err(anyhow!(
+            "`lingxia run` is for app projects.\nRun `lingxia dev` inside an lxapp project."
+        ));
+    }
+
     println!();
     println!(
         "{}",
         "Development Mode: Build -> Install -> Launch".bold().cyan()
     );
     println!();
-
-    // Detect project root (current directory)
-    let project_root = env::current_dir()?;
 
     // Config is required for all project commands.
     let config = LingXiaConfig::load(&project_root)?;
@@ -131,6 +149,31 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     }
 }
 
+pub fn execute_lxapp(options: LxAppDevOptions) -> Result<()> {
+    let project_root = env::current_dir()?;
+    if !is_standalone_lxapp_project(&project_root) {
+        return Err(anyhow!(
+            "`lingxia dev` must be run inside an lxapp project.\nRun `lingxia run` for app projects."
+        ));
+    }
+
+    execute_lxapp_dev(
+        project_root,
+        RunExecuteOptions {
+            release: options.release,
+            features: vec![],
+            build_native: true,
+            abis: vec![],
+            macos_arch: None,
+            framework: options.framework,
+            progress: options.progress,
+            device: None,
+            platform_arg: None,
+            reinstall: false,
+        },
+    )
+}
+
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
     let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Android)?;
@@ -160,6 +203,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         targets: build_targets,
         lingxia_config: Some(ctx.config.clone()),
         ipa: false,
+        package: false,
         dmg: false,
         macos_arch: None,
     };
@@ -235,6 +279,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
         ipa: false,
+        package: false,
         dmg: false,
         macos_arch: None,
     };
@@ -323,6 +368,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
         ipa: false,
+        package: false,
         dmg: false,
         macos_arch,
     };
@@ -378,6 +424,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
         ipa: false,
+        package: false,
         dmg: false,
         macos_arch: None,
     };
@@ -430,6 +477,173 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     Ok(())
 }
 
+fn execute_lxapp_dev(project_root: PathBuf, options: RunExecuteOptions) -> Result<()> {
+    platform::apple::ensure_macos().map_err(|e| {
+        anyhow!(
+            "{}\nTip: `lingxia dev` for lxapp currently only supports macOS Runner.",
+            e
+        )
+    })?;
+
+    if let Some(platform) = options.platform_arg.as_deref() {
+        let parsed = platform.parse::<PlatformType>()?;
+        if parsed != PlatformType::MacOs {
+            return Err(anyhow!(
+                "`lingxia dev` for lxapp currently only supports macOS Runner.\nDo not pass `--platform {}`.",
+                parsed.as_str()
+            ));
+        }
+    }
+
+    if options.device.is_some() {
+        return Err(anyhow!(
+            "`--device` is not supported for lxapp dev.\nRun `lingxia dev` directly inside the lxapp project."
+        ));
+    }
+
+    if !options.abis.is_empty() {
+        return Err(anyhow!(
+            "`--abis` is not supported for lxapp dev.\nRun `lingxia dev` directly inside the lxapp project."
+        ));
+    }
+
+    if options.macos_arch.is_some() {
+        return Err(anyhow!(
+            "`--macos-arch` is not supported for lxapp dev.\nRunner always launches locally on the current Mac."
+        ));
+    }
+
+    println!();
+    println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());
+    println!();
+
+    let mut build_args = vec!["build".to_string()];
+    if options.release {
+        build_args.push("--release".to_string());
+    }
+    if let Some(framework) = options.framework.as_deref() {
+        build_args.push("--framework".to_string());
+        build_args.push(framework.to_string());
+    }
+    if let Some(progress) = options.progress.as_deref() {
+        build_args.push("--progress".to_string());
+        build_args.push(progress.to_string());
+    }
+
+    println!("{}", "Step 1/2: Building lxapp...".bold());
+    crate::lxapp::run_in_dir(&build_args, &project_root)?;
+
+    println!();
+    println!("{}", "Step 2/2: Launching Runner...".bold());
+    launch_runner_for_lxapp(&project_root)?;
+
+    println!();
+    println!("{}", "Dev workflow started.".green().bold());
+    println!("  {} Mode: {}", "*".bold(), "LxApp Runner".cyan());
+    println!("  {} Project: {}", "*".bold(), project_root.display());
+    println!();
+
+    Ok(())
+}
+
+fn is_standalone_lxapp_project(project_root: &Path) -> bool {
+    project_root.join("lxapp.json").exists() && !project_root.join(HOST_CONFIG_FILE).exists()
+}
+
+fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
+    if path.join("lxapp.json").exists() || path.join("dist").join("lxapp.json").exists() {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "lxapp.json not found in {} or {}/dist",
+        path.display(),
+        path.display()
+    ))
+}
+
+fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
+    platform::apple::ensure_macos()?;
+    ensure_valid_lxapp_dir(lxapp_path)?;
+    let app_path = installed_runner_app_path()?;
+    ensure_runner_matches_cli(&app_path)?;
+
+    let executable_path = app_path
+        .join("Contents")
+        .join("MacOS")
+        .join(RUNNER_EXECUTABLE_NAME);
+    if !executable_path.exists() {
+        return Err(anyhow!(
+            "Runner executable not found in installed app bundle: {}",
+            executable_path.display()
+        ));
+    }
+
+    let mut command = Command::new(&executable_path);
+    command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.spawn().with_context(|| {
+        format!(
+            "Failed to launch installed Runner executable: {}",
+            executable_path.display()
+        )
+    })?;
+
+    println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    Ok(())
+}
+
+fn installed_runner_app_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to resolve home directory"))?;
+    let path = home
+        .join(".lingxia")
+        .join("runner")
+        .join(REQUIRED_RUNNER_VERSION)
+        .join(RUNNER_APP_NAME);
+    if !path.exists() {
+        return Err(anyhow!(
+            "LingXia Runner {} is not installed at {}.",
+            REQUIRED_RUNNER_VERSION,
+            path.display()
+        ));
+    }
+    Ok(path)
+}
+
+fn ensure_runner_matches_cli(app_path: &Path) -> Result<()> {
+    let installed_version = installed_runner_version(app_path)?;
+    let installed = installed_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unknown");
+
+    if installed != REQUIRED_RUNNER_VERSION {
+        return Err(anyhow!(
+            "Installed Runner version {} does not match CLI version {}.\nRunner path: {}",
+            installed,
+            REQUIRED_RUNNER_VERSION,
+            app_path.display()
+        ));
+    }
+
+    Ok(())
+}
+
+fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
+    let info_path = app_path.join("Contents").join("Info.plist");
+    if !info_path.exists() {
+        return Ok(None);
+    }
+
+    let info: plist::Dictionary = plist::from_file(&info_path)
+        .with_context(|| format!("Failed to parse {}", info_path.display()))?;
+    Ok(info
+        .get("CFBundleShortVersionString")
+        .and_then(|value| value.as_string())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned))
+}
+
 fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
     match value {
         "react" => Ok(ProjectFramework::React),
@@ -475,4 +689,28 @@ fn install_signed_output_path(input_hap: &Path) -> PathBuf {
         .trim_end_matches("-signed")
         .trim_end_matches("-install-signed");
     input_hap.with_file_name(format!("{stem}-install-signed.hap"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_standalone_lxapp_project;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn standalone_lxapp_project_is_detected() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("lxapp.json"), "{}").unwrap();
+
+        assert!(is_standalone_lxapp_project(temp.path()));
+    }
+
+    #[test]
+    fn host_project_is_not_treated_as_standalone_lxapp() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join("lxapp.json"), "{}").unwrap();
+        fs::write(temp.path().join("lingxia.config.json"), "{}").unwrap();
+
+        assert!(!is_standalone_lxapp_project(temp.path()));
+    }
 }

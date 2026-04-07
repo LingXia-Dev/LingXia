@@ -25,7 +25,7 @@ struct Cli {
     command: Commands,
 }
 
-/// Common build options shared between Build and Dev commands
+/// Common build options shared between Build and Run commands
 #[derive(clap::Args, Clone)]
 struct BuildOptions {
     /// Release build (debug is the default)
@@ -51,6 +51,21 @@ struct BuildOptions {
     /// macOS architecture for native build
     #[arg(long, value_parser = ["arm64", "x86_64"])]
     macos_arch: Option<String>,
+
+    /// Override LxApp view framework detection
+    #[arg(long, value_parser = ["react", "vue", "html"])]
+    framework: Option<String>,
+
+    /// LxApp progress output mode
+    #[arg(long, value_parser = ["task", "plain"])]
+    progress: Option<String>,
+}
+
+#[derive(clap::Args, Clone)]
+struct DevOptions {
+    /// Release build (debug is the default)
+    #[arg(long)]
+    release: bool,
 
     /// Override LxApp view framework detection
     #[arg(long, value_parser = ["react", "vue", "html"])]
@@ -132,7 +147,7 @@ enum Commands {
         #[arg(long)]
         dmg: bool,
 
-        /// Package LxApp output archive (LxApp/LxPlugin build only)
+        /// Package release artifacts (macOS update zip, LxApp/LxPlugin archive)
         #[arg(long)]
         package: bool,
     },
@@ -189,6 +204,12 @@ enum Commands {
         /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
+    },
+
+    /// Development mode for lxapp projects
+    Dev {
+        #[command(flatten)]
+        dev_options: DevOptions,
     },
 
     /// Run mode: build, install, and launch app
@@ -250,6 +271,7 @@ enum Commands {
         #[arg(long, default_value = "developer", value_parser = ["release", "preview", "developer"])]
         release_type: String,
     },
+
 }
 
 #[derive(Subcommand)]
@@ -404,13 +426,20 @@ fn main() -> Result<()> {
         } => {
             commands::device::launch(&bundle_id, device, platform)?;
         }
+        Commands::Dev { dev_options } => {
+            commands::dev::execute_lxapp(commands::dev::LxAppDevOptions {
+                release: dev_options.release,
+                framework: dev_options.framework,
+                progress: dev_options.progress,
+            })?;
+        }
         Commands::Run {
             build_options,
             platform,
             device,
             reinstall,
         } => {
-            commands::dev::execute(commands::dev::DevExecuteOptions {
+            commands::dev::execute_run(commands::dev::RunExecuteOptions {
                 release: build_options.release,
                 features: build_options.features,
                 build_native: !build_options.skip_native,
