@@ -16,14 +16,16 @@ Commands:
   crates              Release crates.io packages
   npm                 Release npm packages (@lingxia/bridge/elements/react/vue/types)
   cli                 Release @lingxia/cli packages
+  runner              Build/package LingXia Runner release artifacts
   sdk                 Build/package SDK release artifacts
-  all [--publish]     Run crates -> npm -> cli -> sdk in order
+  all [--publish]     Run crates -> npm -> cli -> runner -> sdk in order
 
 Examples:
   scripts/release/main.sh doctor
   scripts/release/main.sh crates --dry-run
   scripts/release/main.sh npm --package all --publish
   scripts/release/main.sh cli --target all --publish
+  scripts/release/main.sh runner --publish
   scripts/release/main.sh sdk --platform all
 EOF
 }
@@ -40,9 +42,10 @@ workspace_version() {
 }
 
 doctor() {
-  local ws_v cli_v bridge_v elements_v react_v vue_v types_v
+  local ws_v cli_v runner_v bridge_v elements_v react_v vue_v types_v
   ws_v="$(workspace_version)"
   cli_v="$(node -p "require('$ROOT_DIR/tools/lingxia-cli/npm/package.json').version" 2>/dev/null || echo "N/A")"
+  runner_v="$ws_v"
   bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
   elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
   react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
@@ -52,6 +55,7 @@ doctor() {
   cat <<EOF
 Workspace version:    $ws_v
 CLI npm version:      $cli_v
+Runner version:       $runner_v
 NPM bridge version:   $bridge_v
 NPM elements version: $elements_v
 NPM react version:    $react_v
@@ -62,6 +66,7 @@ Scripts:
   crates: scripts/release/crates.sh
   npm:    scripts/release/npm.sh
   cli:    scripts/release/cli.sh
+  runner: scripts/release/runner.sh
   sdk:    scripts/release/sdk.sh
 EOF
 }
@@ -92,6 +97,9 @@ case "$cmd" in
   cli)
     run_cmd "$SCRIPT_DIR/cli.sh" "$@"
     ;;
+  runner)
+    run_cmd "$SCRIPT_DIR/runner.sh" "$@"
+    ;;
   sdk)
     run_cmd "$SCRIPT_DIR/sdk.sh" "$@"
     ;;
@@ -111,12 +119,16 @@ case "$cmd" in
     if [[ "$all_publish" -eq 1 ]]; then
       run_cmd "$SCRIPT_DIR/crates.sh" --publish
       run_cmd "$SCRIPT_DIR/npm.sh" --package all --publish
-      run_cmd "$SCRIPT_DIR/sdk.sh" --platform all --gh-upload
       run_cmd "$SCRIPT_DIR/cli.sh" --target all --publish
+      run_cmd "$SCRIPT_DIR/runner.sh" --publish --macos-arch arm64
+      run_cmd "$SCRIPT_DIR/runner.sh" --publish --macos-arch x86_64
+      run_cmd "$SCRIPT_DIR/sdk.sh" --platform all --gh-upload
     else
       run_cmd "$SCRIPT_DIR/crates.sh" --dry-run --allow-dirty
       run_cmd "$SCRIPT_DIR/npm.sh" --package all --dry-run
       run_cmd "$SCRIPT_DIR/cli.sh" --target all
+      run_cmd "$SCRIPT_DIR/runner.sh" --macos-arch arm64
+      run_cmd "$SCRIPT_DIR/runner.sh" --macos-arch x86_64
       run_cmd "$SCRIPT_DIR/sdk.sh" --platform all
     fi
     ;;
