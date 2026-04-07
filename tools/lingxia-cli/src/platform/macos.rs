@@ -118,6 +118,7 @@ impl MacosPlatform {
             .current_dir(macos_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
+            .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--triple", &triple]);
 
         if is_release {
@@ -135,6 +136,7 @@ impl MacosPlatform {
         cmd.current_dir(macos_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
+            .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--show-bin-path"]);
         cmd.args(["--triple", &triple]);
 
