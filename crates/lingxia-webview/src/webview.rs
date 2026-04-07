@@ -659,6 +659,11 @@ impl WebView {
         scheme: &str,
         request: http::Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        if let Some(response) = self.inner.handle_internal_bridge_request(&request) {
+            return Some(response);
+        }
+
         let guard = self.scheme_handlers.read().ok()?;
         let handler = guard.get(scheme)?;
         let outcome = block_on_scheme_future(handler(request));

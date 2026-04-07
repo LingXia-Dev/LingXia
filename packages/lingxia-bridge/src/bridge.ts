@@ -38,6 +38,9 @@ const LOG_PREFIX = "[LX.Bridge]";
 const MESSAGE_PORT_TYPE = "messageport";
 const JS_INTERFACE_TYPE = "jsinterface";
 const OUTBOX_LIMIT = 256;
+const APPLE_DOWNSTREAM_PATH = "/__lingxia/bridge/downstream";
+const APPLE_RECONNECT_BASE_MS = 200;
+const APPLE_RECONNECT_MAX_MS = 2000;
 
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
@@ -149,6 +152,11 @@ installEarlyReceiver();
 
 // Transport
 let messagePort: MessagePort | null = null;
+let appleDownstreamConnected = false;
+let appleDownstreamTask: Promise<void> | null = null;
+let appleDownstreamAbortController: AbortController | null = null;
+let appleReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
 const portInitState = {
   listenerInstalled: false,
   promise: null as Promise<MessagePort> | null,
@@ -181,6 +189,155 @@ function cleanupPortInit(): void {
   portInitState.resolve = null;
   portInitState.reject = null;
   portInitState.promise = null;
+}
+
+function useAppleDownstreamTransport(): boolean {
+  return communicationMethod === "webkit" && (isIOS() || isMacOS());
+}
+
+function clearAppleReconnectTimer(): void {
+  if (appleReconnectTimer !== null) {
+    clearTimeout(appleReconnectTimer);
+    appleReconnectTimer = null;
+  }
+}
+
+function closeActiveChannelsFromTransport(reason: string): void {
+  for (const [id, channel] of Array.from(activeChannels.entries())) {
+    activeChannels.delete(id);
+    channel._emitClose(BRIDGE_ERROR.STREAM_CLOSED, reason);
+  }
+}
+
+function rejectAllPendingForTransport(reason: string): void {
+  for (const id of Array.from(pendingReq.keys())) {
+    rejectPendingRequest(id, {
+      code: BRIDGE_ERROR.STREAM_CLOSED,
+      message: reason,
+    });
+  }
+  for (const id of Array.from(pendingChannels.keys())) {
+    rejectPendingChannel(id, {
+      code: BRIDGE_ERROR.STREAM_CLOSED,
+      message: reason,
+    });
+  }
+  closeActiveChannelsFromTransport(reason);
+}
+
+function resetHandshakeState(reason: string, rejectPending: boolean): void {
+  clearHandshakeTimer();
+  handshakeSessionId = null;
+  handshakeDone = false;
+  helloSent = false;
+  handshakeRetryCount = 0;
+  if (rejectPending) rejectAllPendingForTransport(reason);
+}
+
+function processAppleDownstreamBuffer(buffer: string): string {
+  let remaining = buffer;
+  while (true) {
+    const newlineIndex = remaining.indexOf("\n");
+    if (newlineIndex < 0) break;
+    const line = remaining.slice(0, newlineIndex).trim();
+    remaining = remaining.slice(newlineIndex + 1);
+    if (!line) continue;
+    try {
+      handleIncomingMessage(JSON.parse(line));
+    } catch (e) {
+      warn("Apple downstream parse error:", e, line);
+    }
+  }
+  return remaining;
+}
+
+async function runAppleDownstream(): Promise<void> {
+  const controller = new AbortController();
+  appleDownstreamAbortController = controller;
+  let response: Response;
+  try {
+    response = await fetch(APPLE_DOWNSTREAM_PATH, {
+      method: "GET",
+      cache: "no-store",
+      headers: { Accept: "application/x-ndjson" },
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (controller.signal.aborted) return;
+    throw e;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Apple downstream HTTP ${response.status}`);
+  }
+  if (!response.body) {
+    throw new Error("Apple downstream response body unavailable");
+  }
+
+  appleDownstreamConnected = true;
+  appleReconnectDelayMs = APPLE_RECONNECT_BASE_MS;
+  if (isDebugEnabled("proto")) log("Apple downstream connected");
+  startHandshake();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += decoder.decode(value, { stream: true });
+      buffered = processAppleDownstreamBuffer(buffered);
+    }
+    buffered += decoder.decode();
+    const tail = buffered.trim();
+    if (tail) {
+      try {
+        handleIncomingMessage(JSON.parse(tail));
+      } catch (e) {
+        warn("Apple downstream trailing parse error:", e, tail);
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {}
+  }
+}
+
+function scheduleAppleDownstreamReconnect(reason: string): void {
+  if (!useAppleDownstreamTransport()) return;
+  clearAppleReconnectTimer();
+  const delay = appleReconnectDelayMs;
+  appleReconnectDelayMs = Math.min(
+    appleReconnectDelayMs * 2,
+    APPLE_RECONNECT_MAX_MS,
+  );
+  warn(`Apple downstream disconnected, retrying in ${delay}ms: ${reason}`);
+  appleReconnectTimer = setTimeout(() => {
+    appleReconnectTimer = null;
+    ensureAppleDownstream();
+  }, delay);
+}
+
+function ensureAppleDownstream(): void {
+  if (!useAppleDownstreamTransport()) return;
+  if (appleDownstreamTask) return;
+  clearAppleReconnectTimer();
+  appleDownstreamTask = runAppleDownstream()
+    .catch((e) => {
+      if (appleDownstreamAbortController?.signal.aborted) return;
+      warn("Apple downstream failed:", e);
+    })
+    .finally(() => {
+      const aborted = appleDownstreamAbortController?.signal.aborted ?? false;
+      appleDownstreamTask = null;
+      appleDownstreamAbortController = null;
+      const wasConnected = appleDownstreamConnected;
+      appleDownstreamConnected = false;
+      resetHandshakeState("Apple downstream closed", wasConnected);
+      if (!aborted) scheduleAppleDownstreamReconnect("stream closed");
+    });
 }
 
 function getMessagePort(): Promise<MessagePort> {
@@ -702,6 +859,7 @@ function normalizeParams(params: unknown): unknown | undefined {
 
 function isTransportReady(): boolean {
   if (communicationMethod === MESSAGE_PORT_TYPE) return !!messagePort;
+  if (useAppleDownstreamTransport()) return appleDownstreamConnected;
   return (
     communicationMethod === "webkit" ||
     communicationMethod === JS_INTERFACE_TYPE
@@ -1689,7 +1847,9 @@ export function initBridge(): void {
   log(`Method: ${communicationMethod}`);
   activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 
-  if (communicationMethod === MESSAGE_PORT_TYPE) {
+  if (useAppleDownstreamTransport()) {
+    ensureAppleDownstream();
+  } else if (communicationMethod === MESSAGE_PORT_TYPE) {
     installMessagePortInitListener();
     getMessagePort().catch((e) => warn("Port init failed:", e));
   } else if (

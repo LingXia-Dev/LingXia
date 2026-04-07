@@ -1,13 +1,19 @@
 use crate::webview::{WebTag, find_webview};
 use crate::{WebResourceBody, WebResourceResponse};
+use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
 use objc2_foundation::{NSData, NSMutableDictionary, NSObjectProtocol, NSString};
 use objc2_web_kit::WKURLSchemeHandler;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 #[cfg(unix)]
 use std::os::fd::FromRawFd;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(unix)]
+use std::time::Duration;
 
 #[inline]
 unsafe fn nsdata_bytes_ptr_unchecked(ns_data: *mut AnyObject) -> *const u8 {
@@ -19,6 +25,67 @@ unsafe fn nsdata_bytes_ptr_unchecked(ns_data: *mut AnyObject) -> *const u8 {
     let func: unsafe extern "C" fn(*mut AnyObject, Sel) -> *const core::ffi::c_void =
         unsafe { core::mem::transmute(objc2::ffi::objc_msgSend as *const ()) };
     unsafe { func(ns_data, sel) }.cast()
+}
+
+fn pipe_task_registry() -> &'static Mutex<HashMap<usize, Arc<AtomicBool>>> {
+    static REGISTRY: OnceLock<Mutex<HashMap<usize, Arc<AtomicBool>>>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn register_pipe_task(task: *mut AnyObject) -> Arc<AtomicBool> {
+    let key = task as usize;
+    let flag = Arc::new(AtomicBool::new(false));
+    if let Ok(mut guard) = pipe_task_registry().lock() {
+        guard.insert(key, flag.clone());
+    }
+    flag
+}
+
+fn cancel_pipe_task(task: *mut AnyObject) {
+    let key = task as usize;
+    if let Ok(mut guard) = pipe_task_registry().lock()
+        && let Some(flag) = guard.remove(&key)
+    {
+        flag.store(true, Ordering::Release);
+    }
+}
+
+fn remove_pipe_task(task_key: usize) {
+    if let Ok(mut guard) = pipe_task_registry().lock() {
+        guard.remove(&task_key);
+    }
+}
+
+fn run_task_message(context: &str, f: impl FnOnce()) -> bool {
+    match objc2::exception::catch(std::panic::AssertUnwindSafe(f)) {
+        Ok(()) => true,
+        Err(exception) => {
+            log::warn!(
+                "Ignored ObjC exception while handling WKURLSchemeTask {}: {:?}",
+                context,
+                exception
+            );
+            false
+        }
+    }
+}
+
+unsafe fn task_did_receive_response(task: *mut AnyObject, response: *mut AnyObject) -> bool {
+    run_task_message("didReceiveResponse", || unsafe {
+        let _: () = msg_send![task, didReceiveResponse: response];
+    })
+}
+
+unsafe fn task_did_receive_data(task: *mut AnyObject, data: &NSData) -> bool {
+    run_task_message("didReceiveData", || unsafe {
+        let _: () = msg_send![task, didReceiveData: data];
+    })
+}
+
+unsafe fn task_did_finish(task: *mut AnyObject) -> bool {
+    run_task_message("didFinish", || unsafe {
+        let _: () = msg_send![task, didFinish];
+    })
 }
 // Define ivars struct first
 #[derive(Debug)]
@@ -189,7 +256,8 @@ define_class!(
         }
 
         #[unsafe(method(webView:stopURLSchemeTask:))]
-        fn stop_url_scheme_task(&self, _webview: *mut AnyObject, _task: *mut AnyObject) {
+        fn stop_url_scheme_task(&self, _webview: *mut AnyObject, task: *mut AnyObject) {
+            cancel_pipe_task(task);
             log::debug!("Stopped lx:// request");
         }
     }
@@ -285,7 +353,9 @@ impl LingXiaSchemeHandler {
                 return;
             }
 
-            let _: () = msg_send![task, didReceiveResponse: response_result];
+            if !task_did_receive_response(task, response_result) {
+                return;
+            }
 
             match body {
                 WebResourceBody::Path(path) => {
@@ -302,12 +372,14 @@ impl LingXiaSchemeHandler {
                     loop {
                         match reader.read(&mut buffer) {
                             Ok(0) => {
-                                let _: () = msg_send![task, didFinish];
+                                let _ = task_did_finish(task);
                                 break;
                             }
                             Ok(read_bytes) => {
                                 let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
-                                let _: () = msg_send![task, didReceiveData: &*chunk];
+                                if !task_did_receive_data(task, &chunk) {
+                                    break;
+                                }
                             }
                             Err(e) => {
                                 log::error!("Failed while streaming response data: {}", e);
@@ -320,30 +392,66 @@ impl LingXiaSchemeHandler {
                 WebResourceBody::Pipe(pipe) => {
                     #[cfg(unix)]
                     {
-                        let mut reader: Box<dyn std::io::Read> = {
-                            let fd = pipe.into_raw_fd();
-                            let file = File::from_raw_fd(fd);
-                            Box::new(file)
-                        };
+                        use std::net::Shutdown;
 
-                        let mut buffer = [0u8; 64 * 1024];
-                        loop {
-                            match reader.read(&mut buffer) {
-                                Ok(0) => {
-                                    let _: () = msg_send![task, didFinish];
+                        let mut reader = {
+                            let fd = pipe.into_raw_fd();
+                            std::os::unix::net::UnixStream::from_raw_fd(fd)
+                        };
+                        let _ = reader.set_read_timeout(Some(Duration::from_millis(200)));
+
+                        let retained_task: *mut AnyObject = msg_send![task, retain];
+                        let task_key = retained_task as usize;
+                        let cancel_flag = register_pipe_task(retained_task);
+
+                        std::thread::spawn(move || {
+                            let mut buffer = [0u8; 64 * 1024];
+                            loop {
+                                if cancel_flag.load(Ordering::Acquire) {
                                     break;
                                 }
-                                Ok(read_bytes) => {
-                                    let chunk = NSData::from_vec(buffer[..read_bytes].to_vec());
-                                    let _: () = msg_send![task, didReceiveData: &*chunk];
-                                }
-                                Err(e) => {
-                                    log::error!("Failed while streaming response data: {}", e);
-                                    self.fail_task_with_error(task, "Failed to read response data");
-                                    return;
+
+                                match reader.read(&mut buffer) {
+                                    Ok(0) => {
+                                        DispatchQueue::main().exec_sync(move || {
+                                            let task_ptr = task_key as *mut AnyObject;
+                                            let _ = task_did_finish(task_ptr);
+                                            let _: () = msg_send![task_ptr, release];
+                                        });
+                                        remove_pipe_task(task_key);
+                                        return;
+                                    }
+                                    Ok(read_bytes) => {
+                                        let chunk = buffer[..read_bytes].to_vec();
+                                        DispatchQueue::main().exec_sync(move || {
+                                            let task_ptr = task_key as *mut AnyObject;
+                                            let data = NSData::from_vec(chunk);
+                                            let _ = task_did_receive_data(task_ptr, &data);
+                                        });
+                                    }
+                                    Err(e)
+                                        if e.kind() == std::io::ErrorKind::WouldBlock
+                                            || e.kind() == std::io::ErrorKind::TimedOut =>
+                                    {
+                                        continue;
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "Failed while streaming response data asynchronously: {}",
+                                            e
+                                        );
+                                        break;
+                                    }
                                 }
                             }
-                        }
+
+                            let _ = reader.shutdown(Shutdown::Both);
+                            remove_pipe_task(task_key);
+                            DispatchQueue::main().exec_sync(move || {
+                                let task_ptr = task_key as *mut AnyObject;
+                                let _: () = msg_send![task_ptr, release];
+                            });
+                        });
                     }
                     #[cfg(not(unix))]
                     {
@@ -355,9 +463,11 @@ impl LingXiaSchemeHandler {
                 WebResourceBody::Bytes(data) => {
                     if !data.is_empty() {
                         let chunk = NSData::from_vec(data);
-                        let _: () = msg_send![task, didReceiveData: &*chunk];
+                        if !task_did_receive_data(task, &chunk) {
+                            return;
+                        }
                     }
-                    let _: () = msg_send![task, didFinish];
+                    let _ = task_did_finish(task);
                 }
             }
         }
@@ -391,12 +501,13 @@ impl LingXiaSchemeHandler {
 
             if !response_result.is_null() {
                 // Send response to WebView - use correct method names from wry
-                let _: () = msg_send![task, didReceiveResponse: response_result];
-                let _: () = msg_send![task, didReceiveData: &*body_data];
-                let _: () = msg_send![task, didFinish];
+                if task_did_receive_response(task, response_result) {
+                    let _ = task_did_receive_data(task, &body_data);
+                    let _ = task_did_finish(task);
+                }
             } else {
                 log::error!("Failed to create 404 response");
-                let _: () = msg_send![task, didFinish];
+                let _ = task_did_finish(task);
             }
         }
     }
@@ -431,13 +542,14 @@ impl LingXiaSchemeHandler {
                 headerFields: &*headers];
 
             if !response_result.is_null() {
-                let _: () = msg_send![task, didReceiveResponse: response_result];
-                let _: () = msg_send![task, didReceiveData: &*body_data];
-                let _: () = msg_send![task, didFinish];
+                if task_did_receive_response(task, response_result) {
+                    let _ = task_did_receive_data(task, &body_data);
+                    let _ = task_did_finish(task);
+                }
             } else {
                 // Last resort - just send data and finish
-                let _: () = msg_send![task, didReceiveData: &*body_data];
-                let _: () = msg_send![task, didFinish];
+                let _ = task_did_receive_data(task, &body_data);
+                let _ = task_did_finish(task);
             }
 
             log::error!("SchemeHandler error: {}", error_message);

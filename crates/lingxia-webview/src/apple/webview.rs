@@ -1,8 +1,12 @@
 use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy};
 use crate::webview::{find_webview, find_webview_delegate};
-use crate::{DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError};
+use crate::{
+    DownloadRequest, LoadDataRequest, LogLevel, SystemPipeReader, WebResourceResponse,
+    WebViewController, WebViewError,
+};
 use block2::{Block, StackBlock};
 use dispatch2::DispatchQueue;
+use http::{Method, Response, StatusCode};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
     AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send,
@@ -19,10 +23,14 @@ use objc2_web_kit::{
 #[cfg(target_os = "ios")]
 use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
 use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::io::Write;
+use std::os::fd::IntoRawFd;
+use std::os::unix::net::UnixStream;
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
-use std::sync::Arc;
 use std::sync::mpsc::sync_channel;
+use std::sync::{Arc, Condvar, Mutex};
 use std::{ffi::CString, ffi::c_char, ffi::c_void};
 
 use crate::webview::{
@@ -32,6 +40,8 @@ use crate::webview::{
 
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
+const INTERNAL_BRIDGE_DOWNSTREAM_PATH: &str = "/__lingxia/bridge/downstream";
+const APPLE_BRIDGE_QUEUE_LIMIT: usize = 1024;
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_JSON: &str = r#"
 [
@@ -81,6 +91,174 @@ impl Drop for NwOwned {
         if !self.0.is_null() {
             unsafe {
                 nw_release(self.0);
+            }
+        }
+    }
+}
+
+struct AppleBridgeConnection {
+    id: u64,
+    writer: UnixStream,
+}
+
+struct AppleBridgeTransportState {
+    queue: VecDeque<Vec<u8>>,
+    connection: Option<AppleBridgeConnection>,
+    next_connection_id: u64,
+    shutdown: bool,
+}
+
+struct AppleBridgeTransport {
+    webtag: WebTag,
+    state: Mutex<AppleBridgeTransportState>,
+    signal: Condvar,
+}
+
+impl AppleBridgeTransport {
+    fn new(webtag: WebTag) -> Arc<Self> {
+        let transport = Arc::new(Self {
+            webtag,
+            state: Mutex::new(AppleBridgeTransportState {
+                queue: VecDeque::new(),
+                connection: None,
+                next_connection_id: 0,
+                shutdown: false,
+            }),
+            signal: Condvar::new(),
+        });
+        let worker = Arc::clone(&transport);
+        std::thread::spawn(move || worker.run_writer_loop());
+        transport
+    }
+
+    fn connect_downstream(&self) -> Result<SystemPipeReader, WebViewError> {
+        let (read_end, write_end) = UnixStream::pair().map_err(|e| {
+            WebViewError::WebView(format!(
+                "Failed to create Apple bridge downstream pipe: {e}"
+            ))
+        })?;
+        let read_fd = read_end.into_raw_fd();
+        let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
+
+        let (replaced_existing, dropped_queued_frames) = {
+            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            guard.next_connection_id += 1;
+            let replaced = guard.connection.is_some();
+            let dropped = guard.queue.len();
+            guard.queue.clear();
+            guard.connection = Some(AppleBridgeConnection {
+                id: guard.next_connection_id,
+                writer: write_end,
+            });
+            (replaced, dropped)
+        };
+        self.signal.notify_all();
+        let dropped_suffix = if dropped_queued_frames > 0 {
+            format!(" (dropped {} stale queued frame(s))", dropped_queued_frames)
+        } else {
+            String::new()
+        };
+        log::info!(
+            "Apple bridge downstream connected webtag={}{}{}",
+            self.webtag,
+            if replaced_existing {
+                " (replaced existing stream)"
+            } else {
+                ""
+            },
+            dropped_suffix
+        );
+        Ok(reader)
+    }
+
+    fn enqueue_message(&self, message: &str) -> Result<(), WebViewError> {
+        let mut frame = Vec::with_capacity(message.len() + 1);
+        frame.extend_from_slice(message.as_bytes());
+        frame.push(b'\n');
+
+        let queued_len = {
+            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+            if guard.shutdown {
+                return Err(WebViewError::WebView(format!(
+                    "Apple bridge downstream is closed for {}",
+                    self.webtag
+                )));
+            }
+            if guard.queue.len() >= APPLE_BRIDGE_QUEUE_LIMIT {
+                return Err(WebViewError::WebView(format!(
+                    "Apple bridge downstream queue overflow for {} (limit={})",
+                    self.webtag, APPLE_BRIDGE_QUEUE_LIMIT
+                )));
+            }
+            guard.queue.push_back(frame);
+            guard.queue.len()
+        };
+        if queued_len > (APPLE_BRIDGE_QUEUE_LIMIT / 2) {
+            log::warn!(
+                "Apple bridge downstream backlog webtag={} queued={}",
+                self.webtag,
+                queued_len
+            );
+        }
+        self.signal.notify_one();
+        Ok(())
+    }
+
+    fn shutdown(&self) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        guard.shutdown = true;
+        guard.connection = None;
+        self.signal.notify_all();
+    }
+
+    fn run_writer_loop(self: Arc<Self>) {
+        loop {
+            let (connection_id, mut writer, frame) = {
+                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                while !guard.shutdown && (guard.connection.is_none() || guard.queue.is_empty()) {
+                    guard = self.signal.wait(guard).unwrap_or_else(|e| e.into_inner());
+                }
+                if guard.shutdown {
+                    return;
+                }
+                let Some(frame) = guard.queue.pop_front() else {
+                    continue;
+                };
+                let Some(connection) = guard.connection.as_ref() else {
+                    guard.queue.push_front(frame);
+                    continue;
+                };
+                let writer = match connection.writer.try_clone() {
+                    Ok(writer) => writer,
+                    Err(e) => {
+                        log::warn!(
+                            "Apple bridge downstream clone failed webtag={}: {}",
+                            self.webtag,
+                            e
+                        );
+                        guard.queue.push_front(frame);
+                        guard.connection = None;
+                        continue;
+                    }
+                };
+                (connection.id, writer, frame)
+            };
+
+            if let Err(e) = writer.write_all(&frame) {
+                log::debug!(
+                    "Apple bridge downstream write failed webtag={}: {}",
+                    self.webtag,
+                    e
+                );
+                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+                guard.queue.push_front(frame);
+                if guard
+                    .connection
+                    .as_ref()
+                    .is_some_and(|connection| connection.id == connection_id)
+                {
+                    guard.connection = None;
+                }
             }
         }
     }
@@ -1032,6 +1210,7 @@ pub struct WebViewInner {
     _ui_delegate: Option<Retained<LingXiaUIDelegate>>,
     _message_handler: Retained<LingXiaMessageHandler>,
     pub(crate) webtag: WebTag,
+    apple_bridge_transport: Arc<AppleBridgeTransport>,
 }
 
 #[cfg(target_os = "macos")]
@@ -1081,6 +1260,62 @@ unsafe impl Send for WebViewInner {}
 unsafe impl Sync for WebViewInner {}
 
 impl WebViewInner {
+    pub(crate) fn handle_internal_bridge_request(
+        &self,
+        request: &http::Request<Vec<u8>>,
+    ) -> Option<WebResourceResponse> {
+        if request.uri().path() != INTERNAL_BRIDGE_DOWNSTREAM_PATH {
+            return None;
+        }
+
+        if request.method() != Method::GET {
+            let response = Response::builder()
+                .status(StatusCode::METHOD_NOT_ALLOWED)
+                .header("Content-Type", "text/plain; charset=utf-8")
+                .body(())
+                .unwrap_or_else(|_| {
+                    Response::builder()
+                        .status(StatusCode::METHOD_NOT_ALLOWED)
+                        .body(())
+                        .expect("Failed to build method not allowed response")
+                });
+            let (parts, _) = response.into_parts();
+            return Some((parts, b"Bridge downstream only accepts GET.".to_vec()).into());
+        }
+
+        let reader = match self.apple_bridge_transport.connect_downstream() {
+            Ok(reader) => reader,
+            Err(err) => {
+                let response = Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("Content-Type", "text/plain; charset=utf-8")
+                    .body(())
+                    .unwrap_or_else(|_| {
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(())
+                            .expect("Failed to build bridge error response")
+                    });
+                let (parts, _) = response.into_parts();
+                return Some((parts, err.to_string().into_bytes()).into());
+            }
+        };
+
+        let response = Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", "application/x-ndjson; charset=utf-8")
+            .header("Cache-Control", "no-store")
+            .body(())
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(())
+                    .expect("Failed to build bridge downstream response")
+            });
+        let (parts, _) = response.into_parts();
+        Some((parts, reader).into())
+    }
+
     /// Create a new WebView asynchronously with channel sender
     pub(crate) fn create(
         appid: &str,
@@ -1395,6 +1630,7 @@ impl WebViewInner {
                 _navigation_delegate: navigation_delegate,
                 _ui_delegate: ui_delegate,
                 _message_handler: message_handler,
+                apple_bridge_transport: AppleBridgeTransport::new(webtag.clone()),
                 webtag,
             };
 
@@ -1743,21 +1979,7 @@ impl WebViewController for WebViewInner {
     }
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
-        let escaped_message = message
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"")
-            .replace('\n', "\\n")
-            .replace('\r', "\\r")
-            .replace('\t', "\\t");
-        let js_code = format!(
-            "if (typeof window.__LingXiaRecvMessage === 'function') {{ \
-                window.__LingXiaRecvMessage(\"{}\"); \
-            }} else {{ \
-                console.warn('[LingXia] __LingXiaRecvMessage not available'); \
-            }}",
-            escaped_message
-        );
-        self.evaluate_javascript(&js_code)
+        self.apple_bridge_transport.enqueue_message(message)
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
@@ -1814,6 +2036,7 @@ impl WebViewController for WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
+        self.apple_bridge_transport.shutdown();
         // WebView cleanup - only cleanup the actual WebView resources
         // Runtime storage is managed separately
         if MainThreadMarker::new().is_some() {

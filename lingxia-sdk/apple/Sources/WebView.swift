@@ -86,7 +86,7 @@ private struct AssociatedKeys {
 
 /// Shared WebView manager
 @MainActor
-class WebViewManager {
+final class WebViewManager {
     private static let log = OSLog(subsystem: "LingXia", category: "WebView")
     private static var debuggingEnabled = false
     #if os(macOS)
