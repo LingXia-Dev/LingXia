@@ -19,6 +19,8 @@ tokio = { workspace = true }
 futures = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 bytes = "1.11"
 http-body-util = "0.1"
 redb = "3.1.0"
@@ -36,8 +38,11 @@ rong_fs = { workspace = true }
 rong_console = { workspace = true }
 rong_event = { workspace = true }
 lingxia-app-context = { workspace = true }
+lingxia-observability = { workspace = true }
+lingxia-provider = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-update = { workspace = true }
 lingxia-media = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
@@ -72,3 +77,6 @@ rong_rt = { workspace = true, default-features = false, features = ["tls-ring"] 
 rong_modules = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
 rong_http = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
 rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
+
+[dev-dependencies]
+tempfile = "3"

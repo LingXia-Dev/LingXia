@@ -19,11 +19,12 @@ use crate::error::LxAppError;
 use crate::lxapp::config::LxPlugin;
 use crate::lxapp::uri as lx_uri;
 use crate::lxapp::{LINGXIA_DIR, PLUGINS_DIR};
-use crate::provider::UpdateTarget;
+use crate::provider::provider_error_to_lxapp_error;
 use crate::warn;
 use dashmap::DashMap;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_update::UpdateTarget;
 use rong_rt::download::{self as service_executor};
 use std::collections::BTreeMap;
 use std::fs;
@@ -401,7 +402,7 @@ async fn download_and_install_internal(
     let package = provider
         .check_update(target)
         .await
-        .map_err(|e| e.to_lxapp_error())?
+        .map_err(|e| provider_error_to_lxapp_error(&e))?
         .ok_or_else(|| {
             LxAppError::IoError(format!(
                 "Plugin {} (lxPluginId: {}) not found on server",

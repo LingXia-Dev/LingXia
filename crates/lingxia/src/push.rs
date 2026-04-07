@@ -1,6 +1,7 @@
 //! Unified push notification APIs for platform FFI layers.
 
-use lxapp::provider::{self, ProviderError};
+use lingxia_provider::ProviderError;
+use lxapp::provider;
 
 fn normalize_token(token: String) -> Result<String, ProviderError> {
     let token = token.trim().to_string();

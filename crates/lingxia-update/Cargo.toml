@@ -1,0 +1,11 @@
+[package]
+name = "lingxia-update"
+version.workspace = true
+edition.workspace = true
+description = "LingXia update domain models and shared policy helpers"
+license = "MIT"
+
+[dependencies]
+lingxia-provider = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

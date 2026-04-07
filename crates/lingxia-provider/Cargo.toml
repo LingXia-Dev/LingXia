@@ -1,0 +1,8 @@
+[package]
+name = "lingxia-provider"
+version.workspace = true
+edition.workspace = true
+description = "LingXia host/provider contracts"
+license = "MIT"
+
+[dependencies]

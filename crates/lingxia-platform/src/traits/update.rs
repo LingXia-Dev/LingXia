@@ -40,8 +40,8 @@ pub trait UpdateService: Send + Sync + 'static {
 
     /// Requests installation of an application update from a local package file.
     ///
-    /// This launches the system installer and returns once the request is issued.
-    /// It does not guarantee the update is installed successfully.
+    /// This starts the platform-specific apply flow and returns once the request
+    /// is handed off to the updater helper.
     ///
     /// # Arguments
     /// * `package_path` - Local, readable update package path (e.g. .apk on Android)
@@ -49,7 +49,7 @@ pub trait UpdateService: Send + Sync + 'static {
     /// # Platform Support / Notes
     /// - Android: Launches the system installer; requires user confirmation.
     ///   Requires `REQUEST_INSTALL_PACKAGES` and a `FileProvider` for APK sharing.
-    /// - macOS: Planned support for .pkg/.dmg installers.
+    /// - macOS: Applies a prepared `.zip` or `.app` update and relaunches the app.
     /// - iOS: Not supported (App Store only).
     /// - HarmonyOS: Not implemented (returns error).
     fn install_update(&self, package_path: &Path) -> Result<(), PlatformError> {
