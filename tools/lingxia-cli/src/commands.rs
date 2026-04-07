@@ -9,3 +9,4 @@ pub mod install;
 pub mod new;
 pub mod publish;
 pub mod rust;
+pub mod self_update;

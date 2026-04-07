@@ -272,6 +272,20 @@ enum Commands {
         release_type: String,
     },
 
+    /// CLI self-management (update, check for updates)
+    #[command(name = "self")]
+    SelfCmd {
+        #[command(subcommand)]
+        action: SelfAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SelfAction {
+    /// Update the CLI to the latest release
+    Update,
+    /// Check if a newer CLI version is available
+    CheckUpdate,
 }
 
 #[derive(Subcommand)]
@@ -358,6 +372,7 @@ enum HarmonyAuthAction {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let should_print_update_notice = !matches!(&cli.command, Commands::SelfCmd { .. });
 
     match cli.command {
         Commands::New {
@@ -525,6 +540,20 @@ fn main() -> Result<()> {
                 release_type,
             })?;
         }
+        Commands::SelfCmd { action } => match action {
+            SelfAction::Update => {
+                commands::self_update::execute(commands::self_update::SelfUpdateAction::Update)?;
+            }
+            SelfAction::CheckUpdate => {
+                commands::self_update::execute(
+                    commands::self_update::SelfUpdateAction::CheckUpdate,
+                )?;
+            }
+        },
+    }
+
+    if should_print_update_notice {
+        commands::self_update::maybe_print_update_notice();
     }
 
     Ok(())
