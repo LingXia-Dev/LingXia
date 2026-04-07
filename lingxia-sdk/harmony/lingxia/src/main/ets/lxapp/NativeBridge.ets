@@ -397,6 +397,16 @@ class NativeBridge {
       return LxAppDocument.openDocument(filePath, mimeType, showFlag);
     });
 
+    this.register('reviewDocument', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
+      const showFlag = parseBoolean(showMenu, true);
+      return LxAppDocument.reviewDocument(filePath, mimeType, showFlag);
+    });
+
+    this.register('openDocumentExternal', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
+      const showFlag = parseBoolean(showMenu, true);
+      return LxAppDocument.openDocumentExternal(filePath, mimeType, showFlag);
+    });
+
     this.register('scanCode', (payload: string): boolean => {
       return LxAppScan.scanCode(payload);
     });

@@ -29,42 +29,61 @@ internal object LxAppDocument {
 
     @JvmStatic
     fun openDocument(filePath: String, mimeType: String?, showMenu: Boolean): Boolean {
+        val resolvedMime = mimeType?.takeIf { it.isNotBlank() } ?: guessMimeType(filePath)
+        val isPdf = resolvedMime.equals("application/pdf", true) || filePath.lowercase().endsWith(".pdf")
+        return if (isPdf) {
+            reviewDocument(filePath, mimeType, showMenu)
+        } else {
+            openDocumentExternal(filePath, mimeType, showMenu)
+        }
+    }
+
+    private data class ValidatedRequest(val activity: Activity, val file: File, val resolvedMime: String?)
+
+    private fun validateRequest(caller: String, filePath: String, mimeType: String?): ValidatedRequest? {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            Log.w(TAG, "openDocument: current activity is null")
-            return false
+            Log.w(TAG, "$caller: current activity is null")
+            return null
         }
-
         if (filePath.isBlank()) {
-            Log.w(TAG, "openDocument: empty file path")
-            return false
+            Log.w(TAG, "$caller: empty file path")
+            return null
         }
-
         val file = File(filePath)
-        if (!file.exists()) {
-            Log.w(TAG, "openDocument: file does not exist -> $filePath")
-            return false
-        }
+        val resolvedMime = mimeType?.takeIf { it.isNotBlank() } ?: guessMimeType(filePath)
+        return ValidatedRequest(activity, file, resolvedMime)
+    }
+
+    @JvmStatic
+    fun reviewDocument(filePath: String, mimeType: String?, showMenu: Boolean): Boolean {
+        val req = validateRequest("reviewDocument", filePath, mimeType) ?: return false
 
         val lowerPath = filePath.lowercase()
-        val resolvedMime = mimeType?.takeIf { it.isNotBlank() } ?: guessMimeType(filePath)
-
-        if (resolvedMime.equals("application/pdf", true) || lowerPath.endsWith(".pdf")) {
-            return launchInternalPdfViewer(activity, file, showMenu)
+        if (req.resolvedMime.equals("application/pdf", true) || lowerPath.endsWith(".pdf")) {
+            return launchInternalPdfViewer(req.activity, req.file, showMenu)
         }
 
-        val wpsPackageName = resolveWpsPackage(activity)
-        val isChineseLocale = isChineseLanguageLocale(activity)
+        Log.i(TAG, "reviewDocument: no native review handler for $filePath")
+        return false
+    }
+
+    @JvmStatic
+    fun openDocumentExternal(filePath: String, mimeType: String?, showMenu: Boolean): Boolean {
+        val req = validateRequest("openDocumentExternal", filePath, mimeType) ?: return false
+
+        val wpsPackageName = resolveWpsPackage(req.activity)
+        val isChineseLocale = isChineseLanguageLocale(req.activity)
         if (isChineseLocale && wpsPackageName == null) {
-            Log.w(TAG, "openDocument: WPS is required for domestic users but not installed")
-            promptInstallWps(activity)
+            Log.w(TAG, "openDocumentExternal: WPS is required for domestic users but not installed")
+            promptInstallWps(req.activity)
             return true
         }
 
-        val contentUri: Uri = LingxiaDocumentProvider.uriForFile(activity, file)
+        val contentUri: Uri = LingxiaDocumentProvider.uriForFile(req.activity, req.file)
 
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(contentUri, resolvedMime ?: "*/*")
+            setDataAndType(contentUri, req.resolvedMime ?: "*/*")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (isChineseLocale && wpsPackageName != null) {
                 `package` = wpsPackageName
@@ -74,15 +93,14 @@ internal object LxAppDocument {
         val latch = CountDownLatch(1)
         var success = false
 
-        activity.runOnUiThread {
+        req.activity.runOnUiThread {
             try {
-                // Always open directly with default app (no chooser)
-                activity.startActivity(intent)
+                req.activity.startActivity(intent)
                 success = true
             } catch (error: ActivityNotFoundException) {
-                Log.e(TAG, "openDocument: no activity found to handle document", error)
+                Log.e(TAG, "openDocumentExternal: no activity found to handle document", error)
             } catch (error: Exception) {
-                Log.e(TAG, "openDocument: failed to launch viewer", error)
+                Log.e(TAG, "openDocumentExternal: failed to launch viewer", error)
             } finally {
                 latch.countDown()
             }
@@ -111,7 +129,7 @@ internal object LxAppDocument {
                 activity.startActivity(intent)
                 success = true
             } catch (error: Exception) {
-                Log.e(TAG, "openDocument: failed to start PdfViewerActivity", error)
+                Log.e(TAG, "reviewDocument: failed to start PdfViewerActivity", error)
             } finally {
                 latch.countDown()
             }
@@ -126,7 +144,6 @@ internal object LxAppDocument {
     }
 
     private fun guessMimeType(path: String): String? {
-        // Note: Rust layer (open.rs) already handles common document types
         val extension = MimeTypeMap.getFileExtensionFromUrl(path)?.lowercase()
         if (!extension.isNullOrEmpty()) {
             val mapped = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)

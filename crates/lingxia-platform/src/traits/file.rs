@@ -1,12 +1,27 @@
 use std::future::Future;
+use std::path::Path;
 
 use crate::error::PlatformError;
 
 #[derive(Debug, Clone)]
-pub struct OpenDocumentRequest {
-    pub file_path: String,
+pub struct OpenFileRequest {
+    pub path: String,
     pub mime_type: Option<String>,
     pub show_menu: Option<bool>,
+}
+
+impl OpenFileRequest {
+    pub fn is_pdf_like(&self) -> bool {
+        self.mime_type
+            .as_deref()
+            .map(|mime| mime.eq_ignore_ascii_case("application/pdf"))
+            .unwrap_or(false)
+            || Path::new(&self.path)
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+                .unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -40,11 +55,22 @@ pub struct FileDialogResult {
     pub paths: Vec<String>,
 }
 
-pub trait FileInteraction: Send + Sync + 'static {
-    fn open_document(
+pub trait FileService: Send + Sync + 'static {
+    fn review_file(
         &self,
-        request: OpenDocumentRequest,
+        _request: OpenFileRequest,
     ) -> impl Future<Output = Result<(), PlatformError>> + Send;
+
+    fn open_external(
+        &self,
+        _request: OpenFileRequest,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async {
+            Err(PlatformError::NotSupported(
+                "open_external is not supported on this platform".into(),
+            ))
+        }
+    }
 
     fn reveal_in_file_manager(
         &self,

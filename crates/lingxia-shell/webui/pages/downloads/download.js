@@ -260,7 +260,8 @@
     var row1 = document.createElement('div');
     row1.className = 'item-row';
     var nameLink = document.createElement('a');
-    nameLink.href = '#'; nameLink.className = 'file-name'; nameLink.hidden = true;
+    nameLink.href = '#'; nameLink.className = 'file-name file-name-link'; nameLink.hidden = true;
+    nameLink.setAttribute('role', 'button');
     var nameSpan = document.createElement('span');
     nameSpan.className = 'file-name';
     var controls = document.createElement('div');
@@ -383,8 +384,15 @@
 
     r.nameLink.hidden = !isDone;
     r.nameSpan.hidden = isDone;
-    if (isDone) { r.nameLink.textContent = item.fileName; }
-    else { r.nameSpan.textContent = item.fileName; }
+    if (isDone) {
+      r.nameLink.textContent = item.fileName;
+      r.nameLink.title = 'Open ' + item.fileName;
+    }
+    else {
+      r.nameSpan.textContent = item.fileName;
+      r.nameSpan.title = item.fileName;
+      r.nameLink.title = '';
+    }
 
     var parts = [];
     if (isDone) {

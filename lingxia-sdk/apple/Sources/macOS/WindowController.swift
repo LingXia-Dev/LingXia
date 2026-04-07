@@ -567,7 +567,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
         return MainActor.assumeIsolated {
-            LxAppMedia.qlController != nil
+            LxAppMedia.qlController != nil || LxAppDocument.qlController != nil
         }
     }
 
@@ -577,6 +577,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
+            LxAppDocument.clearQLController()
         }
     }
 

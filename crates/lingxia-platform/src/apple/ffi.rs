@@ -182,8 +182,11 @@ mod bridge {
         #[swift_bridge(swift_name = "LxAppMedia.cancelPreview")]
         fn cancel_preview_media(callback_id: u64) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.openDocument")]
-        fn open_document(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
+        #[swift_bridge(swift_name = "LxApp.reviewDocument")]
+        fn review_document(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.openDocumentExternal")]
+        fn open_document_external(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.revealInFileManager")]
         fn reveal_in_file_manager(path: &str) -> bool;
@@ -325,9 +328,9 @@ mod bridge {
 pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
-    cancel_preview_media, close_lxapp, hide_popup, hide_toast, navigate, open_document, open_lxapp,
-    open_url, preview_media, show_action_sheet, show_modal, show_popup, show_toast,
-    update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    cancel_preview_media, close_lxapp, hide_popup, hide_toast, navigate, open_document_external,
+    open_lxapp, open_url, preview_media, review_document, show_action_sheet, show_modal,
+    show_popup, show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

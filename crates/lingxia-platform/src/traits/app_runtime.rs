@@ -5,7 +5,7 @@ use crate::AssetFileEntry;
 use crate::error::PlatformError;
 
 use super::device::{Device, DeviceHardware};
-use super::file::FileInteraction;
+use super::file::FileService;
 use super::location::Location;
 use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
@@ -101,7 +101,7 @@ pub trait AppRuntime:
     + Device
     + DeviceHardware
     + SecureStore
-    + FileInteraction
+    + FileService
     + Location
     + UIUpdate
     + UpdateService

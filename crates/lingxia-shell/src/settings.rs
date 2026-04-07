@@ -1,7 +1,7 @@
 use crate::host::{HostCancel, HostResult, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
-use lingxia_platform::traits::file::{ChooseDirectoryRequest, FileInteraction};
+use lingxia_platform::traits::file::{ChooseDirectoryRequest, FileService};
 use lxapp::LxApp;
 use serde::Serialize;
 use std::path::PathBuf;

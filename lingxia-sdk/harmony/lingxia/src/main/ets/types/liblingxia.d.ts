@@ -457,8 +457,8 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
-   * Register user extensions (cloud provider, JS extensions, etc.)
+   * Install native host addon (bootstrap hooks, services, JS APIs, etc.)
    * Must be called before lxappInit()
    */
-  export function lingxiaRegisterExtensions(): void;
+  export function lingxiaInstallHostAddon(): void;
 }

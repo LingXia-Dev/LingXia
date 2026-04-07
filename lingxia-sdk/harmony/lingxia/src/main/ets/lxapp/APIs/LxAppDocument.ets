@@ -17,32 +17,56 @@ interface UriCreator {
   createUriFromPath?(path: string): string | undefined;
 }
 
-export class LxAppDocument {
-  public static openDocument(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
-    if (!filePath || filePath.length === 0) {
-      hilog.warn(DOMAIN, TAG, 'openDocument: empty file path');
-      return false;
-    }
+interface ValidatedRequest {
+  context: common.UIAbilityContext;
+  normalizedMime: string | undefined;
+}
 
+export class LxAppDocument {
+  private static validate(caller: string, filePath: string, mimeType: string): ValidatedRequest | undefined {
+    if (!filePath || filePath.length === 0) {
+      hilog.warn(DOMAIN, TAG, `${caller}: empty file path`);
+      return undefined;
+    }
     const context = LxApp.context;
     if (!context) {
-      hilog.warn(DOMAIN, TAG, 'openDocument: UIAbility context unavailable');
+      hilog.warn(DOMAIN, TAG, `${caller}: UIAbility context unavailable`);
+      return undefined;
+    }
+    const normalizedMime = mimeType && mimeType.length > 0 ? mimeType : undefined;
+    return { context, normalizedMime };
+  }
+
+  public static openDocument(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
+    return LxAppDocument.reviewDocument(filePath, mimeType, showMenu) ||
+      LxAppDocument.openDocumentExternal(filePath, mimeType, showMenu);
+  }
+
+  public static reviewDocument(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
+    const req = LxAppDocument.validate('reviewDocument', filePath, mimeType);
+    if (!req) {
       return false;
     }
 
-    const normalizedMime = mimeType && mimeType.length > 0 ? mimeType : undefined;
-
-    // Closed SDK path: use built-in single-page viewer for PDFs
-    const isPdf = (normalizedMime && normalizedMime.toLowerCase() === 'application/pdf') || filePath.toLowerCase().endsWith('.pdf');
+    const isPdf = (req.normalizedMime && req.normalizedMime.toLowerCase() === 'application/pdf') || filePath.toLowerCase().endsWith('.pdf');
     if (isPdf) {
       const title = getDisplayName(filePath);
-      const shareHandler = () => shareDocument(context, filePath, normalizedMime);
+      const shareHandler = () => shareDocument(req.context, filePath, req.normalizedMime);
       PdfSingleViewerOverlayManager.show(filePath, { title, showMenu, onShare: shareHandler });
       return true;
     }
 
-    // Non-PDF: use system viewer with fileshare
-    launchSystemViewer(context, filePath, normalizedMime, showMenu);
+    hilog.info(DOMAIN, TAG, `reviewDocument: no native review handler for ${filePath}`);
+    return false;
+  }
+
+  public static openDocumentExternal(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
+    const req = LxAppDocument.validate('openDocumentExternal', filePath, mimeType);
+    if (!req) {
+      return false;
+    }
+
+    launchSystemViewer(req.context, filePath, req.normalizedMime, showMenu);
     return true;
   }
 }

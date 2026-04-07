@@ -1,20 +1,32 @@
 use super::app::Platform;
-use super::ffi::open_document;
 #[cfg(target_os = "macos")]
 use super::ffi::reveal_in_file_manager;
+use super::ffi::{open_document_external, review_document};
 use crate::error::PlatformError;
 #[cfg(target_os = "macos")]
 use crate::traits::file::{ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult};
-use crate::traits::file::{FileInteraction, OpenDocumentRequest, RevealInFileManagerRequest};
+use crate::traits::file::{FileService, OpenFileRequest, RevealInFileManagerRequest};
 
-fn open_document_sync(request: OpenDocumentRequest) -> Result<(), PlatformError> {
+fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
     let mime = request.mime_type.unwrap_or_default();
     let show_menu = request.show_menu.unwrap_or(true);
-    if open_document(&request.file_path, &mime, show_menu) {
+    if review_document(&request.path, &mime, show_menu) {
         Ok(())
     } else {
         Err(PlatformError::Platform(
-            "Failed to open document on Apple platform".to_string(),
+            "Failed to review file on Apple platform".to_string(),
+        ))
+    }
+}
+
+fn open_external_sync(request: OpenFileRequest) -> Result<(), PlatformError> {
+    let mime = request.mime_type.unwrap_or_default();
+    let show_menu = request.show_menu.unwrap_or(true);
+    if open_document_external(&request.path, &mime, show_menu) {
+        Ok(())
+    } else {
+        Err(PlatformError::Platform(
+            "Failed to open file externally on Apple platform".to_string(),
         ))
     }
 }
@@ -39,9 +51,13 @@ fn reveal_in_file_manager_sync(request: RevealInFileManagerRequest) -> Result<()
     }
 }
 
-impl FileInteraction for Platform {
-    async fn open_document(&self, request: OpenDocumentRequest) -> Result<(), PlatformError> {
-        crate::rt::blocking(move || open_document_sync(request)).await
+impl FileService for Platform {
+    async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+        crate::rt::blocking(move || review_file_sync(request)).await
+    }
+
+    async fn open_external(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
+        crate::rt::blocking(move || open_external_sync(request)).await
     }
 
     async fn reveal_in_file_manager(

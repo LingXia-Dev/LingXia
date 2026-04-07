@@ -16,7 +16,7 @@ pub mod wifi;
 pub mod prelude {
     pub use super::app_runtime::AppRuntime;
     pub use super::device::{Device, DeviceHardware};
-    pub use super::file::FileInteraction;
+    pub use super::file::FileService;
     pub use super::location::Location;
     pub use super::media_interaction::MediaInteraction;
     pub use super::media_runtime::MediaRuntime;

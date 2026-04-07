@@ -47,7 +47,7 @@ import type {
 } from './storage';
 
 import type {
-  OpenDocumentOptions,
+  OpenFileOptions,
   ChooseDirectoryOptions,
   ChooseDirectoryResult,
   ChooseFileOptions,
@@ -145,7 +145,12 @@ export interface Lx {
   onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): void;
   offDeviceOrientationChange(callback?: (event: DeviceOrientationChangeEvent) => void): void;
 
-  openDocument(options: OpenDocumentOptions): void;
+  /**
+   * Open a local file with the requested strategy.
+   * Use `mode: 'review'` when the UX requires in-app preview,
+   * otherwise prefer `mode: 'auto'`.
+   */
+  openFile(options: OpenFileOptions): void;
   downloadFile(options: DownloadOptions): Promise<DownloadResult>;
 
   getStorage(): Storage;

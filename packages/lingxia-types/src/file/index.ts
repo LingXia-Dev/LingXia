@@ -3,9 +3,18 @@
  * Corresponds to: lingxia-logic/src/fs.rs
  */
 
-export interface OpenDocumentOptions {
+export interface OpenFileOptions {
+  /** Local file path or runtime-managed temp path. */
   filePath: string;
+  /** Optional coarse file type hint such as `pdf`, `docx`, or `xlsx`. */
   fileType?: string;
+  /**
+   * `auto`: prefer native review, then fall back to external open.
+   * `review`: require native review UI and reject when unsupported.
+   * `external`: hand off directly to the system / external app.
+   */
+  mode?: 'auto' | 'review' | 'external';
+  /** Hint for whether the native review UI should expose its action menu when supported. */
   showMenu?: boolean;
 }
 

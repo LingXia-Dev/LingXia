@@ -42,7 +42,9 @@ button { font: inherit; cursor: pointer; background: none; border: none; }
 .item-row { display: flex; align-items: center; gap: 8px; justify-content: space-between; }
 
 .file-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; color: #1d1d1f; text-decoration: none; }
-a.file-name:hover { color: #007AFF; }
+a.file-name { color: #0b57d0; cursor: pointer; }
+a.file-name:hover, a.file-name:focus-visible { color: #174ea6; text-decoration: underline; }
+a.file-name:focus-visible { outline: none; }
 
 .item-controls { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 

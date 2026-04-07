@@ -52,9 +52,10 @@ Page({
     this.setData({ isPdfDownloading: true });
     try {
       const result = await lx.downloadFile({ url });
-      await lx.openDocument({
+      await lx.openFile({
         filePath: result.tempFilePath,
         fileType: "pdf",
+        mode: "review",
         showMenu: this.data.showMenu,
       });
     } catch (error) {
@@ -79,9 +80,10 @@ Page({
     this.setData({ isOfficeDownloading: true });
     try {
       const result = await lx.downloadFile({ url });
-      await lx.openDocument({
+      await lx.openFile({
         filePath: result.tempFilePath,
         fileType,
+        mode: "auto",
         showMenu: this.data.showMenu,
       });
     } catch (error) {

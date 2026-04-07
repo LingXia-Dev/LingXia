@@ -2,8 +2,7 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_platform_error, js_internal_error,
 };
 use lingxia_platform::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileInteraction,
-    OpenDocumentRequest,
+    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileService, OpenFileRequest,
 };
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
@@ -11,13 +10,35 @@ use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional
 mod download;
 
 #[derive(FromJSObj)]
-struct JSOpenDocumentOptions {
+struct JSOpenFileOptions {
     #[rename = "filePath"]
     file_path: String,
     #[rename = "fileType"]
     file_type: Option<String>,
+    mode: Option<String>,
     #[rename = "showMenu"]
     show_menu: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OpenFileMode {
+    Auto,
+    Review,
+    External,
+}
+
+impl OpenFileMode {
+    fn parse(raw: Option<&str>, api_name: &'static str) -> JSResult<Self> {
+        match raw.map(str::trim).filter(|value| !value.is_empty()) {
+            None | Some("auto") => Ok(Self::Auto),
+            Some("review") => Ok(Self::Review),
+            Some("external") => Ok(Self::External),
+            Some(_) => Err(js_error_from_business_code_with_detail(
+                1002,
+                &format!("{api_name} requires mode to be auto, review, or external"),
+            )),
+        }
+    }
 }
 
 fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
@@ -40,13 +61,15 @@ fn map_file_type_to_mime(file_type: Option<String>) -> Option<String> {
     }
 }
 
-async fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-
+fn resolve_open_file_request(
+    lxapp: &LxApp,
+    options: &JSOpenFileOptions,
+    api_name: &'static str,
+) -> JSResult<OpenFileRequest> {
     if options.file_path.is_empty() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "openDocument requires filePath",
+            &format!("{api_name} requires filePath"),
         ));
     }
 
@@ -54,15 +77,50 @@ async fn open_document(ctx: JSContext, options: JSOpenDocumentOptions) -> JSResu
         .resolve_accessible_path(&options.file_path)
         .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?;
 
-    lxapp
-        .runtime
-        .open_document(OpenDocumentRequest {
-            file_path: resolved_path.to_string_lossy().into_owned(),
-            mime_type: map_file_type_to_mime(options.file_type),
-            show_menu: options.show_menu,
-        })
-        .await
-        .map_err(|e| js_error_from_platform_error(&e))
+    Ok(OpenFileRequest {
+        path: resolved_path.to_string_lossy().into_owned(),
+        mime_type: map_file_type_to_mime(options.file_type.clone()),
+        show_menu: options.show_menu,
+    })
+}
+
+async fn open_file_with_mode(
+    lxapp: &LxApp,
+    request: OpenFileRequest,
+    mode: OpenFileMode,
+) -> JSResult<()> {
+    match mode {
+        OpenFileMode::Auto => {
+            if let Err(review_error) = lxapp.runtime.review_file(request.clone()).await {
+                match lxapp.runtime.open_external(request).await {
+                    Ok(()) => Ok(()),
+                    Err(open_external_error) => {
+                        let _ = review_error;
+                        Err(js_error_from_platform_error(&open_external_error))
+                    }
+                }
+            } else {
+                Ok(())
+            }
+        }
+        OpenFileMode::Review => lxapp
+            .runtime
+            .review_file(request)
+            .await
+            .map_err(|e| js_error_from_platform_error(&e)),
+        OpenFileMode::External => lxapp
+            .runtime
+            .open_external(request)
+            .await
+            .map_err(|e| js_error_from_platform_error(&e)),
+    }
+}
+
+async fn open_file(ctx: JSContext, options: JSOpenFileOptions) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let mode = OpenFileMode::parse(options.mode.as_deref(), "openFile")?;
+    let request = resolve_open_file_request(&lxapp, &options, "openFile")?;
+    open_file_with_mode(&lxapp, request, mode).await
 }
 
 #[derive(FromJSObj, Clone, Default)]
@@ -182,7 +240,7 @@ async fn choose_directory(
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    lx::register_js_api(ctx, "openDocument", JSFunc::new(ctx, open_document)?)?;
+    lx::register_js_api(ctx, "openFile", JSFunc::new(ctx, open_file)?)?;
     lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
     lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
     download::init(ctx)?;
