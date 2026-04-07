@@ -7,6 +7,7 @@ use anyhow::{Context, Result, anyhow};
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use toml::Value;
 
 /// SDK type
 #[derive(Debug, Clone, Copy)]
@@ -49,44 +50,24 @@ pub fn resolve_sdk_version_from_rust_manifest(
     let manifest_path = project_root.join(rust_lib_name).join("Cargo.toml");
     let content = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
-
-    let mut section = "";
-    for raw_line in content.lines() {
-        let line = raw_line.split('#').next().unwrap_or("").trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        if line.starts_with('[') && line.ends_with(']') {
-            section = &line[1..line.len() - 1];
-            continue;
-        }
-
-        if section != "dependencies" && !section.ends_with(".dependencies") {
-            continue;
-        }
-
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        if key.trim() != "lingxia" {
-            continue;
-        }
-
-        if let Some(version) = parse_dependency_version(value.trim()) {
-            return Ok(version);
-        }
-
-        return Err(anyhow!(
-            "Unable to parse 'lingxia' version from {}. Use a literal version, e.g. lingxia = {{ version = \"0.3.0\" }}.",
+    let manifest = parse_manifest_value(&manifest_path, &content)?;
+    let dependencies = manifest
+        .get("dependencies")
+        .and_then(Value::as_table)
+        .ok_or_else(|| {
+            anyhow!(
+                "Dependency 'lingxia' not found in {}",
+                manifest_path.display()
+            )
+        })?;
+    let dependency = dependencies.get("lingxia").ok_or_else(|| {
+        anyhow!(
+            "Dependency 'lingxia' not found in {}",
             manifest_path.display()
-        ));
-    }
+        )
+    })?;
 
-    Err(anyhow!(
-        "Dependency 'lingxia' not found in {}",
-        manifest_path.display()
-    ))
+    resolve_dependency_version(manifest_path.parent().unwrap_or(project_root), dependency)
 }
 
 pub fn ensure_android_sdk_from_gradle(project_root: &Path, android_root: &Path) -> Result<()> {
@@ -160,6 +141,11 @@ fn ensure_apple_sdk(project_root: &Path, version: &str) -> Result<PathBuf> {
     let package_manifest = staged_dir.join("Package.swift");
 
     if package_manifest.exists() && version_marker_matches(&marker_path, version)? {
+        return Ok(staged_dir);
+    }
+
+    if let Some(local_sdk_dir) = find_local_apple_sdk_root(project_root) {
+        stage_local_apple_sdk(&local_sdk_dir, &staged_dir, &marker_path, version)?;
         return Ok(staged_dir);
     }
 
@@ -304,36 +290,169 @@ fn resolve_sdk_root(start: &Path) -> PathBuf {
     start.to_path_buf()
 }
 
-fn parse_dependency_version(value: &str) -> Option<String> {
-    let trimmed = value.trim();
+fn find_local_apple_sdk_root(project_root: &Path) -> Option<PathBuf> {
+    for dir in project_root.ancestors() {
+        if dir.join(".git").exists() || dir.join("Cargo.lock").exists() {
+            if is_lingxia_repo_root(dir) {
+                let candidate = dir.join("lingxia-sdk").join("apple");
+                if candidate.join("Package.swift").exists() {
+                    return Some(candidate);
+                }
+            }
+            break;
+        }
+    }
+    None
+}
 
-    // `lingxia = "0.3.0"`
-    if let Some(first) = trimmed.chars().next()
-        && (first == '"' || first == '\'')
-    {
-        let inner = trimmed.trim_matches(first).trim();
-        if !inner.is_empty() {
-            return Some(inner.to_string());
+fn is_lingxia_repo_root(dir: &Path) -> bool {
+    dir.join("Cargo.toml").exists()
+        && dir
+            .join("crates")
+            .join("lingxia")
+            .join("Cargo.toml")
+            .exists()
+        && dir
+            .join("tools")
+            .join("lingxia-cli")
+            .join("Cargo.toml")
+            .exists()
+        && dir
+            .join("lingxia-sdk")
+            .join("apple")
+            .join("Package.swift")
+            .exists()
+}
+
+fn stage_local_apple_sdk(
+    source_dir: &Path,
+    staged_dir: &Path,
+    marker_path: &Path,
+    version: &str,
+) -> Result<()> {
+    if staged_dir.exists() {
+        fs::remove_dir_all(staged_dir)?;
+    }
+    fs::create_dir_all(staged_dir)?;
+    crate::platform::apple::copy_dir_recursive(source_dir, staged_dir)?;
+    fs::write(marker_path, format!("{version}\n"))?;
+    Ok(())
+}
+
+fn parse_manifest_value(manifest_path: &Path, content: &str) -> Result<Value> {
+    toml::from_str(content)
+        .with_context(|| format!("Failed to parse TOML manifest {}", manifest_path.display()))
+}
+
+fn resolve_dependency_version(manifest_dir: &Path, dependency: &Value) -> Result<String> {
+    match dependency {
+        Value::String(version) if !version.trim().is_empty() => Ok(version.trim().to_string()),
+        Value::Table(table) => {
+            if let Some(version) = extract_version_value(table.get("version"))? {
+                return Ok(version);
+            }
+
+            if table.get("workspace").and_then(Value::as_bool) == Some(true) {
+                return resolve_workspace_package_version(manifest_dir);
+            }
+
+            if let Some(path) = table.get("path").and_then(Value::as_str) {
+                return resolve_version_from_dependency_path(manifest_dir, Path::new(path));
+            }
+
+            Err(anyhow!(
+                "Unable to parse 'lingxia' version from dependency entry in {}",
+                manifest_dir.join("Cargo.toml").display()
+            ))
+        }
+        _ => Err(anyhow!(
+            "Unsupported 'lingxia' dependency format in {}",
+            manifest_dir.join("Cargo.toml").display()
+        )),
+    }
+}
+
+fn resolve_version_from_dependency_path(
+    manifest_dir: &Path,
+    dependency_path: &Path,
+) -> Result<String> {
+    let dependency_manifest = manifest_dir.join(dependency_path).join("Cargo.toml");
+    let content = fs::read_to_string(&dependency_manifest)
+        .with_context(|| format!("Failed to read {}", dependency_manifest.display()))?;
+    let manifest = parse_manifest_value(&dependency_manifest, &content)?;
+    let package = manifest
+        .get("package")
+        .and_then(Value::as_table)
+        .ok_or_else(|| {
+            anyhow!(
+                "Missing [package] section in {}",
+                dependency_manifest.display()
+            )
+        })?;
+
+    if let Some(version) = extract_version_value(package.get("version"))? {
+        return Ok(version);
+    }
+
+    resolve_workspace_package_version(dependency_manifest.parent().unwrap_or_else(|| manifest_dir))
+}
+
+fn extract_version_value(value: Option<&Value>) -> Result<Option<String>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+
+    match value {
+        Value::String(version) if !version.trim().is_empty() => {
+            Ok(Some(version.trim().to_string()))
+        }
+        Value::Table(table) if table.get("workspace").and_then(Value::as_bool) == Some(true) => {
+            Ok(None)
+        }
+        Value::Table(_) => Err(anyhow!(
+            "Unsupported version field format in Cargo manifest"
+        )),
+        _ => Err(anyhow!(
+            "Unsupported version field format in Cargo manifest"
+        )),
+    }
+}
+
+fn resolve_workspace_package_version(start: &Path) -> Result<String> {
+    for dir in start.ancestors() {
+        let manifest_path = dir.join("Cargo.toml");
+        if !manifest_path.exists() {
+            // Stop at repo root even if no Cargo.toml exists here.
+            if dir.join(".git").exists() {
+                break;
+            }
+            continue;
+        }
+
+        let content = fs::read_to_string(&manifest_path)
+            .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+        let manifest = parse_manifest_value(&manifest_path, &content)?;
+        let Some(workspace) = manifest.get("workspace").and_then(Value::as_table) else {
+            // A Cargo.toml without [workspace] at the repo root means we've gone far enough.
+            if dir.join(".git").exists() || dir.join("Cargo.lock").exists() {
+                break;
+            }
+            continue;
+        };
+        let Some(package) = workspace.get("package").and_then(Value::as_table) else {
+            continue;
+        };
+        if let Some(version) = package.get("version").and_then(Value::as_str)
+            && !version.trim().is_empty()
+        {
+            return Ok(version.trim().to_string());
         }
     }
 
-    // `lingxia = { version = "0.3.0", ... }`
-    let marker = "version";
-    let idx = trimmed.find(marker)?;
-    let tail = trimmed[idx + marker.len()..].trim_start();
-    let tail = tail.strip_prefix('=')?.trim_start();
-    let quote = tail.chars().next()?;
-    if quote != '"' && quote != '\'' {
-        return None;
-    }
-    let rest = &tail[quote.len_utf8()..];
-    let end = rest.find(quote)?;
-    let version = rest[..end].trim();
-    if version.is_empty() {
-        None
-    } else {
-        Some(version.to_string())
-    }
+    Err(anyhow!(
+        "Unable to resolve workspace.package.version starting from {}",
+        start.display()
+    ))
 }
 
 fn parse_android_sdk_version_from_gradle(content: &str) -> Option<String> {
@@ -353,7 +472,12 @@ fn parse_android_sdk_version_from_gradle(content: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_android_sdk_version_from_gradle, parse_dependency_version};
+    use super::{
+        extract_version_value, parse_android_sdk_version_from_gradle, parse_manifest_value,
+        resolve_dependency_version,
+    };
+    use std::path::Path;
+    use toml::Value;
 
     #[test]
     fn parse_android_sdk_version_from_kts_dependency() {
@@ -372,13 +496,51 @@ mod tests {
 
     #[test]
     fn parse_dependency_version_from_table_style() {
-        let value = r#"{ version = "0.3.1", default-features = false }"#;
-        assert_eq!(parse_dependency_version(value), Some("0.3.1".to_string()));
+        let dependency: Value = toml::from_str(
+            r#"
+                [dependencies]
+                lingxia = { version = "0.3.1", features = ["cloud"] }
+            "#,
+        )
+        .unwrap();
+        let dependency = dependency
+            .get("dependencies")
+            .and_then(Value::as_table)
+            .and_then(|deps| deps.get("lingxia"))
+            .unwrap();
+        assert_eq!(
+            resolve_dependency_version(Path::new("/tmp"), dependency).unwrap(),
+            "0.3.1"
+        );
     }
 
     #[test]
     fn parse_dependency_version_from_string_style() {
-        let value = r#""0.3.2""#;
-        assert_eq!(parse_dependency_version(value), Some("0.3.2".to_string()));
+        let dependency: Value = toml::from_str(
+            r#"
+                [dependencies]
+                lingxia = "0.3.2"
+            "#,
+        )
+        .unwrap();
+        let dependency = dependency
+            .get("dependencies")
+            .and_then(Value::as_table)
+            .and_then(|deps| deps.get("lingxia"))
+            .unwrap();
+        assert_eq!(
+            resolve_dependency_version(Path::new("/tmp"), dependency).unwrap(),
+            "0.3.2"
+        );
+    }
+
+    #[test]
+    fn extract_version_value_supports_workspace_marker() {
+        let manifest =
+            parse_manifest_value(Path::new("/tmp/Cargo.toml"), "version.workspace = true").unwrap();
+        assert_eq!(
+            extract_version_value(manifest.get("version")).unwrap(),
+            None
+        );
     }
 }

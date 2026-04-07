@@ -60,8 +60,21 @@ pub(crate) fn resolve_runtime_js(
 
     match runtime_override {
         Some(spec) => resolve_runtime_from_spec(project_root, spec, ecma),
-        None => resolve_runtime_from_npm(project_root, DEFAULT_RUNTIME_PACKAGE, None, ecma),
+        None => resolve_default_runtime(project_root, ecma),
     }
+}
+
+fn resolve_default_runtime(
+    project_root: &Path,
+    ecma: RuntimeEcmaTarget,
+) -> Result<ResolvedRuntime> {
+    if let Some(local_runtime_root) = find_repo_local_runtime_root(project_root)
+        && let Ok(runtime) = resolve_runtime_from_local_path(&local_runtime_root, ecma)
+    {
+        return Ok(runtime);
+    }
+
+    resolve_runtime_from_npm(project_root, DEFAULT_RUNTIME_PACKAGE, None, ecma)
 }
 
 pub(crate) fn current_scaffold_versions() -> ScaffoldPackageVersions {
@@ -172,6 +185,20 @@ fn resolve_runtime_cache_root(project_root: &Path) -> PathBuf {
     }
 
     project_root.join("target")
+}
+
+fn find_repo_local_runtime_root(project_root: &Path) -> Option<PathBuf> {
+    for dir in project_root.ancestors() {
+        let candidate = dir.join("packages").join("lingxia-bridge");
+        if resolve_runtime_file(&candidate, RuntimeEcmaTarget::Es2020).is_ok() {
+            return Some(candidate);
+        }
+        // Stop at workspace/repo root to avoid leaking into unrelated parent directories.
+        if dir.join(".git").exists() || dir.join("Cargo.lock").exists() {
+            break;
+        }
+    }
+    None
 }
 
 fn resolve_runtime_file(base_path: &Path, ecma: RuntimeEcmaTarget) -> Result<PathBuf> {
