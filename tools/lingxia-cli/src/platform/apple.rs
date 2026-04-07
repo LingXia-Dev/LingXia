@@ -373,11 +373,15 @@ pub fn build_rust_staticlib(
         profile,
         features,
         |cmd| {
-            // Set deployment target for iOS to ensure correct minimum version
             if target.contains("ios") {
                 let deploy_ver = deployment_target.unwrap_or("17.0");
                 cmd.env("IPHONEOS_DEPLOYMENT_TARGET", deploy_ver);
                 println!("  {} iOS deployment target: {}", "ℹ".blue(), deploy_ver);
+            } else if target.contains("darwin")
+                && let Some(deploy_ver) = deployment_target
+            {
+                cmd.env("MACOSX_DEPLOYMENT_TARGET", deploy_ver);
+                println!("  {} macOS deployment target: {}", "ℹ".blue(), deploy_ver);
             }
         },
     )?;

@@ -4,6 +4,7 @@
 //! Simpler than iOS - no signing or device deployment needed.
 
 use super::apple::{self};
+use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
@@ -54,12 +55,21 @@ impl MacosPlatform {
         project_root: &Path,
         config: &BuildConfig,
         arch: &str,
+        deployment_target: &str,
     ) -> Result<PathBuf> {
         let rust_target = Self::rust_target(arch);
         let is_release = matches!(config.profile, BuildProfile::Release);
         let profile_dir = config.profile.as_str();
 
         if !config.build_native {
+            return Ok(project_root
+                .join("target")
+                .join(rust_target)
+                .join(profile_dir)
+                .join("liblingxia.a"));
+        }
+
+        if config.lingxia_config.is_none() {
             return Ok(project_root
                 .join("target")
                 .join(rust_target)
@@ -84,7 +94,7 @@ impl MacosPlatform {
             rust_target,
             is_release,
             &config.features,
-            None, // No deployment target for macOS
+            Some(deployment_target),
         )
     }
 
@@ -101,13 +111,31 @@ impl MacosPlatform {
 
         let is_release = matches!(profile, BuildProfile::Release);
         let build_config = if is_release { "release" } else { "debug" };
+        let triple = Self::swift_triple(arch, deployment_target);
+
+        let mut build_cmd = Command::new("swift");
+        build_cmd
+            .current_dir(macos_dir)
+            .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_BUILD_CONFIG", build_config)
+            .args(["build", "--disable-sandbox", "--triple", &triple]);
+
+        if is_release {
+            build_cmd.args(["-c", "release"]);
+        }
+
+        let build_status = build_cmd
+            .status()
+            .context("Failed to execute swift build for macOS")?;
+        if !build_status.success() {
+            return Err(anyhow!("Swift build failed"));
+        }
 
         let mut cmd = Command::new("swift");
         cmd.current_dir(macos_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
             .env("LINGXIA_BUILD_CONFIG", build_config)
-            .args(["build", "--show-bin-path"]);
-        let triple = Self::swift_triple(arch, deployment_target);
+            .args(["build", "--disable-sandbox", "--show-bin-path"]);
         cmd.args(["--triple", &triple]);
 
         if is_release {
@@ -211,6 +239,9 @@ impl MacosPlatform {
     }
 
     fn ensure_apple_sdk(&self, config: &BuildConfig) -> Result<()> {
+        if config.lingxia_config.is_none() {
+            return Ok(());
+        }
         let lingxia_config = config
             .lingxia_config
             .as_ref()
@@ -250,6 +281,12 @@ impl Platform for MacosPlatform {
         // Resolve macOS project directory
         let macos_dir = resolve_macos_dir(&config.project_root, macos_config)?;
         let sdk_root = config.project_root.clone();
+        let info_plist_path = macos_dir.join("Info.plist");
+        let standalone_defaults = if config.lingxia_config.is_none() {
+            spm::read_package_info_defaults(&info_plist_path).ok()
+        } else {
+            None
+        };
 
         println!(
             "{} Building macOS app from {}",
@@ -267,6 +304,11 @@ impl Platform for MacosPlatform {
                     .as_ref()
                     .and_then(|c| c.ios.as_ref())
                     .map(|c| c.bundle_id.clone())
+            })
+            .or_else(|| {
+                standalone_defaults
+                    .as_ref()
+                    .and_then(|d| d.bundle_id.clone())
             })
             .unwrap_or_else(|| "com.example.app".to_string());
         let granted_entitlements =
@@ -289,8 +331,8 @@ impl Platform for MacosPlatform {
             .unwrap_or_else(|| "14.0".to_string());
 
         // Build Rust static library
-        self.build_rust_library(&config.project_root, config, arch)?;
-        if config.build_native {
+        self.build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+        if config.build_native && config.lingxia_config.is_some() {
             let rust_target = Self::rust_target(arch);
             apple::update_spm_rust_link_stamp(
                 &config.project_root,
@@ -331,6 +373,11 @@ impl Platform for MacosPlatform {
             .as_ref()
             .and_then(|c| c.app.as_ref())
             .map(|a| a.product_name.clone())
+            .or_else(|| {
+                standalone_defaults
+                    .as_ref()
+                    .and_then(|d| d.product_name.clone())
+            })
             .unwrap_or_else(|| {
                 executable_path
                     .file_name()
@@ -344,16 +391,16 @@ impl Platform for MacosPlatform {
             .as_ref()
             .and_then(|c| c.app.as_ref())
             .map(|a| a.product_version.clone())
-            .unwrap_or_else(|| "1.0.0".to_string());
+            .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
 
         let app_project_name = config
             .lingxia_config
             .as_ref()
             .and_then(|c| c.app.as_ref())
-            .map(|a| a.project_name.as_str());
+            .map(|a| a.project_name.as_str())
+            .or_else(|| executable_path.file_name().and_then(|n| n.to_str()));
         let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
 
-        let info_plist_path = macos_dir.join("Info.plist");
         let info_plist = if info_plist_path.exists() {
             Some(info_plist_path)
         } else {
@@ -393,6 +440,17 @@ impl Platform for MacosPlatform {
                 err
             );
         }
+        ensure_sdk_resource_bundles_at_app_root(&bin_dir, &app_path)?;
+
+        let update_zip_path = if config.package {
+            Some(create_update_zip(
+                &app_path,
+                &config.project_root,
+                &product_version,
+            )?)
+        } else {
+            None
+        };
 
         let dmg_path = if config.dmg {
             Some(create_dmg(&app_path, &config.project_root)?)
@@ -400,7 +458,11 @@ impl Platform for MacosPlatform {
             None
         };
 
-        Ok(BuildArtifacts::MacOs { app_path, dmg_path })
+        Ok(BuildArtifacts::MacOs {
+            app_path,
+            update_zip_path,
+            dmg_path,
+        })
     }
 
     fn install(&self, _config: &InstallConfig) -> Result<()> {
@@ -504,7 +566,9 @@ fn create_macos_app_bundle(
     let exe_dst = macos_exec_dir.join(executable_name);
     fs::copy(executable_path, &exe_dst)?;
 
-    // Copy resource bundles (*.bundle) into Contents/Resources
+    // Copy all SwiftPM resource bundles into Contents/Resources so host
+    // runtime asset loading can resolve app.json and other package resources
+    // using standard macOS bundle semantics.
     for entry in fs::read_dir(bin_dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -544,6 +608,29 @@ fn create_macos_app_bundle(
     )?;
 
     Ok(app_bundle)
+}
+
+fn ensure_sdk_resource_bundles_at_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
+    for entry in fs::read_dir(bin_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.extension().is_some_and(|e| e == "bundle") {
+            continue;
+        }
+        let Some(bundle_name) = path.file_name() else {
+            return Err(anyhow!("Invalid bundle path: {}", path.display()));
+        };
+        let bundle_name_str = bundle_name.to_string_lossy();
+        if bundle_name_str != "lingxia_lingxia.bundle"
+            && bundle_name_str != "LingXia_LingXia.bundle"
+        {
+            continue;
+        }
+        let dest = app_bundle.join(bundle_name);
+        let _ = fs::remove_dir_all(&dest);
+        apple::copy_dir_recursive(&path, &dest)?;
+    }
+    Ok(())
 }
 
 fn copy_info_plist_localizations(source_root: &Path, resources_dir: &Path) -> Result<()> {
@@ -707,6 +794,57 @@ fn create_dmg(app_path: &Path, project_root: &Path) -> Result<PathBuf> {
     Ok(dmg_path)
 }
 
+fn create_update_zip(
+    app_path: &Path,
+    project_root: &Path,
+    product_version: &str,
+) -> Result<PathBuf> {
+    let app_name = app_path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow!("Invalid app bundle name: {}", app_path.display()))?;
+    let output_dir = project_root.join("dist").join("macos");
+    fs::create_dir_all(&output_dir).with_context(|| {
+        format!(
+            "Failed to create macOS distribution directory: {}",
+            output_dir.display()
+        )
+    })?;
+
+    let zip_path = output_dir.join(format!("{app_name}-{product_version}-macos.zip"));
+    if zip_path.exists() {
+        fs::remove_file(&zip_path)
+            .with_context(|| format!("Failed to remove existing {}", zip_path.display()))?;
+    }
+
+    println!("  Packaging macOS update ZIP...");
+    let parent_dir = app_path.parent().ok_or_else(|| {
+        anyhow!(
+            "Failed to determine app bundle parent directory for {}",
+            app_path.display()
+        )
+    })?;
+    let app_bundle_name = app_path.file_name().ok_or_else(|| {
+        anyhow!(
+            "Failed to determine app bundle name for {}",
+            app_path.display()
+        )
+    })?;
+    let status = Command::new("/usr/bin/ditto")
+        .current_dir(parent_dir)
+        .args(["-c", "-k", "--sequesterRsrc", "--keepParent"])
+        .arg(app_bundle_name)
+        .arg(&zip_path)
+        .status()
+        .context("Failed to execute ditto for macOS update ZIP")?;
+    if !status.success() {
+        anyhow::bail!("Failed to package macOS update ZIP");
+    }
+
+    println!("  {} Update ZIP → {}", "✓".green(), zip_path.display());
+    Ok(zip_path)
+}
+
 fn configure_dmg_layout(volume_name: &str, app_bundle_name: &str) -> Result<()> {
     let volume_name = escape_applescript_string(volume_name);
     let app_bundle_name = escape_applescript_string(app_bundle_name);
@@ -844,6 +982,26 @@ fn generate_macos_info_plist(
         }
     }
 
+    info.insert("CFBundleVersion".into(), "1".into());
+    info.insert(
+        "CFBundleShortVersionString".into(),
+        product_version.to_string().into(),
+    );
+    info.insert("CFBundleIdentifier".into(), bundle_id.to_string().into());
+    info.insert("CFBundleName".into(), product_name.to_string().into());
+    info.insert(
+        "CFBundleDisplayName".into(),
+        product_name.to_string().into(),
+    );
+    info.insert(
+        "CFBundleExecutable".into(),
+        executable_name.to_string().into(),
+    );
+    info.insert(
+        "LSMinimumSystemVersion".into(),
+        deployment_target.to_string().into(),
+    );
+
     let info_plist_path = contents_dir.join("Info.plist");
     let dict: plist::Dictionary = info.into_iter().collect();
     plist::to_file_xml(info_plist_path, &dict).context("Failed to write Info.plist")?;
@@ -870,26 +1028,7 @@ pub(crate) fn resolve_macos_dir(
     project_root: &Path,
     _macos_config: Option<&MacosConfig>,
 ) -> Result<PathBuf> {
-    // 1. Check standard macOS directory
-    let macos_dir = project_root.join("macos");
-    if macos_dir.join("Package.swift").exists() {
-        return Ok(macos_dir);
-    }
-
-    // 2. Fallback to iOS directory (shared codebase)
-    let ios_dir = project_root.join("ios");
-    if ios_dir.join("Package.swift").exists() {
-        return Ok(ios_dir);
-    }
-
-    Err(anyhow!(
-        "macOS Swift Package not found.\n\
-         Expected Package.swift in:\n\
-         - {}/macos/\n\
-         - {}/ios/ (shared)",
-        project_root.display(),
-        project_root.display()
-    ))
+    spm::resolve_apple_swift_package_dir(project_root, "macos", Some("ios"), "macOS")
 }
 
 /// Generate macOS app icons

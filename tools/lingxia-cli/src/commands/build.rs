@@ -1,8 +1,9 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
-use crate::host_assets::prepare_host_assets;
+use crate::host_assets::{prepare_host_assets, prepare_standalone_browser_assets};
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
+use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -48,6 +49,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let mut project_root = current_dir.clone();
     let mut inferred_platform_from_subdir = None;
     let mut skip_host_assets = false;
+    let mut standalone_apple_swift_package = false;
     let lxapp_json_exists = current_dir.join("lxapp.json").exists();
     let lxplugin_json_exists = current_dir.join("lxplugin.json").exists();
 
@@ -81,7 +83,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
     if !host_config_exists {
         if let Some(ctx) =
-            platform::detector::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
+            platform::spm::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
         {
             println!(
                 "{} Detected Apple Swift Package in {}",
@@ -131,32 +133,63 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
                 ));
             }
         } else {
-            return Err(anyhow!(
-                "No config file found in {}.\n\
-                 Expected one of:\n\
-                 - {} (native host project)\n\
-                 - lxapp.json + {} (LxApp project)\n\
-                 Tip: run from a host project or one of its platform subdirectories.",
-                current_dir.display(),
-                HOST_CONFIG_FILE,
-                LXAPP_BUILD_CONFIG_FILE
-            ));
+            if let Some(inferred_platform) =
+                platform::spm::detect_local_apple_swift_package_platform(&current_dir)?
+            {
+                println!(
+                    "{} Detected standalone Apple Swift Package in {}",
+                    "ℹ".blue(),
+                    current_dir.display()
+                );
+                println!("  {} Platform: {}", "•".cyan(), inferred_platform.as_str());
+                println!("  {} Host config: optional", "•".cyan());
+                println!();
+
+                project_root = current_dir.clone();
+                inferred_platform_from_subdir = Some(inferred_platform);
+                skip_host_assets = true;
+                standalone_apple_swift_package = true;
+            } else {
+                return Err(anyhow!(
+                    "No config file found in {}.\n\
+                     Expected one of:\n\
+                     - {} (native host project)\n\
+                     - lxapp.json + {} (LxApp project)\n\
+                     Tip: run from a host project, one of its platform subdirectories, or a standalone Apple Swift Package.",
+                    current_dir.display(),
+                    HOST_CONFIG_FILE,
+                    LXAPP_BUILD_CONFIG_FILE
+                ));
+            }
         }
     }
 
-    // Host/native build
-    if package {
-        println!(
-            "{} Ignoring --package for host build (only used by LxApp/LxPlugin build)",
-            "ℹ".blue()
+    if standalone_apple_swift_package {
+        return build_standalone_apple_swift_package(
+            &project_root,
+            inferred_platform_from_subdir,
+            build_native,
+            release,
+            features,
+            macos_arch,
+            platforms,
+            all_platforms,
+            ipa,
+            dmg,
+            package,
         );
+    }
+
+    // Host/native build
+    if package && !release {
+        return Err(anyhow!("`--package` requires `--release`."));
     }
     let config = LingXiaConfig::load(&project_root)?;
 
     let app = config.app.as_ref().ok_or_else(|| {
         anyhow!(
             "Missing app section in {}.\n\
-             Please configure app.productName/app.productVersion/app.platforms/app.homeLxAppID.",
+             Please configure app.productName/app.productVersion/app.platforms.",
             HOST_CONFIG_FILE
         )
     })?;
@@ -312,7 +345,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             },
             lingxia_config: Some(config.clone()),
             ipa: ipa && matches!(platform_type, platform::detector::PlatformType::Ios),
-
+            package: package && matches!(platform_type, platform::detector::PlatformType::MacOs),
             dmg: dmg && matches!(platform_type, platform::detector::PlatformType::MacOs),
             macos_arch: if matches!(platform_type, platform::detector::PlatformType::MacOs) {
                 macos_arch.clone()
@@ -352,4 +385,98 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
             "Unsupported framework {value:?}; expected react, vue, or html"
         )),
     }
+}
+
+fn build_standalone_apple_swift_package(
+    project_root: &std::path::Path,
+    inferred_platform: Option<PlatformType>,
+    build_native: bool,
+    release: bool,
+    features: Vec<String>,
+    macos_arch: Option<String>,
+    platforms: Vec<String>,
+    all_platforms: bool,
+    ipa: bool,
+    dmg: bool,
+    package: bool,
+) -> Result<()> {
+    if package && !release {
+        return Err(anyhow!(
+            "`--package` requires `--release` for standalone Apple Swift Package builds."
+        ));
+    }
+
+    let inferred_platform = inferred_platform
+        .ok_or_else(|| anyhow!("Failed to infer platform for standalone Apple Swift Package"))?;
+
+    let build_profile = resolve_build_profile(release);
+    let mut requested_platforms = platforms;
+    if requested_platforms.is_empty() && !all_platforms {
+        requested_platforms.push(inferred_platform.as_str().to_string());
+    }
+
+    let platforms_to_build = if !requested_platforms.is_empty() {
+        let mut selected = Vec::new();
+        for p in requested_platforms {
+            let platform_type: PlatformType = p.parse()?;
+            if !matches!(platform_type, PlatformType::MacOs) {
+                return Err(anyhow!(
+                    "Standalone Apple Swift Package without {} only supports macos builds, got '{}'",
+                    HOST_CONFIG_FILE,
+                    platform_type.as_str()
+                ));
+            }
+            if !selected.contains(&platform_type) {
+                selected.push(platform_type);
+            }
+        }
+        selected
+    } else {
+        vec![inferred_platform]
+    };
+
+    crate::platform::apple::ensure_macos()?;
+
+    let mut all_artifacts = Vec::new();
+    for platform_type in platforms_to_build {
+        if matches!(platform_type, PlatformType::MacOs) {
+            let resources_dir =
+                crate::platform::spm::resolve_standalone_resources_dir(project_root)?;
+            prepare_standalone_browser_assets(&resources_dir)?;
+        }
+
+        let platform_features = resolve_platform_features(&features, &platform_type)?;
+        let platform = platform::detector::create_platform(&platform_type)?;
+        let build_config = BuildConfig {
+            project_root: project_root.to_path_buf(),
+            profile: build_profile,
+            features: platform_features,
+            build_native,
+            targets: Vec::new(),
+            lingxia_config: None,
+            ipa: ipa && matches!(platform_type, PlatformType::Ios),
+            package: package && matches!(platform_type, PlatformType::MacOs),
+            dmg: dmg && matches!(platform_type, PlatformType::MacOs),
+            macos_arch: if matches!(platform_type, PlatformType::MacOs) {
+                macos_arch.clone()
+            } else {
+                None
+            },
+        };
+
+        let artifacts = platform.build(&build_config)?;
+        all_artifacts.push((platform_type, artifacts));
+    }
+
+    println!();
+    for (platform_type, artifacts) in &all_artifacts {
+        println!(
+            "{} {} → {}",
+            "✓".green(),
+            platform_type.as_str(),
+            artifacts.path().display()
+        );
+    }
+
+    Ok(())
 }

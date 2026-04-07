@@ -85,7 +85,7 @@ fn build_lingxia_config(
             api_server: None,
             lingxia_id: None,
             platforms: platforms.clone(),
-            home_lxapp_id: lxapp.app_id.clone(),
+            home_lxapp_id: Some(lxapp.app_id.clone()),
             cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
             cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
         }),
@@ -120,7 +120,7 @@ mod tests {
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
-            app_id: "homelxapp".to_string(),
+            app_id: "demo".to_string(),
         };
 
         let lingxia = build_lingxia_config(&config, &lxapp, "0.2.0");

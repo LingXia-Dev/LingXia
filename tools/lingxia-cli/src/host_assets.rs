@@ -5,6 +5,7 @@ use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
+use include_dir::{Dir, DirEntry, include_dir};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
@@ -13,6 +14,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const CACHE_VERSION: u32 = 1;
+static EMBEDDED_BROWSER_WEBUI_DIST: Dir<'_> =
+    include_dir!("$CARGO_MANIFEST_DIR/../../crates/lingxia-shell/webui/dist");
 
 fn is_png_path(path: &Path) -> bool {
     path.extension()
@@ -81,7 +84,7 @@ pub(crate) fn prepare_host_assets(
         progress_override,
         &mut cache,
     )?;
-    let app_json = build_app_json_from_config(config, &prepared_lxapp_assets)?;
+    let app_json = build_app_json_from_config(config, prepared_lxapp_assets.as_ref())?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
 
     let has_android = platforms
@@ -124,7 +127,7 @@ pub(crate) fn prepare_host_assets(
                     &assets_root,
                     &app_json,
                     &app_json_hash,
-                    Some(&prepared_lxapp_assets),
+                    prepared_lxapp_assets.as_ref(),
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
@@ -148,7 +151,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    Some(&prepared_lxapp_assets),
+                    prepared_lxapp_assets.as_ref(),
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -171,7 +174,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    Some(&prepared_lxapp_assets),
+                    prepared_lxapp_assets.as_ref(),
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -185,7 +188,7 @@ pub(crate) fn prepare_host_assets(
                     &rawfile_root,
                     &app_json,
                     &app_json_hash,
-                    Some(&prepared_lxapp_assets),
+                    prepared_lxapp_assets.as_ref(),
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
@@ -195,6 +198,27 @@ pub(crate) fn prepare_host_assets(
     }
 
     cache.save(project_root)?;
+    Ok(())
+}
+
+pub(crate) fn prepare_standalone_browser_assets(resources_dir: &Path) -> Result<()> {
+    if EMBEDDED_BROWSER_WEBUI_DIST.get_file("lxapp.json").is_none() {
+        return Err(anyhow!(
+            "Embedded browser webui assets are missing lxapp.json"
+        ));
+    }
+
+    let target_dir = resources_dir.join("app.lingxia.browser");
+    if target_dir.exists() {
+        fs::remove_dir_all(&target_dir)
+            .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
+    }
+    write_embedded_dir_contents(&EMBEDDED_BROWSER_WEBUI_DIST, &target_dir)?;
+    println!(
+        "  {} embedded browser assets → {}",
+        "✓".green(),
+        target_dir.display()
+    );
     Ok(())
 }
 
@@ -300,10 +324,24 @@ fn prepare_apple_resources_root(
     let dest_key = path_key(&resources_dir);
     let prev = cache.destinations.get(&dest_key).cloned();
 
+    if let Some(prev) = &prev
+        && let (Some(prev_name), Some(next)) = (
+            prev.asset_name.as_deref(),
+            lxapp_assets.map(|a| a.asset_name.as_str()),
+        )
+        && prev_name != next
+    {
+        let old_dir = resources_dir.join(prev_name);
+        if old_dir.exists() {
+            fs::remove_dir_all(&old_dir)
+                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
+        }
+    }
+
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
         dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
-        asset_name: lxapp_assets.map(|_| "homelxapp".to_string()),
+        asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
@@ -321,22 +359,24 @@ fn prepare_apple_resources_root(
     )?;
 
     if let Some(lxapp_assets) = lxapp_assets {
-        let target_dir = resources_dir.join("homelxapp");
+        let target_dir = resources_dir.join(&lxapp_assets.asset_name);
         if prev.as_ref() != Some(&desired) || !target_dir.exists() {
             if target_dir.exists() {
-                fs::remove_dir_all(&target_dir)?;
+                fs::remove_dir_all(&target_dir)
+                    .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
             }
             copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
             println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
             changed = true;
         }
-    } else if let Some(prev) = &prev
-        && prev.dist_hash.is_some()
-    {
-        let stale = resources_dir.join("homelxapp");
-        if stale.exists() {
-            fs::remove_dir_all(&stale)?;
-            changed = true;
+    } else if let Some(prev) = &prev {
+        if let Some(prev_name) = &prev.asset_name {
+            let stale = resources_dir.join(prev_name);
+            if stale.exists() {
+                fs::remove_dir_all(&stale)
+                    .with_context(|| format!("Failed to remove {}", stale.display()))?;
+                changed = true;
+            }
         }
     }
 
@@ -528,34 +568,50 @@ fn prepare_embedded_lxapp_assets(
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     cache: &mut HostAssetsCache,
-) -> Result<PreparedLxAppAssets> {
+) -> Result<Option<PreparedLxAppAssets>> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
 
-    let lxapp_dir = project_root.join(&app.home_lxapp_id);
+    let Some(home_lxapp_id) = app
+        .home_lxapp_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        println!(
+            "{} No embedded home LxApp configured, skipping home LxApp asset preparation",
+            "ℹ".blue()
+        );
+        return Ok(None);
+    };
+
+    let lxapp_dir = project_root.join(home_lxapp_id);
     if !lxapp_dir.exists() {
-        return Err(anyhow!(
-            "Home LxApp directory not found: {}",
+        println!(
+            "{} Home LxApp directory not found, skip embedding: {}",
+            "ℹ".blue(),
             lxapp_dir.display()
-        ));
+        );
+        return Ok(None);
     }
 
     let lxapp_json = lxapp_dir.join("lxapp.json");
     let lxapp_build_config = lxapp_dir.join(LXAPP_BUILD_CONFIG_FILE);
     if !lxapp_json.exists() || !lxapp_build_config.exists() {
-        return Err(anyhow!(
-            "LxApp project must include lxapp.json and {} in {}",
-            LXAPP_BUILD_CONFIG_FILE,
+        println!(
+            "{} Embedded home LxApp is incomplete, skip embedding: {}",
+            "ℹ".blue(),
             lxapp_dir.display()
-        ));
+        );
+        return Ok(None);
     }
     let metadata = read_lxapp_metadata(&lxapp_json)?;
-    if metadata.app_id != app.home_lxapp_id {
+    if metadata.app_id != home_lxapp_id {
         return Err(anyhow!(
             "homeLxAppID '{}' does not match lxapp.json appId '{}' in {}",
-            app.home_lxapp_id,
+            home_lxapp_id,
             metadata.app_id,
             lxapp_json.display()
         ));
@@ -614,24 +670,22 @@ fn prepare_embedded_lxapp_assets(
         },
     );
 
-    Ok(PreparedLxAppAssets {
+    Ok(Some(PreparedLxAppAssets {
         dist_dir,
         asset_name,
         dist_hash,
         home_lxapp_version: metadata.version,
-    })
+    }))
 }
 
 fn build_app_json_from_config(
     config: &LingXiaConfig,
-    lxapp_assets: &PreparedLxAppAssets,
+    lxapp_assets: Option<&PreparedLxAppAssets>,
 ) -> Result<String> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
-    let home_lxapp_version = lxapp_assets.home_lxapp_version.as_str();
-
     let api_server = app.api_server.as_deref();
 
     let mut obj = serde_json::Map::new();
@@ -651,14 +705,15 @@ fn build_app_json_from_config(
         obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
     }
 
-    obj.insert(
-        "homeLxAppID".to_string(),
-        serde_json::json!(app.home_lxapp_id),
-    );
-    obj.insert(
-        "homeLxAppVersion".to_string(),
-        serde_json::json!(home_lxapp_version),
-    );
+    if let Some(lxapp_assets) = lxapp_assets
+        && let Some(home_lxapp_id) = app.home_lxapp_id.as_deref().filter(|s| !s.is_empty())
+    {
+        obj.insert("homeLxAppID".to_string(), serde_json::json!(home_lxapp_id));
+        obj.insert(
+            "homeLxAppVersion".to_string(),
+            serde_json::json!(lxapp_assets.home_lxapp_version.as_str()),
+        );
+    }
     if let Some(max_age) = app.cache_max_age_days {
         obj.insert("cacheMaxAgeDays".to_string(), serde_json::json!(max_age));
     }
@@ -730,6 +785,35 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
             fs::copy(&path, &target)?;
         }
     }
+    Ok(())
+}
+
+fn write_embedded_dir_contents(dir: &Dir<'_>, output_dir: &Path) -> Result<()> {
+    fs::create_dir_all(output_dir)
+        .with_context(|| format!("Failed to create {}", output_dir.display()))?;
+
+    for entry in dir.entries() {
+        match entry {
+            DirEntry::Dir(child_dir) => {
+                let child_name = child_dir.path().file_name().ok_or_else(|| {
+                    anyhow!(
+                        "Invalid embedded directory path {}",
+                        child_dir.path().display()
+                    )
+                })?;
+                write_embedded_dir_contents(child_dir, &output_dir.join(child_name))?;
+            }
+            DirEntry::File(file) => {
+                let file_name = file.path().file_name().ok_or_else(|| {
+                    anyhow!("Invalid embedded file path {}", file.path().display())
+                })?;
+                let target_path = output_dir.join(file_name);
+                fs::write(&target_path, file.contents())
+                    .with_context(|| format!("Failed to write {}", target_path.display()))?;
+            }
+        }
+    }
+
     Ok(())
 }
 

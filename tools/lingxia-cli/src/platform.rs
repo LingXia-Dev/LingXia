@@ -10,6 +10,7 @@ pub mod doctor;
 pub mod harmony;
 pub mod ios;
 pub mod macos;
+pub mod spm;
 
 /// Platform-specific build configuration
 #[derive(Debug, Clone)]
@@ -24,6 +25,8 @@ pub struct BuildConfig {
     pub lingxia_config: Option<LingXiaConfig>,
     /// Sign and package as IPA (iOS only)
     pub ipa: bool,
+    /// Package host app for update delivery (macOS .app.zip)
+    pub package: bool,
     /// Package macOS app bundle as DMG (macOS only)
     pub dmg: bool,
     /// Requested macOS architecture for native build (`arm64` or `x86_64`)
@@ -95,6 +98,7 @@ pub enum BuildArtifacts {
     },
     MacOs {
         app_path: PathBuf,
+        update_zip_path: Option<PathBuf>,
         dmg_path: Option<PathBuf>,
     },
     Harmony {
@@ -103,16 +107,25 @@ pub enum BuildArtifacts {
 }
 
 impl BuildArtifacts {
-    /// Get the artifact path regardless of platform
+    /// Get the primary artifact path regardless of platform.
+    ///
+    /// For macOS the priority is: update zip > dmg > app bundle.
+    /// This matches the publish workflow where the update zip is the preferred
+    /// deliverable when `--package` is used.
     pub fn path(&self) -> &Path {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
             BuildArtifacts::Ios { app_path, ipa_path } => {
                 ipa_path.as_deref().unwrap_or(app_path.as_path())
             }
-            BuildArtifacts::MacOs { app_path, dmg_path } => {
-                dmg_path.as_deref().unwrap_or(app_path.as_path())
-            }
+            BuildArtifacts::MacOs {
+                app_path,
+                update_zip_path,
+                dmg_path,
+            } => update_zip_path
+                .as_deref()
+                .or(dmg_path.as_deref())
+                .unwrap_or(app_path.as_path()),
             BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
         }
     }

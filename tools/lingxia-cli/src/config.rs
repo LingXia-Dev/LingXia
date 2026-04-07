@@ -69,7 +69,8 @@ pub struct HostAppConfig {
 
     // Keep explicit spelling for "ID" (not "Id") to match runtime `app.json` schema.
     #[serde(rename = "homeLxAppID")]
-    pub home_lxapp_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub home_lxapp_id: Option<String>,
 
     /// Maximum age in days for cache files before cleanup (default: 7)
     /// Set to 0 to disable automatic cache cleanup
@@ -237,7 +238,7 @@ impl LingXiaConfig {
 
     /// Create a default Android config
     #[allow(dead_code)] // Used in tests
-    pub fn new_android(project_name: &str, package_id: &str) -> Self {
+    pub fn new_android(project_name: &str, package_id: &str, home_lxapp_id: &str) -> Self {
         Self {
             app: Some(HostAppConfig {
                 project_name: project_name.to_string(),
@@ -246,7 +247,7 @@ impl LingXiaConfig {
                 api_server: None,
                 lingxia_id: None,
                 platforms: vec!["android".to_string()],
-                home_lxapp_id: "homelxapp".to_string(),
+                home_lxapp_id: Some(home_lxapp_id.to_string()),
                 cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
                 cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
             }),
@@ -274,9 +275,6 @@ impl LingXiaConfig {
             }
             if app.product_name.trim().is_empty() {
                 return Err(anyhow!("app.productName must not be empty"));
-            }
-            if app.home_lxapp_id.trim().is_empty() {
-                return Err(anyhow!("app.homeLxAppID must not be empty"));
             }
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
@@ -315,7 +313,7 @@ mod tests {
 
     #[test]
     fn test_config_serialization() {
-        let config = LingXiaConfig::new_android("my-app", "com.example.myapp");
+        let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let json = serde_json::to_string_pretty(&config).unwrap();
         println!("{}", json);
 

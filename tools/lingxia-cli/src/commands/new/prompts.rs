@@ -158,8 +158,8 @@ pub(super) fn gather_native_project_info(
     })
 }
 
-pub(super) fn gather_lxapp_dir_name(yes: bool) -> Result<String> {
-    let default_name = "homelxapp".to_string();
+pub(super) fn gather_lxapp_dir_name(project_name: &str, yes: bool) -> Result<String> {
+    let default_name = project_name.to_string();
     if yes {
         return Ok(default_name);
     }

@@ -140,7 +140,7 @@ fn platforms_from_project_config() -> Result<Option<Vec<PlatformType>>> {
     let config_root = if current_dir.join(HOST_CONFIG_FILE).exists() {
         Some(current_dir.clone())
     } else if let Some(ctx) =
-        detector::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
+        crate::platform::spm::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?
     {
         Some(ctx.host_project_root)
     } else {

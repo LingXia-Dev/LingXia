@@ -127,7 +127,7 @@ pub fn execute(
     create_rust_library(&config, &versions)?;
     icons::configure_and_apply_icons(&config, icon, yes, &theme)?;
 
-    let lxapp_dir_name = gather_lxapp_dir_name(yes)?;
+    let lxapp_dir_name = gather_lxapp_dir_name(&config.name, yes)?;
     let lxapp_framework = gather_lxapp_framework(yes)?;
     let lxapp_info = create_lxapp_project(
         &config,

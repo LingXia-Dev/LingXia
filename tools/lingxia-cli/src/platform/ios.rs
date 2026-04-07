@@ -3,6 +3,7 @@
 //! Builds, signs, and deploys iOS applications using Swift Package Manager.
 
 use super::apple::{self, IOS_TARGET};
+use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
 };
@@ -43,6 +44,14 @@ impl IosPlatform {
 
         if !config.build_native {
             // Return expected path even if not building
+            return Ok(project_root
+                .join("target")
+                .join(IOS_TARGET)
+                .join(profile_dir)
+                .join("liblingxia.a"));
+        }
+
+        if config.lingxia_config.is_none() {
             return Ok(project_root
                 .join("target")
                 .join(IOS_TARGET)
@@ -97,7 +106,14 @@ impl IosPlatform {
             .env("LINGXIA_BUILD_CONFIG", build_config)
             // Clear any existing SDKROOT to ensure manifest compiles correctly
             .env_remove("SDKROOT")
-            .args(["build", "--triple", "arm64-apple-ios", "--sdk", &sdk_path]);
+            .args([
+                "build",
+                "--disable-sandbox",
+                "--triple",
+                "arm64-apple-ios",
+                "--sdk",
+                &sdk_path,
+            ]);
 
         if is_release {
             cmd.arg("-c").arg("release");
@@ -196,6 +212,9 @@ impl IosPlatform {
     }
 
     fn ensure_apple_sdk(&self, config: &BuildConfig) -> Result<()> {
+        if config.lingxia_config.is_none() {
+            return Ok(());
+        }
         let lingxia_config = config
             .lingxia_config
             .as_ref()
@@ -252,7 +271,7 @@ impl Platform for IosPlatform {
         // Build Rust static library
         // Use host project root for both crate discovery and target output.
         self.build_rust_library(&config.project_root, config, ios_config)?;
-        if config.build_native {
+        if config.build_native && config.lingxia_config.is_some() {
             apple::update_spm_rust_link_stamp(
                 &config.project_root,
                 &sdk_root,
@@ -423,16 +442,7 @@ pub(crate) fn resolve_ios_dir(
     project_root: &Path,
     _ios_config: Option<&IosConfig>,
 ) -> Result<PathBuf> {
-    let ios_dir = project_root.join("ios");
-    if ios_dir.join("Package.swift").exists() {
-        return Ok(ios_dir);
-    }
-
-    Err(anyhow!(
-        "iOS Swift Package not found.\n\
-         Expected Package.swift in: {}/ios/",
-        project_root.display()
-    ))
+    spm::resolve_apple_swift_package_dir(project_root, "ios", None, "iOS")
 }
 
 /// Get the iOS SDK path using xcrun
