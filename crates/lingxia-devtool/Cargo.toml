@@ -1,0 +1,19 @@
+[package]
+name = "lingxia-devtool"
+version.workspace = true
+edition.workspace = true
+description = "Native devtool entry library for LingXia Runner"
+license = "MIT"
+repository = "https://github.com/LingXia-Dev/LingXia"
+
+[lib]
+name = "lingxia"
+crate-type = ["staticlib"]
+
+[dependencies]
+lingxia = { workspace = true }
+lxapp = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+swift-bridge = "0.1.57"
