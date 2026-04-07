@@ -421,10 +421,7 @@ fn write_vite_config(
         )
         .replace("__INPUT_ENTRIES_JSON__", &input_json)
         .replace("__MAYBE_CONFIG_IMPORT__", &maybe_config_import)
-        .replace(
-            "__SOURCEMAP__",
-            if options.release { "false" } else { "true" },
-        )
+        .replace("__SOURCEMAP__", "false")
         .replace(
             "__MINIFY__",
             if options.release { "'oxc'" } else { "false" },

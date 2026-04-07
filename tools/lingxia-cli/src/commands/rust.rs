@@ -2,7 +2,6 @@ use crate::platform::BuildProfile;
 use crate::platform::detector::PlatformType;
 use crate::platform::doctor::command_version_line;
 use anyhow::{Context, Result, anyhow};
-use colored::Colorize;
 use std::path::Path;
 use std::process::Command;
 
@@ -24,14 +23,6 @@ pub fn apply_cargo_profile_and_features(
     if matches!(profile, BuildProfile::Release) {
         cmd.arg("--release");
     }
-    let has_tls_ring = features.iter().any(|f| f == "tls-ring");
-    let has_tls_aws = features.iter().any(|f| f == "tls-aws-lc");
-    // When tls-ring is explicitly selected, disable default features to avoid
-    // pulling in default tls-aws-lc and enabling both backends.
-    if has_tls_ring && !has_tls_aws {
-        cmd.arg("--no-default-features");
-    }
-
     if !features.is_empty() {
         cmd.arg("--features").arg(features.join(","));
     }
@@ -115,29 +106,15 @@ pub fn resolve_platform_features(
     requested: &[String],
     platform: &PlatformType,
 ) -> Result<Vec<String>> {
-    let mut features = requested.to_vec();
-    let has_tls_ring = features.iter().any(|f| f == "tls-ring");
-    let has_tls_aws = features.iter().any(|f| f == "tls-aws-lc");
-    if has_tls_ring && has_tls_aws {
+    let has_tls_ring = requested.iter().any(|f| f == "tls-ring");
+    let has_tls_aws = requested.iter().any(|f| f == "tls-aws-lc");
+    if has_tls_ring || has_tls_aws {
         return Err(anyhow!(
-            "Conflicting TLS features: `tls-ring` and `tls-aws-lc` cannot both be enabled."
+            "LingXia now selects the TLS backend automatically by target: mobile uses `ring`, desktop uses `aws-lc-rs`. Remove `tls-ring`/`tls-aws-lc` from --features for {}.",
+            platform.as_str()
         ));
     }
-
-    let is_mobile_platform = matches!(
-        platform,
-        PlatformType::Android | PlatformType::Ios | PlatformType::Harmony
-    );
-    if is_mobile_platform && !has_tls_ring && !has_tls_aws {
-        features.push("tls-ring".to_string());
-        println!(
-            "{} {}: auto-enabled feature `tls-ring`",
-            "ℹ".blue(),
-            platform.as_str()
-        );
-    }
-
-    Ok(features)
+    Ok(requested.to_vec())
 }
 
 #[cfg(test)]
@@ -151,30 +128,24 @@ mod tests {
     }
 
     #[test]
-    fn apply_cargo_profile_and_features_disables_defaults_for_tls_ring_only() {
+    fn apply_cargo_profile_and_features_passes_features_without_touching_defaults() {
         let mut cmd = Command::new("cargo");
-        let features = vec!["tls-ring".to_string()];
-        apply_cargo_profile_and_features(&mut cmd, BuildProfile::Debug, &features);
-
-        let args = command_args(&cmd);
-        assert!(args.iter().any(|a| a == "--no-default-features"));
-        assert!(args.windows(2).any(|w| w == ["--features", "tls-ring"]));
-    }
-
-    #[test]
-    fn apply_cargo_profile_and_features_keeps_defaults_for_tls_aws_only() {
-        let mut cmd = Command::new("cargo");
-        let features = vec!["tls-aws-lc".to_string()];
+        let features = vec!["cloud".to_string()];
         apply_cargo_profile_and_features(&mut cmd, BuildProfile::Debug, &features);
 
         let args = command_args(&cmd);
         assert!(!args.iter().any(|a| a == "--no-default-features"));
-        assert!(args.windows(2).any(|w| w == ["--features", "tls-aws-lc"]));
+        assert!(args.windows(2).any(|w| w == ["--features", "cloud"]));
     }
 
     #[test]
-    fn resolve_platform_features_auto_adds_tls_ring_on_mobile() {
-        let features = resolve_platform_features(&[], &PlatformType::Android).unwrap();
-        assert!(features.iter().any(|f| f == "tls-ring"));
+    fn resolve_platform_features_rejects_legacy_tls_overrides() {
+        let err = resolve_platform_features(&["tls-ring".to_string()], &PlatformType::Android)
+            .expect_err("legacy tls feature should be rejected");
+        assert!(
+            err.to_string()
+                .contains("selects the TLS backend automatically"),
+            "unexpected error: {err}"
+        );
     }
 }
