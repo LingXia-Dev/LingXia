@@ -74,7 +74,7 @@ lingxia build [options]
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` | host arch |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
-| `--package` | Package LxApp/LxPlugin `dist` into archive (`--release` required; LxApp build only) | false |
+| `--package` | Package release build output into a publishable archive (`--release` required). Used for LxApp/LxPlugin dist archives and standalone macOS update zips. | false |
 | `--skip-native` | Skip native Rust library compilation | false |
 
 **Examples:**
@@ -360,80 +360,20 @@ export OHOS_NDK_HOME=$HOME/OpenHarmony/command-line-tools/sdk/default/openharmon
 
 ## Configuration Files
 
-### `lingxia.config.json` (Host App)
+This reference focuses on commands and flags. File schemas live in the dedicated guides:
 
-```json
-{
-  "app": {
-    "projectName": "myapp",
-    "productName": "MyApp",
-    "productVersion": "1.0.0",
-    "lingxiaId": "myapp",
-    "apiServer": "https://api.example.com",
-    "platforms": ["android", "ios"],
-    "homeLxAppID": "homelxapp",
-    "cacheMaxAgeDays": 7,
-    "cacheMaxSizeMB": 1024
-  },
-  "android": {
-    "packageId": "com.example.myapp",
-    "minSdk": 29,
-    "targetSdk": 35,
-    "compileSdk": 35
-  },
-  "ios": {
-    "bundleId": "com.example.myapp",
-    "deploymentTarget": "17.0",
-    "targetName": "MyApp"
-  },
-  "harmony": {
-    "bundleName": "com.example.myapp"
-  },
-  "resources": {
-    "runtime": "npm:@lingxia/core@0.3.1"
-  },
-  "splash": {
-    "path": "path/to/splash.png",
-    "timeout": 1500
-  },
-  "panels": {
-    "items": []
-  }
-}
-```
+| File | Purpose | Canonical guide |
+|---|---|---|
+| `lingxia.config.json` | Host app metadata, platform config, runtime-facing build inputs | [App Project](./app-project.md) |
+| `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](./lxapp-guide.md) |
+| `lxapp.config.ts` | LxApp build config such as aliases and source directories | [LxApp Development Guide](./lxapp-guide.md) |
 
-`app.cacheMaxAgeDays` and `app.cacheMaxSizeMB` are optional. Set either value to `0` to disable that cleanup policy.
+Quick reminders:
 
-`homeLxAppVersion` is not configured in `lingxia.config.json`; it is generated into runtime `app.json` from the built home lxapp version.
-
-When `splash` is configured, CLI requires a PNG source image, copies it into native host resources as `splash.png`, and writes `splashTimeout` into runtime `app.json`.
-
-See [lingxia.config.json Reference](./lingxia-config.md) for full field-level details.
-
-### `lxapp.json` (LxApp)
-
-```json
-{
-  "appId": "homelxapp",
-  "appName": "My LxApp",
-  "version": "0.1.0",
-  "pages": ["pages/home/index.tsx"]
-}
-```
-
-### `lxapp.config.ts` (LxApp Build Config)
-
-```typescript
-import { defineConfig } from "@lingxia/cli";
-
-export default defineConfig({
-  alias: {
-    "@": "src",
-    "@shared": "shared",
-  },
-  sourceDirs: ["pages", "shared"],
-});
-```
+- `lingxia.config.json` is the source of truth for host app build metadata.
+- `homeLxAppVersion` is generated into runtime `app.json`; you do not set it manually.
+- `app.cacheMaxAgeDays` and `app.cacheMaxSizeMB` are optional; set either to `0` to disable that cleanup policy.
+- When `splash` is configured, CLI requires a PNG source image and writes `splashTimeout` into runtime `app.json`.
 
 ---
 

@@ -3,18 +3,21 @@
 This guide is a quick path to get a demo running with CLI.
 
 If you want command details, see [CLI Command Reference](./cli.md).
-If you want project/file layout details, see [LxApp Project Structure](./lxapp-structure.md).
+If you want host app project details, see [App Project](./app-project.md).
+If you want to write lxapp pages, see [LxApp Development Guide](./lxapp-guide.md).
+If you want to extend LingXia from native Rust, see [Native Development Guide](./native-development.md).
 
 ---
 
 ## 1. Prerequisites
 
-- **Node.js** 18 or later
-- **Rust** (for host app with native runtime)
+- Core tools:
+  - **Node.js** 18 or later
+  - **Rust** toolchain for host apps with native runtime
 - Platform toolchains for your target:
-- Android: Android SDK/NDK
-- iOS/macOS: Xcode (macOS host only)
-- Harmony: command-line tools SDK
+  - Android: Android SDK/NDK
+  - iOS/macOS: Xcode on a macOS host
+  - Harmony: Harmony command-line tools SDK
 
 Verify your environment:
 
@@ -26,10 +29,22 @@ lingxia doctor
 
 ## 2. Install CLI
 
-Install the LingXia CLI globally:
+Recommended: install the prebuilt CLI binary from GitHub Release:
 
 ```bash
-npm install -g @lingxia/cli
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+```
+
+Install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | LINGXIA_VERSION=0.4.3 sh
+```
+
+Rust users can also install from crates.io:
+
+```bash
+cargo install lingxia-cli
 ```
 
 Verify installation:
@@ -57,11 +72,11 @@ cd my-app
 `my-app` contains:
 - `lingxia.config.json` (host project config)
 - native platform project folders (`android/`, `ios/`, `macos/`, `harmony/` based on selection)
-- home lxapp folder (default `homelxapp/`)
+- home lxapp folder (default `lingxia-showcase/`)
 
 ---
 
-## 4. Build and Run Demo
+## 4. Build and Run Host App
 
 Build once:
 
@@ -83,7 +98,7 @@ lingxia build --release
 
 ---
 
-## 5. Optional: LxApp-Only Demo
+## 5. Build an LxApp Only
 
 Create a standalone lxapp project:
 
@@ -93,12 +108,14 @@ cd my-lxapp
 lingxia build
 ```
 
-This mode is useful for page/logic development without native host packaging workflow.
+This mode is useful when you want to focus on page and logic authoring without native host packaging.
 
 ---
 
 ## 6. Next
 
-- [CLI Command Reference](./cli.md)
-- [LxApp Project Structure](./lxapp-structure.md)
-- [lingxia.config.json Reference](./lingxia-config.md)
+- If you are building a host app shell: [App Project](./app-project.md)
+- If you are writing page UI and page logic: [LxApp Development Guide](./lxapp-guide.md)
+- If you want the bridge details: [Bridge Guide](./bridge-guide.md)
+- If you need full command coverage: [CLI Command Reference](./cli.md)
+- If you are extending LingXia from Rust: [Native Development Guide](./native-development.md)
