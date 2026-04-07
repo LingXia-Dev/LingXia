@@ -137,7 +137,7 @@ Page({
     this.setData({ networkListening: false });
   },
 
-  appendOrientationEvent: function (value) {
+  _appendOrientationEvent: function (value) {
     const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
     const timestamp = new Date().toISOString();
     const eventText = `${timestamp}  ${orientationValue}`;
@@ -177,7 +177,7 @@ Page({
 
     const handler = (event) => {
       const value = typeof event === "string" ? event : event?.value;
-      this.appendOrientationEvent(value);
+      this._appendOrientationEvent(value);
     };
 
     this._deviceOrientationHandler = handler;

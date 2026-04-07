@@ -48,17 +48,17 @@ Page({
     this.setNavigationBarTitle({ title });
 
     // Update page stack immediately
-    this.updatePageStack();
+    this._updatePageStack();
   },
 
   onShow: function () {
     console.log("UI page onShow");
     // Update page stack every time page shows
-    this.updatePageStack();
+    this._updatePageStack();
   },
 
   // Update current page stack
-  updatePageStack: function () {
+  _updatePageStack: function () {
     try {
       const pages = getCurrentPages();
       const pageStack = pages.map((page, index) => ({

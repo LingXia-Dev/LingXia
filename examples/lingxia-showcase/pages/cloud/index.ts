@@ -125,86 +125,86 @@ Page({
     const pageType = normalizePageType(type);
     this.setData({ type: pageType });
     if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this.ensureMqttStatusListener();
-      this.refreshMqttStatusSnapshot();
+      this._ensureMqttStatusListener();
+      this._refreshMqttStatusSnapshot();
     } else {
-      this.stopMqttStatusListener();
+      this._stopMqttStatusListener();
     }
-    await this.applyPageType(pageType);
+    await this._applyPageType(pageType);
   },
 
   onShow: async function () {
     const pageType = this.data.type;
     if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this.ensureMqttStatusListener();
-      this.refreshMqttStatusSnapshot();
+      this._ensureMqttStatusListener();
+      this._refreshMqttStatusSnapshot();
     } else {
-      this.stopMqttStatusListener();
+      this._stopMqttStatusListener();
     }
-    await this.applyPageType(pageType);
+    await this._applyPageType(pageType);
   },
 
   onUnload: async function () {
-    this.stopMqttStatusListener();
+    this._stopMqttStatusListener();
     await this.stopMqttDemo();
   },
 
-  applyPageType: async function (pageType: CloudPageType) {
+  _applyPageType: async function (pageType: CloudPageType) {
     lx.setNavigationBarTitle({
       title: getNavigationTitle(pageType),
     });
 
     if (pageType === CLOUD_PAGE_TYPES.MQTT) {
-      this.ensureMqttStatusListener();
-      this.refreshMqttStatusSnapshot();
+      this._ensureMqttStatusListener();
+      this._refreshMqttStatusSnapshot();
       if (!this.data.mqttSubscribed && !this.mqttStarting) {
         void this.startMqttDemo();
       }
       return;
     }
 
-    this.stopMqttStatusListener();
+    this._stopMqttStatusListener();
 
     if (pageType === CLOUD_PAGE_TYPES.FUNCTIONS) {
-      await this.refreshFunctionsDemo();
+      await this._refreshFunctionsDemo();
       return;
     }
 
-    await this.refreshSnapshot();
+    await this._refreshSnapshot();
   },
 
-  ensureMqttStatusListener: function () {
+  _ensureMqttStatusListener: function () {
     if (typeof this.mqttStatusUnsubscribe === "function") {
       return;
     }
     try {
       this.mqttStatusUnsubscribe = lx.cloud.mqtt.onStatusChange((nextStatus) => {
         console.log("[cloud][mqtt] onStatusChange", nextStatus);
-        this.applyMqttStatus(nextStatus);
+        this._applyMqttStatus(nextStatus);
       });
     } catch (_error) {
       // Ignore status API failures so the demo remains usable.
     }
   },
 
-  refreshMqttStatusSnapshot: function () {
+  _refreshMqttStatusSnapshot: function () {
     try {
       const status = lx.cloud.mqtt.getStatus();
       console.log("[cloud][mqtt] getStatus", status);
-      this.applyMqttStatus(status);
+      this._applyMqttStatus(status);
     } catch (_error) {
       // Ignore status API failures so the demo remains usable.
     }
   },
 
-  applyMqttStatus: function (status: any) {
+  _applyMqttStatus: function (status: any) {
     this.setData({
       mqttRuntimeState: status?.state || "idle",
       mqttLastError: typeof status?.lastError === "string" ? status.lastError : "",
     });
   },
 
-  stopMqttStatusListener: function () {
+  _stopMqttStatusListener: function () {
     const unsubscribe = this.mqttStatusUnsubscribe;
     this.mqttStatusUnsubscribe = null;
     if (typeof unsubscribe === "function") {
@@ -216,7 +216,7 @@ Page({
     }
   },
 
-  refreshSnapshot: async function () {
+  _refreshSnapshot: async function () {
     try {
       const tenants = await lx.auth.getTenants();
       const currentTenant = lx.auth.tenant;
@@ -233,7 +233,7 @@ Page({
     }
   },
 
-  refreshFunctionsDemo: async function () {
+  _refreshFunctionsDemo: async function () {
     const currentTenant = lx.auth.tenant;
     this.setData({
       functionsAvailable: [...DEMO_FUNCTIONS],
@@ -241,7 +241,7 @@ Page({
         ? "Ready to invoke current lxapp cloud functions."
         : "Authentication required. Call lx.auth.login() first.",
     });
-    await this.refreshSnapshot();
+    await this._refreshSnapshot();
   },
 
   loginInteractive: async function () {
@@ -249,8 +249,8 @@ Page({
     try {
       await lx.auth.login();
       this.setData({ status: "Login succeeded" });
-      await this.refreshSnapshot();
-      await this.refreshFunctionsDemo();
+      await this._refreshSnapshot();
+      await this._refreshFunctionsDemo();
     } catch (error) {
       this.setData({ status: getErrorMessage(error, "Interactive login failed") });
     }
@@ -262,9 +262,9 @@ Page({
       await this.stopMqttDemo();
       await lx.auth.logout();
       this.setData({ status: "Logged out" });
-      this.refreshMqttStatusSnapshot();
-      await this.refreshSnapshot();
-      await this.refreshFunctionsDemo();
+      this._refreshMqttStatusSnapshot();
+      await this._refreshSnapshot();
+      await this._refreshFunctionsDemo();
     } catch (error) {
       this.setData({ status: getErrorMessage(error, "Logout failed") });
     }
@@ -277,14 +277,14 @@ Page({
     try {
       await lx.auth.switchTenant(tenantId);
       this.setData({ status: `Switched to ${tenantId}` });
-      await this.refreshSnapshot();
-      await this.refreshFunctionsDemo();
+      await this._refreshSnapshot();
+      await this._refreshFunctionsDemo();
     } catch (error) {
       this.setData({ status: getErrorMessage(error, "Switch tenant failed") });
     }
   },
 
-  callCloudFunction: async function (params = {}) {
+  _callCloudFunction: async function (params = {}) {
     const { name, payload } = params as FunctionCallParams;
     const functionName = typeof name === "string" ? name.trim() : "";
     if (!functionName) {
@@ -320,7 +320,7 @@ Page({
 
     const payload =
       functionName === "echo" ? FUNCTION_ECHO_PAYLOAD : null;
-    await this.callCloudFunction({ name: functionName, payload });
+    await this._callCloudFunction({ name: functionName, payload });
   },
 
   startMqttDemo: async function () {
@@ -328,7 +328,7 @@ Page({
       return;
     }
     this.mqttStarting = true;
-    this.ensureMqttStatusListener();
+    this._ensureMqttStatusListener();
     this.setData({
       mqttStatus: `Subscribing to ${MQTT_SHORT_TOPIC}...`,
     });
@@ -343,7 +343,7 @@ Page({
         mqttStatus: `Subscribed to ${MQTT_SHORT_TOPIC}`,
         mqttSubscribed: true,
       });
-      this.refreshMqttStatusSnapshot();
+      this._refreshMqttStatusSnapshot();
       void this._consumeMqtt({ subscription, loopId });
     } catch (error) {
       const message = getErrorMessage(error, "MQTT subscribe failed");
@@ -365,7 +365,7 @@ Page({
         mqttStatus: "Demo subscription is inactive",
         mqttSubscribed: false,
       });
-      this.refreshMqttStatusSnapshot();
+      this._refreshMqttStatusSnapshot();
       return;
     }
     try {
@@ -374,7 +374,7 @@ Page({
         mqttStatus: "Demo subscription stopped",
         mqttSubscribed: false,
       });
-      this.refreshMqttStatusSnapshot();
+      this._refreshMqttStatusSnapshot();
     } catch (_error) {
       // Ignore duplicate cleanup while leaving the page.
     }
@@ -416,7 +416,7 @@ Page({
         mqttStatus: message,
         mqttSubscribed: false,
       });
-      this.refreshMqttStatusSnapshot();
+      this._refreshMqttStatusSnapshot();
     } finally {
       if (loopId === this.mqttLoopId) {
         this.mqttSubscription = null;

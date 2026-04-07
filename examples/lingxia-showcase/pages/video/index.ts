@@ -69,10 +69,6 @@ Page({
     this._getContext()?.requestFullScreen();
   },
 
-  exitFullScreen: function () {
-    this._getContext()?.exitFullScreen();
-  },
-
   onPlaying: function () {
     this.setData({ eventLog: "Playing" });
   },

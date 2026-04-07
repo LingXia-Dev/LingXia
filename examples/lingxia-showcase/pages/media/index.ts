@@ -384,7 +384,7 @@ Page({
   _previewAbortController: null,
 
   onLoad: function (options) {
-    this.switchMode(options?.type);
+    this._switchMode(options?.type);
   },
 
   onHide: function () {
@@ -395,7 +395,7 @@ Page({
     });
   },
 
-  switchMode: function (params) {
+  _switchMode: function (params) {
     const modeKey = resolveModeKey(params);
     const state = createState(modeKey);
     this.setData(state);
@@ -701,7 +701,7 @@ Page({
     if (this.data.imageInfoBusy) {
       return;
     }
-    const picked = await this.pickSingleMedia("image");
+    const picked = await this._pickSingleMedia("image");
     if (!picked) {
       return;
     }
@@ -712,7 +712,7 @@ Page({
     });
     try {
       const info = await lx.getImageInfo({ path: picked });
-      const size = await this.getFileSize(picked);
+      const size = await this._getFileSize(picked);
       this.setData({ imageInfoResult: { ...info, size }, imageInfoBusy: false });
     } catch (error) {
       const message = error?.message || "getImageInfo failed";
@@ -732,7 +732,7 @@ Page({
     if (this.data.thumbnailBusy || this.data.videoInfoBusy) {
       return;
     }
-    const picked = await this.pickSingleMedia("video");
+    const picked = await this._pickSingleMedia("video");
     if (!picked) {
       return;
     }
@@ -749,7 +749,7 @@ Page({
     });
     try {
       const info = await lx.getVideoInfo({ path: picked });
-      const size = await this.getFileSize(picked);
+      const size = await this._getFileSize(picked);
       this.setData({ videoInfoResult: { ...info, size }, videoInfoBusy: false, thumbnailSourceInfo: info });
     } catch (error) {
       const message = error?.message || "getVideoInfo failed";
@@ -998,7 +998,7 @@ Page({
       const result = await lx.compressImage(payload);
       const resultPath = result.tempFilePath;
       const info = await lx.getImageInfo({ path: resultPath });
-      const size = await this.getFileSize(resultPath);
+      const size = await this._getFileSize(resultPath);
       this.setData({
         compressResult: { path: resultPath, width: info.width, height: info.height, type: info.type, size },
       });
@@ -1034,7 +1034,7 @@ Page({
     });
   },
 
-  getFileSize: async function (path) {
+  _getFileSize: async function (path) {
     try {
       const stat = await Rong.stat(path);
       return stat.size || 0;
@@ -1044,7 +1044,7 @@ Page({
     }
   },
 
-  pickSingleMedia: async function (type) {
+  _pickSingleMedia: async function (type) {
     try {
       const result = await lx.chooseMedia({
         count: 1,
@@ -1058,10 +1058,6 @@ Page({
       lx.showToast({ title: error?.message || "chooseMedia failed", icon: "none" });
       return null;
     }
-  },
-
-  pickSingleImage: async function () {
-    return this.pickSingleMedia("image");
   },
 
   captureImageForAlbum: async function () {
