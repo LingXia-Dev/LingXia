@@ -80,10 +80,24 @@ pub(crate) fn download(
     cookie: Option<&str>,
 ) -> Result<(), lxapp::LxAppError> {
     #[cfg(feature = "shell")]
-    return lingxia_shell::download(tab_id, url, user_agent, suggested_filename, source_page_url, cookie);
+    return lingxia_shell::download(
+        tab_id,
+        url,
+        user_agent,
+        suggested_filename,
+        source_page_url,
+        cookie,
+    );
     #[cfg(not(feature = "shell"))]
     {
-        let _ = (tab_id, url, user_agent, suggested_filename, source_page_url, cookie);
+        let _ = (
+            tab_id,
+            url,
+            user_agent,
+            suggested_filename,
+            source_page_url,
+            cookie,
+        );
         Err(lxapp::LxAppError::UnsupportedOperation(
             "browser not available (shell feature disabled)".to_string(),
         ))

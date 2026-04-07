@@ -8,6 +8,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 source "$SCRIPT_DIR/../scripts/common.sh"
 init_common_vars
 WORKSPACE_ROOT="$LINGXIA_ROOT"
+LXAPP_FEATURES="shell${LXAPP_FEATURES:+,$LXAPP_FEATURES}"
 
 # Parse command line arguments
 for arg in "$@"; do
