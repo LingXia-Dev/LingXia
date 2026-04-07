@@ -66,8 +66,8 @@ abstract class LxAppLaunchActivity : AppCompatActivity() {
         // Configure transparent system bars for edge-to-edge experience
         LxAppActivity.configureTransparentSystemBars(this)
 
-        // Initialize LxApp SDK (handles init-once internally)
-        LxApp.initialize(this)
+        // Initialize LingXia SDK (handles init-once internally)
+        Lingxia.initialize(this)
 
         // Auto-open home LxApp
         LxApp.openHomeLxApp()

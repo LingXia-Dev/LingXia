@@ -188,7 +188,7 @@ public class LxAppCore {
     /// Home LxApp configuration
     internal static var homeLxAppId: String?
 
-    /// Panels configuration JSON (populated after lxappInit)
+    /// Panels configuration JSON (populated after lingxiaInit)
     internal static var panelsConfigJson: String?
 
     /// Global current app state - shared across iOS and macOS
@@ -316,7 +316,7 @@ public class LxAppCore {
         // Get system locale
         let locale = Locale.current.identifier
 
-        let initResult = lxappInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
+        let initResult = lingxiaInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
         let initResultString = initResult?.toString()
 
         if let homeAppId = initResultString {
@@ -450,38 +450,25 @@ public class LxApp {
         }
     }
 
-    /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows)
-    /// Set this to true before calling initialize() if you want to control window creation yourself.
+    /// Skip auto-opening window after initialization (for tools like Runner that manage their own windows).
+    /// Set this to true before calling `Lingxia.initialize()` if you want to control window creation yourself.
     nonisolated(unsafe) public static var skipAutoOpenWindow: Bool {
         get { LxAppCore.skipAutoOpenWindow }
         set { LxAppCore.skipAutoOpenWindow = newValue }
     }
 
-    /// Custom handler for openLxApp - for tools like Runner that manage their own windows
-    /// Set this before calling initialize(). Return true to indicate the call was handled.
+    /// Custom handler for openLxApp - for tools like Runner that manage their own windows.
+    /// Set this before calling `Lingxia.initialize()`. Return true to indicate the call was handled.
     nonisolated(unsafe) public static var openLxAppHandler: ((String, String) -> Bool)? {
         get { LxAppCore.openLxAppHandler }
         set { LxAppCore.openLxAppHandler = newValue }
     }
 
-    /// Custom handler for navigation - for tools like Runner that manage their own windows
-    /// Set this before calling initialize(). Return true to indicate the call was handled.
+    /// Custom handler for navigation - for tools like Runner that manage their own windows.
+    /// Set this before calling `Lingxia.initialize()`. Return true to indicate the call was handled.
     nonisolated(unsafe) public static var navigationHandler: ((String, String, AnimationType) -> Bool)? {
         get { LxAppCore.navigationHandler }
         set { LxAppCore.navigationHandler = newValue }
-    }
-
-    /// Initialize the LxApp system and automatically open Home LxApp
-    public static func initialize() {
-        // Initialize core first
-        LxAppCore.initializeCore()
-
-        // Then initialize platform-specific components
-        #if os(iOS)
-        iOSLxApp.initialize()
-        #elseif os(macOS)
-        _ = macOSLxApp.initialize()
-        #endif
     }
 
     /// Enable WebView debugging

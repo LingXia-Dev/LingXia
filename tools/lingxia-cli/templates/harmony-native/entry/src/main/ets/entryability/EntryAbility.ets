@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
-import { LxApp, LingxiaBaseAbility } from 'lingxia';
+import { Lingxia, LxApp, LingxiaBaseAbility } from 'lingxia';
 import { lingxiaInstallHostAddon } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
@@ -17,8 +17,8 @@ export default class EntryAbility extends LingxiaBaseAbility {
     super.onWindowStageCreate(windowStage);
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
-    // Initialize LxApp with context and windowStage
-    LxApp.initialize(this.context, windowStage);
+    // Initialize LingXia SDK with context and windowStage
+    Lingxia.initialize(this.context, windowStage);
 
     // Enable WebView debugging
     LxApp.enableWebViewDebugging();

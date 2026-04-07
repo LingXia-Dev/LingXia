@@ -94,7 +94,7 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> j
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited<'a>(
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
     data_dir: JString<'a>,
@@ -112,7 +112,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppInited<'a>(
         let locale_str: String = locale.try_to_string(env)?;
 
         log::info!(
-            "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
+            "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}, locale: {}",
             data_dir_str,
             cache_dir_str,
             locale_str

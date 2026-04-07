@@ -55,7 +55,7 @@ internal object NativeApi {
     const val NAVIGATION_ACTION_HOME = "home"
 
     /**
-     * Initialize the LxApp system with data and cache directories
+     * Initialize the Lingxia SDK with data and cache directories
      * @param dataDir Application data directory path
      * @param cacheDir Application cache directory path
      * @param assetManager Android AssetManager for accessing bundled assets
@@ -63,7 +63,7 @@ internal object NativeApi {
      * @return Home app ID if successful, null otherwise
      */
     @JvmStatic
-    external fun onLxAppInited(
+    external fun lingxiaInit(
         dataDir: String,
         cacheDir: String,
         assetManager: AssetManager,

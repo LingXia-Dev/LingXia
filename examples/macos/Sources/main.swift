@@ -7,7 +7,7 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         setupStandardMenu()
 
         LxApp.enableWebViewDebugging()
-        LxApp.initialize()
+        Lingxia.initialize()
     }
 
     private func setupStandardMenu() {

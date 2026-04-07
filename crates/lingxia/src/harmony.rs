@@ -97,7 +97,7 @@ pub struct CurrentLxApp {
 }
 
 #[napi]
-pub fn lxapp_init(
+pub fn lingxia_init(
     env: Env,
     callback_function: Function<'static>,
     data_dir: String,
@@ -110,7 +110,7 @@ pub fn lxapp_init(
     crate::logging::init();
 
     log::info!(
-        "Initializing LxApp with data_dir: {}, cache_dir: {}, locale: {}",
+        "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}, locale: {}",
         data_dir,
         cache_dir,
         locale

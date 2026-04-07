@@ -179,7 +179,7 @@ declare module 'liblingxia.so' {
    * @param locale - System locale (e.g., "zh-CN", "en-US")
    * @returns Home LxApp ID or null if failed
    */
-  export function lxappInit(
+  export function lingxiaInit(
     callbackFunction: (name: string, ...args: Object[]) => Object | null,
     dataDir: string,
     cacheDir: string,
@@ -458,7 +458,7 @@ declare module 'liblingxia.so' {
 
   /**
    * Install native host addon (bootstrap hooks, services, JS APIs, etc.)
-   * Must be called before lxappInit()
+   * Must be called before lingxiaInit()
    */
   export function lingxiaInstallHostAddon(): void;
 }

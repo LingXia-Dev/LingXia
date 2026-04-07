@@ -103,8 +103,8 @@ mod bridge {
     }
 
     extern "Rust" {
-        #[swift_bridge(swift_name = "lxappInit")]
-        fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
+        #[swift_bridge(swift_name = "lingxiaInit")]
+        fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
 
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
@@ -230,7 +230,7 @@ mod bridge {
         fn on_user_capture_screen(lxappid: &str);
 
         // Set development path for home lxapp (macOS only)
-        // Must be called before lxappInit. Returns true if successful.
+        // Must be called before lingxiaInit. Returns true if successful.
         #[swift_bridge(swift_name = "setHomeLxAppDevPath")]
         fn set_home_lxapp_dev_path(path: &str) -> bool;
 
@@ -246,12 +246,12 @@ mod bridge {
     }
 }
 
-/// Initialize the LxApp system for iOS/macOS
-pub fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
+/// Initialize the Lingxia SDK for iOS/macOS
+pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
     crate::logging::init();
 
     log::info!(
-        "Initializing LxApp with data_dir: {}, cache_dir: {}",
+        "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}",
         data_dir,
         cache_dir
     );

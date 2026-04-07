@@ -14,7 +14,7 @@ import { LxAppPush } from './APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
 
 // Import native functions from Rust
-import { lxappInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, CurrentLxApp } from 'liblingxia.so';
+import { lingxiaInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -103,7 +103,7 @@ export class LxApp {
     webview.WebviewController.initializeWebEngine();
     webview.WebviewController.setWebDebuggingAccess(true);
 
-    hilog.info(DOMAIN, TAG, `Calling lxappInit with callback and file system paths (FIRST AND ONLY TIME)`);
+    hilog.info(DOMAIN, TAG, `Calling lingxiaInit with callback and file system paths (FIRST AND ONLY TIME)`);
 
     // Get system locale using HarmonyOS i18n API
     const systemLanguage = i18n.System.getSystemLanguage();
@@ -114,7 +114,7 @@ export class LxApp {
     const normalizedLanguage = systemLanguage.split('-')[0];
     const locale = `${normalizedLanguage}-${systemRegion}`;
 
-    const appId: string | null = lxappInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
+    const appId: string | null = lingxiaInit(callbackFunction, dataDir, cacheDir, resourceManager, locale);
 
     if (appId) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);

@@ -86,7 +86,7 @@ class LxApp private constructor(private val context: Context) {
                 // Set application context for WebView creation
                 com.lingxia.webview.LingXiaWebView.setApplicationContext(appContext)
 
-                val initResultString = NativeApi.onLxAppInited(
+                val initResultString = NativeApi.lingxiaInit(
                     appContext.filesDir.absolutePath,
                     appContext.cacheDir.absolutePath,
                     appContext.assets,

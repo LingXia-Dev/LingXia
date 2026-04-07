@@ -33,7 +33,7 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
             return true
         }
 
-        LxApp.initialize()
+        Lingxia.initialize()
         RunnerApp.shared.setDeviceSize(.iPhoneSE)
         RunnerApp.shared.openHomeLxApp()
     }

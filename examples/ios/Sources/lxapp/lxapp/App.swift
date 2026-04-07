@@ -14,10 +14,10 @@ public struct ContentView: View {
                 if !Self.hasInitialized {
                     Self.hasInitialized = true
 
-                    // Enable WebView debugging BEFORE LxApp.initialize()
+                    // Enable WebView debugging BEFORE Lingxia.initialize()
                     LxApp.enableWebViewDebugging()
 
-                    LxApp.initialize()
+                    Lingxia.initialize()
                 }
             }
     }
