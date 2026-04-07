@@ -262,33 +262,18 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
         return Ok(path);
     }
 
-    let extensions: &[&str] = match target {
-        "lxapp" | "lxplugin" => &["tar.zst"],
-        "app" => &["apk", "ipa", "hap"],
-        _ => &[],
-    };
-
     let mut candidates = Vec::new();
-    for dir in [cwd.to_path_buf(), cwd.join("dist")] {
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                let name = path
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                if extensions
-                    .iter()
-                    .any(|ext| name.ends_with(&format!(".{ext}")))
-                {
-                    candidates.push(path);
-                }
-            }
-        }
-    }
+    let dist_dir = cwd.join("dist");
+    collect_matching_packages(cwd, &dist_dir, target, &mut candidates, 0);
+    collect_matching_packages(
+        &dist_dir,
+        &dist_dir,
+        target,
+        &mut candidates,
+        MAX_PACKAGE_SEARCH_DEPTH,
+    );
+    candidates.sort();
+    candidates.dedup();
 
     match candidates.len() {
         0 => bail!(
@@ -303,6 +288,58 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
                 .join("\n");
             bail!("Multiple packages found. Use --package to specify:\n{list}")
         }
+    }
+}
+
+const MAX_PACKAGE_SEARCH_DEPTH: u32 = 3;
+
+fn collect_matching_packages(
+    dir: &Path,
+    dist_dir: &Path,
+    target: &str,
+    out: &mut Vec<PathBuf>,
+    max_depth: u32,
+) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if max_depth > 0 {
+                collect_matching_packages(&path, dist_dir, target, out, max_depth - 1);
+            }
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+
+        if package_matches(target, &path, dist_dir) {
+            out.push(path);
+        }
+    }
+}
+
+fn package_matches(target: &str, path: &Path, dist_dir: &Path) -> bool {
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    match target {
+        "lxapp" | "lxplugin" => file_name.ends_with(".tar.zst"),
+        "app" => {
+            if file_name.ends_with(".apk")
+                || file_name.ends_with(".ipa")
+                || file_name.ends_with(".hap")
+            {
+                return true;
+            }
+
+            file_name.ends_with("-macos.zip") && path.starts_with(dist_dir.join("macos"))
+        }
+        _ => false,
     }
 }
 
@@ -342,4 +379,40 @@ fn build_multipart(
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
     body
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{find_or_resolve_package, package_matches};
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn app_package_match_accepts_cli_generated_macos_zip_only_in_dist_macos() {
+        let temp = TempDir::new().unwrap();
+        let dist_dir = temp.path().join("dist");
+        let allowed = dist_dir.join("macos").join("Demo-1.0.0-macos.zip");
+        let rejected = temp.path().join("Demo-1.0.0-macos.zip");
+
+        fs::create_dir_all(allowed.parent().unwrap()).unwrap();
+        fs::write(&allowed, b"zip").unwrap();
+        fs::write(&rejected, b"zip").unwrap();
+
+        assert!(package_matches("app", &allowed, &dist_dir));
+        assert!(!package_matches("app", &rejected, &dist_dir));
+    }
+
+    #[test]
+    fn find_or_resolve_package_ignores_unrelated_root_zip_for_app_publish() {
+        let temp = TempDir::new().unwrap();
+        let dist_macos = temp.path().join("dist").join("macos");
+        fs::create_dir_all(&dist_macos).unwrap();
+        fs::write(temp.path().join("notes.zip"), b"zip").unwrap();
+
+        let expected = dist_macos.join("Demo-1.0.0-macos.zip");
+        fs::write(&expected, b"zip").unwrap();
+
+        let resolved = find_or_resolve_package(temp.path(), "app", None).unwrap();
+        assert_eq!(resolved, expected);
+    }
 }
