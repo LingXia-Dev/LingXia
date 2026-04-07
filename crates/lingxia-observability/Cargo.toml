@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-observability"
+version.workspace = true
+edition.workspace = true
+description = "LingXia observability domain and in-memory log pipeline primitives"
+license = "MIT"
+
+[dependencies]
+lingxia-provider = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+zstd = "0.13.3"

@@ -1,4 +1,3 @@
-use android_logger::Config;
 use jni::objects::{JClass, JObject, JString};
 use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, jlong};
@@ -12,7 +11,7 @@ use lingxia_platform::CachedClass;
 use log::{error, info, warn};
 use lxapp::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
-    LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation, log::LogLevel,
+    LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
 };
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
@@ -84,38 +83,7 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
 #[unsafe(no_mangle)]
 #[allow(improper_ctypes_definitions)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
-    android_logger::init_once(
-        Config::default()
-            .with_max_level(log::LevelFilter::Debug)
-            .with_tag("Rust"),
-    );
-
-    // Initialize the new logging system
-    lxapp::log::LogManager::init(|log_message| {
-        let formatted_message = format!(
-            "[{}{}{}] {}",
-            log_message.tag.as_str(),
-            log_message
-                .appid
-                .as_ref()
-                .map(|id| format!(":{}", id))
-                .unwrap_or_default(),
-            log_message
-                .path
-                .as_ref()
-                .map(|p| format!(":{}", p))
-                .unwrap_or_default(),
-            log_message.message
-        );
-
-        match log_message.level {
-            LogLevel::Verbose => log::trace!("{}", formatted_message),
-            LogLevel::Debug => log::debug!("{}", formatted_message),
-            LogLevel::Info => log::info!("{}", formatted_message),
-            LogLevel::Warn => log::warn!("{}", formatted_message),
-            LogLevel::Error => log::error!("{}", formatted_message),
-        }
-    });
+    crate::logging::init();
 
     // Only store JavaVM here. App/library classes must be cached from a Java->native call so
     // `FindClass` uses the correct classloader.

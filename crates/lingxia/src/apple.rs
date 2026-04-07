@@ -1,5 +1,4 @@
 use lingxia_messaging::invoke_callback;
-use lxapp::log::LogLevel;
 use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
@@ -249,45 +248,7 @@ mod bridge {
 
 /// Initialize the LxApp system for iOS/macOS
 pub fn lxapp_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
-    oslog::OsLogger::new("LingXia.Rust")
-        .level_filter(log::LevelFilter::Info)
-        .init()
-        .unwrap();
-
-    // Initialize the new logging system
-    lxapp::log::LogManager::init(|log_msg| {
-        let formatted_message = format!(
-            "[{}{}{}] {}",
-            log_msg.tag.as_str(),
-            log_msg
-                .appid
-                .as_ref()
-                .map(|id| format!(":{}", id))
-                .unwrap_or_default(),
-            log_msg
-                .path
-                .as_ref()
-                .map(|p| format!(":{}", p))
-                .unwrap_or_default(),
-            log_msg.message
-        );
-
-        // Use log macros directly now that we have set up the global logger
-        match log_msg.level {
-            LogLevel::Verbose | LogLevel::Debug => {
-                log::debug!("{}", formatted_message);
-            }
-            LogLevel::Info => {
-                log::info!("{}", formatted_message);
-            }
-            LogLevel::Warn => {
-                log::warn!("{}", formatted_message);
-            }
-            LogLevel::Error => {
-                log::error!("{}", formatted_message);
-            }
-        }
-    });
+    crate::logging::init();
 
     log::info!(
         "Initializing LxApp with data_dir: {}, cache_dir: {}",

@@ -1,154 +1,179 @@
+pub use lingxia_observability::{
+    AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogMessage, LogTag,
+};
+use lingxia_observability::{
+    DEFAULT_DEVTOOLS_RECENT_LIMIT, LogBuffer, LogBufferConfig, normalize_optional_string,
+};
+use std::cell::Cell;
 use std::sync::{Arc, OnceLock};
-use tokio::sync::watch;
+use tokio::sync::broadcast;
+use tracing::field::{Field, Visit};
+use tracing_subscriber::{Registry, layer::Layer, prelude::*};
 
-/// Log levels that match Android/iOS common levels
-#[derive(Debug, Clone, Copy)]
-pub enum LogLevel {
-    Verbose,
-    Debug,
-    Info,
-    Warn,
-    Error,
+thread_local! {
+    static LOG_DISPATCH_GUARD: Cell<bool> = const { Cell::new(false) };
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum LogTag {
-    Native,              // For logs from Rust/native code
-    WebViewConsole,      // For logs from WebView's JavaScript console
-    LxAppServiceConsole, // For logs from LxApp service layer
-}
-
-impl LogTag {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LogTag::Native => "Native",
-            LogTag::WebViewConsole => "JSView",
-            LogTag::LxAppServiceConsole => "JSService",
-        }
-    }
-}
-
-/// Log message structure
-#[derive(Debug, Clone)]
-pub struct LogMessage {
-    pub tag: LogTag,
-    pub level: LogLevel,
-    pub appid: Option<String>,
-    pub path: Option<String>,
-    pub message: String,
-}
-
-impl LogMessage {
-    /// Create a new LogMessage with default level Info
-    fn new(tag: LogTag, message: impl std::fmt::Display) -> Self {
-        Self {
-            tag,
-            level: LogLevel::Info,
-            appid: None,
-            path: None,
-            message: message.to_string(),
-        }
-    }
-}
-
-/// Global logger manager using OnceLock for singleton pattern
-///
-/// Usage pattern:
-/// - Use `init()` to initialize the logger once
-/// - Everywhere else: Use `get()` for concurrent read access
-///
-/// This avoids locking overhead since the manager is initialized once and then only read.
-/// The underlying platform logging (Android log, etc.) handles concurrency well.
 static GLOBAL_LOG_MANAGER: OnceLock<Arc<LogManager>> = OnceLock::new();
+static TRACING_SUBSCRIBER_READY: OnceLock<()> = OnceLock::new();
 
-/// Global logger manager
+#[derive(Debug, thiserror::Error)]
+pub enum LogStreamError {
+    #[error("log manager is not initialized")]
+    NotInitialized,
+}
+
+/// Global logger manager.
 pub struct LogManager {
-    sender: watch::Sender<LogMessage>,
+    buffer: LogBuffer,
     logger: Box<dyn Fn(&LogMessage) + Send + Sync>,
 }
 
+pub struct LogTracingLayer;
+
+struct DispatchGuardReset;
+
+impl Drop for DispatchGuardReset {
+    fn drop(&mut self) {
+        LOG_DISPATCH_GUARD.with(|guard| guard.set(false));
+    }
+}
+
 impl LogManager {
-    /// Initialize the global logger instance
+    /// Initialize the global logger instance.
     pub fn init<F>(logger: F) -> Arc<Self>
     where
         F: Fn(&LogMessage) + Send + Sync + 'static,
     {
         GLOBAL_LOG_MANAGER
             .get_or_init(|| {
-                let (sender, _receiver) = watch::channel(LogMessage {
-                    tag: LogTag::Native,
-                    level: LogLevel::Info,
-                    appid: None,
-                    path: None,
-                    message: Default::default(),
-                });
-
                 Arc::new(LogManager {
-                    sender,
+                    buffer: LogBuffer::new(LogBufferConfig::default()),
                     logger: Box::new(logger),
                 })
             })
             .clone()
     }
 
-    /// Gets global log manager instance if initialized
+    /// Gets global log manager instance if initialized.
     pub fn get() -> Option<Arc<Self>> {
         GLOBAL_LOG_MANAGER.get().cloned()
     }
 
-    /// Subscribe to log messages for network transmission
-    pub fn subscribe(&self) -> watch::Receiver<LogMessage> {
-        self.sender.subscribe()
+    /// Subscribe to the live log stream.
+    pub fn subscribe(&self) -> broadcast::Receiver<LogMessage> {
+        self.buffer.subscribe()
     }
 
-    /// Print a log message to the native logger
-    /// This is useful for receivers who want to selectively print messages
+    /// Atomically attach a devtool log stream with a recent replay window.
+    ///
+    /// The returned `recent` snapshot and `receiver` are stitched together under the
+    /// history lock so callers do not see gaps between the replay window and live events.
+    pub fn attach(&self, recent_limit: usize) -> AttachedLogStream {
+        self.buffer.attach(recent_limit)
+    }
+
+    /// Attach a devtool log stream with the SDK's recommended replay window.
+    pub fn attach_for_devtools(&self) -> AttachedLogStream {
+        self.attach(DEFAULT_DEVTOOLS_RECENT_LIMIT)
+    }
+
+    /// Print a log message to the native logger.
     pub fn print_to_native(&self, message: &LogMessage) {
         (self.logger)(message);
     }
 
-    /// Log a message
-    fn log(&self, message: LogMessage) {
-        if self.sender.receiver_count() > 0 {
-            let _ = self.sender.send(message.clone());
-        } else {
-            // Print all messages when not subscribed
-            (self.logger)(&message);
+    /// Snapshot recent logs from the in-memory ring buffer.
+    pub fn snapshot_recent(&self, limit: usize) -> Vec<LogMessage> {
+        self.buffer.snapshot_recent(limit)
+    }
+
+    /// Build a compressed JSONL archive of recent logs.
+    pub fn collect_archive(&self, limit: usize) -> std::io::Result<CollectedLogArchive> {
+        self.buffer.collect_archive(limit)
+    }
+
+    fn dispatch(&self, message: LogMessage) {
+        let should_dispatch = LOG_DISPATCH_GUARD.with(|guard| {
+            if guard.get() {
+                false
+            } else {
+                guard.set(true);
+                true
+            }
+        });
+
+        if !should_dispatch {
+            return;
         }
+
+        let _reset_guard = DispatchGuardReset;
+        self.buffer.push(message.clone());
+        crate::provider::get_log_provider().on_log(&message);
+        (self.logger)(&message);
     }
 }
 
-/// Global logging function for scenarios without appid and path context
+/// Install the global tracing subscriber that forwards tracing events into `LogManager`.
+pub fn init_tracing() {
+    if TRACING_SUBSCRIBER_READY.get().is_some() {
+        return;
+    }
+
+    let subscriber = Registry::default().with(tracing_layer());
+    if tracing::subscriber::set_global_default(subscriber).is_ok() {
+        let _ = TRACING_SUBSCRIBER_READY.set(());
+    }
+}
+
+pub fn tracing_layer() -> LogTracingLayer {
+    LogTracingLayer
+}
+
+/// Attach a devtool-friendly log stream.
+///
+/// This returns a bounded recent replay plus a live receiver so callers can render
+/// current logs immediately and then continue tailing new entries.
+/// Pass `0` to replay the entire in-memory history window.
+pub fn attach_log_stream(recent_limit: usize) -> Result<AttachedLogStream, LogStreamError> {
+    let manager = LogManager::get().ok_or(LogStreamError::NotInitialized)?;
+    Ok(manager.attach(recent_limit))
+}
+
+/// Attach a devtool log stream using the SDK's recommended replay window.
+pub fn attach_log_stream_default() -> Result<AttachedLogStream, LogStreamError> {
+    let manager = LogManager::get().ok_or(LogStreamError::NotInitialized)?;
+    Ok(manager.attach_for_devtools())
+}
+
+/// Global logging function for scenarios without appid/path context.
 pub fn log(tag: LogTag, level: LogLevel, message: impl std::fmt::Display) {
-    if let Some(manager) = GLOBAL_LOG_MANAGER.get() {
-        let log_message = LogMessage {
-            tag,
-            level,
-            appid: None,
-            path: None,
-            message: message.to_string(),
-        };
-        manager.log(log_message);
-    }
+    let mut log_message = new_log_message(tag, message);
+    log_message.level = level;
+    emit_log_message(log_message);
 }
 
-/// Macros for convenient logging
+/// Upload a recent compressed log archive through the registered provider.
 ///
-/// These macros provide a convenient way to create log messages.
-///
-/// Usage:
-/// ```rust
-/// use lingxia_lxapp::info;
-///
-/// // Simple usage - prints immediately
-/// info!("Simple message");
-///
-/// // With context - use fluent API
-/// info!("Message with context")
-///     .with_appid("my_app")
-///     .with_path("pages/home");
-/// ```
-/// Create an info log message
+/// This is the diagnostic path for "collect log". It snapshots the recent in-memory
+/// log ring buffer, encodes it as `jsonl.zst`, and delegates the network upload to
+/// the active `LogProvider`.
+pub async fn upload_collected_logs(
+    limit: usize,
+) -> Result<CollectedLogArchiveInfo, crate::provider::ProviderError> {
+    let manager = LogManager::get().ok_or_else(|| {
+        crate::provider::ProviderError::internal("log manager is not initialized")
+    })?;
+    let archive = manager.collect_archive(limit).map_err(|err| {
+        crate::provider::ProviderError::internal(format!("collect logs failed: {err}"))
+    })?;
+    let metadata = archive.info();
+    crate::provider::get_log_provider()
+        .upload_collected_logs(archive)
+        .await?;
+    Ok(metadata)
+}
+
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {
@@ -156,7 +181,6 @@ macro_rules! info {
     };
 }
 
-/// Create a warning log message
 #[macro_export]
 macro_rules! warn {
     ($($arg:tt)*) => {
@@ -165,7 +189,6 @@ macro_rules! warn {
     };
 }
 
-/// Create an error log message
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {
@@ -174,7 +197,6 @@ macro_rules! error {
     };
 }
 
-/// Create a debug log message
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
@@ -183,7 +205,6 @@ macro_rules! debug {
     };
 }
 
-/// Create a verbose log message
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
@@ -192,43 +213,216 @@ macro_rules! verbose {
     };
 }
 
-/// Log builder that automatically prints when dropped
-/// This provides a fluent API without requiring explicit print() calls
+/// Log builder that automatically emits on drop.
 pub struct LogBuilder {
     message: LogMessage,
 }
 
 impl LogBuilder {
-    /// Create a new log builder
     pub fn new(tag: LogTag, message: impl std::fmt::Display) -> Self {
         Self {
-            message: LogMessage::new(tag, message),
+            message: new_log_message(tag, message),
         }
     }
 
-    /// Set the app ID for this log message
     pub fn with_appid(mut self, appid: impl Into<String>) -> Self {
-        self.message.appid = Some(appid.into());
+        self.message.appid = normalize_optional_string(Some(appid.into()));
         self
     }
 
-    /// Set the path for this log message
     pub fn with_path(mut self, path: impl Into<String>) -> Self {
-        self.message.path = Some(path.into());
+        self.message.path = normalize_optional_string(Some(path.into()));
         self
     }
 
-    /// Set the log level for this log message
     pub fn with_level(mut self, level: LogLevel) -> Self {
         self.message.level = level;
+        self
+    }
+
+    pub fn with_target(mut self, target: impl Into<String>) -> Self {
+        self.message.target = normalize_optional_string(Some(target.into()));
         self
     }
 }
 
 impl Drop for LogBuilder {
     fn drop(&mut self) {
-        if let Some(manager) = GLOBAL_LOG_MANAGER.get() {
-            manager.log(self.message.clone());
+        emit_log_message(std::mem::take(&mut self.message));
+    }
+}
+
+fn emit_log_message(message: LogMessage) {
+    emit_tracing_event(&message);
+
+    if let Some(manager) = GLOBAL_LOG_MANAGER.get() {
+        manager.dispatch(message);
+    }
+}
+
+fn emit_tracing_event(message: &LogMessage) {
+    let appid = message.appid.as_deref().unwrap_or("");
+    let path = message.path.as_deref().unwrap_or("");
+    let target = message.target.as_deref().unwrap_or("");
+    let log_tag = message.tag.as_str();
+
+    macro_rules! emit {
+        ($level:expr) => {
+            tracing::event!(
+                target: "lingxia.lxapp",
+                $level,
+                lx_emitted = true,
+                log_tag,
+                appid,
+                path,
+                target,
+                message = %message.message
+            );
+        };
+    }
+
+    match message.level {
+        LogLevel::Verbose => {
+            emit!(tracing::Level::TRACE);
         }
+        LogLevel::Debug => {
+            emit!(tracing::Level::DEBUG);
+        }
+        LogLevel::Info => {
+            emit!(tracing::Level::INFO);
+        }
+        LogLevel::Warn => {
+            emit!(tracing::Level::WARN);
+        }
+        LogLevel::Error => {
+            emit!(tracing::Level::ERROR);
+        }
+    }
+}
+
+fn log_level_from_tracing_level(level: &tracing::Level) -> LogLevel {
+    match *level {
+        tracing::Level::ERROR => LogLevel::Error,
+        tracing::Level::WARN => LogLevel::Warn,
+        tracing::Level::INFO => LogLevel::Info,
+        tracing::Level::DEBUG => LogLevel::Debug,
+        tracing::Level::TRACE => LogLevel::Verbose,
+    }
+}
+
+fn new_log_message(tag: LogTag, message: impl std::fmt::Display) -> LogMessage {
+    LogMessage::new(tag, message.to_string())
+}
+
+fn log_tag_from_str(value: &str) -> Option<LogTag> {
+    match value {
+        "Native" => Some(LogTag::Native),
+        "JSView" => Some(LogTag::WebViewConsole),
+        "JSService" => Some(LogTag::LxAppServiceConsole),
+        _ => None,
+    }
+}
+
+#[derive(Default)]
+struct TracingEventVisitor {
+    message: Option<String>,
+    appid: Option<String>,
+    path: Option<String>,
+    target_field: Option<String>,
+    log_tag: Option<String>,
+    namespace: Option<String>,
+    scope: Option<String>,
+    lx_emitted: Option<String>,
+}
+
+impl TracingEventVisitor {
+    fn record_value(&mut self, field: &Field, value: String) {
+        match field.name() {
+            "message" => self.message = Some(value),
+            "appid" => self.appid = Some(value),
+            "path" => self.path = Some(value),
+            "target" => self.target_field = Some(value),
+            "log_tag" => self.log_tag = Some(value),
+            "namespace" => self.namespace = Some(value),
+            "scope" => self.scope = Some(value),
+            "lx_emitted" => self.lx_emitted = Some(value),
+            _ => {}
+        }
+    }
+}
+
+impl Visit for TracingEventVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.record_value(field, format!("{value:?}"));
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        self.record_value(field, value.to_string());
+    }
+
+    fn record_bool(&mut self, field: &Field, value: bool) {
+        self.record_value(field, value.to_string());
+    }
+}
+
+impl<S> Layer<S> for LogTracingLayer
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let Some(manager) = LogManager::get() else {
+            return;
+        };
+
+        let metadata = event.metadata();
+        let mut visitor = TracingEventVisitor::default();
+        event.record(&mut visitor);
+
+        if visitor.lx_emitted.as_deref() == Some("true") {
+            return;
+        }
+
+        let tag = if metadata.target() == "rong.js.console" {
+            match visitor.scope.as_deref() {
+                Some("appservice") => LogTag::LxAppServiceConsole,
+                _ => LogTag::Native,
+            }
+        } else {
+            visitor
+                .log_tag
+                .as_deref()
+                .and_then(log_tag_from_str)
+                .unwrap_or(LogTag::Native)
+        };
+
+        let message = LogMessage {
+            timestamp_ms: lingxia_observability::now_timestamp_ms(),
+            tag,
+            level: log_level_from_tracing_level(metadata.level()),
+            appid: normalize_optional_string(visitor.appid.or(visitor.namespace)),
+            path: normalize_optional_string(visitor.path),
+            target: normalize_optional_string(
+                visitor
+                    .target_field
+                    .or_else(|| Some(metadata.target().to_string())),
+            ),
+            message: visitor
+                .message
+                .unwrap_or_else(|| metadata.name().to_string()),
+        };
+
+        manager.dispatch(message);
     }
 }
