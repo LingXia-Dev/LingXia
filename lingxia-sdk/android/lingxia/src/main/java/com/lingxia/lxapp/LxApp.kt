@@ -54,6 +54,7 @@ class LxApp private constructor(private val context: Context) {
         private var instance: LxApp? = null
         // Properties to store home app details from native
         var HomeLxAppId: String? = null
+        @JvmField var capabilities: Int = 0
 
         // Reference to the current LxAppActivity instance
         private var currentActivity: LxAppActivity? = null
@@ -95,6 +96,7 @@ class LxApp private constructor(private val context: Context) {
 
                 if (initResultString != null) {
                     HomeLxAppId = initResultString
+                    capabilities = NativeApi.getAppCapabilities()
                 } else {
                     Log.e(TAG, "Failed to get home LxApp details from native init.")
                 }

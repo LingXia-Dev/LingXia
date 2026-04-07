@@ -182,6 +182,10 @@ class SidebarView: NSView {
         downloadButton.action = #selector(downloadClicked)
         headerView.addSubview(downloadButton)
 
+        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        settingsButton.isHidden = !shellEnabled
+        downloadButton.isHidden = !shellEnabled
+
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
@@ -335,9 +339,10 @@ class SidebarView: NSView {
 
     func updateVisibilityState() {
         let hidden = isFullyHidden
+        let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
         scrollView.isHidden = hidden
-        settingsButton.isHidden = hidden
-        downloadButton.isHidden = hidden
+        settingsButton.isHidden = hidden || !shellEnabled
+        downloadButton.isHidden = hidden || !shellEnabled
         footerView.isHidden = hidden
         resizeHandle.isHidden = hidden
     }
@@ -582,17 +587,22 @@ class SidebarView: NSView {
             yOffset += SidebarBrowserItemView.Layout.height + 2
         }
 
-        // "+" button
-        ensureSubview(addButton, in: docView) {
-            setupAddButton()
-            NSLayoutConstraint.activate([
-                addButton.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
-                addButton.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
-                addButton.heightAnchor.constraint(equalToConstant: 28),
-            ])
+        // "+" button — only shown when shell (browser) capability is available
+        if (LxAppCore.capabilities & LxAppCore.capShell) != 0 {
+            ensureSubview(addButton, in: docView) {
+                setupAddButton()
+                NSLayoutConstraint.activate([
+                    addButton.leadingAnchor.constraint(equalTo: docView.leadingAnchor, constant: groupInset),
+                    addButton.trailingAnchor.constraint(equalTo: docView.trailingAnchor, constant: -groupInset),
+                    addButton.heightAnchor.constraint(equalToConstant: 28),
+                ])
+            }
+            updateOrCreate(&addButtonTopConstraint, on: addButton, in: docView, constant: yOffset)
+            yOffset += 28 + 8
+        } else {
+            addButton.removeFromSuperview()
+            addButtonTopConstraint = nil
         }
-        updateOrCreate(&addButtonTopConstraint, on: addButton, in: docView, constant: yOffset)
-        yOffset += 28 + 8
 
         return yOffset
     }

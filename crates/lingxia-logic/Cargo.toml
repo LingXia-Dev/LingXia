@@ -33,10 +33,10 @@ rong_modules = { workspace = true, default-features = false, features = ["jscore
 rong = { workspace = true, features = ["quickjs"] }
 rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
 
-# HarmonyOS currently uses QuickJS; keep this explicit for future engine split.
+# HarmonyOS uses ArkJS.
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
-rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
+rong = { workspace = true, features = ["arkjs"] }
+rong_modules = { workspace = true, default-features = false, features = ["arkjs"] }
 
 # Fallback for other targets.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]

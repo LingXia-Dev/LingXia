@@ -14,7 +14,7 @@ import { LxAppPush } from './APIs/LxAppPush';
 import { PermissionManager } from './PermissionManager';
 
 // Import native functions from Rust
-import { lingxiaInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, CurrentLxApp } from 'liblingxia.so';
+import { lingxiaInit, registerCustomSchemes, onLxappOpened, onLxappClosed, onPageShow, onApplinkReceived, getCurrentLxapp, getLxappSessionId, getPageOrientation, getAppCapabilities, CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.LxApp';
@@ -30,6 +30,8 @@ interface NavigationInstance {
 
 export class LxApp {
   private static instance: LxApp | null = null;
+  public static capabilities: number = 0;
+  public static readonly CAP_SHELL: number = 0x1;
   public static managerInstance: LxAppManager | null = null;
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
@@ -119,6 +121,7 @@ export class LxApp {
     if (appId) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);
       instance.homeLxAppId = appId;
+      LxApp.capabilities = getAppCapabilities();
     } else {
       hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
     }

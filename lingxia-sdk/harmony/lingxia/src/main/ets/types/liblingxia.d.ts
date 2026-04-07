@@ -461,4 +461,7 @@ declare module 'liblingxia.so' {
    * Must be called before lingxiaInit()
    */
   export function lingxiaInstallHostAddon(): void;
+
+  /** Returns a bitmask of host app capabilities. */
+  export function getAppCapabilities(): number;
 }

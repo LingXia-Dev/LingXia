@@ -8,6 +8,10 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = []
+shell = ["dep:lingxia-shell", "dep:lingxia-browser"]
+
 [lib]
 crate-type = ["rlib", "staticlib"]
 
@@ -20,11 +24,11 @@ lingxia-provider = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-media = { workspace = true }
-lingxia-browser = { workspace = true }
+lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
-lingxia-shell = { workspace = true }
+lingxia-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }

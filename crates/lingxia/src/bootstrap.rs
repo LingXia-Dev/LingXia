@@ -67,7 +67,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     }
     crate::host_addon::run_install_logic_extensions();
     crate::host_addon::run_install_host_apis();
-    lingxia_browser::register_bundled_app();
+    crate::browser::register_bundled_app();
     crate::browser::register_builtin();
     lingxia_logic::register_logic_runtime();
     let home_app_id = lxapp::init(

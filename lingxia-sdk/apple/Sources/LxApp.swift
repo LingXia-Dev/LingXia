@@ -191,6 +191,10 @@ public class LxAppCore {
     /// Panels configuration JSON (populated after lingxiaInit)
     internal static var panelsConfigJson: String?
 
+    /// Bitmask of host app capabilities, queried from Rust after init.
+    public static var capabilities: UInt32 = 0
+    public static let capShell: UInt32 = 0x1
+
     /// Global current app state - shared across iOS and macOS
     public private(set) static var currentAppId: String?
     private static var currentPath: String = ""
@@ -321,6 +325,7 @@ public class LxAppCore {
 
         if let homeAppId = initResultString {
             homeLxAppId = homeAppId
+            capabilities = getAppCapabilities()
             panelsConfigJson = getPanelsConfigJson()?.toString()
             os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
 

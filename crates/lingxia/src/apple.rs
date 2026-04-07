@@ -234,6 +234,11 @@ mod bridge {
         #[swift_bridge(swift_name = "setHomeLxAppDevPath")]
         fn set_home_lxapp_dev_path(path: &str) -> bool;
 
+        // Returns a bitmask of enabled SDK capabilities (compile-time constant).
+        // Bit 0 (0x1) = shell (browser, downloads, settings, panels).
+        #[swift_bridge(swift_name = "getAppCapabilities")]
+        fn get_app_capabilities() -> u32;
+
         // Get panels config as JSON string (returns None if no panels configured)
         #[swift_bridge(swift_name = "getPanelsConfigJson")]
         fn get_panels_config_json() -> Option<String>;
@@ -374,8 +379,8 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
     match event_type {
         self::bridge::AppUiEventType::PanelIconClick => {
             // data = panelId; look up config and ask Rust to load the lxapp if needed
-            if let Some((app_id, path)) = lingxia_shell::panel_item_for_id(data) {
-                lingxia_shell::open_panel_lxapp(data, &app_id, &path);
+            if let Some((app_id, path)) = crate::browser::panel_item_for_id(data) {
+                crate::browser::open_panel_lxapp(data, &app_id, &path);
                 true
             } else {
                 false
@@ -780,14 +785,18 @@ pub fn set_home_lxapp_dev_path(path: &str) -> bool {
     lxapp::set_home_lxapp_dev_path(path)
 }
 
+pub fn get_app_capabilities() -> u32 {
+    crate::browser::app_capabilities()
+}
+
 /// Get panels config as a JSON string.
 /// Returns None if no panels are configured in app.json.
 pub fn get_panels_config_json() -> Option<String> {
-    lingxia_shell::panels_config_json()
+    crate::browser::panels_config_json()
 }
 
 /// Open a lxapp for a panel without pushing it to the navigation stack.
 /// panel_id is used by Rust as the panel slot context for presentation routing.
 pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
-    lingxia_shell::open_panel_lxapp(panel_id, appid, path);
+    crate::browser::open_panel_lxapp(panel_id, appid, path);
 }

@@ -203,6 +203,8 @@ internal object NativeApi {
     @JvmStatic
     external fun getPageOrientation(appId: String, path: String): Int
 
+    const val CAP_SHELL = 0x1
+
     const val ORIENTATION_AUTO = 0
     const val ORIENTATION_PORTRAIT = 1
     const val ORIENTATION_LANDSCAPE = 2
@@ -288,6 +290,13 @@ internal object NativeApi {
         payloadJson: String,
         bindingsJson: String
     ): Boolean
+
+    /**
+     * Returns a bitmask of host app capabilities.
+     * Check against CAP_SHELL (0x1) to determine if browser/shell is available.
+     */
+    @JvmStatic
+    external fun getAppCapabilities(): Int
 
     /**
      * Notify native layer that app entered foreground

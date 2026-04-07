@@ -1008,3 +1008,8 @@ pub fn on_user_capture_screen(lxappid: String) {
         let _ = lxapp.appservice_notify(lxapp::AppServiceEvent::OnUserCaptureScreen, Some(args));
     }
 }
+
+#[napi]
+pub fn get_app_capabilities() -> u32 {
+    crate::browser::app_capabilities()
+}

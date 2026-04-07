@@ -11,7 +11,7 @@ name = "lingxia"
 crate-type = ["staticlib"]
 
 [dependencies]
-lingxia = { workspace = true }
+lingxia = { workspace = true, features = ["shell"] }
 lxapp = { workspace = true }
 log = { workspace = true }
 
