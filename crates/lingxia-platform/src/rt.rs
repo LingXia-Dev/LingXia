@@ -2,6 +2,12 @@ use crate::error::PlatformError;
 use rong_rt::RongExecutor;
 #[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 use std::future::Future;
+#[cfg(any(
+    target_os = "ios",
+    target_os = "macos",
+    target_os = "windows",
+    target_env = "ohos"
+))]
 use tokio::task::JoinHandle;
 
 #[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
