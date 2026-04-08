@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, error::ErrorKind};
 
 mod appicon;
 mod commands;
@@ -14,6 +14,7 @@ mod permission_cache;
 mod platform;
 mod runtime;
 pub mod sdk;
+mod update;
 mod versions;
 
 #[derive(Parser)]
@@ -149,10 +150,24 @@ enum Commands {
         /// Package macOS build as DMG
         #[arg(long)]
         dmg: bool,
+    },
 
-        /// Package release artifacts (macOS update zip, LxApp/LxPlugin archive)
-        #[arg(long)]
-        package: bool,
+    /// Package release artifacts for publishing or delivery
+    Package {
+        #[command(flatten)]
+        package_options: commands::package::PackageOptions,
+
+        /// Platforms to package (comma-separated).
+        #[arg(
+            long,
+            value_delimiter = ',',
+            long_help = "Platforms to package (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)"
+        )]
+        platform: Vec<String>,
+
+        /// Package all configured platforms (disabled by default)
+        #[arg(long, conflicts_with = "platform")]
+        all_platforms: bool,
     },
 
     /// List connected devices
@@ -240,7 +255,7 @@ enum Commands {
         #[arg(long, env = "LINGXIA_AUTH_TOKEN")]
         token: String,
 
-        /// API server URL (overrides app.apiServer in lingxia.config.json)
+        /// API server URL
         #[arg(long)]
         api_server: Option<String>,
 
@@ -248,29 +263,22 @@ enum Commands {
         #[arg(long, value_parser = ["lxapp", "lxplugin", "app"])]
         target: Option<String>,
 
-        /// Path to the package archive (auto-detected if not specified)
-        #[arg(long)]
-        package: Option<String>,
+        /// Path to the package archive (app only)
+        #[arg(long = "package-path")]
+        package_path: Option<String>,
 
-        /// Release channel (lxapp only): release, preview, developer
-        #[arg(long, default_value = "developer", value_parser = ["release", "preview", "developer"])]
-        release_type: String,
+        /// Release channel (required for lxapp): release, preview, developer
+        #[arg(long, value_parser = ["release", "preview", "developer"])]
+        release_type: Option<String>,
+
+        /// Override lxapp view framework detection
+        #[arg(long, value_parser = ["react", "vue", "html"])]
+        framework: Option<String>,
+
+        /// LxApp progress output mode
+        #[arg(long, value_parser = ["task", "plain"])]
+        progress: Option<String>,
     },
-
-    /// Manage the installed CLI binary (self-update, version checks)
-    #[command(name = "self")]
-    SelfCmd {
-        #[command(subcommand)]
-        action: SelfAction,
-    },
-}
-
-#[derive(Subcommand)]
-enum SelfAction {
-    /// Update the installed CLI binary to the latest release
-    Update,
-    /// Check whether a newer CLI binary version is available
-    CheckUpdate,
 }
 
 #[derive(Subcommand)]
@@ -356,8 +364,20 @@ enum HarmonyAuthAction {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let should_print_update_notice = !matches!(&cli.command, Commands::SelfCmd { .. });
+    let raw_args: Vec<String> = std::env::args().collect();
+    update::maybe_auto_update();
+
+    let cli = match Cli::try_parse_from(&raw_args) {
+        Ok(cli) => cli,
+        Err(err) => {
+            err.print()?;
+            let exit_code = match err.kind() {
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => 0,
+                _ => 2,
+            };
+            std::process::exit(exit_code);
+        }
+    };
 
     match cli.command {
         Commands::New {
@@ -384,7 +404,6 @@ fn main() -> Result<()> {
             all_platforms,
             ipa,
             dmg,
-            package,
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
@@ -398,7 +417,23 @@ fn main() -> Result<()> {
                 all_platforms,
                 ipa,
                 dmg,
-                package,
+                package: false,
+            })?;
+        }
+        Commands::Package {
+            package_options,
+            platform,
+            all_platforms,
+        } => {
+            commands::package::execute(commands::package::PackageExecuteOptions {
+                features: package_options.features,
+                build_native: !package_options.skip_native,
+                abis: package_options.abis,
+                macos_arch: package_options.macos_arch,
+                framework: package_options.framework,
+                progress: package_options.progress,
+                platforms: platform,
+                all_platforms,
             })?;
         }
         Commands::Devices { platform } => {
@@ -502,31 +537,21 @@ fn main() -> Result<()> {
             token,
             api_server,
             target,
-            package,
+            package_path,
             release_type,
+            framework,
+            progress,
         } => {
             commands::publish::execute(commands::publish::PublishOptions {
                 token,
                 api_server,
                 target,
-                package,
+                package: package_path,
                 release_type,
+                framework,
+                progress,
             })?;
         }
-        Commands::SelfCmd { action } => match action {
-            SelfAction::Update => {
-                commands::self_update::execute(commands::self_update::SelfUpdateAction::Update)?;
-            }
-            SelfAction::CheckUpdate => {
-                commands::self_update::execute(
-                    commands::self_update::SelfUpdateAction::CheckUpdate,
-                )?;
-            }
-        },
-    }
-
-    if should_print_update_notice {
-        commands::self_update::maybe_print_update_notice();
     }
 
     Ok(())

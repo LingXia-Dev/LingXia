@@ -7,13 +7,16 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::http_client;
+use crate::lxapp;
 
 pub struct PublishOptions {
     pub token: String,
     pub api_server: Option<String>,
     pub target: Option<String>,
     pub package: Option<String>,
-    pub release_type: String,
+    pub release_type: Option<String>,
+    pub framework: Option<String>,
+    pub progress: Option<String>,
 }
 
 struct PackageMeta {
@@ -23,14 +26,29 @@ struct PackageMeta {
     release_type: Option<String>, // Some only for lxapp
 }
 
+struct ResolvedPackage {
+    path: PathBuf,
+    cleanup_after_publish: bool,
+}
+
+impl Drop for ResolvedPackage {
+    fn drop(&mut self) {
+        if self.cleanup_after_publish {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let meta = resolve_meta(&cwd, opts.target, &opts.release_type)?;
+    let meta = resolve_meta(&cwd, opts.target, opts.release_type)?;
     let api_server = resolve_api_server(&cwd, opts.api_server)?;
     let api_server = api_server.trim_end_matches('/').to_string();
 
-    let package_path = find_or_resolve_package(&cwd, &meta.target, opts.package)?;
+    let package =
+        resolve_package_for_publish(&cwd, &meta, opts.package, opts.framework, opts.progress)?;
+    let package_path = &package.path;
     let file_name = package_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -95,10 +113,55 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     }
 }
 
+fn resolve_package_for_publish(
+    cwd: &Path,
+    meta: &PackageMeta,
+    explicit: Option<String>,
+    framework: Option<String>,
+    progress: Option<String>,
+) -> Result<ResolvedPackage> {
+    match meta.target.as_str() {
+        "lxapp" | "lxplugin" => {
+            if explicit.is_some() {
+                bail!(
+                    "--package-path is not supported for {}. lingxia publish always packages the current project first.",
+                    meta.target
+                );
+            }
+            package_current_project(cwd, framework, progress)
+        }
+        _ => Ok(ResolvedPackage {
+            path: find_or_resolve_package(cwd, &meta.target, explicit)?,
+            cleanup_after_publish: false,
+        }),
+    }
+}
+
+fn package_current_project(
+    cwd: &Path,
+    framework: Option<String>,
+    progress: Option<String>,
+) -> Result<ResolvedPackage> {
+    let mut args = vec!["build".to_string(), "--release".to_string()];
+    if let Some(framework) = framework.as_deref() {
+        args.push("--framework".to_string());
+        args.push(framework.to_string());
+    }
+    if let Some(progress) = progress.as_deref() {
+        args.push("--progress".to_string());
+        args.push(progress.to_string());
+    }
+    lxapp::run_in_dir(&args, cwd)?;
+    Ok(ResolvedPackage {
+        path: lxapp::package_in_dir(cwd, framework.as_deref())?,
+        cleanup_after_publish: true,
+    })
+}
+
 fn resolve_meta(
     cwd: &Path,
     target_arg: Option<String>,
-    release_type_arg: &str,
+    release_type_arg: Option<String>,
 ) -> Result<PackageMeta> {
     let target = match target_arg.as_deref() {
         Some(t) => normalize_target(t)?,
@@ -108,7 +171,14 @@ fn resolve_meta(
     match target.as_str() {
         "lxapp" => {
             let (id, version) = read_lxapp_json(cwd)?;
-            let release_type = normalize_release_type(release_type_arg)?;
+            let release_type = release_type_arg
+                .as_deref()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "--release-type is required when publishing target=lxapp. Must be one of: release, preview, developer"
+                    )
+                })
+                .and_then(normalize_release_type)?;
             Ok(PackageMeta {
                 target,
                 target_id: id,
@@ -243,7 +313,7 @@ fn resolve_api_server(cwd: &Path, api_server_arg: Option<String>) -> Result<Stri
             }
         }
     }
-    bail!("apiServer not configured. Use --api-server or set app.apiServer in lingxia.config.json");
+    bail!("Use --api-server to specify the package upload server URL.");
 }
 
 fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -> Result<PathBuf> {
@@ -277,7 +347,7 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
 
     match candidates.len() {
         0 => bail!(
-            "No package found for target '{target}'. Run 'lingxia build --release --package' first, or use --package."
+            "No package found for target '{target}'. Run 'lingxia package' first, or use --package-path <PATH>."
         ),
         1 => Ok(candidates.remove(0)),
         _ => {
@@ -286,7 +356,7 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
                 .map(|p| format!("  {}", p.display()))
                 .collect::<Vec<_>>()
                 .join("\n");
-            bail!("Multiple packages found. Use --package to specify:\n{list}")
+            bail!("Multiple packages found. Use --package-path <PATH> to specify one:\n{list}")
         }
     }
 }
@@ -328,7 +398,6 @@ fn package_matches(target: &str, path: &Path, dist_dir: &Path) -> bool {
     };
 
     match target {
-        "lxapp" | "lxplugin" => file_name.ends_with(".tar.zst"),
         "app" => {
             if file_name.ends_with(".apk")
                 || file_name.ends_with(".ipa")

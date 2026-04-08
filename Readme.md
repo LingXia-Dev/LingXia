@@ -55,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh
 
 # Create and run a native host app
 lingxia new my-app -t native-app -p android --package-id com.example.myapp -y
-cd my-app && lingxia build && lingxia run
+cd my-app && lingxia build && lingxia dev
 ```
 
 **Prerequisites:** Node.js 18+, Rust toolchain, platform SDK ([details](docs/getting-started.md)).
@@ -64,7 +64,7 @@ To develop lxapp pages without native packaging:
 
 ```bash
 lingxia new my-lxapp -t lxapp -y
-cd my-lxapp && lingxia build
+cd my-lxapp && lingxia dev
 ```
 
 ## Platform Support
@@ -84,7 +84,7 @@ crates/                  Rust core — runtime, bridge, platform abstraction
   lingxia-lxapp/         LxApp loader, lifecycle, plugin system
   lingxia-shell/         Built-in Shell (Rust-native lxapp)
   lingxia-platform/      Platform trait implementations
-tools/lingxia-cli/       CLI — new, build, run, publish, doctor
+tools/lingxia-cli/       CLI — new, build, dev, publish, doctor
 lingxia-sdk/             Native SDKs (Android Kotlin, Apple Swift, Harmony ArkTS)
 packages/                npm packages (bridge runtime, React/Vue bindings)
 examples/                Example host app + lingxia-showcase lxapp

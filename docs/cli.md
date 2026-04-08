@@ -74,7 +74,6 @@ lingxia build [options]
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
 | `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` | host arch |
 | `--platform <platforms>` | Platforms to build (comma-separated) | all detected |
-| `--package` | Package release build output into a publishable archive (`--release` required). Used for LxApp/LxPlugin dist archives and standalone macOS update zips. | false |
 | `--skip-native` | Skip native Rust library compilation | false |
 
 **Examples:**
@@ -95,37 +94,85 @@ lingxia build --skip-native
 
 ---
 
-### `lingxia run`
+### `lingxia package`
 
-Development mode: build, install, and launch app on device.
+Package release artifacts for publishing or delivery.
 
 ```bash
-lingxia run [options]
+lingxia package [options]
 ```
+
+`lingxia package` always performs a release package build.
 
 **Options:**
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
-| `--release` | Release build (optimized) | false (debug) |
 | `-f, --features <features>` | Rust features to enable (comma-separated) | none |
 | `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
-| `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` (must match host for `run`) | host arch |
+| `--macos-arch <arch>` | macOS package architecture: `arm64`, `x86_64` | host arch |
+| `--platform <platforms>` | Platforms to package (comma-separated) | all detected |
 | `--skip-native` | Skip native Rust library compilation | false |
+| `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
+| `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
 
 **Examples:**
 
 ```bash
-# Start dev mode (auto-detect device)
-lingxia run
+# Package the current project for publishing
+lingxia package
 
-# Target specific device
-lingxia run -d deviceid
+# Package only macOS output
+lingxia package --platform macos
+```
+
+---
+
+### `lingxia dev`
+
+Development mode for both app and lxapp projects.
+
+```bash
+lingxia dev [options]
+```
+
+Behavior depends on the current project:
+
+- In an app project, `lingxia dev` builds, installs, and launches the host app.
+- In a standalone lxapp project, `lingxia dev` builds the lxapp and launches LingXia Runner on macOS.
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-p, --platform <platform>` | Target platform: `android`, `ios`, `macos`, `harmony` | auto-detect for app projects |
+| `-d, --device <id>` | Target device ID (required if multiple connected) | auto-detect |
+| `--release` | Release build (optimized) | false (debug) |
+| `-f, --features <features>` | Rust features to enable (comma-separated) | none |
+| `--skip-native` | Skip native Rust library compilation | false |
+| `--abis <abis>` | Android ABIs (comma-separated): `arm64-v8a`, `armeabi-v7a` | auto (`arm64-v8a`) |
+| `--macos-arch <arch>` | macOS build architecture: `arm64`, `x86_64` (must match host for local app dev) | host arch |
+| `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
+| `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
+| `--reinstall` | Reinstall app by uninstalling existing one first (best effort) | false |
+
+**Examples:**
+
+```bash
+# App project: build, install, and launch
+lingxia dev
+
+# App project: target a specific device
+lingxia dev -d deviceid
+
+# Standalone lxapp project: build and launch Runner
+lingxia dev
 
 # Use release build
-lingxia run --release
+lingxia dev --release
 ```
+
+> **Note:** For standalone lxapp projects, `--device`, `--abis`, and non-macOS `--platform` are not supported. Runner currently launches locally on macOS.
 
 ---
 
@@ -208,10 +255,12 @@ lingxia publish --token <token> [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--token <token>` | Bearer token (`LINGXIA_AUTH_TOKEN` env var also accepted) | required |
-| `--api-server <url>` | API server URL (overrides `app.apiServer` in config) | from config |
+| `--api-server <url>` | API server URL (falls back to `app.apiServer` when available) | from config |
 | `--target <type>` | `lxapp`, `lxplugin`, or `app` (auto-detected from project files) | auto |
-| `--package <path>` | Path to the package file (auto-detected if not specified) | auto |
-| `--release-type <type>` | Release channel: `release`, `preview`, `developer` (lxapp only) | `developer` |
+| `--package-path <path>` | Path to the package file (`app` only) | auto |
+| `--release-type <type>` | Release channel: `release`, `preview`, `developer` (required for lxapp) | none |
+| `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
+| `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
 
 **Auto-detection:**
 
@@ -227,8 +276,8 @@ lingxia publish --token <token> [options]
 # Set token once via env var
 export LINGXIA_AUTH_TOKEN=lx_dev_your_token
 
-# Publish lxapp (auto-detected from lxapp.json)
-lingxia publish
+# Publish lxapp (auto-detected from lxapp.json; packages current project automatically)
+lingxia publish --release-type developer
 
 # Publish preview build
 lingxia publish --release-type preview
@@ -237,7 +286,7 @@ lingxia publish --release-type preview
 lingxia publish --target lxplugin --api-server http://localhost:8080
 ```
 
-> **Note:** Run `lingxia build --release --package` first to produce the package archive.
+> **Note:** `lxapp` and `lxplugin` publish always package the current project first. Only `app` publish supports `--package-path`.
 
 ---
 

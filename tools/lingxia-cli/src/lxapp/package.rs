@@ -1,5 +1,6 @@
 use crate::lxapp::project::Project;
 use anyhow::{Context, Result, anyhow};
+use dirs::cache_dir;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -19,7 +20,13 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
     let base_name = sanitize_name(project.package_name.as_deref(), default_name);
     let version = sanitize_version(&project.version);
     let archive_name = format!("{base_name}-{version}.tar.zst");
-    let archive_path = project.root.join(archive_name);
+    let cache_root = cache_dir()
+        .ok_or_else(|| anyhow!("Failed to locate user cache directory"))?
+        .join("lingxia")
+        .join("packages");
+    fs::create_dir_all(&cache_root)
+        .with_context(|| format!("Failed to create {}", cache_root.display()))?;
+    let archive_path = cache_root.join(archive_name);
 
     if archive_path.exists() {
         fs::remove_file(&archive_path)

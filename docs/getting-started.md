@@ -41,12 +41,6 @@ Install a specific version:
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | LINGXIA_VERSION=0.4.3 sh
 ```
 
-Rust users can also install from crates.io:
-
-```bash
-cargo install lingxia-cli
-```
-
 Verify installation:
 
 ```bash
@@ -87,7 +81,7 @@ lingxia build
 Run on device/emulator (when available):
 
 ```bash
-lingxia run
+lingxia dev
 ```
 
 Release build:
@@ -105,7 +99,7 @@ Create a standalone lxapp project:
 ```bash
 lingxia new my-lxapp -t lxapp -y
 cd my-lxapp
-lingxia build
+lingxia dev
 ```
 
 This mode is useful when you want to focus on page and logic authoring without native host packaging.

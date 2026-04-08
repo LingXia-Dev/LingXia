@@ -59,7 +59,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
         if package && !release {
             return Err(anyhow!(
-                "`--package` requires `--release` for LxApp/LxPlugin builds."
+                "Packaging requires a release build for LxApp/LxPlugin projects."
             ));
         }
         let mut args = vec!["build".to_string()];
@@ -182,7 +182,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
     // Host/native build
     if package && !release {
-        return Err(anyhow!("`--package` requires `--release`."));
+        return Err(anyhow!("Packaging requires a release build."));
     }
     let config = LingXiaConfig::load(&project_root)?;
 
@@ -402,7 +402,7 @@ fn build_standalone_apple_swift_package(
 ) -> Result<()> {
     if package && !release {
         return Err(anyhow!(
-            "`--package` requires `--release` for standalone Apple Swift Package builds."
+            "Packaging requires a release build for standalone Apple Swift Package projects."
         ));
     }
 

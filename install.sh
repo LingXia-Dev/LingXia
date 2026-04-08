@@ -2,7 +2,7 @@
 set -eu
 
 REPO="${LINGXIA_REPO:-LingXia-Dev/LingXia}"
-INSTALL_DIR="${LINGXIA_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="$HOME/.local/bin"
 DEFAULT_VERSION="0.4.3"
 VERSION="${LINGXIA_VERSION:-$DEFAULT_VERSION}"
 BIN_NAME="lingxia"
@@ -186,6 +186,11 @@ main() {
   need_cmd chmod
   need_cmd mkdir
   need_cmd mv
+
+  if [ -n "${LINGXIA_INSTALL_DIR:-}" ] && [ "${LINGXIA_INSTALL_DIR}" != "$INSTALL_DIR" ]; then
+    echo "error: custom install directories are no longer supported; LingXia CLI installs to $INSTALL_DIR" >&2
+    exit 1
+  fi
 
   platform="$(detect_platform)"
   version="$VERSION"

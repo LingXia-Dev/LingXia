@@ -111,7 +111,7 @@ impl BuildArtifacts {
     ///
     /// For macOS the priority is: update zip > dmg > app bundle.
     /// This matches the publish workflow where the update zip is the preferred
-    /// deliverable when `--package` is used.
+    /// deliverable after `lingxia package`.
     pub fn path(&self) -> &Path {
         match self {
             BuildArtifacts::Android { apk_path } => apk_path.as_path(),
