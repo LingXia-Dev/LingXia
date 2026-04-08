@@ -123,7 +123,7 @@ Use streams when:
 
 ### Logic side — generator form
 
-The simplest form. Logic yields chunks; the runtime handles serialization and delivery. The `examples/lingxia-chat` demo uses this pattern with `onSend`.
+The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream. The `examples/lingxia-showcase/pages/stream` demo uses this pattern with `onSend`.
 
 ```ts
 type ChatChunk =
@@ -185,7 +185,7 @@ The real chat example optionally probes an app-installed AI extension before fal
 
 ### Logic side — explicit handle form
 
-Use this when your async source uses callbacks rather than an async iterator, or when you need to react to cancellation explicitly.
+Use this when your async source uses callbacks rather than an async iterator, or when you need to react to cancellation explicitly. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods listed in the page's `stream_handlers` metadata.
 
 ```ts
 Page({
@@ -339,7 +339,7 @@ Use channels when:
 
 ### Logic side
 
-Logic declares a method with a `ChannelHandle` second parameter. The runtime routes `ch.open` frames by topic (derived from the method name) and invokes the handler.
+You do not import `ChannelHandle` — the runtime creates and injects it as the second parameter when View opens a channel. The runtime routes `ch.open` frames by topic (derived from the method name) and invokes the handler.
 
 ```ts
 Page({
@@ -350,7 +350,10 @@ Page({
     session.onUpdate(update => ch.send({ type: 'update', update }));
     session.onEvent(event  => ch.send({ type: 'event', event }));
 
-    // View → Logic: receive commands
+    // Send initial state when channel opens
+    ch.send({ type: 'init', state: session.state, rev: session.rev });
+
+    // Receive messages from View
     ch.on('data', (msg) => {
       if (msg.type === 'op') {
         const result = session.apply(msg.op);
@@ -358,22 +361,24 @@ Page({
       }
     });
 
-    ch.on('close', () => session.release());
-
-    // Send initial state when channel opens
-    ch.send({ type: 'init', state: session.state, rev: session.rev });
+    // Cleanup when channel closes
+    ch.on('close', () => {
+      session.release();
+    });
   },
 });
 ```
 
-`ChannelHandle` interface:
+The handler function receives `ChannelHandle` as its second parameter. Use `ch.send()` to push data to View, and `ch.on()` to register listeners for incoming data and close events. This is the same event-listener pattern used throughout LingXia.
+
+`ChannelHandle` interface (injected by runtime):
 
 ```ts
-interface ChannelHandle {
-  send(payload: unknown): void;                         // push to View
-  close(code?: string, reason?: string): void;          // Logic closes the channel
-  on(event: 'data',  handler: (payload: unknown) => void): this;  // receive from View
-  on(event: 'close', handler: (code?: string, reason?: string) => void): this; // channel closed
+interface ChannelHandle<TSend = unknown, TReceive = unknown> {
+  send(payload: TSend): void;                                        // push to View
+  close(code?: string, reason?: string): void;                       // Logic closes the channel
+  on(event: 'data', handler: (payload: TReceive) => void): void;     // receive from View
+  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
 }
 ```
 
@@ -469,7 +474,7 @@ View: session.connected = true
   │
   ▼  ch.close (either side)
 View: session.connected = false
-Logic: ch.on('close') fires → cleanup
+Logic: ch.on('close') listener fires → cleanup
 ```
 
 ---
