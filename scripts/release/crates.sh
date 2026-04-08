@@ -33,12 +33,13 @@ usage() {
 Release LingXia crates.io packages.
 
 Usage:
-  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty]
+  scripts/release/crates.sh [--publish] [--dry-run] [--allow-dirty] [--from <crate>]
 
 Options:
   --publish       Publish crates to crates.io in dependency order.
   --dry-run       Run cargo package checks only.
   --allow-dirty   Pass --allow-dirty to cargo publish.
+  --from <crate>  Start from the given crate in the publish order.
   -h, --help      Show help.
 EOF
 }
@@ -46,12 +47,22 @@ EOF
 PUBLISH=0
 DRY_RUN=0
 ALLOW_DIRTY=0
+FROM_CRATE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --publish) PUBLISH=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
+    --from)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "--from requires a crate name" >&2
+        usage
+        exit 2
+      fi
+      FROM_CRATE="$1"
+      ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -74,6 +85,25 @@ workspace_version="$(awk '
 if [[ -z "$workspace_version" ]]; then
   echo "Failed to read workspace version from Cargo.toml" >&2
   exit 1
+fi
+
+SELECTED_CRATES=("${CRATES[@]}")
+if [[ -n "$FROM_CRATE" ]]; then
+  start_index=-1
+  for i in "${!CRATES[@]}"; do
+    if [[ "${CRATES[$i]}" == "$FROM_CRATE" ]]; then
+      start_index=$i
+      break
+    fi
+  done
+
+  if [[ "$start_index" -lt 0 ]]; then
+    echo "Unknown crate for --from: $FROM_CRATE" >&2
+    echo "Known crates: ${CRATES[*]}" >&2
+    exit 2
+  fi
+
+  SELECTED_CRATES=("${CRATES[@]:$start_index}")
 fi
 
 wait_for_index() {
@@ -110,7 +140,10 @@ cd "$ROOT_DIR"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "Dry run: cargo package checks"
-  for crate in "${CRATES[@]}"; do
+  if [[ -n "$FROM_CRATE" ]]; then
+    echo "Starting from: $FROM_CRATE"
+  fi
+  for crate in "${SELECTED_CRATES[@]}"; do
     echo "==> cargo package -p $crate --list"
     if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
       cargo package -p "$crate" --list --allow-dirty >/dev/null
@@ -125,7 +158,11 @@ if [[ "$PUBLISH" -eq 0 ]]; then
   exit 0
 fi
 
-for crate in "${CRATES[@]}"; do
+if [[ -n "$FROM_CRATE" ]]; then
+  echo "Resuming publish order from: $FROM_CRATE"
+fi
+
+for crate in "${SELECTED_CRATES[@]}"; do
   echo ""
   echo "=========================================="
   echo "Publishing $crate@$workspace_version"
