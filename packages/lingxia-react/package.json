@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/react",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "private": false,
   "description": "LingXia React bindings — useLingXia hook and native components for React",
   "type": "module",
@@ -19,8 +19,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": ">=0.4.0",
-    "@lingxia/elements": ">=0.4.0"
+    "@lingxia/bridge": ">=0.5.0",
+    "@lingxia/elements": ">=0.5.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"

@@ -157,28 +157,10 @@ if (dryRun) {
 NODE
 }
 
-refresh_package_lock() {
-  local package_dir="$1"
-  local package_lock="$package_dir/package-lock.json"
-  if [[ ! -f "$package_lock" ]]; then
-    return 0
-  fi
-
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "would refresh $package_lock"
-    return 0
-  fi
-
-  (cd "$package_dir" && npm install --package-lock-only --ignore-scripts >/dev/null)
-  echo "refreshed $package_lock"
-}
-
 update_workspace_cargo
 
 while IFS= read -r package_json; do
-  package_dir="$(dirname "$package_json")"
   update_package_json "$package_json"
-  refresh_package_lock "$package_dir"
 done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
 
 if [[ "$DRY_RUN" -eq 1 ]]; then

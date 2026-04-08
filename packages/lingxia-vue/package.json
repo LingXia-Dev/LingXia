@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/vue",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "private": false,
   "description": "LingXia Vue bindings — useLingXia composable and native components for Vue",
   "type": "module",
@@ -19,8 +19,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": ">=0.4.0",
-    "@lingxia/elements": ">=0.4.0"
+    "@lingxia/bridge": ">=0.5.0",
+    "@lingxia/elements": ">=0.5.0"
   },
   "peerDependencies": {
     "vue": ">=3.5.0"

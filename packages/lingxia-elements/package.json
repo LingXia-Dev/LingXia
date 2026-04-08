@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/elements",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "private": false,
   "description": "LingXia custom elements — native-backed web components for LxApp pages",
   "type": "module",
