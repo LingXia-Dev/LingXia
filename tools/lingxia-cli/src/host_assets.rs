@@ -1,21 +1,22 @@
-use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
+use crate::config::{
+    HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig,
+    ResourceBundleType,
+};
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
-use include_dir::{Dir, DirEntry, include_dir};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 const CACHE_VERSION: u32 = 1;
-static EMBEDDED_BROWSER_WEBUI_DIST: Dir<'_> =
-    include_dir!("$CARGO_MANIFEST_DIR/../../crates/lingxia-shell/webui/dist");
 
 fn is_png_path(path: &Path) -> bool {
     path.extension()
@@ -76,7 +77,7 @@ pub(crate) fn prepare_host_assets(
         ));
     }
 
-    let prepared_lxapp_assets = prepare_embedded_lxapp_assets(
+    let prepared_bundles = prepare_resource_bundles(
         project_root,
         config,
         build_profile,
@@ -84,7 +85,22 @@ pub(crate) fn prepare_host_assets(
         progress_override,
         &mut cache,
     )?;
-    let app_json = build_app_json_from_config(config, prepared_lxapp_assets.as_ref())?;
+    let home_bundle = configured_home_bundle(config, &prepared_bundles);
+    if let Some(home_lxapp_id) = config
+        .app
+        .as_ref()
+        .and_then(|app| app.home_lxapp_id.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        && home_bundle.is_none()
+    {
+        return Err(anyhow!(
+            "homeLxAppID '{}' is configured but no matching bundle was prepared.\n\
+Add the home LxApp project to resources.bundles and ensure its lxapp.json appId matches.",
+            home_lxapp_id
+        ));
+    }
+    let app_json = build_app_json_from_config(config, home_bundle)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
 
     let has_android = platforms
@@ -127,7 +143,7 @@ pub(crate) fn prepare_host_assets(
                     &assets_root,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    &prepared_bundles,
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
@@ -151,7 +167,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -174,7 +190,7 @@ pub(crate) fn prepare_host_assets(
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
                     &mut cache,
@@ -188,7 +204,7 @@ pub(crate) fn prepare_host_assets(
                     &rawfile_root,
                     &app_json,
                     &app_json_hash,
-                    prepared_lxapp_assets.as_ref(),
+                    &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
@@ -201,32 +217,11 @@ pub(crate) fn prepare_host_assets(
     Ok(())
 }
 
-pub(crate) fn prepare_standalone_browser_assets(resources_dir: &Path) -> Result<()> {
-    if EMBEDDED_BROWSER_WEBUI_DIST.get_file("lxapp.json").is_none() {
-        return Err(anyhow!(
-            "Embedded browser webui assets are missing lxapp.json"
-        ));
-    }
-
-    let target_dir = resources_dir.join("app.lingxia.browser");
-    if target_dir.exists() {
-        fs::remove_dir_all(&target_dir)
-            .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
-    }
-    write_embedded_dir_contents(&EMBEDDED_BROWSER_WEBUI_DIST, &target_dir)?;
-    println!(
-        "  {} embedded browser assets → {}",
-        "✓".green(),
-        target_dir.display()
-    );
-    Ok(())
-}
-
 fn prepare_android_assets_root(
     assets_root: &Path,
     app_json: &str,
     app_json_hash: &str,
-    lxapp_assets: Option<&PreparedLxAppAssets>,
+    bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
@@ -235,24 +230,9 @@ fn prepare_android_assets_root(
     let dest_key = path_key(assets_root);
     let prev = cache.destinations.get(&dest_key).cloned();
 
-    if let Some(prev) = &prev
-        && let (Some(prev_name), Some(next)) = (
-            prev.asset_name.as_deref(),
-            lxapp_assets.map(|a| a.asset_name.as_str()),
-        )
-        && prev_name != next
-    {
-        let old_dir = assets_root.join(prev_name);
-        if old_dir.exists() {
-            fs::remove_dir_all(&old_dir)
-                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
-        }
-    }
-
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
-        dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
-        asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+        bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
@@ -269,30 +249,11 @@ fn prepare_android_assets_root(
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
-
-    // LxApp dist
-    if let Some(lxapp_assets) = lxapp_assets {
-        let target_dir = assets_root.join(&lxapp_assets.asset_name);
-        if prev.as_ref() != Some(&desired) || !target_dir.exists() {
-            if target_dir.exists() {
-                fs::remove_dir_all(&target_dir)
-                    .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
-            }
-            copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
-            println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
-            changed = true;
-        }
-    } else if let Some(prev) = &prev {
-        // LxApp was previously embedded but is now unavailable; remove stale directory.
-        if let Some(prev_name) = &prev.asset_name {
-            let stale = assets_root.join(prev_name);
-            if stale.exists() {
-                fs::remove_dir_all(&stale)
-                    .with_context(|| format!("Failed to remove {}", stale.display()))?;
-                changed = true;
-            }
-        }
-    }
+    changed |= sync_resource_bundles(
+        assets_root,
+        bundles,
+        prev.as_ref().map(|s| &s.bundle_hashes),
+    )?;
 
     if changed {
         cache.destinations.insert(dest_key, desired);
@@ -305,7 +266,7 @@ fn prepare_apple_resources_root(
     resources_dir: &Path,
     app_json: &str,
     app_json_hash: &str,
-    lxapp_assets: Option<&PreparedLxAppAssets>,
+    bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     prepared_roots: &mut HashSet<PathBuf>,
     cache: &mut HostAssetsCache,
@@ -324,24 +285,9 @@ fn prepare_apple_resources_root(
     let dest_key = path_key(&resources_dir);
     let prev = cache.destinations.get(&dest_key).cloned();
 
-    if let Some(prev) = &prev
-        && let (Some(prev_name), Some(next)) = (
-            prev.asset_name.as_deref(),
-            lxapp_assets.map(|a| a.asset_name.as_str()),
-        )
-        && prev_name != next
-    {
-        let old_dir = resources_dir.join(prev_name);
-        if old_dir.exists() {
-            fs::remove_dir_all(&old_dir)
-                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
-        }
-    }
-
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
-        dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
-        asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+        bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
@@ -357,28 +303,11 @@ fn prepare_apple_resources_root(
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
-
-    if let Some(lxapp_assets) = lxapp_assets {
-        let target_dir = resources_dir.join(&lxapp_assets.asset_name);
-        if prev.as_ref() != Some(&desired) || !target_dir.exists() {
-            if target_dir.exists() {
-                fs::remove_dir_all(&target_dir)
-                    .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
-            }
-            copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
-            println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
-            changed = true;
-        }
-    } else if let Some(prev) = &prev {
-        if let Some(prev_name) = &prev.asset_name {
-            let stale = resources_dir.join(prev_name);
-            if stale.exists() {
-                fs::remove_dir_all(&stale)
-                    .with_context(|| format!("Failed to remove {}", stale.display()))?;
-                changed = true;
-            }
-        }
-    }
+    changed |= sync_resource_bundles(
+        &resources_dir,
+        bundles,
+        prev.as_ref().map(|s| &s.bundle_hashes),
+    )?;
 
     if changed {
         cache.destinations.insert(dest_key, desired);
@@ -391,7 +320,7 @@ fn prepare_harmony_rawfile_root(
     rawfile_root: &Path,
     app_json: &str,
     app_json_hash: &str,
-    lxapp_assets: Option<&PreparedLxAppAssets>,
+    bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
@@ -405,25 +334,9 @@ fn prepare_harmony_rawfile_root(
     let dest_key = path_key(rawfile_root);
     let prev = cache.destinations.get(&dest_key).cloned();
 
-    // Clean up old LxApp directory if asset name changed
-    if let Some(prev) = &prev
-        && let (Some(prev_name), Some(next)) = (
-            prev.asset_name.as_deref(),
-            lxapp_assets.map(|a| a.asset_name.as_str()),
-        )
-        && prev_name != next
-    {
-        let old_dir = rawfile_root.join(prev_name);
-        if old_dir.exists() {
-            fs::remove_dir_all(&old_dir)
-                .with_context(|| format!("Failed to remove {}", old_dir.display()))?;
-        }
-    }
-
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
-        dist_hash: lxapp_assets.map(|a| a.dist_hash.clone()),
-        asset_name: lxapp_assets.map(|a| a.asset_name.clone()),
+        bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
 
@@ -440,30 +353,11 @@ fn prepare_harmony_rawfile_root(
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
-
-    // LxApp dist
-    if let Some(lxapp_assets) = lxapp_assets {
-        let target_dir = rawfile_root.join(&lxapp_assets.asset_name);
-        if prev.as_ref() != Some(&desired) || !target_dir.exists() {
-            if target_dir.exists() {
-                fs::remove_dir_all(&target_dir)
-                    .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
-            }
-            copy_dir_recursive(&lxapp_assets.dist_dir, &target_dir)?;
-            println!("  {} LxApp assets → {}", "✓".green(), target_dir.display());
-            changed = true;
-        }
-    } else if let Some(prev) = &prev {
-        // LxApp was previously embedded but is now unavailable; remove stale directory.
-        if let Some(prev_name) = &prev.asset_name {
-            let stale = rawfile_root.join(prev_name);
-            if stale.exists() {
-                fs::remove_dir_all(&stale)
-                    .with_context(|| format!("Failed to remove {}", stale.display()))?;
-                changed = true;
-            }
-        }
-    }
+    changed |= sync_resource_bundles(
+        rawfile_root,
+        bundles,
+        prev.as_ref().map(|s| &s.bundle_hashes),
+    )?;
 
     if changed {
         cache.destinations.insert(dest_key, desired);
@@ -475,8 +369,7 @@ fn prepare_harmony_rawfile_root(
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct DestinationStamp {
     app_json_hash: String,
-    dist_hash: Option<String>,
-    asset_name: Option<String>,
+    bundle_hashes: BTreeMap<String, String>,
     runtime_hash: Option<String>,
 }
 
@@ -526,11 +419,19 @@ impl HostAssetsCache {
     }
 }
 
-struct PreparedLxAppAssets {
+struct PreparedResourceBundle {
     dist_dir: PathBuf,
     asset_name: String,
     dist_hash: String,
-    home_lxapp_version: String,
+    version: String,
+}
+
+struct ResourceBundlePlan {
+    bundle_dir: PathBuf,
+    bundle_type: ResourceBundleType,
+    asset_name: String,
+    output_dir: PathBuf,
+    version: String,
 }
 
 struct PreparedRuntimeAsset {
@@ -561,126 +462,187 @@ fn prepare_runtime_asset(
     })
 }
 
-fn prepare_embedded_lxapp_assets(
+fn prepare_resource_bundles(
     project_root: &Path,
     config: &LingXiaConfig,
     build_profile: BuildProfile,
     framework_override: Option<ProjectFramework>,
     progress_override: Option<&str>,
     cache: &mut HostAssetsCache,
-) -> Result<Option<PreparedLxAppAssets>> {
+) -> Result<Vec<PreparedResourceBundle>> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
 
-    let Some(home_lxapp_id) = app
+    let configured_bundles = config
+        .resources
+        .as_ref()
+        .and_then(|resources| resources.bundles.as_ref())
+        .cloned();
+
+    let bundle_entries = if let Some(entries) = configured_bundles {
+        entries
+    } else {
+        println!(
+            "{} No resource bundles configured, skipping bundle preparation",
+            "ℹ".blue()
+        );
+        return Ok(Vec::new());
+    };
+    let configured_home_lxapp_id = app
         .home_lxapp_id
         .as_deref()
         .map(str::trim)
         .filter(|s| !s.is_empty())
-    else {
-        println!(
-            "{} No embedded home LxApp configured, skipping home LxApp asset preparation",
-            "ℹ".blue()
+        .map(str::to_string);
+
+    println!("{}", "Preparing resource bundles...".bold());
+
+    let mut prepared = Vec::new();
+    for bundle in bundle_entries {
+        let (bundle_path, bundle_type, explicit_target) = match bundle {
+            ResourceBundleConfig::Path(path) => (path, ResourceBundleType::Lxapp, None),
+            ResourceBundleConfig::Detailed(detail) => {
+                (detail.path, detail.bundle_type, detail.target)
+            }
+        };
+        let bundle_dir = project_root.join(&bundle_path);
+        if !bundle_dir.exists() {
+            return Err(anyhow!(
+                "Configured resource bundle directory not found: {}",
+                bundle_dir.display()
+            ));
+        }
+
+        let plan = match bundle_type {
+            ResourceBundleType::Lxapp => {
+                let lxapp_json = bundle_dir.join("lxapp.json");
+                let lxapp_build_config = bundle_dir.join(LXAPP_BUILD_CONFIG_FILE);
+                if !lxapp_json.exists() || !lxapp_build_config.exists() {
+                    return Err(anyhow!(
+                        "Configured lxapp bundle must contain lxapp.json and {}: {}",
+                        LXAPP_BUILD_CONFIG_FILE,
+                        bundle_dir.display()
+                    ));
+                }
+                let metadata = read_lxapp_metadata(&lxapp_json)?;
+                ResourceBundlePlan {
+                    bundle_dir: bundle_dir.clone(),
+                    bundle_type,
+                    asset_name: metadata.app_id,
+                    output_dir: bundle_dir.join("dist"),
+                    version: metadata.version,
+                }
+            }
+            ResourceBundleType::Npm => {
+                let package_json = bundle_dir.join("package.json");
+                if !package_json.exists() {
+                    return Err(anyhow!(
+                        "Configured npm bundle must contain package.json: {}",
+                        bundle_dir.display()
+                    ));
+                }
+                let target = explicit_target
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Configured npm bundle requires target: {}",
+                            bundle_dir.display()
+                        )
+                    })?;
+                ResourceBundlePlan {
+                    bundle_dir: bundle_dir.clone(),
+                    bundle_type,
+                    asset_name: target.to_string(),
+                    output_dir: bundle_dir.join("dist"),
+                    version: "0.0.0".to_string(),
+                }
+            }
+        };
+
+        let cache_key = format!(
+            "{}|{}|{}",
+            path_key(&plan.bundle_dir),
+            build_profile.as_str(),
+            plan.bundle_type.as_str()
         );
-        return Ok(None);
-    };
+        let inputs_hash = hash_tree(
+            &plan.bundle_dir,
+            &["dist", "node_modules", ".git", ".lingxia"],
+        )?;
+        let mut needs_build = true;
 
-    let lxapp_dir = project_root.join(home_lxapp_id);
-    if !lxapp_dir.exists() {
-        println!(
-            "{} Home LxApp directory not found, skip embedding: {}",
-            "ℹ".blue(),
-            lxapp_dir.display()
-        );
-        return Ok(None);
-    }
-
-    let lxapp_json = lxapp_dir.join("lxapp.json");
-    let lxapp_build_config = lxapp_dir.join(LXAPP_BUILD_CONFIG_FILE);
-    if !lxapp_json.exists() || !lxapp_build_config.exists() {
-        println!(
-            "{} Embedded home LxApp is incomplete, skip embedding: {}",
-            "ℹ".blue(),
-            lxapp_dir.display()
-        );
-        return Ok(None);
-    }
-    let metadata = read_lxapp_metadata(&lxapp_json)?;
-    if metadata.app_id != home_lxapp_id {
-        return Err(anyhow!(
-            "homeLxAppID '{}' does not match lxapp.json appId '{}' in {}",
-            home_lxapp_id,
-            metadata.app_id,
-            lxapp_json.display()
-        ));
-    }
-
-    println!("{}", "Preparing LxApp...".bold());
-
-    let mut args = vec!["build".to_string()];
-    if matches!(build_profile, BuildProfile::Release) {
-        args.push("--release".to_string());
-    }
-    if let Some(framework) = framework_override {
-        args.push("--framework".to_string());
-        args.push(framework.as_str().to_string());
-    }
-    if let Some(progress) = progress_override {
-        args.push("--progress".to_string());
-        args.push(progress.to_string());
-    }
-    let cache_key = format!("{}|{}", path_key(&lxapp_dir), build_profile.as_str(),);
-
-    let inputs_hash = hash_tree(&lxapp_dir, &["dist", "node_modules", ".git", ".lingxia"])?;
-    let mut needs_build = true;
-
-    if let Some(stamp) = cache.lxapp_builds.get(&cache_key) {
-        let dist_dir = lxapp_dir.join("dist");
-        if stamp.inputs_hash == inputs_hash && dist_dir.exists() {
+        if let Some(stamp) = cache.lxapp_builds.get(&cache_key)
+            && stamp.inputs_hash == inputs_hash
+            && plan.output_dir.exists()
+        {
             needs_build = false;
         }
+
+        if needs_build {
+            println!("  {} {}", "Building bundle...".cyan(), bundle_dir.display());
+            match plan.bundle_type {
+                ResourceBundleType::Lxapp => {
+                    let mut args = vec!["build".to_string()];
+                    if matches!(build_profile, BuildProfile::Release) {
+                        args.push("--release".to_string());
+                    }
+                    if configured_home_lxapp_id.as_deref() == Some(plan.asset_name.as_str())
+                        && let Some(framework) = framework_override
+                    {
+                        args.push("--framework".to_string());
+                        args.push(framework.as_str().to_string());
+                    }
+                    if let Some(progress) = progress_override {
+                        args.push("--progress".to_string());
+                        args.push(progress.to_string());
+                    }
+                    lxapp::run_in_dir(&args, &plan.bundle_dir)?
+                }
+                ResourceBundleType::Npm => run_npm_bundle_build(&plan.bundle_dir, build_profile)?,
+            }
+        } else {
+            println!(
+                "  {} bundle unchanged, skip build: {}",
+                "✓".green(),
+                plan.bundle_dir.display()
+            );
+        }
+
+        if !plan.output_dir.exists() {
+            return Err(anyhow!(
+                "Bundle build output not found: {}",
+                plan.output_dir.display()
+            ));
+        }
+
+        let dist_hash = hash_tree(&plan.output_dir, &[])?;
+        cache.lxapp_builds.insert(
+            cache_key,
+            LxAppBuildStamp {
+                inputs_hash,
+                dist_hash: dist_hash.clone(),
+                asset_name: plan.asset_name.clone(),
+            },
+        );
+
+        prepared.push(PreparedResourceBundle {
+            dist_dir: plan.output_dir,
+            asset_name: plan.asset_name,
+            dist_hash,
+            version: plan.version,
+        });
     }
 
-    if needs_build {
-        println!("  {}", "Building LxApp...".cyan());
-        lxapp::run_in_dir(&args, &lxapp_dir)?;
-    } else {
-        println!("  {} LxApp unchanged, skip build", "✓".green());
-    }
-
-    let dist_dir = lxapp_dir.join("dist");
-    if !dist_dir.exists() {
-        return Err(anyhow!(
-            "LxApp build output not found: {}",
-            dist_dir.display()
-        ));
-    }
-
-    let asset_name = metadata.app_id;
-    let dist_hash = hash_tree(&dist_dir, &[])?;
-
-    cache.lxapp_builds.insert(
-        cache_key,
-        LxAppBuildStamp {
-            inputs_hash,
-            dist_hash: dist_hash.clone(),
-            asset_name: asset_name.clone(),
-        },
-    );
-
-    Ok(Some(PreparedLxAppAssets {
-        dist_dir,
-        asset_name,
-        dist_hash,
-        home_lxapp_version: metadata.version,
-    }))
+    Ok(prepared)
 }
 
 fn build_app_json_from_config(
     config: &LingXiaConfig,
-    lxapp_assets: Option<&PreparedLxAppAssets>,
+    home_bundle: Option<&PreparedResourceBundle>,
 ) -> Result<String> {
     let app = config
         .app
@@ -705,13 +667,13 @@ fn build_app_json_from_config(
         obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
     }
 
-    if let Some(lxapp_assets) = lxapp_assets
+    if let Some(home_bundle) = home_bundle
         && let Some(home_lxapp_id) = app.home_lxapp_id.as_deref().filter(|s| !s.is_empty())
     {
         obj.insert("homeLxAppID".to_string(), serde_json::json!(home_lxapp_id));
         obj.insert(
             "homeLxAppVersion".to_string(),
-            serde_json::json!(lxapp_assets.home_lxapp_version.as_str()),
+            serde_json::json!(home_bundle.version.as_str()),
         );
     }
     if let Some(max_age) = app.cache_max_age_days {
@@ -738,6 +700,97 @@ fn build_app_json_from_config(
 struct LxAppMetadata {
     app_id: String,
     version: String,
+}
+
+fn configured_home_bundle<'a>(
+    config: &LingXiaConfig,
+    bundles: &'a [PreparedResourceBundle],
+) -> Option<&'a PreparedResourceBundle> {
+    let home_lxapp_id = config
+        .app
+        .as_ref()
+        .and_then(|app| app.home_lxapp_id.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?;
+    bundles
+        .iter()
+        .find(|bundle| bundle.asset_name == home_lxapp_id)
+}
+
+fn run_npm_bundle_build(bundle_dir: &Path, build_profile: BuildProfile) -> Result<()> {
+    let status = Command::new("npm")
+        .arg("run")
+        .arg("build")
+        .env("LINGXIA_BUILD_PROFILE", build_profile.as_str())
+        .env(
+            "NODE_ENV",
+            if matches!(build_profile, BuildProfile::Release) {
+                "production"
+            } else {
+                "development"
+            },
+        )
+        .current_dir(bundle_dir)
+        .status()
+        .with_context(|| format!("Failed to run npm build in {}", bundle_dir.display()))?;
+    if !status.success() {
+        return Err(anyhow!(
+            "npm run build failed for resource bundle {}",
+            bundle_dir.display()
+        ));
+    }
+    Ok(())
+}
+
+fn bundle_hashes(bundles: &[PreparedResourceBundle]) -> BTreeMap<String, String> {
+    bundles
+        .iter()
+        .map(|bundle| (bundle.asset_name.clone(), bundle.dist_hash.clone()))
+        .collect()
+}
+
+fn sync_resource_bundles(
+    target_root: &Path,
+    bundles: &[PreparedResourceBundle],
+    prev_hashes: Option<&BTreeMap<String, String>>,
+) -> Result<bool> {
+    let desired_hashes = bundle_hashes(bundles);
+    let mut changed = false;
+
+    if let Some(prev_hashes) = prev_hashes {
+        for prev_name in prev_hashes.keys() {
+            if !desired_hashes.contains_key(prev_name) {
+                let stale_dir = target_root.join(prev_name);
+                if stale_dir.exists() {
+                    fs::remove_dir_all(&stale_dir)
+                        .with_context(|| format!("Failed to remove {}", stale_dir.display()))?;
+                    changed = true;
+                }
+            }
+        }
+    }
+
+    for bundle in bundles {
+        let target_dir = target_root.join(&bundle.asset_name);
+        let prev_hash = prev_hashes.and_then(|hashes| hashes.get(&bundle.asset_name));
+        if prev_hash == Some(&bundle.dist_hash) && target_dir.exists() {
+            continue;
+        }
+        if target_dir.exists() {
+            fs::remove_dir_all(&target_dir)
+                .with_context(|| format!("Failed to remove {}", target_dir.display()))?;
+        }
+        copy_dir_recursive(&bundle.dist_dir, &target_dir)?;
+        println!(
+            "  {} bundle {} → {}",
+            "✓".green(),
+            bundle.asset_name,
+            target_dir.display()
+        );
+        changed = true;
+    }
+
+    Ok(changed)
 }
 
 fn read_lxapp_metadata(path: &Path) -> Result<LxAppMetadata> {
@@ -785,35 +838,6 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
             fs::copy(&path, &target)?;
         }
     }
-    Ok(())
-}
-
-fn write_embedded_dir_contents(dir: &Dir<'_>, output_dir: &Path) -> Result<()> {
-    fs::create_dir_all(output_dir)
-        .with_context(|| format!("Failed to create {}", output_dir.display()))?;
-
-    for entry in dir.entries() {
-        match entry {
-            DirEntry::Dir(child_dir) => {
-                let child_name = child_dir.path().file_name().ok_or_else(|| {
-                    anyhow!(
-                        "Invalid embedded directory path {}",
-                        child_dir.path().display()
-                    )
-                })?;
-                write_embedded_dir_contents(child_dir, &output_dir.join(child_name))?;
-            }
-            DirEntry::File(file) => {
-                let file_name = file.path().file_name().ok_or_else(|| {
-                    anyhow!("Invalid embedded file path {}", file.path().display())
-                })?;
-                let target_path = output_dir.join(file_name);
-                fs::write(&target_path, file.contents())
-                    .with_context(|| format!("Failed to write {}", target_path.display()))?;
-            }
-        }
-    }
-
     Ok(())
 }
 

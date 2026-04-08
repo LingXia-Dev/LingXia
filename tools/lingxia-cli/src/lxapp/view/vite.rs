@@ -542,6 +542,22 @@ fn ensure_project_tooling(
         return Ok(None);
     }
 
+    let package_json_value: Value = serde_json::from_str(&fs::read_to_string(&package_json)?)
+        .with_context(|| format!("Failed to parse {}", package_json.display()))?;
+    let has_declared_deps = package_json_value
+        .get("dependencies")
+        .and_then(Value::as_object)
+        .map(|deps| !deps.is_empty())
+        .unwrap_or(false)
+        || package_json_value
+            .get("devDependencies")
+            .and_then(Value::as_object)
+            .map(|deps| !deps.is_empty())
+            .unwrap_or(false);
+    if !has_declared_deps {
+        return Ok(None);
+    }
+
     let node_modules_dir = project.root.join("node_modules");
     if node_modules_dir.exists() {
         return Ok(None);

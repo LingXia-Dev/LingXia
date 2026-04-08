@@ -189,6 +189,46 @@ pub struct ResourcesConfig {
     /// Path to web runtime distribution (relative to project root)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime: Option<String>,
+    /// Bundle project directories to build and copy into host resources.
+    ///
+    /// String entries use the directory path directly and default to copying `dist/`
+    /// into a target directory named after `lxapp.json.appId`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundles: Option<Vec<ResourceBundleConfig>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ResourceBundleConfig {
+    Path(String),
+    Detailed(ResourceBundleDetail),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ResourceBundleType {
+    #[default]
+    Lxapp,
+    Npm,
+}
+
+impl ResourceBundleType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lxapp => "lxapp",
+            Self::Npm => "npm",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceBundleDetail {
+    #[serde(rename = "type", default)]
+    pub bundle_type: ResourceBundleType,
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
 }
 
 impl LingXiaConfig {
@@ -262,7 +302,16 @@ impl LingXiaConfig {
             ios: None,
             macos: None,
             harmony: None,
-            resources: None,
+            resources: Some(ResourcesConfig {
+                i18n: None,
+                icons: None,
+                runtime: None,
+                bundles: Some(vec![ResourceBundleConfig::Detailed(ResourceBundleDetail {
+                    bundle_type: ResourceBundleType::Lxapp,
+                    path: project_name.to_string(),
+                    target: None,
+                })]),
+            }),
             splash: None,
             panels: None,
         }
@@ -279,6 +328,32 @@ impl LingXiaConfig {
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
             })?;
+        }
+        if let Some(resources) = &self.resources
+            && let Some(bundles) = &resources.bundles
+        {
+            for bundle in bundles {
+                let (path, bundle_type, target) = match bundle {
+                    ResourceBundleConfig::Path(path) => {
+                        (path.as_str(), ResourceBundleType::Lxapp, None)
+                    }
+                    ResourceBundleConfig::Detailed(detail) => (
+                        detail.path.as_str(),
+                        detail.bundle_type,
+                        detail.target.as_deref(),
+                    ),
+                };
+                if path.trim().is_empty() {
+                    return Err(anyhow!("resources.bundles path must not be empty"));
+                }
+                if matches!(bundle_type, ResourceBundleType::Npm)
+                    && target.map(str::trim).filter(|s| !s.is_empty()).is_none()
+                {
+                    return Err(anyhow!(
+                        "resources.bundles target is required for bundles with type \"npm\""
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -320,5 +395,11 @@ mod tests {
         let parsed: LingXiaConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.app.unwrap().product_name, "my-app");
         assert_eq!(parsed.android.unwrap().package_id, "com.example.myapp");
+        assert!(matches!(
+            parsed.resources.unwrap().bundles.as_deref(),
+            Some([ResourceBundleConfig::Detailed(detail)])
+                if detail.bundle_type == ResourceBundleType::Lxapp
+                    && detail.path == "my-app"
+        ));
     }
 }

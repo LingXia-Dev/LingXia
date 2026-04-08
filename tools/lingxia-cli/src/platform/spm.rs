@@ -104,15 +104,6 @@ pub fn resolve_apple_swift_package_dir(
     ))
 }
 
-pub fn resolve_standalone_resources_dir(package_dir: &Path) -> Result<PathBuf> {
-    let shared_resources_dir = package_dir.join("Sources").join("Resources");
-    if shared_resources_dir.exists() || package_dir.join("Sources").exists() {
-        return Ok(shared_resources_dir);
-    }
-
-    super::apple::resolve_swiftpm_resources_dir(package_dir, None, None, "Apple Swift Package")
-}
-
 pub fn read_package_info_defaults(info_plist_path: &Path) -> Result<AppleSwiftPackageInfoDefaults> {
     if !info_plist_path.exists() {
         return Ok(AppleSwiftPackageInfoDefaults::default());

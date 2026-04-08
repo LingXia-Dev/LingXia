@@ -2,7 +2,8 @@ use super::types::{LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::{
     AndroidConfig, DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB, HarmonyConfig,
-    HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourcesConfig,
+    HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourceBundleConfig,
+    ResourceBundleDetail, ResourceBundleType, ResourcesConfig,
 };
 use anyhow::Result;
 
@@ -97,6 +98,11 @@ fn build_lingxia_config(
             i18n: None,
             icons: None,
             runtime: Some(format!("npm:@lingxia/bridge@{bridge_version}")),
+            bundles: Some(vec![ResourceBundleConfig::Detailed(ResourceBundleDetail {
+                bundle_type: ResourceBundleType::Lxapp,
+                path: lxapp.app_id.clone(),
+                target: None,
+            })]),
         }),
         splash: None,
         panels: None,
@@ -133,5 +139,12 @@ mod tests {
             resources.runtime.as_deref(),
             Some("npm:@lingxia/bridge@0.2.0")
         );
+        assert!(matches!(
+            resources.bundles.as_deref(),
+            Some([ResourceBundleConfig::Detailed(detail)])
+                if detail.bundle_type == ResourceBundleType::Lxapp
+                    && detail.path == "demo"
+                    && detail.target.is_none()
+        ));
     }
 }

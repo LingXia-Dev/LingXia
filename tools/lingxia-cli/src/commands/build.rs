@@ -1,6 +1,6 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
-use crate::host_assets::{prepare_host_assets, prepare_standalone_browser_assets};
+use crate::host_assets::prepare_host_assets;
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -439,12 +439,6 @@ fn build_standalone_apple_swift_package(
 
     let mut all_artifacts = Vec::new();
     for platform_type in platforms_to_build {
-        if matches!(platform_type, PlatformType::MacOs) {
-            let resources_dir =
-                crate::platform::spm::resolve_standalone_resources_dir(project_root)?;
-            prepare_standalone_browser_assets(&resources_dir)?;
-        }
-
         let platform_features = resolve_platform_features(&features, &platform_type)?;
         let platform = platform::detector::create_platform(&platform_type)?;
         let build_config = BuildConfig {
