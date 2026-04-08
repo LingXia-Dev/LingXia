@@ -483,7 +483,7 @@ impl Platform for MacosPlatform {
     fn run(&self, _config: &RunConfig) -> Result<()> {
         Err(anyhow!(
             "macOS apps run directly from the build output.\n\
-             Use 'lingxia run --platform macos' for the full build-and-run workflow."
+             Use 'lingxia dev --platform macos' for the full build-and-run workflow."
         ))
     }
 

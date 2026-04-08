@@ -15,13 +15,7 @@ const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub struct LxAppDevOptions {
-    pub release: bool,
-    pub framework: Option<String>,
-    pub progress: Option<String>,
-}
-
-pub struct RunExecuteOptions {
+pub struct DevExecuteOptions {
     pub release: bool,
     pub features: Vec<String>,
     pub build_native: bool,
@@ -47,20 +41,20 @@ struct DevContext {
     reinstall: bool,
 }
 
-/// Execute the run command
+/// Execute the dev command.
 ///
-/// Runs the complete development workflow:
+/// For app projects, runs the complete development workflow:
 /// 1. Build the project
 /// 2. Install to device
 /// 3. Launch the application
-pub fn execute_run(options: RunExecuteOptions) -> Result<()> {
+///
+/// For standalone lxapp projects, builds the lxapp and launches LingXia Runner.
+pub fn execute(options: DevExecuteOptions) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
 
     if is_standalone_lxapp_project(&project_root) {
-        return Err(anyhow!(
-            "`lingxia run` is for app projects.\nRun `lingxia dev` inside an lxapp project."
-        ));
+        return execute_lxapp_dev(project_root, options);
     }
 
     println!();
@@ -147,31 +141,6 @@ pub fn execute_run(options: RunExecuteOptions) -> Result<()> {
         PlatformType::MacOs => execute_macos(ctx, options.macos_arch),
         PlatformType::Harmony => execute_harmony(ctx),
     }
-}
-
-pub fn execute_lxapp(options: LxAppDevOptions) -> Result<()> {
-    let project_root = env::current_dir()?;
-    if !is_standalone_lxapp_project(&project_root) {
-        return Err(anyhow!(
-            "`lingxia dev` must be run inside an lxapp project.\nRun `lingxia run` for app projects."
-        ));
-    }
-
-    execute_lxapp_dev(
-        project_root,
-        RunExecuteOptions {
-            release: options.release,
-            features: vec![],
-            build_native: true,
-            abis: vec![],
-            macos_arch: None,
-            framework: options.framework,
-            progress: options.progress,
-            device: None,
-            platform_arg: None,
-            reinstall: false,
-        },
-    )
 }
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
@@ -338,7 +307,7 @@ fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
         && requested_arch != host_arch
     {
         return Err(anyhow!(
-            "`lingxia run --platform macos` launches the app locally and requires host arch `{}`.\n\
+            "`lingxia dev --platform macos` launches the app locally and requires host arch `{}`.\n\
 Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
             host_arch,
             requested_arch
@@ -477,7 +446,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     Ok(())
 }
 
-fn execute_lxapp_dev(project_root: PathBuf, options: RunExecuteOptions) -> Result<()> {
+fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Result<()> {
     platform::apple::ensure_macos().map_err(|e| {
         anyhow!(
             "{}\nTip: `lingxia dev` for lxapp currently only supports macOS Runner.",

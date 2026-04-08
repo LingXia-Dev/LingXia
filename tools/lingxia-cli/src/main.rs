@@ -25,7 +25,7 @@ struct Cli {
     command: Commands,
 }
 
-/// Common build options shared between Build and Run commands
+/// Common build options shared between Build and Dev commands
 #[derive(clap::Args, Clone)]
 struct BuildOptions {
     /// Release build (debug is the default)
@@ -63,17 +63,20 @@ struct BuildOptions {
 
 #[derive(clap::Args, Clone)]
 struct DevOptions {
-    /// Release build (debug is the default)
+    #[command(flatten)]
+    build_options: BuildOptions,
+
+    /// Target platform (android, ios, macos, harmony). Auto-detected if not specified.
+    #[arg(short = 'p', long)]
+    platform: Option<String>,
+
+    /// Device ID (required if multiple devices connected)
+    #[arg(short = 'd', long)]
+    device: Option<String>,
+
+    /// Reinstall app by uninstalling existing one first (best effort)
     #[arg(long)]
-    release: bool,
-
-    /// Override LxApp view framework detection
-    #[arg(long, value_parser = ["react", "vue", "html"])]
-    framework: Option<String>,
-
-    /// LxApp progress output mode
-    #[arg(long, value_parser = ["task", "plain"])]
-    progress: Option<String>,
+    reinstall: bool,
 }
 
 #[derive(Subcommand)]
@@ -206,28 +209,10 @@ enum Commands {
         platform: Option<String>,
     },
 
-    /// Development mode for lxapp projects
+    /// Development mode for app and lxapp projects
     Dev {
         #[command(flatten)]
         dev_options: DevOptions,
-    },
-
-    /// Run mode: build, install, and launch app
-    Run {
-        #[command(flatten)]
-        build_options: BuildOptions,
-
-        /// Target platform (android, ios, macos, harmony). Auto-detected if not specified.
-        #[arg(short = 'p', long)]
-        platform: Option<String>,
-
-        /// Device ID (required if multiple devices connected)
-        #[arg(short = 'd', long)]
-        device: Option<String>,
-
-        /// Reinstall app by uninstalling existing one first (best effort)
-        #[arg(long)]
-        reinstall: bool,
     },
 
     /// Check development environment setup
@@ -272,7 +257,7 @@ enum Commands {
         release_type: String,
     },
 
-    /// CLI self-management (update, check for updates)
+    /// Manage the installed CLI binary (self-update, version checks)
     #[command(name = "self")]
     SelfCmd {
         #[command(subcommand)]
@@ -282,9 +267,9 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum SelfAction {
-    /// Update the CLI to the latest release
+    /// Update the installed CLI binary to the latest release
     Update,
-    /// Check if a newer CLI version is available
+    /// Check whether a newer CLI binary version is available
     CheckUpdate,
 }
 
@@ -442,29 +427,17 @@ fn main() -> Result<()> {
             commands::device::launch(&bundle_id, device, platform)?;
         }
         Commands::Dev { dev_options } => {
-            commands::dev::execute_lxapp(commands::dev::LxAppDevOptions {
-                release: dev_options.release,
-                framework: dev_options.framework,
-                progress: dev_options.progress,
-            })?;
-        }
-        Commands::Run {
-            build_options,
-            platform,
-            device,
-            reinstall,
-        } => {
-            commands::dev::execute_run(commands::dev::RunExecuteOptions {
-                release: build_options.release,
-                features: build_options.features,
-                build_native: !build_options.skip_native,
-                abis: build_options.abis,
-                macos_arch: build_options.macos_arch,
-                framework: build_options.framework,
-                progress: build_options.progress,
-                device,
-                platform_arg: platform,
-                reinstall,
+            commands::dev::execute(commands::dev::DevExecuteOptions {
+                release: dev_options.build_options.release,
+                features: dev_options.build_options.features,
+                build_native: !dev_options.build_options.skip_native,
+                abis: dev_options.build_options.abis,
+                macos_arch: dev_options.build_options.macos_arch,
+                framework: dev_options.build_options.framework,
+                progress: dev_options.build_options.progress,
+                device: dev_options.device,
+                platform_arg: dev_options.platform,
+                reinstall: dev_options.reinstall,
             })?;
         }
         Commands::Doctor { platform } => {
