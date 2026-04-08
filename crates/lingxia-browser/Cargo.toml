@@ -5,6 +5,11 @@ edition.workspace = true
 description = "Browser runtime capability crate for LingXia"
 license = "MIT"
 readme = "README.md"
+homepage = "https://github.com/LingXia-Dev/LingXia"
+documentation = "https://docs.rs/lingxia-browser"
+repository = "https://github.com/LingXia-Dev/LingXia"
+keywords = ["lingxia", "browser", "lxapp", "webview"]
+categories = ["web-programming", "api-bindings"]
 
 [dependencies]
 lxapp = { workspace = true }
