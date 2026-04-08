@@ -1,7 +1,7 @@
 use crate::PageServiceEvent;
 use crate::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_STREAM_CLOSED,
-    BRIDGE_TOPIC_NOT_FOUND, PageBridge, RpcError, ViewTransport,
+    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_TOPIC_NOT_FOUND,
+    PageBridge, RpcError, ViewTransport,
 };
 use crate::error;
 use crate::error::LxAppError;
@@ -45,8 +45,15 @@ struct PageSvcState {
 }
 
 struct ChannelState {
-    handler: Option<JSObject>,
+    /// Shared with the `ch.on()` JS closure so that listeners registered at
+    /// *any* point during the channel's lifetime take effect immediately.
+    listeners: Rc<RefCell<ChannelListeners>>,
     outbound_seq: u64,
+}
+
+struct ChannelListeners {
+    on_data: Option<JSFunc>,
+    on_close: Option<JSFunc>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -331,18 +338,22 @@ impl PageSvc {
             json.json_to_js_value(&ctx).ok()
         });
 
-        let channel_ctx = self.create_channel_context(id)?;
+        let listeners = Rc::new(RefCell::new(ChannelListeners {
+            on_data: None,
+            on_close: None,
+        }));
+        let channel_ctx = self.create_channel_context(id, listeners.clone())?;
         {
             let mut state = self.state.lock().await;
             state.channels.insert(
                 id.to_string(),
                 ChannelState {
-                    handler: None,
+                    listeners,
                     outbound_seq: 0,
                 },
             );
         }
-        let value = match match call_arg {
+        let result = match call_arg {
             Some(val) => {
                 js_func
                     .call_async::<_, JSValue>(Some(self.this.clone()), (val, channel_ctx))
@@ -356,18 +367,11 @@ impl PageSvc {
                     )
                     .await
             }
-        } {
-            Ok(value) => value,
-            Err(err) => {
-                let mut state = self.state.lock().await;
-                state.channels.remove(id);
-                return Err(rpc_error_from_rong(err));
-            }
         };
-        let handler = value.into_object();
-        let mut state = self.state.lock().await;
-        if let Some(channel) = state.channels.get_mut(id) {
-            channel.handler = handler;
+        if let Err(err) = result {
+            let mut state = self.state.lock().await;
+            state.channels.remove(id);
+            return Err(rpc_error_from_rong(err));
         }
         Ok(())
     }
@@ -377,51 +381,40 @@ impl PageSvc {
         id: &str,
         payload_json: &str,
     ) -> Result<(), RpcError> {
-        let handler = {
+        let on_data = {
             let state = self.state.lock().await;
             state
                 .channels
                 .get(id)
-                .and_then(|channel| channel.handler.clone())
+                .and_then(|channel| channel.listeners.borrow().on_data.clone())
         };
-        let Some(handler_obj) = handler else {
-            return Err(RpcError::new(
-                BRIDGE_STREAM_CLOSED,
-                Some(format!("Channel closed: {}", id)),
-            ));
-        };
-        let Ok(on_data) = handler_obj.get::<_, JSFunc>("onData") else {
+        let Some(on_data) = on_data else {
             return Ok(());
         };
         let payload = payload_json
             .json_to_js_value(&self.get_ctx())
             .map_err(rpc_error_from_rong)?;
         on_data
-            .call_async::<_, ()>(Some(handler_obj), (payload,))
+            .call_async::<_, ()>(None, (payload,))
             .await
             .map_err(rpc_error_from_rong)
     }
 
     pub(crate) async fn handle_ch_close(&self, id: &str, code: Option<&str>, reason: Option<&str>) {
-        let handler = {
+        let on_close = {
             let mut state = self.state.lock().await;
             state
                 .channels
                 .remove(id)
-                .and_then(|channel| channel.handler)
+                .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
         };
-        let Some(handler_obj) = handler else {
-            return;
-        };
-        let Ok(on_close) = handler_obj.get::<_, JSFunc>("onClose") else {
+        let Some(on_close) = on_close else {
             return;
         };
         let info = JSObject::new(&self.get_ctx());
         let _ = info.set("code", code.unwrap_or_default().to_string());
         let _ = info.set("reason", reason.unwrap_or_default().to_string());
-        let _ = on_close
-            .call_async::<_, ()>(Some(handler_obj), (info,))
-            .await;
+        let _ = on_close.call_async::<_, ()>(None, (info,)).await;
     }
 
     pub(crate) async fn handle_bridge_ready(&self) {
@@ -570,8 +563,12 @@ impl PageSvc {
                 mark_fn(func.as_js_value());
             }
             for channel in state.channels.values() {
-                if let Some(handler) = &channel.handler {
-                    mark_fn(handler.as_js_value());
+                let ls = channel.listeners.borrow();
+                if let Some(f) = &ls.on_data {
+                    mark_fn(f.as_js_value());
+                }
+                if let Some(f) = &ls.on_close {
+                    mark_fn(f.as_js_value());
                 }
             }
         }
@@ -759,13 +756,18 @@ impl PageSvc {
         Ok((handle, end_rx))
     }
 
-    fn create_channel_context(&self, id: &str) -> Result<JSObject, RpcError> {
+    fn create_channel_context(
+        &self,
+        id: &str,
+        listeners: Rc<RefCell<ChannelListeners>>,
+    ) -> Result<JSObject, RpcError> {
         let ctx = self.get_ctx();
         let channel_ctx = JSObject::new(&ctx);
         channel_ctx
             .set("id", id.to_string())
             .map_err(rpc_error_from_rong)?;
 
+        // ch.send(payload)
         let channel_id = id.to_string();
         let page_svc_send = self.clone();
         let send_fn = JSFunc::new(&ctx, move |payload: JSValue| {
@@ -804,6 +806,7 @@ impl PageSvc {
             .set("send", send_fn)
             .map_err(rpc_error_from_rong)?;
 
+        // ch.close(code?, reason?)
         let channel_id = id.to_string();
         let page_svc_close = self.clone();
         let close_fn = JSFunc::new(
@@ -812,9 +815,18 @@ impl PageSvc {
                 let page_svc = page_svc_close.clone();
                 let channel_id = channel_id.clone();
                 async move {
-                    {
+                    let on_close = {
                         let mut state = page_svc.state.lock().await;
-                        state.channels.remove(&channel_id);
+                        state
+                            .channels
+                            .remove(&channel_id)
+                            .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
+                    };
+                    if let Some(on_close) = on_close {
+                        let info = JSObject::new(&page_svc.get_ctx());
+                        let _ = info.set("code", code.0.clone().unwrap_or_default());
+                        let _ = info.set("reason", reason.0.clone().unwrap_or_default());
+                        let _ = on_close.call_async::<_, ()>(None, (info,)).await;
                     }
                     page_svc
                         .bridge()
@@ -833,6 +845,19 @@ impl PageSvc {
         channel_ctx
             .set("close", close_fn)
             .map_err(rpc_error_from_rong)?;
+
+        // ch.on(event, handler)
+        let on_fn = JSFunc::new(&ctx, move |event: String, handler: JSFunc| {
+            let mut ls = listeners.borrow_mut();
+            match event.as_str() {
+                "data" => ls.on_data = Some(handler),
+                "close" => ls.on_close = Some(handler),
+                _ => {}
+            }
+            Ok(())
+        })
+        .map_err(rpc_error_from_rong)?;
+        channel_ctx.set("on", on_fn).map_err(rpc_error_from_rong)?;
 
         Ok(channel_ctx)
     }

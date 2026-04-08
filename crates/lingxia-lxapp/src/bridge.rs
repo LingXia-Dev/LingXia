@@ -87,7 +87,6 @@ pub(crate) const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
 pub(crate) const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
 pub(crate) const BRIDGE_TOPIC_NOT_FOUND: &str = "BRIDGE_TOPIC_NOT_FOUND";
 pub(crate) const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
-pub(crate) const BRIDGE_STREAM_CLOSED: &str = "BRIDGE_STREAM_CLOSED";
 
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
