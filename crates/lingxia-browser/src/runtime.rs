@@ -19,12 +19,12 @@ use uuid::Uuid;
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 
-/// Install a script that should run after each browser tab finishes navigation.
+/// Register a startup-time script that should run after each browser page load.
 ///
-/// The shell/product layer owns which scripts should be installed. Browser runtime
-/// only owns the WebView lifecycle hook that executes them after page load.
-pub(crate) fn install_browser_tab_page_finished_script(js: impl Into<String>) {
-    let scripts = BROWSER_TAB_PAGE_FINISHED_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
+/// Browser pages all belong to the single built-in browser LxApp, so startup-time
+/// registration is enough: warmup drains these scripts into that app's page-script list.
+pub(crate) fn register_browser_startup_page_script(js: impl Into<String>) {
+    let scripts = BROWSER_STARTUP_PAGE_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
     if let Ok(mut guard) = scripts.lock() {
         guard.push(js.into());
     }
@@ -47,11 +47,13 @@ pub(crate) fn register_browser_internal_page(
     Ok(())
 }
 
-fn browser_tab_page_finished_scripts() -> Vec<String> {
-    BROWSER_TAB_PAGE_FINISHED_SCRIPTS
+/// Take all registered scripts, leaving the registry empty.
+/// Subsequent calls return an empty Vec.
+fn take_browser_startup_page_scripts() -> Vec<String> {
+    BROWSER_STARTUP_PAGE_SCRIPTS
         .get()
         .and_then(|m| m.lock().ok())
-        .map(|guard| guard.clone())
+        .map(|mut guard| std::mem::take(&mut *guard))
         .unwrap_or_default()
 }
 const LINGXIA_SCHEME: &str = "lingxia";
@@ -445,7 +447,7 @@ static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
-static BROWSER_TAB_PAGE_FINISHED_SCRIPTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static BROWSER_STARTUP_PAGE_SCRIPTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
 
@@ -590,29 +592,13 @@ impl WebViewDelegate for BrowserTabDelegate {
 
     fn on_page_finished(&self) {
         match browser_resolve_delegate_page(&self.tab_id, &self.page_path, self.session_id) {
-            Ok(page) => page.notify_page_finished(),
+            Ok(page) => page.handle_loaded(),
             Err(err) => {
                 lxapp::warn!(
                     "[InternalBrowser] Failed to resolve delegate page for tab {} on finish: {}",
                     self.tab_id,
                     err
                 );
-            }
-        }
-
-        // Run registered shell-owned page-finished scripts inside the tab webview.
-        let scripts = browser_tab_page_finished_scripts();
-        if !scripts.is_empty() {
-            if let Ok(webview) = browser_find_webview(&self.page_path, self.session_id) {
-                for js in &scripts {
-                    if let Err(err) = webview.evaluate_javascript(js) {
-                        lxapp::warn!(
-                            "[InternalBrowser] Failed to run page-finished script in tab {}: {}",
-                            self.tab_id,
-                            err
-                        );
-                    }
-                }
             }
         }
     }
@@ -1469,6 +1455,15 @@ pub(crate) fn register_builtin_browser_asset_bundle() {
 
 pub(crate) fn warmup_builtin_browser_runtime() -> Result<(), LxAppError> {
     let browser = ensure_browser_lxapp()?;
+
+    // Drain startup scripts registered before the browser LxApp existed
+    // (e.g. shell's context-menu JS)
+    // into the LxApp's page_scripts so they are picked up by Page::handle_loaded().
+    // take_ ensures idempotency — repeated warmup calls won't duplicate scripts.
+    for js in take_browser_startup_page_scripts() {
+        browser.add_page_script(js);
+    }
+
     let _ = ensure_browser_startup_page(&browser)?;
     Ok(())
 }

@@ -22,8 +22,8 @@ pub fn classify_navigation_json(request_json: &str) -> Option<String> {
 }
 
 #[doc(hidden)]
-pub fn install_tab_page_finished_script(js: impl Into<String>) {
-    runtime::install_browser_tab_page_finished_script(js);
+pub fn register_startup_page_script(js: impl Into<String>) {
+    runtime::register_browser_startup_page_script(js);
 }
 
 #[doc(hidden)]

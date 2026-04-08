@@ -68,7 +68,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::host_addon::run_install_logic_extensions();
     crate::host_addon::run_install_host_apis();
     crate::browser::register_bundled_app();
-    crate::browser::register_builtin();
+    crate::browser::register_builtin_runtime();
     lingxia_logic::register_logic_runtime();
     let home_app_id = lxapp::init(
         platform,
@@ -79,6 +79,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
             cache_max_size_bytes: app_config.cache_max_size_mb.saturating_mul(1024 * 1024),
         },
     );
+    crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
     crate::browser::warmup();
     crate::host_addon::run_start_services();

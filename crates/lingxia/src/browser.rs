@@ -163,12 +163,21 @@ pub(crate) fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     let _ = (panel_id, appid, path);
 }
 
-pub(crate) fn register_builtin() {
+pub(crate) fn register_builtin_runtime() {
     #[cfg(feature = "shell")]
     {
         use std::sync::OnceLock;
         static REGISTERED: OnceLock<()> = OnceLock::new();
-        REGISTERED.get_or_init(lingxia_shell::register);
+        REGISTERED.get_or_init(lingxia_shell::register_runtime);
+    }
+}
+
+pub(crate) fn register_builtin_assets() {
+    #[cfg(feature = "shell")]
+    {
+        use std::sync::OnceLock;
+        static REGISTERED: OnceLock<()> = OnceLock::new();
+        REGISTERED.get_or_init(lingxia_shell::register_bundled_assets);
     }
 }
 
