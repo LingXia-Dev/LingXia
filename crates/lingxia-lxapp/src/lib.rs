@@ -48,7 +48,10 @@ pub use lxapp::{
     page_config::PageOrientation, register_builtin_asset_bundle, tabbar, try_get,
 };
 pub use lxapp::{configure_home_lxapp_dev_path, home_lxapp_dev_identity, set_home_lxapp_dev_path};
-pub use page::{NavigationType, Page, ViewCallOptions, register_page_resolver, resolve_page_path};
+pub use page::{
+    NavigationType, Page, ViewCallOptions, add_global_page_script, register_page_resolver,
+    resolve_page_path,
+};
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
     BoxFuture, FingerprintProvider, LogProvider, LxAppUpdateQuery, NoOpProvider, Provider,

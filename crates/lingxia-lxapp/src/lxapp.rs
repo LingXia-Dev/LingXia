@@ -553,6 +553,9 @@ pub struct LxApp {
     pub(crate) state: Mutex<LxAppState>,
     // Per-app cache for network and media artifacts
     cache: Option<LxAppCache>,
+
+    // Scripts injected into every page owned by this LxApp on page load.
+    page_scripts: Mutex<Vec<Arc<str>>>,
 }
 
 /// Unique id for a single LxApp runtime session within the process.
@@ -752,6 +755,7 @@ impl LxApp {
             session,
             state: Mutex::new(LxAppState::new()),
             cache: None,
+            page_scripts: Mutex::new(Vec::new()),
         }
     }
 
@@ -1171,6 +1175,25 @@ impl LxApp {
 
     pub fn is_opened(&self) -> bool {
         matches!(self.status(), LxAppSessionStatus::Opened)
+    }
+
+    /// Register a script to inject on every page load within this LxApp.
+    ///
+    /// Use this for app-specific scripts (e.g. browser context-menu).
+    /// For scripts that should run in *all* apps, use [`add_global_page_script`].
+    pub fn add_page_script(&self, js: impl Into<String>) {
+        if let Ok(mut scripts) = self.page_scripts.lock() {
+            scripts.push(Arc::from(js.into()));
+        }
+    }
+
+    /// Snapshot page scripts for a new Page: global scripts + this app's scripts.
+    pub(crate) fn page_scripts_snapshot(&self) -> Vec<Arc<str>> {
+        let mut scripts = crate::page::global_page_scripts_snapshot();
+        if let Ok(app_scripts) = self.page_scripts.lock() {
+            scripts.extend(app_scripts.iter().cloned());
+        }
+        scripts
     }
 
     /// Check if a domain is allowed for network access

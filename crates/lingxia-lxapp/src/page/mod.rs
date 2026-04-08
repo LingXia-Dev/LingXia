@@ -27,9 +27,33 @@ use lingxia_webview::{
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
+
+/// Global scripts injected into every page across all LxApps on page load.
+///
+/// For per-app scripts, use [`LxApp::add_page_script`] instead.
+static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
+
+/// Register a script to inject on every page load across all LxApps.
+///
+/// Call at app startup, before any pages are created.
+/// For per-app scripts, use [`LxApp::add_page_script`] instead.
+pub fn add_global_page_script(js: impl Into<String>) {
+    let scripts = GLOBAL_PAGE_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
+    if let Ok(mut guard) = scripts.lock() {
+        guard.push(Arc::from(js.into()));
+    }
+}
+
+pub(crate) fn global_page_scripts_snapshot() -> Vec<Arc<str>> {
+    GLOBAL_PAGE_SCRIPTS
+        .get()
+        .and_then(|m| m.lock().ok())
+        .map(|guard| guard.clone())
+        .unwrap_or_default()
+}
 
 type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>>>>;
 
@@ -57,6 +81,12 @@ pub(crate) struct PageInner {
     // notify when WebView wiring is ready (delegate set & setup ran)
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
     webview_ready_rx: WebviewReadyReceiver,
+
+    // Scripts injected on every page load (global + app-level, snapshotted at creation).
+    page_scripts: Vec<Arc<str>>,
+
+    // Async notification: bumped on every handle_loaded().
+    loaded_tx: watch::Sender<u64>,
 }
 
 #[derive(Clone, Debug)]
@@ -235,6 +265,7 @@ impl Page {
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
+        let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInner {
             appid: appid.clone(),
             path: path.clone(),
@@ -245,6 +276,8 @@ impl Page {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            page_scripts: lxapp.page_scripts_snapshot(),
+            loaded_tx,
         });
 
         // Capture weak ref before moving inner into page
@@ -362,6 +395,7 @@ impl Page {
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
+        let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInner {
             appid,
             path,
@@ -372,6 +406,8 @@ impl Page {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            page_scripts: lxapp.page_scripts_snapshot(),
+            loaded_tx,
         });
         Self { inner }
     }
@@ -576,13 +612,6 @@ impl Page {
         self.set_render_status(PageRenderStatus::Started);
     }
 
-    /// Notify that the page's WebView finished loading (mirrors WebViewDelegate::on_page_finished).
-    /// Used by external delegates to forward events to a shared page.
-    pub fn notify_page_finished(&self) {
-        self.set_render_status(PageRenderStatus::Finished);
-        self.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnReady);
-    }
-
     pub async fn wait_webview_ready(&self) -> Result<(), String> {
         let rx = {
             // Clone receiver so concurrent waiters don't block each other.
@@ -606,6 +635,40 @@ impl Page {
         }
 
         Err("webview ready channel closed before result".to_string())
+    }
+
+    /// Unified page-loaded handler. Call from any delegate (lxapp or external)
+    /// when the WebView finishes a navigation.
+    ///
+    /// Performs state update, lifecycle dispatch, synchronous script injection,
+    /// and async notification — in that order.
+    pub fn handle_loaded(&self) {
+        self.set_render_status(PageRenderStatus::Finished);
+        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+
+        // Synchronous script injection (zero timing gap).
+        if !self.inner.page_scripts.is_empty() {
+            if let Some(webview) = self.webview() {
+                for js in &self.inner.page_scripts {
+                    if let Err(e) = webview.evaluate_javascript(js) {
+                        crate::error!("page script injection failed: {}", e)
+                            .with_appid(self.inner.appid.clone())
+                            .with_path(self.inner.path.clone());
+                    }
+                }
+            }
+        }
+
+        // Async notification for subscribers.
+        self.inner.loaded_tx.send_modify(|v| *v = v.wrapping_add(1));
+    }
+
+    /// Subscribe to page-loaded events.
+    ///
+    /// The receiver is notified each time `handle_loaded` completes
+    /// (scripts are already injected at that point).
+    pub fn subscribe_loaded(&self) -> watch::Receiver<u64> {
+        self.inner.loaded_tx.subscribe()
     }
 
     /// Detach and drop the WebView held by this page.
@@ -996,8 +1059,7 @@ impl WebViewDelegate for Page {
 
     /// Called when the page finishes loading
     fn on_page_finished(&self) {
-        self.set_render_status(PageRenderStatus::Finished);
-        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
+        self.handle_loaded();
     }
 
     /// Handles a postMessage from the WebView
