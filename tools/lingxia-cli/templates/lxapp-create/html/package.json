@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "lingxia build",
     "build": "lingxia build --release",
-    "release": "lingxia build --release --package"
+    "release": "lingxia package"
   },
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",

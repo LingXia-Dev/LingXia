@@ -7,12 +7,12 @@ When `lingxia dev` runs inside an lxapp, the CLI automatically ensures the insta
 It is built from this package, but the supported entrypoints are:
 
 - Local debug build: `swift build --disable-sandbox`
-- Local release bundle: `cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- build --platform macos --package --release`
+- Local release bundle: `cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- package --platform macos`
 - Release script: `scripts/release/runner.sh`
 
 ## Raw Build Output
 
-`cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- build --platform macos --package --release` produces:
+`cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- package --platform macos` produces:
 
 - `tools/lingxia-runner/.lingxia/LingXia Runner.app`
 - `tools/lingxia-runner/dist/macos/LingXia Runner-<version>-macos.zip`
@@ -28,12 +28,12 @@ cd tools/lingxia-runner
 swift build --disable-sandbox
 ```
 
-Build a specific release arch with `lingxia build`:
+Build a specific release arch with `lingxia package`:
 
 ```bash
 cd tools/lingxia-runner
-cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- build --platform macos --package --release --macos-arch arm64
-cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- build --platform macos --package --release --macos-arch x86_64
+cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- package --platform macos --macos-arch arm64
+cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- package --platform macos --macos-arch x86_64
 ```
 
 Notes:
@@ -62,7 +62,7 @@ scripts/release/runner.sh --macos-arch arm64
 scripts/release/runner.sh --macos-arch x86_64
 ```
 
-That script runs `lingxia build`, then normalizes the raw outputs into arch-specific release assets. Across the two macOS builds, the release output looks like:
+That script runs `lingxia package`, then normalizes the raw outputs into arch-specific release assets. Across the two macOS builds, the release output looks like:
 
 - `dist/runner-release/LingXia Runner-arm64.app`
 - `dist/runner-release/LingXia Runner-x64.app`

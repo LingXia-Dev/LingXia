@@ -143,7 +143,7 @@ if [[ "$SKIP_BUILD" -ne 1 ]]; then
     cd "$ROOT_DIR/tools/lingxia-runner"
     build_cmd=(
       "$CLI_BIN"
-      build --platform macos --package --release
+      package --platform macos
     )
     if [[ -n "$MACOS_ARCH" ]]; then
       build_cmd+=(--macos-arch "$MACOS_ARCH")
