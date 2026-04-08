@@ -16,6 +16,7 @@ export default function APIPage() {
     navigateToMediaPage,
     navigateToDocumentPage,
     navigateToCloudPage,
+    navigateToTestMiniApp,
     openDeepSeek,
     navigateToPullDownRefreshPage,
   } = actions;
@@ -37,6 +38,70 @@ export default function APIPage() {
               The following demonstrates the capabilities provided by LingXia.
             </div>
           </div>
+        </div>
+
+        {/* Cloud - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'cloud' })}
+          >
+            <div className="text-base text-gray-900">Cloud</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M6 19a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16 8.5h.5a4.5 4.5 0 1 1 .5 9H6z"/>
+              </svg>
+            </div>
+          </div>
+
+          {expandedSections.cloud && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={navigateToTestMiniApp}
+              >
+                <div className="text-sm text-gray-700">Open Other LxApp</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToCloudPage({ type: 'auth' })}
+              >
+                <div className="text-sm text-gray-700">Cloud Auth Demo</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToCloudPage({ type: 'mqtt' })}
+              >
+                <div className="text-sm text-gray-700">Cloud MQTT Demo</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={() => navigateToCloudPage({ type: 'functions' })}
+              >
+                <div className="text-sm text-gray-700">Cloud Functions Demo</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bridge - Dropdown */}
@@ -77,59 +142,6 @@ export default function APIPage() {
                   <div className="text-sm text-gray-700">Channel</div>
                   <div className="text-xs text-gray-400">Bidirectional real-time session (ticker demo)</div>
                 </div>
-                <div className="w-4 h-4 text-gray-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Cloud - Dropdown */}
-        <div className="bg-white rounded-lg shadow-sm">
-          <div
-            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-            onClick={() => toggleSection({ section: 'cloud' })}
-          >
-            <div className="text-base text-gray-900">Cloud</div>
-            <div className="w-6 h-6 text-gray-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M6 19a4 4 0 0 1-.4-7.98A5.5 5.5 0 0 1 16 8.5h.5a4.5 4.5 0 1 1 .5 9H6z"/>
-              </svg>
-            </div>
-          </div>
-
-          {expandedSections.cloud && (
-            <div className="border-t border-gray-100 bg-gray-50">
-              <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
-                onClick={() => navigateToCloudPage({ type: 'auth' })}
-              >
-                <div className="text-sm text-gray-700">Cloud Auth Demo</div>
-                <div className="w-4 h-4 text-gray-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </div>
-              </div>
-              <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
-                onClick={() => navigateToCloudPage({ type: 'mqtt' })}
-              >
-                <div className="text-sm text-gray-700">Cloud MQTT Demo</div>
-                <div className="w-4 h-4 text-gray-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </div>
-              </div>
-              <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
-                onClick={() => navigateToCloudPage({ type: 'functions' })}
-              >
-                <div className="text-sm text-gray-700">Cloud Functions Demo</div>
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 18l6-6-6-6"/>
