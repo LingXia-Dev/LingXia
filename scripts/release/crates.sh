@@ -23,6 +23,8 @@ CRATES=(
 
   # Facade support crate required by lingxia.
   "lingxia-macro"
+  "lingxia-browser"
+  "lingxia-shell"
 
   # Public facade.
   "lingxia"
