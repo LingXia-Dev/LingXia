@@ -18,10 +18,10 @@ members = [
     "crates/lingxia-messaging",
     "crates/lingxia",
     "crates/lingxia-proxy",
-    "examples/lingxia-lib",
     "tools/lingxia-cli",
     "tools/lingxia-gen",
 ]
+exclude = ["examples/lingxia-lib"]
 resolver = "2"
 
 [workspace.package]

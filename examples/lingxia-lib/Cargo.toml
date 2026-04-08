@@ -16,8 +16,8 @@ cloud = ["dep:lingxia-cloud", "lingxia-cloud/all"]
 [dependencies]
 lingxia = { path = "../../crates/lingxia" }
 lingxia-cloud = { path = "../../../lingxia-device-cloud", optional = true }
-rong = { workspace = true, default-features = false }
-log = { workspace = true }
+rong = { version = "0.3.0", default-features = false }
+log = "0.4.29"
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]

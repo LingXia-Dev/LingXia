@@ -8,7 +8,12 @@
 
 # Initialize common variables (call after setting SCRIPT_DIR)
 init_common_vars() {
-    LINGXIA_ROOT="${LINGXIA_ROOT:-$SCRIPT_DIR/../..}"
+    local raw_root="${LINGXIA_ROOT:-$SCRIPT_DIR/../..}"
+    if command -v realpath >/dev/null 2>&1; then
+        LINGXIA_ROOT="$(realpath "$raw_root")"
+    else
+        LINGXIA_ROOT="$(cd "$raw_root" && pwd -P)"
+    fi
     LXAPP_FEATURES="${LXAPP_FEATURES:-}"
     SKIP_RUST=false
     FRAMEWORK=""
@@ -39,6 +44,18 @@ run_cargo_with_lxapp_features() {
         return $?
     fi
     "$@" --features "$features"
+}
+
+reset_standalone_lockfile() {
+    local manifest_path="$1"
+    local manifest_dir
+    manifest_dir="$(cd "$(dirname "$manifest_path")" && pwd -P)"
+
+    # lingxia-lib now builds as a standalone crate. Its generated lockfile can
+    # retain stale logical-path entries on macOS (for example lingXia vs
+    # LingXia), which causes Cargo path-package collisions. Regenerate it from
+    # scratch for each dev build.
+    rm -f "$manifest_dir/Cargo.lock"
 }
 
 generate_apple_swift_bridges() {

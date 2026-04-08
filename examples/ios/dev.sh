@@ -49,6 +49,7 @@ SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
 if [ "$SKIP_RUST" = false ]; then
     echo "[2/5] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"
+    reset_standalone_lockfile "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml"
 
     # Build lingxia-lib as staticlib for iOS (native library + user extensions)
     # Note: iOS requires staticlib (.a), not cdylib (.dylib)
@@ -57,7 +58,7 @@ if [ "$SKIP_RUST" = false ]; then
     else
         echo "  → Building lingxia-lib (staticlib)..."
     fi
-    run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $TARGET --release -p lingxia-lib
+    run_cargo_with_lxapp_features cargo rustc --manifest-path "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml" --crate-type=staticlib --target $TARGET --release
 
     LIB_DIR="$WORKSPACE_ROOT/target/$TARGET/release"
     LIB_PATH="$LIB_DIR/liblingxia.a"

@@ -144,7 +144,7 @@ build_rust_android() {
     else
         echo "  → Building lingxia-lib ($target)..."
     fi
-    run_cargo_with_lxapp_features cargo build --target $target --release -p lingxia-lib
+    run_cargo_with_lxapp_features cargo build --manifest-path "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml" --target $target --release
 }
 
 echo "[0/4] Preparing Android SDK (resources + local Maven)..."
@@ -157,6 +157,7 @@ bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/4] Building Rust libraries..."
     cd "$WORKSPACE_ROOT"
+    reset_standalone_lockfile "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml"
 
     if [ "$BUILD_ARM32" = true ]; then
         # Use API 21 for arm32 to support older devices (API 22+)

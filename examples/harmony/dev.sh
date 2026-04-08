@@ -52,12 +52,13 @@ build_rust() {
   export CPATH="$SYSROOT/usr/include:$SYSROOT/usr/include/aarch64-linux-ohos"
   export BINDGEN_EXTRA_CLANG_ARGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-ohos"
   cd "$LINGXIA_ROOT"
+  reset_standalone_lockfile "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml"
   if [ -n "$LXAPP_FEATURES" ]; then
     echo "  → Building lingxia-lib with features: $LXAPP_FEATURES"
   else
     echo "  → Building lingxia-lib..."
   fi
-  run_cargo_with_lxapp_features cargo build --target $TARGET --release -p lingxia-lib
+  run_cargo_with_lxapp_features cargo build --manifest-path "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml" --target $TARGET --release
   echo "✅ Rust build complete"
 }
 

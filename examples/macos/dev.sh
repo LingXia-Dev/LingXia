@@ -51,14 +51,15 @@ SKIP_RUST=$SKIP_RUST bash "$LINGXIA_ROOT/scripts/release/sdk.sh" \
 if [ "$SKIP_RUST" = false ]; then
     echo "[1/5] Building Rust library for macOS ($ARCH)..."
     cd "$WORKSPACE_ROOT"
+    reset_standalone_lockfile "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml"
 
     # Build lingxia-lib as staticlib for macOS
     if [ -n "$LXAPP_FEATURES" ]; then
         echo "  → Building lingxia-lib (staticlib) with features: $LXAPP_FEATURES"
-        run_cargo_with_lxapp_features cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib
+        run_cargo_with_lxapp_features cargo rustc --manifest-path "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml" --crate-type=staticlib --target $RUST_TARGET --release
     else
         echo "  → Building lingxia-lib (staticlib)..."
-        cargo rustc --crate-type=staticlib --target $RUST_TARGET --release -p lingxia-lib
+        cargo rustc --manifest-path "$LINGXIA_ROOT/examples/lingxia-lib/Cargo.toml" --crate-type=staticlib --target $RUST_TARGET --release
     fi
 
     echo "✅ Rust build complete"
