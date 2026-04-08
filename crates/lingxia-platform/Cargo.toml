@@ -21,7 +21,7 @@ rong_rt = { workspace = true, default-features = false }
 imagesize = "0.14"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 rxing = "0.8.3"
-rfd = "0.17.2"
+rfd = { version = "0.17.2", default-features = false }
 serde_json = { workspace = true }
 
 # Android-specific dependencies (only what's needed for FFI)
