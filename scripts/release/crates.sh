@@ -5,11 +5,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 CRATES=(
+  # Foundational crates.
+  "lingxia-app-context"
+  "lingxia-provider"
+  "lingxia-observability"
+  "lingxia-update"
   "lingxia-messaging"
   "lingxia-webview"
+  "lingxia-settings"
   "lingxia-platform"
+  "lingxia-media"
+
+  # Core runtime crates.
   "lingxia-lxapp"
+  "lingxia-transfer"
   "lingxia-logic"
+
+  # Facade support crate required by lingxia.
+  "lingxia-macro"
+
+  # Public facade.
   "lingxia"
 )
 
