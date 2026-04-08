@@ -16,6 +16,52 @@
         </div>
       </div>
 
+      <!-- Bridge - Dropdown -->
+      <div class="bg-white rounded-lg shadow-sm">
+        <div
+          class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+          @click="toggleSection({ section: 'bridge' })"
+        >
+          <div class="text-base text-gray-900">Bridge</div>
+          <div class="w-6 h-6 text-gray-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/>
+            </svg>
+          </div>
+        </div>
+
+        <div v-if="expandedSections.bridge" class="border-t border-gray-100 bg-gray-50">
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+            @click="navigateToStreamPage"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Stream</div>
+              <div class="text-xs text-gray-400">Async generator streaming (chat demo)</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+            @click="navigateToChannelPage"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Channel</div>
+              <div class="text-xs text-gray-400">Bidirectional real-time session (ticker demo)</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Cloud - Dropdown -->
       <div class="bg-white rounded-lg shadow-sm">
         <div
@@ -33,17 +79,6 @@
         <div v-if="expandedSections.cloud" class="border-t border-gray-100 bg-gray-50">
           <div
             class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
-            @click="navigateToTestMiniApp"
-          >
-            <div class="text-sm text-gray-700">Open Another LxApp</div>
-            <div class="w-4 h-4 text-gray-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
-            </div>
-          </div>
-          <div
-            class="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
             @click="navigateToCloudPage({ type: 'auth' })"
           >
             <div class="text-sm text-gray-700">Cloud Auth Demo</div>
@@ -482,7 +517,8 @@ type PageActions = {
   navigateToLocationPage(): void;
   navigateToMediaPage(payload: { type: string }): void;
   navigateToDocumentPage(): void;
-  navigateToTestMiniApp(): void;
+  navigateToStreamPage(): void;
+  navigateToChannelPage(): void;
   navigateToCloudPage(payload: { type: string }): void;
   openDeepSeek(): void;
   navigateToPullDownRefreshPage(): void;
@@ -498,7 +534,8 @@ const {
   navigateToLocationPage,
   navigateToMediaPage,
   navigateToDocumentPage,
-  navigateToTestMiniApp,
+  navigateToStreamPage,
+  navigateToChannelPage,
   openDeepSeek,
   navigateToPullDownRefreshPage,
 } = actions;

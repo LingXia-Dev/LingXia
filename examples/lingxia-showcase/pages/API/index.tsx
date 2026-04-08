@@ -6,6 +6,8 @@ export default function APIPage() {
   const { data, actions } = useLxPage();
   const {
     toggleSection,
+    navigateToStreamPage,
+    navigateToChannelPage,
     navigateToUIPage,
     navigateToDevicePage,
     navigateToWifiPage,
@@ -13,12 +15,11 @@ export default function APIPage() {
     navigateToLocationPage,
     navigateToMediaPage,
     navigateToDocumentPage,
-    navigateToTestMiniApp,
     navigateToCloudPage,
     openDeepSeek,
     navigateToPullDownRefreshPage,
   } = actions;
-  const { expandedSections = { interface: false, device: false, system: false, cloud: false, navigation: false, media: false, document: false } } = data;
+  const { expandedSections = { bridge: false, interface: false, device: false, system: false, cloud: false, navigation: false, media: false, document: false } } = data;
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-y-auto">
@@ -36,6 +37,54 @@ export default function APIPage() {
               The following demonstrates the capabilities provided by LingXia.
             </div>
           </div>
+        </div>
+
+        {/* Bridge - Dropdown */}
+        <div className="bg-white rounded-lg shadow-sm">
+          <div
+            className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+            onClick={() => toggleSection({ section: 'bridge' })}
+          >
+            <div className="text-base text-gray-900">Bridge</div>
+            <div className="w-6 h-6 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/>
+              </svg>
+            </div>
+          </div>
+
+          {expandedSections.bridge && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={navigateToStreamPage}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Stream</div>
+                  <div className="text-xs text-gray-400">Async generator streaming (chat demo)</div>
+                </div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={navigateToChannelPage}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Channel</div>
+                  <div className="text-xs text-gray-400">Bidirectional real-time session (ticker demo)</div>
+                </div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Cloud - Dropdown */}
@@ -56,17 +105,6 @@ export default function APIPage() {
             <div className="border-t border-gray-100 bg-gray-50">
               <div
                 className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
-                onClick={navigateToTestMiniApp}
-              >
-                <div className="text-sm text-gray-700">Open Another LxApp</div>
-                <div className="w-4 h-4 text-gray-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </div>
-              </div>
-              <div
-                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
                 onClick={() => navigateToCloudPage({ type: 'auth' })}
               >
                 <div className="text-sm text-gray-700">Cloud Auth Demo</div>

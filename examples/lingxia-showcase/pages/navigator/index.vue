@@ -135,7 +135,7 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="p-4 space-y-3">
             <LxNavigator
-              app-id="testminiapp"
+              app-id="lingxia-chat"
               @success="addLog('✓ Opening other LxApp')"
               @fail="onFailWithMessage('Failed to open LxApp', $event)"
             >

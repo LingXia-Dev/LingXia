@@ -20,7 +20,9 @@
     "pages/todo/index",
     "pages/picker/index",
     "pages/navigator/index",
-    "pages/input/index"
+    "pages/input/index",
+    "pages/stream/index",
+    "pages/channel/index"
   ],
   "tabBar": {
     "color": "#999999",

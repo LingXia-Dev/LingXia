@@ -4,6 +4,7 @@ Page({
   data: {
     // Category expansion state
     expandedSections: {
+      bridge: false,
       interface: false,
       device: false,
       system: false,
@@ -41,6 +42,14 @@ Page({
     this.setData({
       [`expandedSections.${section}`]: !currentState,
     });
+  },
+
+  navigateToStreamPage: async function() {
+    await lx.navigateTo({ url: 'pages/stream/index' });
+  },
+
+  navigateToChannelPage: async function() {
+    await lx.navigateTo({ url: 'pages/channel/index' });
   },
 
   // Navigate to UI API page with specific type parameter

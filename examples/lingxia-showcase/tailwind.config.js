@@ -90,6 +90,8 @@ const config = {
         "slide-up": "slideUp 0.4s ease-out",
         "spin-slow": "spin 3s linear infinite",
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "blink": "blink 0.9s step-end infinite",
+        "chart-in": "chartIn 0.35s cubic-bezier(0.16,1,0.3,1)",
       },
       keyframes: {
         fadeIn: {
@@ -99,6 +101,14 @@ const config = {
         slideUp: {
           "0%": { opacity: "0", transform: "translateY(10px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        blink: {
+          "0%, 49%": { opacity: "1" },
+          "50%, 100%": { opacity: "0" },
+        },
+        chartIn: {
+          from: { opacity: "0", transform: "scale(0.96) translateY(8px)" },
+          to:   { opacity: "1", transform: "scale(1) translateY(0)" },
         },
       },
     },

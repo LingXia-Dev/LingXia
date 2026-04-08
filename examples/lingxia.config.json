@@ -33,5 +33,17 @@
   },
   "harmony": {
     "bundleName": "app.lingxia.lxapp.example"
-  }
+  },
+  "resources": {
+    "bundles": [
+      {
+        "type": "lxapp",
+        "path": "lingxia-showcase"
+      },
+      {
+        "type": "lxapp",
+        "path": "../crates/lingxia-shell/webui"
+      }
+    ]
+  },
 }
