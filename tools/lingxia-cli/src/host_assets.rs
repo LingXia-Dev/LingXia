@@ -112,7 +112,7 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
     let needs_es5_runtime = has_android
         && runtime::target_from_build_targets(build_targets) == runtime::RuntimeEcmaTarget::Es5;
 
-    // Only Android can require ES5 runtime (armv7). Other platforms should stay on ES2020.
+    // Only Android can require ES5 runtime here (for armv7 builds).
     let prepared_runtime_es5 = if needs_es5_runtime {
         Some(prepare_runtime_asset(
             project_root,

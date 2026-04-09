@@ -97,7 +97,7 @@ pub(super) fn build_framework_vars(
             "#root",
             "\"react\": \"^19.2.4\",\n    \"react-dom\": \"^19.2.4\"",
             "\"@types/react\": \"^19.2.10\",\n    \"@types/react-dom\": \"^19.2.3\",\n    ",
-            "\"@vitejs/plugin-react\": \"^6.0.1\",\n    \"esbuild\": \"^0.27.0\",\n    \"vite\": \"^8.0.0\",\n    ",
+            "\"@vitejs/plugin-react\": \"^6.0.1\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         "vue" => (
             "Vue",
@@ -108,7 +108,7 @@ pub(super) fn build_framework_vars(
             "#app",
             "\"vue\": \"^3.5.0\"",
             "\"vue-tsc\": \"^3.2.4\",\n    ",
-            "\"@vitejs/plugin-vue\": \"^6.0.5\",\n    \"esbuild\": \"^0.27.0\",\n    \"vite\": \"^8.0.0\",\n    ",
+            "\"@vitejs/plugin-vue\": \"^6.0.5\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
         other => {
             return Err(anyhow!(
@@ -321,7 +321,7 @@ mod tests {
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("react-dom"));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("@types/react"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-react"));
-        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"esbuild\""));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"rolldown\""));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
     }
 
@@ -345,7 +345,7 @@ mod tests {
         assert!(vars["FRAMEWORK_RUNTIME_DEPS"].contains("\"vue\""));
         assert!(vars["FRAMEWORK_DEV_DEPS_PREFIX"].contains("vue-tsc"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-vue"));
-        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"esbuild\""));
+        assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"rolldown\""));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
     }
 
@@ -397,7 +397,7 @@ mod tests {
             "must not reference @lingxia/vue"
         );
         assert!(s.contains("\"vite\""), "must include vite");
-        assert!(s.contains("\"esbuild\""), "must include esbuild");
+        assert!(s.contains("\"rolldown\""), "must include rolldown");
         assert!(
             s.contains("@vitejs/plugin-react"),
             "must include react vite plugin"
@@ -461,7 +461,7 @@ mod tests {
             "must not reference @lingxia/vue"
         );
         assert!(s.contains("\"vite\""), "must include vite");
-        assert!(s.contains("\"esbuild\""), "must include esbuild");
+        assert!(s.contains("\"rolldown\""), "must include rolldown");
         assert!(
             s.contains("@vitejs/plugin-vue"),
             "must include vue vite plugin"
