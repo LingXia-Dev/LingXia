@@ -5,10 +5,11 @@ use indicatif::ProgressBar;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{
     Declaration, ExportDefaultDeclarationKind, Expression, ImportDeclarationSpecifier,
-    ModuleExportName, ObjectPropertyKind, PropertyKey, Statement,
+    ImportOrExportKind, ModuleExportName, ObjectPropertyKind, PropertyKey, Statement,
 };
 use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_parser::Parser;
+use oxc_resolver::{ModuleType, ResolveOptions, Resolver};
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_transformer::{TransformOptions, Transformer};
@@ -97,6 +98,7 @@ struct ImportBinding {
     imported: Option<String>,
     local: String,
     namespace: bool,
+    type_only: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -239,7 +241,7 @@ fn discover_page_logic_entries(project: &Project) -> Result<Vec<(PathBuf, String
 
 fn collect_imports(
     program: &oxc_ast::ast::Program<'_>,
-    source: &str,
+    _source: &str,
     module_path: &Path,
     project_root: &Path,
 ) -> Result<Vec<ImportRecord>> {
@@ -263,12 +265,15 @@ fn collect_imports(
                             )?),
                             local: spec.local.name.as_str().to_string(),
                             namespace: false,
+                            type_only: import_decl.import_kind == ImportOrExportKind::Type
+                                || spec.import_kind == ImportOrExportKind::Type,
                         }),
                         ImportDeclarationSpecifier::ImportDefaultSpecifier(spec) => {
                             Ok(ImportBinding {
                                 imported: Some("default".to_string()),
                                 local: spec.local.name.as_str().to_string(),
                                 namespace: false,
+                                type_only: import_decl.import_kind == ImportOrExportKind::Type,
                             })
                         }
                         ImportDeclarationSpecifier::ImportNamespaceSpecifier(spec) => {
@@ -276,6 +281,7 @@ fn collect_imports(
                                 imported: None,
                                 local: spec.local.name.as_str().to_string(),
                                 namespace: true,
+                                type_only: import_decl.import_kind == ImportOrExportKind::Type,
                             })
                         }
                     })
@@ -284,32 +290,23 @@ fn collect_imports(
             .transpose()?
             .unwrap_or_default();
 
-        let resolved_local = if is_local_specifier(&import_source) {
-            Some(resolve_local_import(
-                module_path,
-                &import_source,
-                project_root,
-            )?)
-        } else {
-            if bindings.is_empty() {
-                bail!(
-                    "Unsupported side-effect bare import {import_source:?} in {}",
-                    module_path.display()
-                );
-            }
-            let binding_names = bindings.iter().map(|binding| binding.local.as_str());
-            let used = binding_names
-                .into_iter()
-                .any(|name| identifier_used_outside_span(source, import_decl.span, name));
-            if used {
-                bail!(
-                    "Unsupported bare logic import {import_source:?} in {}. \
-Only local relative imports are supported by the Rust logic builder for now.",
-                    module_path.display()
-                );
-            }
-            None
-        };
+        let has_runtime_bindings = bindings.iter().any(|binding| !binding.type_only);
+        let resolved_local =
+            if import_decl.import_kind == ImportOrExportKind::Type || !has_runtime_bindings {
+                None
+            } else if is_local_specifier(&import_source) {
+                Some(resolve_local_import(
+                    module_path,
+                    &import_source,
+                    project_root,
+                )?)
+            } else {
+                Some(resolve_bare_import(
+                    module_path,
+                    &import_source,
+                    project_root,
+                )?)
+            };
 
         imports.push(ImportRecord {
             statement_span: import_decl.span,
@@ -428,6 +425,9 @@ fn render_import_stub(
     let mut lines = Vec::new();
     let mut named_parts = Vec::new();
     for binding in &import.bindings {
+        if binding.type_only {
+            continue;
+        }
         if binding.namespace {
             lines.push(format!("const {} = {};", binding.local, module_var));
             continue;
@@ -793,6 +793,65 @@ fn resolve_local_import(
     ))
 }
 
+fn resolve_bare_import(
+    from_module: &Path,
+    specifier: &str,
+    project_root: &Path,
+) -> Result<PathBuf> {
+    let mut options = ResolveOptions::default()
+        .with_condition_names(&["import", "module", "default"])
+        .with_builtin_modules(true);
+    options.module_type = true;
+    options.main_fields = vec!["module".into(), "main".into()];
+    options.extensions = vec![
+        ".ts".into(),
+        ".tsx".into(),
+        ".mts".into(),
+        ".js".into(),
+        ".jsx".into(),
+        ".mjs".into(),
+        ".json".into(),
+    ];
+    options.extension_alias = vec![
+        (
+            ".js".into(),
+            vec![
+                ".ts".into(),
+                ".tsx".into(),
+                ".js".into(),
+                ".jsx".into(),
+                ".mjs".into(),
+            ],
+        ),
+        (
+            ".mjs".into(),
+            vec![".mts".into(), ".mjs".into(), ".js".into()],
+        ),
+    ];
+
+    let resolver = Resolver::new(options);
+    let resolution = resolver
+        .resolve_file(from_module, specifier)
+        .with_context(|| {
+            format!(
+                "Failed to resolve logic import {specifier:?} from {}. \
+Run npm install in the lxapp root if this package is missing.",
+                relative_to(from_module, project_root)
+            )
+        })?;
+
+    if matches!(resolution.module_type(), Some(ModuleType::CommonJs)) {
+        bail!(
+            "Unsupported CommonJS logic import {specifier:?} from {} -> {}. \
+Use an ESM package or ESM entrypoint for logic-layer imports.",
+            relative_to(from_module, project_root),
+            relative_to(resolution.path(), project_root)
+        );
+    }
+
+    normalize_path(resolution.path())
+}
+
 fn candidate_candidates(base: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if base.extension().is_some() {
@@ -812,36 +871,6 @@ fn candidate_candidates(base: &Path) -> Vec<PathBuf> {
 
 fn is_local_specifier(specifier: &str) -> bool {
     specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
-}
-
-fn identifier_used_outside_span(source: &str, span: oxc_span::Span, name: &str) -> bool {
-    let start = span.start as usize;
-    let end = span.end as usize;
-    contains_identifier(&source[..start], name) || contains_identifier(&source[end..], name)
-}
-
-fn contains_identifier(haystack: &str, name: &str) -> bool {
-    let bytes = haystack.as_bytes();
-    let needle = name.as_bytes();
-    if needle.is_empty() {
-        return false;
-    }
-    let mut index = 0usize;
-    while let Some(found) = haystack[index..].find(name) {
-        let pos = index + found;
-        let before_ok = pos == 0 || !is_ident_char(bytes[pos - 1]);
-        let after_index = pos + needle.len();
-        let after_ok = after_index >= bytes.len() || !is_ident_char(bytes[after_index]);
-        if before_ok && after_ok {
-            return true;
-        }
-        index = pos + needle.len();
-    }
-    false
-}
-
-fn is_ident_char(ch: u8) -> bool {
-    ch.is_ascii_alphanumeric() || ch == b'_' || ch == b'$'
 }
 
 fn slice(source: &str, span: oxc_span::Span) -> Result<&str> {
@@ -886,4 +915,74 @@ fn format_diagnostics<T: std::fmt::Debug>(diagnostics: &[T]) -> String {
         .map(|error| format!("{error:?}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn parse_program<'a>(
+        allocator: &'a Allocator,
+        path: &Path,
+        source: &'a str,
+    ) -> oxc_ast::ast::Program<'a> {
+        let source_type = SourceType::from_path(path).unwrap();
+        let parse_result = Parser::new(allocator, source, source_type).parse();
+        assert!(
+            parse_result.errors.is_empty(),
+            "parse errors: {}",
+            format_diagnostics(&parse_result.errors)
+        );
+        parse_result.program
+    }
+
+    #[test]
+    fn allows_type_only_bare_imports_without_resolution() {
+        let temp = TempDir::new().unwrap();
+        let module_path = temp.path().join("index.ts");
+        fs::write(
+            &module_path,
+            "import type { PreviewMediaOptions } from '@lingxia/types';\nconst ok = true;\n",
+        )
+        .unwrap();
+        let source = fs::read_to_string(&module_path).unwrap();
+        let allocator = Allocator::default();
+        let program = parse_program(&allocator, &module_path, &source);
+
+        let imports = collect_imports(&program, &source, &module_path, temp.path()).unwrap();
+        assert_eq!(imports.len(), 1);
+        assert!(imports[0].resolved_local.is_none());
+        assert!(imports[0].bindings.iter().all(|binding| binding.type_only));
+    }
+
+    #[test]
+    fn resolves_bare_esm_package_from_node_modules() {
+        let temp = TempDir::new().unwrap();
+        let module_path = temp.path().join("pages").join("home.ts");
+        fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(temp.path().join("node_modules/demo-pkg/dist")).unwrap();
+        fs::write(
+            temp.path().join("node_modules/demo-pkg/package.json"),
+            r#"{
+  "name": "demo-pkg",
+  "exports": {
+    "import": "./dist/index.mjs"
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("node_modules/demo-pkg/dist/index.mjs"),
+            "export const demo = 1;\n",
+        )
+        .unwrap();
+
+        let resolved = resolve_bare_import(&module_path, "demo-pkg", temp.path()).unwrap();
+        assert_eq!(
+            resolved,
+            normalize_path(&temp.path().join("node_modules/demo-pkg/dist/index.mjs")).unwrap()
+        );
+    }
 }
