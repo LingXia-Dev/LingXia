@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|page-runtime|types|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|types|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -46,9 +46,12 @@ fi
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
   elements) targets=("elements") ;;
+  react) targets=("react") ;;
+  vue) targets=("vue") ;;
+  html) targets=("html") ;;
   page-runtime) targets=("page-runtime") ;;
   types) targets=("types") ;;
-  all) targets=("bridge" "elements" "page-runtime" "types") ;;
+  all) targets=("bridge" "elements" "page-runtime" "react" "vue" "html" "types") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
@@ -56,10 +59,45 @@ pkg_dir() {
   case "$1" in
     bridge) echo "$ROOT_DIR/packages/lingxia-bridge" ;;
     elements) echo "$ROOT_DIR/packages/lingxia-elements" ;;
+    react) echo "$ROOT_DIR/packages/lingxia-react" ;;
+    vue) echo "$ROOT_DIR/packages/lingxia-vue" ;;
+    html) echo "$ROOT_DIR/packages/lingxia-html" ;;
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     *) return 1 ;;
   esac
+}
+
+verify_internal_lingxia_versions() {
+  local dir="$1"
+  node - "$dir" <<'NODE'
+const fs = require("fs");
+const path = process.argv[2];
+const pkg = JSON.parse(fs.readFileSync(`${path}/package.json`, "utf8"));
+const sections = ["dependencies", "peerDependencies", "optionalDependencies"];
+const mismatches = [];
+
+for (const section of sections) {
+  const deps = pkg[section];
+  if (!deps) continue;
+  for (const [name, spec] of Object.entries(deps)) {
+    if (!name.startsWith("@lingxia/")) continue;
+    if (name === pkg.name) continue;
+    if (spec !== pkg.version) {
+      mismatches.push(`${section}.${name}=${spec}`);
+    }
+  }
+}
+
+if (mismatches.length > 0) {
+  console.error(`ERROR: ${pkg.name}@${pkg.version} has mismatched internal @lingxia dependency versions:`);
+  for (const item of mismatches) {
+    console.error(`  - ${item}`);
+  }
+  console.error("Run `scripts/release/version.sh <version>` to resync package versions before publishing.");
+  process.exit(1);
+}
+NODE
 }
 
 for target in "${targets[@]}"; do
@@ -71,6 +109,8 @@ for target in "${targets[@]}"; do
   echo "=========================================="
   echo "Processing $name@$version ($target)"
   echo "=========================================="
+
+  verify_internal_lingxia_versions "$dir"
 
   if [[ -f "$dir/package-lock.json" ]]; then
     (cd "$dir" && npm ci)

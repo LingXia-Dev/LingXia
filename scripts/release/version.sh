@@ -23,7 +23,7 @@ This updates:
   - workspace.package.version in Cargo.toml
   - workspace crate dependency versions in Cargo.toml
   - package versions under packages/*
-  - internal @lingxia/* package dependency ranges while preserving their prefix style
+  - internal @lingxia/* package dependency versions in published package.json files
 
 CLI/template LingXia versions follow the workspace CLI version automatically and
 do not need direct rewriting here.
