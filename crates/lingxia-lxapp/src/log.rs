@@ -45,14 +45,20 @@ impl LogManager {
     where
         F: Fn(&LogMessage) + Send + Sync + 'static,
     {
-        GLOBAL_LOG_MANAGER
+        let manager = GLOBAL_LOG_MANAGER
             .get_or_init(|| {
                 Arc::new(LogManager {
                     buffer: LogBuffer::new(LogBufferConfig::default()),
                     logger: Box::new(logger),
                 })
             })
-            .clone()
+            .clone();
+
+        // The tracing layer is part of the log manager contract because JS/appservice
+        // console output is emitted through tracing events rather than the Rust `log` facade.
+        init_tracing();
+
+        manager
     }
 
     /// Gets global log manager instance if initialized.
@@ -115,7 +121,7 @@ impl LogManager {
 }
 
 /// Install the global tracing subscriber that forwards tracing events into `LogManager`.
-pub fn init_tracing() {
+fn init_tracing() {
     if TRACING_SUBSCRIBER_READY.get().is_some() {
         return;
     }
@@ -407,17 +413,21 @@ where
                 .unwrap_or(LogTag::Native)
         };
 
+        let target = if metadata.target() == "rong.js.console" {
+            visitor.target_field
+        } else {
+            visitor
+                .target_field
+                .or_else(|| Some(metadata.target().to_string()))
+        };
+
         let message = LogMessage {
             timestamp_ms: lingxia_observability::now_timestamp_ms(),
             tag,
             level: log_level_from_tracing_level(metadata.level()),
             appid: normalize_optional_string(visitor.appid.or(visitor.namespace)),
             path: normalize_optional_string(visitor.path),
-            target: normalize_optional_string(
-                visitor
-                    .target_field
-                    .or_else(|| Some(metadata.target().to_string())),
-            ),
+            target: normalize_optional_string(target),
             message: visitor
                 .message
                 .unwrap_or_else(|| metadata.name().to_string()),
