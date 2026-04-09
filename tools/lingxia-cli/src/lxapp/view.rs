@@ -889,9 +889,14 @@ pub(crate) fn bridge_metadata_script(actions: &[PageAction]) -> String {
         .iter()
         .map(|action| action.name.as_str())
         .collect::<Vec<_>>();
+    let modes = actions
+        .iter()
+        .map(|action| (action.name.as_str(), action.mode.as_str()))
+        .collect::<std::collections::BTreeMap<_, _>>();
     format!(
-        "window.__pageBridge = {{ __names: {} }};",
-        serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string())
+        "window.__pageBridge = {{ __names: {}, __modes: {} }};",
+        serde_json::to_string(&names).unwrap_or_else(|_| "[]".to_string()),
+        serde_json::to_string(&modes).unwrap_or_else(|_| "{{}}".to_string())
     )
 }
 
@@ -1179,6 +1184,25 @@ mod tests {
             actions,
             vec![("doWork".to_string(), PageActionMode::Notify)]
         );
+    }
+
+    #[test]
+    fn bridge_metadata_includes_action_modes() {
+        let script = bridge_metadata_script(&[
+            PageAction {
+                name: "confirmOrientation".to_string(),
+                mode: PageActionMode::Call,
+            },
+            PageAction {
+                name: "watchMessages".to_string(),
+                mode: PageActionMode::Stream,
+            },
+        ]);
+
+        assert!(script.contains("__names"));
+        assert!(script.contains("__modes"));
+        assert!(script.contains("\"confirmOrientation\":\"call\""));
+        assert!(script.contains("\"watchMessages\":\"stream\""));
     }
 
     #[test]

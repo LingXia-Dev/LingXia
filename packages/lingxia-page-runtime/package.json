@@ -11,6 +11,12 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./html": {
+      "types": "./dist/html/index.d.ts",
+      "default": "./dist/html/index.js"
+    },
+    "./html/global": "./dist/html/global.js",
+    "./html/global-legacy": "./dist/html/global.es5.js",
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
@@ -22,7 +28,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "npm run clean && tsc -p tsconfig.json && mkdir -p dist/vue && cp src/vue/*.vue dist/vue/",
+    "build": "npm run clean && tsc -p tsconfig.json && node ./scripts/build-html-global.mjs && mkdir -p dist/vue && cp src/vue/*.vue dist/vue/",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
@@ -47,6 +53,7 @@
     "@lingxia/elements": "file:../lingxia-elements",
     "@types/react": "^19.2.7",
     "react": "^19.0.0",
+    "rolldown": "^1.0.0-rc.13",
     "typescript": "^5.7.2",
     "vue": "^3.5.0"
   },
