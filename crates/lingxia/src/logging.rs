@@ -31,7 +31,7 @@ pub(crate) fn init() {
     });
 
     if log::set_logger(&SDK_LOGGER).is_ok() {
-        log::set_max_level(LevelFilter::Trace);
+        log::set_max_level(LevelFilter::Info);
     }
 
     let _ = LOGGING_INIT.set(());
@@ -127,13 +127,13 @@ impl PlatformLogger {
             #[cfg(target_os = "android")]
             android: android_logger::AndroidLogger::new(
                 android_logger::Config::default()
-                    .with_max_level(LevelFilter::Trace)
+                    .with_max_level(LevelFilter::Info)
                     .with_tag("Rust"),
             ),
             #[cfg(target_env = "ohos")]
             harmony: ohos_hilog::OhosLogger::new(
                 ohos_hilog::Config::default()
-                    .with_max_level(LevelFilter::Trace)
+                    .with_max_level(LevelFilter::Info)
                     .with_tag("LingXia.Rust"),
             ),
             #[cfg(any(target_os = "ios", target_os = "macos"))]
