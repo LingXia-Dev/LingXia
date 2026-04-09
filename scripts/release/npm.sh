@@ -19,6 +19,11 @@ Options:
 EOF
 }
 
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
 PACKAGE_SET="all"
 PUBLISH=0
 DRY_RUN=0

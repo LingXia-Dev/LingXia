@@ -5,8 +5,8 @@ usage() {
   cat <<'EOF'
 LingXia SDK release packager (per-platform)
 
-Generates SDK-required resources (i18n/icons) and produces release artifacts
-ready to be uploaded as GitHub Release assets by CI.
+Generates SDK-required resources (i18n/icons), produces release artifacts,
+and can optionally upload them to a GitHub Release via gh.
 
 Usage:
   scripts/release/sdk.sh [--platform apple|ios|android|harmony|all] [--out <dir>]
@@ -19,11 +19,13 @@ Options:
   --android-no-zip              Android: do not create the release maven zip (useful for local dev)
   --apple-no-zip                Apple: do not create the source zip (useful for local dev)
   --gh-upload                   Upload generated artifacts to GitHub Release via gh CLI
+  --tag <tag>                   Upload to this GitHub release tag (default: lingxia-sdk-v<version>)
   -h, --help                    Show help
 
 Environment:
   SKIP_RUST=true                Skip swift-bridge refresh for Apple SDK
   GITHUB_TOKEN                  GitHub token used by gh (when --gh-upload is enabled)
+  LINGXIA_RELEASE_REPO          Override GitHub repo (default: LingXia-Dev/LingXia)
 
 Artifacts (under --out):
   lingxia-sdk-android-maven-<version>.zip
@@ -35,6 +37,11 @@ EOF
 
 log() { echo "$*" >&2; }
 die() { echo "❌ $*" >&2; exit 1; }
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -57,7 +64,7 @@ ANDROID_MAVEN_DIR=""
 ANDROID_ZIP=true
 APPLE_ZIP=true
 GH_UPLOAD=false
-GH_REPO="LingXia-Dev/LingXia"
+GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
 GH_TAG=""
 
 while [[ $# -gt 0 ]]; do
@@ -69,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --android-no-zip) ANDROID_ZIP=false; shift 1 ;;
     --apple-no-zip) APPLE_ZIP=false; shift 1 ;;
     --gh-upload) GH_UPLOAD=true; shift 1 ;;
+    --tag) GH_TAG="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown arg: $1 (try --help)" ;;
   esac
@@ -88,7 +96,7 @@ workspace_version="$(awk '
   }' "$ROOT_DIR/Cargo.toml")"
 [[ -n "$workspace_version" ]] || die "Failed to read workspace version from Cargo.toml"
 VERSION="$workspace_version"
-GH_TAG="lingxia-sdk-v$VERSION"
+GH_TAG="${GH_TAG:-lingxia-sdk-v$VERSION}"
 
 mkdir -p "$OUT_DIR"
 
@@ -223,7 +231,7 @@ publish_github_release() {
   if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
     log "   Release exists: $tag"
   else
-    log "   Release missing, creating from existing tag: $tag"
+    log "   Release missing, creating: $tag"
     local notes="LingXia SDK release ${VERSION}
 
 - Tag: ${tag}
@@ -232,7 +240,6 @@ publish_github_release() {
 "
     gh release create "$tag" \
       --repo "$GH_REPO" \
-      --verify-tag \
       --title "LingXia SDK v$VERSION" \
       --notes "$notes"
   fi
