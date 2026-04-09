@@ -58,11 +58,18 @@ public final class AndroidMessagePortBridge {
     }
 
     public void sendMessagePortToWebView() {
+        if (webviewPort == null) {
+            setupMessagePorts();
+        }
         if (webviewPort == null) return;
         try {
             WebMessagePort[] ports = new WebMessagePort[1];
             ports[0] = webviewPort;
             webView.postWebMessage(new WebMessage(ANDROID_MESSAGE_PORT_INIT, ports), Uri.EMPTY);
+            // A WebMessagePort can only be transferred once. Keep nativePort for
+            // page traffic, but mark the web-facing port as consumed so the next
+            // page init gets a fresh channel pair.
+            webviewPort = null;
         } catch (Throwable t) {
             Log.e(TAG, "Failed to send message port", t);
         }
@@ -80,7 +87,17 @@ public final class AndroidMessagePortBridge {
     }
 
     public void cleanup() {
+        closePort(nativePort);
+        closePort(webviewPort);
         nativePort = null;
         webviewPort = null;
+    }
+
+    private static void closePort(WebMessagePort port) {
+        if (port == null) return;
+        try {
+            port.close();
+        } catch (Throwable ignored) {
+        }
     }
 }
