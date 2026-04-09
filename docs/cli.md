@@ -4,6 +4,16 @@ Complete reference for the `lingxia` command-line interface.
 
 ---
 
+## Install
+
+Install the current LingXia CLI release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+```
+
+---
+
 ## Global Options
 
 | Option | Description |

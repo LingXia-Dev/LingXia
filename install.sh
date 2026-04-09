@@ -3,10 +3,11 @@ set -eu
 
 REPO="${LINGXIA_REPO:-LingXia-Dev/LingXia}"
 INSTALL_DIR="$HOME/.local/bin"
-DEFAULT_VERSION="0.4.3"
-VERSION="${LINGXIA_VERSION:-$DEFAULT_VERSION}"
+VERSION="0.5.0"
 BIN_NAME="lingxia"
 INSTALL_META_NAME="lingxia-cli-install.json"
+RUNNER_ROOT_DIR="$HOME/.lingxia/runner"
+RUNNER_APP_NAME="LingXia Runner.app"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -168,6 +169,14 @@ ensure_install_dir() {
   fi
 }
 
+ensure_runner_dir() {
+  mkdir -p "$1"
+  if [ ! -w "$1" ]; then
+    echo "error: runner install directory is not writable: $1" >&2
+    exit 1
+  fi
+}
+
 write_install_metadata() {
   meta_path="$INSTALL_DIR/$INSTALL_META_NAME"
   cat > "$meta_path" <<EOF
@@ -178,6 +187,52 @@ write_install_metadata() {
   "install_path": "$INSTALL_DIR/$BIN_NAME"
 }
 EOF
+}
+
+install_runner() {
+  platform="$1"
+  version="$2"
+
+  case "$platform" in
+    darwin-arm64) runner_arch="arm64" ;;
+    darwin-x64) runner_arch="x64" ;;
+    *) return 0 ;;
+  esac
+
+  runner_version_dir="$RUNNER_ROOT_DIR/$version"
+  runner_app_path="$runner_version_dir/$RUNNER_APP_NAME"
+  runner_asset_name="lingxia-runner-$version-macos-$runner_arch.zip"
+  runner_download_url="https://github.com/$REPO/releases/download/lingxia-cli-v$version/$runner_asset_name"
+
+  need_cmd unzip
+  ensure_runner_dir "$runner_version_dir"
+
+  say ""
+  say "Installing LingXia Runner $version for $runner_arch"
+  say "Download: $runner_download_url"
+
+  temp_runner_zip="$temp_dir/$runner_asset_name"
+  temp_runner_extract="$temp_dir/runner-extract"
+  rm -rf "$temp_runner_extract"
+  mkdir -p "$temp_runner_extract"
+
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    download_github_release_asset "$REPO" "lingxia-cli-v$version" "$runner_asset_name" "$temp_runner_zip"
+  else
+    download_file "$runner_download_url" "$temp_runner_zip"
+  fi
+
+  unzip -q "$temp_runner_zip" -d "$temp_runner_extract"
+
+  extracted_runner_app="$temp_runner_extract/$RUNNER_APP_NAME"
+  if [ ! -d "$extracted_runner_app" ]; then
+    echo "error: runner app bundle not found after unzip: $extracted_runner_app" >&2
+    exit 1
+  fi
+
+  rm -rf "$runner_app_path"
+  mv "$extracted_runner_app" "$runner_app_path"
+  say "Installed Runner: $runner_app_path"
 }
 
 main() {
@@ -214,6 +269,7 @@ main() {
   chmod +x "$temp_bin"
   mv "$temp_bin" "$INSTALL_DIR/$BIN_NAME"
   write_install_metadata
+  install_runner "$platform" "$version"
 
   say ""
   say "Installed: $INSTALL_DIR/$BIN_NAME"

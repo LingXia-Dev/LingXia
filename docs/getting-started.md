@@ -35,12 +35,6 @@ Recommended: install the prebuilt CLI binary from GitHub Release:
 curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
 ```
 
-Install a specific version:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | LINGXIA_VERSION=0.4.3 sh
-```
-
 Verify installation:
 
 ```bash
