@@ -17,15 +17,15 @@ Options:
   --publish           Upload the Runner zip to GitHub Release
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: dist/runner-release)
-  --macos-arch <arch> Build a specific macOS arch: arm64 or x86_64
+  --macos-arch <arch> Build a specific macOS arch: arm64, x86_64, or all
   --skip-build        Reuse existing lingxia build artifacts from tools/lingxia-runner/.lingxia and dist/macos
 
 Environment:
   LINGXIA_RELEASE_REPO  Override target repo (default: LingXia-Dev/LingXia)
 
 Examples:
-  scripts/release/runner.sh
   scripts/release/runner.sh --macos-arch arm64
+  scripts/release/runner.sh --macos-arch all
   scripts/release/runner.sh --publish
   scripts/release/runner.sh --out /tmp/runner-release
 EOF
@@ -78,6 +78,41 @@ runner_arch_suffix() {
   esac
 }
 
+release_tag_for_version() {
+  local version="$1"
+  printf 'lingxia-cli-v%s\n' "$version"
+}
+
+resolve_out_dir() {
+  local default_dir="$1"
+  local out_dir="${2:-$default_dir}"
+  if [[ "$out_dir" != /* ]]; then
+    out_dir="$START_DIR/$out_dir"
+  fi
+  printf '%s\n' "$out_dir"
+}
+
+ensure_github_release() {
+  local tag="$1"
+  local version="$2"
+
+  require_command gh
+  if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "==> Creating release $tag in $GH_REPO"
+  gh release create "$tag" \
+    --repo "$GH_REPO" \
+    --title "$tag" \
+    --notes "LingXia Runner release $version"
+}
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 2
+fi
+
 PUBLISH=0
 OUT_DIR=""
 SKIP_BUILD=0
@@ -113,74 +148,99 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
-TAG="${TAG:-lingxia-cli-v$VERSION}"
-OUT_DIR="${OUT_DIR:-$START_DIR/dist/runner-release}"
-[[ "$OUT_DIR" != /* ]] && OUT_DIR="$START_DIR/$OUT_DIR"
+TAG="${TAG:-$(release_tag_for_version "$VERSION")}"
+OUT_DIR="$(resolve_out_dir "$START_DIR/dist/runner-release" "$OUT_DIR")"
 mkdir -p "$OUT_DIR"
 
-if [[ -n "$MACOS_ARCH" && "$MACOS_ARCH" != "arm64" && "$MACOS_ARCH" != "x86_64" ]]; then
-  echo "ERROR: unsupported --macos-arch '$MACOS_ARCH' (expected arm64 or x86_64)" >&2
+if [[ -z "$MACOS_ARCH" ]]; then
+  if [[ "$PUBLISH" -eq 1 && "$SKIP_BUILD" -eq 0 ]]; then
+    MACOS_ARCH="all"
+  else
+    MACOS_ARCH="$(default_macos_arch)"
+  fi
+fi
+
+case "$MACOS_ARCH" in
+  arm64|x86_64) ARCHES=("$MACOS_ARCH") ;;
+  all) ARCHES=(arm64 x86_64) ;;
+  *)
+    echo "ERROR: unsupported --macos-arch '$MACOS_ARCH' (expected arm64, x86_64, or all)" >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$SKIP_BUILD" -eq 1 && "${#ARCHES[@]}" -gt 1 ]]; then
+  echo "ERROR: --skip-build cannot be used with --macos-arch all." >&2
+  echo "       Raw runner outputs are single-arch and would be reused incorrectly." >&2
   exit 2
 fi
 
-EFFECTIVE_MACOS_ARCH="${MACOS_ARCH:-$(default_macos_arch)}"
-ARCH_SUFFIX="$(runner_arch_suffix "$EFFECTIVE_MACOS_ARCH")"
-
-RAW_APP_SRC="$RUNNER_RAW_APP_DIR/LingXia Runner.app"
-RAW_ZIP_SRC="$RUNNER_RAW_DIST_DIR/LingXia Runner-$VERSION-macos.zip"
-APP_OUT="$OUT_DIR/LingXia Runner-$ARCH_SUFFIX.app"
-ZIP_OUT="$OUT_DIR/lingxia-runner-$VERSION-macos-$ARCH_SUFFIX.zip"
-
 if [[ "$SKIP_BUILD" -ne 1 ]]; then
-  echo "==> Building LingXia Runner release"
   cargo build --manifest-path "$ROOT_DIR/tools/lingxia-cli/Cargo.toml" -p lingxia-cli
-  CLI_BIN="$ROOT_DIR/target/debug/lingxia"
+fi
+
+CLI_BIN="$ROOT_DIR/target/debug/lingxia"
+if [[ "$SKIP_BUILD" -ne 1 ]]; then
   [[ -x "$CLI_BIN" ]] || {
     echo "ERROR: missing built CLI binary: $CLI_BIN" >&2
     exit 1
   }
-  (
-    cd "$ROOT_DIR/tools/lingxia-runner"
-    build_cmd=(
-      "$CLI_BIN"
-      package --platform macos
-    )
-    if [[ -n "$MACOS_ARCH" ]]; then
-      build_cmd+=(--macos-arch "$MACOS_ARCH")
-    fi
-    "${build_cmd[@]}"
-  )
 fi
 
-[[ -d "$RAW_APP_SRC" ]] || {
-  echo "ERROR: missing Runner app bundle from lingxia build: $RAW_APP_SRC" >&2
-  exit 1
-}
-[[ -f "$RAW_ZIP_SRC" ]] || {
-  echo "ERROR: missing Runner release zip from lingxia build: $RAW_ZIP_SRC" >&2
-  exit 1
-}
-
-rm -rf "$APP_OUT"
-cp -R "$RAW_APP_SRC" "$APP_OUT"
-cp "$RAW_ZIP_SRC" "$ZIP_OUT"
-
-echo "✅ Runner app  -> $APP_OUT"
-echo "✅ Runner zip  -> $ZIP_OUT"
-
 if [[ "$PUBLISH" -eq 1 ]]; then
-  require_command gh
+  ensure_github_release "$TAG" "$VERSION"
+fi
 
-  if gh release view "$TAG" --repo "$GH_REPO" >/dev/null 2>&1; then
-    echo "==> Uploading Runner asset to existing release $TAG ($GH_REPO)"
-  else
-    echo "==> Creating release $TAG in $GH_REPO"
-    gh release create "$TAG" \
-      --repo "$GH_REPO" \
-      --title "$TAG" \
-      --notes "LingXia Runner release $VERSION"
+BUILT_ZIPS=()
+
+for arch in "${ARCHES[@]}"; do
+  ARCH_SUFFIX="$(runner_arch_suffix "$arch")"
+  RAW_APP_SRC="$RUNNER_RAW_APP_DIR/LingXia Runner.app"
+  RAW_ZIP_SRC="$RUNNER_RAW_DIST_DIR/LingXia Runner-$VERSION-macos.zip"
+  APP_OUT="$OUT_DIR/LingXia Runner-$ARCH_SUFFIX.app"
+  ZIP_OUT="$OUT_DIR/lingxia-runner-$VERSION-macos-$ARCH_SUFFIX.zip"
+
+  echo ""
+  echo "========================================"
+  echo "[runner:$arch] Building v$VERSION"
+  echo "========================================"
+
+  if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    (
+      cd "$ROOT_DIR/tools/lingxia-runner"
+      "$CLI_BIN" package --platform macos --macos-arch "$arch"
+    )
   fi
 
-  gh release upload "$TAG" "$ZIP_OUT" --repo "$GH_REPO" --clobber
-  echo "✅ Uploaded Runner zip to GitHub release $TAG ($GH_REPO)"
+  [[ -d "$RAW_APP_SRC" ]] || {
+    echo "ERROR: missing Runner app bundle from lingxia build: $RAW_APP_SRC" >&2
+    exit 1
+  }
+  [[ -f "$RAW_ZIP_SRC" ]] || {
+    echo "ERROR: missing Runner release zip from lingxia build: $RAW_ZIP_SRC" >&2
+    exit 1
+  }
+
+  rm -rf "$APP_OUT"
+  cp -R "$RAW_APP_SRC" "$APP_OUT"
+  cp "$RAW_ZIP_SRC" "$ZIP_OUT"
+  BUILT_ZIPS+=("$ZIP_OUT")
+
+  echo "✅ Runner app  -> $APP_OUT"
+  echo "✅ Runner zip  -> $ZIP_OUT"
+done
+
+if [[ "$PUBLISH" -eq 1 ]]; then
+  for zip_path in "${BUILT_ZIPS[@]}"; do
+    gh release upload "$TAG" "$zip_path" --repo "$GH_REPO" --clobber
+    echo "✅ Uploaded Runner zip $(basename "$zip_path") to GitHub release $TAG ($GH_REPO)"
+  done
+fi
+
+echo ""
+echo "✅ Runner release flow complete"
+echo "   Arches:  ${ARCHES[*]}"
+echo "   Output:  $OUT_DIR"
+if [[ "$PUBLISH" -eq 1 ]]; then
+  echo "   Release: $TAG ($GH_REPO)"
 fi

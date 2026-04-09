@@ -3,6 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
+
+RUNNER_ALL_ARCHES=(arm64 x86_64)
 
 usage() {
   cat <<'EOF'
@@ -12,13 +15,31 @@ Usage:
   scripts/release/main.sh <command> [args...]
 
 Commands:
-  doctor              Show key versions and release script locations
+  doctor              Show key versions, release tag, and script locations
   crates              Release crates.io packages
   npm                 Release npm packages (@lingxia/bridge/elements/react/vue/types)
-  cli                 Release @lingxia/cli packages
-  runner              Build/package LingXia Runner release artifacts
+  cli                 Build/upload CLI GitHub Release assets
+  runner              Build/upload Runner GitHub Release assets
   sdk                 Build/package SDK release artifacts
-  all [--publish]     Run crates -> npm -> cli -> runner -> sdk in order
+
+CLI options:
+  --target <platform> Build specific target(s): darwin-x64, darwin-arm64, linux-x64, linux-arm64, all
+  --publish           Upload built assets to the GitHub release tag
+  --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
+  --out <dir>         Output directory (default: ./dist/cli-release)
+  --skip-build        Reuse existing cargo artifacts
+
+Runner options:
+  --macos-arch <arch> Build specific Runner arch: arm64, x86_64, all
+  --publish           Upload built assets to the GitHub release tag
+  --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
+  --out <dir>         Output directory (default: ./dist/runner-release)
+  --skip-build        Reuse existing runner build artifacts
+
+SDK options:
+  --platform <name>   apple/ios, android, harmony, or all
+  --gh-upload         Upload built SDK assets to the GitHub release tag
+  --tag <tag>         Release tag to upload to (default: lingxia-sdk-v<version>)
 
 Examples:
   scripts/release/main.sh doctor
@@ -26,7 +47,7 @@ Examples:
   scripts/release/main.sh npm --package all --publish
   scripts/release/main.sh cli --target all --publish
   scripts/release/main.sh runner --publish
-  scripts/release/main.sh sdk --platform all
+  scripts/release/main.sh sdk --platform all --gh-upload
 EOF
 }
 
@@ -41,11 +62,47 @@ workspace_version() {
     }' "$ROOT_DIR/Cargo.toml"
 }
 
+release_tag_for_version() {
+  local version="$1"
+  printf 'lingxia-cli-v%s\n' "$version"
+}
+
+current_cli_target() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+
+  case "$os" in
+    Darwin) os="darwin" ;;
+    Linux) os="linux" ;;
+    *)
+      echo "ERROR: unsupported CLI host OS: $os" >&2
+      return 2
+      ;;
+  esac
+
+  case "$arch" in
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *)
+      echo "ERROR: unsupported CLI host arch: $arch" >&2
+      return 2
+      ;;
+  esac
+
+  printf '%s-%s\n' "$os" "$arch"
+}
+
 doctor() {
-  local ws_v cli_v runner_v bridge_v elements_v react_v vue_v types_v
+  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v elements_v react_v vue_v types_v cli_target
   ws_v="$(workspace_version)"
-  cli_v="$(node -p "require('$ROOT_DIR/tools/lingxia-cli/npm/package.json').version" 2>/dev/null || echo "N/A")"
-  runner_v="$ws_v"
+  if cli_target="$(current_cli_target 2>/dev/null)"; then
+    cli_asset="lingxia-$cli_target"
+  else
+    cli_asset="N/A (unsupported host)"
+  fi
+  cli_runner_tag="$(release_tag_for_version "$ws_v")"
+  sdk_tag="lingxia-sdk-v$ws_v"
   bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
   elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
   react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
@@ -53,21 +110,27 @@ doctor() {
   types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
 
   cat <<EOF
-Workspace version:    $ws_v
-CLI npm version:      $cli_v
-Runner version:       $runner_v
-NPM bridge version:   $bridge_v
-NPM elements version: $elements_v
-NPM react version:    $react_v
-NPM vue version:      $vue_v
-NPM types version:    $types_v
+Workspace version:      $ws_v
+CLI release tag:        $cli_runner_tag
+CLI current asset:      $cli_asset
+Runner release tag:     $cli_runner_tag
+Runner arches:          ${RUNNER_ALL_ARCHES[*]}
+SDK release tag:        $sdk_tag
+NPM bridge version:     $bridge_v
+NPM elements version:   $elements_v
+NPM react version:      $react_v
+NPM vue version:        $vue_v
+NPM types version:      $types_v
+GitHub release repo:    $GH_REPO
 
 Scripts:
+  main:   scripts/release/main.sh
   crates: scripts/release/crates.sh
   npm:    scripts/release/npm.sh
   cli:    scripts/release/cli.sh
   runner: scripts/release/runner.sh
   sdk:    scripts/release/sdk.sh
+  install: install.sh
 EOF
 }
 
@@ -102,35 +165,6 @@ case "$cmd" in
     ;;
   sdk)
     run_cmd "$SCRIPT_DIR/sdk.sh" "$@"
-    ;;
-  all)
-    all_publish=0
-    if [[ "${1:-}" == "--publish" ]]; then
-      all_publish=1
-      shift
-    fi
-
-    if [[ $# -gt 0 ]]; then
-      echo "Unknown option(s) for 'all': $*" >&2
-      usage
-      exit 2
-    fi
-
-    if [[ "$all_publish" -eq 1 ]]; then
-      run_cmd "$SCRIPT_DIR/crates.sh" --publish
-      run_cmd "$SCRIPT_DIR/npm.sh" --package all --publish
-      run_cmd "$SCRIPT_DIR/cli.sh" --target all --publish
-      run_cmd "$SCRIPT_DIR/runner.sh" --publish --macos-arch arm64
-      run_cmd "$SCRIPT_DIR/runner.sh" --publish --macos-arch x86_64
-      run_cmd "$SCRIPT_DIR/sdk.sh" --platform all --gh-upload
-    else
-      run_cmd "$SCRIPT_DIR/crates.sh" --dry-run --allow-dirty
-      run_cmd "$SCRIPT_DIR/npm.sh" --package all --dry-run
-      run_cmd "$SCRIPT_DIR/cli.sh" --target all
-      run_cmd "$SCRIPT_DIR/runner.sh" --macos-arch arm64
-      run_cmd "$SCRIPT_DIR/runner.sh" --macos-arch x86_64
-      run_cmd "$SCRIPT_DIR/sdk.sh" --platform all
-    fi
     ;;
   -h|--help|help)
     usage

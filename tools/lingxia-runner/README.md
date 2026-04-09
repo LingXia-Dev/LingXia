@@ -94,7 +94,7 @@ scripts/release/runner.sh --out /tmp/runner-release
 ## Notes
 
 - Runner is macOS-only.
-- `scripts/release/main.sh all --publish` publishes both Runner macOS architectures.
+- `scripts/release/runner.sh --publish` publishes both Runner macOS architectures.
 - `lingxia.config.json` is optional here. Runner is a standalone Swift Package app, and the lxapp path is supplied at runtime by `lingxia dev`.
 - `lingxia dev` is the supported way to open Runner for an lxapp. The CLI keeps the installed Runner version aligned with the CLI version.
 - No embedded home lxapp is required at build time. If there is no lxapp in the package, `lingxia build` skips that step.

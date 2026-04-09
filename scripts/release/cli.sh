@@ -2,9 +2,36 @@
 set -euo pipefail
 
 START_DIR="$(pwd)"
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MAIN_PKG="$ROOT_DIR/tools/lingxia-cli/npm/package.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
+ALL_TARGETS=(darwin-x64 darwin-arm64 linux-x64 linux-arm64)
+
+usage() {
+  cat <<'EOF'
+Build and optionally publish LingXia CLI release assets.
+
+Usage:
+  scripts/release/cli.sh [OPTIONS]
+
+Options:
+  --target <platform>  Build specific target(s): darwin-x64, darwin-arm64, linux-x64, linux-arm64, all
+  --publish            Upload built assets to the GitHub release tag
+  --tag <tag>          Release tag to upload to (default: lingxia-cli-v<version>)
+  --out <dir>          Output directory (default: dist/cli-release)
+  --skip-build         Reuse existing cargo artifacts
+  -h, --help           Show help
+
+Environment:
+  LINGXIA_RELEASE_REPO  Override target repo (default: LingXia-Dev/LingXia)
+
+Examples:
+  scripts/release/cli.sh --target darwin-arm64
+  scripts/release/cli.sh --target all
+  scripts/release/cli.sh --publish
+EOF
+}
 
 read_workspace_version() {
   awk '
@@ -17,57 +44,95 @@ read_workspace_version() {
     }' "$WORKSPACE_CARGO_TOML"
 }
 
-set_workspace_version() {
+release_tag_for_version() {
   local version="$1"
-  local tmp
-  tmp="$(mktemp)"
-  awk -v v="$version" '
-    /^\[workspace\.package\]/ {in_section=1; print; next}
-    /^\[/ {in_section=0}
-    in_section && $1 == "version" {print "version = \"" v "\""; next}
-    {print}
-  ' "$WORKSPACE_CARGO_TOML" > "$tmp"
-  mv "$tmp" "$WORKSPACE_CARGO_TOML"
+  printf 'lingxia-cli-v%s\n' "$version"
 }
 
-# Supported targets: PLATFORM_NAME -> "RUST_TARGET OS CPU BIN_EXT"
-get_target_info() {
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "ERROR: missing required command: $1" >&2
+    exit 1
+  }
+}
+
+current_cli_target() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+
+  case "$os" in
+    Darwin) os="darwin" ;;
+    Linux) os="linux" ;;
+    *)
+      echo "ERROR: unsupported CLI host OS: $os" >&2
+      return 2
+      ;;
+  esac
+
+  case "$arch" in
+    x86_64|amd64) arch="x64" ;;
+    arm64|aarch64) arch="arm64" ;;
+    *)
+      echo "ERROR: unsupported CLI host arch: $arch" >&2
+      return 2
+      ;;
+  esac
+
+  printf '%s-%s\n' "$os" "$arch"
+}
+
+cli_target_info() {
   case "$1" in
-    darwin-x64)   echo "x86_64-apple-darwin darwin x64 " ;;
-    darwin-arm64) echo "aarch64-apple-darwin darwin arm64 " ;;
+    darwin-x64)   echo "x86_64-apple-darwin lingxia-darwin-x64" ;;
+    darwin-arm64) echo "aarch64-apple-darwin lingxia-darwin-arm64" ;;
+    linux-x64)    echo "x86_64-unknown-linux-gnu lingxia-linux-x64" ;;
+    linux-arm64)  echo "aarch64-unknown-linux-gnu lingxia-linux-arm64" ;;
     *) return 1 ;;
   esac
 }
 
-ALL_TARGETS="darwin-x64 darwin-arm64"
-
-# Detect current platform
-detect_platform() {
-  local arch os
-  arch="$(uname -m)"
-  os="$(uname -s)"
-  case "$os" in
-    Darwin)
-      case "$arch" in
-        x86_64) echo "darwin-x64" ;;
-        arm64)  echo "darwin-arm64" ;;
-        *) echo ""; return 1 ;;
-      esac ;;
-    *) echo ""; return 1 ;;
-  esac
+resolve_out_dir() {
+  local default_dir="$1"
+  local out_dir="${2:-$default_dir}"
+  if [[ "$out_dir" != /* ]]; then
+    out_dir="$START_DIR/$out_dir"
+  fi
+  printf '%s\n' "$out_dir"
 }
 
-# Show help if no arguments
+ensure_github_release() {
+  local tag="$1"
+  local version="$2"
+
+  require_command gh
+  if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "==> Creating GitHub release $tag in $GH_REPO"
+  gh release create "$tag" \
+    --repo "$GH_REPO" \
+    --title "$tag" \
+    --notes "LingXia CLI release $version"
+}
+
+upload_github_release_asset() {
+  local tag="$1"
+  local asset_path="$2"
+  gh release upload "$tag" "$asset_path" --repo "$GH_REPO" --clobber
+}
+
 if [[ $# -eq 0 ]]; then
-  set -- -h
+  usage
+  exit 2
 fi
 
-# Parse arguments
 PUBLISH=0
 OUT_DIR=""
 SKIP_BUILD=0
 TARGET=""
-BUMP_VERSION=""
+TAG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -75,293 +140,90 @@ while [[ $# -gt 0 ]]; do
     --out) OUT_DIR="$2"; shift ;;
     --skip-build) SKIP_BUILD=1 ;;
     --target) TARGET="$2"; shift ;;
-    --bump) BUMP_VERSION="$2"; shift ;;
+    --tag) TAG="$2"; shift ;;
     -h|--help)
-      cat <<EOF
-Usage: scripts/release/cli.sh [OPTIONS]
-
-Options:
-  --bump <version>     Bump all version files to specified version (e.g., 0.0.8)
-                       Updates: workspace Cargo.toml, package.json, optionalDependencies, package-lock.json
-  --target <platform>  Build specific platform(s): darwin-x64, darwin-arm64, all
-  --publish            Publish platform package(s) + main @lingxia/cli (requires all platforms)
-  --out <dir>          Output directory (default: ./dist)
-  --skip-build         Skip cargo build, use existing binaries
-
-Examples:
-  scripts/release/cli.sh --bump 0.0.8                   # Bump version only
-  scripts/release/cli.sh --target darwin-x64            # Build Intel Mac
-  scripts/release/cli.sh --bump 0.0.8 --publish         # Bump + build all + publish
-  scripts/release/cli.sh --target all --publish         # Full release (all platforms)
-EOF
-      exit 0 ;;
-    *) echo "Unknown option: $1"; exit 1 ;;
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 2
+      ;;
   esac
   shift
 done
 
-# Publishing wrapper package must include all optional platform packages.
-if [[ "$PUBLISH" -eq 1 ]]; then
-  if [[ -z "$TARGET" ]]; then
-    TARGET="all"
-  elif [[ "$TARGET" != "all" ]]; then
-    echo "ERROR: --publish requires --target all (or omit --target)."
-    echo "       Wrapper @lingxia/cli depends on all platform optionalDependencies."
-    exit 1
-  fi
-fi
-
-# Handle --bump: update all version files
-if [[ -n "$BUMP_VERSION" ]]; then
-  echo "Bumping version to $BUMP_VERSION..."
-  
-  # Validate version format
-  if ! [[ "$BUMP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "ERROR: Invalid version format. Use semver (e.g., 0.0.8)"
-    exit 1
-  fi
-  
-  # 1. Update workspace version (CLI/crates/sdk share this version)
-  set_workspace_version "$BUMP_VERSION"
-  echo "  ✓ Updated workspace Cargo.toml"
-
-  # 2. Update package.json + optionalDependencies
-  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$BUMP_VERSION"
-  echo "  ✓ Updated npm/package.json"
-
-  # 3. Update package-lock.json
-  (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm install --package-lock-only --ignore-scripts 2>/dev/null)
-  echo "  ✓ Updated npm/package-lock.json"
-  
-  echo ""
-  echo "✅ Version bumped to $BUMP_VERSION"
-  echo "   Files updated:"
-  echo "   - Cargo.toml"
-  echo "   - tools/lingxia-cli/npm/package.json"
-  echo "   - tools/lingxia-cli/npm/package-lock.json"
-  
-  # If no target specified, exit after bump
-  if [[ -z "$TARGET" && "$PUBLISH" -eq 0 ]]; then
-    exit 0
-  fi
-fi
-
-# Read and validate versions
 VERSION="$(read_workspace_version)"
 if [[ -z "$VERSION" ]]; then
-  echo "ERROR: Failed to read workspace version from $WORKSPACE_CARGO_TOML"
+  echo "ERROR: failed to read workspace version from $WORKSPACE_CARGO_TOML" >&2
   exit 1
 fi
 
-npm_version="$(node -p "require('$MAIN_PKG').version" 2>/dev/null)" || {
-  echo "ERROR: Failed to read version from $MAIN_PKG"
-  exit 1
-}
-
-if [[ "$npm_version" != "$VERSION" ]]; then
-  if [[ "$PUBLISH" -eq 1 ]]; then
-    echo "ERROR: Version mismatch - workspace Cargo.toml ($VERSION) != package.json ($npm_version)"
-    exit 1
-  fi
-  echo "Syncing npm package version: $npm_version -> $VERSION"
-  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$VERSION"
-fi
-
-# Sync package-lock.json version
-lock_version="$(node -p "require('$ROOT_DIR/tools/lingxia-cli/npm/package-lock.json').version" 2>/dev/null || echo "")"
-if [[ -n "$lock_version" && "$lock_version" != "$VERSION" ]]; then
-  echo "Syncing package-lock.json version: $lock_version -> $VERSION"
-  (cd "$ROOT_DIR/tools/lingxia-cli/npm" && npm install --package-lock-only --ignore-scripts)
-fi
-
-# Validate optionalDependencies versions
-bad_deps="$(node -e "
-  const pkg = require('$MAIN_PKG');
-  const bad = Object.entries(pkg.optionalDependencies || {})
-    .filter(([k, v]) => k.startsWith('@lingxia/cli-') && v !== pkg.version);
-  if (bad.length) console.log(bad.map(([k,v]) => k + '@' + v).join(', '));
-")"
-if [[ -n "$bad_deps" ]]; then
-  if [[ "$PUBLISH" -eq 1 ]]; then
-    echo "ERROR: optionalDependencies version mismatch: $bad_deps"
-    echo "Expected version: $VERSION"
-    exit 1
-  fi
-  echo "Syncing optionalDependencies to $VERSION"
-  node "$ROOT_DIR/tools/lingxia-cli/npm/scripts/set-version.cjs" "$VERSION"
-fi
-
-# Setup output directory
-OUT_DIR="${OUT_DIR:-$START_DIR/dist}"
-[[ "$OUT_DIR" != /* ]] && OUT_DIR="$START_DIR/$OUT_DIR"
+TAG="${TAG:-$(release_tag_for_version "$VERSION")}"
+OUT_DIR="$(resolve_out_dir "$START_DIR/dist/cli-release" "$OUT_DIR")"
 mkdir -p "$OUT_DIR"
 
-publish_with_retry() {
-  local package_name="$1"
-  local package_version="$2"
-  local package_dir="$3"
-  local max_attempts="${4:-4}"
-  local sleep_secs=3
-  local attempt
-
-  for attempt in $(seq 1 "$max_attempts"); do
-    if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
-      echo "✓ ${package_name}@${package_version} already published"
-      return 0
-    fi
-
-    echo "Publishing ${package_name}@${package_version} (attempt ${attempt}/${max_attempts})..."
-    if (cd "$package_dir" && npm publish --access public --registry=https://registry.npmjs.org); then
-      echo "✓ Published ${package_name}@${package_version}"
-      return 0
-    fi
-
-    if [[ "$attempt" -lt "$max_attempts" ]]; then
-      echo "Publish failed, retrying in ${sleep_secs}s..."
-      sleep "$sleep_secs"
-      sleep_secs=$((sleep_secs * 2))
-    fi
-  done
-
-  if npm view "${package_name}@${package_version}" version >/dev/null 2>&1; then
-    echo "✓ ${package_name}@${package_version} is available after retries"
-    return 0
+if [[ -z "$TARGET" ]]; then
+  if [[ "$PUBLISH" -eq 1 && "$SKIP_BUILD" -eq 0 ]]; then
+    TARGET="all"
+  else
+    TARGET="$(current_cli_target)" || exit $?
   fi
+fi
 
-  echo "ERROR: Failed to publish ${package_name}@${package_version} after ${max_attempts} attempts."
-  return 1
-}
+if [[ "$TARGET" == "all" ]]; then
+  TARGETS=("${ALL_TARGETS[@]}")
+else
+  cli_target_info "$TARGET" >/dev/null || {
+    echo "ERROR: unsupported --target '$TARGET'" >&2
+    exit 2
+  }
+  TARGETS=("$TARGET")
+fi
 
-# Build and optionally publish a single target
-build_target() {
-  local platform="$1"
-  local info rust_target os cpu ext
-  info="$(get_target_info "$platform")" || { echo "Unknown target: $platform"; return 1; }
-  read -r rust_target os cpu ext <<< "$info"
+if [[ "$PUBLISH" -eq 1 ]]; then
+  ensure_github_release "$TAG" "$VERSION"
+fi
+
+BUILT_ASSETS=()
+
+for platform in "${TARGETS[@]}"; do
+  read -r rust_target asset_name <<< "$(cli_target_info "$platform")"
 
   echo ""
   echo "========================================"
-  echo "[$platform] Building v$VERSION"
+  echo "[cli:$platform] Building v$VERSION"
   echo "========================================"
 
   if [[ "$SKIP_BUILD" -eq 0 ]]; then
     (cd "$ROOT_DIR" && cargo build -p lingxia-cli --release --target "$rust_target")
   fi
 
-  local bin_src="$ROOT_DIR/target/$rust_target/release/lingxia$ext"
-  [[ -f "$bin_src" ]] || { echo "ERROR: Binary not found: $bin_src"; return 1; }
-
-  local pkg_dir="$OUT_DIR/$platform"
-  mkdir -p "$pkg_dir/bin"
-  cp "$bin_src" "$pkg_dir/bin/lingxia$ext"
-  chmod +x "$pkg_dir/bin/lingxia$ext"
-
-  cat > "$pkg_dir/package.json" <<EOF
-{
-  "name": "@lingxia/cli-$platform",
-  "version": "$VERSION",
-  "os": ["$os"],
-  "cpu": ["$cpu"],
-  "files": ["bin/lingxia$ext"],
-  "license": "MIT"
-}
-EOF
-
-  echo "✓ Package ready: $pkg_dir"
-
-  if [[ "$PUBLISH" -eq 1 ]]; then
-    if npm view "@lingxia/cli-$platform@$VERSION" version &>/dev/null; then
-      echo "⚠ @lingxia/cli-$platform@$VERSION already published, skipping"
-    else
-      publish_with_retry "@lingxia/cli-$platform" "$VERSION" "$pkg_dir"
-    fi
-  fi
-}
-
-# Determine which targets to build
-if [[ -z "$TARGET" ]]; then
-  # No target specified, nothing to build (--bump only mode is ok)
-  if [[ -z "$BUMP_VERSION" ]]; then
-    echo "ERROR: No action specified. Use --bump, --target, or --help"
+  bin_src="$ROOT_DIR/target/$rust_target/release/lingxia"
+  asset_out="$OUT_DIR/$asset_name"
+  [[ -f "$bin_src" ]] || {
+    echo "ERROR: CLI binary not found: $bin_src" >&2
     exit 1
-  fi
-  targets=()
-elif [[ "$TARGET" == "all" ]]; then
-  targets=($ALL_TARGETS)
-else
-  get_target_info "$TARGET" >/dev/null || { echo "Unknown target: $TARGET"; exit 1; }
-  targets=("$TARGET")
-fi
+  }
 
-# Build all targets
-for t in "${targets[@]}"; do
-  build_target "$t"
+  cp "$bin_src" "$asset_out"
+  chmod +x "$asset_out"
+  BUILT_ASSETS+=("$asset_out")
+  echo "✅ CLI asset -> $asset_out"
 done
 
-wait_for_package() {
-  local package_name="$1"
-  local version="$2"
-  local max_attempts="${3:-12}"
-  local sleep_secs="${4:-5}"
-  local attempt
-
-  for attempt in $(seq 1 "$max_attempts"); do
-    if npm view "${package_name}@${version}" version >/dev/null 2>&1; then
-      return 0
-    fi
-    echo "Waiting for npm package ${package_name}@${version} (attempt ${attempt}/${max_attempts})..."
-    sleep "$sleep_secs"
-  done
-  return 1
-}
-
-ensure_optional_deps_available() {
-  local missing=0
-  local deps
-  deps="$(node -e "
-    const pkg = require('$MAIN_PKG');
-    const entries = Object.entries(pkg.optionalDependencies || {});
-    for (const [name, version] of entries) {
-      if (name.startsWith('@lingxia/cli-')) console.log(name + ' ' + version);
-    }
-  ")"
-
-  if [[ -z "$deps" ]]; then
-    echo "ERROR: No @lingxia/cli-* optionalDependencies found in $MAIN_PKG"
-    return 1
-  fi
-
-  while read -r dep_name dep_version; do
-    [[ -z "$dep_name" ]] && continue
-    if wait_for_package "$dep_name" "$dep_version"; then
-      echo "✓ Found ${dep_name}@${dep_version}"
-    else
-      echo "ERROR: Missing ${dep_name}@${dep_version} on npm."
-      missing=1
-    fi
-  done <<< "$deps"
-
-  if [[ "$missing" -ne 0 ]]; then
-    echo "Refusing to publish @lingxia/cli@$VERSION because required platform packages are not available."
-    return 1
-  fi
-}
-
-# Publish main package
 if [[ "$PUBLISH" -eq 1 ]]; then
-  ensure_optional_deps_available
-
-  echo ""
-  echo "========================================"
-  echo "Publishing @lingxia/cli@$VERSION"
-  echo "========================================"
-  if npm view "@lingxia/cli@$VERSION" version &>/dev/null; then
-    echo "⚠ @lingxia/cli@$VERSION already published, skipping"
-  else
-    publish_with_retry "@lingxia/cli" "$VERSION" "$ROOT_DIR/tools/lingxia-cli/npm"
-  fi
+  for asset_path in "${BUILT_ASSETS[@]}"; do
+    upload_github_release_asset "$TAG" "$asset_path"
+    echo "✅ Uploaded CLI asset $(basename "$asset_path") to $TAG"
+  done
 fi
 
 echo ""
-echo "✅ Done! Built: ${targets[*]}"
-echo "   Output: $OUT_DIR"
+echo "✅ CLI release flow complete"
+echo "   Targets: ${TARGETS[*]}"
+echo "   Output:  $OUT_DIR"
+if [[ "$PUBLISH" -eq 1 ]]; then
+  echo "   Release: $TAG ($GH_REPO)"
+fi
