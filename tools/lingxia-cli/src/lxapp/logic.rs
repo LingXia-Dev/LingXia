@@ -13,7 +13,7 @@ use oxc_resolver::{ModuleType, ResolveOptions, Resolver};
 use oxc_semantic::SemanticBuilder;
 use oxc_span::{GetSpan, SourceType};
 use oxc_transformer::{TransformOptions, Transformer};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -109,6 +109,13 @@ struct ImportRecord {
 }
 
 #[derive(Debug, Clone)]
+struct ExportDependencyRecord {
+    statement_span: oxc_span::Span,
+    resolved_local: Option<PathBuf>,
+    export_all: bool,
+}
+
+#[derive(Debug, Clone)]
 struct ModuleArtifact {
     rendered: String,
 }
@@ -172,12 +179,23 @@ impl<'a> LogicBundler<'a> {
         let program = parse_result.program;
 
         let imports = collect_imports(&program, &source, &path, self.project.root.as_path())?;
+        let export_dependencies =
+            collect_export_dependencies(&program, &path, self.project.root.as_path())?;
         let mut dependency_vars = BTreeMap::new();
+        let mut dependency_paths = BTreeSet::new();
         for import in &imports {
             if let Some(local_path) = &import.resolved_local {
-                let module_var = self.compile_module(local_path.clone(), ModuleRole::Plain)?;
-                dependency_vars.insert(local_path.clone(), module_var);
+                dependency_paths.insert(local_path.clone());
             }
+        }
+        for export in &export_dependencies {
+            if let Some(local_path) = &export.resolved_local {
+                dependency_paths.insert(local_path.clone());
+            }
+        }
+        for local_path in dependency_paths {
+            let module_var = self.compile_module(local_path.clone(), ModuleRole::Plain)?;
+            dependency_vars.insert(local_path, module_var);
         }
 
         let rewritten = rewrite_module_source(
@@ -187,6 +205,7 @@ impl<'a> LogicBundler<'a> {
             &path,
             &role,
             &imports,
+            &export_dependencies,
             &dependency_vars,
         )?;
         let transpiled = transpile_module(&path, &rewritten)?;
@@ -317,6 +336,56 @@ fn collect_imports(
     Ok(imports)
 }
 
+fn collect_export_dependencies(
+    program: &oxc_ast::ast::Program<'_>,
+    module_path: &Path,
+    project_root: &Path,
+) -> Result<Vec<ExportDependencyRecord>> {
+    let mut exports = Vec::new();
+    for statement in &program.body {
+        match statement {
+            Statement::ExportNamedDeclaration(export_decl) => {
+                let has_runtime_specifiers = export_decl.export_kind != ImportOrExportKind::Type
+                    && export_decl
+                        .specifiers
+                        .iter()
+                        .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
+                let resolved_local = export_decl
+                    .source
+                    .as_ref()
+                    .filter(|_| has_runtime_specifiers)
+                    .map(|source| {
+                        resolve_import_specifier(module_path, source.value.as_str(), project_root)
+                    })
+                    .transpose()?;
+                exports.push(ExportDependencyRecord {
+                    statement_span: export_decl.span,
+                    resolved_local,
+                    export_all: false,
+                });
+            }
+            Statement::ExportAllDeclaration(export_decl) => {
+                let resolved_local = if export_decl.export_kind == ImportOrExportKind::Type {
+                    None
+                } else {
+                    Some(resolve_import_specifier(
+                        module_path,
+                        export_decl.source.value.as_str(),
+                        project_root,
+                    )?)
+                };
+                exports.push(ExportDependencyRecord {
+                    statement_span: export_decl.span,
+                    resolved_local,
+                    export_all: export_decl.exported.is_none(),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(exports)
+}
+
 fn rewrite_module_source(
     project: &Project,
     program: &oxc_ast::ast::Program<'_>,
@@ -324,11 +393,13 @@ fn rewrite_module_source(
     module_path: &Path,
     role: &ModuleRole,
     imports: &[ImportRecord],
+    export_dependencies: &[ExportDependencyRecord],
     dependency_vars: &BTreeMap<PathBuf, String>,
 ) -> Result<String> {
     let mut output = String::new();
     let mut cursor = 0usize;
     let mut exports = Vec::<(String, String)>::new();
+    let mut star_exports = Vec::<String>::new();
 
     for statement in &program.body {
         let span = statement.span();
@@ -346,17 +417,48 @@ fn rewrite_module_source(
             }
             Statement::ExportNamedDeclaration(export_decl) => {
                 if export_decl.source.is_some() {
-                    bail!(
-                        "Re-export syntax is not supported in Rust logic builder: {}",
-                        module_path.display()
-                    );
-                }
-
-                if let Some(declaration) = &export_decl.declaration {
+                    if export_decl.export_kind != ImportOrExportKind::Type {
+                        let export = export_dependencies
+                            .iter()
+                            .find(|record| record.statement_span == export_decl.span)
+                            .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?;
+                        if let Some(local_path) = &export.resolved_local {
+                            let module_var = dependency_vars.get(local_path).ok_or_else(|| {
+                                anyhow!("Missing dependency module for {}", local_path.display())
+                            })?;
+                            for specifier in &export_decl.specifiers {
+                                if specifier.export_kind == ImportOrExportKind::Type {
+                                    continue;
+                                }
+                                let exported =
+                                    module_export_name(&specifier.exported).ok_or_else(|| {
+                                        anyhow!(
+                                            "Unsupported exported name in {}",
+                                            module_path.display()
+                                        )
+                                    })?;
+                                let local =
+                                    module_export_name(&specifier.local).ok_or_else(|| {
+                                        anyhow!(
+                                            "Unsupported local export name in {}",
+                                            module_path.display()
+                                        )
+                                    })?;
+                                exports.push((
+                                    exported,
+                                    module_export_access_expr(module_var, &local),
+                                ));
+                            }
+                        }
+                    }
+                } else if let Some(declaration) = &export_decl.declaration {
                     output.push_str(slice(source, declaration.span())?);
                     collect_exports_from_declaration(declaration, &mut exports)?;
                 } else {
                     for specifier in &export_decl.specifiers {
+                        if specifier.export_kind == ImportOrExportKind::Type {
+                            continue;
+                        }
                         exports.push((
                             module_export_name(&specifier.exported).ok_or_else(|| {
                                 anyhow!("Unsupported exported name in {}", module_path.display())
@@ -368,6 +470,32 @@ fn rewrite_module_source(
                                 )
                             })?,
                         ));
+                    }
+                }
+            }
+            Statement::ExportAllDeclaration(export_all) => {
+                if export_all.export_kind != ImportOrExportKind::Type {
+                    let export = export_dependencies
+                        .iter()
+                        .find(|record| record.statement_span == export_all.span)
+                        .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?;
+                    if let Some(local_path) = &export.resolved_local {
+                        let module_var = dependency_vars.get(local_path).ok_or_else(|| {
+                            anyhow!("Missing dependency module for {}", local_path.display())
+                        })?;
+                        if export.export_all {
+                            star_exports.push(module_var.clone());
+                        } else if let Some(exported) = &export_all.exported {
+                            exports.push((
+                                module_export_name(exported).ok_or_else(|| {
+                                    anyhow!(
+                                        "Unsupported exported name in {}",
+                                        module_path.display()
+                                    )
+                                })?,
+                                module_var.clone(),
+                            ));
+                        }
                     }
                 }
             }
@@ -395,15 +523,17 @@ fn rewrite_module_source(
     }
 
     output.push_str(&source[cursor..]);
-    output.push_str("\nconst __lx_module_exports = {");
-    if !exports.is_empty() {
-        output.push('\n');
-        for (index, (exported, local)) in exports.iter().enumerate() {
-            let comma = if index + 1 == exports.len() { "" } else { "," };
-            output.push_str(&format!("  \"{exported}\": {local}{comma}\n"));
-        }
+    output.push_str(
+        "\nconst __lx_module_exports = {};\nconst __lx_star_export_names = new Set();\nconst __lx_ambiguous_star_exports = new Set();\n",
+    );
+    for module_var in &star_exports {
+        output.push_str(&format!(
+            "for (const __lx_export_name of Object.keys({module_var})) {{\n  if (__lx_export_name === \"default\") continue;\n  if (__lx_ambiguous_star_exports.has(__lx_export_name)) continue;\n  if (__lx_star_export_names.has(__lx_export_name)) {{\n    __lx_ambiguous_star_exports.add(__lx_export_name);\n    delete __lx_module_exports[__lx_export_name];\n    continue;\n  }}\n  __lx_star_export_names.add(__lx_export_name);\n  __lx_module_exports[__lx_export_name] = {module_var}[__lx_export_name];\n}}\n"
+        ));
     }
-    output.push_str("};\n");
+    for (exported, local) in &exports {
+        output.push_str(&format!("__lx_module_exports[\"{exported}\"] = {local};\n"));
+    }
     Ok(output)
 }
 
@@ -452,6 +582,10 @@ fn render_import_stub(
     }
 
     Ok(lines.join("\n"))
+}
+
+fn module_export_access_expr(module_var: &str, export_name: &str) -> String {
+    format!("{module_var}[{}]", json_string_literal(export_name))
 }
 
 fn rewrite_export_default(
@@ -852,6 +986,18 @@ Use an ESM package or ESM entrypoint for logic-layer imports.",
     normalize_path(resolution.path())
 }
 
+fn resolve_import_specifier(
+    from_module: &Path,
+    specifier: &str,
+    project_root: &Path,
+) -> Result<PathBuf> {
+    if is_local_specifier(specifier) {
+        resolve_local_import(from_module, specifier, project_root)
+    } else {
+        resolve_bare_import(from_module, specifier, project_root)
+    }
+}
+
 fn candidate_candidates(base: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if base.extension().is_some() {
@@ -920,6 +1066,8 @@ fn format_diagnostics<T: std::fmt::Debug>(diagnostics: &[T]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lxapp::framework::ProjectFramework;
+    use crate::lxapp::project::Project;
     use std::fs;
     use tempfile::TempDir;
 
@@ -936,6 +1084,25 @@ mod tests {
             format_diagnostics(&parse_result.errors)
         );
         parse_result.program
+    }
+
+    fn build_test_bundle(root: &Path, entry: &str) -> String {
+        let project = Project {
+            root: root.to_path_buf(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::Html,
+            output_dir: root.join("dist"),
+            pages: Vec::new(),
+            logic_entry: Some("logic.js".to_string()),
+            plugin_id: None,
+            package_name: Some("@test/app".to_string()),
+            version: "1.0.0".to_string(),
+        };
+        let mut bundler = LogicBundler::new(&project);
+        bundler
+            .add_entry(root.join(entry), ModuleRole::App)
+            .unwrap();
+        bundler.render_bundle(false).unwrap()
     }
 
     #[test]
@@ -983,6 +1150,82 @@ mod tests {
         assert_eq!(
             resolved,
             normalize_path(&temp.path().join("node_modules/demo-pkg/dist/index.mjs")).unwrap()
+        );
+    }
+
+    #[test]
+    fn supports_named_reexports_from_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("dep.ts"),
+            "export const alpha = 1;\nexport default 2;\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "export { alpha as beta, default as gamma } from './dep';\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            bundle.contains("__lx_module_exports[\"beta\"] = __lx_mod_0[\"alpha\"];"),
+            "{bundle}"
+        );
+        assert!(
+            bundle.contains("__lx_module_exports[\"gamma\"] = __lx_mod_0[\"default\"];"),
+            "{bundle}"
+        );
+    }
+
+    #[test]
+    fn supports_export_all_reexports_from_dependencies() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("dep.ts"),
+            "export const alpha = 1;\nexport default 2;\n",
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "export * from './dep';\nexport const beta = 3;\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            bundle.contains("for (const __lx_export_name of Object.keys(__lx_mod_0)) {"),
+            "{bundle}"
+        );
+        assert!(
+            bundle.contains("if (__lx_export_name === \"default\") continue;"),
+            "{bundle}"
+        );
+        assert!(
+            bundle.contains("__lx_module_exports[\"beta\"] = beta;"),
+            "{bundle}"
+        );
+    }
+
+    #[test]
+    fn export_all_conflicts_do_not_silently_override_previous_exports() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("dep-a.ts"), "export const alpha = 1;\n").unwrap();
+        fs::write(temp.path().join("dep-b.ts"), "export const alpha = 2;\n").unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "export * from './dep-a';\nexport * from './dep-b';\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            bundle.contains("__lx_ambiguous_star_exports.add(__lx_export_name);"),
+            "{bundle}"
+        );
+        assert!(
+            bundle.contains("delete __lx_module_exports[__lx_export_name];"),
+            "{bundle}"
         );
     }
 }

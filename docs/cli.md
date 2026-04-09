@@ -425,7 +425,7 @@ This reference focuses on commands and flags. File schemas live in the dedicated
 |---|---|---|
 | `lingxia.config.json` | Host app metadata, platform config, runtime-facing build inputs | [App Project](./app-project.md) |
 | `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](./lxapp-guide.md) |
-| `lxapp.config.ts` | LxApp build config such as aliases and source directories | [LxApp Development Guide](./lxapp-guide.md) |
+| `lxapp.config.ts` | LxApp build config such as aliases, view tooling, and `staticDirs` | [LxApp Development Guide](./lxapp-guide.md) |
 
 Quick reminders:
 

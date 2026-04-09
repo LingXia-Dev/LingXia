@@ -1,5 +1,3 @@
 export default {
-  staticDirs: ['public'],
-  sourceDirs: ['view'],
-  assetDir: 'assets'
+  staticDirs: ['public', 'view']
 };

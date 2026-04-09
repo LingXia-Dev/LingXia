@@ -1,4 +1,7 @@
-mod vite;
+mod vite_assets;
+mod vite_html;
+mod vite_pipeline;
+mod vite_tooling;
 
 use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};
 use crate::lxapp::options::BuildOptions;
@@ -79,8 +82,16 @@ pub fn build(
     project: &Project,
     options: &BuildOptions,
     progress: Option<ViewProgress>,
+    install_duration_hint: Option<Duration>,
 ) -> Result<ViewBuildReport> {
-    vite::build(project, options, progress)
+    vite_pipeline::build(project, options, progress, install_duration_hint)
+}
+
+pub fn prepare_tooling(
+    project: &Project,
+    progress: Option<ViewProgress>,
+) -> Result<Option<Duration>> {
+    vite_pipeline::prepare_tooling(project, progress)
 }
 
 pub(crate) fn page_logic_path(project: &Project, page_path: &str) -> Result<Option<PathBuf>> {

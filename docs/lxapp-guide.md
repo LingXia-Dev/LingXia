@@ -37,10 +37,28 @@ my-lxapp/
 Key files:
 
 - `lxapp.json`: Runtime metadata (`appId`, `appName` or `name`, `version`, `pages`).
-- `lxapp.config.ts`: Build config for path aliases, source dirs, and related build behavior.
+- `lxapp.config.ts`: Build config for view tooling, aliases, and static asset directories.
 - `pages/<name>/index.tsx` (or `.vue`): View layer — UI rendering in WebView.
 - `pages/<name>/index.ts`: Logic layer — page lifecycle and business operations.
 - `pages/<name>/index.json`: Page-level config (navigation/title/style and related options).
+
+### Static assets
+
+Use `staticDirs` in `lxapp.config.ts` to declare root-level directories that should be copied into `dist/` as-is for `html`, `react`, and `vue`.
+
+```ts
+export default {
+  staticDirs: ['public', 'view', 'assets'],
+};
+```
+
+Rules:
+
+- `public/` is the default static directory. If the project root contains `public/`, it is copied to `dist/public/` even if `staticDirs` is omitted.
+- Additional directories must be declared explicitly in `staticDirs`.
+- Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
+- Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
+- LingXia does not scan HTML, manifest files, or arbitrary source strings to discover static assets.
 
 ### Build
 
@@ -145,7 +163,7 @@ The View file is a standard React or Vue component. `useLxPage()` connects it to
 
 ```tsx
 // pages/home/index.tsx
-import { useLxPage } from '@lingxia/react';
+import { useLxPage } from '@lingxia/page-runtime/react';
 
 type PageData = {
   count?: number;
@@ -189,7 +207,7 @@ export default function HomePage() {
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLxPage } from '@lingxia/vue';
+import { useLxPage } from '@lingxia/page-runtime/vue';
 
 type PageData = {
   count?: number;
@@ -263,7 +281,7 @@ Use `@lingxia/elements` for native-backed components. Event handlers use standar
 **React:**
 
 ```tsx
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/react';
+import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/page-runtime/react';
 
 const { actions } = useLxPage();
 const { onInputChange, onPickerConfirm, onPlaying } = actions;
@@ -285,7 +303,7 @@ const { onInputChange, onPickerConfirm, onPlaying } = actions;
 
 ```vue
 <script setup lang="ts">
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/vue';
+import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/page-runtime/vue';
 
 const { actions } = useLxPage();
 const { onInputChange, onPickerConfirm, onPlaying } = actions;
@@ -363,7 +381,7 @@ Page({
 **View** (`pages/input/index.tsx`):
 
 ```tsx
-import { useLxPage, LxInput } from '@lingxia/react';
+import { useLxPage, LxInput } from '@lingxia/page-runtime/react';
 
 type PageData = { syncValue?: string };
 type PageActions = {

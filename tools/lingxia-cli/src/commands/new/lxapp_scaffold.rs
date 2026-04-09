@@ -388,8 +388,14 @@ mod tests {
             s.contains("@lingxia/page-runtime"),
             "must reference @lingxia/page-runtime"
         );
-        assert!(!s.contains("@lingxia/react"), "must not reference @lingxia/react");
-        assert!(!s.contains("@lingxia/vue"), "must not reference @lingxia/vue");
+        assert!(
+            !s.contains("@lingxia/react"),
+            "must not reference @lingxia/react"
+        );
+        assert!(
+            !s.contains("@lingxia/vue"),
+            "must not reference @lingxia/vue"
+        );
         assert!(s.contains("\"vite\""), "must include vite");
         assert!(s.contains("\"esbuild\""), "must include esbuild");
         assert!(
@@ -446,8 +452,14 @@ mod tests {
             s.contains("@lingxia/page-runtime"),
             "must reference @lingxia/page-runtime"
         );
-        assert!(!s.contains("@lingxia/react"), "must not reference @lingxia/react");
-        assert!(!s.contains("@lingxia/vue"), "must not reference @lingxia/vue");
+        assert!(
+            !s.contains("@lingxia/react"),
+            "must not reference @lingxia/react"
+        );
+        assert!(
+            !s.contains("@lingxia/vue"),
+            "must not reference @lingxia/vue"
+        );
         assert!(s.contains("\"vite\""), "must include vite");
         assert!(s.contains("\"esbuild\""), "must include esbuild");
         assert!(

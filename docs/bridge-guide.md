@@ -64,7 +64,7 @@ Rules:
 
 ```tsx
 // pages/counter/index.tsx
-import { useLxPage } from '@lingxia/react';
+import { useLxPage } from '@lingxia/page-runtime/react';
 
 type PageData = { count: number; label: string };
 
@@ -218,7 +218,7 @@ The runtime distinguishes the two forms automatically. You declare which methods
 
 ```tsx
 import { useState } from 'react';
-import { useLxPage, useLxStream } from '@lingxia/react';
+import { useLxPage, useLxStream } from '@lingxia/page-runtime/react';
 import type { LxStream } from '@lingxia/bridge';
 
 type StreamState = { text: string; chart?: ChartData };
@@ -386,7 +386,7 @@ interface ChannelHandle<TSend = unknown, TReceive = unknown> {
 
 ```tsx
 import { useEffect } from 'react';
-import { useLxPage, useLxChannel } from '@lingxia/react';
+import { useLxPage, useLxChannel } from '@lingxia/page-runtime/react';
 import type { LxChannel } from '@lingxia/bridge';
 
 export default function EditorPage() {

@@ -59,6 +59,7 @@ const viewConfig = projectConfig.view ?? {};
 const css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;
 
 const workspaceAliases = [
+  [/^@lingxia\/page-runtime\/html$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/html/index.ts')],
   [/^@lingxia\/page-runtime\/react$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/react/index.ts')],
   [/^@lingxia\/page-runtime\/vue$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/vue/index.ts')],
   [/^@lingxia\/page-runtime$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/index.ts')],

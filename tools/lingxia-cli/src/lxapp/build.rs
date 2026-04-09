@@ -49,6 +49,7 @@ pub fn run(args: &[String], cwd: &Path) -> Result<()> {
 
     let reporter = Reporter::new(options.progress);
     reporter.start_parallel_tasks();
+    let install_duration_hint = view::prepare_tooling(&project, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();
     let view_progress = reporter.view_progress();
     let logic_project = project.clone();
@@ -63,7 +64,12 @@ pub fn run(args: &[String], cwd: &Path) -> Result<()> {
     });
     let view_handle = std::thread::spawn(move || {
         let started = Instant::now();
-        let report = view::build(&view_project, &view_options, view_progress)?;
+        let report = view::build(
+            &view_project,
+            &view_options,
+            view_progress,
+            install_duration_hint,
+        )?;
         Ok::<_, anyhow::Error>((report, started.elapsed()))
     });
 
