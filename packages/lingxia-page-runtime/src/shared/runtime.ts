@@ -1,40 +1,14 @@
-import type {
-  DataSubscriber,
-  LxBridgeError,
-  LxChannel,
-  LxStream,
-  StateInfo,
-} from "@lingxia/bridge";
+import { bootWhenReady, type DataSubscriber, type StateInfo } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: unknown[]) => unknown>;
 export type Snapshot = Record<string, unknown>;
 export type Listener = () => void;
-export type ParamsSource<T> = T | (() => T);
 type BridgeMode = "notify" | "call" | "stream";
 type PageBridgeMetadata = {
   __names: string[];
   __modes?: Record<string, BridgeMode>;
   [key: string]: unknown;
 };
-export type MethodParams<TMethod> = TMethod extends () => any
-  ? undefined
-  : TMethod extends (params: infer P) => any
-    ? P
-    : never;
-export type StreamData<TMethod> =
-  TMethod extends (...args: any[]) => LxStream<infer TData, any> ? TData : never;
-export type StreamResult<TMethod> =
-  TMethod extends (...args: any[]) => LxStream<any, infer TResult>
-    ? TResult
-    : never;
-export type ChannelIn<TMethod> =
-  TMethod extends (...args: any[]) => Promise<LxChannel<infer TIn, any>>
-    ? TIn
-    : never;
-export type ChannelOut<TMethod> =
-  TMethod extends (...args: any[]) => Promise<LxChannel<any, infer TOut>>
-    ? TOut
-    : never;
 
 let snapshot: Snapshot = {};
 let stateInfo: StateInfo = { rev: -1, initial: true };
@@ -42,48 +16,8 @@ let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let initialSnapshotResolved = false;
 let snapshotRequestInFlight = false;
+let bridgeBootstrapped = false;
 const listeners = new Set<Listener>();
-
-export function toBridgeError(err: unknown): LxBridgeError {
-  return err && typeof err === "object" && "code" in err
-    ? (err as LxBridgeError)
-    : {
-        code: "BRIDGE_INTERNAL_ERROR",
-        message: err instanceof Error ? err.message : String(err),
-      };
-}
-
-export function resolveParams<T>(source?: ParamsSource<T>): T | undefined {
-  if (typeof source === "function") {
-    return (source as () => T)();
-  }
-  return source;
-}
-
-export function stableParamKey(value: unknown): string {
-  if (value === undefined) return "undefined";
-  try {
-    return JSON.stringify(value) ?? "undefined";
-  } catch {
-    return String(value);
-  }
-}
-
-export function invokeMethod<TMethod extends (...args: any[]) => any>(
-  method: TMethod,
-  params: unknown,
-): ReturnType<TMethod> {
-  if (params === undefined) {
-    return method() as ReturnType<TMethod>;
-  }
-  return method(params) as ReturnType<TMethod>;
-}
-
-export function getMethodKey(method: unknown): string | undefined {
-  if (typeof method !== "function") return undefined;
-  const candidate = (method as { __funcName?: unknown }).__funcName;
-  return typeof candidate === "string" && candidate !== "" ? candidate : undefined;
-}
 
 function notifyListeners(): void {
   listeners.forEach((listener) => {
@@ -126,7 +60,15 @@ function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): vo
     });
 }
 
+function ensureBridgeBootstrapped(): void {
+  if (bridgeBootstrapped) return;
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  bridgeBootstrapped = true;
+  bootWhenReady();
+}
+
 export function ensurePageBridgeSubscription(): void {
+  ensureBridgeBootstrapped();
   if (subscribed) return;
   const bridge = window.LingXiaBridge;
   const subscribeState = bridge?.state?.subscribe;
@@ -165,11 +107,13 @@ export function subscribePageData(
 }
 
 export function getPageSnapshot<TData = Snapshot>(): TData {
+  ensureBridgeBootstrapped();
   ensurePageBridgeSubscription();
   return snapshot as TData;
 }
 
 export function getPageActions<TActions extends ActionMap>(): TActions {
+  ensureBridgeBootstrapped();
   const actions: ActionMap = {};
   const bridge = window.__pageBridge as PageBridgeMetadata | undefined;
   if (!bridge?.__names) {

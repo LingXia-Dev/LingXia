@@ -6,4 +6,4 @@ export {
   subscribePageSnapshot as subscribeSnapshot,
   type ActionMap,
   type Snapshot,
-} from "../shared/runtime.js";
+} from "@lingxia/page-runtime";

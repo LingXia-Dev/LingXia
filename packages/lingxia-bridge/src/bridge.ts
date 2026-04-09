@@ -17,6 +17,7 @@ import type {
   StreamCallOptions,
 } from "./types";
 import { BRIDGE_ERROR } from "./types";
+import { toBridgeError } from "./invocation";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
   BRIDGE_CONFIG,
@@ -112,38 +113,6 @@ function deepCopy<T>(data: T): T {
   } catch {
     return {} as T;
   }
-}
-
-class BridgeError extends Error implements LxBridgeError {
-  code: string | number;
-  data?: unknown;
-
-  constructor(code: string | number, message: string, data?: unknown) {
-    super(message);
-    this.name = "BridgeError";
-    this.code = code;
-    this.data = data;
-  }
-}
-
-function toBridgeError(err: unknown): BridgeError {
-  if (err instanceof BridgeError) return err;
-  if (err && typeof err === "object") {
-    const source = err as { code?: unknown; message?: unknown; data?: unknown };
-    let code: string | number = BRIDGE_ERROR.INTERNAL_ERROR;
-    if (typeof source.code === "string" && source.code.trim() !== "") {
-      code = source.code;
-    } else if (typeof source.code === "number" && Number.isFinite(source.code)) {
-      code = source.code;
-    }
-    const message =
-      typeof source.message === "string" && source.message.trim() !== ""
-        ? source.message
-        : "Unknown error";
-    return new BridgeError(code, message, "data" in source ? source.data : undefined);
-  }
-  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "Unknown error";
-  return new BridgeError(BRIDGE_ERROR.INTERNAL_ERROR, message);
 }
 
 const communicationMethod = getCommunicationMethod();
@@ -917,10 +886,10 @@ function armRequestTimer(reqId: string): void {
   if (info.timerId !== null) clearTimeout(info.timerId);
   info.timerId = setTimeout(() => {
     if (!pendingReq.has(reqId)) return;
-    rejectPendingRequest(reqId, new BridgeError(
-      BRIDGE_ERROR.TIMEOUT,
-      `'${info.method}' timed out`,
-    ));
+    rejectPendingRequest(reqId, {
+      code: BRIDGE_ERROR.TIMEOUT,
+      message: `'${info.method}' timed out`,
+    });
   }, info.timeoutMs);
 }
 
@@ -1492,12 +1461,10 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   ): Promise<LxMethodResult<M> | unknown> {
     return new Promise((resolve, reject) => {
       if (!method || typeof method !== "string") {
-        reject(
-          new BridgeError(
-            BRIDGE_ERROR.MALFORMED_MESSAGE,
-            "Method name must be a non-empty string",
-          ),
-        );
+        reject({
+          code: BRIDGE_ERROR.MALFORMED_MESSAGE,
+          message: "Method name must be a non-empty string",
+        });
         return;
       }
       if (!helloSent) startHandshake();
@@ -1612,10 +1579,10 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     ): Promise<LxChannel<TIn, TOut>> {
       if (!topic || typeof topic !== "string") {
         return Promise.reject(
-          new BridgeError(
-            BRIDGE_ERROR.MALFORMED_MESSAGE,
-            "Topic name must be a non-empty string",
-          ),
+          {
+            code: BRIDGE_ERROR.MALFORMED_MESSAGE,
+            message: "Topic name must be a non-empty string",
+          },
         );
       }
       if (!helloSent) startHandshake();

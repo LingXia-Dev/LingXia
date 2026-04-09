@@ -12,23 +12,25 @@ import type {
   LxStream,
 } from "@lingxia/bridge";
 import {
-  ensurePageBridgeSubscription,
   getMethodKey,
-  getPageActions,
   invokeMethod,
   resolveParams,
   stableParamKey,
-  subscribePageData,
   toBridgeError,
-  type ActionMap,
   type ChannelIn,
   type ChannelOut,
   type MethodParams,
   type ParamsSource,
-  type Snapshot,
   type StreamData,
   type StreamResult,
-} from "../shared/runtime.js";
+} from "@lingxia/bridge/invocation";
+import {
+  ensurePageBridgeSubscription,
+  getPageActions,
+  subscribePageData,
+  type ActionMap,
+  type Snapshot,
+} from "@lingxia/page-runtime";
 
 type MethodSource<T> = T | Ref<T>;
 
@@ -42,7 +44,7 @@ let snapshotSubscribed = false;
 function ensureReactiveSnapshot(): void {
   if (snapshotSubscribed) return;
   snapshotSubscribed = true;
-  subscribePageData((next) => {
+  subscribePageData((next: unknown) => {
     const normalized: Snapshot =
       next && typeof next === "object" ? (next as Snapshot) : {};
 

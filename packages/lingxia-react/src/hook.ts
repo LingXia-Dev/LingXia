@@ -5,25 +5,26 @@ import type {
   LxStream,
 } from "@lingxia/bridge";
 import {
-  ensurePageBridgeSubscription,
   getMethodKey,
-  getPageActions,
-  getPageSnapshot,
   invokeMethod,
   resolveParams,
   stableParamKey,
-  subscribePageSnapshot,
   toBridgeError,
-  type ActionMap,
   type ChannelIn,
   type ChannelOut,
-  type Listener,
   type MethodParams,
   type ParamsSource,
-  type Snapshot,
   type StreamData,
   type StreamResult,
-} from "../shared/runtime.js";
+} from "@lingxia/bridge/invocation";
+import {
+  ensurePageBridgeSubscription,
+  getPageActions,
+  getPageSnapshot,
+  subscribePageSnapshot,
+  type ActionMap,
+  type Snapshot,
+} from "@lingxia/page-runtime";
 
 export function useLxPage<
   TData = Snapshot,
@@ -34,7 +35,7 @@ export function useLxPage<
 
   React.useEffect(() => {
     ensurePageBridgeSubscription();
-    const listener: Listener = () => setVersion((v) => v + 1);
+    const listener = () => setVersion((v) => v + 1);
     const unsubscribe = subscribePageSnapshot(listener);
     setVersion((v) => v + 1);
     return unsubscribe;

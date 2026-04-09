@@ -7,28 +7,20 @@ import { minify } from "terser";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageDir = path.resolve(__dirname, "..");
 const distDir = path.join(packageDir, "dist");
-const tempFile = path.join(distDir, "bridge-runtime.es5.bundle.js");
-const transpiledFile = path.join(distDir, "bridge-runtime.es5.transpiled.js");
-const outputFile = path.join(distDir, "bridge-runtime.es5.js");
+const tempFile = path.join(distDir, "bridge-runtime.es2020.bundle.js");
+const outputFile = path.join(distDir, "bridge-runtime.es2020.js");
 const rolldownBin = path.join(
   packageDir,
   "node_modules",
   ".bin",
   process.platform === "win32" ? "rolldown.cmd" : "rolldown",
 );
-const tscBin = path.join(
-  packageDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "tsc.cmd" : "tsc",
-);
 
 await fs.mkdir(distDir, { recursive: true });
 await runRolldown();
-await runTsc();
 
 try {
-  const source = await fs.readFile(transpiledFile, "utf8");
+  const source = await fs.readFile(tempFile, "utf8");
   const result = await minify(source, {
     compress: true,
     mangle: true,
@@ -42,7 +34,6 @@ try {
   await fs.writeFile(outputFile, result.code);
 } finally {
   await fs.rm(tempFile, { force: true });
-  await fs.rm(transpiledFile, { force: true });
 }
 
 function runRolldown() {
@@ -55,7 +46,6 @@ function runRolldown() {
         stdio: "inherit",
         env: {
           ...process.env,
-          LX_RUNTIME_PLATFORM: "mobile",
           RUNTIME_OUTPUT: path.basename(tempFile),
         },
       },
@@ -66,38 +56,6 @@ function runRolldown() {
         resolve();
       } else {
         reject(new Error(`rolldown failed with exit code ${code ?? "unknown"}`));
-      }
-    });
-    child.on("error", reject);
-  });
-}
-
-function runTsc() {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      tscBin,
-      [
-        "--allowJs",
-        "--target",
-        "ES5",
-        "--module",
-        "none",
-        "--outFile",
-        path.basename(transpiledFile),
-        path.basename(tempFile),
-      ],
-      {
-        cwd: distDir,
-        stdio: "inherit",
-        env: process.env,
-      },
-    );
-
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`tsc failed with exit code ${code ?? "unknown"}`));
       }
     });
     child.on("error", reject);

@@ -8,7 +8,8 @@
     "rootDir": "src",
     "strict": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "lib": ["DOM", "ES2020"]
   },
-  "include": ["src/index.ts", "src/shared/**/*.ts"]
+  "include": ["src"]
 }
