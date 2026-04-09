@@ -612,6 +612,8 @@ fn acl_permissions_match(existing: &[String], required: &[String]) -> bool {
 }
 
 fn profile_name_for(bundle_name: &str, mode: SigningMode) -> String {
+    use std::fmt::Write as _;
+
     let compact_bundle = sanitize_for_path(bundle_name);
     let base = format!("LingXia_{compact_bundle}_{}", mode.as_str());
     if base.len() <= 64 {
@@ -621,7 +623,12 @@ fn profile_name_for(bundle_name: &str, mode: SigningMode) -> String {
     let mut hasher = Sha256::new();
     hasher.update(base.as_bytes());
     let digest = hasher.finalize();
-    format!("LingXia_{}_{}", mode.as_str(), &format!("{digest:x}")[..32])
+    let mut digest_hex = String::with_capacity(64);
+    for byte in digest {
+        write!(&mut digest_hex, "{byte:02x}").expect("writing digest to String should not fail");
+    }
+
+    format!("LingXia_{}_{}", mode.as_str(), &digest_hex[..32])
 }
 
 fn sanitize_for_path(input: &str) -> String {

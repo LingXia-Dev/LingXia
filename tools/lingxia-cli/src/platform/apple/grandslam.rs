@@ -646,7 +646,7 @@ impl GrandSlamClient {
 
         // Compute HMAC-SHA256 checksum: HMAC(sk, "apptokens" + adsid + app)
         let checksum = {
-            use hmac::{Hmac, Mac};
+            use hmac::{Hmac, KeyInit, Mac};
             use sha2::Sha256;
             let mut mac = Hmac::<Sha256>::new_from_slice(&login_data.sk)
                 .expect("HMAC can take key of any size");

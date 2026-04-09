@@ -4,9 +4,8 @@
 
 use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use anyhow::{Result, anyhow};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use num_bigint::BigUint;
-use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
 use sha2::{Digest, Sha256};
 
@@ -111,8 +110,7 @@ impl SrpClient {
             password_hash.to_vec()
         };
 
-        let mut derived = [0u8; 32];
-        pbkdf2_hmac::<Sha256>(&pbkdf_input, salt, iterations, &mut derived);
+        let derived = pbkdf2_hmac_sha256(&pbkdf_input, salt, iterations, 32);
 
         // Compute x = SHA256(salt || SHA256(":" || derived))
         let inner_hash = sha256_concat(&[b":", &derived]);
@@ -233,6 +231,46 @@ fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
     mac.finalize().into_bytes().to_vec()
 }
 
+/// PBKDF2-HMAC-SHA256 implemented locally to stay compatible with the
+/// upgraded `sha2`/`hmac` stack used by this crate.
+fn pbkdf2_hmac_sha256(password: &[u8], salt: &[u8], iterations: u32, output_len: usize) -> Vec<u8> {
+    assert!(iterations > 0, "PBKDF2 requires at least one iteration");
+
+    let mut output = vec![0u8; output_len];
+    let mut counter = 1u32;
+
+    for chunk in output.chunks_mut(32) {
+        let mut mac = HmacSha256::new_from_slice(password).expect("HMAC can take key of any size");
+        mac.update(salt);
+        mac.update(&counter.to_be_bytes());
+
+        let initial = mac.finalize().into_bytes();
+        let mut u = [0u8; 32];
+        u.copy_from_slice(&initial);
+
+        let mut block = u;
+        for _ in 1..iterations {
+            let mut mac =
+                HmacSha256::new_from_slice(password).expect("HMAC can take key of any size");
+            mac.update(&u);
+
+            let next = mac.finalize().into_bytes();
+            u.copy_from_slice(&next);
+
+            for (dst, src) in block.iter_mut().zip(u.iter()) {
+                *dst ^= *src;
+            }
+        }
+
+        chunk.copy_from_slice(&block[..chunk.len()]);
+        counter = counter
+            .checked_add(1)
+            .expect("PBKDF2 block counter overflow");
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +280,19 @@ mod tests {
         let client = SrpClient::new();
         let pk = client.public_key_bytes();
         assert_eq!(pk.len(), 256); // 2048 bits = 256 bytes
+    }
+
+    #[test]
+    fn test_pbkdf2_hmac_sha256_vector() {
+        let derived = pbkdf2_hmac_sha256(b"password", b"salt", 1, 32);
+        let actual = derived
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+
+        assert_eq!(
+            actual,
+            "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"
+        );
     }
 }
