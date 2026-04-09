@@ -54,7 +54,7 @@ export default {
 
 Rules:
 
-- `public/` is the default static directory. If the project root contains `public/`, it is copied to `dist/public/` even if `staticDirs` is omitted.
+- `public/` and `assets/` are the default static directories. If the project root contains either directory, LingXia copies them to `dist/public/` and `dist/assets/` even when `staticDirs` is omitted.
 - Additional directories must be declared explicitly in `staticDirs`.
 - Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
 - Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
@@ -152,9 +152,9 @@ Page({
 
 ---
 
-## View Layer — `useLxPage()`
+## View Layer
 
-The View file is a standard React or Vue component. `useLxPage()` connects it to the Logic layer and returns:
+The View file can be a standard React component, a Vue component, or an HTML module entry. The framework packages connect View to the Logic layer and expose:
 
 - `data` — reactive page state replicated from Logic via `setData()`
 - `actions` — public functions exported from `Page({})`
@@ -163,7 +163,7 @@ The View file is a standard React or Vue component. `useLxPage()` connects it to
 
 ```tsx
 // pages/home/index.tsx
-import { useLxPage } from '@lingxia/page-runtime/react';
+import { useLxPage } from '@lingxia/react';
 
 type PageData = {
   count?: number;
@@ -207,7 +207,7 @@ export default function HomePage() {
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLxPage } from '@lingxia/page-runtime/vue';
+import { useLxPage } from '@lingxia/vue';
 
 type PageData = {
   count?: number;
@@ -225,6 +225,41 @@ const { increment, updateMessage } = actions;
 const count = computed(() => data?.count ?? 0);
 const message = computed(() => data?.message ?? '');
 </script>
+```
+
+### HTML
+
+```ts
+// pages/home/entry.ts
+import { getActions, subscribe } from '@lingxia/html';
+
+type PageData = {
+  count?: number;
+  message?: string;
+};
+
+type PageActions = {
+  increment?: () => void;
+  updateMessage?: (params: { text: string }) => void;
+};
+
+const actions = getActions<PageActions>();
+const countEl = document.getElementById('count');
+const messageEl = document.getElementById('message');
+
+document.getElementById('inc-btn')?.addEventListener('click', () => {
+  actions.increment?.();
+});
+
+subscribe((data: PageData) => {
+  if (countEl) countEl.textContent = String(data.count ?? 0);
+  if (messageEl) messageEl.textContent = data.message ?? '';
+});
+```
+
+```html
+<!-- pages/home/index.html -->
+<script type="module" src="./entry.ts"></script>
 ```
 
 ### What `useLxPage()` returns
@@ -281,7 +316,7 @@ Use `@lingxia/elements` for native-backed components. Event handlers use standar
 **React:**
 
 ```tsx
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/page-runtime/react';
+import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/react';
 
 const { actions } = useLxPage();
 const { onInputChange, onPickerConfirm, onPlaying } = actions;
@@ -303,7 +338,7 @@ const { onInputChange, onPickerConfirm, onPlaying } = actions;
 
 ```vue
 <script setup lang="ts">
-import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/page-runtime/vue';
+import { useLxPage, LxInput, LxPicker, LxVideo } from '@lingxia/vue';
 
 const { actions } = useLxPage();
 const { onInputChange, onPickerConfirm, onPlaying } = actions;
@@ -381,7 +416,7 @@ Page({
 **View** (`pages/input/index.tsx`):
 
 ```tsx
-import { useLxPage, LxInput } from '@lingxia/page-runtime/react';
+import { useLxPage, LxInput } from '@lingxia/react';
 
 type PageData = { syncValue?: string };
 type PageActions = {

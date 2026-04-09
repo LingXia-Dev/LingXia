@@ -11,8 +11,12 @@
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
   "license": "MIT",
+  "dependencies": {
+    "@lingxia/html": "^{{LINGXIA_BRIDGE_VERSION}}"
+  },
   "devDependencies": {
     "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
   }
 }

@@ -137,10 +137,12 @@ pub(super) fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()
 fn load_lxapp_build_config(project_root: &Path) -> Result<LxAppBuildConfig> {
     let mut static_dirs = BTreeSet::new();
     let mut optional_static_dirs = BTreeSet::new();
-    if project_root.join("public").is_dir() {
-        static_dirs.insert("public".to_string());
-    } else {
-        optional_static_dirs.insert("public".to_string());
+    for default_dir in ["public", "assets"] {
+        if project_root.join(default_dir).is_dir() {
+            static_dirs.insert(default_dir.to_string());
+        } else {
+            optional_static_dirs.insert(default_dir.to_string());
+        }
     }
 
     let config_path = project_root.join("lxapp.config.ts");
@@ -333,6 +335,17 @@ mod tests {
 
         assert!(project.output_dir.join("public/runtime-extra.js").exists());
         assert!(!project.output_dir.join("runtime-extra.js").exists());
+    }
+
+    #[test]
+    fn copy_static_assets_preserves_assets_dir_in_dist_by_default() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path());
+        write_file(temp.path(), "assets/logo.svg", "<svg />");
+
+        copy_static_assets(&project).unwrap();
+
+        assert!(project.output_dir.join("assets/logo.svg").exists());
     }
 
     #[test]

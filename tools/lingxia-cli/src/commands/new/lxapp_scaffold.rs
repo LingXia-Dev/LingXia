@@ -45,6 +45,16 @@ pub(super) fn create_lxapp_from_template(
     )?;
 
     process_template_dir(&template_dir, target_dir, &vars)?;
+    if framework.eq_ignore_ascii_case("html") {
+        let html_template_dir = template_dir.join("html");
+        if !html_template_dir.exists() {
+            return Err(anyhow!(
+                "HTML LxApp template overlay not found at: {}",
+                html_template_dir.display()
+            ));
+        }
+        process_template_dir(&html_template_dir, target_dir, &vars)?;
+    }
     icons::ensure_lxapp_public_icon(target_dir)?;
 
     Ok(())
@@ -90,7 +100,7 @@ pub(super) fn build_framework_vars(
     ) = match fw.as_str() {
         "react" => (
             "React",
-            "@lingxia/page-runtime",
+            "@lingxia/react",
             "tsx",
             "react-jsx",
             r#""**/*.ts", "**/*.tsx", ".lingxia/types/**/*.d.ts""#,
@@ -101,7 +111,7 @@ pub(super) fn build_framework_vars(
         ),
         "vue" => (
             "Vue",
-            "@lingxia/page-runtime",
+            "@lingxia/vue",
             "vue",
             "preserve",
             r#""**/*.ts", "**/*.tsx", "**/*.vue", ".lingxia/types/**/*.d.ts""#,
@@ -110,9 +120,20 @@ pub(super) fn build_framework_vars(
             "\"vue-tsc\": \"^3.2.4\",\n    ",
             "\"@vitejs/plugin-vue\": \"^6.0.5\",\n    \"rolldown\": \"^1.0.0-rc.15\",\n    \"vite\": \"^8.0.0\",\n    ",
         ),
+        "html" => (
+            "HTML",
+            "@lingxia/html",
+            "html",
+            "preserve",
+            r#""**/*.ts", ".lingxia/types/**/*.d.ts""#,
+            "body",
+            "",
+            "",
+            "",
+        ),
         other => {
             return Err(anyhow!(
-                "Unsupported framework: {other}. Use 'react' or 'vue'."
+                "Unsupported framework: {other}. Use 'react', 'vue', or 'html'."
             ));
         }
     };
@@ -214,8 +235,11 @@ mod tests {
     fn make_mock_template_dir() -> tempfile::TempDir {
         let root = tempdir().unwrap();
         let lxapp = root.path().join("lxapp-create");
+        let lxapp_html = lxapp.join("html");
         let pages_home = lxapp.join("pages").join("home");
+        let html_pages_home = lxapp_html.join("pages").join("home");
         fs::create_dir_all(&pages_home).unwrap();
+        fs::create_dir_all(&html_pages_home).unwrap();
         fs::create_dir_all(lxapp.join("shared")).unwrap();
 
         fs::write(
@@ -253,6 +277,38 @@ mod tests {
         .unwrap();
         fs::write(pages_home.join("index.vue"), "<template></template>").unwrap();
         fs::write(lxapp.join("shared").join(".gitkeep"), "").unwrap();
+        fs::write(
+            lxapp_html.join("package.json"),
+            r#"{"name":"{{APP_PACKAGE_NAME}}-html"}"#,
+        )
+        .unwrap();
+        fs::write(
+            lxapp_html.join("lxapp.json"),
+            r#"{"framework":"html","pages":["pages/home/index.html"]}"#,
+        )
+        .unwrap();
+        fs::write(
+            lxapp_html.join("tsconfig.json"),
+            r#"{"compilerOptions":{"jsx":"preserve"}}"#,
+        )
+        .unwrap();
+        fs::write(lxapp_html.join("lxapp.ts"), "App({ html: true });").unwrap();
+        fs::write(
+            lxapp_html.join("lxapp.config.ts"),
+            "export default { staticDirs: ['public'] };",
+        )
+        .unwrap();
+        fs::write(lxapp_html.join("gitignore"), "node_modules/\ndist/").unwrap();
+        fs::write(
+            html_pages_home.join("index.html"),
+            "<!doctype html><body><script type=\"module\" src=\"./entry.ts\"></script></body>",
+        )
+        .unwrap();
+        fs::write(
+            html_pages_home.join("entry.ts"),
+            "import { subscribe } from '@lingxia/html'; void subscribe;",
+        )
+        .unwrap();
 
         root
     }
@@ -275,6 +331,9 @@ mod tests {
 
         let template_dir = templates_root.path().join("lxapp-create");
         process_template_dir(&template_dir, &target, &vars).unwrap();
+        if framework == "html" {
+            process_template_dir(&template_dir.join("html"), &target, &vars).unwrap();
+        }
 
         (templates_root, out)
     }
@@ -312,7 +371,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "react");
-        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/page-runtime");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/react");
         assert_eq!(vars["PAGE_EXT"], "tsx");
         assert_eq!(vars["JSX_MODE"], "react-jsx");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#root");
@@ -337,7 +396,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "vue");
-        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/page-runtime");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/vue");
         assert_eq!(vars["PAGE_EXT"], "vue");
         assert_eq!(vars["JSX_MODE"], "preserve");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#app");
@@ -347,6 +406,60 @@ mod tests {
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("@vitejs/plugin-vue"));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"rolldown\""));
         assert!(vars["FRAMEWORK_VITE_DEV_DEPS"].contains("\"vite\""));
+    }
+
+    #[test]
+    fn html_vars_are_correct() {
+        let vars = build_framework_vars(
+            "html",
+            "my-app",
+            "My App",
+            &dummy_versions(),
+            "0.2.0",
+            "0.3.0",
+        )
+        .unwrap();
+
+        assert_eq!(vars["FRAMEWORK"], "html");
+        assert_eq!(vars["FRAMEWORK_DISPLAY"], "HTML");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/html");
+        assert_eq!(vars["PAGE_EXT"], "html");
+        assert_eq!(vars["APP_ROOT_SELECTOR"], "body");
+        assert_eq!(vars["FRAMEWORK_RUNTIME_DEPS"], "");
+        assert_eq!(vars["FRAMEWORK_DEV_DEPS_PREFIX"], "");
+        assert_eq!(vars["FRAMEWORK_VITE_DEV_DEPS"], "");
+    }
+
+    #[test]
+    fn html_scaffold_overlays_specialized_files_and_keeps_shared_files() {
+        let (_tmpl, out) = scaffold("html");
+        let app = out.path().join("myapp");
+        assert!(app.join("app.css").exists(), "shared app.css must exist");
+        assert!(
+            app.join("shared/.gitkeep").exists(),
+            "shared directory must exist"
+        );
+        assert!(
+            app.join("pages/home/index.ts").exists(),
+            "shared logic page must exist"
+        );
+        assert!(
+            app.join("pages/home/index.json").exists(),
+            "shared page config must exist"
+        );
+        assert!(
+            app.join("pages/home/index.html").exists(),
+            "html entry page must exist"
+        );
+        assert!(
+            app.join("pages/home/entry.ts").exists(),
+            "html module entry must exist"
+        );
+        let package_json = fs::read_to_string(app.join("package.json")).unwrap();
+        assert!(
+            package_json.contains("-html"),
+            "html overlay should override shared package.json"
+        );
     }
 
     #[test]
@@ -385,12 +498,12 @@ mod tests {
         let (_tmpl, out) = scaffold("react");
         let s = fs::read_to_string(out.path().join("myapp/package.json")).unwrap();
         assert!(
-            s.contains("@lingxia/page-runtime"),
-            "must reference @lingxia/page-runtime"
+            s.contains("@lingxia/react"),
+            "must reference @lingxia/react"
         );
         assert!(
-            !s.contains("@lingxia/react"),
-            "must not reference @lingxia/react"
+            !s.contains("@lingxia/page-runtime"),
+            "must not reference @lingxia/page-runtime"
         );
         assert!(
             !s.contains("@lingxia/vue"),
@@ -448,17 +561,14 @@ mod tests {
     fn vue_scaffold_package_json_framework() {
         let (_tmpl, out) = scaffold("vue");
         let s = fs::read_to_string(out.path().join("myapp/package.json")).unwrap();
-        assert!(
-            s.contains("@lingxia/page-runtime"),
-            "must reference @lingxia/page-runtime"
-        );
+        assert!(s.contains("@lingxia/vue"), "must reference @lingxia/vue");
         assert!(
             !s.contains("@lingxia/react"),
             "must not reference @lingxia/react"
         );
         assert!(
-            !s.contains("@lingxia/vue"),
-            "must not reference @lingxia/vue"
+            !s.contains("@lingxia/page-runtime"),
+            "must not reference @lingxia/page-runtime"
         );
         assert!(s.contains("\"vite\""), "must include vite");
         assert!(s.contains("\"rolldown\""), "must include rolldown");

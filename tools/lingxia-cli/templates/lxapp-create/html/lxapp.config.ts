@@ -1,3 +1,1 @@
-export default {
-  staticDirs: ['public', 'view']
-};
+export default {};
