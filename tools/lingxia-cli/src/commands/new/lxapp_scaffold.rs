@@ -90,7 +90,7 @@ pub(super) fn build_framework_vars(
     ) = match fw.as_str() {
         "react" => (
             "React",
-            "@lingxia/react",
+            "@lingxia/page-runtime",
             "tsx",
             "react-jsx",
             r#""**/*.ts", "**/*.tsx", ".lingxia/types/**/*.d.ts""#,
@@ -101,7 +101,7 @@ pub(super) fn build_framework_vars(
         ),
         "vue" => (
             "Vue",
-            "@lingxia/vue",
+            "@lingxia/page-runtime",
             "vue",
             "preserve",
             r#""**/*.ts", "**/*.tsx", "**/*.vue", ".lingxia/types/**/*.d.ts""#,
@@ -312,7 +312,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "react");
-        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/react");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/page-runtime");
         assert_eq!(vars["PAGE_EXT"], "tsx");
         assert_eq!(vars["JSX_MODE"], "react-jsx");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#root");
@@ -337,7 +337,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "vue");
-        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/vue");
+        assert_eq!(vars["FRAMEWORK_PKG"], "@lingxia/page-runtime");
         assert_eq!(vars["PAGE_EXT"], "vue");
         assert_eq!(vars["JSX_MODE"], "preserve");
         assert_eq!(vars["APP_ROOT_SELECTOR"], "#app");
@@ -385,17 +385,11 @@ mod tests {
         let (_tmpl, out) = scaffold("react");
         let s = fs::read_to_string(out.path().join("myapp/package.json")).unwrap();
         assert!(
-            s.contains("@lingxia/react"),
-            "must reference @lingxia/react"
+            s.contains("@lingxia/page-runtime"),
+            "must reference @lingxia/page-runtime"
         );
-        assert!(
-            s.contains("\"framework\":\"react\""),
-            "framework field must be react"
-        );
-        assert!(
-            !s.contains("@lingxia/vue"),
-            "must not reference @lingxia/vue"
-        );
+        assert!(!s.contains("@lingxia/react"), "must not reference @lingxia/react");
+        assert!(!s.contains("@lingxia/vue"), "must not reference @lingxia/vue");
         assert!(s.contains("\"vite\""), "must include vite");
         assert!(s.contains("\"esbuild\""), "must include esbuild");
         assert!(
@@ -448,15 +442,12 @@ mod tests {
     fn vue_scaffold_package_json_framework() {
         let (_tmpl, out) = scaffold("vue");
         let s = fs::read_to_string(out.path().join("myapp/package.json")).unwrap();
-        assert!(s.contains("@lingxia/vue"), "must reference @lingxia/vue");
         assert!(
-            s.contains("\"framework\":\"vue\""),
-            "framework field must be vue"
+            s.contains("@lingxia/page-runtime"),
+            "must reference @lingxia/page-runtime"
         );
-        assert!(
-            !s.contains("@lingxia/react"),
-            "must not reference @lingxia/react"
-        );
+        assert!(!s.contains("@lingxia/react"), "must not reference @lingxia/react");
+        assert!(!s.contains("@lingxia/vue"), "must not reference @lingxia/vue");
         assert!(s.contains("\"vite\""), "must include vite");
         assert!(s.contains("\"esbuild\""), "must include esbuild");
         assert!(

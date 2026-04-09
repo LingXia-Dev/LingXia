@@ -4,170 +4,44 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-
-type ActionMap = Record<string, (...args: unknown[]) => unknown>;
-type Snapshot = Record<string, unknown>;
-type Listener = () => void;
-type ParamsSource<T> = T | (() => T);
-type MethodParams<TMethod> = TMethod extends () => any
-  ? undefined
-  : TMethod extends (params: infer P) => any
-    ? P
-    : never;
-type StreamData<TMethod> = TMethod extends (...args: any[]) => LxStream<infer TData, any>
-  ? TData
-  : never;
-type StreamResult<TMethod> = TMethod extends (...args: any[]) => LxStream<any, infer TResult>
-  ? TResult
-  : never;
-type ChannelIn<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<infer TIn, any>>
-  ? TIn
-  : never;
-type ChannelOut<TMethod> = TMethod extends (...args: any[]) => Promise<LxChannel<any, infer TOut>>
-  ? TOut
-  : never;
-
-let snapshot: Snapshot = {};
-let subscribed = false;
-let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
-let initialSnapshotResolved = false;
-let snapshotRequestInFlight = false;
-const listeners = new Set<Listener>();
-
-function toBridgeError(err: unknown): LxBridgeError {
-  return err && typeof err === "object" && "code" in err
-    ? (err as LxBridgeError)
-    : { code: "BRIDGE_INTERNAL_ERROR", message: err instanceof Error ? err.message : String(err) };
-}
-
-function resolveParams<T>(source?: ParamsSource<T>): T | undefined {
-  if (typeof source === "function") {
-    return (source as () => T)();
-  }
-  return source;
-}
-
-function stableParamKey(value: unknown): string {
-  if (value === undefined) return "undefined";
-  try {
-    return JSON.stringify(value) ?? "undefined";
-  } catch {
-    return String(value);
-  }
-}
-
-function invokeMethod<TMethod extends (...args: any[]) => any>(
-  method: TMethod,
-  params: unknown,
-): ReturnType<TMethod> {
-  if (params === undefined) {
-    return method() as ReturnType<TMethod>;
-  }
-  return method(params) as ReturnType<TMethod>;
-}
-
-function getMethodKey(method: unknown): string | undefined {
-  if (typeof method !== "function") return undefined;
-  const candidate = (method as { __funcName?: unknown }).__funcName;
-  return typeof candidate === "string" && candidate !== "" ? candidate : undefined;
-}
-
-function notifyListeners(): void {
-  listeners.forEach((listener) => {
-    try {
-      listener();
-    } catch {
-      // Ignore listener errors to avoid breaking state fanout.
-    }
-  });
-}
-
-function updateSnapshot(next: unknown): void {
-  if (next && typeof next === "object") {
-    snapshot = next as Snapshot;
-  } else {
-    snapshot = {};
-  }
-  notifyListeners();
-}
-
-function scheduleSubscribeRetry(): void {
-  if (subscribeRetryTimer !== null || subscribed) return;
-  subscribeRetryTimer = setTimeout(() => {
-    subscribeRetryTimer = null;
-    ensureBridgeSubscription();
-  }, 10);
-}
-
-function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
-  if (initialSnapshotResolved || snapshotRequestInFlight) return;
-  if (!bridge?.call) return;
-  snapshotRequestInFlight = true;
-  bridge
-    .call("state.getSnapshot", { scope: "page" })
-    .then(() => {
-      initialSnapshotResolved = true;
-    })
-    .catch(() => {
-      scheduleSubscribeRetry();
-    })
-    .finally(() => {
-      snapshotRequestInFlight = false;
-    });
-}
-
-function ensureBridgeSubscription(): void {
-  if (subscribed) return;
-  const bridge = window.LingXiaBridge;
-  const subscribeState = bridge?.state?.subscribe;
-  if (!subscribeState) {
-    scheduleSubscribeRetry();
-    return;
-  }
-  subscribeState((next) => {
-    updateSnapshot(next);
-  });
-  subscribed = true;
-  requestInitialSnapshot(bridge);
-}
-
-function resolveActions<TActions extends ActionMap>(): TActions {
-  const actions: ActionMap = {};
-  const bridge = window.__pageBridge;
-  if (!bridge?.__names) {
-    return actions as TActions;
-  }
-
-  for (const name of bridge.__names) {
-    if (typeof name !== "string") continue;
-    const fn = bridge[name];
-    if (typeof fn === "function") {
-      actions[name] = fn as (...args: unknown[]) => unknown;
-    }
-  }
-
-  return actions as TActions;
-}
+import {
+  ensurePageBridgeSubscription,
+  getMethodKey,
+  getPageActions,
+  getPageSnapshot,
+  invokeMethod,
+  resolveParams,
+  stableParamKey,
+  subscribePageSnapshot,
+  toBridgeError,
+  type ActionMap,
+  type ChannelIn,
+  type ChannelOut,
+  type Listener,
+  type MethodParams,
+  type ParamsSource,
+  type Snapshot,
+  type StreamData,
+  type StreamResult,
+} from "../shared/runtime.js";
 
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
 >(): { data: TData; actions: TActions } {
-  ensureBridgeSubscription();
+  ensurePageBridgeSubscription();
   const [, setVersion] = React.useState(0);
 
   React.useEffect(() => {
-    ensureBridgeSubscription();
+    ensurePageBridgeSubscription();
     const listener: Listener = () => setVersion((v) => v + 1);
-    listeners.add(listener);
+    const unsubscribe = subscribePageSnapshot(listener);
     setVersion((v) => v + 1);
-    return () => {
-      listeners.delete(listener);
-    };
+    return unsubscribe;
   }, []);
 
-  const actions = React.useMemo(() => resolveActions<TActions>(), []);
-  return { data: snapshot as TData, actions };
+  const actions = React.useMemo(() => getPageActions<TActions>(), []);
+  return { data: getPageSnapshot<TData>(), actions };
 }
 
 export interface LxStreamOptions<TData, TReduced> {

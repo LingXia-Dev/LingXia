@@ -94,7 +94,7 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v elements_v react_v vue_v types_v cli_target
+  local ws_v cli_asset cli_runner_tag sdk_tag bridge_v elements_v page_runtime_v types_v cli_target
   ws_v="$(workspace_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
     cli_asset="lingxia-$cli_target"
@@ -105,8 +105,7 @@ doctor() {
   sdk_tag="lingxia-sdk-v$ws_v"
   bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
   elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
-  react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
-  vue_v="$(node -p "require('$ROOT_DIR/packages/lingxia-vue/package.json').version" 2>/dev/null || echo "N/A")"
+  page_runtime_v="$(node -p "require('$ROOT_DIR/packages/lingxia-page-runtime/package.json').version" 2>/dev/null || echo "N/A")"
   types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
 
   cat <<EOF
@@ -118,8 +117,7 @@ Runner arches:          ${RUNNER_ALL_ARCHES[*]}
 SDK release tag:        $sdk_tag
 NPM bridge version:     $bridge_v
 NPM elements version:   $elements_v
-NPM react version:      $react_v
-NPM vue version:        $vue_v
+NPM page-runtime version: $page_runtime_v
 NPM types version:      $types_v
 GitHub release repo:    $GH_REPO
 

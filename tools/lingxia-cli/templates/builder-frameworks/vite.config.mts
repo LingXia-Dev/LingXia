@@ -28,32 +28,26 @@ const manualChunks = (rawId) => {
   if (id.includes('/node_modules/react/') || id.includes('/node_modules/react-dom/') || id.includes('/node_modules/scheduler/')) return 'react-runtime';
   if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) return 'vue-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['hook']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['hook'])
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['hook'])
   ) return 'lingxia-page-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxVideo']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['LxVideo']) ||
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['LxVideo']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['video'])
   ) return 'lingxia-video-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxPicker']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['LxPicker']) ||
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['LxPicker']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['picker', 'picker-web'])
   ) return 'lingxia-picker-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxNavigator']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['LxNavigator']) ||
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['LxNavigator']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['navigator'])
   ) return 'lingxia-navigator-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['LxInput', 'LxTextarea', 'text_component_shared']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['LxInput', 'LxTextarea', 'text_component_shared']) ||
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['LxInput', 'LxTextarea', 'text_component_shared']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['input', 'textarea', 'text_component_shared', 'text_component_native_attrs'])
   ) return 'lingxia-text-runtime';
   if (
-    hasLingxiaPackageModule(id, '@lingxia/react', 'lingxia-react', ['index']) ||
-    hasLingxiaPackageModule(id, '@lingxia/vue', 'lingxia-vue', ['index', 'types']) ||
+    hasLingxiaPackageModule(id, '@lingxia/page-runtime', 'lingxia-page-runtime', ['index', 'types']) ||
     hasLingxiaPackageModule(id, '@lingxia/elements', 'lingxia-elements', ['index', 'nativecomponent', 'component', 'dom', 'platform', 'types', 'native_component_wrapper_shared'])
   ) return 'lingxia-runtime';
   return undefined;
@@ -65,8 +59,9 @@ const viewConfig = projectConfig.view ?? {};
 const css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;
 
 const workspaceAliases = [
-  ['@lingxia/react', resolveWorkspaceSourceEntry('@lingxia/react', 'src/index.ts')],
-  ['@lingxia/vue', resolveWorkspaceSourceEntry('@lingxia/vue', 'src/index.ts')],
+  [/^@lingxia\/page-runtime\/react$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/react/index.ts')],
+  [/^@lingxia\/page-runtime\/vue$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/vue/index.ts')],
+  [/^@lingxia\/page-runtime$/, resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/index.ts')],
 ]
   .filter(([, replacement]) => typeof replacement === 'string')
   .map(([find, replacement]) => ({ find, replacement }));
