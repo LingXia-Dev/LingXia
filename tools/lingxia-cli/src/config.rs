@@ -186,9 +186,6 @@ pub struct ResourcesConfig {
     /// Path to icon resources (relative to project root)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icons: Option<String>,
-    /// Path to web runtime distribution (relative to project root)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub runtime: Option<String>,
     /// Bundle project directories to build and copy into host resources.
     ///
     /// String entries use the directory path directly and default to copying `dist/`
@@ -305,7 +302,6 @@ impl LingXiaConfig {
             resources: Some(ResourcesConfig {
                 i18n: None,
                 icons: None,
-                runtime: None,
                 bundles: Some(vec![ResourceBundleConfig::Detailed(ResourceBundleDetail {
                     bundle_type: ResourceBundleType::Lxapp,
                     path: project_name.to_string(),

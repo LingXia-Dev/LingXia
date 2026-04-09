@@ -115,7 +115,7 @@ pub(super) fn rewrite_entry_script_path(mut html: String, page_id: &str) -> Stri
 }
 
 pub(super) fn inject_runtime_script(mut html: String) -> String {
-    let runtime_script = "<script src=\"lx://assets/runtime.js\"></script>";
+    let runtime_script = "<script src=\"lx://assets/bridge-runtime.js\"></script>";
     if html.contains(runtime_script) {
         return html;
     }
@@ -290,7 +290,7 @@ mod tests {
 
         let output =
             fs::read_to_string(project.output_dir.join("pages/settings/index.html")).unwrap();
-        assert!(output.contains("lx://assets/runtime.js"));
+        assert!(output.contains("lx://assets/bridge-runtime.js"));
     }
 
     #[test]

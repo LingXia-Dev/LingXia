@@ -137,7 +137,7 @@ pub fn execute(
         &scaffold_versions.bridge,
         &scaffold_versions.types,
     )?;
-    generate_config_file(&config, &lxapp_info, &scaffold_versions.bridge)?;
+    generate_config_file(&config, &lxapp_info)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());

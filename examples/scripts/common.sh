@@ -275,7 +275,7 @@ build_and_copy_packaged_lxapp() {
     copy_static_lxapp_to_assets "$dist_dir" "$target_dir" "$asset_app_dir"
 }
 
-# Build web runtime and copy runtime.js to target directory
+# Build bridge runtime and copy bridge-runtime.js to target directory
 # Usage: build_and_copy_runtime "$TARGET_DIR" [es2020|es5] [all|desktop|mobile]
 build_and_copy_runtime() {
     local target_dir="$1"
@@ -288,11 +288,11 @@ build_and_copy_runtime() {
     case "$ecma_target" in
         es2020)
             build_script="build:es2020"
-            dist_runtime="$runtime_dir/dist/runtime.es2020.js"
+            dist_runtime="$runtime_dir/dist/bridge-runtime.es2020.js"
             ;;
         es5)
             build_script="build:es5"
-            dist_runtime="$runtime_dir/dist/runtime.es5.js"
+            dist_runtime="$runtime_dir/dist/bridge-runtime.es5.js"
             ;;
         *)
             echo "❌ Error: Unsupported runtime target '$ecma_target' (expected es2020 or es5)"
@@ -331,13 +331,13 @@ build_and_copy_runtime() {
     fi
 
     if [ ! -f "$dist_runtime" ]; then
-        echo "❌ Error: runtime.js not found after build: $dist_runtime"
+        echo "❌ Error: bridge-runtime.js not found after build: $dist_runtime"
         exit 1
     fi
 
     mkdir -p "$target_dir"
-    cp "$dist_runtime" "$target_dir/runtime.js"
-    echo "  ✅ runtime.js copied to $target_dir/runtime.js"
+    cp "$dist_runtime" "$target_dir/bridge-runtime.js"
+    echo "  ✅ bridge-runtime.js copied to $target_dir/bridge-runtime.js"
 }
 
 # Generate app.json configuration from examples/lingxia.config.json

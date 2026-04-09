@@ -114,20 +114,12 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
 
     // Only Android can require ES5 runtime here (for armv7 builds).
     let prepared_runtime_es5 = if needs_es5_runtime {
-        Some(prepare_runtime_asset(
-            project_root,
-            config,
-            runtime::RuntimeEcmaTarget::Es5,
-        )?)
+        Some(prepare_runtime_asset(runtime::RuntimeEcmaTarget::Es5))
     } else {
         None
     };
     let prepared_runtime_es2020 = if has_non_android || !needs_es5_runtime {
-        Some(prepare_runtime_asset(
-            project_root,
-            config,
-            runtime::RuntimeEcmaTarget::Es2020,
-        )?)
+        Some(prepare_runtime_asset(runtime::RuntimeEcmaTarget::Es2020))
     } else {
         None
     };
@@ -245,7 +237,7 @@ fn prepare_android_assets_root(
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
     changed |= sync_runtime_file(
-        &assets_root.join("runtime.js"),
+        &assets_root.join("bridge-runtime.js"),
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
@@ -299,7 +291,7 @@ fn prepare_apple_resources_root(
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
     changed |= sync_runtime_file(
-        &resources_dir.join("runtime.js"),
+        &resources_dir.join("bridge-runtime.js"),
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
@@ -349,7 +341,7 @@ fn prepare_harmony_rawfile_root(
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
     changed |= sync_runtime_file(
-        &rawfile_root.join("runtime.js"),
+        &rawfile_root.join("bridge-runtime.js"),
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
     )?;
@@ -439,27 +431,19 @@ struct PreparedRuntimeAsset {
     runtime_hash: String,
 }
 
-fn prepare_runtime_asset(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    target: runtime::RuntimeEcmaTarget,
-) -> Result<PreparedRuntimeAsset> {
-    let resolved = runtime::resolve_runtime_js(project_root, config, target)
-        .with_context(|| format!("Failed to resolve runtime.js ({})", target.as_str()))?;
-    let bytes = fs::read(&resolved.path)
-        .with_context(|| format!("Failed to read runtime file: {}", resolved.path.display()))?;
-
+fn prepare_runtime_asset(target: runtime::RuntimeEcmaTarget) -> PreparedRuntimeAsset {
+    let resolved = runtime::embedded_runtime(target);
     println!(
-        "  {} runtime.js ({}) ← {}",
+        "  {} bridge-runtime.js ({}) ← {}",
         "✓".green(),
         target.as_str(),
         resolved.source
     );
 
-    Ok(PreparedRuntimeAsset {
-        bytes,
+    PreparedRuntimeAsset {
+        bytes: resolved.bytes.to_vec(),
         runtime_hash: resolved.hash,
-    })
+    }
 }
 
 fn prepare_resource_bundles(
@@ -861,7 +845,11 @@ fn sync_runtime_file(
 ) -> Result<bool> {
     if let Some(runtime_asset) = runtime_asset {
         if write_if_changed(runtime_path, &runtime_asset.bytes)? {
-            println!("  {} runtime.js → {}", "✓".green(), runtime_path.display());
+            println!(
+                "  {} bridge-runtime.js → {}",
+                "✓".green(),
+                runtime_path.display()
+            );
             return Ok(true);
         }
         return Ok(false);

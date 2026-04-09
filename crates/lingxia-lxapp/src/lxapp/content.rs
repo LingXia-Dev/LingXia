@@ -65,7 +65,7 @@ impl LxApp {
         error: {{ failedPath: "{}", reason: "not_found" }}
       }};
     </script>
-    <script src="lx://assets/runtime.js"></script>
+    <script src="lx://assets/bridge-runtime.js"></script>
   </body>
 </html>"#,
             bridge_script, escaped_path
@@ -78,7 +78,7 @@ impl LxApp {
         let script_tag = build_bridge_config_script(bridge_nonce);
 
         let lower = html_str.to_lowercase();
-        if let Some(src_pos) = lower.find("lx://assets/runtime.js") {
+        if let Some(src_pos) = lower.find("lx://assets/bridge-runtime.js") {
             if let Some(script_start) = lower[..src_pos].rfind("<script") {
                 let (before, after) = html_str.split_at(script_start);
                 return format!("{}{}\n{}", before, script_tag, after).into_bytes();

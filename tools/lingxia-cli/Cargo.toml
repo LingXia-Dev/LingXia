@@ -2,6 +2,7 @@
 name = "lingxia-cli"
 version.workspace = true
 edition.workspace = true
+build = "build.rs"
 
 [[bin]]
 name = "lingxia"
@@ -74,3 +75,6 @@ oxc_ast_visit = "0.124.0"
 oxc_syntax = "0.124.0"
 oxc_semantic = "0.124.0"
 oxc_sourcemap = "6.1.1"
+
+[build-dependencies]
+serde_json = "1.0"

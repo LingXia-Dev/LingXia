@@ -7,12 +7,8 @@ use crate::config::{
 };
 use anyhow::Result;
 
-pub(super) fn generate_config_file(
-    config: &ProjectConfig,
-    lxapp: &LxAppInfo,
-    bridge_version: &str,
-) -> Result<()> {
-    let lingxia_config = build_lingxia_config(config, lxapp, bridge_version);
+pub(super) fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
+    let lingxia_config = build_lingxia_config(config, lxapp);
 
     // Save config file
     lingxia_config.save(&config.target_dir)?;
@@ -20,11 +16,7 @@ pub(super) fn generate_config_file(
     Ok(())
 }
 
-fn build_lingxia_config(
-    config: &ProjectConfig,
-    lxapp: &LxAppInfo,
-    bridge_version: &str,
-) -> LingXiaConfig {
+fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaConfig {
     let swift_target_name = swift_target_name_from_project_name(&config.name);
 
     let platforms = config
@@ -97,7 +89,6 @@ fn build_lingxia_config(
         resources: Some(ResourcesConfig {
             i18n: None,
             icons: None,
-            runtime: Some(format!("npm:@lingxia/bridge@{bridge_version}")),
             bundles: Some(vec![ResourceBundleConfig::Detailed(ResourceBundleDetail {
                 bundle_type: ResourceBundleType::Lxapp,
                 path: lxapp.app_id.clone(),
@@ -116,7 +107,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn build_lingxia_config_sets_runtime_and_cache_defaults() {
+    fn build_lingxia_config_sets_bundle_and_cache_defaults() {
         let config = ProjectConfig {
             name: "demo".to_string(),
             product_name: "Demo".to_string(),
@@ -129,16 +120,12 @@ mod tests {
             app_id: "demo".to_string(),
         };
 
-        let lingxia = build_lingxia_config(&config, &lxapp, "0.2.0");
+        let lingxia = build_lingxia_config(&config, &lxapp);
         let app = lingxia.app.expect("app config should exist");
         let resources = lingxia.resources.expect("resources config should exist");
 
         assert_eq!(app.cache_max_age_days, Some(DEFAULT_CACHE_MAX_AGE_DAYS));
         assert_eq!(app.cache_max_size_mb, Some(DEFAULT_CACHE_MAX_SIZE_MB));
-        assert_eq!(
-            resources.runtime.as_deref(),
-            Some("npm:@lingxia/bridge@0.2.0")
-        );
         assert!(matches!(
             resources.bundles.as_deref(),
             Some([ResourceBundleConfig::Detailed(detail)])
