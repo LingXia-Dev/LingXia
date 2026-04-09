@@ -7,9 +7,9 @@ use crate::lxapp::view::{
     page_title, render_page_bridge_import, render_page_bridge_module,
     render_page_bridge_runtime_module, validate_component_view_bindings,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -182,7 +182,8 @@ fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     }
     let html = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
-    fs::write(&output_path, inject_runtime_script(html))
+    let output_html = inject_runtime_script(html);
+    fs::write(&output_path, &output_html)
         .with_context(|| format!("Failed to write {}", output_path.display()))?;
 
     let base = Path::new(page_path)
@@ -202,6 +203,7 @@ fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     }
 
     copy_html_page_support_files(page_dir, output_dir, base)?;
+    copy_html_root_referenced_assets(project, &output_html)?;
     Ok(())
 }
 
@@ -657,7 +659,7 @@ fn write_root_manifest(project: &Project) -> Result<()> {
 fn copy_static_assets(project: &Project) -> Result<()> {
     let public_dir = project.root.join("public");
     if public_dir.exists() {
-        copy_dir_recursive(&public_dir, &project.output_dir.join("public"))?;
+        copy_dir_recursive(&public_dir, &project.output_dir)?;
     }
 
     let pages_dir = project.root.join("pages");
@@ -680,6 +682,85 @@ fn copy_static_assets(project: &Project) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn copy_html_root_referenced_assets(project: &Project, html: &str) -> Result<()> {
+    for asset_path in collect_root_asset_paths(html) {
+        copy_project_root_asset(project, &asset_path)?;
+    }
+    Ok(())
+}
+
+fn collect_root_asset_paths(html: &str) -> BTreeSet<String> {
+    let mut assets = BTreeSet::new();
+    for attr in ["src", "href"] {
+        for value in extract_html_attr_values(html, attr) {
+            if let Some(path) = normalize_root_asset_path(&value) {
+                assets.insert(path);
+            }
+        }
+    }
+    assets
+}
+
+fn extract_html_attr_values(source: &str, attr: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for quote in ['"', '\''] {
+        let pattern = format!("{attr}={quote}");
+        let mut offset = 0usize;
+        while let Some(found) = source[offset..].find(&pattern) {
+            let start = offset + found + pattern.len();
+            let Some(end_rel) = source[start..].find(quote) else {
+                break;
+            };
+            let end = start + end_rel;
+            values.push(source[start..end].to_string());
+            offset = end + 1;
+        }
+    }
+    values
+}
+
+fn normalize_root_asset_path(value: &str) -> Option<String> {
+    if !value.starts_with('/') || value.starts_with("//") {
+        return None;
+    }
+    if value.starts_with("/#") {
+        return None;
+    }
+    let trimmed = value.split(['?', '#']).next().unwrap_or("");
+    if trimmed.is_empty() || trimmed == "/" {
+        return None;
+    }
+    Some(trimmed.trim_start_matches('/').to_string())
+}
+
+fn copy_project_root_asset(project: &Project, relative_path: &str) -> Result<()> {
+    let source_path = project.root.join(relative_path);
+    if !source_path.exists() {
+        bail!(
+            "Missing root static asset referenced from html: /{}",
+            relative_path
+        );
+    }
+
+    let destination_path = project.output_dir.join(relative_path);
+    if source_path.is_dir() {
+        copy_dir_recursive(&source_path, &destination_path)?;
+        return Ok(());
+    }
+
+    if let Some(parent) = destination_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(&source_path, &destination_path).with_context(|| {
+        format!(
+            "Failed to copy {} -> {}",
+            source_path.display(),
+            destination_path.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -929,5 +1010,43 @@ mod tests {
                 .exists()
         );
         assert!(!project.output_dir.join("pages/downloads/index.ts").exists());
+    }
+
+    #[test]
+    fn html_page_copy_preserves_root_referenced_assets() {
+        let temp = tempdir().unwrap();
+        let project = Project {
+            root: temp.path().to_path_buf(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::Html,
+            output_dir: temp.path().join("dist"),
+            pages: vec!["pages/home/index.html".to_string()],
+            logic_entry: None,
+            plugin_id: None,
+            package_name: Some("demo".to_string()),
+            version: "1.0.0".to_string(),
+        };
+        write_file(
+            temp.path(),
+            "pages/home/index.html",
+            "<!DOCTYPE html><html><body><script src=\"/view/info-panel.js\"></script></body></html>",
+        );
+        write_file(temp.path(), "view/info-panel.js", "console.log('info');");
+
+        copy_html_page(&project, "pages/home/index.html").unwrap();
+
+        assert!(project.output_dir.join("view/info-panel.js").exists());
+    }
+
+    #[test]
+    fn copy_static_assets_flattens_public_dir_to_dist_root() {
+        let temp = tempdir().unwrap();
+        let project = make_project(temp.path(), ProjectFramework::Html);
+        write_file(temp.path(), "public/runtime-extra.js", "console.log('extra');");
+
+        copy_static_assets(&project).unwrap();
+
+        assert!(project.output_dir.join("runtime-extra.js").exists());
+        assert!(!project.output_dir.join("public/runtime-extra.js").exists());
     }
 }
