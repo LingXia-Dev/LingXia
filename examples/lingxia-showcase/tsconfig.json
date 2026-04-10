@@ -14,15 +14,7 @@
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
     "allowJs": true,
-    "checkJs": false,
-    "baseUrl": ".",
-    "paths": {
-      "lingxia-types": ["../../../packages/lingxia-types/src"],
-      "lingxia-types/*": ["../../../packages/lingxia-types/src/*"],
-      "rong-types": ["/Users/michael/github/starfire/rong_types/src"],
-      "rong-types/*": ["/Users/michael/github/starfire/rong_types/src/*"],
-      "@lingxia/page-types/*": ["./.lingxia/types/*"]
-    }
+    "checkJs": false
   },
   "include": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "global.d.ts", ".lingxia/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist"]

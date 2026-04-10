@@ -15,10 +15,9 @@
   "license": "MIT",
   "dependencies": {
     "@lingxia/bridge": "file:../../packages/lingxia-bridge",
-    "@lingxia/elements": "file:../../packages/lingxia-elements",
     "@lingxia/react": "file:../../packages/lingxia-react",
-    "@lingxia/rong": "^0.0.1",
     "@lingxia/vue": "file:../../packages/lingxia-vue",
+    "@lingxia/rong": "^0.3.0",
     "@radix-ui/react-slot": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -37,7 +36,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@vitejs/plugin-vue": "^6.0.5",
     "autoprefixer": "^10.4.20",
-    "esbuild": "^0.27.0",
+    "rolldown": "^1.0.0-rc.15",
     "postcss": "^8.4.41",
     "typescript": "^5.7.2",
     "vite": "^8.0.0"
