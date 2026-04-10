@@ -53,7 +53,6 @@ import type {
   ChooseFileOptions,
   ChooseFileResult,
   DownloadOptions,
-  DownloadResult,
   DownloadTask,
 } from './file';
 

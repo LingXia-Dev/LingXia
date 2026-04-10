@@ -25,7 +25,7 @@ exclude = ["examples/lingxia-lib"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 
 [workspace.dependencies]
@@ -46,25 +46,25 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 
 # Workspace-local crates
-lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.0" }
-lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.0" }
-lingxia-observability = { path = "crates/lingxia-observability", version = "0.5.0" }
-lingxia-provider = { path = "crates/lingxia-provider", version = "0.5.0" }
-lingxia-update = { path = "crates/lingxia-update", version = "0.5.0" }
-lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.5.0" }
-lingxia-media = { path = "crates/lingxia-media", version = "0.5.0" }
-lingxia-webview = { path = "crates/lingxia-webview", version = "0.5.0" }
-lingxia-platform = { path = "crates/lingxia-platform", version = "0.5.0" }
-lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.5.0" }
-lingxia-logic = { path = "crates/lingxia-logic", version = "0.5.0" }
-lingxia = { path = "crates/lingxia", version = "0.5.0" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1" }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1" }
+lingxia-observability = { path = "crates/lingxia-observability", version = "0.5.1" }
+lingxia-provider = { path = "crates/lingxia-provider", version = "0.5.1" }
+lingxia-update = { path = "crates/lingxia-update", version = "0.5.1" }
+lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.5.1" }
+lingxia-media = { path = "crates/lingxia-media", version = "0.5.1" }
+lingxia-webview = { path = "crates/lingxia-webview", version = "0.5.1" }
+lingxia-platform = { path = "crates/lingxia-platform", version = "0.5.1" }
+lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.5.1" }
+lingxia-logic = { path = "crates/lingxia-logic", version = "0.5.1" }
+lingxia = { path = "crates/lingxia", version = "0.5.1" }
 lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.0" }
-lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.5.0" }
-lingxia-macro = { path = "crates/lingxia-host-macros", version = "0.5.0" }
-lingxia-browser = { path = "crates/lingxia-browser", version = "0.5.0" }
-lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.5.0" }
-lingxia-settings = { path = "crates/lingxia-settings", version = "0.5.0" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.5.0" }
+lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.5.1" }
+lingxia-macro = { path = "crates/lingxia-host-macros", version = "0.5.1" }
+lingxia-browser = { path = "crates/lingxia-browser", version = "0.5.1" }
+lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.5.1" }
+lingxia-settings = { path = "crates/lingxia-settings", version = "0.5.1" }
+lingxia-shell = { path = "crates/lingxia-shell", version = "0.5.1" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"

@@ -68,6 +68,12 @@ pkg_dir() {
   esac
 }
 
+npm_package_published() {
+  local name="$1"
+  local version="$2"
+  npm view "$name@$version" version >/dev/null 2>&1
+}
+
 verify_internal_lingxia_versions() {
   local dir="$1"
   node - "$dir" <<'NODE'
@@ -110,6 +116,11 @@ for target in "${targets[@]}"; do
   echo "Processing $name@$version ($target)"
   echo "=========================================="
 
+  if [[ "$PUBLISH" -eq 1 && "$DRY_RUN" -eq 0 ]] && npm_package_published "$name" "$version"; then
+    echo "✓ $name@$version already published, skipping"
+    continue
+  fi
+
   verify_internal_lingxia_versions "$dir"
 
   if [[ -f "$dir/package-lock.json" ]]; then
@@ -124,11 +135,6 @@ for target in "${targets[@]}"; do
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
     (cd "$dir" && npm pack --dry-run)
-    continue
-  fi
-
-  if npm view "$name@$version" version >/dev/null 2>&1; then
-    echo "✓ $name@$version already published, skipping"
     continue
   fi
 

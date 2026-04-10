@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/vue",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": false,
   "description": "LingXia Vue runtime and components for lxapp pages",
   "type": "module",
@@ -19,9 +19,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": "0.5.0",
-    "@lingxia/elements": "0.5.0",
-    "@lingxia/page-runtime": "0.5.0"
+    "@lingxia/bridge": "0.5.1",
+    "@lingxia/elements": "0.5.1",
+    "@lingxia/page-runtime": "0.5.1"
   },
   "peerDependencies": {
     "vue": ">=3.5.0"

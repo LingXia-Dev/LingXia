@@ -23,7 +23,7 @@ Commands:
   sdk                 Build/package SDK release artifacts
 
 CLI options:
-  --target <platform> Build specific target(s): darwin-x64, darwin-arm64, linux-x64, linux-arm64, all
+  --target <platform> Build specific target(s): darwin-x64, darwin-arm64, all
   --publish           Upload built assets to the GitHub release tag
   --tag <tag>         Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>         Output directory (default: ./dist/cli-release)
@@ -74,7 +74,6 @@ current_cli_target() {
 
   case "$os" in
     Darwin) os="darwin" ;;
-    Linux) os="linux" ;;
     *)
       echo "ERROR: unsupported CLI host OS: $os" >&2
       return 2

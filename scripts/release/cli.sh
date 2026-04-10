@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
 GH_REPO="${LINGXIA_RELEASE_REPO:-LingXia-Dev/LingXia}"
-ALL_TARGETS=(darwin-x64 darwin-arm64 linux-x64 linux-arm64)
+ALL_TARGETS=(darwin-x64 darwin-arm64)
 
 usage() {
   cat <<'EOF'
@@ -16,7 +16,7 @@ Usage:
   scripts/release/cli.sh [OPTIONS]
 
 Options:
-  --target <platform>  Build specific target(s): darwin-x64, darwin-arm64, linux-x64, linux-arm64, all
+  --target <platform>  Build specific target(s): darwin-x64, darwin-arm64, all
   --publish            Upload built assets to the GitHub release tag
   --tag <tag>          Release tag to upload to (default: lingxia-cli-v<version>)
   --out <dir>          Output directory (default: dist/cli-release)
@@ -63,7 +63,6 @@ current_cli_target() {
 
   case "$os" in
     Darwin) os="darwin" ;;
-    Linux) os="linux" ;;
     *)
       echo "ERROR: unsupported CLI host OS: $os" >&2
       return 2
@@ -86,8 +85,6 @@ cli_target_info() {
   case "$1" in
     darwin-x64)   echo "x86_64-apple-darwin lingxia-darwin-x64" ;;
     darwin-arm64) echo "aarch64-apple-darwin lingxia-darwin-arm64" ;;
-    linux-x64)    echo "x86_64-unknown-linux-gnu lingxia-linux-x64" ;;
-    linux-arm64)  echo "aarch64-unknown-linux-gnu lingxia-linux-arm64" ;;
     *) return 1 ;;
   esac
 }
