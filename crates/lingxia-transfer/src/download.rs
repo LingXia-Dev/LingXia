@@ -1,6 +1,6 @@
 pub mod manager;
 
-use self::manager::{DownloadOwner, DownloadOwnerKind, ResumeMetadata};
+use self::manager::{DownloadBehavior, DownloadOwner, DownloadOwnerKind, ResumeMetadata};
 use crate::{DownloadsError, Result};
 use dashmap::DashMap;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
@@ -18,11 +18,13 @@ const BRIDGE_EVENT_STARTED: &str = "BrowserDownloadStarted";
 const BRIDGE_EVENT_PROGRESS: &str = "BrowserDownloadProgress";
 const BRIDGE_EVENT_COMPLETED: &str = "BrowserDownloadCompleted";
 const BRIDGE_EVENT_FAILED: &str = "BrowserDownloadFailed";
+const BRIDGE_EVENT_PAUSED: &str = "BrowserDownloadPaused";
 const DOWNLOAD_INTERRUPTED_ERROR: &str = "Download interrupted";
 const DOWNLOAD_REMOVED_ERROR: &str = "File removed from disk";
 
 static STORES: OnceLock<DashMap<String, Arc<DownloadsStore>>> = OnceLock::new();
-static ACTIVE_DOWNLOAD_CANCELS: OnceLock<DashMap<String, watch::Sender<bool>>> = OnceLock::new();
+static ACTIVE_DOWNLOAD_COMMANDS: OnceLock<DashMap<String, watch::Sender<ActiveDownloadCommand>>> =
+    OnceLock::new();
 type BrowserTabPathResolver = Arc<dyn Fn(&str) -> String + Send + Sync>;
 type BrowserRetryHandler = Arc<dyn Fn(&str) -> Result<()> + Send + Sync>;
 static BROWSER_TAB_PATH_RESOLVER: OnceLock<BrowserTabPathResolver> = OnceLock::new();
@@ -55,6 +57,7 @@ pub fn retry_browser_owned_download(task_id: &str) -> Result<()> {
 #[serde(rename_all = "snake_case")]
 pub enum DownloadStatus {
     Downloading,
+    Paused,
     Completed,
     Failed,
     Removed,
@@ -92,6 +95,7 @@ pub struct DownloadRecord {
 pub enum DownloadEventKind {
     Started,
     Progress,
+    Paused,
     Completed,
     Failed,
     Removed,
@@ -134,6 +138,8 @@ struct StartedPayload {
     suggested_filename: Option<String>,
     source_page_url: Option<String>,
     cookie: Option<String>,
+    #[serde(default)]
+    behavior: DownloadBehavior,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,6 +173,16 @@ struct FailedPayload {
     total_bytes: Option<u64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PausedPayload {
+    task_id: String,
+    tab_id: String,
+    url: String,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct DownloadRequestContext {
     #[serde(default)]
@@ -182,7 +198,18 @@ pub struct DownloadRequestContext {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cookie: Option<String>,
     #[serde(default)]
+    pub behavior: DownloadBehavior,
+    #[serde(default)]
     pub resume: ResumeMetadata,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ActiveDownloadCommand {
+    #[default]
+    None,
+    Pause,
+    Cancel,
 }
 
 struct DownloadsStore {
@@ -472,6 +499,7 @@ pub fn record_bridge_event(app_data_dir: &Path, event_name: &str, payload: &Valu
             let started: StartedPayload = serde_json::from_value(payload.clone())?;
             let owner = tab_download_owner(&started.tab_id);
             let now = unix_ms_now();
+            let existing = store.get_record(&started.task_id);
             let resume = store
                 .get_request_context(&started.task_id)
                 .map(|context| context.resume)
@@ -483,6 +511,7 @@ pub fn record_bridge_event(app_data_dir: &Path, event_name: &str, payload: &Valu
                 suggested_filename: started.suggested_filename,
                 source_page_url: started.source_page_url,
                 cookie: started.cookie,
+                behavior: started.behavior,
                 resume,
             };
             store.upsert_request_context(&started.task_id, request_context)?;
@@ -501,7 +530,10 @@ pub fn record_bridge_event(app_data_dir: &Path, event_name: &str, payload: &Valu
                     resumed_bytes: started.resumed_bytes,
                     retry: false,
                     error: None,
-                    created_at: now,
+                    created_at: existing
+                        .as_ref()
+                        .map(|record| record.created_at)
+                        .unwrap_or(now),
                     updated_at: now,
                     completed_at: None,
                 },
@@ -556,6 +588,22 @@ pub fn record_bridge_event(app_data_dir: &Path, event_name: &str, payload: &Valu
             record.updated_at = now;
             record.completed_at = Some(now);
             store.upsert_record(record, DownloadEventKind::Completed)?;
+        }
+        BRIDGE_EVENT_PAUSED => {
+            let paused: PausedPayload = serde_json::from_value(payload.clone())?;
+            if let Some(mut record) = store.get_record(&paused.task_id) {
+                record.owner = tab_download_owner(&paused.tab_id);
+                record.status = DownloadStatus::Paused;
+                record.tab_id = paused.tab_id;
+                record.url = paused.url;
+                record.error = None;
+                record.downloaded_bytes = paused.downloaded_bytes;
+                record.total_bytes = paused.total_bytes;
+                record.retry = true;
+                record.completed_at = None;
+                record.updated_at = unix_ms_now();
+                store.upsert_record(record, DownloadEventKind::Paused)?;
+            }
         }
         BRIDGE_EVENT_FAILED => {
             let failed: FailedPayload = serde_json::from_value(payload.clone())?;
@@ -649,9 +697,11 @@ pub(crate) fn record_managed_download_started(
     resumed_bytes: u64,
     headers: Vec<(String, String)>,
     user_agent: Option<String>,
+    behavior: DownloadBehavior,
 ) -> Result<()> {
     let store = downloads_store(app_data_dir)?;
     let now = unix_ms_now();
+    let existing = store.get_record(task_id);
     let resume = store
         .get_request_context(task_id)
         .map(|context| context.resume)
@@ -665,6 +715,7 @@ pub(crate) fn record_managed_download_started(
             suggested_filename: Some(file_name.to_string()),
             source_page_url: None,
             cookie: None,
+            behavior,
             resume,
         },
     )?;
@@ -682,11 +733,34 @@ pub(crate) fn record_managed_download_started(
         resumed_bytes,
         retry: false,
         error: None,
-        created_at: now,
+        created_at: existing
+            .as_ref()
+            .map(|record| record.created_at)
+            .unwrap_or(now),
         updated_at: now,
         completed_at: None,
     };
     store.upsert_record(record, DownloadEventKind::Started)?;
+    Ok(())
+}
+
+pub(crate) fn record_managed_download_paused(
+    app_data_dir: &Path,
+    task_id: &str,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) -> Result<()> {
+    let store = downloads_store(app_data_dir)?;
+    if let Some(mut record) = store.get_record(task_id) {
+        record.status = DownloadStatus::Paused;
+        record.downloaded_bytes = downloaded_bytes;
+        record.total_bytes = total_bytes;
+        record.retry = true;
+        record.error = None;
+        record.completed_at = None;
+        record.updated_at = unix_ms_now();
+        store.upsert_record(record, DownloadEventKind::Paused)?;
+    }
     Ok(())
 }
 
@@ -776,29 +850,36 @@ fn downloads_store(app_data_dir: &Path) -> Result<Arc<DownloadsStore>> {
     }
 }
 
-fn active_download_cancels() -> &'static DashMap<String, watch::Sender<bool>> {
-    ACTIVE_DOWNLOAD_CANCELS.get_or_init(DashMap::new)
+fn active_download_commands() -> &'static DashMap<String, watch::Sender<ActiveDownloadCommand>> {
+    ACTIVE_DOWNLOAD_COMMANDS.get_or_init(DashMap::new)
 }
 
-pub fn register_active_download(task_id: &str) -> watch::Receiver<bool> {
-    let (tx, rx) = watch::channel(false);
-    active_download_cancels().insert(task_id.to_string(), tx);
+pub fn register_active_download(task_id: &str) -> watch::Receiver<ActiveDownloadCommand> {
+    let (tx, rx) = watch::channel(ActiveDownloadCommand::None);
+    active_download_commands().insert(task_id.to_string(), tx);
     rx
 }
 
 pub fn unregister_active_download(task_id: &str) {
-    active_download_cancels().remove(task_id);
+    active_download_commands().remove(task_id);
 }
 
 pub fn cancel_active_download(task_id: &str) -> bool {
-    let Some(sender) = active_download_cancels().get(task_id) else {
+    let Some(sender) = active_download_commands().get(task_id) else {
         return false;
     };
-    sender.send(true).is_ok()
+    sender.send(ActiveDownloadCommand::Cancel).is_ok()
+}
+
+pub fn pause_active_download(task_id: &str) -> bool {
+    let Some(sender) = active_download_commands().get(task_id) else {
+        return false;
+    };
+    sender.send(ActiveDownloadCommand::Pause).is_ok()
 }
 
 fn is_active_download(task_id: &str) -> bool {
-    active_download_cancels().contains_key(task_id)
+    active_download_commands().contains_key(task_id)
 }
 
 pub fn has_active_download(task_id: &str) -> bool {
@@ -818,7 +899,10 @@ fn file_len(path: &Path) -> Option<u64> {
 }
 
 fn download_should_allow_retry(record: &DownloadRecord) -> bool {
-    record.status == DownloadStatus::Failed
+    matches!(
+        record.status,
+        DownloadStatus::Failed | DownloadStatus::Paused
+    )
 }
 
 fn reconcile_download_record(record: &mut DownloadRecord) -> bool {
@@ -856,6 +940,33 @@ fn reconcile_download_record(record: &mut DownloadRecord) -> bool {
             } else {
                 record.status = DownloadStatus::Removed;
                 record.error = Some(DOWNLOAD_REMOVED_ERROR.to_string());
+                record.completed_at = None;
+                record.updated_at = now;
+            }
+        }
+        DownloadStatus::Paused => {
+            if target_exists && !part_exists {
+                if let Some(target_len) = file_len(target_path) {
+                    record.downloaded_bytes = target_len;
+                    record.total_bytes =
+                        Some(record.total_bytes.unwrap_or(target_len).max(target_len));
+                }
+                record.status = DownloadStatus::Completed;
+                record.error = None;
+                record.retry = false;
+                record.completed_at.get_or_insert(now);
+                record.updated_at = now;
+            } else if part_exists {
+                if let Some(part_len) = file_len(&part_path) {
+                    record.downloaded_bytes = record.downloaded_bytes.max(part_len);
+                }
+                record.error = None;
+                record.retry = true;
+                record.completed_at = None;
+            } else {
+                record.status = DownloadStatus::Removed;
+                record.error = Some(DOWNLOAD_REMOVED_ERROR.to_string());
+                record.retry = false;
                 record.completed_at = None;
                 record.updated_at = now;
             }
@@ -1103,6 +1214,63 @@ mod tests {
         assert_eq!(snapshot.downloads[0].status, DownloadStatus::Completed);
         assert_eq!(snapshot.downloads[0].downloaded_bytes, 11);
         assert!(snapshot.downloads[0].completed_at.is_some());
+    }
+
+    #[test]
+    fn managed_start_updates_resumed_bytes_without_resetting_created_at() {
+        let root = temp_root("managed-restart");
+        let target_path = root.join("download.bin");
+        let owner = DownloadOwner {
+            kind: DownloadOwnerKind::LxApp,
+            appid: "app.test".to_string(),
+            page_path: None,
+            tab_id: None,
+        };
+
+        record_managed_download_started(
+            &root,
+            "managed-task",
+            owner.clone(),
+            "https://example.com/file",
+            "download.bin",
+            &target_path,
+            Some("application/octet-stream"),
+            Some(100),
+            64,
+            Vec::new(),
+            None,
+            DownloadBehavior::default(),
+        )
+        .expect("record managed start");
+        let first = get_record(&root, "managed-task")
+            .expect("get first record")
+            .expect("first record");
+
+        std::thread::sleep(std::time::Duration::from_millis(2));
+
+        record_managed_download_started(
+            &root,
+            "managed-task",
+            owner,
+            "https://example.com/file",
+            "download.bin",
+            &target_path,
+            Some("application/octet-stream"),
+            Some(100),
+            0,
+            Vec::new(),
+            None,
+            DownloadBehavior::default(),
+        )
+        .expect("record managed restart");
+        let second = get_record(&root, "managed-task")
+            .expect("get second record")
+            .expect("second record");
+
+        assert_eq!(second.resumed_bytes, 0);
+        assert_eq!(second.downloaded_bytes, 0);
+        assert_eq!(second.created_at, first.created_at);
+        assert!(second.updated_at >= first.updated_at);
     }
 
     #[test]

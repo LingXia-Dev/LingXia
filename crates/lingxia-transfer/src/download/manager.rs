@@ -12,7 +12,7 @@ use serde_json::json;
 use std::io::Error as IoError;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::fs::{self, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
@@ -21,14 +21,21 @@ const DOWNLOAD_PROGRESS_INTERVAL_BYTES: u64 = 64 * 1024;
 const DOWNLOAD_PROGRESS_INTERVAL_MILLIS: u128 = 120;
 const DOWNLOAD_RESUME_METADATA_INTERVAL_BYTES: u64 = 256 * 1024;
 const DOWNLOAD_SMALL_BODY_LIMIT: usize = 128 * 1024;
+const DOWNLOAD_DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+const DOWNLOAD_DEFAULT_MAX_RETRIES: u32 = 3;
+const DOWNLOAD_DEFAULT_RETRY_DELAY: Duration = Duration::from_millis(750);
+const DOWNLOAD_MAX_RETRY_DELAY: Duration = Duration::from_secs(5);
 pub(crate) const DOWNLOAD_CANCELED_ERROR: &str = "Download canceled";
-static USER_CACHE_DOWNLOADS: OnceLock<DashMap<String, watch::Sender<SharedDownloadState>>> =
+pub(crate) const DOWNLOAD_PAUSED_ERROR: &str = "Download paused";
+static USER_CACHE_DOWNLOADS: OnceLock<DashMap<String, SharedDownloadRegistration>> =
     OnceLock::new();
+static TARGET_PATH_DOWNLOADS: OnceLock<DashMap<String, SharedTargetPathDownload>> = OnceLock::new();
 
 const BROWSER_DOWNLOAD_EVENT_STARTED: &str = "BrowserDownloadStarted";
 const BROWSER_DOWNLOAD_EVENT_PROGRESS: &str = "BrowserDownloadProgress";
 const BROWSER_DOWNLOAD_EVENT_COMPLETED: &str = "BrowserDownloadCompleted";
 const BROWSER_DOWNLOAD_EVENT_FAILED: &str = "BrowserDownloadFailed";
+const BROWSER_DOWNLOAD_EVENT_PAUSED: &str = "BrowserDownloadPaused";
 
 /// A single HTTP(S) download job with resumable semantics.
 #[derive(Debug, Clone)]
@@ -39,6 +46,33 @@ pub struct DownloadTask {
     request_headers: Vec<(String, String)>,
     target_path: Option<PathBuf>,
     persistence: Option<DownloadPersistence>,
+    behavior: DownloadBehavior,
+    reuse_existing_target: bool,
+}
+
+/// Tuning knobs for how a single `DownloadTask` behaves under weak-network
+/// conditions: per-request timeout, optional connect timeout, and the
+/// retry-with-resume policy used by `run_download_task`.
+///
+/// `max_retries` is the **number of additional attempts** after the initial
+/// one, so the total attempt count is `1 + max_retries`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DownloadBehavior {
+    pub request_timeout: Duration,
+    pub connect_timeout: Option<Duration>,
+    pub max_retries: u32,
+    pub retry_delay: Duration,
+}
+
+impl Default for DownloadBehavior {
+    fn default() -> Self {
+        Self {
+            request_timeout: DOWNLOAD_DEFAULT_REQUEST_TIMEOUT,
+            connect_timeout: None,
+            max_retries: DOWNLOAD_DEFAULT_MAX_RETRIES,
+            retry_delay: DOWNLOAD_DEFAULT_RETRY_DELAY,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -116,6 +150,11 @@ pub enum DownloadEvent {
         downloaded_bytes: u64,
         total_bytes: Option<u64>,
     },
+    Paused {
+        url: String,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    },
 }
 
 /// Terminal success result for a download task.
@@ -156,6 +195,18 @@ enum SharedDownloadState {
     Failed(DownloadFailure),
 }
 
+#[derive(Debug, Clone)]
+struct SharedDownloadRegistration {
+    signature: String,
+    tx: watch::Sender<SharedDownloadState>,
+}
+
+#[derive(Debug, Clone)]
+struct SharedTargetPathDownload {
+    signature: String,
+    tx: watch::Sender<SharedDownloadState>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct ResumeMetadata {
     etag: Option<String>,
@@ -172,6 +223,14 @@ struct DownloadProgress {
     last_percent: i32,
     emitted_once: bool,
     last_emit_at: Instant,
+}
+
+#[derive(Debug, Clone)]
+struct DownloadAttemptFailure {
+    error: String,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    retryable: bool,
 }
 
 fn resolve_download_root(app_data_dir: &Path, default_root: impl Into<PathBuf>) -> PathBuf {
@@ -220,6 +279,8 @@ impl DownloadTask {
             request_headers: Vec::new(),
             target_path: None,
             persistence: None,
+            behavior: DownloadBehavior::default(),
+            reuse_existing_target: true,
         }
     }
 
@@ -249,10 +310,147 @@ impl DownloadTask {
         });
         self
     }
+
+    pub fn with_behavior(mut self, behavior: DownloadBehavior) -> Self {
+        self.behavior = behavior;
+        self
+    }
+
+    fn with_reuse_existing_target(mut self, reuse_existing_target: bool) -> Self {
+        self.reuse_existing_target = reuse_existing_target;
+        self
+    }
 }
 
-fn user_cache_downloads() -> &'static DashMap<String, watch::Sender<SharedDownloadState>> {
+fn download_request_options(behavior: DownloadBehavior) -> RequestOptions {
+    let options = RequestOptions::new().with_request_timeout(behavior.request_timeout);
+    if let Some(connect_timeout) = behavior.connect_timeout {
+        options.with_connect_timeout(connect_timeout)
+    } else {
+        options
+    }
+}
+
+fn retry_delay_for_attempt(base: Duration, attempt: u32) -> Duration {
+    let factor = 1u32 << attempt.min(3);
+    base.checked_mul(factor)
+        .unwrap_or(DOWNLOAD_MAX_RETRY_DELAY)
+        .min(DOWNLOAD_MAX_RETRY_DELAY)
+}
+
+fn is_retryable_http_status(status: u16) -> bool {
+    matches!(status, 408 | 425 | 429 | 500 | 502 | 503 | 504)
+}
+
+/// Heuristic classification of transport-level error strings returned from
+/// `rong_rt` / `hyper` / `hyper-util`. rong surfaces errors as opaque
+/// `String`s (see `rong_rt::client::send_request_with_coalesce` and
+/// `process_request`), so matching against substrings is the only option
+/// short of restructuring the upstream error types. Revisit this list when
+/// bumping `rong` or `hyper` — a wording change there silently turns a
+/// retryable blip into a hard failure.
+fn is_retryable_transport_error(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    // Explicit user/app cancellation must never be retried, even if the
+    // underlying transport would otherwise look transient.
+    if lower == DOWNLOAD_CANCELED_ERROR.to_ascii_lowercase()
+        || lower == DOWNLOAD_PAUSED_ERROR.to_ascii_lowercase()
+        || lower.contains("download canceled")
+        || lower.contains("download paused")
+        || lower.contains("operation canceled")
+        || lower.contains("operation cancelled")
+        || lower.contains("request canceled")
+        || lower.contains("request cancelled")
+        || lower.contains("user canceled")
+        || lower.contains("user cancelled")
+    {
+        return false;
+    }
+
+    // Timeouts from rong_rt: "request timeout", "read timeout".
+    lower.contains("timeout")
+        // Generic "temporary failure" phrasing from DNS resolvers etc.
+        || lower.contains("tempor")
+        // TCP-level disconnects while a stream is in flight. Note: we cannot
+        // match "connection aborted" here because the cancel guard above
+        // swallows any string containing "aborted".
+        || lower.contains("connection reset")
+        || lower.contains("connection aborted")
+        || lower.contains("connection closed")
+        || lower.contains("connect error")
+        || lower.contains("broken pipe")
+        // hyper body errors when the peer closes mid-stream.
+        || lower.contains("unexpected eof")
+        || lower.contains("early eof")
+        || lower.contains("body stream")
+        || lower.contains("incomplete message")
+        // DNS / routing failures, often transient on cellular.
+        || lower.contains("dns")
+        || lower.contains("unreachable")
+        || lower.contains("no route")
+        // TLS handshake hiccups on flaky networks.
+        || lower.contains("tls")
+        || lower.contains("handshake")
+        // HTTP/2 stream-level retry signals.
+        || lower.contains("refused stream")
+        || lower.contains("goaway")
+        // Catch-all for "network" phrasing in upstream errors.
+        || lower.contains("network")
+}
+
+async fn sleep_for_retry(
+    cancel_rx: Option<&mut watch::Receiver<crate::download::ActiveDownloadCommand>>,
+    delay: Duration,
+) -> Result<(), String> {
+    if delay.is_zero() {
+        return Ok(());
+    }
+
+    if let Some(cancel) = cancel_rx {
+        let initial_command = *cancel.borrow();
+        if initial_command != crate::download::ActiveDownloadCommand::None {
+            return Err(match initial_command {
+                crate::download::ActiveDownloadCommand::Pause => DOWNLOAD_PAUSED_ERROR,
+                crate::download::ActiveDownloadCommand::Cancel => DOWNLOAD_CANCELED_ERROR,
+                crate::download::ActiveDownloadCommand::None => unreachable!(),
+            }
+            .to_string());
+        }
+
+        let sleep = tokio::time::sleep(delay);
+        tokio::pin!(sleep);
+
+        loop {
+            tokio::select! {
+                _ = &mut sleep => return Ok(()),
+                changed = cancel.changed() => {
+                    if changed.is_err() {
+                        return Ok(());
+                    }
+                    match *cancel.borrow() {
+                        crate::download::ActiveDownloadCommand::Pause => {
+                            return Err(DOWNLOAD_PAUSED_ERROR.to_string());
+                        }
+                        crate::download::ActiveDownloadCommand::Cancel => {
+                            return Err(DOWNLOAD_CANCELED_ERROR.to_string());
+                        }
+                        crate::download::ActiveDownloadCommand::None => {}
+                    }
+                }
+            }
+        }
+    }
+
+    tokio::time::sleep(delay).await;
+    Ok(())
+}
+
+fn user_cache_downloads() -> &'static DashMap<String, SharedDownloadRegistration> {
     USER_CACHE_DOWNLOADS.get_or_init(DashMap::new)
+}
+
+fn target_path_downloads() -> &'static DashMap<String, SharedTargetPathDownload> {
+    TARGET_PATH_DOWNLOADS.get_or_init(DashMap::new)
 }
 
 fn sanitize_filename(raw: &str) -> String {
@@ -402,6 +600,25 @@ fn user_cache_download_key(request: &UserCacheDownloadRequest) -> String {
     hex_encode(digest.as_ref())
 }
 
+fn shared_download_signature(
+    request: &UserCacheDownloadRequest,
+    behavior: DownloadBehavior,
+) -> String {
+    let mut material = user_cache_download_key(request);
+    material.push('\n');
+    material.push_str(&format!(
+        "rt={};ct={};mr={};rd={}",
+        behavior.request_timeout.as_millis(),
+        behavior
+            .connect_timeout
+            .map(|value| value.as_millis().to_string())
+            .unwrap_or_else(|| "none".to_string()),
+        behavior.max_retries,
+        behavior.retry_delay.as_millis()
+    ));
+    material
+}
+
 pub fn download_request_task_id(request: &UserCacheDownloadRequest) -> String {
     user_cache_download_key(request)
 }
@@ -538,9 +755,33 @@ fn record_started_for_persistence(
         resumed_bytes,
         task.request_headers.clone(),
         task.fallback_user_agent.clone(),
+        task.behavior,
     ) {
         log::warn!(
             "[DownloadManager] failed to persist started task_id={} url={} error={}",
+            persistence.task_id,
+            task.request.url,
+            err
+        );
+    }
+}
+
+fn record_paused_for_persistence(
+    task: &DownloadTask,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+) {
+    let Some(persistence) = track_persistent_record(task) else {
+        return;
+    };
+    if let Err(err) = crate::download::record_managed_download_paused(
+        &persistence.app_data_dir,
+        &persistence.task_id,
+        downloaded_bytes,
+        total_bytes,
+    ) {
+        log::warn!(
+            "[DownloadManager] failed to persist paused task_id={} url={} error={}",
             persistence.task_id,
             task.request.url,
             err
@@ -699,48 +940,20 @@ async fn write_chunk(
     Ok(())
 }
 
-async fn run_download_task(
-    task: DownloadTask,
-    mut cancel_rx: Option<watch::Receiver<bool>>,
-    mut on_event: impl FnMut(DownloadEvent),
-) -> Result<DownloadSuccess, DownloadFailure> {
+async fn run_download_attempt(
+    task: &DownloadTask,
+    filename: &str,
+    target_path: &Path,
+    part_path: &Path,
+    cancel_rx: &mut Option<watch::Receiver<crate::download::ActiveDownloadCommand>>,
+    started: &mut bool,
+    on_event: &mut impl FnMut(DownloadEvent),
+) -> Result<DownloadSuccess, DownloadAttemptFailure> {
     let request = task.request.clone();
     let request_headers = task.request_headers.clone();
-    let filename = suggest_filename(&request);
-    let target_path = task
-        .target_path
-        .clone()
-        .unwrap_or_else(|| resolve_unique_download_path(&task.root_dir, &filename));
-    let part_path = part_path_for(&target_path);
-    let url = request.url.clone();
 
-    if let Err(e) = fs::create_dir_all(&task.root_dir).await {
-        return Err(emit_failed(
-            &mut on_event,
-            url,
-            format!("create download dir failed: {}", e),
-            0,
-            None,
-        ));
-    }
-
-    if fs::try_exists(&target_path).await.unwrap_or(false)
-        && !fs::try_exists(&part_path).await.unwrap_or(false)
-    {
-        let size = fs::metadata(&target_path)
-            .await
-            .ok()
-            .map(|meta| meta.len())
-            .unwrap_or(0);
-        return Ok(DownloadSuccess {
-            file_name: filename.clone(),
-            path: target_path.clone(),
-            downloaded_bytes: size,
-        });
-    }
-
-    let mut resume_meta = load_resume_metadata(&task).await;
-    let mut resume_offset = fs::metadata(&part_path)
+    let mut resume_meta = load_resume_metadata(task).await;
+    let mut resume_offset = fs::metadata(part_path)
         .await
         .ok()
         .map(|meta| meta.len())
@@ -748,7 +961,7 @@ async fn run_download_task(
 
     let has_resume_validator = resume_meta.etag.is_some() || resume_meta.last_modified.is_some();
     if resume_offset > 0 && !has_resume_validator {
-        let _ = fs::remove_file(&part_path).await;
+        let _ = fs::remove_file(part_path).await;
         resume_offset = 0;
         resume_meta = ResumeMetadata::default();
     }
@@ -817,43 +1030,42 @@ async fn run_download_task(
     let request_obj = match request_builder.body(body) {
         Ok(req) => req,
         Err(e) => {
-            return Err(emit_failed(
-                &mut on_event,
-                url,
-                format!("build request failed: {}", e),
-                resume_offset,
-                None,
-            ));
+            return Err(DownloadAttemptFailure {
+                error: format!("build request failed: {}", e),
+                downloaded_bytes: resume_offset,
+                total_bytes: None,
+                retryable: false,
+            });
         }
     };
 
     let response = match host_http::send_with_small_body_limit(
         request_obj,
         DOWNLOAD_SMALL_BODY_LIMIT,
-        RequestOptions::new(),
+        download_request_options(task.behavior),
     )
     .await
     {
         Ok(response) => response,
         Err(e) => {
-            return Err(emit_failed(
-                &mut on_event,
-                url,
-                e.to_string(),
-                resume_offset,
-                None,
-            ));
+            let error = e.to_string();
+            return Err(DownloadAttemptFailure {
+                retryable: is_retryable_transport_error(&error),
+                error,
+                downloaded_bytes: resume_offset,
+                total_bytes: None,
+            });
         }
     };
 
     if !response.status.is_success() {
-        return Err(emit_failed(
-            &mut on_event,
-            url,
-            format!("http status {}", response.status.as_u16()),
-            resume_offset,
-            None,
-        ));
+        let status = response.status.as_u16();
+        return Err(DownloadAttemptFailure {
+            error: format!("http status {status}"),
+            downloaded_bytes: resume_offset,
+            total_bytes: None,
+            retryable: is_retryable_http_status(status),
+        });
     }
 
     let append_mode = resume_offset > 0 && response.status.as_u16() == 206;
@@ -866,18 +1078,17 @@ async fn run_download_task(
         .write(true)
         .truncate(!append_mode)
         .append(append_mode)
-        .open(&part_path)
+        .open(part_path)
         .await
     {
         Ok(file) => file,
         Err(e) => {
-            return Err(emit_failed(
-                &mut on_event,
-                request.url,
-                format!("open temp file failed: {}", e),
-                resume_offset,
-                None,
-            ));
+            return Err(DownloadAttemptFailure {
+                error: format!("open temp file failed: {}", e),
+                downloaded_bytes: resume_offset,
+                total_bytes: None,
+                retryable: false,
+            });
         }
     };
 
@@ -901,24 +1112,31 @@ async fn run_download_task(
     resume_meta.last_modified = last_modified;
     resume_meta.total = total_bytes;
     resume_meta.downloaded = resume_offset;
-    save_resume_metadata(&task, &resume_meta).await;
+    save_resume_metadata(task, &resume_meta).await;
 
-    on_event(DownloadEvent::Started {
-        url: request.url.clone(),
-        file_name: filename.clone(),
-        target_path: target_path.clone(),
-        mime_type: request.mime_type.clone(),
-        total_bytes,
-        resumed_bytes: resume_offset,
-    });
-    record_started_for_persistence(
-        &task,
-        &filename,
-        &target_path,
-        request.mime_type.as_deref(),
-        total_bytes,
-        resume_offset,
-    );
+    // Started must fire exactly once per top-level download call, even if the
+    // stream reconnects several times under the hood. Upper layers (browser JS,
+    // lxapp UI) treat a second Started as a new download and would reset their
+    // progress indicators. Subsequent attempts only surface progress events.
+    if !*started {
+        *started = true;
+        on_event(DownloadEvent::Started {
+            url: request.url.clone(),
+            file_name: filename.to_string(),
+            target_path: target_path.to_path_buf(),
+            mime_type: request.mime_type.clone(),
+            total_bytes,
+            resumed_bytes: resume_offset,
+        });
+        record_started_for_persistence(
+            task,
+            filename,
+            target_path,
+            request.mime_type.as_deref(),
+            total_bytes,
+            resume_offset,
+        );
+    }
 
     let mut progress = DownloadProgress {
         downloaded: resume_offset,
@@ -941,14 +1159,14 @@ async fn run_download_task(
         HttpBody::Empty => Ok(()),
         HttpBody::Small(bytes) => {
             write_chunk(
-                &task,
+                task,
                 &mut file,
                 bytes.as_ref(),
                 &mut progress,
                 total_bytes,
                 &mut resume_meta,
                 &request.url,
-                &mut on_event,
+                on_event,
             )
             .await
         }
@@ -956,16 +1174,32 @@ async fn run_download_task(
             let mut result = Ok(());
             loop {
                 let next_chunk = if let Some(cancel) = cancel_rx.as_mut() {
-                    if *cancel.borrow() {
-                        result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
-                        break;
+                    match *cancel.borrow() {
+                        crate::download::ActiveDownloadCommand::Pause => {
+                            result = Err(DOWNLOAD_PAUSED_ERROR.to_string());
+                            break;
+                        }
+                        crate::download::ActiveDownloadCommand::Cancel => {
+                            result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
+                            break;
+                        }
+                        crate::download::ActiveDownloadCommand::None => {}
                     }
                     tokio::select! {
                         biased;
                         changed = cancel.changed() => {
-                            if changed.is_ok() && *cancel.borrow() {
-                                result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
-                                break;
+                            if changed.is_ok() {
+                                match *cancel.borrow() {
+                                    crate::download::ActiveDownloadCommand::Pause => {
+                                        result = Err(DOWNLOAD_PAUSED_ERROR.to_string());
+                                        break;
+                                    }
+                                    crate::download::ActiveDownloadCommand::Cancel => {
+                                        result = Err(DOWNLOAD_CANCELED_ERROR.to_string());
+                                        break;
+                                    }
+                                    crate::download::ActiveDownloadCommand::None => {}
+                                }
                             }
                             continue;
                         }
@@ -981,14 +1215,14 @@ async fn run_download_task(
                 match chunk {
                     Ok(bytes) => {
                         if let Err(e) = write_chunk(
-                            &task,
+                            task,
                             &mut file,
                             bytes.as_ref(),
                             &mut progress,
                             total_bytes,
                             &mut resume_meta,
                             &request.url,
-                            &mut on_event,
+                            on_event,
                         )
                         .await
                         {
@@ -1009,92 +1243,226 @@ async fn run_download_task(
     if progress.downloaded > progress.last_emitted {
         progress.last_emitted = progress.downloaded;
         progress.last_emit_at = Instant::now();
-        save_resume_metadata(&task, &resume_meta).await;
+        save_resume_metadata(task, &resume_meta).await;
         on_event(DownloadEvent::Progress {
             url: request.url.clone(),
             downloaded_bytes: progress.downloaded,
             total_bytes,
         });
-        record_progress_for_persistence(&task, progress.downloaded, total_bytes);
+        record_progress_for_persistence(task, progress.downloaded, total_bytes);
     }
 
-    if let Err(e) = stream_result {
+    if let Err(error) = stream_result {
         let _ = file.flush().await;
-        if e == DOWNLOAD_CANCELED_ERROR {
-            save_resume_metadata(&task, &resume_meta).await;
-            record_failed_for_persistence(
-                &task,
-                DOWNLOAD_CANCELED_ERROR,
-                progress.downloaded,
-                total_bytes,
-            );
-            return Err(emit_failed(
-                &mut on_event,
-                request.url,
-                DOWNLOAD_CANCELED_ERROR.to_string(),
-                progress.downloaded,
-                total_bytes,
-            ));
-        }
-        save_resume_metadata(&task, &resume_meta).await;
-        record_failed_for_persistence(&task, &e, progress.downloaded, total_bytes);
-        return Err(emit_failed(
-            &mut on_event,
-            request.url,
-            e,
-            progress.downloaded,
+        save_resume_metadata(task, &resume_meta).await;
+        return Err(DownloadAttemptFailure {
+            retryable: error != DOWNLOAD_CANCELED_ERROR
+                && error != DOWNLOAD_PAUSED_ERROR
+                && is_retryable_transport_error(&error),
+            error,
+            downloaded_bytes: progress.downloaded,
             total_bytes,
-        ));
+        });
     }
 
     if let Err(e) = file.flush().await {
-        save_resume_metadata(&task, &resume_meta).await;
-        let error = format!("flush failed: {}", e);
-        record_failed_for_persistence(&task, &error, progress.downloaded, total_bytes);
-        return Err(emit_failed(
-            &mut on_event,
-            request.url,
-            error,
-            progress.downloaded,
+        save_resume_metadata(task, &resume_meta).await;
+        return Err(DownloadAttemptFailure {
+            error: format!("flush failed: {}", e),
+            downloaded_bytes: progress.downloaded,
             total_bytes,
-        ));
+            retryable: false,
+        });
     }
     drop(file);
 
-    if let Err(e) = fs::rename(&part_path, &target_path).await {
-        save_resume_metadata(&task, &resume_meta).await;
-        let error = format!("rename failed: {}", e);
-        record_failed_for_persistence(&task, &error, progress.downloaded, total_bytes);
-        return Err(emit_failed(
-            &mut on_event,
-            request.url,
-            error,
-            progress.downloaded,
+    if !task.reuse_existing_target
+        && fs::try_exists(target_path).await.unwrap_or(false)
+        && let Err(e) = fs::remove_file(target_path).await
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        save_resume_metadata(task, &resume_meta).await;
+        return Err(DownloadAttemptFailure {
+            error: format!("remove existing target failed: {}", e),
+            downloaded_bytes: progress.downloaded,
             total_bytes,
-        ));
+            retryable: false,
+        });
     }
 
-    clear_resume_metadata(&task).await;
-    record_completed_for_persistence(&task, progress.downloaded, total_bytes);
+    if let Err(e) = fs::rename(part_path, target_path).await {
+        save_resume_metadata(task, &resume_meta).await;
+        return Err(DownloadAttemptFailure {
+            error: format!("rename failed: {}", e),
+            downloaded_bytes: progress.downloaded,
+            total_bytes,
+            retryable: false,
+        });
+    }
+
+    clear_resume_metadata(task).await;
+    record_completed_for_persistence(task, progress.downloaded, total_bytes);
     let success = DownloadSuccess {
-        file_name: filename.clone(),
-        path: target_path.clone(),
+        file_name: filename.to_string(),
+        path: target_path.to_path_buf(),
         downloaded_bytes: progress.downloaded,
     };
     on_event(DownloadEvent::Completed {
         url: request.url,
-        file_name: filename,
-        path: target_path,
+        file_name: filename.to_string(),
+        path: target_path.to_path_buf(),
         downloaded_bytes: progress.downloaded,
         total_bytes,
     });
     Ok(success)
 }
 
+async fn run_download_task(
+    task: DownloadTask,
+    mut cancel_rx: Option<watch::Receiver<crate::download::ActiveDownloadCommand>>,
+    mut on_event: impl FnMut(DownloadEvent),
+) -> Result<DownloadSuccess, DownloadFailure> {
+    let request = task.request.clone();
+    let filename = suggest_filename(&request);
+    let target_path = task
+        .target_path
+        .clone()
+        .unwrap_or_else(|| resolve_unique_download_path(&task.root_dir, &filename));
+    let part_path = part_path_for(&target_path);
+    let url = request.url.clone();
+
+    if let Err(e) = fs::create_dir_all(&task.root_dir).await {
+        return Err(emit_failed(
+            &mut on_event,
+            url,
+            format!("create download dir failed: {}", e),
+            0,
+            None,
+        ));
+    }
+
+    if task.reuse_existing_target
+        && fs::try_exists(&target_path).await.unwrap_or(false)
+        && !fs::try_exists(&part_path).await.unwrap_or(false)
+    {
+        let size = fs::metadata(&target_path)
+            .await
+            .ok()
+            .map(|meta| meta.len())
+            .unwrap_or(0);
+        return Ok(DownloadSuccess {
+            file_name: filename.clone(),
+            path: target_path.clone(),
+            downloaded_bytes: size,
+        });
+    }
+
+    let mut started = false;
+    let mut attempt = 0u32;
+
+    loop {
+        match run_download_attempt(
+            &task,
+            &filename,
+            &target_path,
+            &part_path,
+            &mut cancel_rx,
+            &mut started,
+            &mut on_event,
+        )
+        .await
+        {
+            Ok(success) => return Ok(success),
+            Err(failure) => {
+                if failure.error == DOWNLOAD_PAUSED_ERROR {
+                    record_paused_for_persistence(
+                        &task,
+                        failure.downloaded_bytes,
+                        failure.total_bytes,
+                    );
+                    on_event(DownloadEvent::Paused {
+                        url: request.url.clone(),
+                        downloaded_bytes: failure.downloaded_bytes,
+                        total_bytes: failure.total_bytes,
+                    });
+                    return Err(DownloadFailure {
+                        url: request.url.clone(),
+                        error: failure.error,
+                        downloaded_bytes: failure.downloaded_bytes,
+                        total_bytes: failure.total_bytes,
+                    });
+                }
+
+                let should_retry = failure.retryable && attempt < task.behavior.max_retries;
+                if should_retry {
+                    let delay = retry_delay_for_attempt(task.behavior.retry_delay, attempt);
+                    attempt += 1;
+                    log::warn!(
+                        "[DownloadManager] retrying download attempt={} url={} downloaded_bytes={} reason={}",
+                        attempt,
+                        request.url,
+                        failure.downloaded_bytes,
+                        failure.error
+                    );
+                    if let Err(error) = sleep_for_retry(cancel_rx.as_mut(), delay).await {
+                        if error == DOWNLOAD_PAUSED_ERROR {
+                            record_paused_for_persistence(
+                                &task,
+                                failure.downloaded_bytes,
+                                failure.total_bytes,
+                            );
+                            on_event(DownloadEvent::Paused {
+                                url: request.url.clone(),
+                                downloaded_bytes: failure.downloaded_bytes,
+                                total_bytes: failure.total_bytes,
+                            });
+                            return Err(DownloadFailure {
+                                url: request.url.clone(),
+                                error,
+                                downloaded_bytes: failure.downloaded_bytes,
+                                total_bytes: failure.total_bytes,
+                            });
+                        }
+                        record_failed_for_persistence(
+                            &task,
+                            &error,
+                            failure.downloaded_bytes,
+                            failure.total_bytes,
+                        );
+                        return Err(emit_failed(
+                            &mut on_event,
+                            request.url.clone(),
+                            error,
+                            failure.downloaded_bytes,
+                            failure.total_bytes,
+                        ));
+                    }
+                    continue;
+                }
+
+                record_failed_for_persistence(
+                    &task,
+                    &failure.error,
+                    failure.downloaded_bytes,
+                    failure.total_bytes,
+                );
+                return Err(emit_failed(
+                    &mut on_event,
+                    request.url.clone(),
+                    failure.error,
+                    failure.downloaded_bytes,
+                    failure.total_bytes,
+                ));
+            }
+        }
+    }
+}
+
 fn map_browser_download_event(
     task_id: &str,
     tab_id: &str,
     request: &DownloadRequest,
+    behavior: DownloadBehavior,
     event: DownloadEvent,
 ) -> (&'static str, serde_json::Value) {
     match event {
@@ -1120,6 +1488,7 @@ fn map_browser_download_event(
                 "suggestedFilename": request.suggested_filename,
                 "sourcePageUrl": request.source_page_url,
                 "cookie": request.cookie,
+                "behavior": behavior,
             }),
         ),
         DownloadEvent::Progress {
@@ -1170,6 +1539,20 @@ fn map_browser_download_event(
                 "totalBytes": total_bytes,
             }),
         ),
+        DownloadEvent::Paused {
+            url,
+            downloaded_bytes,
+            total_bytes,
+        } => (
+            BROWSER_DOWNLOAD_EVENT_PAUSED,
+            json!({
+                "taskId": task_id,
+                "tabId": tab_id,
+                "url": url,
+                "downloadedBytes": downloaded_bytes,
+                "totalBytes": total_bytes,
+            }),
+        ),
     }
 }
 
@@ -1177,14 +1560,16 @@ pub async fn run_browser_download_task(
     task: DownloadTask,
     task_id: &str,
     tab_id: &str,
-    cancel_rx: watch::Receiver<bool>,
+    cancel_rx: watch::Receiver<crate::download::ActiveDownloadCommand>,
     mut on_event: impl FnMut(&'static str, serde_json::Value),
 ) -> Result<(), DownloadFailure> {
     let task_id = task_id.to_string();
     let tab_id = tab_id.to_string();
     let request = task.request.clone();
+    let behavior = task.behavior;
     run_download_task(task, Some(cancel_rx), |event| {
-        let (event_name, payload) = map_browser_download_event(&task_id, &tab_id, &request, event);
+        let (event_name, payload) =
+            map_browser_download_event(&task_id, &tab_id, &request, behavior, event);
         on_event(event_name, payload);
     })
     .await
@@ -1246,11 +1631,53 @@ impl Drop for SharedDownloadLeaderGuard {
     }
 }
 
+struct SharedTargetPathDownloadLeaderGuard {
+    key: String,
+    active: bool,
+}
+
+impl SharedTargetPathDownloadLeaderGuard {
+    fn new(key: String) -> Self {
+        Self { key, active: true }
+    }
+
+    fn disarm(&mut self) {
+        self.active = false;
+    }
+}
+
+impl Drop for SharedTargetPathDownloadLeaderGuard {
+    fn drop(&mut self) {
+        if self.active {
+            target_path_downloads().remove(&self.key);
+        }
+    }
+}
+
 pub async fn download_to_user_cache(
     persistence: Option<DownloadPersistence>,
     user_cache_dir: &Path,
     user_request: UserCacheDownloadRequest,
     fallback_user_agent: Option<String>,
+    on_event: impl FnMut(DownloadEvent) + Send,
+) -> Result<UserCacheDownloadResult, DownloadFailure> {
+    download_to_user_cache_with_behavior(
+        persistence,
+        user_cache_dir,
+        user_request,
+        fallback_user_agent,
+        DownloadBehavior::default(),
+        on_event,
+    )
+    .await
+}
+
+pub async fn download_to_user_cache_with_behavior(
+    persistence: Option<DownloadPersistence>,
+    user_cache_dir: &Path,
+    user_request: UserCacheDownloadRequest,
+    fallback_user_agent: Option<String>,
+    behavior: DownloadBehavior,
     mut on_event: impl FnMut(DownloadEvent) + Send,
 ) -> Result<UserCacheDownloadResult, DownloadFailure> {
     let url = user_request.url.trim().to_string();
@@ -1285,20 +1712,47 @@ pub async fn download_to_user_cache(
         });
     }
 
+    let share_signature = shared_download_signature(&user_request, behavior);
+    let should_share = persistence.is_none();
     let tracker = user_cache_downloads();
     let mut leader = false;
     let rx = match tracker.entry(key.clone()) {
-        DashEntry::Occupied(entry) => entry.get().subscribe(),
+        DashEntry::Occupied(entry) => {
+            if !should_share {
+                return Err(DownloadFailure {
+                    url,
+                    error: "download is already active".to_string(),
+                    downloaded_bytes: 0,
+                    total_bytes: None,
+                });
+            }
+            if entry.get().signature != share_signature {
+                return Err(DownloadFailure {
+                    url,
+                    error: "download is already active with different behavior".to_string(),
+                    downloaded_bytes: 0,
+                    total_bytes: None,
+                });
+            }
+            Some(entry.get().tx.subscribe())
+        }
         DashEntry::Vacant(entry) => {
             let (tx, rx) = watch::channel(SharedDownloadState::InProgress);
-            entry.insert(tx);
+            entry.insert(SharedDownloadRegistration {
+                signature: share_signature,
+                tx,
+            });
             leader = true;
-            rx
+            if should_share { Some(rx) } else { None }
         }
     };
 
-    if !leader {
-        let shared = wait_shared_download(rx, &url).await?;
+    if should_share && !leader {
+        let shared = wait_shared_download(
+            rx.expect("shared user-cache download receiver missing"),
+            &url,
+        )
+        .await?;
         return Ok(UserCacheDownloadResult {
             temp_path: shared.path,
             file_name: shared.file_name,
@@ -1307,7 +1761,7 @@ pub async fn download_to_user_cache(
         });
     }
 
-    let mut leader_guard = SharedDownloadLeaderGuard::new(key.clone());
+    let mut leader_guard = Some(SharedDownloadLeaderGuard::new(key.clone()));
 
     let persistence_task_id = persistence.as_ref().map(|value| value.task_id.clone());
     let cancel_rx = persistence_task_id
@@ -1317,6 +1771,7 @@ pub async fn download_to_user_cache(
     let mut task = DownloadTask::for_browser(request, root_dir, fallback_user_agent)
         .with_target_path(target_path);
     task.request_headers = sanitize_header_list(user_request.headers);
+    task = task.with_behavior(behavior);
     if let Some(persistence) = persistence {
         task = task.with_persistence(persistence);
     }
@@ -1329,18 +1784,138 @@ pub async fn download_to_user_cache(
         crate::download::unregister_active_download(task_id);
     }
 
-    if let Some(entry) = tracker.get(&key) {
+    if should_share && let Some(entry) = tracker.get(&key) {
         match &result {
             Ok(success) => {
-                let _ = entry.send(SharedDownloadState::Completed(success.clone()));
+                let _ = entry
+                    .tx
+                    .send(SharedDownloadState::Completed(success.clone()));
             }
             Err(failure) => {
-                let _ = entry.send(SharedDownloadState::Failed(failure.clone()));
+                let _ = entry.tx.send(SharedDownloadState::Failed(failure.clone()));
             }
         }
     }
     tracker.remove(&key);
-    leader_guard.disarm();
+    if let Some(guard) = leader_guard.as_mut() {
+        guard.disarm();
+    }
+
+    result.map(|success| UserCacheDownloadResult {
+        temp_path: success.path,
+        file_name: success.file_name,
+        mime_type: None,
+        size: success.downloaded_bytes,
+    })
+}
+
+pub async fn download_to_path_with_behavior(
+    persistence: Option<DownloadPersistence>,
+    target_path: PathBuf,
+    user_request: UserCacheDownloadRequest,
+    fallback_user_agent: Option<String>,
+    behavior: DownloadBehavior,
+    mut on_event: impl FnMut(DownloadEvent) + Send,
+) -> Result<UserCacheDownloadResult, DownloadFailure> {
+    let url = user_request.url.trim().to_string();
+    if url.is_empty() {
+        return Err(DownloadFailure {
+            url,
+            error: "download url cannot be empty".to_string(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+        });
+    }
+
+    let root_dir = target_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let share_signature = shared_download_signature(&user_request, behavior);
+    let path_key = target_path.to_string_lossy().into_owned();
+    let tracker = target_path_downloads();
+    let should_share = persistence.is_none();
+    let mut leader = false;
+    let rx = match tracker.entry(path_key.clone()) {
+        DashEntry::Occupied(entry) => {
+            if !should_share || entry.get().signature != share_signature {
+                return Err(DownloadFailure {
+                    url,
+                    error: format!(
+                        "download target path is already in use: {}",
+                        target_path.display()
+                    ),
+                    downloaded_bytes: 0,
+                    total_bytes: None,
+                });
+            }
+            Some(entry.get().tx.subscribe())
+        }
+        DashEntry::Vacant(entry) => {
+            let (tx, rx) = watch::channel(SharedDownloadState::InProgress);
+            entry.insert(SharedTargetPathDownload {
+                signature: share_signature,
+                tx,
+            });
+            leader = true;
+            if should_share { Some(rx) } else { None }
+        }
+    };
+
+    if should_share && !leader {
+        let shared = wait_shared_download(
+            rx.expect("shared target-path download receiver missing"),
+            &url,
+        )
+        .await?;
+        return Ok(UserCacheDownloadResult {
+            temp_path: shared.path,
+            file_name: shared.file_name,
+            mime_type: None,
+            size: shared.downloaded_bytes,
+        });
+    }
+
+    let mut leader_guard = Some(SharedTargetPathDownloadLeaderGuard::new(path_key.clone()));
+    let request = build_user_cache_download_request(url.clone());
+    let mut task = DownloadTask::for_browser(request, root_dir, fallback_user_agent)
+        .with_target_path(target_path)
+        .with_reuse_existing_target(false);
+    task.request_headers = sanitize_header_list(user_request.headers);
+    task = task.with_behavior(behavior);
+    let persistence_task_id = persistence.as_ref().map(|value| value.task_id.clone());
+    let cancel_rx = persistence_task_id
+        .as_deref()
+        .map(crate::download::register_active_download);
+    if let Some(persistence) = persistence {
+        task = task.with_persistence(persistence);
+    }
+
+    let result = run_download_task(task, cancel_rx, |event| {
+        on_event(event);
+    })
+    .await;
+
+    if let Some(task_id) = persistence_task_id.as_deref() {
+        crate::download::unregister_active_download(task_id);
+    }
+
+    if should_share && let Some(entry) = tracker.get(&path_key) {
+        match &result {
+            Ok(success) => {
+                let _ = entry
+                    .tx
+                    .send(SharedDownloadState::Completed(success.clone()));
+            }
+            Err(failure) => {
+                let _ = entry.tx.send(SharedDownloadState::Failed(failure.clone()));
+            }
+        }
+    }
+    tracker.remove(&path_key);
+    if let Some(guard) = leader_guard.as_mut() {
+        guard.disarm();
+    }
 
     result.map(|success| UserCacheDownloadResult {
         temp_path: success.path,
@@ -1374,6 +1949,76 @@ mod tests {
         assert_eq!(
             parse_content_disposition_filename(normal),
             Some("demo.bin".to_string())
+        );
+    }
+
+    #[test]
+    fn retryable_transport_errors_cover_weak_network_cases() {
+        assert!(is_retryable_transport_error("request timeout"));
+        assert!(is_retryable_transport_error("read timeout"));
+        assert!(is_retryable_transport_error(
+            "request failed: connection reset by peer"
+        ));
+        assert!(is_retryable_transport_error("read frame: unexpected eof"));
+        assert!(is_retryable_transport_error(
+            "request failed: connect error: tcp connect error"
+        ));
+        assert!(is_retryable_transport_error(
+            "request failed: tls handshake eof"
+        ));
+        assert!(is_retryable_transport_error(
+            "read frame: body stream closed"
+        ));
+        assert!(is_retryable_transport_error("http2 refused stream"));
+        assert!(is_retryable_transport_error("http2 goaway received"));
+        assert!(is_retryable_transport_error("dns lookup failed"));
+        assert!(!is_retryable_transport_error("download canceled"));
+        assert!(!is_retryable_transport_error("http status 404"));
+        assert!(is_retryable_transport_error("connection aborted"));
+    }
+
+    #[test]
+    fn retryable_http_statuses_match_transient_failures() {
+        assert!(is_retryable_http_status(408));
+        assert!(is_retryable_http_status(429));
+        assert!(is_retryable_http_status(503));
+        assert!(!is_retryable_http_status(404));
+    }
+
+    #[test]
+    fn download_task_with_behavior_overrides_defaults() {
+        let request = build_user_cache_download_request("https://example.com/file".to_string());
+        let task = DownloadTask::for_browser(request, PathBuf::from("/tmp"), None);
+        assert_eq!(task.behavior, DownloadBehavior::default());
+
+        let custom = DownloadBehavior {
+            request_timeout: Duration::from_secs(30),
+            connect_timeout: Some(Duration::from_secs(5)),
+            max_retries: 0,
+            retry_delay: Duration::from_millis(100),
+        };
+        let tuned = task.with_behavior(custom);
+        assert_eq!(tuned.behavior, custom);
+        assert_eq!(tuned.behavior.max_retries, 0);
+    }
+
+    #[test]
+    fn retry_delay_is_exponential_and_capped() {
+        assert_eq!(
+            retry_delay_for_attempt(Duration::from_millis(750), 0),
+            Duration::from_millis(750)
+        );
+        assert_eq!(
+            retry_delay_for_attempt(Duration::from_millis(750), 1),
+            Duration::from_millis(1500)
+        );
+        assert_eq!(
+            retry_delay_for_attempt(Duration::from_millis(750), 3),
+            Duration::from_millis(5000)
+        );
+        assert_eq!(
+            retry_delay_for_attempt(Duration::from_millis(750), 6),
+            Duration::from_millis(5000)
         );
     }
 }

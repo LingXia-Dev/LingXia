@@ -13,7 +13,7 @@ pub type Result<T> = std::result::Result<T, DownloadsError>;
 /// Integration hooks used by other LingXia runtime crates such as browser.
 pub mod runtime {
     pub use crate::download::manager::{
-        DownloadTask, browser_download_root, run_browser_download_task,
+        DownloadBehavior, DownloadTask, browser_download_root, run_browser_download_task,
     };
     pub use crate::download::{
         get_record, get_request_context, has_active_download, record_bridge_event,
@@ -25,8 +25,10 @@ pub mod runtime {
 /// Resumable user-cache download primitives used by lxapp logic/runtime.
 pub mod user_cache {
     pub use crate::download::manager::{
-        DownloadOwner, DownloadOwnerKind, DownloadPersistence, UserCacheDownloadRequest,
-        UserCacheDownloadResult, download_request_task_id, download_to_user_cache,
+        DownloadBehavior, DownloadEvent, DownloadOwner, DownloadOwnerKind, DownloadPersistence,
+        UserCacheDownloadRequest, UserCacheDownloadResult, download_request_task_id,
+        download_to_path_with_behavior, download_to_user_cache,
+        download_to_user_cache_with_behavior,
     };
 }
 
@@ -117,6 +119,36 @@ pub fn cancel(app_data_dir: &Path, task_id: &str) -> Result<()> {
     ))
 }
 
+pub fn pause(app_data_dir: &Path, task_id: &str) -> Result<()> {
+    if download::pause_active_download(task_id) {
+        if let Some(record) = download::get_record(app_data_dir, task_id)? {
+            download::record_managed_download_paused(
+                app_data_dir,
+                task_id,
+                record.downloaded_bytes,
+                record.total_bytes,
+            )?;
+        }
+        log::info!("[Downloads] pause requested for task_id={task_id}");
+        return Ok(());
+    }
+
+    let record = download::get_record(app_data_dir, task_id)?.ok_or_else(|| {
+        DownloadsError::ResourceNotFound(format!("download not found: {task_id}"))
+    })?;
+    if record.status == DownloadStatus::Paused {
+        return Ok(());
+    }
+    if record.status != DownloadStatus::Downloading {
+        return Err(DownloadsError::UnsupportedOperation(
+            "download is not active".to_string(),
+        ));
+    }
+    Err(DownloadsError::UnsupportedOperation(
+        "download can no longer be paused".to_string(),
+    ))
+}
+
 pub fn retry(app_data_dir: &Path, task_id: &str) -> Result<()> {
     let record = download::get_record(app_data_dir, task_id)?.ok_or_else(|| {
         DownloadsError::ResourceNotFound(format!("download not found: {task_id}"))
@@ -145,20 +177,14 @@ pub fn retry(app_data_dir: &Path, task_id: &str) -> Result<()> {
         })?;
 
     if matches!(record.owner.kind, user_cache::DownloadOwnerKind::LxApp) {
-        let user_cache_dir = PathBuf::from(&record.target_path)
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| {
-                DownloadsError::UnsupportedOperation(
-                    "download retry target path has no parent directory".to_string(),
-                )
-            })?;
         let task_id_owned = task_id.to_string();
         let app_data_dir_clone = app_data_dir.to_path_buf();
         let owner_appid = record.owner.appid.clone();
         let url = record.url.clone();
         let headers = request_context.headers.clone();
         let user_agent = request_context.user_agent.clone();
+        let target_path = PathBuf::from(&record.target_path);
+        let behavior = request_context.behavior;
 
         let _ = rong::RongExecutor::global().spawn(async move {
             let persistence = user_cache::DownloadPersistence::new(
@@ -172,17 +198,89 @@ pub fn retry(app_data_dir: &Path, task_id: &str) -> Result<()> {
                 },
                 true,
             );
-            let result = user_cache::download_to_user_cache(
+            let result = user_cache::download_to_path_with_behavior(
                 Some(persistence),
-                &user_cache_dir,
+                target_path,
                 user_cache::UserCacheDownloadRequest { url, headers },
                 user_agent,
+                behavior,
                 |_| {},
             )
             .await;
             if let Err(err) = result {
                 log::warn!(
                     "[Downloads] retry download task failed task_id={} url={} reason={}",
+                    task_id_owned,
+                    err.url,
+                    err.error
+                );
+            }
+        });
+
+        return Ok(());
+    }
+
+    download::retry_browser_owned_download(task_id)
+}
+
+pub fn resume(app_data_dir: &Path, task_id: &str) -> Result<()> {
+    let record = download::get_record(app_data_dir, task_id)?.ok_or_else(|| {
+        DownloadsError::ResourceNotFound(format!("download not found: {task_id}"))
+    })?;
+    if record.status != DownloadStatus::Paused {
+        return Err(DownloadsError::UnsupportedOperation(
+            "download is not paused".to_string(),
+        ));
+    }
+    if download::has_active_download(task_id) {
+        return Err(DownloadsError::UnsupportedOperation(
+            "download is already active".to_string(),
+        ));
+    }
+
+    let request_context =
+        download::get_request_context(app_data_dir, task_id)?.ok_or_else(|| {
+            DownloadsError::UnsupportedOperation(
+                "download retry context is unavailable".to_string(),
+            )
+        })?;
+
+    if matches!(record.owner.kind, user_cache::DownloadOwnerKind::LxApp) {
+        let task_id_owned = task_id.to_string();
+        let app_data_dir_clone = app_data_dir.to_path_buf();
+        let owner_appid = record.owner.appid.clone();
+        let url = record.url.clone();
+        let headers = request_context.headers.clone();
+        let user_agent = request_context.user_agent.clone();
+        let target_path = PathBuf::from(&record.target_path);
+        let behavior = request_context.behavior;
+
+        let _ = rong::RongExecutor::global().spawn(async move {
+            let persistence = user_cache::DownloadPersistence::new(
+                app_data_dir_clone.clone(),
+                task_id_owned.clone(),
+                user_cache::DownloadOwner {
+                    kind: user_cache::DownloadOwnerKind::LxApp,
+                    appid: owner_appid,
+                    page_path: None,
+                    tab_id: None,
+                },
+                true,
+            );
+            let result = user_cache::download_to_path_with_behavior(
+                Some(persistence),
+                target_path,
+                user_cache::UserCacheDownloadRequest { url, headers },
+                user_agent,
+                behavior,
+                |_| {},
+            )
+            .await;
+            if let Err(err) = result
+                && err.error != download::manager::DOWNLOAD_PAUSED_ERROR
+            {
+                log::warn!(
+                    "[Downloads] resume download task failed task_id={} url={} reason={}",
                     task_id_owned,
                     err.url,
                     err.error
