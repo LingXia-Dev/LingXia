@@ -11,7 +11,7 @@ use lingxia_webview::{
 use lxapp::{LxApp, LxAppError, Page, publish_app_event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use uuid::Uuid;
@@ -1235,6 +1235,9 @@ async fn browser_download_resource(owner: Arc<LxApp>, tab_id: String, request: D
     .await;
     downloads::runtime::unregister_active_download(&task_id);
     if let Err(err) = result {
+        if err.error == "Download paused" {
+            return;
+        }
         lxapp::warn!(
             "[InternalBrowser] download task failed tab_id={} url={} reason={}",
             tab_id,
@@ -1277,7 +1280,10 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> downloads::Result<(
     let record = downloads::runtime::get_record(&app_data_dir, task_id)?.ok_or_else(|| {
         downloads::DownloadsError::ResourceNotFound(format!("download not found: {task_id}"))
     })?;
-    if record.status != downloads::DownloadStatus::Failed {
+    if !matches!(
+        record.status,
+        downloads::DownloadStatus::Failed | downloads::DownloadStatus::Paused
+    ) {
         return Err(downloads::DownloadsError::UnsupportedOperation(
             "download is not retryable".to_string(),
         ));
@@ -1304,20 +1310,14 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> downloads::Result<(
         record.owner.kind,
         downloads::user_cache::DownloadOwnerKind::LxApp
     ) {
-        let user_cache_dir = PathBuf::from(&record.target_path)
-            .parent()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| {
-                downloads::DownloadsError::UnsupportedOperation(
-                    "download retry target path has no parent directory".to_string(),
-                )
-            })?;
         let task_id_owned = task_id.to_string();
         let app_data_dir_clone = app_data_dir.clone();
         let owner_appid = record.owner.appid.clone();
         let url = record.url.clone();
         let headers = request_context.headers.clone();
         let user_agent = request_context.user_agent.clone();
+        let target_path = PathBuf::from(&record.target_path);
+        let behavior = request_context.behavior;
 
         rong::RongExecutor::global().spawn(async move {
             let persistence = downloads::user_cache::DownloadPersistence::new(
@@ -1331,15 +1331,19 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> downloads::Result<(
                 },
                 true,
             );
-            let result = downloads::user_cache::download_to_user_cache(
+            let result = downloads::user_cache::download_to_path_with_behavior(
                 Some(persistence),
-                &user_cache_dir,
+                target_path,
                 downloads::user_cache::UserCacheDownloadRequest { url, headers },
                 user_agent,
+                behavior,
                 |_| {},
             )
             .await;
             if let Err(err) = result {
+                if err.error == "Download paused" {
+                    return;
+                }
                 lxapp::warn!(
                     "[Downloads] retry download task failed task_id={} url={} reason={}",
                     task_id_owned,
@@ -1372,7 +1376,8 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> downloads::Result<(
         Some(rong::get_user_agent()),
     )
     .with_target_path(PathBuf::from(&record.target_path))
-    .with_browser_persistence(app_data_dir.clone(), task_id.to_string());
+    .with_browser_persistence(app_data_dir.clone(), task_id.to_string())
+    .with_behavior(request_context.behavior);
     let owner_clone = owner.clone();
     let task_id_owned = task_id.to_string();
     let tab_id = record.tab_id.clone();
@@ -1402,6 +1407,9 @@ pub(crate) fn retry_browser_owned_download(task_id: &str) -> downloads::Result<(
         .await;
         downloads::runtime::unregister_active_download(&task_id_owned);
         if let Err(err) = result {
+            if err.error == "Download paused" {
+                return;
+            }
             lxapp::warn!(
                 "[InternalBrowser] retry download task failed task_id={} url={} reason={}",
                 task_id_owned,

@@ -58,6 +58,14 @@ fn download_reveal_path(record: &DownloadRecord) -> PathBuf {
                 return target_path;
             }
         }
+        DownloadStatus::Paused => {
+            if part_path.exists() {
+                return part_path;
+            }
+            if target_path.exists() {
+                return target_path;
+            }
+        }
         DownloadStatus::Removed => {
             if target_path.exists() {
                 return target_path;
@@ -135,6 +143,16 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     lingxia_transfer::cancel(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
+#[lingxia::host("downloads.pause")]
+fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+    if input.task_id.trim().is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "downloads.pause requires taskId".to_string(),
+        ));
+    }
+    lingxia_transfer::pause(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+}
+
 #[lingxia::host("downloads.retry")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
@@ -143,6 +161,16 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
         ));
     }
     lingxia_transfer::retry(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+}
+
+#[lingxia::host("downloads.resume")]
+fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
+    if input.task_id.trim().is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "downloads.resume requires taskId".to_string(),
+        ));
+    }
+    lingxia_transfer::resume(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
 #[lingxia::host("downloads.open")]
@@ -259,7 +287,9 @@ pub(crate) fn register() {
         clear_completed_downloads,
         remove_download_route,
         cancel_download_route,
+        pause_download_route,
         retry_download_route,
+        resume_download_route,
         open_download_route,
         reveal_download_route,
         watch_downloads,

@@ -59,10 +59,10 @@ a.file-name:focus-visible { outline: none; }
 
 .progress-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .progress-track { flex: 1; height: 3px; background: #e5e5ea; border-radius: 2px; overflow: hidden; }
-.progress-bar { height: 100%; background: #007AFF; border-radius: 2px; width: 100%; transform-origin: left; transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1); will-change: transform; }
+.progress-bar { height: 100%; background: #007AFF; border-radius: 2px; width: 100%; transform-origin: left; transition: transform 140ms linear; will-change: transform; }
 .progress-bar.paused { background: #8e8e93; transition-duration: 0ms; }
 .progress-bar.indeterminate { transform: scaleX(0.34) !important; animation: dl-slide 1.2s ease-in-out infinite; }
-.progress-info { font-size: 11px; color: #007AFF; flex-shrink: 0; min-width: 36px; text-align: right; }
+.progress-info { font-size: 11px; color: #007AFF; flex-shrink: 0; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
 .progress-info.paused { color: #8e8e93; }
 
 .action-row { margin-top: 6px; display: flex; gap: 6px; }

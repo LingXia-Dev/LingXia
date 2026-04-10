@@ -5,16 +5,19 @@
 
   var state = { downloadDir: '', downloads: [], loading: true, error: '' };
   var speedTracker = {};
+  var visualProgress = {};
   var downloadsResource = null;
   var unsubscribeDownloads = null;
   var renderScheduled = false;
+  var progressAnimationFrame = 0;
+  var lastProgressAnimationTs = 0;
 
   var api = function () { return window.host.downloads; };
 
   function sortDownloads(arr) {
     function weight(d) {
       if (d.status === 'downloading') return 0;
-      if (isCanceled(d)) return 1;
+      if (isPaused(d)) return 1;
       return 2;
     }
     return arr.slice().sort(function (a, b) {
@@ -25,7 +28,7 @@
   }
 
   function reduceDownloadsSnapshot(snapshot, event) {
-    if (event.kind === 'started' || event.kind === 'progress' || event.kind === 'completed' || event.kind === 'failed') {
+    if (event.kind === 'started' || event.kind === 'progress' || event.kind === 'paused' || event.kind === 'completed' || event.kind === 'failed') {
       var byId = {};
       (snapshot.downloads || []).forEach(function (download) { byId[download.taskId] = download; });
       byId[event.download.taskId] = event.download;
@@ -212,8 +215,117 @@
     return t > 0 ? Math.min(100, (Number(item.downloadedBytes || 0) / t) * 100) : null;
   }
 
-  function isCanceled(item) {
-    return item.status === 'failed' && /cancel|interrupt|pause/i.test(String(item.error || ''));
+  function animationNow() {
+    return (window.performance && typeof window.performance.now === 'function')
+      ? window.performance.now()
+      : Date.now();
+  }
+
+  function updateVisualProgressTargets(downloads) {
+    var now = animationNow();
+    var keep = {};
+    downloads.forEach(function (item) {
+      keep[item.taskId] = 1;
+      var raw = pct(item);
+      if (raw == null) {
+        delete visualProgress[item.taskId];
+        return;
+      }
+      var entry = visualProgress[item.taskId];
+      if (!entry) {
+        entry = visualProgress[item.taskId] = { value: raw, target: raw, updatedAt: now };
+      }
+      entry.updatedAt = now;
+      if (item.status === 'completed') {
+        entry.value = 100;
+        entry.target = 100;
+        return;
+      }
+      if (item.status === 'paused') {
+        entry.value = raw;
+        entry.target = raw;
+        return;
+      }
+      if (item.status !== 'downloading') {
+        entry.value = raw;
+        entry.target = raw;
+        return;
+      }
+      entry.target = raw;
+      if (entry.value > raw) entry.value = raw;
+    });
+    Object.keys(visualProgress).forEach(function (taskId) {
+      if (!keep[taskId]) delete visualProgress[taskId];
+    });
+  }
+
+  function hasAnimatingProgress() {
+    return state.downloads.some(function (item) {
+      if (item.status !== 'downloading') return false;
+      var raw = pct(item);
+      if (raw == null) return false;
+      var entry = visualProgress[item.taskId];
+      return !!entry && raw - entry.value > 0.02;
+    });
+  }
+
+  function ensureProgressAnimation() {
+    if (progressAnimationFrame || !hasAnimatingProgress()) return;
+    progressAnimationFrame = requestAnimationFrame(stepProgressAnimation);
+  }
+
+  function stepProgressAnimation(ts) {
+    progressAnimationFrame = 0;
+    var dt = lastProgressAnimationTs ? Math.min(64, ts - lastProgressAnimationTs) : 16;
+    lastProgressAnimationTs = ts;
+    var changed = false;
+    state.downloads.forEach(function (item) {
+      if (item.status !== 'downloading') return;
+      var raw = pct(item);
+      if (raw == null) return;
+      var entry = visualProgress[item.taskId];
+      if (!entry) {
+        visualProgress[item.taskId] = { value: raw, target: raw, updatedAt: ts };
+        return;
+      }
+      entry.target = raw;
+      entry.updatedAt = ts;
+      if (entry.value >= entry.target) {
+        entry.value = entry.target;
+        return;
+      }
+      var next = entry.value + (entry.target - entry.value) * Math.min(1, dt / 180);
+      if (entry.target - next < 0.02) next = entry.target;
+      if (Math.abs(next - entry.value) > 0.001) {
+        entry.value = next;
+        changed = true;
+      }
+    });
+    if (changed) scheduleRender();
+    if (hasAnimatingProgress()) {
+      progressAnimationFrame = requestAnimationFrame(stepProgressAnimation);
+    } else {
+      lastProgressAnimationTs = 0;
+    }
+  }
+
+  function displayedPct(item) {
+    var raw = pct(item);
+    if (raw == null) return null;
+    var entry = visualProgress[item.taskId];
+    if (!entry) return raw;
+    if (item.status === 'completed') return 100;
+    if (item.status === 'paused') return entry.target;
+    return Math.max(0, Math.min(100, entry.value));
+  }
+
+  function formatPct(value) {
+    if (value == null || !isFinite(value)) return '';
+    return value >= 99.95 ? '100%' : value.toFixed(1).replace(/\.0$/, '') + '%';
+  }
+
+  function isPaused(item) {
+    return item.status === 'paused';
   }
 
   function trackSpeed(item) {
@@ -329,8 +441,8 @@
     });
     pauseBtn.addEventListener('click', function () {
       var tid = el.dataset.taskId;
-      console.log('[DL] pause(cancel)', tid);
-      api().cancel({ taskId: tid }).then(function () { console.log('[DL] pause OK', tid); }, function (err) { console.error('[DL] pause FAIL', tid, err); });
+      console.log('[DL] pause', tid);
+      api().pause({ taskId: tid }).then(function () { console.log('[DL] pause OK', tid); }, function (err) { console.error('[DL] pause FAIL', tid, err); });
     });
     revealBtn.addEventListener('click', function () {
       var tid = el.dataset.taskId;
@@ -346,8 +458,8 @@
     });
     resumeBtn.addEventListener('click', function () {
       var tid = el.dataset.taskId;
-      console.log('[DL] resume(retry)', tid);
-      api().retry({ taskId: tid }).then(function () { console.log('[DL] resume OK', tid); }, function (err) { console.error('[DL] resume FAIL', tid, err); });
+      console.log('[DL] resume', tid);
+      api().resume({ taskId: tid }).then(function () { console.log('[DL] resume OK', tid); }, function (err) { console.error('[DL] resume FAIL', tid, err); });
     });
     retryBtn.addEventListener('click', function () {
       var tid = el.dataset.taskId;
@@ -377,7 +489,7 @@
     var isActive = item.status === 'downloading';
     var isDone = item.status === 'completed';
     var isFailed = item.status === 'failed';
-    var isPaused = isCanceled(item);
+    var paused = isPaused(item);
 
     r.icon.textContent = fileIcon(item.fileName);
     r.icon.className = 'file-icon' + (isActive ? ' is-active' : '') + (isFailed ? ' is-failed' : '');
@@ -406,7 +518,7 @@
       var spd = fmtSpeed(trackSpeed(item));
       if (spd) parts.push(spd);
       parts.push(escHtml(urlHost(item.url)));
-    } else if (isPaused) {
+    } else if (paused) {
       var ps = fmtBytes(item.downloadedBytes);
       if (item.totalBytes) ps += ' / ' + fmtBytes(item.totalBytes);
       parts.push(ps);
@@ -418,24 +530,24 @@
     }
     r.detail.innerHTML = parts.join('<span class="sep"> · </span>');
 
-    r.progressRow.hidden = !isActive && !isPaused;
-    if (isActive || isPaused) {
-      var p = pct(item);
+    r.progressRow.hidden = !isActive && !paused;
+    if (isActive || paused) {
+      var p = displayedPct(item);
       r.bar.className = 'progress-bar' +
-        (isPaused ? ' paused' : '') +
+        (paused ? ' paused' : '') +
         (isActive && p == null ? ' indeterminate' : '');
       r.bar.style.transform = 'scaleX(' + (p != null ? (p / 100).toFixed(4) : 0.34) + ')';
-      r.pInfo.className = 'progress-info' + (isPaused ? ' paused' : '');
-      r.pInfo.textContent = p != null ? Math.round(p) + '%' : fmtBytes(item.downloadedBytes);
+      r.pInfo.className = 'progress-info' + (paused ? ' paused' : '');
+      r.pInfo.textContent = p != null ? formatPct(p) : fmtBytes(item.downloadedBytes);
     }
 
     r.pauseBtn.hidden = !isActive;
     r.revealBtn.hidden = !isDone;
     r.removeBtn.hidden = isActive;
 
-    r.resumeBtn.hidden = !isPaused;
-    r.retryBtn.hidden = !(isFailed && !isPaused);
-    r.cancelBtn.hidden = !isPaused;
+    r.resumeBtn.hidden = !paused;
+    r.retryBtn.hidden = !(isFailed && !paused);
+    r.cancelBtn.hidden = !paused;
     r.cancelDlBtn.hidden = !isActive;
     r.actionRow.hidden = r.resumeBtn.hidden && r.retryBtn.hidden && r.cancelBtn.hidden && r.cancelDlBtn.hidden;
   }
@@ -445,7 +557,7 @@
   function buildGroups() {
     var groups = [], lastGroup = '';
     state.downloads.forEach(function (item) {
-      var g = item.status === 'downloading' ? 'Downloading' : isCanceled(item) ? 'Paused' : dateGroup(item.completedAt || item.updatedAt || item.createdAt);
+      var g = item.status === 'downloading' ? 'Downloading' : isPaused(item) ? 'Paused' : dateGroup(item.completedAt || item.updatedAt || item.createdAt);
       if (g !== lastGroup) { groups.push({ label: g, items: [] }); lastGroup = g; }
       groups[groups.length - 1].items.push(item);
     });
@@ -538,6 +650,7 @@
     var activeIds = {};
     state.downloads.forEach(function (d) { if (d.status === 'downloading') activeIds[d.taskId] = 1; });
     Object.keys(speedTracker).forEach(function (k) { if (!activeIds[k]) delete speedTracker[k]; });
+    Object.keys(visualProgress).forEach(function (k) { if (!activeIds[k] && !state.downloads.some(function (d) { return d.taskId === k; })) delete visualProgress[k]; });
   }
 
   function scheduleRender() {
@@ -550,8 +663,10 @@
     console.log('[DL] applySnapshot', snap && snap.downloads ? snap.downloads.length + ' items' : 'empty', snap);
     state.downloadDir = (snap && snap.downloadDir) || '';
     state.downloads = sortDownloads((snap && snap.downloads) || []);
+    updateVisualProgressTargets(state.downloads);
     state.loading = false;
     state.error = '';
+    ensureProgressAnimation();
   }
 
   document.getElementById('clearBtn').addEventListener('click', function () {
@@ -561,6 +676,11 @@
   });
 
   window.addEventListener('pagehide', function () {
+    if (progressAnimationFrame) {
+      cancelAnimationFrame(progressAnimationFrame);
+      progressAnimationFrame = 0;
+      lastProgressAnimationTs = 0;
+    }
     if (unsubscribeDownloads) { unsubscribeDownloads(); unsubscribeDownloads = null; }
     if (downloadsResource) { downloadsResource.dispose(); downloadsResource = null; }
   });
