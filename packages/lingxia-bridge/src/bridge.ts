@@ -282,7 +282,12 @@ function scheduleAppleDownstreamReconnect(reason: string): void {
     appleReconnectDelayMs * 2,
     APPLE_RECONNECT_MAX_MS,
   );
-  warn(`Apple downstream disconnected, retrying in ${delay}ms: ${reason}`);
+  const message = `Apple downstream disconnected, retrying in ${delay}ms: ${reason}`;
+  if (delay <= APPLE_RECONNECT_BASE_MS) {
+    log(message);
+  } else {
+    warn(message);
+  }
   appleReconnectTimer = setTimeout(() => {
     appleReconnectTimer = null;
     ensureAppleDownstream();
@@ -1811,28 +1816,43 @@ export const host: HostApi = new Proxy({} as HostApi, {
 }) as HostApi;
 
 export function initBridge(): void {
-  log(`Method: ${communicationMethod}`);
-  activateReceiver(LingXiaBridge._receiveEvaluateMessage);
-
-  if (useAppleDownstreamTransport()) {
-    ensureAppleDownstream();
-  } else if (communicationMethod === MESSAGE_PORT_TYPE) {
-    installMessagePortInitListener();
-    getMessagePort().catch((e) => warn("Port init failed:", e));
-  } else if (
-    communicationMethod === "webkit" ||
-    communicationMethod === JS_INTERFACE_TYPE
-  ) {
-    startHandshake();
-  } else {
-    warn("Unknown method");
+  if (window.__LX_BRIDGE_INIT_STATE) {
+    log(
+      `Bridge already ${window.__LX_BRIDGE_INIT_STATE}, skipping duplicate init`,
+    );
+    return;
   }
 
-  window.LingXiaBridge = LingXiaBridge;
-  window.host = host;
-  installNativeComponentCoverageMonitor({
-    os: getPlatformOS(),
-    send: sendNativeComponentMessage,
-  });
-  log("Init complete");
+  window.__LX_BRIDGE_INIT_STATE = "initializing";
+
+  try {
+    log(`Method: ${communicationMethod}`);
+    activateReceiver(LingXiaBridge._receiveEvaluateMessage);
+
+    if (useAppleDownstreamTransport()) {
+      ensureAppleDownstream();
+    } else if (communicationMethod === MESSAGE_PORT_TYPE) {
+      installMessagePortInitListener();
+      getMessagePort().catch((e) => warn("Port init failed:", e));
+    } else if (
+      communicationMethod === "webkit" ||
+      communicationMethod === JS_INTERFACE_TYPE
+    ) {
+      startHandshake();
+    } else {
+      warn("Unknown method");
+    }
+
+    window.LingXiaBridge = LingXiaBridge;
+    window.host = host;
+    installNativeComponentCoverageMonitor({
+      os: getPlatformOS(),
+      send: sendNativeComponentMessage,
+    });
+    window.__LX_BRIDGE_INIT_STATE = "initialized";
+    log("Init complete");
+  } catch (e) {
+    delete window.__LX_BRIDGE_INIT_STATE;
+    throw e;
+  }
 }

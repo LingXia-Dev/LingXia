@@ -117,6 +117,7 @@ export interface LxChannel<TIn = unknown, TOut = TIn> extends AsyncIterable<TIn>
 declare global {
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
+    __LX_BRIDGE_INIT_STATE?: 'initializing' | 'initialized';
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
     __pageBridge?: { __names: string[]; [key: string]: unknown };
     __LingXiaRecvMessage?: (message: string) => void;

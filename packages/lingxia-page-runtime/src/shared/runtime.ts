@@ -1,4 +1,4 @@
-import { bootWhenReady, type DataSubscriber, type StateInfo } from "@lingxia/bridge";
+import { type DataSubscriber, type StateInfo } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: unknown[]) => unknown>;
 export type Snapshot = Record<string, unknown>;
@@ -16,7 +16,6 @@ let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let initialSnapshotResolved = false;
 let snapshotRequestInFlight = false;
-let bridgeBootstrapped = false;
 const listeners = new Set<Listener>();
 
 function notifyListeners(): void {
@@ -60,15 +59,7 @@ function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): vo
     });
 }
 
-function ensureBridgeBootstrapped(): void {
-  if (bridgeBootstrapped) return;
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-  bridgeBootstrapped = true;
-  bootWhenReady();
-}
-
 export function ensurePageBridgeSubscription(): void {
-  ensureBridgeBootstrapped();
   if (subscribed) return;
   const bridge = window.LingXiaBridge;
   const subscribeState = bridge?.state?.subscribe;
@@ -107,13 +98,11 @@ export function subscribePageData(
 }
 
 export function getPageSnapshot<TData = Snapshot>(): TData {
-  ensureBridgeBootstrapped();
   ensurePageBridgeSubscription();
   return snapshot as TData;
 }
 
 export function getPageActions<TActions extends ActionMap>(): TActions {
-  ensureBridgeBootstrapped();
   const actions: ActionMap = {};
   const bridge = window.__pageBridge as PageBridgeMetadata | undefined;
   if (!bridge?.__names) {
