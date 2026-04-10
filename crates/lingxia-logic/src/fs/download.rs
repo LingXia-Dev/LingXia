@@ -31,8 +31,6 @@ struct ParsedDownloadOptions {
 struct JSDownloadResult {
     #[rename = "filePath"]
     file_path: String,
-    #[rename = "fileName"]
-    file_name: String,
     #[rename = "mimeType"]
     mime_type: Option<String>,
     size: u64,
@@ -96,7 +94,6 @@ struct DownloadTaskConfig {
 #[derive(Debug, Clone)]
 struct DownloadCompletion {
     path: PathBuf,
-    file_name: String,
     mime_type: Option<String>,
     size: u64,
 }
@@ -247,7 +244,6 @@ fn to_js_download_result(
     let path = path_to_result_string(&lxapp, &result.path);
     Ok(JSDownloadResult {
         file_path: path,
-        file_name: result.file_name.clone(),
         mime_type: result.mime_type.clone(),
         size: result.size,
     })
@@ -410,7 +406,6 @@ async fn finalize_download_result(
     let Some(output_path) = output_path else {
         return Ok(DownloadCompletion {
             path: result.temp_path,
-            file_name: result.file_name,
             mime_type: result.mime_type,
             size: result.size,
         });
@@ -424,15 +419,8 @@ async fn finalize_download_result(
             .map_err(|e| format!("copy download to filePath failed: {e}"))?;
     }
 
-    let file_name = output_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_string())
-        .unwrap_or(result.file_name);
-
     Ok(DownloadCompletion {
         path: output_path.clone(),
-        file_name,
         mime_type: result.mime_type,
         size: result.size,
     })

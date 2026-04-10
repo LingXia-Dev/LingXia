@@ -92,8 +92,6 @@ export interface DownloadIteratorResult {
 export interface DownloadResult {
   /** Final accessible file path or URI. */
   filePath: string;
-  /** Suggested filename resolved by runtime from headers/url. */
-  fileName: string;
   /** MIME type when available. */
   mimeType?: string;
   /** File size in bytes. */
