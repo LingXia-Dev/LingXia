@@ -15,6 +15,20 @@ pub use doctor::doctor_checks;
 /// Android platform implementation
 pub struct AndroidPlatform;
 
+fn format_install_progress(uploaded: u64, total: u64) -> String {
+    let uploaded_mb = uploaded as f64 / 1024.0 / 1024.0;
+    let total_mb = total as f64 / 1024.0 / 1024.0;
+    let percent = if total > 0 {
+        (uploaded as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    format!(
+        "Installing {:.1}% ({:.1}/{:.1} MB)...",
+        percent, uploaded_mb, total_mb
+    )
+}
+
 impl AndroidPlatform {
     fn unsupported_target_error(target: &str) -> anyhow::Error {
         anyhow!(
@@ -341,21 +355,23 @@ impl Platform for AndroidPlatform {
             )?
         };
 
-        // Create spinner
-        let spinner = ProgressBar::new_spinner();
-        spinner.set_style(
-            ProgressStyle::default_spinner()
-                .template("{spinner:.cyan} {msg}")
-                .unwrap()
-                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
-        );
-        spinner.set_message(format!("Installing ({:.1} MB)...", size_mb));
-        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
-
         if config.reinstall {
+            let spinner = (!config.quiet).then(|| {
+                let spinner = ProgressBar::new_spinner();
+                spinner.set_style(
+                    ProgressStyle::default_spinner()
+                        .template("{spinner:.cyan} {msg}")
+                        .unwrap()
+                        .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+                );
+                spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+                spinner
+            });
             let package_id = infer_android_package_id_for_uninstall(&config.project_root);
             if let Some(package_id) = package_id {
-                spinner.set_message(format!("Uninstalling {package_id}..."));
+                if let Some(spinner) = spinner.as_ref() {
+                    spinner.set_message(format!("Uninstalling {package_id}..."));
+                }
                 if let Err(err) = device.uninstall(&package_id, None) {
                     eprintln!(
                         "{} failed to uninstall {} before install: {}",
@@ -364,19 +380,45 @@ impl Platform for AndroidPlatform {
                         err
                     );
                 }
-                spinner.set_message(format!("Installing ({:.1} MB)...", size_mb));
             } else {
                 eprintln!(
                     "{} could not resolve Android package id for --reinstall; continuing install",
                     "Warning:".yellow()
                 );
             }
+            if let Some(spinner) = spinner {
+                spinner.finish_and_clear();
+            }
         }
 
         // Install APK
-        let result = device.install(&apk_path, None);
+        let install_bar = (!config.quiet).then(|| {
+            let bar = ProgressBar::new(file_size.max(1));
+            bar.set_style(
+                ProgressStyle::with_template(
+                    "{spinner:.cyan} [{bar:30.cyan/blue}] {percent:>3}% {msg}",
+                )
+                .unwrap()
+                .progress_chars("=>-"),
+            );
+            bar.set_message(format!("Installing ({:.1} MB)...", size_mb));
+            bar.enable_steady_tick(std::time::Duration::from_millis(80));
+            bar
+        });
+        let progress_bar = install_bar.clone();
+        let mut on_progress = move |uploaded: u64, total: u64| {
+            if let Some(progress_bar) = progress_bar.as_ref() {
+                let bounded_total = total.max(1);
+                progress_bar.set_length(bounded_total);
+                progress_bar.set_position(uploaded.min(bounded_total));
+                progress_bar.set_message(format_install_progress(uploaded, total));
+            }
+        };
+        let result = device.install_with_progress(&apk_path, None, Some(&mut on_progress));
 
-        spinner.finish_and_clear();
+        if let Some(install_bar) = install_bar {
+            install_bar.finish_and_clear();
+        }
 
         match result {
             Ok(_) => {

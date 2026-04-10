@@ -195,6 +195,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         artifact_path: Some(artifact_path.to_path_buf()),
         device_id: ctx.device.clone(),
         reinstall: ctx.reinstall,
+        quiet: false,
     };
 
     platform.install(&install_config)?;
@@ -265,6 +266,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         artifact_path: Some(app_path.to_path_buf()),
         device_id: ctx.device.clone(),
         reinstall: ctx.reinstall,
+        quiet: false,
     };
     platform.install(&install_config)?;
 
@@ -413,6 +415,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         artifact_path: Some(built_hap_path.clone()),
         device_id: ctx.device.clone(),
         reinstall: ctx.reinstall,
+        quiet: false,
     };
 
     harmony_platform.install(&install_config)?;

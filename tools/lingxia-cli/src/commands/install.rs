@@ -14,6 +14,7 @@ pub fn execute(
     device: Option<String>,
     platform_arg: Option<String>,
     reinstall: bool,
+    quiet: bool,
 ) -> Result<()> {
     let current_dir = env::current_dir()?;
     let project_root = platform::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
@@ -35,6 +36,7 @@ pub fn execute(
         artifact_path,
         device_id: device,
         reinstall,
+        quiet,
     };
 
     platform.install(&config)?;

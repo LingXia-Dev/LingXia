@@ -194,12 +194,16 @@ enum Commands {
         /// Reinstall app by uninstalling existing one first (best effort)
         #[arg(long)]
         reinstall: bool,
+
+        /// Suppress progress UI output (useful for automation)
+        #[arg(long)]
+        quiet: bool,
     },
 
     /// Uninstall an app from a device
     Uninstall {
-        /// Bundle ID / Package ID to uninstall
-        bundle_id: String,
+        /// Bundle ID / Package ID to uninstall. If omitted, LingXia will try to infer it from lingxia.config.json.
+        bundle_id: Option<String>,
 
         /// Device ID (required if multiple devices connected)
         #[arg(short = 'd', long)]
@@ -444,15 +448,16 @@ fn main() -> Result<()> {
             device,
             platform,
             reinstall,
+            quiet,
         } => {
-            commands::install::execute(artifact, device, platform, reinstall)?;
+            commands::install::execute(artifact, device, platform, reinstall, quiet)?;
         }
         Commands::Uninstall {
             bundle_id,
             device,
             platform,
         } => {
-            commands::device::uninstall(&bundle_id, device, platform)?;
+            commands::device::uninstall(bundle_id.as_deref(), device, platform)?;
         }
         Commands::Launch {
             bundle_id,

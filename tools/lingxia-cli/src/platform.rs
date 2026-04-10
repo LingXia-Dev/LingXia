@@ -57,6 +57,8 @@ pub struct InstallConfig {
     pub device_id: Option<String>,
     /// Whether to reinstall app before install (best effort).
     pub reinstall: bool,
+    /// Suppress progress UI for automation-friendly installs.
+    pub quiet: bool,
 }
 
 /// Platform-specific run configuration

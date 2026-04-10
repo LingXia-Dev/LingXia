@@ -57,14 +57,15 @@ pub fn list_devices(platform_arg: Option<String>) -> Result<()> {
 
 /// Uninstall an app from a device
 pub fn uninstall(
-    bundle_id: &str,
+    bundle_id: Option<&str>,
     device: Option<String>,
     platform_arg: Option<String>,
 ) -> Result<()> {
     let platform_type = resolve_single_platform(platform_arg)?;
+    let bundle_id = resolve_package_id(bundle_id, &platform_type, "uninstall")?;
     let p = platform::detector::create_platform(&platform_type)?;
 
-    p.uninstall(bundle_id, device.as_deref())?;
+    p.uninstall(&bundle_id, device.as_deref())?;
 
     println!("{} {} uninstalled", "✓".green(), bundle_id);
     Ok(())
@@ -77,7 +78,7 @@ pub fn launch(
     platform_arg: Option<String>,
 ) -> Result<()> {
     let platform_type = resolve_single_platform(platform_arg.clone())?;
-    let bundle_id = resolve_launch_package_id(bundle_id, &platform_type)?;
+    let bundle_id = resolve_package_id(bundle_id, &platform_type, "launch")?;
     let p = platform::detector::create_platform(&platform_type)?;
 
     let run_config = RunConfig {
@@ -118,9 +119,10 @@ fn resolve_single_platform(platform_arg: Option<String>) -> Result<PlatformType>
     }
 }
 
-fn resolve_launch_package_id(
+fn resolve_package_id(
     bundle_id: Option<&str>,
     platform_type: &PlatformType,
+    action: &str,
 ) -> Result<String> {
     if let Some(bundle_id) = bundle_id {
         return Ok(bundle_id.to_string());
@@ -136,7 +138,8 @@ fn resolve_launch_package_id(
 
     infer_package_id_from_config(&config, platform_type).ok_or_else(|| {
         anyhow!(
-            "Could not infer launch identifier for {} from {}. Pass <BUNDLE_ID> explicitly.",
+            "Could not infer {} identifier for {} from {}. Pass <BUNDLE_ID> explicitly.",
+            action,
             platform_type.as_str(),
             project_root.join(HOST_CONFIG_FILE).display()
         )
