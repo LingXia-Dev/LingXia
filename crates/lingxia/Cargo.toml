@@ -53,3 +53,6 @@ napi-derive-ohos = "1.1.0"
 [build-dependencies]
 swift-bridge-build = "0.1.59"
 napi-build-ohos = "1.1.0"
+
+[dev-dependencies]
+tempfile = "3"

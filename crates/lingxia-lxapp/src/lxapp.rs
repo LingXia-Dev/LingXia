@@ -92,6 +92,10 @@ pub fn register_builtin_asset_bundle(appid: impl Into<String>, asset_root: impl 
     );
 }
 
+pub fn register_dev_bundle_source(appid: impl Into<String>, root: impl Into<PathBuf>) {
+    register_lxapp_bundle_source(appid, LxAppBundleSource::DevPath { root: root.into() });
+}
+
 fn register_lxapp_bundle_source(appid: impl Into<String>, source: LxAppBundleSource) {
     let appid = appid.into();
     let registry = LXAPP_SOURCE_OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()));
@@ -104,152 +108,6 @@ fn lxapp_bundle_source_for(appid: &str) -> Option<LxAppBundleSource> {
         .get()
         .and_then(|registry| registry.lock().ok())
         .and_then(|guard| guard.get(appid).cloned())
-}
-
-/// Development path override for home lxapp (macOS only)
-#[cfg(target_os = "macos")]
-static HOME_LXAPP_DEV_PATH: OnceLock<PathBuf> = OnceLock::new();
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HomeLxAppDevIdentity {
-    pub appid: String,
-    pub version: String,
-}
-
-#[cfg(target_os = "macos")]
-#[derive(Debug, serde::Deserialize)]
-#[allow(non_snake_case)]
-struct HomeLxAppManifest {
-    appId: String,
-    version: String,
-}
-
-#[cfg(target_os = "macos")]
-fn resolve_runnable_home_lxapp_path(path: &Path) -> PathBuf {
-    let dist_path = path.join("dist");
-    if dist_path.join("lxapp.json").exists() {
-        return dist_path;
-    }
-    path.to_path_buf()
-}
-
-#[cfg(target_os = "macos")]
-fn read_home_lxapp_manifest(path: &Path) -> Result<HomeLxAppManifest, String> {
-    let manifest_path = path.join("lxapp.json");
-    let content = std::fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("failed to read {}: {}", manifest_path.display(), e))?;
-    let manifest: HomeLxAppManifest = serde_json::from_str(&content)
-        .map_err(|e| format!("invalid {}: {}", manifest_path.display(), e))?;
-    let appid = manifest.appId.trim();
-    if appid.is_empty() {
-        return Err(format!(
-            r#""appId" must not be empty in {}"#,
-            manifest_path.display()
-        ));
-    }
-    let version = manifest.version.trim();
-    if version.is_empty() {
-        return Err(format!(
-            r#""version" must not be empty in {}"#,
-            manifest_path.display()
-        ));
-    }
-    Ok(HomeLxAppManifest {
-        appId: appid.to_string(),
-        version: version.to_string(),
-    })
-}
-
-/// Set the development path for home lxapp
-///
-/// This must be called before the home lxapp is initialized.
-/// The path must exist and contain a valid lxapp.json file.
-/// Only effective on macOS; returns false on other platforms.
-#[cfg(target_os = "macos")]
-pub fn set_home_lxapp_dev_path(path: &str) -> bool {
-    let path = resolve_runnable_home_lxapp_path(&PathBuf::from(path));
-
-    if !path.exists() {
-        warn!(
-            "set_home_lxapp_dev_path: path does not exist: {}",
-            path.display()
-        );
-        return false;
-    }
-
-    if !path.join("lxapp.json").exists() {
-        warn!(
-            "set_home_lxapp_dev_path: lxapp.json not found in: {}",
-            path.display()
-        );
-        return false;
-    }
-
-    if !path.join("logic.js").exists() {
-        warn!(
-            "set_home_lxapp_dev_path: logic.js not found in: {} (continuing; build output may be incomplete)",
-            path.display()
-        );
-    }
-
-    if let Err(err) = read_home_lxapp_manifest(&path) {
-        warn!("set_home_lxapp_dev_path: {}", err);
-        return false;
-    }
-
-    match HOME_LXAPP_DEV_PATH.set(path.clone()) {
-        Ok(()) => {
-            info!("Home lxapp dev path set to: {}", path.display());
-            true
-        }
-        Err(_) => {
-            warn!("set_home_lxapp_dev_path: path already set");
-            false
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn set_home_lxapp_dev_path(_path: &str) -> bool {
-    false
-}
-
-#[cfg(target_os = "macos")]
-fn get_home_lxapp_dev_path() -> Option<&'static PathBuf> {
-    HOME_LXAPP_DEV_PATH.get()
-}
-
-#[cfg(target_os = "macos")]
-pub fn home_lxapp_dev_identity() -> Option<HomeLxAppDevIdentity> {
-    let path = HOME_LXAPP_DEV_PATH.get()?;
-    let manifest = read_home_lxapp_manifest(path).ok()?;
-    Some(HomeLxAppDevIdentity {
-        appid: manifest.appId,
-        version: manifest.version,
-    })
-}
-
-#[cfg(target_os = "macos")]
-pub fn configure_home_lxapp_dev_path(path: &str) -> Option<HomeLxAppDevIdentity> {
-    if !set_home_lxapp_dev_path(path) {
-        return None;
-    }
-    home_lxapp_dev_identity()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn get_home_lxapp_dev_path() -> Option<&'static PathBuf> {
-    None
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn home_lxapp_dev_identity() -> Option<HomeLxAppDevIdentity> {
-    None
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn configure_home_lxapp_dev_path(_path: &str) -> Option<HomeLxAppDevIdentity> {
-    None
 }
 
 /// Manages a collection of lxapp applications
@@ -2063,15 +1921,6 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
     let num_workers = get_num_workers();
     let executor = LxAppWorkers::init(num_workers);
 
-    if let Some(dev_path) = get_home_lxapp_dev_path() {
-        register_lxapp_bundle_source(
-            home_lxapp_appid.clone(),
-            LxAppBundleSource::DevPath {
-                root: dev_path.clone(),
-            },
-        );
-    }
-
     // Create LxApps manager BEFORE creating home_lxapp
     // This makes get_platform() available as early as possible
     let lxapps_manager = Arc::new(LxApps::new(runtime, executor.clone(), num_workers));
@@ -2287,81 +2136,4 @@ fn plugin_page_map_contains(
         let value = normalize_page_path(value);
         key == requested || value == requested || key == resolved || value == resolved
     })
-}
-
-#[cfg(test)]
-#[cfg(target_os = "macos")]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn read_home_lxapp_manifest_valid() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(
-            tmp.path().join("lxapp.json"),
-            r#"{"appId":"demo","version":"1.0.0"}"#,
-        )
-        .unwrap();
-        let manifest = read_home_lxapp_manifest(tmp.path()).unwrap();
-        assert_eq!(manifest.appId, "demo");
-        assert_eq!(manifest.version, "1.0.0");
-    }
-
-    #[test]
-    fn read_home_lxapp_manifest_rejects_empty_appid() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(
-            tmp.path().join("lxapp.json"),
-            r#"{"appId":"","version":"1.0.0"}"#,
-        )
-        .unwrap();
-        let err = read_home_lxapp_manifest(tmp.path()).unwrap_err();
-        assert!(err.contains("appId"), "unexpected error: {err}");
-    }
-
-    #[test]
-    fn read_home_lxapp_manifest_rejects_empty_version() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(
-            tmp.path().join("lxapp.json"),
-            r#"{"appId":"demo","version":""}"#,
-        )
-        .unwrap();
-        let err = read_home_lxapp_manifest(tmp.path()).unwrap_err();
-        assert!(err.contains("version"), "unexpected error: {err}");
-    }
-
-    #[test]
-    fn read_home_lxapp_manifest_rejects_malformed_json() {
-        let tmp = tempfile::tempdir().unwrap();
-        fs::write(tmp.path().join("lxapp.json"), "not json").unwrap();
-        assert!(read_home_lxapp_manifest(tmp.path()).is_err());
-    }
-
-    #[test]
-    fn read_home_lxapp_manifest_rejects_missing_file() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(read_home_lxapp_manifest(tmp.path()).is_err());
-    }
-
-    #[test]
-    fn resolve_runnable_home_lxapp_path_prefers_dist() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dist = tmp.path().join("dist");
-        fs::create_dir_all(&dist).unwrap();
-        fs::write(dist.join("lxapp.json"), "{}").unwrap();
-        assert_eq!(resolve_runnable_home_lxapp_path(tmp.path()), dist);
-    }
-
-    #[test]
-    fn resolve_runnable_home_lxapp_path_falls_back_when_dist_missing_manifest() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dist = tmp.path().join("dist");
-        fs::create_dir_all(&dist).unwrap();
-        assert_eq!(
-            resolve_runnable_home_lxapp_path(tmp.path()),
-            tmp.path().to_path_buf()
-        );
-    }
 }

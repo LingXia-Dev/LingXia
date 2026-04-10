@@ -12,7 +12,6 @@ crate-type = ["staticlib"]
 
 [dependencies]
 lingxia = { workspace = true, features = ["shell"] }
-lxapp = { workspace = true }
 log = { workspace = true }
 
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]

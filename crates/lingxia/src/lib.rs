@@ -7,6 +7,9 @@ pub use lingxia_app_context::{
 };
 pub use lingxia_macro::{host, register_hosts};
 pub use lingxia_platform as platform;
+pub use lxapp_dev::{
+    LxAppDevConfig, LxAppDevIdentity, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+};
 
 pub use lingxia_media::{
     FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
@@ -36,6 +39,7 @@ pub use lxapp::{
 mod bootstrap;
 mod host_addon;
 mod logging;
+mod lxapp_dev;
 
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
