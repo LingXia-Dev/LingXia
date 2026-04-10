@@ -64,7 +64,6 @@ struct Options {
 }
 
 struct ToolPaths {
-    let npm: String
     let cargo: String
 }
 
@@ -101,26 +100,13 @@ struct RunnerBuildTool {
 
         let projectRoot = resolveProjectRoot(packageDir: options.packageDir)
         let buildConfig = resolveBuildConfig()
-        let runtimeTarget = ProcessInfo.processInfo.environment["RUNNER_RUNTIME_TARGET"] ?? "es2020"
-        let runtimePlatform = ProcessInfo.processInfo.environment["RUNNER_RUNTIME_PLATFORM"] ?? "desktop"
         let tools = try resolveToolPaths()
         let baseEnvironment = buildBaseEnvironment(tools: tools)
 
         print("[runner-plugin] projectRoot=\(projectRoot)")
         print("[runner-plugin] buildConfig=\(buildConfig)")
-        print("[runner-plugin] runtime=\(runtimeTarget) platform=\(runtimePlatform)")
-        print("[runner-plugin] npm=\(tools.npm)")
         print("[runner-plugin] cargo=\(tools.cargo)")
 
-        try buildWebRuntime(
-            projectRoot: projectRoot,
-            packageDir: options.packageDir,
-            outputDir: options.outputDir,
-            runtimeTarget: runtimeTarget,
-            runtimePlatform: runtimePlatform,
-            npmPath: tools.npm,
-            baseEnvironment: baseEnvironment
-        )
         try buildRustLibrary(
             projectRoot: projectRoot,
             buildConfig: buildConfig,
@@ -161,12 +147,10 @@ struct RunnerBuildTool {
 
         while true {
             let candidate = currentURL.path
-            let bridgePackage = pathJoin(candidate, "packages/lingxia-bridge/package.json")
             let devtoolCargo = pathJoin(candidate, "crates/lingxia-devtool/Cargo.toml")
             let sdkPackage = pathJoin(candidate, "lingxia-sdk/apple/Package.swift")
 
-            if fileManager.fileExists(atPath: bridgePackage)
-                && fileManager.fileExists(atPath: devtoolCargo)
+            if fileManager.fileExists(atPath: devtoolCargo)
                 && fileManager.fileExists(atPath: sdkPackage)
             {
                 return candidate
@@ -190,11 +174,6 @@ struct RunnerBuildTool {
     }
 
     private static func resolveToolPaths() throws -> ToolPaths {
-        let npm = try resolveCommand(
-            name: "npm",
-            envOverrideKey: "RUNNER_NPM_BIN",
-            fallbackPaths: ["/opt/homebrew/bin/npm", "/usr/local/bin/npm", "/usr/bin/npm"]
-        )
         let cargo = try resolveCommand(
             name: "cargo",
             envOverrideKey: "RUNNER_CARGO_BIN",
@@ -205,7 +184,7 @@ struct RunnerBuildTool {
                 "/usr/bin/cargo",
             ]
         )
-        return ToolPaths(npm: npm, cargo: cargo)
+        return ToolPaths(cargo: cargo)
     }
 
     private static func resolveCommand(
@@ -252,7 +231,6 @@ struct RunnerBuildTool {
         var environment = ProcessInfo.processInfo.environment
 
         let extraPathSegments = [
-            (tools.npm as NSString).deletingLastPathComponent,
             (tools.cargo as NSString).deletingLastPathComponent,
             "\(homeDirectory())/.cargo/bin",
             "/opt/homebrew/bin",
@@ -286,148 +264,6 @@ struct RunnerBuildTool {
 
         environment["PATH"] = segments.joined(separator: ":")
         return environment
-    }
-
-    private static func buildWebRuntime(
-        projectRoot: String,
-        packageDir: String,
-        outputDir: String,
-        runtimeTarget: String,
-        runtimePlatform: String,
-        npmPath: String,
-        baseEnvironment: [String: String]
-    ) throws {
-        let runtimeDir = pathJoin(projectRoot, "packages/lingxia-bridge")
-        let packageJSON = pathJoin(runtimeDir, "package.json")
-        guard FileManager.default.fileExists(atPath: packageJSON) else {
-            throw RunnerBuildToolError.missingFile(packageJSON)
-        }
-
-        try ensureRuntimeDependencies(
-            runtimeDir: runtimeDir,
-            npmPath: npmPath,
-            baseEnvironment: baseEnvironment
-        )
-
-        let script: String
-        let distRuntime: String
-        let runtimeOutputDir = pathJoin(outputDir, "runtime-dist")
-        let prebuiltRuntime: String
-        switch runtimeTarget {
-        case "es2020":
-            script = "build:es2020"
-            distRuntime = pathJoin(runtimeOutputDir, "runtime.es2020.js")
-            prebuiltRuntime = pathJoin(runtimeDir, "dist/runtime.es2020.js")
-        case "es5":
-            script = "build:es5"
-            distRuntime = pathJoin(runtimeOutputDir, "runtime.es5.js")
-            prebuiltRuntime = pathJoin(runtimeDir, "dist/runtime.es5.js")
-        default:
-            throw RunnerBuildToolError.unsupportedValue(
-                "RUNNER_RUNTIME_TARGET=\(runtimeTarget) (expected es2020 or es5)"
-            )
-        }
-
-        switch runtimePlatform {
-        case "all", "desktop", "mobile":
-            break
-        default:
-            throw RunnerBuildToolError.unsupportedValue(
-                "RUNNER_RUNTIME_PLATFORM=\(runtimePlatform) (expected all, desktop, or mobile)"
-            )
-        }
-
-        var runtimeEnv: [String: String] = [:]
-        if runtimePlatform != "all" {
-            runtimeEnv["LX_RUNTIME_PLATFORM"] = runtimePlatform
-        }
-        runtimeEnv["RUNTIME_OUTPUT_DIR"] = runtimeOutputDir
-
-        try FileManager.default.createDirectory(
-            atPath: runtimeOutputDir,
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-
-        if shouldReusePrebuiltRuntime(prebuiltRuntime, runtimeDir: runtimeDir) {
-            try copyIfChanged(from: prebuiltRuntime, to: distRuntime)
-            print("[runner-plugin] reusing prebuilt web-runtime: \(prebuiltRuntime)")
-        } else {
-            print("[runner-plugin] building web-runtime (\(script))")
-            _ = try runCommand(
-                executable: npmPath,
-                args: ["run", script],
-                currentDir: runtimeDir,
-                baseEnvironment: baseEnvironment,
-                envOverrides: runtimeEnv
-            )
-        }
-
-        guard FileManager.default.fileExists(atPath: distRuntime) else {
-            throw RunnerBuildToolError.missingFile(distRuntime)
-        }
-
-        let sdkRuntimePath = pathJoin(projectRoot, "lingxia-sdk/apple/Sources/Resources/runtime.js")
-        let runnerRuntimePath = pathJoin(packageDir, "Sources/Resources/runtime.js")
-        try copyIfChanged(from: distRuntime, to: sdkRuntimePath)
-        try copyIfChanged(from: distRuntime, to: runnerRuntimePath)
-        print("[runner-plugin] runtime.js updated")
-    }
-
-    private static func shouldReusePrebuiltRuntime(_ runtimePath: String, runtimeDir: String) -> Bool {
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: runtimePath) else {
-            return false
-        }
-
-        let prebuiltModified = modificationDate(atPath: runtimePath)
-        let inputs = [
-            pathJoin(runtimeDir, "package.json"),
-            pathJoin(runtimeDir, "rolldown.config.js"),
-            pathJoin(runtimeDir, "tsconfig.json"),
-            pathJoin(runtimeDir, "src"),
-        ]
-
-        for input in inputs {
-            if newestModificationDate(atPath: input) > prebuiltModified {
-                return false
-            }
-        }
-
-        return true
-    }
-
-    private static func ensureRuntimeDependencies(
-        runtimeDir: String,
-        npmPath: String,
-        baseEnvironment: [String: String]
-    ) throws {
-        let packageJSON = pathJoin(runtimeDir, "package.json")
-        let packageLock = pathJoin(runtimeDir, "package-lock.json")
-        let nodeModules = pathJoin(runtimeDir, "node_modules")
-
-        let nodeModulesExists = FileManager.default.fileExists(atPath: nodeModules)
-        let nodeModulesModified = modificationDate(atPath: nodeModules)
-        let packageModified = modificationDate(atPath: packageJSON)
-        let lockModified = modificationDate(atPath: packageLock)
-
-        let shouldInstall = !nodeModulesExists
-            || packageModified > nodeModulesModified
-            || lockModified > nodeModulesModified
-        guard shouldInstall else {
-            return
-        }
-
-        let installArgs = FileManager.default.fileExists(atPath: packageLock)
-            ? ["ci"]
-            : ["install"]
-        print("[runner-plugin] installing web-runtime dependencies (\(installArgs.joined(separator: " ")))")
-        _ = try runCommand(
-            executable: npmPath,
-            args: installArgs,
-            currentDir: runtimeDir,
-            baseEnvironment: baseEnvironment
-        )
     }
 
     private static func buildRustLibrary(

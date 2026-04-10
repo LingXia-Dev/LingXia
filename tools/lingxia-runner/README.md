@@ -6,8 +6,7 @@ When `lingxia dev` runs inside an lxapp, the CLI automatically ensures the insta
 
 It is built from this package, but the supported entrypoints are:
 
-- Local debug build: `swift build --disable-sandbox`
-- Local release bundle: `cargo run --manifest-path ../../tools/lingxia-cli/Cargo.toml -- package --platform macos`
+- Local release/debug preparation via `lingxia package` / `lingxia dev`
 - Release script: `scripts/release/runner.sh`
 
 ## Raw Build Output
@@ -21,12 +20,8 @@ These are the direct `lingxia build` artifacts. Runner does not require a `lingx
 
 ## Development
 
-Build the Runner package directly:
-
-```bash
-cd tools/lingxia-runner
-swift build --disable-sandbox
-```
+Use `lingxia dev` for local lxapp development against Runner. Use `lingxia package --platform macos`
+to prepare a runnable app bundle with current resources.
 
 Build a specific release arch with `lingxia package`:
 
@@ -44,8 +39,9 @@ Notes:
 
 The build plugin prepares:
 
-- the web runtime from `packages/lingxia-bridge`
 - the Rust static library from `crates/lingxia-devtool`
+
+Bridge runtime injection is handled by `lingxia build` / `lingxia package`, not by the SwiftPM plugin.
 
 ## Release
 
@@ -97,5 +93,6 @@ scripts/release/runner.sh --out /tmp/runner-release
 - `scripts/release/runner.sh --publish` publishes both Runner macOS architectures.
 - `lingxia.config.json` is optional here. Runner is a standalone Swift Package app, and the lxapp path is supplied at runtime by `lingxia dev`.
 - `lingxia dev` is the supported way to open Runner for an lxapp. The CLI keeps the installed Runner version aligned with the CLI version.
+- `swift build --disable-sandbox` only builds the Swift package. It does not prepare the embedded bridge runtime or other host assets by itself.
 - No embedded home lxapp is required at build time. If there is no lxapp in the package, `lingxia build` skips that step.
 - `Sources/Resources/` is generated during build preparation and should not be edited by hand.

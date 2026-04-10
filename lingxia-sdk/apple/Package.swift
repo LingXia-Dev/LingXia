@@ -108,7 +108,6 @@ let package = Package(
             path: "Sources",
             resources: [
                 .copy("Resources/icons"),
-                .copy("Resources/runtime.js"),
                 .process("Resources/en.lproj"),
                 .process("Resources/zh-Hans.lproj"),
             ],
