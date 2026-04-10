@@ -54,6 +54,7 @@ import type {
   ChooseFileResult,
   DownloadOptions,
   DownloadResult,
+  DownloadTask,
 } from './file';
 
 import type {
@@ -151,7 +152,7 @@ export interface Lx {
    * otherwise prefer `mode: 'auto'`.
    */
   openFile(options: OpenFileOptions): void;
-  downloadFile(options: DownloadOptions): Promise<DownloadResult>;
+  downloadFile(options: DownloadOptions): DownloadTask;
 
   getStorage(): Storage;
 

@@ -65,15 +65,51 @@ export interface ChooseDirectoryResult {
 export interface DownloadOptions {
   /** HTTP(S) source URL. */
   url: string;
+  /** Optional request headers. */
+  headers?: Record<string, string>;
+  /** Request timeout in milliseconds. */
+  timeout?: number;
+  /** Optional destination path. Relative paths resolve under user data. */
+  filePath?: string;
+  /** Optional abort signal. */
+  signal?: AbortSignal;
+}
+
+export interface DownloadProgressEvent {
+  kind: 'progress' | 'paused' | 'resumed' | 'canceled' | 'success';
+  downloadedBytes?: number;
+  totalBytes?: number;
+  /** Present only when the total size is known. */
+  progress?: number;
+  result?: DownloadResult;
+}
+
+export interface DownloadIteratorResult {
+  done: boolean;
+  value?: DownloadProgressEvent;
 }
 
 export interface DownloadResult {
-  /** Downloaded file URI under user cache, e.g. lx://usercache/... */
-  tempFilePath: string;
+  /** Final accessible file path or URI. */
+  filePath: string;
   /** Suggested filename resolved by runtime from headers/url. */
   fileName: string;
   /** MIME type when available. */
   mimeType?: string;
   /** File size in bytes. */
   size: number;
+}
+
+export interface DownloadTask extends PromiseLike<DownloadResult>, AsyncIterable<DownloadProgressEvent> {
+  next(): Promise<DownloadIteratorResult>;
+  return(): Promise<DownloadIteratorResult>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<DownloadResult | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<DownloadResult>;
+  pause(): Promise<void>;
+  resume(): Promise<void>;
+  cancel(): Promise<void>;
+  abort(): Promise<void>;
+  wait(): Promise<DownloadResult>;
 }
