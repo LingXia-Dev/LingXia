@@ -234,6 +234,24 @@ fn resolve_swiftpm_target(
         });
     }
 
+    let source_backed_targets = parsed_targets
+        .iter()
+        .filter(|target| {
+            target
+                .path
+                .as_deref()
+                .is_some_and(|path| path == "Sources" || path.starts_with("Sources/"))
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if source_backed_targets.len() == 1 {
+        let only = &source_backed_targets[0];
+        return Ok(SwiftPmTargetSelection {
+            name: only.name.clone(),
+            path: only.path.clone(),
+        });
+    }
+
     let sources_dir = package_dir.join("Sources");
     if sources_dir.is_dir() {
         let mut candidates = Vec::new();

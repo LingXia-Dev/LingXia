@@ -1,6 +1,7 @@
 use crate::appicon;
-use crate::config::LingXiaConfig;
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::platform;
+use crate::platform::detector::PlatformType;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::path::PathBuf;
@@ -18,25 +19,30 @@ pub fn execute(
     println!();
 
     // Check if icon file exists
-    let icon_path = PathBuf::from(&icon_path);
+    let current_dir = std::env::current_dir()?;
+    let icon_path = current_dir.join(&icon_path);
     if !icon_path.exists() {
         return Err(anyhow!("Icon file not found: {:?}", icon_path));
     }
 
-    // Load project configuration
-    let current_dir = std::env::current_dir()?;
-    let config = LingXiaConfig::load(&current_dir)
-        .context("Failed to load lingxia.config.json. Are you in a LingXia project directory?")?;
+    let context = resolve_icon_context(&current_dir)?;
 
     // Determine target platform(s)
     let platforms: Vec<String> = if let Some(p) = platform {
         vec![p.to_lowercase()]
     } else {
-        config
-            .app
+        context
+            .config
             .as_ref()
-            .map(|a| a.platforms.clone())
-            .ok_or_else(|| anyhow!("Missing app section in lingxia.config.json"))?
+            .and_then(|cfg| cfg.app.as_ref())
+            .as_ref()
+            .map(|app| app.platforms.clone())
+            .or_else(|| context.inferred_platform.as_ref().map(|p| vec![p.as_str().to_string()]))
+            .ok_or_else(|| {
+                anyhow!(
+                    "Failed to determine target platform. Pass --platform or run this command from a LingXia host project or Apple Swift Package directory."
+                )
+            })?
     };
 
     if platforms.is_empty() {
@@ -63,14 +69,22 @@ pub fn execute(
     println!();
 
     let mut generated_count = 0;
-    let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
+    let app_project_name = context
+        .config
+        .as_ref()
+        .and_then(|cfg| cfg.app.as_ref())
+        .map(|a| a.project_name.as_str());
 
     for platform_name in platforms {
         match platform_name.as_str() {
             "android" => {
                 println!("{}", "Generating Android icons...".bold());
-                match platform::android::generate_icons(&current_dir, &icon_path, &bg_color, legacy)
-                {
+                match platform::android::generate_icons(
+                    &context.project_root,
+                    &icon_path,
+                    &bg_color,
+                    legacy,
+                ) {
                     Ok(()) => generated_count += 1,
                     Err(e) => {
                         eprintln!("  {} {}", "Warning:".yellow(), e);
@@ -81,9 +95,9 @@ pub fn execute(
             "ios" => {
                 println!("{}", "Generating iOS icons...".bold());
                 match platform::ios::generate_icons(
-                    &current_dir,
+                    &context.project_root,
                     &icon_path,
-                    config.ios.as_ref(),
+                    context.config.as_ref().and_then(|cfg| cfg.ios.as_ref()),
                     app_project_name,
                 ) {
                     Ok(()) => generated_count += 1,
@@ -96,9 +110,9 @@ pub fn execute(
             "macos" => {
                 println!("{}", "Generating macOS icons...".bold());
                 match platform::macos::generate_icons(
-                    &current_dir,
+                    &context.project_root,
                     &icon_path,
-                    config.macos.as_ref(),
+                    context.config.as_ref().and_then(|cfg| cfg.macos.as_ref()),
                     app_project_name,
                 ) {
                     Ok(()) => generated_count += 1,
@@ -111,10 +125,10 @@ pub fn execute(
             "harmony" | "harmonyos" => {
                 println!("{}", "Generating HarmonyOS icons...".bold());
                 match platform::harmony::generate_icons(
-                    &current_dir,
+                    &context.project_root,
                     &icon_path,
                     &bg_color,
-                    config.harmony.as_ref(),
+                    context.config.as_ref().and_then(|cfg| cfg.harmony.as_ref()),
                 ) {
                     Ok(()) => generated_count += 1,
                     Err(e) => {
@@ -142,4 +156,65 @@ pub fn execute(
     }
 
     Ok(())
+}
+
+struct IconCommandContext {
+    project_root: PathBuf,
+    config: Option<LingXiaConfig>,
+    inferred_platform: Option<PlatformType>,
+}
+
+fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandContext> {
+    if current_dir.join(HOST_CONFIG_FILE).exists() {
+        let config = LingXiaConfig::load(current_dir).context(
+            "Failed to load lingxia.config.json. Are you in a LingXia project directory?",
+        )?;
+        return Ok(IconCommandContext {
+            project_root: current_dir.to_path_buf(),
+            config: Some(config),
+            inferred_platform: None,
+        });
+    }
+
+    if let Some(ctx) =
+        platform::spm::find_apple_swift_package_context(current_dir, HOST_CONFIG_FILE)?
+    {
+        let config = LingXiaConfig::load(&ctx.host_project_root).context(
+            "Failed to load lingxia.config.json from the host project for this Apple Swift Package.",
+        )?;
+        return Ok(IconCommandContext {
+            project_root: ctx.host_project_root,
+            config: Some(config),
+            inferred_platform: Some(ctx.inferred_platform),
+        });
+    }
+
+    if let Some(host_root) =
+        platform::detector::find_host_project_root(current_dir, HOST_CONFIG_FILE)
+    {
+        if let Ok(inferred_platform) = platform::detector::detect_platform_type(current_dir) {
+            let config = LingXiaConfig::load(&host_root)
+                .context("Failed to load lingxia.config.json from the detected host project.")?;
+            return Ok(IconCommandContext {
+                project_root: host_root,
+                config: Some(config),
+                inferred_platform: Some(inferred_platform),
+            });
+        }
+    }
+
+    if let Some(inferred_platform) =
+        platform::spm::detect_local_apple_swift_package_platform(current_dir)?
+    {
+        return Ok(IconCommandContext {
+            project_root: current_dir.to_path_buf(),
+            config: None,
+            inferred_platform: Some(inferred_platform),
+        });
+    }
+
+    Err(anyhow!(
+        "Failed to load lingxia.config.json. Are you in a LingXia project directory?\n\
+         Supported icon targets without host config: local Apple Swift Packages (ios, macos)."
+    ))
 }
