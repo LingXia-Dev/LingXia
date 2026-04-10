@@ -53,8 +53,7 @@ impl FromStr for PlatformType {
     }
 }
 
-#[cfg(test)]
-/// Detect all available platforms in the project (test helper).
+/// Detect all available platforms in the project root and common platform subdirectories.
 pub fn detect_available_platforms(project_root: &Path) -> Vec<PlatformType> {
     let mut platforms = Vec::new();
 
@@ -130,30 +129,27 @@ pub fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
 /// - HarmonyOS: build-profile.json5, hvigorfile.ts, or oh-package.json5
 ///
 pub fn detect_platform_type(project_root: &Path) -> Result<PlatformType> {
-    // Android: check for build.gradle or build.gradle.kts
-    if is_android_project(project_root) {
-        return Ok(PlatformType::Android);
+    let platforms = detect_available_platforms(project_root);
+    match platforms.as_slice() {
+        [platform] => Ok(platform.clone()),
+        [] => Err(anyhow!(
+            "Cannot detect platform type. Make sure you're in a valid LingXia project directory.\n\
+             Supported platforms: Android, iOS, macOS, HarmonyOS"
+        )),
+        _ => Err(anyhow!(
+            "Multiple platform candidates found: {}.\n\
+             Pass --platform <android|ios|macos|harmony> to disambiguate.",
+            format_platform_list(&platforms)
+        )),
     }
+}
 
-    // iOS: check for *.xcodeproj, *.xcworkspace, or Package.swift with iOS
-    if is_ios_project(project_root) {
-        return Ok(PlatformType::Ios);
-    }
-
-    // macOS: check for Package.swift with macOS or macOS project dir
-    if is_macos_project(project_root) {
-        return Ok(PlatformType::MacOs);
-    }
-
-    // HarmonyOS: check for build-profile.json5
-    if is_harmony_project(project_root) {
-        return Ok(PlatformType::Harmony);
-    }
-
-    Err(anyhow!(
-        "Cannot detect platform type. Make sure you're in a valid LingXia project directory.\n\
-         Supported platforms: Android, iOS (coming soon), HarmonyOS (coming soon)"
-    ))
+fn format_platform_list(platforms: &[PlatformType]) -> String {
+    platforms
+        .iter()
+        .map(PlatformType::as_str)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Check if the project is an Android project
@@ -273,5 +269,38 @@ mod tests {
         let platforms = detect_available_platforms(project_root);
         assert!(platforms.contains(&PlatformType::Ios));
         assert!(platforms.contains(&PlatformType::Harmony));
+    }
+
+    #[test]
+    fn test_detect_single_platform_from_subdir_layout() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let ios_root = project_root.join("ios");
+        fs::create_dir_all(&ios_root).unwrap();
+        fs::create_dir_all(ios_root.join("MyApp.xcodeproj")).unwrap();
+
+        assert_eq!(
+            detect_platform_type(project_root).unwrap(),
+            PlatformType::Ios
+        );
+    }
+
+    #[test]
+    fn test_detect_multiple_platforms_reports_disambiguation() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_root = temp_dir.path();
+
+        let ios_root = project_root.join("ios");
+        fs::create_dir_all(&ios_root).unwrap();
+        fs::create_dir_all(ios_root.join("MyApp.xcodeproj")).unwrap();
+
+        let harmony_root = project_root.join("harmony");
+        fs::create_dir_all(&harmony_root).unwrap();
+        fs::write(harmony_root.join("build-profile.json5"), "").unwrap();
+
+        let err = detect_platform_type(project_root).unwrap_err().to_string();
+        assert!(err.contains("Multiple platform candidates found: ios, harmony"));
+        assert!(err.contains("Pass --platform <android|ios|macos|harmony>"));
     }
 }

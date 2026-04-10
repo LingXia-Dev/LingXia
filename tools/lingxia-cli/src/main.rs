@@ -212,8 +212,8 @@ enum Commands {
 
     /// Launch an installed app on a device
     Launch {
-        /// Bundle ID / Package ID to launch
-        bundle_id: String,
+        /// Bundle ID / Package ID to launch. If omitted, LingXia will try to infer it from lingxia.config.json.
+        bundle_id: Option<String>,
 
         /// Device ID (required if multiple devices connected)
         #[arg(short = 'd', long)]
@@ -459,7 +459,7 @@ fn main() -> Result<()> {
             device,
             platform,
         } => {
-            commands::device::launch(&bundle_id, device, platform)?;
+            commands::device::launch(bundle_id.as_deref(), device, platform)?;
         }
         Commands::Dev { dev_options } => {
             commands::dev::execute(commands::dev::DevExecuteOptions {

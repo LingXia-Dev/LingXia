@@ -1,10 +1,13 @@
 //! Device management commands: list, uninstall, launch.
 
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::platform;
 use crate::platform::RunConfig;
 use crate::platform::detector::PlatformType;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
+use std::env;
+use std::path::PathBuf;
 
 /// List connected devices
 pub fn list_devices(platform_arg: Option<String>) -> Result<()> {
@@ -68,12 +71,17 @@ pub fn uninstall(
 }
 
 /// Launch an installed app on a device
-pub fn launch(bundle_id: &str, device: Option<String>, platform_arg: Option<String>) -> Result<()> {
-    let platform_type = resolve_single_platform(platform_arg)?;
+pub fn launch(
+    bundle_id: Option<&str>,
+    device: Option<String>,
+    platform_arg: Option<String>,
+) -> Result<()> {
+    let platform_type = resolve_single_platform(platform_arg.clone())?;
+    let bundle_id = resolve_launch_package_id(bundle_id, &platform_type)?;
     let p = platform::detector::create_platform(&platform_type)?;
 
     let run_config = RunConfig {
-        package_id: bundle_id.to_string(),
+        package_id: bundle_id,
         main_activity: None,
         device_id: device,
     };
@@ -105,8 +113,114 @@ fn resolve_single_platform(platform_arg: Option<String>) -> Result<PlatformType>
         p.parse()
     } else {
         // Try to detect from project config
-        let project_root = std::env::current_dir()?;
+        let project_root = current_project_root()?;
         platform::detector::detect_platform_type(&project_root)
-            .map_err(|_| anyhow!("Could not detect platform. Please specify with --platform"))
+    }
+}
+
+fn resolve_launch_package_id(
+    bundle_id: Option<&str>,
+    platform_type: &PlatformType,
+) -> Result<String> {
+    if let Some(bundle_id) = bundle_id {
+        return Ok(bundle_id.to_string());
+    }
+
+    let project_root = current_project_root()?;
+    let config = LingXiaConfig::load(&project_root).map_err(|_| {
+        anyhow!(
+            "Bundle ID / Package ID is required when LingXia config cannot be resolved from {}.",
+            project_root.display()
+        )
+    })?;
+
+    infer_package_id_from_config(&config, platform_type).ok_or_else(|| {
+        anyhow!(
+            "Could not infer launch identifier for {} from {}. Pass <BUNDLE_ID> explicitly.",
+            platform_type.as_str(),
+            project_root.join(HOST_CONFIG_FILE).display()
+        )
+    })
+}
+
+fn current_project_root() -> Result<PathBuf> {
+    let current_dir = env::current_dir()?;
+    Ok(
+        platform::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
+            .unwrap_or(current_dir),
+    )
+}
+
+fn infer_package_id_from_config(
+    config: &LingXiaConfig,
+    platform_type: &PlatformType,
+) -> Option<String> {
+    match platform_type {
+        PlatformType::Android => config.android.as_ref().map(|cfg| cfg.package_id.clone()),
+        PlatformType::Ios => config.ios.as_ref().map(|cfg| cfg.bundle_id.clone()),
+        PlatformType::Harmony => config.harmony.as_ref().map(|cfg| cfg.bundle_name.clone()),
+        PlatformType::MacOs => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{AndroidConfig, HarmonyConfig, HostAppConfig, IosConfig};
+
+    fn sample_config() -> LingXiaConfig {
+        LingXiaConfig {
+            app: Some(HostAppConfig {
+                project_name: "demo".into(),
+                product_name: "Demo".into(),
+                product_version: "0.1.0".into(),
+                api_server: None,
+                lingxia_id: None,
+                platforms: vec!["android".into(), "ios".into(), "harmony".into()],
+                home_lxapp_id: None,
+                cache_max_age_days: None,
+                cache_max_size_mb: None,
+            }),
+            android: Some(AndroidConfig {
+                package_id: "com.example.demo".into(),
+                min_sdk: None,
+                target_sdk: None,
+                compile_sdk: None,
+                ndk_version: None,
+                api_level: None,
+            }),
+            ios: Some(IosConfig {
+                bundle_id: "app.example.demo".into(),
+                deployment_target: None,
+                swift_version: None,
+                target_name: None,
+            }),
+            macos: None,
+            harmony: Some(HarmonyConfig {
+                bundle_name: "com.example.demo.hm".into(),
+                compatible_sdk_version: None,
+                target_sdk_version: None,
+            }),
+            resources: None,
+            splash: None,
+            panels: None,
+        }
+    }
+
+    #[test]
+    fn infer_launch_package_id_from_config_by_platform() {
+        let config = sample_config();
+        assert_eq!(
+            infer_package_id_from_config(&config, &PlatformType::Android).as_deref(),
+            Some("com.example.demo")
+        );
+        assert_eq!(
+            infer_package_id_from_config(&config, &PlatformType::Ios).as_deref(),
+            Some("app.example.demo")
+        );
+        assert_eq!(
+            infer_package_id_from_config(&config, &PlatformType::Harmony).as_deref(),
+            Some("com.example.demo.hm")
+        );
     }
 }

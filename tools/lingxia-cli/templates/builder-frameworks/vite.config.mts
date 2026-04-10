@@ -87,6 +87,11 @@ __MAYBE_CONFIG_IMPORT__
 
 const viewConfig = projectConfig.view ?? {};
 const css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;
+const buildTarget = __BUILD_TARGET_JSON__;
+const outputFormat = __OUTPUT_FORMAT_JSON__;
+const inlineDynamicImports = __INLINE_DYNAMIC_IMPORTS__;
+const modulePreload = __MODULE_PRELOAD__;
+const useManualChunks = !inlineDynamicImports;
 
 const workspaceAliases = [
   [/^@lingxia\/bridge$/, resolveWorkspaceSourceEntry('@lingxia/bridge', 'src/index.ts')],
@@ -123,20 +128,27 @@ export default defineConfig({
   css,
   resolve: { alias, dedupe: ['react', 'react-dom', 'vue'] },
   build: {
-    target: 'esnext',
+    target: buildTarget,
     outDir: path.join(buildDir, 'dist'),
     emptyOutDir: true,
     sourcemap: __SOURCEMAP__,
     minify: __MINIFY__,
     cssMinify: __CSS_MINIFY__,
+    modulePreload,
     rollupOptions: {
       input: inputEntries,
       output: {
         entryFileNames: 'pages/[name]/[name].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
-        manualChunks,
+        ...(outputFormat === 'iife'
+          ? { format: outputFormat, name: 'LingXiaHtmlPage' }
+          : outputFormat
+            ? { format: outputFormat }
+            : {}),
+        ...(useManualChunks ? { manualChunks } : {}),
       },
+      ...(inlineDynamicImports ? { inlineDynamicImports: true } : {}),
     },
   },
 });

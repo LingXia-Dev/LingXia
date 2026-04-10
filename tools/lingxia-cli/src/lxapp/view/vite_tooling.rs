@@ -134,6 +134,59 @@ pub(super) fn ensure_component_view_tooling(
     Ok(install_duration)
 }
 
+pub(super) fn transpile_file_to_es5(project_root: &Path, file_path: &Path) -> Result<()> {
+    let ts_module = project_root
+        .join("node_modules")
+        .join("typescript")
+        .join("lib")
+        .join("typescript.js");
+    if !ts_module.exists() {
+        return Err(anyhow!(
+            "Missing project TypeScript dependency: {}.\nAdd \"typescript\" to devDependencies and run npm install.",
+            ts_module.display()
+        ));
+    }
+
+    let transpile_script = format!(
+        r#"
+import fs from 'node:fs';
+import ts from {ts_module};
+const filePath = {file_path};
+const source = fs.readFileSync(filePath, 'utf8');
+const result = ts.transpileModule(source, {{
+  compilerOptions: {{
+    target: ts.ScriptTarget.ES5,
+    module: ts.ModuleKind.None,
+    removeComments: false
+  }},
+  fileName: filePath
+}});
+fs.writeFileSync(filePath, result.outputText, 'utf8');
+"#,
+        ts_module = serde_json::to_string(&ts_module.to_string_lossy())
+            .unwrap_or_else(|_| "\"\"".to_string()),
+        file_path = serde_json::to_string(&file_path.to_string_lossy())
+            .unwrap_or_else(|_| "\"\"".to_string()),
+    );
+
+    let status = Command::new("node")
+        .arg("--input-type=module")
+        .arg("--eval")
+        .arg(transpile_script)
+        .current_dir(project_root)
+        .status()
+        .with_context(|| format!("Failed to start ES5 transpile for {}", file_path.display()))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "Failed to transpile {} to ES5",
+            file_path.display()
+        ))
+    }
+}
+
 pub(super) fn ensure_project_tooling(
     project: &Project,
     progress: Option<&ViewProgress>,

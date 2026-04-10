@@ -24,6 +24,12 @@ struct ComponentPageBuild {
     actions: Vec<PageAction>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum HtmlBundleMode {
+    Modern,
+    LegacyEs5,
+}
+
 pub fn build(
     project: &Project,
     options: &BuildOptions,
@@ -213,6 +219,14 @@ fn build_html_pages(
     install_duration: Option<Duration>,
     progress: Option<ViewProgress>,
 ) -> Result<ViewBuildReport> {
+    let mode = match super::vite_html::html_view_target(project)?.as_deref() {
+        Some(target) if target.eq_ignore_ascii_case("es5") => HtmlBundleMode::LegacyEs5,
+        _ => HtmlBundleMode::Modern,
+    };
+    if matches!(mode, HtmlBundleMode::LegacyEs5) {
+        return build_html_pages_legacy(project, options, install_duration, progress);
+    }
+
     let build_root =
         super::vite_tooling::prepare_view_build_root(project.root.as_path(), project.framework)?;
     fs::create_dir_all(&build_root)?;
@@ -281,6 +295,172 @@ fn build_html_pages(
         bundle_duration,
         finalize_duration,
     })
+}
+
+fn build_html_pages_legacy(
+    project: &Project,
+    options: &BuildOptions,
+    install_duration: Option<Duration>,
+    progress: Option<ViewProgress>,
+) -> Result<ViewBuildReport> {
+    let build_root =
+        super::vite_tooling::prepare_view_build_root(project.root.as_path(), project.framework)?;
+    fs::create_dir_all(&build_root)?;
+
+    let total = project.pages.len();
+    let mut pages = Vec::with_capacity(total);
+    let prepare_started = Instant::now();
+    if let Some(progress) = progress.as_ref() {
+        progress.preparing_pages(total, project.framework);
+    }
+
+    for page_path in &project.pages {
+        let actions = extract_page_actions(page_logic_path(project, page_path)?.as_deref())?;
+        let page_id = sanitize_page_id(&strip_ext(page_path));
+        let source_path = project.root.join(page_path);
+        let html = fs::read_to_string(&source_path)
+            .with_context(|| format!("Failed to read {}", source_path.display()))?;
+        let entry_src = super::vite_html::extract_html_module_entry_script_path(&html).ok_or_else(
+            || anyhow!("HTML page {page_path} is configured for ES5 bundling but has no module entry script"),
+        )?;
+        pages.push(HtmlLegacyPageBuild {
+            page_path: page_path.clone(),
+            page_id,
+            entry_src,
+            actions,
+        });
+    }
+    let prepare_duration = prepare_started.elapsed();
+
+    let bundle_started = Instant::now();
+    if let Some(progress) = progress.as_ref() {
+        progress.bundling_pages(total, project.framework);
+    }
+    for page in &pages {
+        bundle_html_legacy_page(project, options, &build_root, page)?;
+    }
+    let bundle_duration = bundle_started.elapsed();
+
+    let finalize_started = Instant::now();
+    if let Some(progress) = progress.as_ref() {
+        progress.finalizing_pages(total);
+    }
+    for page in &pages {
+        finalize_html_legacy_page(project, &build_root, page)?;
+    }
+    let finalize_duration = finalize_started.elapsed();
+
+    Ok(ViewBuildReport {
+        framework: project.framework,
+        page_count: total,
+        install_duration,
+        prepare_duration,
+        bundle_duration,
+        finalize_duration,
+    })
+}
+
+#[derive(Debug, Clone)]
+struct HtmlLegacyPageBuild {
+    page_path: String,
+    page_id: String,
+    entry_src: String,
+    actions: Vec<PageAction>,
+}
+
+fn bundle_html_legacy_page(
+    project: &Project,
+    options: &BuildOptions,
+    build_root: &Path,
+    page: &HtmlLegacyPageBuild,
+) -> Result<()> {
+    let page_root = build_root.join("legacy").join(&page.page_id);
+    fs::create_dir_all(&page_root)?;
+
+    let page_dir = project.root.join(
+        Path::new(&page.page_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("")),
+    );
+    let entry_path = page_dir.join(&page.entry_src);
+    if !entry_path.exists() {
+        return Err(anyhow!(
+            "Missing HTML module entry for {}: {}",
+            page.page_path,
+            entry_path.display()
+        ));
+    }
+
+    let mut inputs = BTreeMap::new();
+    inputs.insert(page.page_id.clone(), entry_path);
+    let config_path = write_vite_config_with_target(
+        project,
+        &page_root,
+        options,
+        project.framework,
+        &inputs,
+        "es2015",
+        Some("iife"),
+        true,
+        false,
+    )?;
+    super::vite_tooling::run_vite_build(project.root.as_path(), &config_path, &project.root)
+}
+
+fn finalize_html_legacy_page(
+    project: &Project,
+    build_root: &Path,
+    page: &HtmlLegacyPageBuild,
+) -> Result<()> {
+    let dist_dir = build_root.join("legacy").join(&page.page_id).join("dist");
+    if !dist_dir.exists() {
+        return Err(anyhow!("Missing Vite dist output: {}", dist_dir.display()));
+    }
+
+    copy_shared_vite_assets(project, &dist_dir)?;
+
+    let page_output_dir = project.output_dir.join(
+        Path::new(&page.page_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("")),
+    );
+    fs::create_dir_all(&page_output_dir)?;
+
+    let page_dist_dir = dist_dir.join("pages").join(&page.page_id);
+    let view_js = page_dist_dir.join(format!("{}.js", page.page_id));
+    super::vite_tooling::transpile_file_to_es5(project.root.as_path(), &view_js)?;
+    fs::copy(&view_js, page_output_dir.join("view.js"))
+        .with_context(|| format!("Failed to copy {}", view_js.display()))?;
+
+    let source_path = project.root.join(&page.page_path);
+    let mut html = fs::read_to_string(&source_path)
+        .with_context(|| format!("Failed to read {}", source_path.display()))?;
+    html = super::vite_html::rewrite_module_entry_script(html, &page.entry_src, "./view.js");
+    html = super::vite_html::inject_runtime_script(html);
+    html = super::vite_html::inject_bridge_metadata(html, &page.actions);
+
+    let base = Path::new(&page.page_path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("index");
+    let page_file = page_output_dir.join(format!("{base}.html"));
+    fs::write(&page_file, html)
+        .with_context(|| format!("Failed to write {}", page_file.display()))?;
+
+    let config_path = source_path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .join(format!("{base}.json"));
+    if config_path.exists() {
+        fs::copy(&config_path, page_output_dir.join(format!("{base}.json")))?;
+    }
+
+    super::vite_html::copy_html_page_support_files(
+        source_path.parent().unwrap_or_else(|| Path::new("")),
+        &page_output_dir,
+        base,
+    )?;
+    Ok(())
 }
 
 fn finalize_component_pages(
@@ -373,6 +553,22 @@ fn write_vite_config(
     framework: ProjectFramework,
     inputs: &BTreeMap<String, PathBuf>,
 ) -> Result<PathBuf> {
+    write_vite_config_with_target(
+        project, build_dir, options, framework, inputs, "esnext", None, false, true,
+    )
+}
+
+fn write_vite_config_with_target(
+    project: &Project,
+    build_dir: &Path,
+    options: &BuildOptions,
+    framework: ProjectFramework,
+    inputs: &BTreeMap<String, PathBuf>,
+    build_target: &str,
+    output_format: Option<&str>,
+    inline_dynamic_imports: bool,
+    module_preload: bool,
+) -> Result<PathBuf> {
     let config_path = build_dir.join("vite.config.mts");
 
     let plugin_import = match framework {
@@ -416,6 +612,26 @@ fn write_vite_config(
         )
         .replace("__INPUT_ENTRIES_JSON__", &input_json)
         .replace("__MAYBE_CONFIG_IMPORT__", &maybe_config_import)
+        .replace(
+            "__BUILD_TARGET_JSON__",
+            &serde_json::to_string(build_target).unwrap_or_else(|_| "\"esnext\"".to_string()),
+        )
+        .replace(
+            "__OUTPUT_FORMAT_JSON__",
+            &serde_json::to_string(&output_format).unwrap_or_else(|_| "null".to_string()),
+        )
+        .replace(
+            "__INLINE_DYNAMIC_IMPORTS__",
+            if inline_dynamic_imports {
+                "true"
+            } else {
+                "false"
+            },
+        )
+        .replace(
+            "__MODULE_PRELOAD__",
+            if module_preload { "true" } else { "false" },
+        )
         .replace("__SOURCEMAP__", "false")
         .replace(
             "__MINIFY__",

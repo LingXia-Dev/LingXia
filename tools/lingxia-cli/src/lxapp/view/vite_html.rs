@@ -52,6 +52,16 @@ pub(super) fn html_pages_require_bundling(project: &Project) -> Result<bool> {
     Ok(false)
 }
 
+pub(super) fn html_view_target(project: &Project) -> Result<Option<String>> {
+    let config_path = project.root.join("lxapp.config.ts");
+    if !config_path.exists() {
+        return Ok(None);
+    }
+    let source = fs::read_to_string(&config_path)
+        .with_context(|| format!("Failed to read {}", config_path.display()))?;
+    Ok(extract_view_target(&source))
+}
+
 pub(super) fn copy_html_page_support_files(
     source_dir: &Path,
     output_dir: &Path,
@@ -114,6 +124,140 @@ pub(super) fn rewrite_entry_script_path(mut html: String, page_id: &str) -> Stri
     html
 }
 
+pub(super) fn rewrite_module_entry_script(
+    mut html: String,
+    original_src: &str,
+    new_src: &str,
+) -> String {
+    let patterns = [
+        format!("type=\"module\" src=\"{original_src}\""),
+        format!("type='module' src='{original_src}'"),
+        format!("TYPE='MODULE' src='{original_src}'"),
+        format!("type = \"module\" src=\"{original_src}\""),
+        format!("type=module src={original_src}"),
+        format!("defer type=module src={original_src}"),
+        format!("src=\"{original_src}\" type=\"module\""),
+        format!("src='{original_src}' type='module'"),
+    ];
+
+    for pattern in patterns {
+        if html.contains(&pattern) {
+            let replacement = format!("src=\"{new_src}\"");
+            html = html.replace(&pattern, &replacement);
+        }
+    }
+
+    html
+}
+
+pub(super) fn extract_html_module_entry_script_path(source: &str) -> Option<String> {
+    let bytes = source.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        if bytes[i] != b'<' {
+            i += 1;
+            continue;
+        }
+        i += 1;
+
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() || matches!(bytes[i], b'/' | b'!' | b'?') {
+            continue;
+        }
+
+        let tag_start = i;
+        while i < bytes.len() && is_html_name_char(bytes[i]) {
+            i += 1;
+        }
+        if !source[tag_start..i].eq_ignore_ascii_case("script") {
+            continue;
+        }
+
+        let mut is_module = false;
+        let mut src = None;
+
+        while i < bytes.len() {
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= bytes.len() || bytes[i] == b'>' {
+                break;
+            }
+            if bytes[i] == b'/' {
+                i += 1;
+                continue;
+            }
+
+            let attr_start = i;
+            while i < bytes.len() && is_html_name_char(bytes[i]) {
+                i += 1;
+            }
+            if attr_start == i {
+                i += 1;
+                continue;
+            }
+            let attr_name = &source[attr_start..i];
+
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+
+            let mut value = None;
+            if i < bytes.len() && bytes[i] == b'=' {
+                i += 1;
+                while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                    i += 1;
+                }
+                if i >= bytes.len() {
+                    break;
+                }
+                let value_start;
+                let value_end;
+                if matches!(bytes[i], b'"' | b'\'') {
+                    let quote = bytes[i];
+                    i += 1;
+                    value_start = i;
+                    while i < bytes.len() && bytes[i] != quote {
+                        i += 1;
+                    }
+                    value_end = i.min(bytes.len());
+                    if i < bytes.len() {
+                        i += 1;
+                    }
+                } else {
+                    value_start = i;
+                    while i < bytes.len()
+                        && !bytes[i].is_ascii_whitespace()
+                        && !matches!(bytes[i], b'>' | b'/')
+                    {
+                        i += 1;
+                    }
+                    value_end = i;
+                }
+                value = Some(&source[value_start..value_end]);
+            }
+
+            if attr_name.eq_ignore_ascii_case("type")
+                && value.is_some_and(|v| v.eq_ignore_ascii_case("module"))
+            {
+                is_module = true;
+            }
+            if attr_name.eq_ignore_ascii_case("src") {
+                src = value.map(str::to_string);
+            }
+        }
+
+        if is_module && src.is_some() {
+            return src;
+        }
+    }
+
+    None
+}
+
 pub(super) fn inject_runtime_script(mut html: String) -> String {
     let runtime_script = "<script src=\"lx://assets/bridge-runtime.js\"></script>";
     if html.contains(runtime_script) {
@@ -140,6 +284,10 @@ pub(super) fn inject_bridge_metadata(mut html: String, actions: &[PageAction]) -
 }
 
 fn html_source_requires_bundling(source: &str) -> bool {
+    html_source_has_module_script(source)
+}
+
+fn html_source_has_module_script(source: &str) -> bool {
     let bytes = source.as_bytes();
     let mut i = 0;
 
@@ -169,10 +317,7 @@ fn html_source_requires_bundling(source: &str) -> bool {
             while i < bytes.len() && bytes[i].is_ascii_whitespace() {
                 i += 1;
             }
-            if i >= bytes.len() {
-                return false;
-            }
-            if bytes[i] == b'>' {
+            if i >= bytes.len() || bytes[i] == b'>' {
                 break;
             }
             if bytes[i] == b'/' {
@@ -238,6 +383,21 @@ fn html_source_requires_bundling(source: &str) -> bool {
     }
 
     false
+}
+
+fn extract_view_target(source: &str) -> Option<String> {
+    let view_index = source.find("view")?;
+    let target_index = source[view_index..].find("target")? + view_index;
+    let after_target = &source[target_index + "target".len()..];
+    let colon_index = after_target.find(':')?;
+    let value = after_target[colon_index + 1..].trim_start();
+    let quote = value.chars().next()?;
+    if quote != '"' && quote != '\'' {
+        return None;
+    }
+    let rest = &value[quote.len_utf8()..];
+    let end = rest.find(quote)?;
+    Some(rest[..end].to_string())
 }
 
 fn is_html_name_char(byte: u8) -> bool {
@@ -371,5 +531,42 @@ mod tests {
 
         assert!(html.contains("\"confirmOrientation\""));
         assert!(html.contains("__names"));
+    }
+
+    #[test]
+    fn extract_module_entry_script_path_variants() {
+        assert_eq!(
+            extract_html_module_entry_script_path(
+                "<script type = \"module\" src=\"./entry.js\"></script>"
+            )
+            .as_deref(),
+            Some("./entry.js")
+        );
+        assert_eq!(
+            extract_html_module_entry_script_path(
+                "<script TYPE='MODULE' src='./entry.js'></script>"
+            )
+            .as_deref(),
+            Some("./entry.js")
+        );
+    }
+
+    #[test]
+    fn rewrite_module_entry_script_to_classic_script() {
+        let html = "<script type=\"module\" src=\"./entry.js\"></script>".to_string();
+        let rewritten = rewrite_module_entry_script(html, "./entry.js", "./view.js");
+        assert_eq!(rewritten, "<script src=\"./view.js\"></script>");
+    }
+
+    #[test]
+    fn extract_view_target_from_config_source() {
+        assert_eq!(
+            extract_view_target("export default { view: { target: 'es5' } };").as_deref(),
+            Some("es5")
+        );
+        assert_eq!(
+            extract_view_target("export default { view: { target: \"es2020\" } };").as_deref(),
+            Some("es2020")
+        );
     }
 }
