@@ -8,6 +8,12 @@ type PageData = {
   showMenu?: boolean;
   isPdfDownloading?: boolean;
   isOfficeDownloading?: boolean;
+  officeDownloadState?: string;
+  officeProgressKnown?: boolean;
+  officeDownloadProgress?: number;
+  officeProgressText?: string;
+  officeSupportsTransferControl?: boolean;
+  officeTransferButtonText?: string;
 };
 
 type PageActions = {
@@ -17,6 +23,7 @@ type PageActions = {
   toggleShowMenu(): void;
   openPdf(): void;
   openOffice(): void;
+  toggleOfficeTransfer(): void;
 };
 
 export default function DocumentPage() {
@@ -28,6 +35,7 @@ export default function DocumentPage() {
     toggleShowMenu,
     openPdf,
     openOffice,
+    toggleOfficeTransfer,
   } = actions;
 
   const pdfUrl = data?.pdfUrl || '';
@@ -36,6 +44,17 @@ export default function DocumentPage() {
   const showMenu = Boolean(data?.showMenu);
   const isPdfDownloading = Boolean(data?.isPdfDownloading);
   const isOfficeDownloading = Boolean(data?.isOfficeDownloading);
+  const officeProgressKnown = Boolean(data?.officeProgressKnown);
+  const officeDownloadProgress = data?.officeDownloadProgress || 0;
+  const officeProgressText = data?.officeProgressText || 'Not started yet';
+  const officeSupportsTransferControl = Boolean(data?.officeSupportsTransferControl);
+  const officeTransferButtonText = data?.officeTransferButtonText || 'Pause Download';
+  const officePrimaryButtonText =
+    data?.officeDownloadState === 'paused'
+      ? 'Download Paused'
+      : isOfficeDownloading
+        ? 'Downloading...'
+        : 'Download and Open Document';
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -65,7 +84,8 @@ export default function DocumentPage() {
 
         <div className="bg-white rounded-lg shadow-sm">
           <div className="px-4 py-4 border-b border-gray-100">
-            <div className="text-base text-gray-900 font-medium">PDF Document</div>
+            <div className="text-base text-gray-900 font-medium">PDF via fetch()</div>
+            <div className="text-xs text-gray-500 mt-1">Standard fetch validation, then open the resolved PDF URL in-app.</div>
           </div>
           <div className="px-4 py-4 space-y-3">
             <div>
@@ -87,15 +107,15 @@ export default function DocumentPage() {
                   : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               }`}
             >
-              {isPdfDownloading ? 'Downloading...' : 'Open PDF'}
+              {isPdfDownloading ? 'Fetching PDF...' : 'Fetch and Preview PDF'}
             </button>
           </div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm">
           <div className="px-4 py-4 border-b border-gray-100">
-            <div className="text-base text-gray-900 font-medium">Office Document</div>
-            <div className="text-xs text-gray-500 mt-1">Supports: doc, docx, xls, xlsx, ppt, pptx</div>
+            <div className="text-base text-gray-900 font-medium">Office via lx.downloadFile()</div>
+            <div className="text-xs text-gray-500 mt-1">Supports: doc, docx, xls, xlsx, ppt, pptx. Promise-like task with progress and pause/continue.</div>
           </div>
           <div className="px-4 py-4 space-y-3">
             <div>
@@ -128,8 +148,34 @@ export default function DocumentPage() {
                   : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               }`}
             >
-              {isOfficeDownloading ? 'Downloading...' : 'Open Document'}
+              {officePrimaryButtonText}
             </button>
+            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+              <div className="flex items-center justify-between text-xs text-blue-700">
+                <span>Transfer Progress</span>
+                <span>{officeProgressKnown ? `${Math.round(officeDownloadProgress)}%` : 'Streaming'}</span>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  className={`h-full rounded-full bg-blue-500 transition-all duration-300 ${
+                    officeProgressKnown ? '' : 'animate-pulse'
+                  }`}
+                  style={{ width: officeProgressKnown ? `${officeDownloadProgress}%` : '42%' }}
+                />
+              </div>
+              <div className="mt-2 text-xs text-blue-900">{officeProgressText}</div>
+              <button
+                onClick={toggleOfficeTransfer}
+                disabled={!isOfficeDownloading || !officeSupportsTransferControl}
+                className={`mt-3 w-full rounded-lg py-2 text-sm font-medium ${
+                  isOfficeDownloading && officeSupportsTransferControl
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                    : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                }`}
+              >
+                {officeTransferButtonText}
+              </button>
+            </div>
           </div>
         </div>
 
