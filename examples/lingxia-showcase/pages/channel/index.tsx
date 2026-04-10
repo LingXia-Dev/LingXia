@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { useLxPage, useLxChannel } from '@lingxia/react';
+import { useLxChannel } from '@lingxia/react';
 import type { LxChannel } from '@lingxia/bridge';
 import type { ServerMessage, ClientCommand, TickerUpdate } from './index';
 import '../../tailwind.css';
@@ -12,14 +12,18 @@ interface TickerSnapshot {
 }
 
 export default function ChannelPage() {
-  const { actions } = useLxPage<
-    { connected: boolean },
-    {
-      tickerSession: (params: Record<string, unknown>) => Promise<LxChannel<ServerMessage, ClientCommand>>;
-    }
-  >();
+  const openTickerSession = React.useCallback(
+    (params: Record<string, unknown>) => {
+      const bridge = window.LingXiaBridge;
+      if (!bridge?.channel?.open) {
+        return Promise.reject(new Error('LingXiaBridge channel API is not ready'));
+      }
+      return bridge.channel.open<ServerMessage, ClientCommand>('tickerSession', params);
+    },
+    [],
+  );
 
-  const session = useLxChannel(actions.tickerSession, {
+  const session = useLxChannel(openTickerSession, {
     params: () => ({}),
   });
 
