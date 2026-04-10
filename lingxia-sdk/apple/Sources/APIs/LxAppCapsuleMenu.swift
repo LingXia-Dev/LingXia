@@ -3,6 +3,8 @@ import os.log
 
 #if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
 #endif
 
 /// Capsule Menu Bottom Sheet
@@ -356,15 +358,137 @@ class LxAppCapsuleMenu {
             completion()
         }
     }
+    #elseif os(macOS)
+    /// Show capsule menu for an LxApp on macOS.
+    /// Pops up a native NSMenu near the mouse cursor with the same actions as iOS.
+    static func show(appId: String) {
+        let appInfo = getLxAppInfo(appId)
+        if appInfo.app_name.toString().isEmpty {
+            os_log("Failed to get LxApp info for: %{public}@", log: log, type: .error, appId)
+            return
+        }
+
+        DispatchQueue.main.async {
+            showMacOSCapsuleMenu(appId: appId, appInfo: appInfo)
+        }
+    }
+
+    @MainActor
+    private static func showMacOSCapsuleMenu(appId: String, appInfo: LxAppInfo) {
+        let menu = buildMacOSCapsuleMenu(appId: appId, appInfo: appInfo)
+
+        // Anchor the menu near the mouse location in the key window.
+        guard let window = NSApp.keyWindow ?? NSApp.mainWindow,
+              let contentView = window.contentView else {
+            os_log("Could not find active window/content view for capsule menu", log: log, type: .error)
+            return
+        }
+
+        let mouseInWindow = window.mouseLocationOutsideOfEventStream
+        let mouseInView = contentView.convert(mouseInWindow, from: nil)
+        menu.popUp(positioning: nil, at: mouseInView, in: contentView)
+    }
+
+    @MainActor
+    private static func buildMacOSCapsuleMenu(appId: String, appInfo: LxAppInfo) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        // Header: app name + version + release badge.
+        let appName = appInfo.app_name.toString()
+        let version = appInfo.version.toString()
+        let releaseType = appInfo.release_type.toString()
+
+        var headerTitle = "\(appName) · v\(version)"
+        switch releaseType.lowercased() {
+        case "developer": headerTitle += "  [DEV]"
+        case "preview": headerTitle += "  [PRE]"
+        default: break
+        }
+
+        let headerItem = NSMenuItem(title: headerTitle, action: nil, keyEquivalent: "")
+        headerItem.isEnabled = false
+        menu.addItem(headerItem)
+        menu.addItem(NSMenuItem.separator())
+
+        let target = MacCapsuleMenuTarget(appId: appId)
+        // Retain the target on the menu so it outlives the popup.
+        objc_setAssociatedObject(
+            menu,
+            &AssociatedKeys.macTargetKey,
+            target,
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+
+        // Clean Cache & Restart
+        let cleanItem = NSMenuItem(
+            title: L10n.string("lx_capsule_clean_cache"),
+            action: #selector(MacCapsuleMenuTarget.cleanCacheClicked),
+            keyEquivalent: ""
+        )
+        cleanItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        cleanItem.target = target
+        menu.addItem(cleanItem)
+
+        // Restart
+        let restartItem = NSMenuItem(
+            title: L10n.string("lx_capsule_restart"),
+            action: #selector(MacCapsuleMenuTarget.restartClicked),
+            keyEquivalent: ""
+        )
+        restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        restartItem.target = target
+        menu.addItem(restartItem)
+
+        // Uninstall (only for non-home lxapps)
+        if !LxAppCore.isHomeLxApp(appId) {
+            menu.addItem(NSMenuItem.separator())
+            let uninstallItem = NSMenuItem(
+                title: L10n.string("lx_capsule_uninstall"),
+                action: #selector(MacCapsuleMenuTarget.uninstallClicked),
+                keyEquivalent: ""
+            )
+            uninstallItem.image = NSImage(systemSymbolName: "xmark.bin", accessibilityDescription: nil)
+            uninstallItem.target = target
+            menu.addItem(uninstallItem)
+        }
+
+        return menu
+    }
     #else
     public static func show(appId: String) {
-        os_log("Capsule menu is not implemented on macOS for %{public}@", log: log, type: .info, appId)
+        os_log("Capsule menu is not implemented on this platform for %{public}@", log: log, type: .info, appId)
     }
     #endif
 }
 
+#if os(macOS)
+/// Target object for macOS capsule menu items.
+/// Held by the menu via associated object to stay alive during popup.
+private final class MacCapsuleMenuTarget: NSObject {
+    let appId: String
+
+    init(appId: String) {
+        self.appId = appId
+    }
+
+    @objc func cleanCacheClicked() {
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "clean_cache_restart")
+    }
+
+    @objc func restartClicked() {
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "restart")
+    }
+
+    @objc func uninstallClicked() {
+        _ = onLxappEvent(appId, LxAppEvent.capsuleClick, "uninstall")
+    }
+}
+#endif
+
 // MARK: - Helper Classes
 
+#if os(iOS)
 private class ActionWrapper {
     let action: () -> Void
 
@@ -376,9 +500,15 @@ private class ActionWrapper {
         action()
     }
 }
+#endif
 
 @MainActor
 private struct AssociatedKeys {
+    #if os(iOS)
     static var actionKey: UInt8 = 0
     static var dismissActionKey: UInt8 = 0
+    #endif
+    #if os(macOS)
+    static var macTargetKey: UInt8 = 0
+    #endif
 }

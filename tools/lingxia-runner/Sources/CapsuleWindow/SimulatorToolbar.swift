@@ -132,13 +132,18 @@ public class SimulatorToolbar: NSView {
     
     private func setupInspectButton() {
         inspectButton = NSButton()
-        inspectButton.title = "</>"
-        inspectButton.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        let image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "DevTools")?
+            .withSymbolConfiguration(config)
+        inspectButton.image = image
+        inspectButton.imagePosition = .imageOnly
+        inspectButton.title = ""
         inspectButton.isBordered = false
         inspectButton.bezelStyle = .regularSquare
         inspectButton.target = self
         inspectButton.action = #selector(inspectClicked)
-        inspectButton.contentTintColor = NSColor.white.withAlphaComponent(0.5)
+        inspectButton.contentTintColor = NSColor.white.withAlphaComponent(0.7)
+        inspectButton.toolTip = "Toggle DevTools"
         inspectButton.translatesAutoresizingMaskIntoConstraints = false
         addSubview(inspectButton)
 
