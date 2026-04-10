@@ -1,6 +1,6 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
-use crate::host_assets::prepare_host_assets;
+use crate::host_assets::{prepare_configured_host_assets, prepare_standalone_apple_package_assets};
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -297,7 +297,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             "ℹ".blue()
         );
     } else {
-        prepare_host_assets(
+        prepare_configured_host_assets(
             &project_root,
             &config,
             build_profile,
@@ -439,6 +439,7 @@ fn build_standalone_apple_swift_package(
 
     let mut all_artifacts = Vec::new();
     for platform_type in platforms_to_build {
+        prepare_standalone_apple_package_assets(project_root, &platform_type)?;
         let platform_features = resolve_platform_features(&features, &platform_type)?;
         let platform = platform::detector::create_platform(&platform_type)?;
         let build_config = BuildConfig {

@@ -111,16 +111,35 @@ pub fn register_runtime() {
 
 #[doc(hidden)]
 pub fn register_bundled_assets() {
-    for (route, entry_asset) in
-        bundled_internal_pages().expect("failed to load bundled browser manifest from host assets")
-    {
-        lingxia_browser::register_internal_page(route, entry_asset)
-            .expect("failed to register browser internal page");
+    match bundled_internal_pages() {
+        Ok(internal_pages) => {
+            for (route, entry_asset) in internal_pages {
+                if let Err(err) = lingxia_browser::register_internal_page(route, entry_asset) {
+                    lxapp::warn!(
+                        "[InternalBrowser] failed to register bundled browser page: {}",
+                        err
+                    );
+                }
+            }
+        }
+        Err(err) => {
+            lxapp::info!(
+                "[InternalBrowser] bundled browser manifest unavailable; skipping bundled browser pages: {}",
+                err
+            );
+            return;
+        }
     }
-    lingxia_browser::register_startup_page_script(
-        bundled_context_menu_script()
-            .expect("failed to load browser context menu script from host assets"),
-    );
+
+    match bundled_context_menu_script() {
+        Ok(script) => lingxia_browser::register_startup_page_script(script),
+        Err(err) => {
+            lxapp::info!(
+                "[InternalBrowser] bundled browser context menu unavailable; skipping startup script: {}",
+                err
+            );
+        }
+    }
 }
 
 #[doc(hidden)]

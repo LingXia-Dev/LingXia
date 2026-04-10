@@ -19,8 +19,9 @@ fn main() {
         napi_build_ohos::setup();
     }
 
-    // iOS Swift Bridge generation - only when explicitly requested
-    if target.contains("apple") && env::var("LINGXIA_GENERATE_BRIDGE").is_ok() {
+    // Keep Apple bridge sources in sync for workspace builds. External consumers can still
+    // force generation explicitly with LINGXIA_GENERATE_BRIDGE=1.
+    if should_generate_swift_bridge(&target) {
         generate_swift_bridge();
     }
 }
@@ -30,6 +31,23 @@ fn workspace_root(manifest_dir: &Path) -> &Path {
         .parent()
         .and_then(Path::parent)
         .expect("crates/<name> layout expected for workspace members")
+}
+
+fn should_generate_swift_bridge(target: &str) -> bool {
+    if !target.contains("apple") {
+        return false;
+    }
+
+    if env::var("LINGXIA_GENERATE_BRIDGE").is_ok() {
+        return true;
+    }
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    workspace_root(&manifest_dir)
+        .join("lingxia-sdk")
+        .join("apple")
+        .join("Sources")
+        .exists()
 }
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

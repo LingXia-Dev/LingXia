@@ -1,6 +1,6 @@
 use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
-use crate::host_assets::prepare_host_assets;
+use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
@@ -151,7 +151,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Android];
-    prepare_host_assets(
+    prepare_configured_host_assets(
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
@@ -227,7 +227,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Ios];
-    prepare_host_assets(
+    prepare_configured_host_assets(
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
@@ -316,7 +316,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
 
     // Generate app.json and embed LxApp assets (macOS build prepares resources itself)
     let platforms_to_build = vec![PlatformType::MacOs];
-    prepare_host_assets(
+    prepare_configured_host_assets(
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
@@ -372,7 +372,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Harmony];
-    prepare_host_assets(
+    prepare_configured_host_assets(
         &ctx.project_root,
         &ctx.config,
         ctx.build_profile,
@@ -535,6 +535,7 @@ fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
     ensure_valid_lxapp_dir(lxapp_path)?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
+    terminate_existing_runner_processes()?;
 
     let executable_path = app_path
         .join("Contents")
@@ -549,6 +550,10 @@ fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
 
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
+
     command.spawn().with_context(|| {
         format!(
             "Failed to launch installed Runner executable: {}",
@@ -557,6 +562,26 @@ fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
     })?;
 
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    Ok(())
+}
+
+fn terminate_existing_runner_processes() -> Result<()> {
+    let status = Command::new("pkill")
+        .args(["-x", RUNNER_EXECUTABLE_NAME])
+        .status()
+        .context("Failed to execute pkill for LingXia Runner")?;
+
+    if let Some(1) = status.code() {
+        return Ok(());
+    }
+
+    if !status.success() {
+        return Err(anyhow!(
+            "Failed to terminate existing LingXia Runner processes"
+        ));
+    }
+
+    std::thread::sleep(std::time::Duration::from_millis(300));
     Ok(())
 }
 
