@@ -376,7 +376,9 @@ final class LxAppNetwork {
                 NI_NUMERICHOST
             )
             if result == 0 {
-                var value = String(cString: hostName).trimmingCharacters(in: .whitespacesAndNewlines)
+                let hostBytes = hostName.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+                var value = String(decoding: hostBytes, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
                 if value.isEmpty {
                     continue
                 }

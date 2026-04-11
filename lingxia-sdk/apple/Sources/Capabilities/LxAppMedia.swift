@@ -17,7 +17,7 @@ import AVFoundation
 
 @MainActor
 final class LxAppMedia {
-    nonisolated(unsafe) static let log = OSLog(subsystem: "LingXia", category: "Media")
+    nonisolated static let log = OSLog(subsystem: "LingXia", category: "Media")
 }
 
 #if os(iOS)

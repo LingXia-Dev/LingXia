@@ -11,7 +11,7 @@ import CLingXiaRustAPI
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppViewController")
 
 @MainActor
-public class LxAppViewController: UIViewController, ObservableObject {
+final class LxAppViewController: UIViewController, ObservableObject {
     private static let log = lxAppViewControllerLog
 
     // Platform-specific UI constraint only - WebView is managed by WebViewManager
@@ -187,7 +187,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Unified navigation entry point - handles all animation types
-    public func navigate(appId: String, to path: String, with animationType: AnimationType) {
+    public func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
         os_log("Navigate: %@ to %@ with type: %@", log: Self.log, type: .info, appId, path, String(describing: animationType))
 
         // Ensure view is loaded before navigation
@@ -243,8 +243,6 @@ public class LxAppViewController: UIViewController, ObservableObject {
                 scene.requestGeometryUpdate(preferences) { error in
                     os_log("requestGeometryUpdate failed: %@", log: Self.log, type: .error, error.localizedDescription)
                 }
-            } else {
-                UIViewController.attemptRotationToDeviceOrientation()
             }
         } else {
             UIViewController.attemptRotationToDeviceOrientation()
@@ -285,7 +283,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Closes a LxApp and removes its state
-    public func closeLxApp(appId: String, sessionId: UInt64) {
+    public func closeLxApp(appId: String, sessionId: UInt64, notifyRuntime: Bool = true) {
         os_log("Closing LxApp: %@", log: Self.log, type: .info, appId)
 
         guard LxAppCore.currentAppId == appId else {
@@ -298,10 +296,12 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
 
         // Ask Rust to validate this close request against current runtime session.
-        let accepted = onLxappClosed(appId, sessionId)
-        guard accepted else {
-            os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
-            return
+        if notifyRuntime {
+            let accepted = onLxappClosed(appId, sessionId)
+            guard accepted else {
+                os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
+                return
+            }
         }
 
         // Hide the app if it's currently active
@@ -330,7 +330,7 @@ public class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    public func handleNavigation(appId: String, path: String, animationType: AnimationType) {
+    public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
         guard LxAppCore.currentAppId == appId else { return }
 
         let currentPath = getCurrentPath()
@@ -347,11 +347,11 @@ public class LxAppViewController: UIViewController, ObservableObject {
 
                 // Choose animation based on animation type
                 switch animationType {
-                case .forward, .backward:
+                case .push, .pop:
                     // Forward/backward use slide animation
                     performSlideTransition(from: existingWebView, to: targetWebView, animationType: animationType, appId: appId, path: path)
                     return // Early return as performSlideTransition handles the rest
-                case .none:
+                case .none, .fade:
                     // No animation - immediate transition
                     existingWebView.isHidden = true
                     existingWebView.pauseWebView()
@@ -1014,8 +1014,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Screenshot-based animation for same WebView navigation
-    private func performSameWebViewAnimation(webView: WKWebView, animationType: AnimationType, appId: String, path: String) {
-        let isBackward = animationType == .backward
+    private func performSameWebViewAnimation(webView: WKWebView, animationType: LxAppAnimation, appId: String, path: String) {
+        let isBackward = animationType == .pop
 
         // Prepare snapshot early for backward BEFORE any UI updates
         var preSnapshot: UIView?
@@ -1085,8 +1085,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Perform slide transition between WebViews for forward/backward navigation
-    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, animationType: AnimationType, appId: String, path: String) {
-        let isBackNavigation = animationType == .backward
+    private func performSlideTransition(from currentWebView: WKWebView, to targetWebView: WKWebView, animationType: LxAppAnimation, appId: String, path: String) {
+        let isBackNavigation = animationType == .pop
         let animationDuration: TimeInterval = 0.3
 
         // Set up initial positions - use view bounds as fallback if rootContainer bounds is zero
@@ -1169,8 +1169,8 @@ public class LxAppViewController: UIViewController, ObservableObject {
     }
 
     /// Perform slide out transition when no target WebView is available
-    private func performSlideOutTransition(from currentWebView: WKWebView, animationType: AnimationType) {
-        let isBackward = animationType == .backward
+    private func performSlideOutTransition(from currentWebView: WKWebView, animationType: LxAppAnimation) {
+        let isBackward = animationType == .pop
         let animationDuration: TimeInterval = 0.3
 
         let screenWidth = rootContainer.bounds.width

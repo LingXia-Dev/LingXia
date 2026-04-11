@@ -7,7 +7,7 @@ import CLingXiaRustAPI
 
 /// iOS Push Manager
 @MainActor
-public class iOSPushManager: NSObject {
+final class iOSPushManager: NSObject {
 
     public static let shared = iOSPushManager()
 

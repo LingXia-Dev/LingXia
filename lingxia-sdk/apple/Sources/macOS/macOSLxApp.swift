@@ -7,7 +7,7 @@ import AppKit
 
 /// Shared UI layout constants for macOS windows
 struct LxAppWindowLayout {
-    static let titleBarHeight: CGFloat = 32        // SwiftUI custom title bar height
+    static let titleBarHeight: CGFloat = 32
 }
 
 /// macOS LxApp implementation
@@ -17,27 +17,29 @@ class macOSLxApp: ObservableObject {
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
-    internal static var tabWindowController: LxAppWindowController?
+    internal static var shell: LxAppShell?
 
-    /// Lifecycle event observers
     nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
     nonisolated(unsafe) private static var hasResignedActive = false
 
     private init() {}
 
-    /// Open specific LxApp
     static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
         LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
-    private static func openTabStyleWindow() {
-        if tabWindowController == nil {
-            tabWindowController = LxAppWindowController()
-            tabWindowController?.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+    private static func openShellWindow() {
+        if shell == nil {
+            let config = Lingxia.resolvedShellConfiguration(
+                from: LxAppShellConfiguration(),
+                capabilities: LxAppCapabilities(rawValue: LxAppCore.capabilities),
+                homeAppId: LxAppCore.getHomeLxAppId()
+            )
+            shell = LxAppShell(configuration: config)
+            shell?.show()
         } else {
-            tabWindowController?.window?.makeKeyAndOrderFront(nil)
+            shell?.window?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -46,7 +48,6 @@ class macOSLxApp: ObservableObject {
             os_log("handleAppClosing missing session for %@", log: log, type: .error, appId)
             return
         }
-        // Call FFI close handler first and ignore stale callbacks.
         let accepted = onLxappClosed(appId, sessionId)
         guard accepted else {
             os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: log, type: .info, appId, sessionId)
@@ -54,7 +55,6 @@ class macOSLxApp: ObservableObject {
         }
         LxAppCore.removeSessionId(for: appId)
 
-        // Get next LxApp from Rust stack and open it
         let currentLxApp = getCurrentLxApp()
         let appidStr = currentLxApp.appid.toString()
         let pathStr = currentLxApp.path.toString()
@@ -67,28 +67,24 @@ class macOSLxApp: ObservableObject {
         }
     }
 
-    /// Navigate to page with specific animation type
-    static func navigate(appId: String, path: String, animationType: AnimationType) {
+    static func navigate(appId: String, path: String, animationType: LxAppAnimation) {
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
-    /// Remove tab window controller
-    static func removeTabWindowController(_ controller: LxAppWindowController) {
-        if tabWindowController === controller {
-            tabWindowController = nil
+    static func removeShell(_ s: LxAppShell) {
+        if shell === s {
+            shell = nil
         }
     }
 
-    /// Open home LxApp
     internal static func openHomeLxApp() {
         guard let _ = LxAppCore.getHomeLxAppId() else { return }
 
         Task { @MainActor in
-            openTabStyleWindow()
+            openShellWindow()
         }
     }
 
-    /// Initialize LxApps system
     static func initialize() -> Bool {
         if isInitialized { return true }
 
@@ -104,9 +100,7 @@ class macOSLxApp: ObservableObject {
         return isInitialized
     }
 
-    /// Setup observers for app lifecycle events
     private static func setupLifecycleObservers() {
-        // App became active (foreground)
         let activeObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
@@ -118,7 +112,6 @@ class macOSLxApp: ObservableObject {
         }
         lifecycleObservers.append(activeObserver)
 
-        // App resigned active (background)
         let resignObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didResignActiveNotification,
             object: nil,
@@ -131,7 +124,6 @@ class macOSLxApp: ObservableObject {
         lifecycleObservers.append(resignObserver)
     }
 
-    /// Handle app becoming active
     @MainActor
     private static func handleAppShow() {
         guard hasResignedActive else { return }
@@ -141,7 +133,6 @@ class macOSLxApp: ObservableObject {
         lingxia.onAppShow(currentAppId)
     }
 
-    /// Handle app resigning active
     @MainActor
     private static func handleAppHide() {
         hasResignedActive = true
@@ -153,59 +144,52 @@ class macOSLxApp: ObservableObject {
 
 // MARK: - Direct platform implementation
 extension macOSLxApp {
-    /// Direct openLxApp implementation (called from LxAppCore)
     internal static func openLxAppDirect(appId: String, path: String, sessionId: UInt64) {
-        shared.handleTabStyleOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+        shared.handleOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
-    /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(appId: String, path: String, animationType: AnimationType) {
+    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) {
         shared.handleRegularNavigation(appId: appId, path: path, animationType: animationType)
-
-        // Update UI components based on Rust state
         updateNavigationBarDirect(appId: appId, path: path)
         updateSidebarDirect(appId: appId, path: path)
     }
 
-    /// Update NavigationBar based on Rust state
     private static func updateNavigationBarDirect(appId: String, path: String) {
-        if let tabController = Self.tabWindowController,
-           let viewController = tabController.getViewController(for: appId) {
+        if let s = Self.shell,
+           let viewController = s.getViewController(for: appId) {
             viewController.updateNavigationBar(appId: appId, path: path)
         }
     }
 
-    /// Notify sidebar to refresh for a specific app
     private static func updateSidebarDirect(appId: String, path: String) {
         NotificationCenter.default.post(name: .sidebarNeedsRefresh, object: appId)
     }
 
-    private func handleTabStyleOpenLxApp(appId: String, path: String, sessionId: UInt64) {
-        if let tabController = Self.tabWindowController {
-            tabController.openLxApp(appId: appId, path: path, sessionId: sessionId)
-            tabController.window?.makeKeyAndOrderFront(nil)
+    private func handleOpenLxApp(appId: String, path: String, sessionId: UInt64) {
+        if let s = Self.shell {
+            s.openLxApp(appId: appId, path: path, sessionId: sessionId)
+            s.window?.makeKeyAndOrderFront(nil)
         } else {
-            Self.openTabStyleWindow()
-            Self.tabWindowController?.openLxApp(appId: appId, path: path, sessionId: sessionId)
+            Self.openShellWindow()
+            Self.shell?.openLxApp(appId: appId, path: path, sessionId: sessionId)
         }
     }
 
-    fileprivate func handleRegularNavigation(appId: String, path: String, animationType: AnimationType) {
-        if let tabController = Self.tabWindowController,
-           let viewController = tabController.getViewController(for: appId) {
+    fileprivate func handleRegularNavigation(appId: String, path: String, animationType: LxAppAnimation) {
+        if let s = Self.shell,
+           let viewController = s.getViewController(for: appId) {
             viewController.navigate(appId: appId, to: path, with: animationType)
         }
     }
 
     @MainActor
     internal static func getViewController(for appId: String) -> macOSLxAppViewController? {
-        return tabWindowController?.getViewController(for: appId)
+        shell?.getViewController(for: appId)
     }
 
-    /// The content panel view that excludes the sidebar. Use as root container for popups.
     @MainActor
     internal static var contentPanelView: NSView? {
-        tabWindowController?.contentPanelView
+        shell?.contentPanelView
     }
 
     @MainActor
@@ -216,26 +200,25 @@ extension macOSLxApp {
             return false
         }
 
-        if tabWindowController == nil {
-            openTabStyleWindow()
+        if shell == nil {
+            openShellWindow()
         }
 
-        guard let controller = tabWindowController else { return false }
-        controller.presentInternalBrowserTab(id: id)
-        controller.window?.makeKeyAndOrderFront(nil)
+        guard let s = shell else { return false }
+        s.presentInternalBrowserTab(id: id)
+        s.window?.makeKeyAndOrderFront(nil)
         return true
     }
 
     @MainActor
     internal static func consumeSelfTargetNavigationInActiveBrowserTab(urlString: String) -> Bool {
-        guard let controller = tabWindowController else { return false }
-        return controller.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString)
+        guard let s = shell else { return false }
+        return s.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString)
     }
 }
 
 // MARK: - Pull-to-Refresh Bridge Functions
 extension LxApp {
-    /// Start pull-to-refresh animation programmatically
     @objc nonisolated public static func startPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
         let appIdStr = appid.toString()
         let pathStr = path.toString()
@@ -248,7 +231,6 @@ extension LxApp {
         return true
     }
 
-    /// Stop pull-to-refresh animation
     @objc nonisolated public static func stopPullDownRefresh(appid: RustStr, path: RustStr) -> Bool {
         let appIdStr = appid.toString()
         let pathStr = path.toString()

@@ -726,11 +726,11 @@ final class NativeComponentManager {
             textInputKeyboardInsetRestore = scrollView.contentInset
         }
         if textInputKeyboardIndicatorInsetRestore == nil {
-            textInputKeyboardIndicatorInsetRestore = scrollView.scrollIndicatorInsets
+            textInputKeyboardIndicatorInsetRestore = currentScrollIndicatorInsets(for: scrollView)
         }
 
         let baseInset = textInputKeyboardInsetRestore ?? scrollView.contentInset
-        let baseIndicatorInset = textInputKeyboardIndicatorInsetRestore ?? scrollView.scrollIndicatorInsets
+        let baseIndicatorInset = textInputKeyboardIndicatorInsetRestore ?? currentScrollIndicatorInsets(for: scrollView)
         let requiredBottomInset = max(baseInset.bottom, focusedTextInputKeyboardHeight + textInputKeyboardBottomGap)
 
         var nextInset = baseInset
@@ -740,6 +740,19 @@ final class NativeComponentManager {
 
         scrollView.contentInset = nextInset
         scrollView.scrollIndicatorInsets = nextIndicatorInset
+    }
+
+    private func currentScrollIndicatorInsets(for scrollView: UIScrollView) -> UIEdgeInsets {
+        if #available(iOS 13.0, *) {
+            return UIEdgeInsets(
+                top: scrollView.verticalScrollIndicatorInsets.top,
+                left: scrollView.horizontalScrollIndicatorInsets.left,
+                bottom: scrollView.verticalScrollIndicatorInsets.bottom,
+                right: scrollView.horizontalScrollIndicatorInsets.right
+            )
+        } else {
+            return scrollView.scrollIndicatorInsets
+        }
     }
 
     private func restoreTextInputKeyboardAvoidanceInsets() {
@@ -836,7 +849,7 @@ final class NativeComponentManager {
                 return
             }
             guard !Task.isCancelled else { return }
-            await self?.applyInactivePageStop(pageId, generation: generation)
+            self?.applyInactivePageStop(pageId, generation: generation)
         }
     }
 

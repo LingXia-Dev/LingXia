@@ -5,7 +5,7 @@ import CLingXiaRustAPI
 import os.log
 
 extension LxAppMedia {
-    nonisolated(unsafe) private static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
+    nonisolated private static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
     // Strong reference to keep preview window alive
     @MainActor fileprivate static var previewWindow: UIWindow?

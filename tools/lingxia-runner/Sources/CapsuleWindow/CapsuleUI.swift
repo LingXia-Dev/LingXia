@@ -1,5 +1,5 @@
 import AppKit
-import lingxia
+@_spi(Runner) import lingxia
 
 /// Capsule button images for Runner - uses SDK's LxIcon to load PDF icons
 @MainActor

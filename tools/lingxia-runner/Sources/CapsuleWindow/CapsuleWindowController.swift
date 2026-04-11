@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import WebKit
 import os.log
-import lingxia
+@_spi(Runner) import lingxia
 
 // MARK: - Notification Names
 
@@ -73,6 +73,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
 
     // Observers
     nonisolated(unsafe) private var navigationBarObserver: NSObjectProtocol?
+    private var suppressRuntimeCloseNotification = false
     
     // MARK: - Initialization
     
@@ -796,11 +797,11 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - Button Actions
     
     @objc private func backButtonClicked() {
-        let _ = onLxappEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionBack)
+        let _ = onLxappEvent(appId, LxAppUiEventType.NavigationClick, "back")
     }
 
     @objc private func homeButtonClicked() {
-        let _ = onLxappEvent(appId, LxAppUIEvent.navigationClick, LxAppUIEvent.navigationActionHome)
+        let _ = onLxappEvent(appId, LxAppUiEventType.NavigationClick, "home")
     }
 
     @objc private func moreButtonClicked() {
@@ -812,7 +813,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     }
     
     @objc private func closeButtonClicked() {
-        let _ = onLxappEvent(appId, LxAppUIEvent.capsuleClick, LxAppUIEvent.capsuleActionClose)
+        let _ = onLxappEvent(appId, LxAppUiEventType.CapsuleClick, "close")
         window?.close()
     }
     
@@ -820,10 +821,18 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     
     public func windowWillClose(_ notification: Notification) {
         if let sessionId = RunnerSupport.Runtime.sessionId(for: appId), sessionId > 0 {
-            let _ = onLxappClosed(appId, sessionId)
+            if !suppressRuntimeCloseNotification {
+                let _ = onLxappClosed(appId, sessionId)
+                RunnerApp.shared.discardSession(appId: appId, sessionId: sessionId)
+            }
             RunnerSupport.Runtime.removeSessionId(for: appId)
         }
         RunnerApp.shared.handleWindowClosed(self)
+    }
+
+    func closeFromRuntime() {
+        suppressRuntimeCloseNotification = true
+        window?.close()
     }
     
     // MARK: - Navigation
@@ -832,7 +841,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
         navigate(to: path, animationType: .none)
     }
     
-    public func navigate(to path: String, animationType: AnimationType) {
+    public func navigate(to path: String, animationType: LxAppAnimation) {
         self.currentPath = path
 
         DevToolsLogger.shared.log("Navigate → \(path)", level: .nav)

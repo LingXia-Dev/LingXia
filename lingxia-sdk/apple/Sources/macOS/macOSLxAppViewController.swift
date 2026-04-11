@@ -6,7 +6,6 @@ import CLingXiaRustAPI
 
 @MainActor
 class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
-
     var appId: String
     internal var currentPath: String
     private var sessionId: UInt64
@@ -133,17 +132,45 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Navigation
 
     @MainActor
-    func navigate(appId: String, to path: String, with animationType: AnimationType) {
+    func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
         guard !appId.isEmpty else { return }
+        let _ = animationType
 
         self.currentPath = path
         updateNavigationBar(appId: appId, path: path)
-
         if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
             showWebViewToUser(webView, path: path)
+        } else {
+            retryShowWebView(appId: appId, path: path, sessionId: sessionId, remainingAttempts: 2)
         }
-
         LxAppCore.setCurrentPath(path)
+    }
+
+    @MainActor
+    private func retryShowWebView(
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        remainingAttempts: Int
+    ) {
+        guard remainingAttempts > 0 else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard let self,
+                  self.appId == appId,
+                  self.sessionId == sessionId,
+                  self.currentPath == path else { return }
+            if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+                self.showWebViewToUser(webView, path: path)
+            } else {
+                self.retryShowWebView(
+                    appId: appId,
+                    path: path,
+                    sessionId: sessionId,
+                    remainingAttempts: remainingAttempts - 1
+                )
+            }
+        }
     }
 
     internal func updateSessionId(_ value: UInt64) {

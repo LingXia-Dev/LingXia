@@ -44,11 +44,11 @@ class iOSLxApp {
     }
 
     /// Initialize the iOS LxApp system
-    static func initialize() {
+    static func initialize(autoOpenHome: Bool = true) {
         if instance != nil { return }
 
         instance = iOSLxApp(context: UIApplication.shared)
-        LxAppCore.initializeCore()
+        LxAppCore.initializeCore(autoOpenHome: autoOpenHome)
         configureGlobalSystemBars()
         iOSPushManager.shared.initialize()
 
@@ -182,13 +182,13 @@ class iOSLxApp {
     }
 
     /// Closes a mini app with the specified appId
-    static func closeLxApp(appId: String, sessionId: UInt64) {
+    static func closeLxApp(appId: String, sessionId: UInt64, notifyRuntime: Bool = true) {
         os_log("Closing LxApp: %@", log: log, type: .info, appId)
-        getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId)
+        getInstance().lxAppManager?.closeLxApp(appId: appId, sessionId: sessionId, notifyRuntime: notifyRuntime)
     }
 
     /// Navigate to a page with specific animation type
-    static func navigate(appId: String, path: String, animationType: AnimationType) {
+    static func navigate(appId: String, path: String, animationType: LxAppAnimation) {
         os_log("iOS navigate: %@ to %@ with type: %@", log: log, type: .info, appId, path, String(describing: animationType))
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
@@ -308,7 +308,7 @@ extension iOSLxApp {
     }
 
     /// Direct navigation implementation (called from LxAppCore)
-    internal static func handleNavigationDirect(appId: String, path: String, animationType: AnimationType) {
+    internal static func handleNavigationDirect(appId: String, path: String, animationType: LxAppAnimation) {
         let instance = getInstance()
         guard let manager = instance.lxAppManager else { return }
 

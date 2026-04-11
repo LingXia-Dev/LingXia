@@ -45,6 +45,8 @@ class SidebarItemView: NSView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var mouseDownCanMoveWindow: Bool { false }
+
     private func setupViews() {
         wantsLayer = true
 
@@ -200,6 +202,14 @@ class SidebarItemView: NSView {
             titleLabel.textColor = NSColor.labelColor
             iconView.contentTintColor = NSColor.secondaryLabelColor
         }
+    }
+
+    // MARK: - Hit testing
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // AppKit gives this point in the superview's coordinate space here.
+        guard !isHidden, frame.contains(point) else { return nil }
+        return self
     }
 
     // MARK: - Mouse tracking

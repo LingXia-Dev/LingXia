@@ -1,38 +1,57 @@
+import Foundation
+import OSLog
+
 #if os(macOS)
 import AppKit
 import SwiftUI
 import WebKit
 import Quartz
-import os.log
 import CLingXiaRustAPI
 
-/// Window controller for macOS
-class LxAppWindowController: NSWindowController, NSWindowDelegate {
+/// The main integration point for macOS apps that want the default LingXia
+/// chrome (sidebar + toolbar + floating content panel).
+///
+/// For fully custom hosts, use `LxAppController` + `LxAppHostView` directly.
+///
+/// ```swift
+/// let runtime = try LxAppRuntime.shared.initialize()
+/// let controller = LxAppController()
+///
+/// var config = LxAppShellConfiguration()
+/// config.sidebar = .declarative(mySidebarTree)
+///
+/// let shell = LxAppShell(controller: controller, configuration: config)
+/// shell.show()
+/// ```
+@MainActor
+public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
-    private static let log = OSLog(subsystem: "LingXia", category: "LxAppWindowController")
+    // MARK: - Layout Constants
 
     struct Layout {
         static let sidebarWidth: CGFloat = 180
         static let sidebarHiddenThreshold: CGFloat = 1
-        /// Shared center-Y baseline for all toolbar elements (traffic lights, nav buttons, address bar).
-        /// = toolbar band height / 2 = 38 / 2 = 19pt from the visual window top.
         static let toolbarCenterY: CGFloat = 19
         static let trafficLightClearanceFallback: CGFloat = 80
-        /// Padding around the floating content panel (Layer 2)
         static let contentPanelPadding: CGFloat = 6
-        /// Corner radius of the floating content panel
         static let contentPanelCornerRadius: CGFloat = 10
         static let sidebarRevealButtonSize = CGSize(width: 36, height: 36)
         static let sidebarRevealButtonLeadingInset: CGFloat = 4
         static let sidebarRevealButtonBottomInset: CGFloat = 4
     }
 
-    /// Background color for the base layer (Layer 1) visible through padding gaps.
-    /// Change this to customize the window chrome color.
+    // MARK: - Properties
+
+    public let controller: LxAppController
+    public private(set) var configuration: LxAppShellConfiguration
+    public let hostView: LxAppHostView
+
+    private static let log = OSLog(subsystem: "LingXia", category: "LxAppShell")
+
     private var baseLayerColor: NSColor = NSColor(name: nil) { appearance in
         appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-            ? NSColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)   // dark mode
-            : NSColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1)   // light mode
+            ? NSColor(red: 0.16, green: 0.16, blue: 0.18, alpha: 1)
+            : NSColor(red: 0.90, green: 0.90, blue: 0.92, alpha: 1)
     }
 
     private let tabManager = LxAppTabManager.shared
@@ -50,21 +69,30 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
     internal var appSessions: [String: UInt64] = [:]
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
+    private var controllerEventsTask: Task<Void, Never>?
+    private var didRequestHomeOpen = false
 
-    /// The content panel view (excludes sidebar). Use this as the root container for popups.
     private(set) var contentPanelView: NSView?
 
-    /// Get view controller for specific appId (needed for navigation)
     func getViewController(for appId: String) -> macOSLxAppViewController? {
-        return viewControllers[appId]
+        viewControllers[appId]
     }
 
-    /// Initialize for tab mode
-    init() {
+    // MARK: - Init
+
+    public init(
+        controller: LxAppController = LxAppController(),
+        configuration: LxAppShellConfiguration = LxAppShellConfiguration()
+    ) {
+        self.controller = controller
+        self.configuration = configuration
+        self.hostView = LxAppHostView(controller: controller)
+
         let window = Self.createWindow()
         super.init(window: window)
         browserCoordinator.host = self
         setupTabMode()
+        observeControllerEvents()
     }
 
     required init?(coder: NSCoder) {
@@ -73,8 +101,46 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
+        controllerEventsTask?.cancel()
         browserCoordinator.cleanup()
     }
+
+    // MARK: - Configuration
+
+    public func updateConfiguration(_ newConfig: LxAppShellConfiguration) {
+        let oldConfig = configuration
+        configuration = newConfig
+
+        if oldConfig.sidebar != newConfig.sidebar {
+            applySidebarMode(newConfig.sidebar)
+        }
+        if oldConfig.toolbar != newConfig.toolbar {
+            applyToolbarMode(newConfig.toolbar)
+        }
+        if oldConfig.chrome != newConfig.chrome {
+            applyChromeStyle(newConfig.chrome)
+        }
+
+        os_log("Shell configuration updated", log: Self.log, type: .info)
+    }
+
+    // MARK: - Show / Hide
+
+    public func show() {
+        showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        guard !didRequestHomeOpen, !tabManager.hasTabs else { return }
+        didRequestHomeOpen = true
+        Task { @MainActor [controller] in
+            _ = try? await controller.openHomeApp()
+        }
+    }
+
+    public func hide() {
+        window?.orderOut(nil)
+    }
+
+    // MARK: - Window Creation
 
     private static func createWindow() -> LxAppWindow {
         let window = LxAppWindow(
@@ -83,11 +149,9 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-
         window.configureForTabStyle()
         window.center()
         window.isReleasedWhenClosed = false
-
         return window
     }
 
@@ -112,22 +176,32 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         setupInitialTab()
     }
 
-    func windowWillClose(_ notification: Notification) {
+    // MARK: - NSWindowDelegate
+
+    public func windowWillClose(_ notification: Notification) {
         for (_, viewController) in viewControllers {
             viewController.destroyNativeComponents()
         }
         browserCoordinator.closeAllTabs(notifyRust: false)
-        // Tab mode cleanup
         for tab in tabManager.tabs {
             if let sessionId = appSessions[tab.appId], sessionId > 0 {
                 let accepted = onLxappClosed(tab.appId, sessionId)
                 if !accepted {
-                    os_log("Ignoring stale close callback during cleanup for %@ (session=%{public}llu)", log: Self.log, type: .info, tab.appId, sessionId)
+                    os_log("Ignoring stale close callback during cleanup for %@ (session=%{public}llu)",
+                           log: Self.log, type: .info, tab.appId, sessionId)
                 }
             }
             LxAppCore.removeSessionId(for: tab.appId)
         }
-        macOSLxApp.removeTabWindowController(self)
+        macOSLxApp.removeShell(self)
+    }
+
+    public func windowDidResize(_ notification: Notification) {
+        syncSidebarHeaderButtonAlignment()
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        syncSidebarHeaderButtonAlignment()
     }
 
     // MARK: - Sidebar Interface Setup
@@ -135,7 +209,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
     private func setupSidebarInterface() {
         guard let window = self.window, let contentView = window.contentView else { return }
 
-        // Create sidebar
         let sidebar = SidebarView()
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         sidebar.onAppPageSelected = { [weak self] appId, itemIndex in
@@ -174,7 +247,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
-        // Base layer (Layer 1) — solid color fills entire window, visible through padding gaps
+        // Base layer — solid color fills entire window, visible through padding gaps
         let base = NSView()
         base.translatesAutoresizingMaskIntoConstraints = false
         base.wantsLayer = true
@@ -191,7 +264,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         shadowWrapper.layer?.shadowOffset = CGSize(width: -2, height: 0)
         contentView.addSubview(shadowWrapper)
 
-        // Content container (Layer 2) — floating panel with rounded corners, clips content.
+        // Content container — floating panel with rounded corners, clips content
         let right = NSView()
         right.translatesAutoresizingMaskIntoConstraints = false
         right.wantsLayer = true
@@ -201,7 +274,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         shadowWrapper.addSubview(right)
         contentPanelView = right
 
-        // Create navigation toolbar
+        // Navigation toolbar
         let toolbar = MacNavigationToolbar()
         toolbar.translatesAutoresizingMaskIntoConstraints = false
         toolbar.onNavigationAction = { [weak self] action in
@@ -217,9 +290,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         workspace.addSubview(toolbar)
         workspaceManager.attachBelowToolbar(toolbar)
 
-        // Wire up WorkspaceManager: panel cards float in contentView as siblings of the WebView
-        // card. When a panel opens/closes, the callback fires inside the animation block so
-        // the WebView card shrinks/grows in sync with the panel slide-in/out.
         workspaceManager.configure(
             overlayParent: contentView,
             sidebar: sidebar,
@@ -233,7 +303,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         configureSidebarRevealButton()
         contentView.addSubview(sidebarRevealButton, positioned: .above, relativeTo: shadowWrapper)
 
-        // Workspace root fills the entire WebView card (toolbar + content, no panel panes).
         let workspaceRoot = workspaceManager.rootView
         workspaceRoot.translatesAutoresizingMaskIntoConstraints = false
         right.addSubview(workspaceRoot)
@@ -251,36 +320,30 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         cardBottomConstraint = cardBottom
 
         NSLayoutConstraint.activate([
-            // Base layer: fills entire contentView
             base.topAnchor.constraint(equalTo: contentView.topAnchor),
             base.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             base.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             base.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
 
-            // Sidebar: left side, full height
             sidebar.topAnchor.constraint(equalTo: contentView.topAnchor),
             sidebar.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             sidebar.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
             sidebarWidth,
 
-            // Shadow wrapper: floating WebView card (trailing + bottom are dynamic)
             shadowWrapper.topAnchor.constraint(equalTo: contentView.topAnchor, constant: p),
             contentLeading,
             cardTrailing,
             cardBottom,
 
-            // Right container fills shadow wrapper
             right.topAnchor.constraint(equalTo: shadowWrapper.topAnchor),
             right.leadingAnchor.constraint(equalTo: shadowWrapper.leadingAnchor),
             right.trailingAnchor.constraint(equalTo: shadowWrapper.trailingAnchor),
             right.bottomAnchor.constraint(equalTo: shadowWrapper.bottomAnchor),
 
-            // Toolbar: spans full top of workspaceView
             toolbar.topAnchor.constraint(equalTo: workspace.topAnchor),
             toolbar.leadingAnchor.constraint(equalTo: workspace.leadingAnchor),
             toolbar.trailingAnchor.constraint(equalTo: workspace.trailingAnchor),
 
-            // Workspace root fills the entire WebView card
             workspaceRoot.topAnchor.constraint(equalTo: right.topAnchor),
             workspaceRoot.leadingAnchor.constraint(equalTo: right.leadingAnchor),
             workspaceRoot.trailingAnchor.constraint(equalTo: right.trailingAnchor),
@@ -317,14 +380,19 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
 
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
         if browserCoordinator.isActive {
-            // Coming from a browser tab — force switch back to lxapp
             switchToTab(appId)
         } else if tabManager.activeTab?.appId != appId {
             tabManager.selectTab(appId: appId)
         }
-        // Always update sidebar highlight, even if Rust returns early for same index
+
+        if let tabItem = getTabBarItem(appId, Int32(itemIndex)) {
+            let path = tabItem.page_path.toString()
+            if !path.isEmpty {
+                getViewController(for: appId)?.navigate(appId: appId, to: path, with: .none)
+            }
+        }
+
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
-        // Notify Rust of page navigation via tabbar click
         let _ = onLxappEvent(appId, LxAppEvent.tabBarClick, String(itemIndex))
     }
 
@@ -341,10 +409,7 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             maxX = max(maxX, frameInContent.maxX)
         }
 
-        if maxX <= 0 {
-            return Layout.trafficLightClearanceFallback
-        }
-        return ceil(maxX + 12)
+        return maxX <= 0 ? Layout.trafficLightClearanceFallback : ceil(maxX + 12)
     }
 
     private func hideSidebar() {
@@ -439,7 +504,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             return
         }
 
-        // Get resolved path from onLxappOpened (pass empty string to get initial route)
         let resolvedPath = onLxappOpened(homeLxAppId, "", sessionId)
         guard !resolvedPath.toString().isEmpty else {
             os_log("setupInitialTab rejected by Rust (stale session?) for %@", log: Self.log, type: .info, homeLxAppId)
@@ -465,7 +529,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             return
         }
 
-        // Clear browser tab state if switching from a browser tab
         browserCoordinator.deactivate()
 
         let isNewViewController = viewControllers[appId] == nil
@@ -488,8 +551,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         }
 
         updateContentView(with: viewController)
-
-        // Update sidebar highlight (also clears browser selection)
         sidebarView?.setActiveHighlight(appId: appId)
     }
 
@@ -511,12 +572,6 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         ])
 
         container.layoutSubtreeIfNeeded()
-        os_log("updateContentView appId=%{public}@ frame=(%.1f,%.1f,%.1f,%.1f)",
-               log: Self.log, type: .info,
-               viewController.appId,
-               container.frame.origin.x, container.frame.origin.y,
-               container.frame.width, container.frame.height)
-
         syncSidebarHeaderButtonAlignment()
         viewController.resumeNativeComponents()
     }
@@ -536,17 +591,8 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         browserCoordinator.syncToolbarCenterY(toolbarCenterY)
     }
 
-    func windowDidResize(_ notification: Notification) {
-        syncSidebarHeaderButtonAlignment()
-    }
-
-    func windowDidMove(_ notification: Notification) {
-        syncSidebarHeaderButtonAlignment()
-    }
-
     private func configureSidebarRevealButton() {
         sidebarRevealButton.translatesAutoresizingMaskIntoConstraints = false
-        // Use bordered circular bezel — system handles dark/light mode automatically
         sidebarRevealButton.isBordered = true
         sidebarRevealButton.bezelStyle = .circular
         sidebarRevealButton.imagePosition = .imageOnly
@@ -563,34 +609,43 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
         showSidebar()
     }
 
-    // MARK: - QLPreviewPanel support
+    // MARK: - QLPreviewPanel
 
-    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
-        return MainActor.assumeIsolated {
+    override public func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated {
             LxAppMedia.qlController != nil || LxAppDocument.qlController != nil
         }
     }
 
-    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override public func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
     }
 
-    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+    override public func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
             LxAppDocument.clearQLController()
         }
     }
 
+    // MARK: - Tab Close
+
     private func closeTab(_ appId: String) {
+        closeSession(appId: appId, notifyRuntime: true)
+    }
+
+    private func closeSession(appId: String, notifyRuntime: Bool) {
         guard let sessionId = appSessions[appId], sessionId > 0 else {
             os_log("closeTab missing session for %@", log: Self.log, type: .error, appId)
             return
         }
 
-        let accepted = onLxappClosed(appId, sessionId)
-        guard accepted else {
-            os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
-            return
+        if notifyRuntime {
+            let accepted = onLxappClosed(appId, sessionId)
+            guard accepted else {
+                os_log("Ignoring stale close callback for %@ (session=%{public}llu)", log: Self.log, type: .info, appId, sessionId)
+                return
+            }
+            _ = controller.discardSession(appId: appId, sessionId: sessionId)
         }
 
         if let viewController = viewControllers[appId] {
@@ -614,11 +669,58 @@ class LxAppWindowController: NSWindowController, NSWindowDelegate {
             window?.close()
         }
     }
+
+    private func observeControllerEvents() {
+        controllerEventsTask = Task { [weak self, controller] in
+            for await event in controller.events {
+                guard let self else { return }
+                switch event {
+                case .didClose(let session):
+                    closeSession(appId: session.appId, notifyRuntime: false)
+                default:
+                    continue
+                }
+            }
+        }
+    }
+
+    // MARK: - Apply Configuration
+
+    private func applySidebarMode(_ mode: LxAppSidebarMode) {
+        switch mode {
+        case .hidden:
+            setSidebarVisible(false, animated: true)
+        case .declarative:
+            setSidebarVisible(true, animated: true)
+        case .swiftNative(let handle):
+            _ = LxAppSidebarRegistry.shared.resolve(handle)
+            setSidebarVisible(true, animated: true)
+        }
+    }
+
+    private func applyToolbarMode(_ mode: LxAppToolbarMode) {
+        switch mode {
+        case .hidden:
+            navigationToolbar?.isHidden = true
+        case .declarative:
+            navigationToolbar?.isHidden = false
+        case .swiftNative(let handle):
+            _ = LxAppToolbarRegistry.shared.resolve(handle)
+            navigationToolbar?.isHidden = false
+        }
+    }
+
+    private func applyChromeStyle(_ style: LxAppChromeStyle) {
+        contentPanelView?.layer?.cornerRadius = style.cornerRadius
+        if let shadowWrapper = contentPanelView?.superview {
+            shadowWrapper.layer?.shadowOpacity = style.hasShadow ? 0.15 : 0
+        }
+    }
 }
 
 // MARK: - Browser Coordinator Forwarding
 
-extension LxAppWindowController {
+extension LxAppShell {
     func toggleActiveDevTools() -> Bool {
         browserCoordinator.toggleActiveDevTools()
     }
@@ -635,7 +737,7 @@ extension LxAppWindowController {
 
 // MARK: - BrowserCoordinatorHost
 
-extension LxAppWindowController: BrowserCoordinatorHost {
+extension LxAppShell: BrowserCoordinatorHost {
     var browserContentContainer: NSView { workspaceManager.contentContainer }
     var hostWindow: NSWindow? { window }
 
@@ -690,6 +792,143 @@ extension LxAppWindowController: BrowserCoordinatorHost {
 
     func currentLxAppWebView() -> WKWebView? {
         currentViewController?.currentWebView() ?? LxAppCore.getCurrentWebView()
+    }
+}
+
+// MARK: - Panel Methods
+
+extension LxAppShell {
+    private static let panelAttachMaxRetry = 40
+    private static let panelAttachRetryDelay: TimeInterval = 0.05
+
+    func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
+        if !workspaceManager.isPanelRegistered(id: id) {
+            let config = PanelConfig(id: id, position: position)
+            workspaceManager.registerPanel(config)
+        }
+
+        workspaceManager.showPanel(id: id)
+        attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
+    }
+
+    func hidePanel(id: String) {
+        workspaceManager.hidePanel(id: id)
+    }
+
+    func togglePanel(id: String) {
+        workspaceManager.togglePanel(id: id)
+    }
+
+    private func attachPanelWebViewWhenReady(panelId: String, appId: String, path: String, attempt: Int) {
+        guard let sessionId = appSessions[appId],
+              let container = workspaceManager.panelContainer(id: panelId) else {
+            return
+        }
+
+        if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+            WebViewManager.attachWebViewToContainer(webView, container: container)
+            return
+        }
+
+        guard attempt < Self.panelAttachMaxRetry else {
+            os_log("panel webview attach timed out for panel=%{public}@ appId=%{public}@ path=%{public}@",
+                   type: .error, panelId, appId, path)
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelAttachRetryDelay) { [weak self] in
+            self?.attachPanelWebViewWhenReady(panelId: panelId, appId: appId, path: path, attempt: attempt + 1)
+        }
+    }
+}
+
+// MARK: - Equatable for sidebar/toolbar modes (needed for diff check)
+
+extension LxAppSidebarMode: Equatable {
+    public static func == (lhs: LxAppSidebarMode, rhs: LxAppSidebarMode) -> Bool {
+        switch (lhs, rhs) {
+        case (.hidden, .hidden):
+            return true
+        case (.declarative(let a), .declarative(let b)):
+            return a == b
+        case (.swiftNative(let a), .swiftNative(let b)):
+            return a == b
+        default:
+            return false
+        }
+    }
+}
+
+extension LxAppToolbarMode: Equatable {
+    public static func == (lhs: LxAppToolbarMode, rhs: LxAppToolbarMode) -> Bool {
+        switch (lhs, rhs) {
+        case (.hidden, .hidden):
+            return true
+        case (.declarative(let a), .declarative(let b)):
+            return a == b
+        case (.swiftNative(let a), .swiftNative(let b)):
+            return a == b
+        default:
+            return false
+        }
+    }
+}
+
+#else
+
+/// iOS placeholder — shell functionality is handled differently on iOS.
+@MainActor
+public final class LxAppShell {
+
+    public let controller: LxAppController
+    public private(set) var configuration: LxAppShellConfiguration
+    public let hostView: LxAppHostView
+    private var didOpenHome = false
+    private var controllerEventsTask: Task<Void, Never>?
+
+    public init(
+        controller: LxAppController = LxAppController(),
+        configuration: LxAppShellConfiguration = LxAppShellConfiguration()
+    ) {
+        self.controller = controller
+        self.configuration = configuration
+        self.hostView = LxAppHostView(controller: controller)
+        observeControllerEvents()
+    }
+
+    deinit {
+        controllerEventsTask?.cancel()
+    }
+
+    public func updateConfiguration(_ newConfig: LxAppShellConfiguration) {
+        configuration = newConfig
+    }
+
+    public func show() {
+        iOSLxApp.initialize(autoOpenHome: false)
+        guard !didOpenHome else { return }
+        didOpenHome = true
+        Task { @MainActor [controller] in
+            _ = try? await controller.openHomeApp()
+        }
+    }
+    public func hide() {}
+
+    private func observeControllerEvents() {
+        controllerEventsTask = Task { [controller] in
+            for await event in controller.events {
+                switch event {
+                case .didClose(let session):
+                    iOSLxApp.closeLxApp(
+                        appId: session.appId,
+                        sessionId: session.id.rawValue,
+                        notifyRuntime: false
+                    )
+                default:
+                    continue
+                }
+            }
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 import AppKit
 import os.log
-import lingxia
+@_spi(Runner) import lingxia
 
 /// LingXia Runner - Development tool with Simulator mode
 /// Provides Xcode-like simulator interface for testing LxApps
@@ -10,6 +10,8 @@ public class RunnerApp {
     private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerApp")
     
     private var windowController: CapsuleWindowController?
+    private var controller: LxAppController?
+    private var controllerEventsTask: Task<Void, Never>?
     private(set) var deviceSize: MobileDeviceSize = .iPhoneSE
     
     private init() {}
@@ -22,6 +24,32 @@ public class RunnerApp {
         self.deviceSize = size
         CapsuleWindowController.setWindowSize(size)
         os_log("Device size changed to: %@", log: Self.log, type: .info, size.displayName)
+    }
+
+    public func bind(controller: LxAppController) {
+        self.controller = controller
+        controllerEventsTask?.cancel()
+        controllerEventsTask = Task { [weak self, controller] in
+            for await event in controller.events {
+                guard let self else { return }
+                switch event {
+                case .didNavigate(let sessionId, let path):
+                    guard let session = controller.sessions[sessionId] else { continue }
+                    self.handleNavigation(
+                        appId: session.appId,
+                        path: path,
+                        animationType: .none
+                    )
+                case .didClose(let session):
+                    RunnerSupport.Runtime.removeSessionId(for: session.appId)
+                    if self.windowController?.appId == session.appId {
+                        self.windowController?.closeFromRuntime()
+                    }
+                default:
+                    continue
+                }
+            }
+        }
     }
     
     // MARK: - LxApp Management
@@ -71,13 +99,12 @@ public class RunnerApp {
     }
     
     /// Open home LxApp
-    public func openHomeLxApp() {
-        guard let homeLxAppId = RunnerSupport.Runtime.homeLxAppId() else {
-            os_log("No home LxApp ID found", log: Self.log, type: .error)
+    public func openHomeLxApp() async {
+        guard let controller else {
+            os_log("Runner controller not configured", log: Self.log, type: .error)
             return
         }
-        
-        openLxApp(appId: homeLxAppId)
+        _ = try? await controller.openHomeApp()
     }
     
     /// Navigate to path in current LxApp
@@ -86,7 +113,7 @@ public class RunnerApp {
     }
     
     /// Handle navigation with animation type (called from SDK handler)
-    public func handleNavigation(appId: String, path: String, animationType: AnimationType) {
+    public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
         if windowController?.appId == appId {
             windowController?.navigate(to: path, animationType: animationType)
         }
@@ -102,5 +129,9 @@ public class RunnerApp {
         if windowController === controller {
             windowController = nil
         }
+    }
+
+    func discardSession(appId: String, sessionId: UInt64) {
+        _ = controller?.discardSession(appId: appId, sessionId: sessionId)
     }
 }

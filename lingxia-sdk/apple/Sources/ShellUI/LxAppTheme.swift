@@ -29,7 +29,7 @@ struct LxAppImageHelper {
 }
 
 /// Unified theme system for LxApp components
-public struct LxAppTheme {
+struct LxAppTheme {
 
     public struct Colors {
         public static let background = Color(LxAppPlatformColor.lxSystemBackground)
@@ -268,7 +268,7 @@ struct LxAppCustomIcons {
 }
 
 /// Unified icon system with custom drawn icons for capsule buttons
-public struct LxAppIcons {
+struct LxAppIcons {
     public static let threeDots = LxAppCustomIcons.threeDots
     public static let close = LxAppCustomIcons.close
     public static let minimize = Image(systemName: "minus")
@@ -278,10 +278,10 @@ public struct LxAppIcons {
 }
 
 #if os(iOS)
-public typealias LxAppPlatformColor = UIColor
+typealias LxAppPlatformColor = UIColor
 typealias PlatformColor = UIColor
 #else
-public typealias LxAppPlatformColor = NSColor
+typealias LxAppPlatformColor = NSColor
 typealias PlatformColor = NSColor
 #endif
 

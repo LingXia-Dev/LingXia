@@ -32,7 +32,7 @@ class LxAppWindow: NSWindow {
         styleMask.insert(.fullSizeContentView)
         titlebarAppearsTransparent = true
         titleVisibility = .hidden
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false
         backgroundColor = .clear
 
         if let observer = titlebarObserver {
@@ -90,7 +90,7 @@ class LxAppWindow: NSWindow {
         let isDevtoolsShortcut = modifiers == [.command, .option]
             && (event.keyCode == 34 || event.charactersIgnoringModifiers?.lowercased() == "i")
         if isDevtoolsShortcut {
-            if let controller = windowController as? LxAppWindowController,
+            if let controller = windowController as? LxAppShell,
                controller.toggleActiveDevTools() {
                 return true
             }

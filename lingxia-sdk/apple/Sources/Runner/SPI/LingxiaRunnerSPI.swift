@@ -1,10 +1,11 @@
+import Foundation
+
+#if os(macOS)
 import AppKit
 import WebKit
 
-public typealias RunnerTabBarConfig = TabBar
-public typealias RunnerNavigationBarState = NavigationBarState
-
-public enum RunnerSupport {
+/// Tooling-only SPI consumed by `tools/lingxia-runner`.
+@_spi(Runner) public enum LingxiaRunnerSPI {
     @MainActor
     public enum Runtime {
         public static func sessionId(for appId: String) -> UInt64? {
@@ -25,10 +26,6 @@ public enum RunnerSupport {
 
         public static func setCurrentPath(_ path: String) {
             RunnerBridge.setCurrentPath(path)
-        }
-
-        public static func homeLxAppId() -> String? {
-            RunnerBridge.homeLxAppId()
         }
     }
 
@@ -60,10 +57,11 @@ public enum RunnerSupport {
     }
 
     @MainActor
-    public enum TabBar {
+    public enum Tabs {
+        public typealias Config = TabBar
         public static let stateChangedNotification = Notification.Name("TabBarDataChanged")
 
-        public static func config(for appId: String) -> RunnerTabBarConfig? {
+        public static func config(for appId: String) -> Config? {
             RunnerBridge.tabBar(appId: appId)
         }
 
@@ -72,7 +70,7 @@ public enum RunnerSupport {
         }
 
         public static func makeView(
-            config: RunnerTabBarConfig,
+            config: Config,
             appId: String,
             onSelect: @escaping (Int, String) -> Void
         ) -> NSView {
@@ -93,11 +91,13 @@ public enum RunnerSupport {
     }
 
     @MainActor
-    public enum Navigation {
+    public enum NavigationBars {
+        public typealias State = NavigationBarState
+
         public static func state(
             appId: String,
             path: String
-        ) -> RunnerNavigationBarState? {
+        ) -> State? {
             RunnerBridge.navigationBarState(appId: appId, path: path)
         }
 
@@ -105,7 +105,7 @@ public enum RunnerSupport {
             RunnerBridge.updateNavigationBarState(appId: appId, path: path)
         }
 
-        public static func currentState() -> RunnerNavigationBarState? {
+        public static func currentState() -> State? {
             RunnerBridge.navigationBarCurrentState()
         }
     }
@@ -124,3 +124,11 @@ public enum RunnerSupport {
         }
     }
 }
+
+#else
+
+/// Tooling-only SPI is macOS-only. The symbol still exists on non-macOS
+/// targets so the package can compile for iOS without exposing any runner APIs.
+@_spi(Runner) public enum LingxiaRunnerSPI {}
+
+#endif

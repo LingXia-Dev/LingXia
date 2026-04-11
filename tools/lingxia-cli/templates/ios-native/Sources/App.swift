@@ -9,12 +9,14 @@ public struct ContentView: View {
         Color.clear
             .onAppear {
                 if !Self.hasInitialized {
-                    Self.hasInitialized = true
-
-                    // Enable WebView debugging BEFORE Lingxia.initialize()
-                    LxApp.enableWebViewDebugging()
-
-                    Lingxia.initialize()
+                    // Enable WebView debugging BEFORE Lingxia.quickStart()
+                    Lingxia.enableWebViewDebugging()
+                    do {
+                        _ = try Lingxia.quickStart()
+                        Self.hasInitialized = true
+                    } catch {
+                        fatalError("Lingxia.quickStart failed: \(error)")
+                    }
                 }
             }
     }
@@ -28,7 +30,7 @@ public struct LxAppApp: App {
         WindowGroup {
             ContentView()
                 .onOpenURL { url in
-                    LxApp.handleAppLink(url: url)
+                    Lingxia.handleAppLink(url: url)
                 }
         }
     }

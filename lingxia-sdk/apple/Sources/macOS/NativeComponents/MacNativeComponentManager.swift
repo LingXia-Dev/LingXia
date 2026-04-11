@@ -511,7 +511,7 @@ final class MacNativeComponentManager {
                 return
             }
             guard !Task.isCancelled else { return }
-            await self?.applyInactivePageStop(pageId, generation: generation)
+            self?.applyInactivePageStop(pageId, generation: generation)
         }
     }
 

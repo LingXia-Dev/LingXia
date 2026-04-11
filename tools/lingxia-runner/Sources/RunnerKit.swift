@@ -1,5 +1,5 @@
 import AppKit
-import lingxia
+@_spi(Runner) import lingxia
 
 /// Public entry point for the LingXia Runner simulator.
 public struct RunnerKit {
@@ -15,27 +15,29 @@ public struct RunnerKit {
 
 @MainActor
 private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
+    private let controller = LxAppController()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        LxApp.enableWebViewDebugging()
-        LxApp.skipAutoOpenWindow = true
+        Lingxia.enableWebViewDebugging()
+        RunnerApp.shared.bind(controller: controller)
+        Lingxia.activate(controller: controller)
+        _ = try? Lingxia.initializeRuntime()
 
-        LxApp.openLxAppHandler = { appId, path in
-            Task { @MainActor in
-                RunnerApp.shared.openLxApp(appId: appId, path: path)
+        controller.setInterceptor(.willOpen) { context in
+            guard case .object(let payload) = context.payload,
+                  case .string(let appId)? = payload["appId"],
+                  case .string(let path)? = payload["path"] else {
+                return .reject(reason: "runner requires appId/path in willOpen payload")
             }
-            return true
+
+            RunnerApp.shared.openLxApp(appId: appId, path: path)
+            return .handled
         }
 
-        LxApp.navigationHandler = { appId, path, animationType in
-            Task { @MainActor in
-                RunnerApp.shared.handleNavigation(appId: appId, path: path, animationType: animationType)
-            }
-            return true
-        }
-
-        Lingxia.initialize()
         RunnerApp.shared.setDeviceSize(.iPhoneSE)
-        RunnerApp.shared.openHomeLxApp()
+        Task { @MainActor in
+            _ = try? await controller.openHomeApp()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

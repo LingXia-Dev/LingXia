@@ -7,7 +7,7 @@ import os.log
 // MARK: - Entry point
 
 extension LxAppMedia {
-    nonisolated(unsafe) fileprivate static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
+    nonisolated fileprivate static let previewLog = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
     /// Shared controller that manages the Quick Look preview panel.
     @MainActor static var qlController: MacQuickLookController?

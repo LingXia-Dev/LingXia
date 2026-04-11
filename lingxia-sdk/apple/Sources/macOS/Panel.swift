@@ -25,16 +25,12 @@ extension macOSLxApp {
 
     // MARK: - Toggle Entry Point
 
-    /// Called when a panel icon button is clicked.
-    /// - If visible: hide the panel.
-    /// - If hidden: send host-scoped event to Rust; Rust chooses target lxapp and opens it
-    ///   with presentation=panel. Swift only handles rendering.
     internal static func togglePanel(id: String) {
-        guard let controller = tabWindowController else { return }
+        guard let s = shell else { return }
         guard panelItems.contains(where: { $0.id == id }) else { return }
 
-        if controller.workspaceManager.isPanelVisible(id: id) {
-            controller.hidePanel(id: id)
+        if s.workspaceManager.isPanelVisible(id: id) {
+            s.hidePanel(id: id)
         } else {
             _ = onAppEvent(AppEvent.panelIconClick, id)
         }
@@ -42,8 +38,6 @@ extension macOSLxApp {
 
     // MARK: - Rust Callback Routing
 
-    /// Called from LxAppCore.executeOpenLxApp when Rust requested panel presentation.
-    /// Maps panelId (preferred) / appId to configured panel item, then attaches WebView and shows panel.
     @MainActor
     internal static func handlePanelLxAppOpened(
         appId: String,
@@ -51,7 +45,7 @@ extension macOSLxApp {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let controller = tabWindowController else { return false }
+        guard let s = shell else { return false }
 
         let resolvedItem: PanelItemConfig?
         if !panelId.isEmpty {
@@ -69,92 +63,37 @@ extension macOSLxApp {
             )
             return false
         }
-        // Register session so showPanelWithContent can look up the WebView
-        controller.appSessions[appId] = sessionId
+        s.appSessions[appId] = sessionId
         LxAppCore.setSessionId(sessionId, for: appId)
 
         let pos = PanelPosition(rawValue: item.position) ?? .right
-        controller.showPanelWithContent(id: item.id, position: pos, appId: appId, path: path)
-        applyResolvedIcon(panelId: item.id, to: controller)
+        s.showPanelWithContent(id: item.id, position: pos, appId: appId, path: path)
+        applyResolvedIcon(panelId: item.id, to: s)
         return true
     }
 
-    /// Resolve icon from the installed lxapp package and update the sidebar button.
-    /// icon is a relative path within the lxapp package; resolveLxUri converts it to file://.
-    private static func applyResolvedIcon(panelId: String, to controller: LxAppWindowController) {
+    private static func applyResolvedIcon(panelId: String, to shell: LxAppShell) {
         guard let item = panelItems.first(where: { $0.id == panelId }),
               !item.icon.isEmpty,
               let fileUrl = resolveLxUri(item.appId, item.icon)?.toString() else { return }
-        controller.sidebarView?.updatePanelIcon(panelId: panelId, iconFileUrl: fileUrl)
+        shell.sidebarView?.updatePanelIcon(panelId: panelId, iconFileUrl: fileUrl)
     }
 
     // MARK: - Show / Hide (internal)
 
     internal static func hidePanel(id: String) {
-        tabWindowController?.hidePanel(id: id)
-    }
-}
-
-// MARK: - LxAppWindowController panel methods
-
-extension LxAppWindowController {
-    private static let panelAttachMaxRetry = 40
-    private static let panelAttachRetryDelay: TimeInterval = 0.05
-
-    /// Show a panel with WebView content. Registers the panel if not already registered.
-    func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
-        if !workspaceManager.isPanelRegistered(id: id) {
-            let config = PanelConfig(id: id, position: position)
-            workspaceManager.registerPanel(config)
-        }
-
-        workspaceManager.showPanel(id: id)
-        attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
-    }
-
-    func hidePanel(id: String) {
-        workspaceManager.hidePanel(id: id)
-    }
-
-    func togglePanel(id: String) {
-        workspaceManager.togglePanel(id: id)
-    }
-
-    private func attachPanelWebViewWhenReady(panelId: String, appId: String, path: String, attempt: Int) {
-        guard let sessionId = appSessions[appId],
-              let container = workspaceManager.panelContainer(id: panelId) else {
-            return
-        }
-
-        if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
-            WebViewManager.attachWebViewToContainer(webView, container: container)
-            return
-        }
-
-        guard attempt < Self.panelAttachMaxRetry else {
-            os_log("panel webview attach timed out for panel=%{public}@ appId=%{public}@ path=%{public}@",
-                   type: .error, panelId, appId, path)
-            return
-        }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelAttachRetryDelay) { [weak self] in
-            self?.attachPanelWebViewWhenReady(panelId: panelId, appId: appId, path: path, attempt: attempt + 1)
-        }
+        shell?.hidePanel(id: id)
     }
 }
 
 // MARK: - PanelItemConfig
 
-/// Lightweight description of a configured panel item, parsed from app.json.
 struct PanelItemConfig {
     let id: String
     let label: String
     let icon: String
-    /// PanelPosition raw value: "left", "right", or "bottom"
     let position: String
-    /// The lxapp appId this panel opens.
     let appId: String
-    /// The page path this panel displays within the lxapp. Empty means use the app's initial route.
     let path: String
 
     init?(json: [String: Any]) {

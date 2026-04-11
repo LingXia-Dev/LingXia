@@ -80,15 +80,22 @@ private class SidebarGroupHeaderView: NSView {
     var onRightClick: ((NSEvent) -> Void)?
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // point is in superview's coordinate system → check against frame, not bounds
         guard !isHidden, frame.contains(point) else { return nil }
-        // Convert to local coordinates for subview checks
         let localPoint = convert(point, from: superview)
-        if let close = closeButton, !close.isHidden, close.frame.contains(localPoint) {
-            return close
+        if let close = closeButton, !close.isHidden {
+            let closePoint = convert(localPoint, to: close)
+            if close.bounds.contains(closePoint) {
+                return close
+            }
         }
         return self
     }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override var mouseDownCanMoveWindow: Bool { false }
 
     override func mouseDown(with event: NSEvent) {
         onHeaderClicked?()
@@ -369,12 +376,14 @@ class SidebarGroupView: NSView {
             itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
             connectorHeightConstraint?.animator().constant = connectorTarget
         }, completionHandler: { [weak self] in
-            guard let self else { return }
-            if !self.isExpanded {
-                self.itemsContainer.isHidden = true
-                self.itemsBackground.isHidden = true
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if !self.isExpanded {
+                    self.itemsContainer.isHidden = true
+                    self.itemsBackground.isHidden = true
+                }
+                self.onLayoutChanged?()
             }
-            self.onLayoutChanged?()
         })
 
         // Chevron: down = expanded, up = collapsed (like Chrome)

@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 import SwiftUI
 import os.log
-import lingxia
+@_spi(Runner) import lingxia
 
 /// View controller for Runner Capsule mode - mirrors macOSLxAppViewController functionality
 @MainActor
@@ -17,7 +17,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     
     private var webViewContainer: NSView!
     internal var tabBarView: NSView?
-    public var tabBarConfig: RunnerTabBarConfig?
+    internal var tabBarConfig: RunnerTabBarConfig?
     internal var selectedTabIndex: Int = 0
     public var isDestroyed: Bool = false
     
@@ -159,7 +159,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
 
         let tabBar = RunnerSupport.TabBar.makeView(config: tabBarConfig, appId: appId) { [weak self] index, _ in
             guard let self = self else { return }
-            let _ = onLxappEvent(self.appId, LxAppUIEvent.tabBarClick, String(index))
+            let _ = onLxappEvent(self.appId, LxAppUiEventType.TabBarClick, String(index))
         }
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(tabBar)
@@ -216,7 +216,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     
     private func setupNotificationObservers() {
         closeAppObserver = NotificationCenter.default.addObserver(
-            forName: NSNotification.Name(ACTION_CLOSE_LXAPP), object: nil, queue: .main
+            forName: NSNotification.Name("com.lingxia.CLOSE_LXAPP_ACTION"), object: nil, queue: .main
         ) { [weak self] notification in
             let appId = notification.userInfo?["appId"] as? String
             Task { @MainActor in
@@ -242,7 +242,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     // MARK: - Navigation
     
     @MainActor
-    public func navigate(to path: String, animationType: AnimationType = .none) {
+    public func navigate(to path: String, animationType: LxAppAnimation = .none) {
         self.currentPath = path
         
         // Update UI components

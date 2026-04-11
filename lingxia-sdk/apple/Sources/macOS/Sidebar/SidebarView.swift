@@ -44,6 +44,16 @@ private class SidebarResizeHandle: NSView {
     }
 }
 
+@MainActor
+private final class SidebarClipView: NSClipView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
+@MainActor
+private final class SidebarScrollView: NSScrollView {
+    override var mouseDownCanMoveWindow: Bool { false }
+}
+
 // MARK: - PanelIconItem
 
 /// Minimal display info for a panel icon in the sidebar footer.
@@ -60,13 +70,14 @@ struct PanelIconItem {
 /// Supports drag-to-resize and a fully hidden state.
 @MainActor
 class SidebarView: NSView {
+    private static let log = OSLog(subsystem: "LingXia", category: "Sidebar")
 
     struct Layout {
         static let expandedWidth: CGFloat = 180
         static let maxWidth: CGFloat = 400
         static let collapseThreshold: CGFloat = 80
         static let fullyHiddenThreshold: CGFloat = 1
-        static let trafficLightsHeight: CGFloat = 38
+        static let trafficLightsHeight: CGFloat = 68
         static let actionButtonSize: CGFloat = 28
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
@@ -80,7 +91,7 @@ class SidebarView: NSView {
     private let headerView = NSView()
     private let settingsButton = NSButton()
     private let downloadButton = NSButton()
-    private let scrollView = NSScrollView()
+    private let scrollView = SidebarScrollView()
     private let resizeHandle = SidebarResizeHandle()
     private let footerView = NSView()
     private let footerSeparator = NSView()
@@ -183,11 +194,19 @@ class SidebarView: NSView {
         headerView.addSubview(downloadButton)
 
         let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        os_log(
+            "Sidebar setup shellEnabled=%{public}@ capabilities=%{public}u",
+            log: Self.log,
+            type: .info,
+            shellEnabled ? "true" : "false",
+            LxAppCore.capabilities
+        )
         settingsButton.isHidden = !shellEnabled
         downloadButton.isHidden = !shellEnabled
 
         // Scroll view (trailing inset to leave room for resize handle)
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.contentView = SidebarClipView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
@@ -340,6 +359,14 @@ class SidebarView: NSView {
     func updateVisibilityState() {
         let hidden = isFullyHidden
         let shellEnabled = (LxAppCore.capabilities & LxAppCore.capShell) != 0
+        os_log(
+            "Sidebar visibility hidden=%{public}@ shellEnabled=%{public}@ capabilities=%{public}u",
+            log: Self.log,
+            type: .debug,
+            hidden ? "true" : "false",
+            shellEnabled ? "true" : "false",
+            LxAppCore.capabilities
+        )
         scrollView.isHidden = hidden
         settingsButton.isHidden = hidden || !shellEnabled
         downloadButton.isHidden = hidden || !shellEnabled
@@ -760,6 +787,7 @@ class SidebarView: NSView {
 @MainActor
 private class FlippedView: NSView {
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 }
 
 #endif

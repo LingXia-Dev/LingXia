@@ -271,7 +271,6 @@ class WorkspaceManager: NSObject {
         guard let slot = panels[id], !slot.isVisible else { return }
 
         // Clamp against current window size so panel cannot consume the whole main region.
-        let requestedSize = slot.currentSize
         let normalizedSize = clampedPanelSize(slot.currentSize, for: slot.config.position)
         if normalizedSize != slot.currentSize {
             slot.currentSize = normalizedSize
