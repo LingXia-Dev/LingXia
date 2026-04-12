@@ -1320,37 +1320,35 @@ define_class!(
             // otherwise an async chooser response could invoke a dead stack block.
             let completion_ptr = RcBlock::into_raw(handler.copy()) as usize;
             if !webview.handle_file_chooser(request, move |response| {
-                let exec = move || {
-                    match response {
-                        FileChooserResponse::Cancel => {
-                            complete_open_panel_request(completion_ptr, std::ptr::null_mut());
-                        }
-                        FileChooserResponse::Files(files) => {
-                            let urls: Vec<Retained<NSURL>> = files
-                                .into_iter()
-                                .filter_map(|file| {
-                                    if let Some(uri) = file
-                                        .uri
-                                        .as_ref()
-                                        .map(|value| value.trim())
-                                        .filter(|value| !value.is_empty())
-                                    {
-                                        let ns = NSString::from_str(uri);
-                                        return NSURL::URLWithString(&ns);
-                                    }
-                                    let value =
-                                        file.path.as_ref().map(|value| value.trim()).unwrap_or("");
-                                    if value.is_empty() {
-                                        return None;
-                                    }
-                                    let ns = NSString::from_str(value);
-                                    Some(NSURL::fileURLWithPath(&ns))
-                                })
-                                .collect();
-                            let array = NSArray::from_retained_slice(&urls);
-                            let ptr = (&*array) as *const NSArray<NSURL> as *mut AnyObject;
-                            complete_open_panel_request(completion_ptr, ptr);
-                        }
+                let exec = move || match response {
+                    FileChooserResponse::Cancel => {
+                        complete_open_panel_request(completion_ptr, std::ptr::null_mut());
+                    }
+                    FileChooserResponse::Files(files) => {
+                        let urls: Vec<Retained<NSURL>> = files
+                            .into_iter()
+                            .filter_map(|file| {
+                                if let Some(uri) = file
+                                    .uri
+                                    .as_ref()
+                                    .map(|value| value.trim())
+                                    .filter(|value| !value.is_empty())
+                                {
+                                    let ns = NSString::from_str(uri);
+                                    return NSURL::URLWithString(&ns);
+                                }
+                                let value =
+                                    file.path.as_ref().map(|value| value.trim()).unwrap_or("");
+                                if value.is_empty() {
+                                    return None;
+                                }
+                                let ns = NSString::from_str(value);
+                                Some(NSURL::fileURLWithPath(&ns))
+                            })
+                            .collect();
+                        let array = NSArray::from_retained_slice(&urls);
+                        let ptr = (&*array) as *const NSArray<NSURL> as *mut AnyObject;
+                        complete_open_panel_request(completion_ptr, ptr);
                     }
                 };
 

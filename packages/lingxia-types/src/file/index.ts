@@ -18,7 +18,6 @@ export interface OpenFileOptions {
   showMenu?: boolean;
 }
 
-/** Desktop only. Currently supported on macOS. Windows is planned. */
 export interface FileDialogFilter {
   /** Optional label shown in the native dialog. */
   name?: string;
@@ -26,7 +25,6 @@ export interface FileDialogFilter {
   extensions: string[];
 }
 
-/** Desktop only. Currently supported on macOS. Windows is planned. */
 export interface ChooseFileOptions {
   /** Allow selecting multiple files. Default: false */
   multiple?: boolean;
@@ -38,15 +36,13 @@ export interface ChooseFileOptions {
   defaultPath?: string;
 }
 
-/** Desktop only. Currently supported on macOS. Windows is planned. */
 export interface ChooseFileResult {
   /** True if the user dismissed the dialog without selecting. */
   canceled: boolean;
-  /** Absolute system paths of selected files. Empty when canceled. */
+  /** Native-consumable file references (paths or URIs). Empty when canceled. */
   paths: string[];
 }
 
-/** Desktop only. Currently supported on macOS. Windows is planned. */
 export interface ChooseDirectoryOptions {
   /** Dialog window title. Platform provides a default if omitted. */
   title?: string;
@@ -54,18 +50,20 @@ export interface ChooseDirectoryOptions {
   defaultPath?: string;
 }
 
-/** Desktop only. Currently supported on macOS. Windows is planned. */
 export interface ChooseDirectoryResult {
   /** True if the user dismissed the dialog without selecting. */
   canceled: boolean;
-  /** Absolute system path of the selected directory. Undefined when canceled. */
+  /** Native-consumable directory reference (path or URI). Undefined when canceled. */
   path?: string;
 }
 
 export interface DownloadOptions {
   /** HTTP(S) source URL. */
   url: string;
-  /** Optional request headers. */
+  /**
+   * Optional request headers.
+   * Restricted headers such as `Referer` are ignored by the runtime.
+   */
   headers?: Record<string, string>;
   /** Request timeout in milliseconds. */
   timeout?: number;
@@ -110,4 +108,60 @@ export interface DownloadTask extends PromiseLike<DownloadResult>, AsyncIterable
   cancel(): Promise<void>;
   abort(): Promise<void>;
   wait(): Promise<DownloadResult>;
+}
+
+export interface UploadOptions {
+  /** HTTP(S) destination URL. */
+  url: string;
+  /** Local file path or runtime-managed URI to upload. */
+  filePath: string;
+  /** Multipart field name. Default: `file`. */
+  name?: string;
+  /**
+   * Optional request headers.
+   * Restricted headers such as `Referer` are ignored by the runtime.
+   */
+  headers?: Record<string, string>;
+  /** Optional extra `multipart/form-data` text fields. */
+  formData?: Record<string, string>;
+  /** Request timeout in milliseconds. */
+  timeout?: number;
+  /** Override multipart filename. */
+  fileName?: string;
+  /** Override file MIME type. */
+  mimeType?: string;
+  /** Optional abort signal. */
+  signal?: AbortSignal;
+}
+
+export interface UploadProgressEvent {
+  kind: 'progress' | 'canceled' | 'success';
+  uploadedBytes?: number;
+  totalBytes?: number;
+  progress?: number;
+  result?: UploadResult;
+}
+
+export interface UploadIteratorResult {
+  done: boolean;
+  value?: UploadProgressEvent;
+}
+
+export interface UploadResult {
+  /** HTTP status code returned by the server. */
+  statusCode: number;
+  /** Response body decoded as UTF-8 text. */
+  data: string;
+}
+
+export interface UploadTask extends PromiseLike<UploadResult>, AsyncIterable<UploadProgressEvent> {
+  next(): Promise<UploadIteratorResult>;
+  return(): Promise<UploadIteratorResult>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<UploadResult | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<UploadResult>;
+  cancel(): Promise<void>;
+  abort(): Promise<void>;
+  wait(): Promise<UploadResult>;
 }

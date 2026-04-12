@@ -4,8 +4,8 @@
 
 mod app;
 mod device;
-mod document;
 mod ffi;
+mod file;
 mod location;
 mod media;
 mod network;

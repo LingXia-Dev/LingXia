@@ -54,6 +54,8 @@ import type {
   ChooseFileResult,
   DownloadOptions,
   DownloadTask,
+  UploadOptions,
+  UploadTask,
 } from './file';
 
 import type {
@@ -152,6 +154,7 @@ export interface Lx {
    */
   openFile(options: OpenFileOptions): void;
   downloadFile(options: DownloadOptions): DownloadTask;
+  uploadFile(options: UploadOptions): UploadTask;
 
   getStorage(): Storage;
 
@@ -230,9 +233,7 @@ export interface Lx {
 
   getCapsuleRect(): Promise<CapsuleRect>;
 
-  /** Desktop only. Currently supported on macOS. Windows is planned. */
   chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
-  /** Desktop only. Currently supported on macOS. Windows is planned. */
   chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
 
   onKeyDown(callback: KeyEventCallback): void;

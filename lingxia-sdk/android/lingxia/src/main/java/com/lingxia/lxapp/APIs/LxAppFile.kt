@@ -12,15 +12,18 @@ import android.util.Log
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.NativeApi
 import com.lingxia.lxapp.APIs.document.PdfViewerActivity
 import com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
-internal object LxAppDocument {
-    private const val TAG = "LingXia.LxAppDocument"
+internal object LxAppFile {
+    private const val TAG = "LingXia.LxAppFile"
     private val WPS_PACKAGES = listOf(
         "cn.wps.moffice_eng",
         "cn.wps.moffice_i18n",
@@ -114,6 +117,79 @@ internal object LxAppDocument {
         }
     }
 
+    @JvmStatic
+    fun chooseFile(
+        multiple: Boolean,
+        title: String?,
+        defaultPath: String?,
+        filtersJson: String?,
+        callbackId: Long
+    ): Boolean {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "chooseFile: current activity is null")
+            NativeApi.onCallback(callbackId, false, "1000")
+            return false
+        }
+
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple)
+            title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_TITLE, it) }
+        }
+
+        val mimeTypes = parseMimeTypes(filtersJson)
+        if (mimeTypes.isNotEmpty()) {
+            intent.type = mimeTypes.first()
+            if (mimeTypes.size > 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+            }
+        }
+
+        val launched = activity.openHostFileDialog(intent) { paths ->
+            val payload = JSONObject().apply {
+                put("canceled", paths == null || paths.isEmpty())
+                put("paths", JSONArray(paths ?: emptyList<String>()))
+            }
+            NativeApi.onCallback(callbackId, true, payload.toString())
+        }
+        if (!launched) {
+            NativeApi.onCallback(callbackId, false, "1000")
+        }
+        return launched
+    }
+
+    @JvmStatic
+    fun chooseDirectory(
+        title: String?,
+        _defaultPath: String?,
+        callbackId: Long
+    ): Boolean {
+        val activity = LxApp.getCurrentActivity()
+        if (activity == null) {
+            Log.w(TAG, "chooseDirectory: current activity is null")
+            NativeApi.onCallback(callbackId, false, "1000")
+            return false
+        }
+
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_TITLE, it) }
+        }
+
+        val launched = activity.openHostFileDialog(intent) { paths ->
+            val payload = JSONObject().apply {
+                put("canceled", paths == null || paths.isEmpty())
+                put("paths", JSONArray(paths ?: emptyList<String>()))
+            }
+            NativeApi.onCallback(callbackId, true, payload.toString())
+        }
+        if (!launched) {
+            NativeApi.onCallback(callbackId, false, "1000")
+        }
+        return launched
+    }
+
     private fun launchInternalPdfViewer(activity: android.app.Activity, file: File, showMenu: Boolean): Boolean {
         val intent = Intent(activity, PdfViewerActivity::class.java).apply {
             putExtra(PdfViewerActivity.EXTRA_FILE_PATH, file.absolutePath)
@@ -152,6 +228,35 @@ internal object LxAppDocument {
             }
         }
         return null
+    }
+
+    private fun parseMimeTypes(filtersJson: String?): List<String> {
+        if (filtersJson.isNullOrBlank()) {
+            return emptyList()
+        }
+        return try {
+            val array = JSONArray(filtersJson)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val raw = array.optString(index).trim()
+                    if (raw.isEmpty()) continue
+                    if (raw.contains('/')) {
+                        add(raw)
+                        continue
+                    }
+                    val ext = raw.trimStart('.')
+                    if (ext.isEmpty()) continue
+                    val mime = MimeTypeMap.getSingleton()
+                        .getMimeTypeFromExtension(ext.lowercase(Locale.US))
+                    if (!mime.isNullOrBlank()) {
+                        add(mime)
+                    }
+                }
+            }.distinct()
+        } catch (error: Exception) {
+            Log.w(TAG, "parseMimeTypes failed: ${error.message}")
+            emptyList()
+        }
     }
 
     private fun resolveWpsPackage(context: Context): String? {

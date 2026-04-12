@@ -66,7 +66,7 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
         CachedClass::LxAppModal,
         CachedClass::LxAppActionSheet,
         CachedClass::LxAppPicker,
-        CachedClass::LxAppDocument,
+        CachedClass::LxAppFile,
         CachedClass::ComponentRouter,
         CachedClass::LxAppPullToRefresh,
         CachedClass::UpdateManager,

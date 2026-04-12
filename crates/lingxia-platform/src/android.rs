@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 
 mod app;
 mod device;
-mod document;
+mod file;
 mod location;
 mod media;
 mod network;
@@ -34,7 +34,7 @@ pub enum CachedClass {
     LxAppModal = 7,
     LxAppActionSheet = 8,
     LxAppPicker = 9,
-    LxAppDocument = 10,
+    LxAppFile = 10,
     ComponentRouter = 11,
     LxAppPullToRefresh = 12,
     UpdateManager = 13,
@@ -58,7 +58,7 @@ impl CachedClass {
             CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
             CachedClass::LxAppPicker => "com/lingxia/lxapp/APIs/LxAppPicker",
-            CachedClass::LxAppDocument => "com/lingxia/lxapp/APIs/LxAppDocument",
+            CachedClass::LxAppFile => "com/lingxia/lxapp/APIs/LxAppFile",
             CachedClass::ComponentRouter => "com/lingxia/lxapp/NativeComponents/ComponentRouter",
             CachedClass::LxAppPullToRefresh => "com/lingxia/lxapp/APIs/LxAppPullToRefresh",
             CachedClass::UpdateManager => "com/lingxia/lxapp/UpdateManager",
@@ -110,9 +110,9 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppPicker"
             ),
-            CachedClass::LxAppDocument => concat!(
+            CachedClass::LxAppFile => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppDocument"
+                "com/lingxia/lxapp/APIs/LxAppFile"
             ),
             CachedClass::ComponentRouter => concat!(
                 "Global class reference not found: ",

@@ -11,7 +11,7 @@ import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
 import { LxAppPopup } from './APIs/LxAppPopup';
 import { BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
-import { LxAppDocument } from './APIs/LxAppDocument';
+import { LxAppFile } from './APIs/LxAppFile';
 import { LxAppWifi } from './APIs/LxAppWifi';
 import { LxAppNetwork } from './APIs/LxAppNetwork';
 import { LxAppCapsule } from './APIs/LxAppCapsule';
@@ -329,6 +329,24 @@ class NativeBridge {
       LxAppCapsule.getCapsuleRect(callbackId);
     });
 
+    this.register('chooseFile', (
+      callbackId: string,
+      multiple: string,
+      title: string,
+      defaultPath: string,
+      filtersJson: string
+    ): boolean => {
+      return LxAppFile.chooseFile(callbackId, multiple, title, defaultPath, filtersJson);
+    });
+
+    this.register('chooseDirectory', (
+      callbackId: string,
+      title: string,
+      defaultPath: string
+    ): boolean => {
+      return LxAppFile.chooseDirectory(callbackId, title, defaultPath);
+    });
+
     // WiFi APIs
     this.register('startWifi', (callbackId: string): void => {
       LxAppWifi.startWifi(callbackId);
@@ -399,17 +417,17 @@ class NativeBridge {
 
     this.register('openDocument', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
       const showFlag = parseBoolean(showMenu, true);
-      return LxAppDocument.openDocument(filePath, mimeType, showFlag);
+      return LxAppFile.openDocument(filePath, mimeType, showFlag);
     });
 
     this.register('reviewDocument', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
       const showFlag = parseBoolean(showMenu, true);
-      return LxAppDocument.reviewDocument(filePath, mimeType, showFlag);
+      return LxAppFile.reviewDocument(filePath, mimeType, showFlag);
     });
 
     this.register('openDocumentExternal', (filePath: string, mimeType: string = '', showMenu: string = '1'): boolean => {
       const showFlag = parseBoolean(showMenu, true);
-      return LxAppDocument.openDocumentExternal(filePath, mimeType, showFlag);
+      return LxAppFile.openDocumentExternal(filePath, mimeType, showFlag);
     });
 
     this.register('scanCode', (payload: string): boolean => {

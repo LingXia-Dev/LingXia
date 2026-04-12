@@ -2,15 +2,17 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { Want } from '@kit.AbilityKit';
 import wantConstant from '@ohos.ability.wantConstant';
 import common from '@ohos.app.ability.common';
+import picker from '@ohos.file.picker';
 import { LxApp } from '../LxApp';
 import { PdfSingleViewerOverlayManager } from './document/PdfSinglePageViewerOverlay';
 import fileUri from '@ohos.file.fileuri';
 import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
+import { onCallback } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
-const TAG = 'LingXia.Document';
+const TAG = 'LingXia.File';
 const ACTION_VIEW = 'ohos.want.action.viewData';
 
 interface UriCreator {
@@ -22,7 +24,7 @@ interface ValidatedRequest {
   normalizedMime: string | undefined;
 }
 
-export class LxAppDocument {
+export class LxAppFile {
   private static validate(caller: string, filePath: string, mimeType: string): ValidatedRequest | undefined {
     if (!filePath || filePath.length === 0) {
       hilog.warn(DOMAIN, TAG, `${caller}: empty file path`);
@@ -38,12 +40,12 @@ export class LxAppDocument {
   }
 
   public static openDocument(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
-    return LxAppDocument.reviewDocument(filePath, mimeType, showMenu) ||
-      LxAppDocument.openDocumentExternal(filePath, mimeType, showMenu);
+    return LxAppFile.reviewDocument(filePath, mimeType, showMenu) ||
+      LxAppFile.openDocumentExternal(filePath, mimeType, showMenu);
   }
 
   public static reviewDocument(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
-    const req = LxAppDocument.validate('reviewDocument', filePath, mimeType);
+    const req = LxAppFile.validate('reviewDocument', filePath, mimeType);
     if (!req) {
       return false;
     }
@@ -61,13 +63,96 @@ export class LxAppDocument {
   }
 
   public static openDocumentExternal(filePath: string, mimeType: string = '', showMenu: boolean = true): boolean {
-    const req = LxAppDocument.validate('openDocumentExternal', filePath, mimeType);
+    const req = LxAppFile.validate('openDocumentExternal', filePath, mimeType);
     if (!req) {
       return false;
     }
 
     launchSystemViewer(req.context, filePath, req.normalizedMime, showMenu);
     return true;
+  }
+
+  public static chooseFile(
+    callbackId: string,
+    multiple: string,
+    title: string,
+    _defaultPath: string,
+    filtersJson: string
+  ): boolean {
+    const context = LxApp.context;
+    const id = String(callbackId ?? '').trim();
+    if (!context || !id) {
+      if (id) {
+        onCallback(id, false, '1000');
+      }
+      return false;
+    }
+
+    const options = new picker.DocumentSelectOptions();
+    options.maxSelectNumber = String(multiple ?? '') === '1' ? 500 : 1;
+    const filters = parseDocumentFilters(filtersJson);
+    if (filters.length > 0) {
+      options.fileSuffixFilters = filters;
+    }
+
+    const viewPicker = new picker.DocumentViewPicker(context);
+    viewPicker.select(options)
+      .then((paths: Array<string>) => {
+        onCallback(id, true, JSON.stringify({
+          canceled: !paths || paths.length === 0,
+          paths: paths ?? []
+        }));
+      })
+      .catch((_error: Object) => {
+        onCallback(id, true, JSON.stringify({ canceled: true, paths: [] }));
+      });
+    return true;
+  }
+
+  public static chooseDirectory(
+    callbackId: string,
+    _title: string,
+    _defaultPath: string
+  ): boolean {
+    const context = LxApp.context;
+    const id = String(callbackId ?? '').trim();
+    if (!context || !id) {
+      if (id) {
+        onCallback(id, false, '1000');
+      }
+      return false;
+    }
+
+    const options = new picker.DocumentSelectOptions();
+    options.selectMode = picker.DocumentSelectMode.FOLDER;
+    options.maxSelectNumber = 1;
+
+    const viewPicker = new picker.DocumentViewPicker(context);
+    viewPicker.select(options)
+      .then((paths: Array<string>) => {
+        onCallback(id, true, JSON.stringify({
+          canceled: !paths || paths.length === 0,
+          paths: paths ?? []
+        }));
+      })
+      .catch((_error: Object) => {
+        onCallback(id, true, JSON.stringify({ canceled: true, paths: [] }));
+      });
+    return true;
+  }
+}
+
+function parseDocumentFilters(filtersJson: string): Array<string> {
+  if (!filtersJson || filtersJson.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(filtersJson) as Array<string>;
+    return (parsed ?? [])
+      .map((raw: string) => String(raw ?? '').trim().replace(/^\./, ''))
+      .filter((raw: string) => raw.length > 0 && raw.indexOf('/') < 0);
+  } catch (_error) {
+    return [];
   }
 }
 

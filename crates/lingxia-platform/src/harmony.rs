@@ -1,7 +1,7 @@
 pub mod app;
 pub mod camera;
 mod device;
-mod document;
+mod file;
 mod location;
 mod media;
 mod network;

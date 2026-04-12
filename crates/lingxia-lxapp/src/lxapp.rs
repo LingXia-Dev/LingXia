@@ -982,7 +982,7 @@ impl LxApp {
                 let decoded_path = uri::decode_lx_path(uri.path());
                 let rel = decoded_path.trim_matches('/');
                 if rel.is_empty() {
-                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                    return Ok(base_dir.clone());
                 }
                 if uri::has_invalid_segment(rel) || rel.contains(':') || rel.contains('\\') {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
@@ -1125,7 +1125,19 @@ impl LxApp {
 
     /// Get navigation bar state for a page; returns default if page not found.
     pub fn get_navbar_state(&self, path: &str) -> NavigationBarState {
+        let resolved_path = self
+            .find_page_path(
+                path.split('?')
+                    .next()
+                    .unwrap_or(path)
+                    .split('#')
+                    .next()
+                    .unwrap_or(path),
+            )
+            .unwrap_or_else(|| path.to_string());
+
         self.get_page(path)
+            .or_else(|| self.get_page(&resolved_path))
             .and_then(|page| page.get_navbar_state())
             .unwrap_or_default()
     }

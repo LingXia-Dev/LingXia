@@ -165,12 +165,32 @@ fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
         .collect()
 }
 
+fn resolve_dialog_default_path(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
+
+    let resolved = lxapp
+        .resolve_accessible_path(trimmed)
+        .map_err(|err| crate::i18n::js_error_from_lxapp_error(&err))?;
+
+    Ok(resolved.to_string_lossy().into_owned())
+}
+
 async fn choose_file(
     ctx: JSContext,
     options: Optional<JSChooseFileOptions>,
 ) -> JSResult<ChooseFileResultObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
+    let default_path = opts
+        .default_path
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| resolve_dialog_default_path(&lxapp, value))
+        .transpose()?
+        .filter(|path| !path.is_empty());
 
     let filters = opts
         .filters
@@ -194,7 +214,7 @@ async fn choose_file(
             multiple: opts.multiple.unwrap_or(false),
             filters,
             title: opts.title,
-            default_path: opts.default_path,
+            default_path,
         })
         .await
         .map_err(|e| js_error_from_platform_error(&e))?;
@@ -217,12 +237,19 @@ async fn choose_directory(
 ) -> JSResult<ChooseDirectoryResultObj> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
+    let default_path = opts
+        .default_path
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| resolve_dialog_default_path(&lxapp, value))
+        .transpose()?
+        .filter(|path| !path.is_empty());
 
     let result = lxapp
         .runtime
         .choose_directory(ChooseDirectoryRequest {
             title: opts.title,
-            default_path: opts.default_path,
+            default_path,
         })
         .await
         .map_err(|e| js_error_from_platform_error(&e))?;

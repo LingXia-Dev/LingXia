@@ -2,11 +2,13 @@ package com.lingxia.lxapp
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -26,8 +28,11 @@ import androidx.core.view.WindowInsetsCompat
 import android.provider.Settings
 import android.content.pm.ActivityInfo
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.lxapp.LxNavBarUtils
 
@@ -279,6 +284,22 @@ class LxAppActivity : AppCompatActivity() {
     private var pendingNavBarVisibility: Int? = null
     private var shouldRestoreOverlayOrder = false
     private var lastDispatchedDeviceOrientation: String? = null
+    private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var pendingHostFileDialogCallback: ((List<String>?) -> Unit)? = null
+    private val fileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val callback = pendingFileChooserCallback
+        pendingFileChooserCallback = null
+        callback?.onReceiveValue(resolveFileChooserResult(result.resultCode, result.data))
+    }
+    private val hostFileDialogLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val callback = pendingHostFileDialogCallback
+        pendingHostFileDialogCallback = null
+        callback?.invoke(resolveHostFileDialogResult(result.resultCode, result.data))
+    }
 
     private fun ensureRuntimeReady(
         targetAppId: String,
@@ -469,6 +490,105 @@ class LxAppActivity : AppCompatActivity() {
                 }
             })
         }
+    }
+
+    fun openWebFileChooser(
+        callback: ValueCallback<Array<Uri>>?,
+        params: WebChromeClient.FileChooserParams?
+    ): Boolean {
+        if (callback == null) {
+            return false
+        }
+
+        pendingFileChooserCallback?.onReceiveValue(null)
+        pendingFileChooserCallback = callback
+
+        val intent = try {
+            params?.createIntent() ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "create file chooser intent failed, fallback to ACTION_GET_CONTENT", error)
+            Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+        }
+
+        val acceptTypes = params?.acceptTypes
+            ?.mapNotNull { it?.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: emptyList()
+        val normalizedTypes = acceptTypes
+            .flatMap { raw -> raw.split(',') }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        val primaryType = normalizedTypes.firstOrNull()?.let {
+            if (it.startsWith(".")) "*/*" else it
+        } ?: "*/*"
+
+        intent.type = primaryType
+        if (normalizedTypes.size > 1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, normalizedTypes.toTypedArray())
+        }
+        if (params?.mode == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+
+        return try {
+            fileChooserLauncher.launch(intent)
+            true
+        } catch (error: Throwable) {
+            Log.e(TAG, "launch file chooser failed", error)
+            pendingFileChooserCallback = null
+            callback.onReceiveValue(null)
+            false
+        }
+    }
+
+    fun openHostFileDialog(intent: Intent, callback: (List<String>?) -> Unit): Boolean {
+        pendingHostFileDialogCallback?.invoke(null)
+        pendingHostFileDialogCallback = callback
+        return try {
+            hostFileDialogLauncher.launch(intent)
+            true
+        } catch (error: Throwable) {
+            Log.e(TAG, "launch host file dialog failed", error)
+            pendingHostFileDialogCallback = null
+            callback(null)
+            false
+        }
+    }
+
+    private fun resolveFileChooserResult(resultCode: Int, data: Intent?): Array<Uri>? {
+        if (resultCode != RESULT_OK) {
+            return null
+        }
+
+        val uris = mutableListOf<Uri>()
+        data?.data?.let { uris.add(it) }
+        val clipData = data?.clipData
+        if (clipData != null) {
+            for (index in 0 until clipData.itemCount) {
+                clipData.getItemAt(index)?.uri?.let { uris.add(it) }
+            }
+        }
+        return uris.distinct().takeIf { it.isNotEmpty() }?.toTypedArray()
+    }
+
+    private fun resolveHostFileDialogResult(resultCode: Int, data: Intent?): List<String>? {
+        if (resultCode != RESULT_OK) {
+            return emptyList()
+        }
+
+        val values = mutableListOf<String>()
+        data?.data?.toString()?.let { values.add(it) }
+        val clipData = data?.clipData
+        if (clipData != null) {
+            for (index in 0 until clipData.itemCount) {
+                clipData.getItemAt(index)?.uri?.toString()?.let { values.add(it) }
+            }
+        }
+        return values.distinct()
     }
 
     /**
@@ -1093,6 +1213,10 @@ class LxAppActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         isDestroyed = true
+        pendingFileChooserCallback?.onReceiveValue(null)
+        pendingFileChooserCallback = null
+        pendingHostFileDialogCallback?.invoke(null)
+        pendingHostFileDialogCallback = null
 
         // Destroy native components before pausing WebView
         currentWebView?.let { NativeBridge.notifyPageDestroyed(it) }

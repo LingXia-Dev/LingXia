@@ -4,7 +4,7 @@ import QuickLook
 import UIKit
 
 @MainActor
-enum LxAppDocument {
+enum LxAppFile {
     fileprivate static var previewCoordinator: IOSDocumentPreviewCoordinator?
 
     @discardableResult
@@ -99,8 +99,8 @@ private final class IOSDocumentPreviewCoordinator: NSObject, QLPreviewController
     }
 
     func previewControllerDidDismiss(_ controller: QLPreviewController) {
-        if LxAppDocument.previewCoordinator === self {
-            LxAppDocument.previewCoordinator = nil
+        if LxAppFile.previewCoordinator === self {
+            LxAppFile.previewCoordinator = nil
         }
     }
 
@@ -119,7 +119,7 @@ import Foundation
 import Quartz
 
 @MainActor
-enum LxAppDocument {
+enum LxAppFile {
     static var qlController: MacDocumentQuickLookController?
 
     static func clearQLController(_ controller: MacDocumentQuickLookController? = nil) {
@@ -198,7 +198,7 @@ final class MacDocumentQuickLookController: NSObject, @preconcurrency QLPreviewP
         removeCloseObserver()
         panel?.delegate = nil
         panel?.dataSource = nil
-        LxAppDocument.clearQLController(self)
+        LxAppFile.clearQLController(self)
 
         if shouldClosePanel {
             panel?.orderOut(nil)
