@@ -371,9 +371,10 @@
 
     var row1 = document.createElement('div');
     row1.className = 'item-row';
-    var nameLink = document.createElement('a');
-    nameLink.href = '#'; nameLink.className = 'file-name file-name-link'; nameLink.hidden = true;
-    nameLink.setAttribute('role', 'button');
+    var nameLink = document.createElement('button');
+    nameLink.type = 'button';
+    nameLink.className = 'file-name file-name-link';
+    nameLink.hidden = true;
     var nameSpan = document.createElement('span');
     nameSpan.className = 'file-name';
     var controls = document.createElement('div');
@@ -434,7 +435,6 @@
     el._r = r;
 
     nameLink.addEventListener('click', function (e) {
-      e.preventDefault();
       var tid = el.dataset.taskId;
       console.log('[DL] open', tid);
       api().open({ taskId: tid }).then(function () { console.log('[DL] open OK', tid); }, function (err) { console.error('[DL] open FAIL', tid, err); });
