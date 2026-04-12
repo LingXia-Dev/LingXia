@@ -26,8 +26,8 @@
       <template v-if="activeDemo === 'openFile'">
         <div class="bg-white rounded-lg shadow-sm">
           <div class="px-4 py-4 border-b border-gray-100">
-            <div class="text-base text-gray-900 font-medium">PDF via fetch()</div>
-            <div class="text-xs text-gray-500 mt-1">Standard fetch validation, then open the resolved PDF URL in-app.</div>
+            <div class="text-base text-gray-900 font-medium">PDF via lx.downloadFile()</div>
+            <div class="text-xs text-gray-500 mt-1">Download to usercache with progress and pause/continue, then open with the native PDF viewer.</div>
           </div>
           <div class="px-4 py-4 space-y-3">
             <div>
@@ -48,15 +48,44 @@
                 isPdfDownloading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               ]"
             >
-              {{ isPdfDownloading ? 'Fetching PDF...' : 'Fetch and Preview PDF' }}
+              {{ pdfPrimaryButtonText }}
             </button>
+            <div v-if="showPdfProgress" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+              <div class="flex items-center justify-between text-xs text-blue-700">
+                <span>PDF Transfer</span>
+                <span>{{ pdfProgressKnown ? `${Math.round(pdfDownloadProgress)}%` : 'Streaming' }}</span>
+              </div>
+              <div v-if="pdfProgressKnown" class="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
+                <div
+                  class="h-full rounded-full bg-blue-500 transition-all duration-300"
+                  :style="{ width: `${pdfDownloadProgress}%` }"
+                ></div>
+              </div>
+              <div v-else class="mt-2 flex items-center gap-2 text-[11px] text-blue-700">
+                <span class="inline-flex h-2.5 w-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                <span>Waiting for precise progress from runtime…</span>
+              </div>
+              <div class="mt-2 text-xs text-blue-900">{{ pdfProgressText }}</div>
+              <button
+                @click="togglePdfTransfer"
+                :disabled="!isPdfDownloading || !pdfSupportsTransferControl"
+                :class="[
+                  'mt-3 w-full rounded-lg py-2 text-sm font-medium',
+                  isPdfDownloading && pdfSupportsTransferControl
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                    : 'bg-blue-100 text-blue-300 cursor-not-allowed'
+                ]"
+              >
+                {{ pdfTransferButtonText }}
+              </button>
+            </div>
           </div>
         </div>
 
         <div class="bg-white rounded-lg shadow-sm">
           <div class="px-4 py-4 border-b border-gray-100">
-            <div class="text-base text-gray-900 font-medium">Office via lx.downloadFile()</div>
-            <div class="text-xs text-gray-500 mt-1">Supports: doc, docx, xls, xlsx, ppt, pptx. Promise-like task with progress and pause/continue.</div>
+            <div class="text-base text-gray-900 font-medium">Office via fetch()</div>
+            <div class="text-xs text-gray-500 mt-1">Use web-standard fetch in page logic, save into usercache, then open with the native file API.</div>
           </div>
           <div class="px-4 py-4 space-y-3">
             <div>
@@ -82,41 +111,16 @@
             </div>
             <button
               @click="openOffice"
-              :disabled="isOfficeDownloading"
+              :disabled="isOfficeFetching"
               :class="[
                 'w-full py-3 rounded-lg text-white font-medium',
-                isOfficeDownloading ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
+                isOfficeFetching ? 'bg-gray-400 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
               ]"
             >
               {{ officePrimaryButtonText }}
             </button>
-            <div class="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
-              <div class="flex items-center justify-between text-xs text-blue-700">
-                <span>Transfer Progress</span>
-                <span>{{ officeProgressKnown ? `${Math.round(officeDownloadProgress)}%` : 'Streaming' }}</span>
-              </div>
-              <div class="mt-2 h-2 overflow-hidden rounded-full bg-blue-100">
-                <div
-                  :class="[
-                    'h-full rounded-full bg-blue-500 transition-all duration-300',
-                    officeProgressKnown ? '' : 'animate-pulse'
-                  ]"
-                  :style="{ width: officeProgressKnown ? `${officeDownloadProgress}%` : '42%' }"
-                ></div>
-              </div>
-              <div class="mt-2 text-xs text-blue-900">{{ officeProgressText }}</div>
-              <button
-                @click="toggleOfficeTransfer"
-                :disabled="!isOfficeDownloading || !officeSupportsTransferControl"
-                :class="[
-                  'mt-3 w-full rounded-lg py-2 text-sm font-medium',
-                  isOfficeDownloading && officeSupportsTransferControl
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                    : 'bg-blue-100 text-blue-300 cursor-not-allowed'
-                ]"
-              >
-                {{ officeTransferButtonText }}
-              </button>
+            <div v-if="officeStatusText" class="rounded-xl border border-blue-100 bg-blue-50/70 p-3 text-xs text-blue-900">
+              {{ officeStatusText }}
             </div>
           </div>
         </div>
@@ -125,7 +129,7 @@
       <div v-else class="bg-white rounded-lg shadow-sm">
         <div class="px-4 py-4 border-b border-gray-100">
           <div class="text-base text-gray-900 font-medium">Choose File</div>
-          <div class="text-xs text-gray-500 mt-1">Open the native chooser directly at usercache.</div>
+          <div class="text-xs text-gray-500 mt-1">Open the host chooser directly inside usercache instead of the system recent-files picker.</div>
         </div>
         <div class="px-4 py-4 space-y-3">
           <div class="text-sm text-gray-600">Default folder:</div>
@@ -182,13 +186,14 @@ type PageData = {
   chooseFileSelectedPath?: string;
   chooseFileSelectedType?: string;
   isPdfDownloading?: boolean;
-  isOfficeDownloading?: boolean;
-  officeDownloadState?: string;
-  officeProgressKnown?: boolean;
-  officeDownloadProgress?: number;
-  officeProgressText?: string;
-  officeSupportsTransferControl?: boolean;
-  officeTransferButtonText?: string;
+  pdfDownloadState?: string;
+  pdfProgressKnown?: boolean;
+  pdfDownloadProgress?: number;
+  pdfProgressText?: string;
+  pdfSupportsTransferControl?: boolean;
+  pdfTransferButtonText?: string;
+  isOfficeFetching?: boolean;
+  officeStatusText?: string;
 };
 
 type PageActions = {
@@ -200,7 +205,7 @@ type PageActions = {
   openChosenFile(): void;
   openPdf(): void;
   openOffice(): void;
-  toggleOfficeTransfer(): void;
+  togglePdfTransfer(): void;
 };
 
 const { data, actions } = useLxPage<PageData, PageActions>();
@@ -213,7 +218,7 @@ const {
   openChosenFile,
   openPdf,
   openOffice,
-  toggleOfficeTransfer,
+  togglePdfTransfer,
 } = actions;
 
 const activeDemo = computed<ActiveDemo>(() => data.activeDemo || 'openFile');
@@ -226,15 +231,20 @@ const chooseFileStatusText = computed(() => data.chooseFileStatusText || 'Choose
 const chooseFileSelectedPath = computed(() => data.chooseFileSelectedPath || '');
 const chooseFileSelectedType = computed(() => data.chooseFileSelectedType || '');
 const isPdfDownloading = computed(() => Boolean(data.isPdfDownloading));
-const isOfficeDownloading = computed(() => Boolean(data.isOfficeDownloading));
-const officeProgressKnown = computed(() => Boolean(data.officeProgressKnown));
-const officeDownloadProgress = computed(() => data.officeDownloadProgress || 0);
-const officeProgressText = computed(() => data.officeProgressText || 'Not started yet');
-const officeSupportsTransferControl = computed(() => Boolean(data.officeSupportsTransferControl));
-const officeTransferButtonText = computed(() => data.officeTransferButtonText || 'Pause Download');
-const officePrimaryButtonText = computed(() => {
-  if (data.officeDownloadState === 'paused') return 'Download Paused';
-  if (isOfficeDownloading.value) return 'Downloading...';
-  return 'Download and Open File';
+const pdfDownloadState = computed(() => data.pdfDownloadState || 'idle');
+const pdfProgressKnown = computed(() => Boolean(data.pdfProgressKnown));
+const pdfDownloadProgress = computed(() => data.pdfDownloadProgress || 0);
+const pdfProgressText = computed(() => data.pdfProgressText || '');
+const pdfSupportsTransferControl = computed(() => Boolean(data.pdfSupportsTransferControl));
+const pdfTransferButtonText = computed(() => data.pdfTransferButtonText || 'Pause Download');
+const showPdfProgress = computed(() => pdfDownloadState.value !== 'idle' || !!data.pdfProgressText);
+const pdfPrimaryButtonText = computed(() => {
+  if (pdfDownloadState.value === 'paused') return 'Download Paused';
+  if (pdfDownloadState.value === 'opening') return 'Opening File...';
+  if (isPdfDownloading.value) return 'Downloading...';
+  return 'Download and Preview PDF';
 });
+const isOfficeFetching = computed(() => Boolean(data.isOfficeFetching));
+const officeStatusText = computed(() => data.officeStatusText || '');
+const officePrimaryButtonText = computed(() => isOfficeFetching.value ? 'Fetching and Opening File...' : 'Fetch and Open File');
 </script>

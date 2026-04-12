@@ -68,12 +68,35 @@ function supportsTransferControl(task) {
   );
 }
 
-let officeDownloadTask = null;
-let officeDownloadSession = 0;
+let pdfDownloadTask = null;
+let pdfDownloadSession = 0;
 
-async function observeOfficeTask(page, task, sessionId) {
+function guessFileNameFromUrl(url, fallbackExt = "") {
+  const clean = String(url || "").split("#")[0].split("?")[0];
+  const fileName = clean.split("/").pop() || "";
+  if (fileName && fileName.includes(".")) {
+    return fileName;
+  }
+  const ext = fallbackExt ? `.${fallbackExt.replace(/^\./, "")}` : "";
+  return `fetched-file-${Date.now()}${ext}`;
+}
+
+function sanitizeFileName(name) {
+  const sanitized = String(name || "")
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return sanitized || `file-${Date.now()}`;
+}
+
+function userCacheFilePath(fileName) {
+  const base = (lx.env.USER_CACHE_PATH || "lx://usercache").replace(/\/+$/, "");
+  return `${base}/${sanitizeFileName(fileName)}`;
+}
+
+async function observePdfTask(page, task, sessionId) {
   for await (const event of task) {
-    if (sessionId !== officeDownloadSession) {
+    if (sessionId !== pdfDownloadSession) {
       return;
     }
 
@@ -84,13 +107,13 @@ async function observeOfficeTask(page, task, sessionId) {
         !!event.totalBytes &&
         event.totalBytes > 0;
       page.setData({
-        officeDownloadState: "running",
-        officeTransferButtonText: "Pause Download",
-        officeProgressKnown: hasPreciseProgress,
-        officeDownloadProgress: hasPreciseProgress
+        pdfDownloadState: "running",
+        pdfTransferButtonText: "Pause Download",
+        pdfProgressKnown: hasPreciseProgress,
+        pdfDownloadProgress: hasPreciseProgress
           ? Number((event.progress * 100).toFixed(1))
           : 0,
-        officeProgressText: formatProgressText(
+        pdfProgressText: formatProgressText(
           event.progress,
           event.downloadedBytes,
           event.totalBytes,
@@ -101,38 +124,39 @@ async function observeOfficeTask(page, task, sessionId) {
 
     if (event.kind === "paused") {
       page.setData({
-        officeDownloadState: "paused",
-        officeTransferButtonText: "Continue Download",
+        pdfDownloadState: "paused",
+        pdfTransferButtonText: "Continue Download",
       });
       continue;
     }
 
     if (event.kind === "resumed") {
       page.setData({
-        officeDownloadState: "running",
-        officeTransferButtonText: "Pause Download",
-        officeProgressText: page.data.officeProgressText || "Resuming transfer...",
+        pdfDownloadState: "running",
+        pdfTransferButtonText: "Pause Download",
+        pdfProgressText: page.data.pdfProgressText || "Resuming transfer...",
       });
       continue;
     }
 
     if (event.kind === "canceled") {
       page.setData({
-        officeDownloadState: "idle",
-        officeTransferButtonText: "Pause Download",
-        officeProgressText: "Download canceled",
+        pdfDownloadState: "idle",
+        pdfTransferButtonText: "Pause Download",
+        pdfProgressText: "Download canceled",
       });
       continue;
     }
 
     if (event.kind === "success") {
       page.setData({
-        officeDownloadState: "completed",
-        officeTransferButtonText: "Pause Download",
-        officeDownloadProgress: 100,
-        officeProgressText: event.result?.filePath
-          ? `Saved to ${event.result.filePath}`
-          : "Download complete",
+        pdfDownloadState: "opening",
+        pdfTransferButtonText: "Pause Download",
+        pdfProgressKnown: true,
+        pdfDownloadProgress: 95,
+        pdfProgressText: event.result?.filePath
+          ? `Downloaded to ${event.result.filePath}, opening...`
+          : "Download complete, opening...",
       });
     }
   }
@@ -141,7 +165,7 @@ async function observeOfficeTask(page, task, sessionId) {
 Page({
   data: {
     activeDemo: "openFile",
-    pdfUrl: "https://ontheline.trincoll.edu/images/bookdown/sample-local-pdf.pdf",
+    pdfUrl: "https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf",
     officeUrl: "https://example-files.online-convert.com/document/docx/example.docx",
     officeFileType: "docx",
     showMenu: true,
@@ -150,13 +174,14 @@ Page({
     chooseFileSelectedPath: "",
     chooseFileSelectedType: "",
     isPdfDownloading: false,
-    isOfficeDownloading: false,
-    officeDownloadState: "idle",
-    officeProgressKnown: false,
-    officeDownloadProgress: 0,
-    officeProgressText: "Not started yet",
-    officeSupportsTransferControl: false,
-    officeTransferButtonText: "Pause Download",
+    pdfDownloadState: "idle",
+    pdfProgressKnown: false,
+    pdfDownloadProgress: 0,
+    pdfProgressText: "",
+    pdfSupportsTransferControl: false,
+    pdfTransferButtonText: "Pause Download",
+    isOfficeFetching: false,
+    officeStatusText: "",
   },
 
   onLoad: async function (options = {}) {
@@ -165,13 +190,22 @@ Page({
       activeDemo: requestedSection,
       chooseFileDefaultPath: lx.env.USER_CACHE_PATH || "",
       chooseFileStatusText: "Choose a file from usercache",
+      isPdfDownloading: false,
+      pdfDownloadState: "idle",
+      pdfProgressKnown: false,
+      pdfDownloadProgress: 0,
+      pdfProgressText: "",
+      pdfSupportsTransferControl: false,
+      pdfTransferButtonText: "Pause Download",
+      isOfficeFetching: false,
+      officeStatusText: "",
     });
   },
 
   onUnload: function () {
-    officeDownloadSession += 1;
-    const task = officeDownloadTask;
-    officeDownloadTask = null;
+    pdfDownloadSession += 1;
+    const task = pdfDownloadTask;
+    pdfDownloadTask = null;
     if (task) {
       task.cancel().catch(() => {});
     }
@@ -205,43 +239,101 @@ Page({
       return;
     }
     if (this.data.isPdfDownloading) return;
-    this.setData({ isPdfDownloading: true });
+    this.setData({
+      isPdfDownloading: true,
+      pdfDownloadState: "running",
+      pdfProgressKnown: false,
+      pdfDownloadProgress: 0,
+      pdfProgressText: "Starting transfer...",
+      pdfSupportsTransferControl: false,
+      pdfTransferButtonText: "Pause Download",
+    });
     try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error(`Fetch failed with ${response.status}`);
+      const task = lx.downloadFile({
+        url,
+      });
+      pdfDownloadTask = task;
+      const sessionId = pdfDownloadSession + 1;
+      pdfDownloadSession = sessionId;
+      const canObserveProgress = supportsDownloadProgress(task);
+      const canControlTransfer = supportsTransferControl(task);
+      this.setData({
+        pdfSupportsTransferControl: canControlTransfer,
+        pdfTransferButtonText: canControlTransfer
+          ? "Pause Download"
+          : "Pause/Continue Unavailable",
+        pdfProgressText: canObserveProgress
+          ? "Starting transfer..."
+          : "Downloading with promise-style result only...",
+      });
+      const observer = canObserveProgress
+        ? observePdfTask(this, task, sessionId)
+        : Promise.resolve();
+      const result = await task;
+      await observer;
+      if (sessionId !== pdfDownloadSession) {
+        return;
       }
-      await lx.openURL({
-        url: response.url || url,
-        target: "self",
+      this.setData({
+        pdfDownloadState: "opening",
+        pdfProgressKnown: true,
+        pdfDownloadProgress: 95,
+        pdfProgressText: `Downloaded to ${result.filePath}, opening...`,
+      });
+      await lx.openFile({
+        filePath: result.filePath,
+        fileType: "pdf",
+        mode: "auto",
+        showMenu: this.data.showMenu,
+      });
+      if (sessionId !== pdfDownloadSession) {
+        return;
+      }
+      this.setData({
+        pdfDownloadState: "completed",
+        pdfProgressKnown: true,
+        pdfDownloadProgress: 100,
+        pdfProgressText: `Opened ${result.filePath}`,
       });
     } catch (error) {
-      lx.showToast({ title: error?.message || "Fetch failed", icon: "none" });
+      this.setData({
+        pdfDownloadState: "idle",
+        pdfSupportsTransferControl: false,
+        pdfTransferButtonText: "Pause Download",
+        pdfProgressText: isCancelError(error)
+          ? "Download canceled"
+          : error?.message || "Open PDF failed",
+      });
+      lx.showToast({ title: error?.message || "Open PDF failed", icon: "none" });
     } finally {
-      this.setData({ isPdfDownloading: false });
+      pdfDownloadTask = null;
+      this.setData({
+        isPdfDownloading: false,
+        pdfSupportsTransferControl: false,
+      });
     }
   },
 
-  toggleOfficeTransfer: async function () {
-    const task = officeDownloadTask;
+  togglePdfTransfer: async function () {
+    const task = pdfDownloadTask;
     if (!task || !supportsTransferControl(task)) {
       lx.showToast({ title: "Current runtime does not support pause/resume yet", icon: "none" });
       return;
     }
 
     try {
-      if (this.data.officeDownloadState === "paused") {
+      if (this.data.pdfDownloadState === "paused") {
         this.setData({
-          officeTransferButtonText: "Resuming...",
-          officeProgressText: this.data.officeProgressText || "Resuming transfer...",
+          pdfTransferButtonText: "Resuming...",
+          pdfProgressText: this.data.pdfProgressText || "Resuming transfer...",
         });
         await task.resume();
         return;
       }
 
-      if (this.data.officeDownloadState === "running") {
+      if (this.data.pdfDownloadState === "running") {
         this.setData({
-          officeTransferButtonText: "Pausing...",
+          pdfTransferButtonText: "Pausing...",
         });
         await task.pause();
       }
@@ -319,74 +411,42 @@ Page({
       lx.showToast({ title: "Please enter file type", icon: "none" });
       return;
     }
-    if (officeDownloadTask) return;
-
-    const task = lx.downloadFile({ url });
-    officeDownloadTask = task;
-    const sessionId = officeDownloadSession + 1;
-    officeDownloadSession = sessionId;
-    const canObserveProgress = supportsDownloadProgress(task);
-    const canControlTransfer = supportsTransferControl(task);
+    if (this.data.isOfficeFetching) return;
     this.setData({
-      isOfficeDownloading: true,
-      officeDownloadState: "running",
-      officeProgressKnown: false,
-      officeDownloadProgress: 0,
-      officeProgressText: canObserveProgress
-        ? "Starting transfer..."
-        : "Downloading with promise-style result only...",
-      officeSupportsTransferControl: canControlTransfer,
-      officeTransferButtonText: canControlTransfer
-        ? "Pause Download"
-        : "Pause/Continue Unavailable",
+      isOfficeFetching: true,
+      officeStatusText: "Fetching document...",
     });
-
-    const observer = canObserveProgress
-      ? observeOfficeTask(this, task, sessionId)
-      : Promise.resolve();
-
     try {
-      const result = await task;
-      await observer;
-      if (sessionId !== officeDownloadSession) {
-        return;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Fetch failed with ${response.status}`);
       }
+      const buffer = await response.arrayBuffer();
+      const fileName = guessFileNameFromUrl(
+        response.url || url,
+        fileType || detectFileType(response.url || url),
+      );
+      const filePath = userCacheFilePath(fileName);
+      await Rong.write(filePath, buffer);
       this.setData({
-        officeDownloadState: "completed",
-        officeProgressKnown: true,
-        officeDownloadProgress: 100,
-        officeProgressText: `Saved to ${result.filePath}`,
+        officeStatusText: `Fetched ${formatBytes(buffer.byteLength)}, opening...`,
       });
       await lx.openFile({
-        filePath: result.filePath,
+        filePath,
         fileType,
         mode: "auto",
         showMenu: this.data.showMenu,
       });
-    } catch (error) {
-      await observer.catch(() => {});
-      if (sessionId !== officeDownloadSession) {
-        return;
-      }
       this.setData({
-        officeDownloadState: "idle",
-        officeSupportsTransferControl: false,
-        officeTransferButtonText: "Pause Download",
-        officeProgressText: isCancelError(error)
-          ? "Download canceled"
-          : error?.message || "Download failed",
+        officeStatusText: `Opened ${filePath}`,
       });
-      if (!isCancelError(error)) {
-        lx.showToast({ title: error?.message || "Download failed", icon: "none" });
-      }
+    } catch (error) {
+      this.setData({
+        officeStatusText: error?.message || "Fetch failed",
+      });
+      lx.showToast({ title: error?.message || "Fetch failed", icon: "none" });
     } finally {
-      if (sessionId === officeDownloadSession) {
-        officeDownloadTask = null;
-        this.setData({
-          isOfficeDownloading: false,
-          officeSupportsTransferControl: false,
-        });
-      }
+      this.setData({ isOfficeFetching: false });
     }
   },
 });
