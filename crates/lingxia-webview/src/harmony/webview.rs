@@ -3,7 +3,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
-use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy};
+use crate::traits::{
+    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
+};
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
     WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_delegate,
@@ -1509,6 +1511,48 @@ pub fn on_download_start(
     };
     webview.handle_download(request);
     true
+}
+
+pub fn on_file_chooser_requested(
+    webtag_str: &str,
+    request_id: &str,
+    source_url: &str,
+    accept_types_json: &str,
+    allow_multiple: bool,
+    allow_directories: bool,
+    capture: bool,
+) -> bool {
+    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = find_webview(&webtag) else {
+        return false;
+    };
+
+    let accept_types: Vec<String> = serde_json::from_str(accept_types_json).unwrap_or_default();
+    let request = FileChooserRequest {
+        accept_types,
+        allow_multiple,
+        allow_directories,
+        capture,
+        source_page_url: (!source_url.trim().is_empty()).then(|| source_url.to_string()),
+    };
+
+    let request_id_owned = request_id.to_string();
+    webview.handle_file_chooser(request, move |response| {
+        let payload = match response {
+            FileChooserResponse::Cancel => "[]".to_string(),
+            FileChooserResponse::Files(files) => {
+                let selected: Vec<String> = files
+                    .into_iter()
+                    .filter_map(|file| file.uri.or(file.path))
+                    .collect();
+                serde_json::to_string(&selected).unwrap_or_else(|_| "[]".to_string())
+            }
+        };
+        let _ = call_arkts(
+            "completeWebFileChooserRequest",
+            &[&request_id_owned, &payload],
+        );
+    })
 }
 
 fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind {

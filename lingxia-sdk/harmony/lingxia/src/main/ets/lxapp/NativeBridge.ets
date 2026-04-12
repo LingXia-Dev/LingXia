@@ -26,6 +26,7 @@ import { animationTypeFromInt } from './NavigationBar';
 import { PermissionManager } from './PermissionManager';
 import { LxNativeVideoPlayer } from './media/LxNativeVideoPlayer';
 import { updateNativeComponentProps } from './NativeComponents/NativeBridgeInternal';
+import { completeWebFileChooserRequest } from './WebFileChooserBridge';
 import { getCurrentLxapp, getLxappSessionId, openBrowserTab, type CurrentLxApp } from 'liblingxia.so';
 
 const DOMAIN = 0x0000;
@@ -211,6 +212,10 @@ class NativeBridge {
     // WebView user agent
     this.register('setUserAgent', (webtag: string, userAgent: string) => {
       return setUserAgent(webtag, userAgent);
+    });
+
+    this.register('completeWebFileChooserRequest', (requestId: string, selectedJson: string): boolean => {
+      return completeWebFileChooserRequest(requestId, selectedJson);
     });
 
     // Toast APIs

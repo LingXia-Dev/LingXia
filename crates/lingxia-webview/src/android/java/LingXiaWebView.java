@@ -11,6 +11,7 @@ import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
+import android.webkit.ValueCallback;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -20,6 +21,7 @@ import androidx.webkit.WebViewFeature;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -38,6 +40,7 @@ public class LingXiaWebView extends WebView {
     private static final long PROXY_TOTAL_TIMEOUT_MS =
             PROXY_MAIN_THREAD_HOP_TIMEOUT_MS + PROXY_CALLBACK_TIMEOUT_MS + 1000L;
     private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
+    private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
 
     // MessagePort bridge instance (API 23+ only), accessed via cached reflection
     private Object messagePortBridge;
@@ -51,6 +54,8 @@ public class LingXiaWebView extends WebView {
     private boolean pageLoaded = false;
     private CreateOptions createOptions = CreateOptions.strictDefault();
     private static volatile boolean sHttpProxyEnabled = false;
+    private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
+            new ConcurrentHashMap<>();
 
     public static class WebResourceResponseData {
         public final String mimeType;
@@ -91,6 +96,7 @@ public class LingXiaWebView extends WebView {
         public boolean domStorageEnabled;
         public boolean databaseEnabled;
         public boolean hasDownloadHandler;
+        public boolean hasFileChooserHandler;
 
         static CreateOptions strictDefault() {
             CreateOptions options = new CreateOptions();
@@ -98,6 +104,7 @@ public class LingXiaWebView extends WebView {
             options.domStorageEnabled = false;
             options.databaseEnabled = false;
             options.hasDownloadHandler = false;
+            options.hasFileChooserHandler = false;
             return options;
         }
 
@@ -107,6 +114,7 @@ public class LingXiaWebView extends WebView {
             options.domStorageEnabled = true;
             options.databaseEnabled = true;
             options.hasDownloadHandler = false;
+            options.hasFileChooserHandler = false;
             return options;
         }
 
@@ -136,6 +144,7 @@ public class LingXiaWebView extends WebView {
                 }
                 CreateOptions options = fromProfile(profile);
                 options.hasDownloadHandler = obj.optBoolean("has_download_handler", false);
+                options.hasFileChooserHandler = obj.optBoolean("has_file_chooser_handler", false);
                 return options;
             } catch (Throwable e) {
                 Log.w(TAG, "Failed to decode create options token, fallback to strict default", e);
@@ -364,6 +373,7 @@ public class LingXiaWebView extends WebView {
                 + ", domStorage=" + this.createOptions.domStorageEnabled
                 + ", database=" + this.createOptions.databaseEnabled
                 + ", hasDownloadHandler=" + this.createOptions.hasDownloadHandler
+                + ", hasFileChooserHandler=" + this.createOptions.hasFileChooserHandler
         );
     }
 
@@ -628,6 +638,74 @@ public class LingXiaWebView extends WebView {
         });
     }
 
+    public boolean openFileChooser(
+        final ValueCallback<android.net.Uri[]> filePathCallback,
+        final WebChromeClient.FileChooserParams fileChooserParams
+    ) {
+        if (filePathCallback == null) {
+            return false;
+        }
+        if (createOptions == null || !createOptions.hasFileChooserHandler) {
+            filePathCallback.onReceiveValue(null);
+            Log.w(TAG, "openFileChooser ignored: no registered file chooser handler");
+            return false;
+        }
+
+        final long requestId = sFileChooserRequestSeq.incrementAndGet();
+        pendingFileChoosers.put(requestId, filePathCallback);
+        final String[] acceptTypes = fileChooserParams != null ? fileChooserParams.getAcceptTypes() : new String[0];
+        final boolean allowMultiple = fileChooserParams != null
+                && fileChooserParams.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE;
+        final boolean capture = fileChooserParams != null && fileChooserParams.isCaptureEnabled();
+        final String sourceUrl = getUrl() != null ? getUrl() : "";
+
+        try {
+            onFileChooserRequested(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                requestId,
+                sourceUrl,
+                acceptTypes != null ? acceptTypes : new String[0],
+                allowMultiple,
+                false,
+                capture
+            );
+        } catch (Throwable error) {
+            Log.e(TAG, "Failed to dispatch onFileChooserRequested", error);
+            ValueCallback<android.net.Uri[]> callback = pendingFileChoosers.remove(requestId);
+            if (callback != null) {
+                callback.onReceiveValue(null);
+            }
+            return false;
+        }
+        return true;
+    }
+
+    public void completeFileChooserRequest(final long requestId, final String[] selectedPaths) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                ValueCallback<android.net.Uri[]> callback = pendingFileChoosers.remove(requestId);
+                if (callback == null) {
+                    return;
+                }
+
+                if (selectedPaths == null || selectedPaths.length == 0) {
+                    callback.onReceiveValue(null);
+                    return;
+                }
+
+                android.net.Uri[] uris = new android.net.Uri[selectedPaths.length];
+                for (int i = 0; i < selectedPaths.length; i++) {
+                    String raw = selectedPaths[i] != null ? selectedPaths[i].trim() : "";
+                    uris[i] = raw.isEmpty() ? null : android.net.Uri.parse(raw);
+                }
+                callback.onReceiveValue(uris);
+            }
+        });
+    }
+
     /**
      * Load HTML data ensuring main thread execution
      */
@@ -701,6 +779,12 @@ public class LingXiaWebView extends WebView {
                         Log.w(TAG, "Error removing WebView from parent: " + e.getMessage());
                     }
 
+                    for (ValueCallback<android.net.Uri[]> callback : pendingFileChoosers.values()) {
+                        if (callback != null) {
+                            callback.onReceiveValue(null);
+                        }
+                    }
+                    pendingFileChoosers.clear();
                     LingXiaWebView.super.destroy();
                     Log.d(TAG, "WebView destroyed successfully");
                 } catch (Exception e) {
@@ -736,6 +820,17 @@ public class LingXiaWebView extends WebView {
     native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
     native boolean handleNavigationPolicy(String appId, String path, long sessionId, String url);
+    native void onFileChooserRequested(
+        String appId,
+        String path,
+        long sessionId,
+        long requestId,
+        String sourceUrl,
+        String[] acceptTypes,
+        boolean allowMultiple,
+        boolean allowDirectories,
+        boolean capture
+    );
     native void onDownloadRequested(
         String appId,
         String path,

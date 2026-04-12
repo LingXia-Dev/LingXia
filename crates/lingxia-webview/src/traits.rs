@@ -66,6 +66,32 @@ pub struct DownloadRequest {
 /// app callback path instead of in-WebView download UI.
 pub type DownloadHandler = Box<dyn Fn(DownloadRequest) + Send + Sync>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileChooserRequest {
+    /// Accepted MIME types / extensions requested by the page.
+    pub accept_types: Vec<String>,
+    /// Whether multiple files may be selected.
+    pub allow_multiple: bool,
+    /// Whether directories may be selected.
+    pub allow_directories: bool,
+    /// Whether the page requested capture/live media.
+    pub capture: bool,
+    /// Source page URL that initiated the chooser when available.
+    pub source_page_url: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileChooserFile {
+    pub path: Option<String>,
+    pub uri: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileChooserResponse {
+    Cancel,
+    Files(Vec<FileChooserFile>),
+}
+
 /// Body source for WebResourceResponse
 #[derive(Debug)]
 pub enum WebResourceBody {

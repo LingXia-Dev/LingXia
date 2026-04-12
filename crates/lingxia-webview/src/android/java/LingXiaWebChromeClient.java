@@ -1,9 +1,11 @@
 package com.lingxia.webview;
 
 import android.util.Log;
+import android.net.Uri;
 import android.webkit.ConsoleMessage;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import java.lang.ref.WeakReference;
@@ -86,6 +88,22 @@ public class LingXiaWebChromeClient extends WebChromeClient {
             result.cancel();
         }
         return true;
+    }
+
+    @Override
+    public boolean onShowFileChooser(
+        WebView view,
+        ValueCallback<Uri[]> filePathCallback,
+        FileChooserParams fileChooserParams
+    ) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView == null) {
+            if (filePathCallback != null) {
+                filePathCallback.onReceiveValue(null);
+            }
+            return false;
+        }
+        return webView.openFileChooser(filePathCallback, fileChooserParams);
     }
 
     private int getLogLevel(ConsoleMessage.MessageLevel level) {

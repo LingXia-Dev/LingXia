@@ -498,6 +498,27 @@ fn on_callback(id: String, success: bool, data: String) -> bool {
 }
 
 #[napi]
+fn on_web_file_chooser_requested(
+    request_id: String,
+    webtag: String,
+    source_url: String,
+    accept_types_json: String,
+    allow_multiple: bool,
+    allow_directories: bool,
+    capture: bool,
+) -> bool {
+    lingxia_webview::platform::harmony::on_file_chooser_requested(
+        &webtag,
+        &request_id,
+        &source_url,
+        &accept_types_json,
+        allow_multiple,
+        allow_directories,
+        capture,
+    )
+}
+
+#[napi]
 pub fn camera_init(surface_id: String, facing: String) -> bool {
     log::info!(
         "[Harmony.Camera] camera_init called: surfaceId={}, facing={}",

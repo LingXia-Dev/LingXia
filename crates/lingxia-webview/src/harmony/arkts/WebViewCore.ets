@@ -14,6 +14,7 @@ const TAG = 'LingXia.WebView';
 export interface EffectiveWebViewCreateOptions {
   profile: string;
   hasDownloadHandler: boolean;
+  hasFileChooserHandler: boolean;
 }
 
 export interface WebViewDownloadRequest {
@@ -43,6 +44,7 @@ export interface WebViewHostHooks {
 interface RawOptionsToken {
   profile?: string;
   has_download_handler?: boolean;
+  has_file_chooser_handler?: boolean;
 }
 
 const PROFILE_STRICT_DEFAULT = 'strict_default';
@@ -50,7 +52,8 @@ const PROFILE_BROWSER_RELAXED = 'browser_relaxed';
 
 const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
   profile: PROFILE_STRICT_DEFAULT,
-  hasDownloadHandler: false
+  hasDownloadHandler: false,
+  hasFileChooserHandler: false
 };
 
 let hostHooks: WebViewHostHooks = {};
@@ -102,7 +105,8 @@ function bindDefaultHostHooksIfNeeded(): void {
 function strictDefaultOptions(): EffectiveWebViewCreateOptions {
   return {
     profile: STRICT_DEFAULT_OPTIONS.profile,
-    hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler
+    hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler,
+    hasFileChooserHandler: STRICT_DEFAULT_OPTIONS.hasFileChooserHandler
   };
 }
 
@@ -149,6 +153,7 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
   }
 
   normalized.hasDownloadHandler = data.has_download_handler === true;
+  normalized.hasFileChooserHandler = data.has_file_chooser_handler === true;
 
   return normalized;
 }
@@ -169,7 +174,9 @@ function decodeOptionsToken(optionsToken?: string): EffectiveWebViewCreateOption
 }
 
 function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreateOptions): boolean {
-  return a.profile === b.profile && a.hasDownloadHandler === b.hasDownloadHandler;
+  return a.profile === b.profile
+    && a.hasDownloadHandler === b.hasDownloadHandler
+    && a.hasFileChooserHandler === b.hasFileChooserHandler;
 }
 
 function notifyControllerCreated(webtag: string): void {

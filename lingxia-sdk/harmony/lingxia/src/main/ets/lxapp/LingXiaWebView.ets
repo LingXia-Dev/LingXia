@@ -18,6 +18,7 @@
  */
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
+import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
   getWebViewEmbedManager,
   handleWebViewDownloadStart,
@@ -135,6 +136,21 @@ export struct LingXiaWebView {
           event.request.getRequestUrl() ?? '',
           event.error.getErrorCode(),
           event.error.getErrorInfo() ?? 'unknown error'
+        );
+      })
+      .onShowFileSelector((event) => {
+        if (!event) {
+          return false;
+        }
+        return requestWebFileChooser(
+          this.webTag,
+          (selectedPaths: Array<string>) => {
+            event.result.handleFileList(selectedPaths);
+          },
+          event.fileSelector.getAcceptType() ?? [],
+          event.fileSelector.getMode(),
+          event.fileSelector.isCapture(),
+          ''
         );
       })
       .onAlert((event) => {

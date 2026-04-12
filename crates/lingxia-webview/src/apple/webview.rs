@@ -1,10 +1,13 @@
-use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy};
+use crate::traits::{
+    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
+    NewWindowPolicy,
+};
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{
     DownloadRequest, LoadDataRequest, LogLevel, SystemPipeReader, WebResourceResponse,
     WebViewController, WebViewError,
 };
-use block2::{Block, StackBlock};
+use block2::{Block, RcBlock, StackBlock};
 use dispatch2::DispatchQueue;
 use http::{Method, Response, StatusCode};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
@@ -30,7 +33,7 @@ use std::os::unix::net::UnixStream;
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::mpsc::sync_channel;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::{ffi::CString, ffi::c_char, ffi::c_void};
 
 use crate::webview::{
@@ -65,6 +68,94 @@ unsafe extern "C" {
     ) -> *mut AnyObject;
     fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
     fn nw_release(object: *mut AnyObject);
+    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+}
+
+type OpenPanelStringArrayCopyFn = unsafe extern "C" fn(*mut AnyObject) -> *mut AnyObject;
+
+static COPY_ALLOWED_MIME_TYPES: OnceLock<Option<OpenPanelStringArrayCopyFn>> = OnceLock::new();
+static COPY_ACCEPTED_FILE_EXTENSIONS: OnceLock<Option<OpenPanelStringArrayCopyFn>> =
+    OnceLock::new();
+
+fn resolve_open_panel_copy_fn(
+    cache: &OnceLock<Option<OpenPanelStringArrayCopyFn>>,
+    symbol: &str,
+) -> Option<OpenPanelStringArrayCopyFn> {
+    *cache.get_or_init(|| {
+        let symbol = CString::new(symbol).ok()?;
+        let handle = (-2isize) as *mut c_void; // RTLD_DEFAULT on Darwin
+        let raw = unsafe { dlsym(handle, symbol.as_ptr()) };
+        if raw.is_null() {
+            None
+        } else {
+            Some(unsafe { std::mem::transmute::<*mut c_void, OpenPanelStringArrayCopyFn>(raw) })
+        }
+    })
+}
+
+unsafe fn nsarray_string_values(array_ptr: *mut AnyObject) -> Vec<String> {
+    let Some(array) = (unsafe { Retained::<NSArray<NSString>>::from_raw(array_ptr.cast()) }) else {
+        return Vec::new();
+    };
+    array
+        .to_vec()
+        .into_iter()
+        .map(|value| value.to_string())
+        .collect()
+}
+
+fn open_panel_accept_types(parameters: *mut AnyObject) -> Vec<String> {
+    let mut accept_types = Vec::new();
+
+    if let Some(copy_allowed_mime_types) = resolve_open_panel_copy_fn(
+        &COPY_ALLOWED_MIME_TYPES,
+        "_WKOpenPanelParametersCopyAllowedMIMETypes",
+    ) {
+        accept_types.extend(unsafe { nsarray_string_values(copy_allowed_mime_types(parameters)) });
+    }
+
+    if let Some(copy_accepted_file_extensions) = resolve_open_panel_copy_fn(
+        &COPY_ACCEPTED_FILE_EXTENSIONS,
+        "_WKOpenPanelParametersCopyAcceptedFileExtensions",
+    ) {
+        accept_types
+            .extend(unsafe { nsarray_string_values(copy_accepted_file_extensions(parameters)) });
+    }
+
+    accept_types
+}
+
+fn source_page_url_from_webview(webview: *mut AnyObject) -> Option<String> {
+    unsafe {
+        if webview.is_null() {
+            return None;
+        }
+        let current_url: *mut AnyObject = msg_send![webview, URL];
+        if current_url.is_null() {
+            return None;
+        }
+        let absolute: *mut AnyObject = msg_send![current_url, absoluteString];
+        if absolute.is_null() {
+            return None;
+        }
+        let url_cstring: *const std::ffi::c_char = msg_send![absolute, UTF8String];
+        if url_cstring.is_null() {
+            return None;
+        }
+        Some(
+            std::ffi::CStr::from_ptr(url_cstring)
+                .to_string_lossy()
+                .to_string(),
+        )
+    }
+}
+
+fn complete_open_panel_request(completion_ptr: usize, value: *mut AnyObject) {
+    let completion_ptr = completion_ptr as *mut Block<dyn Fn(*mut AnyObject)>;
+    let Some(handler) = (unsafe { RcBlock::from_raw(completion_ptr) }) else {
+        return;
+    };
+    handler.call((value,));
 }
 
 struct NwOwned(*mut AnyObject);
@@ -1188,6 +1279,94 @@ define_class!(
             let handler: &Block<dyn Fn(*mut AnyObject)> =
                 unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
             handler.call((input_value,));
+        }
+
+        #[unsafe(method(webView:runOpenPanelWithParameters:initiatedByFrame:completionHandler:))]
+        fn run_open_panel(
+            &self,
+            _webview: *mut AnyObject,
+            parameters: *mut AnyObject,
+            _frame: *mut AnyObject,
+            completion_handler: *mut AnyObject,
+        ) {
+            let handler: &Block<dyn Fn(*mut AnyObject)> =
+                unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
+
+            let request = unsafe {
+                let allows_multiple: objc2::runtime::Bool =
+                    msg_send![parameters, allowsMultipleSelection];
+                #[cfg(target_os = "macos")]
+                let allows_directories: objc2::runtime::Bool =
+                    msg_send![parameters, allowsDirectories];
+                #[cfg(not(target_os = "macos"))]
+                let allows_directories = objc2::runtime::Bool::new(false);
+                FileChooserRequest {
+                    // Resolve these helpers at runtime so the static library
+                    // does not hard-link private WebKit SPI symbols.
+                    accept_types: open_panel_accept_types(parameters),
+                    allow_multiple: allows_multiple.as_bool(),
+                    allow_directories: allows_directories.as_bool(),
+                    capture: false,
+                    source_page_url: source_page_url_from_webview(_webview),
+                }
+            };
+
+            let Some(webview) = find_webview(&self.ivars().webtag) else {
+                handler.call((std::ptr::null_mut(),));
+                return;
+            };
+
+            // Copy the completion block before returning from the WebKit callback;
+            // otherwise an async chooser response could invoke a dead stack block.
+            let completion_ptr = RcBlock::into_raw(handler.copy()) as usize;
+            if !webview.handle_file_chooser(request, move |response| {
+                let exec = move || {
+                    match response {
+                        FileChooserResponse::Cancel => {
+                            complete_open_panel_request(completion_ptr, std::ptr::null_mut());
+                        }
+                        FileChooserResponse::Files(files) => {
+                            let urls: Vec<Retained<NSURL>> = files
+                                .into_iter()
+                                .filter_map(|file| {
+                                    if let Some(uri) = file
+                                        .uri
+                                        .as_ref()
+                                        .map(|value| value.trim())
+                                        .filter(|value| !value.is_empty())
+                                    {
+                                        let ns = NSString::from_str(uri);
+                                        return NSURL::URLWithString(&ns);
+                                    }
+                                    let value =
+                                        file.path.as_ref().map(|value| value.trim()).unwrap_or("");
+                                    if value.is_empty() {
+                                        return None;
+                                    }
+                                    let ns = NSString::from_str(value);
+                                    Some(NSURL::fileURLWithPath(&ns))
+                                })
+                                .collect();
+                            let array = NSArray::from_retained_slice(&urls);
+                            let ptr = (&*array) as *const NSArray<NSURL> as *mut AnyObject;
+                            complete_open_panel_request(completion_ptr, ptr);
+                        }
+                    }
+                };
+
+                if MainThreadMarker::new().is_some() {
+                    exec();
+                } else {
+                    DispatchQueue::main().exec_async(exec);
+                }
+            }) {
+                log::warn!(
+                    "Apple file chooser requested without handler webtag={}",
+                    self.ivars().webtag
+                );
+                complete_open_panel_request(completion_ptr, std::ptr::null_mut());
+                return;
+            }
         }
     }
 );

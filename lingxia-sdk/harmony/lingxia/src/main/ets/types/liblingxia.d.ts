@@ -299,6 +299,15 @@ declare module 'liblingxia.so' {
    * @returns true if callback was handled successfully, false otherwise
    */
   export function onCallback(id: string, success: boolean, data: string): boolean;
+  export function onWebFileChooserRequested(
+    requestId: string,
+    webtag: string,
+    sourceUrl: string,
+    acceptTypesJson: string,
+    allowMultiple: boolean,
+    allowDirectories: boolean,
+    capture: boolean
+  ): boolean;
 
   /**
    * Dispatch NativeComponent event payload to Rust runtime.

@@ -1,12 +1,14 @@
-use crate::traits::{LoadError, LoadErrorKind, NavigationPolicy};
+use crate::traits::{
+    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
+};
 use crate::webview::{
     WebTag, WebViewCreateStage, find_webview, find_webview_delegate, register_webview,
 };
 use crate::{DownloadRequest, LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
-use jni::objects::{JByteArray, JObject, JObjectArray, JString};
-use jni::sys::{jint, jlong};
+use jni::objects::{JByteArray, JObject, JObjectArray, JString, JValue};
+use jni::sys::{jboolean, jint, jlong};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use std::fs;
 use std::sync::Arc;
@@ -240,6 +242,127 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequest
 
         if let Some(webview) = find_webview(&webtag) {
             webview.handle_download(request);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+fn complete_android_file_chooser(webtag: WebTag, request_id: u64, response: FileChooserResponse) {
+    let Some(webview) = find_webview(&webtag) else {
+        return;
+    };
+
+    let java_webview = webview.get_java_webview();
+    let _ = crate::android::with_env(move |env| {
+        let selected_paths = match response {
+            FileChooserResponse::Cancel => JObject::null(),
+            FileChooserResponse::Files(files) => {
+                let string_class = env.find_class(jni_str!("java/lang/String"))?;
+                let array =
+                    env.new_object_array(files.len() as i32, string_class, JObject::null())?;
+                for (index, file) in files.into_iter().enumerate() {
+                    let raw = match (file.uri, file.path) {
+                        (Some(uri), _) => uri,
+                        (None, Some(path)) => {
+                            if path.contains("://") {
+                                path
+                            } else {
+                                format!("file://{path}")
+                            }
+                        }
+                        (None, None) => String::new(),
+                    };
+                    let java_path = env.new_string(raw)?;
+                    array.set_element(env, index, java_path)?;
+                }
+                JObject::from(array)
+            }
+        };
+
+        let request_id = request_id as i64;
+        let _ = env.call_method(
+            java_webview.as_obj(),
+            jni_str!("completeFileChooserRequest"),
+            jni_sig!("(J[Ljava/lang/String;)V"),
+            &[JValue::Long(request_id), JValue::Object(&selected_paths)],
+        )?;
+        Ok::<(), jni::errors::Error>(())
+    });
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequested(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    request_id: jlong,
+    source_url: JString,
+    accept_types: JObjectArray,
+    allow_multiple: jboolean,
+    allow_directories: jboolean,
+    capture: jboolean,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let source_url: String = source_url.try_to_string(env)?;
+        let session_id = if session_id > 0 {
+            Some(session_id as u64)
+        } else {
+            None
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+
+        let mut accepted = Vec::new();
+        let len = accept_types.len(env)?;
+        for index in 0..len {
+            let value = accept_types.get_element(env, index)?;
+            if value.is_null() {
+                continue;
+            }
+            let value = unsafe { JString::from_raw(env, value.into_raw()) };
+            let parsed: String = value.try_to_string(env)?;
+            if !parsed.trim().is_empty() {
+                accepted.push(parsed);
+            }
+        }
+
+        let request = FileChooserRequest {
+            accept_types: accepted,
+            allow_multiple: allow_multiple,
+            allow_directories: allow_directories,
+            capture,
+            source_page_url: (!source_url.trim().is_empty()).then_some(source_url),
+        };
+
+        if let Some(webview) = find_webview(&webtag) {
+            let webtag_for_callback = webtag.clone();
+            let handled = webview.handle_file_chooser(request, move |response| {
+                complete_android_file_chooser(
+                    webtag_for_callback.clone(),
+                    request_id as u64,
+                    response,
+                );
+            });
+            if !handled {
+                complete_android_file_chooser(
+                    webtag,
+                    request_id as u64,
+                    FileChooserResponse::Cancel,
+                );
+            }
+        } else {
+            let request_id = request_id as i64;
+            let selected_paths = JObject::null();
+            let _ = env.call_method(
+                &_this,
+                jni_str!("completeFileChooserRequest"),
+                jni_sig!("(J[Ljava/lang/String;)V"),
+                &[JValue::Long(request_id), JValue::Object(&selected_paths)],
+            )?;
         }
         Ok(())
     })

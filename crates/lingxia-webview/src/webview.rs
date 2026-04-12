@@ -17,8 +17,8 @@ use crate::apple::WebViewInner;
 use crate::harmony::WebViewInner;
 
 use crate::traits::{
-    AsyncSchemeHandler, DownloadHandler, DownloadRequest, NavigationHandler, NavigationPolicy,
-    NewWindowHandler, NewWindowPolicy, SchemeOutcome,
+    AsyncSchemeHandler, DownloadHandler, DownloadRequest, FileChooserRequest, FileChooserResponse,
+    NavigationHandler, NavigationPolicy, NewWindowHandler, NewWindowPolicy, SchemeOutcome,
 };
 use crate::{
     LoadDataRequest, WebResourceResponse, WebViewController, WebViewDelegate, WebViewError,
@@ -105,6 +105,11 @@ pub(crate) enum SecurityProfile {
     BrowserRelaxed,
 }
 
+pub(crate) type FileChooserFuture =
+    Pin<Box<dyn Future<Output = FileChooserResponse> + Send + 'static>>;
+pub(crate) type FileChooserHandler =
+    Box<dyn Fn(FileChooserRequest) -> FileChooserFuture + Send + Sync>;
+
 /// Internal WebView creation options.
 pub(crate) struct WebViewCreateOptions {
     pub(crate) profile: SecurityProfile,
@@ -112,6 +117,7 @@ pub(crate) struct WebViewCreateOptions {
     pub(crate) navigation_handler: Option<NavigationHandler>,
     pub(crate) new_window_handler: Option<NewWindowHandler>,
     pub(crate) download_handler: Option<DownloadHandler>,
+    pub(crate) file_chooser_handler: Option<FileChooserHandler>,
     pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
 }
 
@@ -126,6 +132,10 @@ impl std::fmt::Debug for WebViewCreateOptions {
             .field("has_navigation_handler", &self.navigation_handler.is_some())
             .field("has_new_window_handler", &self.new_window_handler.is_some())
             .field("has_download_handler", &self.download_handler.is_some())
+            .field(
+                "has_file_chooser_handler",
+                &self.file_chooser_handler.is_some(),
+            )
             .field("has_delegate", &self.delegate.is_some())
             .finish()
     }
@@ -263,6 +273,8 @@ pub(crate) struct EffectiveWebViewCreateOptions {
     #[serde(default)]
     pub(crate) has_download_handler: bool,
     #[serde(default)]
+    pub(crate) has_file_chooser_handler: bool,
+    #[serde(default)]
     pub(crate) has_delegate: bool,
 }
 
@@ -280,6 +292,7 @@ impl WebViewCreateOptions {
             navigation_handler: None,
             new_window_handler: None,
             download_handler: None,
+            file_chooser_handler: None,
             delegate: None,
         }
     }
@@ -291,6 +304,7 @@ impl WebViewCreateOptions {
             navigation_handler: None,
             new_window_handler: None,
             download_handler: None,
+            file_chooser_handler: None,
             delegate: None,
         }
     }
@@ -359,6 +373,15 @@ impl WebViewCreateOptions {
         self
     }
 
+    fn on_file_chooser<F, Fut>(mut self, handler: F) -> Self
+    where
+        F: Fn(FileChooserRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = FileChooserResponse> + Send + 'static,
+    {
+        self.file_chooser_handler = Some(Box::new(move |request| Box::pin(handler(request))));
+        self
+    }
+
     fn delegate(mut self, delegate: Arc<dyn WebViewDelegate>) -> Self {
         self.delegate = Some(delegate);
         self
@@ -381,6 +404,7 @@ impl WebViewCreateOptions {
             has_navigation_handler: self.navigation_handler.is_some(),
             has_new_window_handler: self.new_window_handler.is_some(),
             has_download_handler: self.download_handler.is_some(),
+            has_file_chooser_handler: self.file_chooser_handler.is_some(),
             has_delegate: self.delegate.is_some(),
         };
         let pending = PendingCallbacks {
@@ -388,6 +412,7 @@ impl WebViewCreateOptions {
             navigation_handler: self.navigation_handler,
             new_window_handler: self.new_window_handler,
             download_handler: self.download_handler,
+            file_chooser_handler: self.file_chooser_handler,
             delegate: self.delegate,
         };
         Ok((effective, pending))
@@ -469,6 +494,15 @@ impl StrictWebViewBuilder {
         self
     }
 
+    pub fn on_file_chooser<F, Fut>(mut self, handler: F) -> Self
+    where
+        F: Fn(FileChooserRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = FileChooserResponse> + Send + 'static,
+    {
+        self.options = self.options.on_file_chooser(handler);
+        self
+    }
+
     /// Create a strict-profile WebView session.
     ///
     /// Re-creating with the same `webtag` follows strict rules:
@@ -526,6 +560,15 @@ impl BrowserWebViewBuilder {
         self
     }
 
+    pub fn on_file_chooser<F, Fut>(mut self, handler: F) -> Self
+    where
+        F: Fn(FileChooserRequest) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = FileChooserResponse> + Send + 'static,
+    {
+        self.options = self.options.on_file_chooser(handler);
+        self
+    }
+
     /// Create a browser-profile WebView session.
     ///
     /// Re-creating with the same `webtag` follows strict rules:
@@ -544,6 +587,7 @@ pub(crate) struct PendingCallbacks {
     pub(crate) navigation_handler: Option<NavigationHandler>,
     pub(crate) new_window_handler: Option<NewWindowHandler>,
     pub(crate) download_handler: Option<DownloadHandler>,
+    pub(crate) file_chooser_handler: Option<FileChooserHandler>,
     pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
 }
 
@@ -553,6 +597,7 @@ impl PendingCallbacks {
             || self.navigation_handler.is_some()
             || self.new_window_handler.is_some()
             || self.download_handler.is_some()
+            || self.file_chooser_handler.is_some()
             || self.delegate.is_some()
     }
 }
@@ -568,6 +613,7 @@ pub struct WebView {
     navigation_handler: RwLock<Option<NavigationHandler>>,
     new_window_handler: RwLock<Option<NewWindowHandler>>,
     download_handler: RwLock<Option<DownloadHandler>>,
+    file_chooser_handler: RwLock<Option<FileChooserHandler>>,
 }
 
 impl WebView {
@@ -583,6 +629,7 @@ impl WebView {
             navigation_handler: RwLock::new(None),
             new_window_handler: RwLock::new(None),
             download_handler: RwLock::new(None),
+            file_chooser_handler: RwLock::new(None),
         }
     }
 
@@ -639,6 +686,11 @@ impl WebView {
         }
         if let Some(handler) = callbacks.download_handler
             && let Ok(mut guard) = self.download_handler.write()
+        {
+            *guard = Some(handler);
+        }
+        if let Some(handler) = callbacks.file_chooser_handler
+            && let Ok(mut guard) = self.file_chooser_handler.write()
         {
             *guard = Some(handler);
         }
@@ -708,6 +760,27 @@ impl WebView {
         {
             handler(request);
         }
+    }
+
+    pub(crate) fn handle_file_chooser<C>(&self, request: FileChooserRequest, completion: C) -> bool
+    where
+        C: FnOnce(FileChooserResponse) + Send + 'static,
+    {
+        let Some(future) = self.make_file_chooser_future(request) else {
+            return false;
+        };
+        std::thread::spawn(move || {
+            completion(block_on_scheme_future(future));
+        });
+        true
+    }
+
+    fn make_file_chooser_future(&self, request: FileChooserRequest) -> Option<FileChooserFuture> {
+        let Ok(guard) = self.file_chooser_handler.read() else {
+            return None;
+        };
+        let handler = guard.as_ref()?;
+        Some(handler(request))
     }
 
     /// Toggle docked DevTools (macOS only, uses private _inspector API)
@@ -1239,12 +1312,13 @@ pub(crate) fn register_webview(webview: Arc<WebView>) {
         && let Some(callbacks) = map.remove(webtag.key())
     {
         log::info!(
-            "Installing callbacks for {} (schemes={}, nav={}, new_window={}, download={}, delegate={})",
+            "Installing callbacks for {} (schemes={}, nav={}, new_window={}, download={}, file_chooser={}, delegate={})",
             webtag.key(),
             callbacks.scheme_handlers.len(),
             callbacks.navigation_handler.is_some(),
             callbacks.new_window_handler.is_some(),
             callbacks.download_handler.is_some(),
+            callbacks.file_chooser_handler.is_some(),
             callbacks.delegate.is_some()
         );
         webview.install_callbacks(callbacks);

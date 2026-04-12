@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { webview } from '@kit.ArkWeb';
 import { window } from '@kit.ArkUI';
 import { LxApp } from '../LxApp';
+import { requestWebFileChooser } from '../WebFileChooserBridge';
 import {
   WebViewManager,
   notifyWebViewControllerAttached
@@ -347,6 +348,21 @@ export struct BrowserOverlay {
               LxApp.launchWithUrl(targetUrl);
             }
             return true;
+          })
+          .onShowFileSelector((event) => {
+            if (!event) {
+              return false;
+            }
+            return requestWebFileChooser(
+              this.controllerWebTag,
+              (selectedPaths: Array<string>) => {
+                event.result.handleFileList(selectedPaths);
+              },
+              event.fileSelector.getAcceptType() ?? [],
+              event.fileSelector.getMode(),
+              event.fileSelector.isCapture(),
+              this.url
+            );
           })
           .onPageEnd(() => {
             this.updateState();

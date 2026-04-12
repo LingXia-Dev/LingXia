@@ -35,9 +35,9 @@ mod harmony;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    DownloadRequest, LoadDataRequest, LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy,
-    SchemeOutcome, SystemPipeReader, WebResourceBody, WebResourceResponse, WebViewController,
-    WebViewDelegate,
+    DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse, LoadDataRequest,
+    LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy, SchemeOutcome, SystemPipeReader,
+    WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
@@ -84,8 +84,9 @@ pub mod platform {
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     pub mod harmony {
         pub use crate::harmony::{
-            check_navigation_policy, schemehandler::register_custom_schemes, tsfn,
-            webview_controller_created, webview_controller_destroyed,
+            check_navigation_policy, on_file_chooser_requested,
+            schemehandler::register_custom_schemes, tsfn, webview_controller_created,
+            webview_controller_destroyed,
         };
 
         #[doc(hidden)]
