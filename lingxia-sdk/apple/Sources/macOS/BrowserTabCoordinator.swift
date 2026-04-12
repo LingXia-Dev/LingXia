@@ -852,7 +852,26 @@ final class BrowserTabCoordinator: NSObject {
         return "\(scheme)://\(host)\(port)"
     }
 
+    private func bundledFavicon() -> NSImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: BrowserTabCoordinator.self)
+        #endif
+        guard let faviconURL = bundle.url(forResource: "favicon", withExtension: "ico") else {
+            return nil
+        }
+        return NSImage(contentsOf: faviconURL)
+    }
+
     private func fetchFavicon(for origin: String, tabId: UUID) {
+        if origin.hasPrefix("lingxia://") {
+            guard let image = bundledFavicon() else { return }
+            tabFavicons[tabId] = image
+            host?.updateSidebarBrowserItems(sidebarItems(), activeId: activeTabId)
+            return
+        }
+
         guard let faviconURL = URL(string: "\(origin)/favicon.ico") else { return }
         URLSession.shared.dataTask(with: faviconURL) { [weak self] data, response, _ in
             guard let data,
