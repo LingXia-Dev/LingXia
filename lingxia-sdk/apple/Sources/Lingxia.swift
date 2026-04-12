@@ -3,9 +3,6 @@ import Foundation
 /// Top-level entry point for the LingXia SDK.
 @MainActor
 public enum Lingxia {
-    internal static var currentShell: LxAppShell?
-    internal static var currentController: LxAppController?
-
     static func resolvedShellConfiguration(
         from configuration: LxAppShellConfiguration,
         capabilities: LxAppCapabilities,
@@ -56,8 +53,7 @@ public enum Lingxia {
     /// shell should call this after creating their controller.
     @MainActor
     public static func activate(controller: LxAppController) {
-        currentController = controller
-        currentShell = nil
+        LxAppActiveHost.activate(controller: controller)
     }
 
     public static func enableWebViewDebugging() {
@@ -83,7 +79,7 @@ public enum Lingxia {
     public static func quickStart(
         configuration: LxAppShellConfiguration = LxAppShellConfiguration()
     ) throws -> LxAppShell {
-        if let currentShell {
+        if let currentShell = LxAppActiveHost.activeShell {
             currentShell.show()
             return currentShell
         }
@@ -97,8 +93,6 @@ public enum Lingxia {
         )
 
         let shell = LxAppShell(controller: controller, configuration: config)
-        currentController = controller
-        currentShell = shell
         shell.show()
         return shell
     }

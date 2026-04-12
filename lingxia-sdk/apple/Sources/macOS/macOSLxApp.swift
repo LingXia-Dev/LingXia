@@ -17,12 +17,14 @@ class macOSLxApp: ObservableObject {
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
 
-    internal static var shell: LxAppShell?
-
     nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
     nonisolated(unsafe) private static var hasResignedActive = false
 
     private init() {}
+
+    internal static func activeShell() -> LxAppShell? {
+        LxAppActiveHost.activeShell
+    }
 
     static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
@@ -30,16 +32,16 @@ class macOSLxApp: ObservableObject {
     }
 
     private static func openShellWindow() {
-        if shell == nil {
+        if activeShell() == nil {
             let config = Lingxia.resolvedShellConfiguration(
                 from: LxAppShellConfiguration(),
                 capabilities: LxAppCapabilities(rawValue: LxAppCore.capabilities),
                 homeAppId: LxAppCore.getHomeLxAppId()
             )
-            shell = LxAppShell(configuration: config)
-            shell?.show()
+            let shell = LxAppShell(configuration: config)
+            shell.show()
         } else {
-            shell?.window?.makeKeyAndOrderFront(nil)
+            activeShell()?.window?.makeKeyAndOrderFront(nil)
         }
     }
 
@@ -69,12 +71,6 @@ class macOSLxApp: ObservableObject {
 
     static func navigate(appId: String, path: String, animationType: LxAppAnimation) {
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
-    }
-
-    static func removeShell(_ s: LxAppShell) {
-        if shell === s {
-            shell = nil
-        }
     }
 
     internal static func openHomeLxApp() {
@@ -155,7 +151,7 @@ extension macOSLxApp {
     }
 
     private static func updateNavigationBarDirect(appId: String, path: String) {
-        if let s = Self.shell,
+        if let s = Self.activeShell(),
            let viewController = s.getViewController(for: appId) {
             viewController.updateNavigationBar(appId: appId, path: path)
         }
@@ -166,30 +162,39 @@ extension macOSLxApp {
     }
 
     private func handleOpenLxApp(appId: String, path: String, sessionId: UInt64) {
-        if let s = Self.shell {
+        if let s = Self.activeShell() {
             s.openLxApp(appId: appId, path: path, sessionId: sessionId)
             s.window?.makeKeyAndOrderFront(nil)
         } else {
             Self.openShellWindow()
-            Self.shell?.openLxApp(appId: appId, path: path, sessionId: sessionId)
+            Self.activeShell()?.openLxApp(appId: appId, path: path, sessionId: sessionId)
         }
     }
 
     fileprivate func handleRegularNavigation(appId: String, path: String, animationType: LxAppAnimation) {
-        if let s = Self.shell,
-           let viewController = s.getViewController(for: appId) {
+        if let s = Self.activeShell() {
+           s.browserCoordinator.deactivate()
+        }
+
+        if let s = Self.activeShell(),
+           let viewController = s.ensureViewController(for: appId, path: path) {
             viewController.navigate(appId: appId, to: path, with: animationType)
         }
     }
 
     @MainActor
     internal static func getViewController(for appId: String) -> macOSLxAppViewController? {
-        shell?.getViewController(for: appId)
+        activeShell()?.getViewController(for: appId)
+    }
+
+    @MainActor
+    internal static func refreshNavigationBar(appId: String) {
+        activeShell()?.refreshNavigationBar(for: appId)
     }
 
     @MainActor
     internal static var contentPanelView: NSView? {
-        shell?.contentPanelView
+        activeShell()?.contentPanelView
     }
 
     @MainActor
@@ -200,11 +205,11 @@ extension macOSLxApp {
             return false
         }
 
-        if shell == nil {
+        if activeShell() == nil {
             openShellWindow()
         }
 
-        guard let s = shell else { return false }
+        guard let s = activeShell() else { return false }
         s.presentInternalBrowserTab(id: id)
         s.window?.makeKeyAndOrderFront(nil)
         return true
@@ -212,7 +217,7 @@ extension macOSLxApp {
 
     @MainActor
     internal static func consumeSelfTargetNavigationInActiveBrowserTab(urlString: String) -> Bool {
-        guard let s = shell else { return false }
+        guard let s = activeShell() else { return false }
         return s.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString)
     }
 }

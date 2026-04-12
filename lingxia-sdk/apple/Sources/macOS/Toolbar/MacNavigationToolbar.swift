@@ -171,6 +171,13 @@ class MacNavigationToolbar: NSView {
         } else {
             layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         }
+
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        superview?.needsLayout = true
+        superview?.layoutSubtreeIfNeeded()
+        window?.contentView?.needsLayout = true
+        window?.contentView?.layoutSubtreeIfNeeded()
     }
 
     /// Force-hide the toolbar (used when browser tab is active)
@@ -179,12 +186,20 @@ class MacNavigationToolbar: NSView {
         updateHeight()
     }
 
+    func refreshCurrentState() {
+        updateFromState(NavigationBarStateManager.shared.currentState)
+    }
+
     private func updateHeight() {
         let targetHeight: CGFloat = (showNavbar && !forceHidden) ? Layout.height : 0
         if heightConstraint.constant != targetHeight {
             heightConstraint.constant = targetHeight
         }
         separator.isHidden = !showNavbar || forceHidden
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        superview?.needsLayout = true
+        superview?.layoutSubtreeIfNeeded()
     }
 
     @objc private func backClicked() {

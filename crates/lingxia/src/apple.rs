@@ -551,16 +551,34 @@ pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
     if session_id == 0 {
         return 0;
     }
-    // Create WebTag and use lingxia-webview's find_webview function
+
+    fn normalize_lookup_path(path: &str) -> &str {
+        let path = path.split('?').next().unwrap_or(path);
+        path.split('#').next().unwrap_or(path)
+    }
+
     let session = Some(session_id);
     let webtag = lingxia_webview::WebTag::new(appid, path, session);
     if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
         // WebView exists, return its pointer
-        webview.get_swift_webview_ptr()
-    } else {
-        log::error!("💥 WebView not found for appid: {}, path: {}", appid, path);
-        0
+        return webview.get_swift_webview_ptr();
     }
+
+    let normalized_path = normalize_lookup_path(path);
+    if let Some(lxapp) = lxapp::try_get(appid) {
+        let resolved_path = lxapp
+            .find_page_path(normalized_path)
+            .unwrap_or_else(|| normalized_path.to_string());
+
+        if let Some(page) = lxapp.get_page(&resolved_path)
+            && let Some(webview) = page.webview()
+        {
+            return webview.get_swift_webview_ptr();
+        }
+    }
+
+    log::error!("WebView not found for appid: {}, path: {}", appid, path);
+    0
 }
 
 /// Get LxApp information
@@ -601,11 +619,11 @@ pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::Naviga
         }
     } else {
         self::bridge::NavigationBarState {
-            background_color: 0xFFFFFFFF,
+            background_color: 0,
             text_style: String::new(),
             title_text: String::new(),
-            show_navbar: true,
-            show_back_button: true,
+            show_navbar: false,
+            show_back_button: false,
             show_home_button: false,
         }
     }

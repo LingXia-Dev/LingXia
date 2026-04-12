@@ -3,9 +3,15 @@ import Foundation
 import WebKit
 import AppKit
 import CLingXiaRustAPI
+import os.log
 
 @MainActor
 class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
+    private static let log = OSLog(subsystem: "LingXia", category: "macOSLxAppViewController")
+
+    private static let navigationRetryDelayNs: UInt64 = 80_000_000
+    private static let navigationRetryCount = 20
+
     var appId: String
     internal var currentPath: String
     private var sessionId: UInt64
@@ -74,22 +80,29 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // MARK: - WebView
 
     private func loadWebViewContent() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: currentPath) {
             showWebViewToUser(webView, path: currentPath)
         }
     }
 
     private func showWebViewToUser(_ webView: WKWebView, path: String) {
-        let oldWebView = LxAppCore.getCurrentWebView()
-        if let old = oldWebView, old !== webView {
+        if let old = activeWebView, old !== webView {
             old.pauseWebView()
+            old.removeFromSuperview()
         }
-        oldWebView?.removeFromSuperview()
-        activeWebView = webView
+
+        for subview in webViewContainer.subviews {
+            guard let existingWebView = subview as? WKWebView, existingWebView !== webView else {
+                continue
+            }
+            existingWebView.pauseWebView()
+            existingWebView.removeFromSuperview()
+        }
 
         WebViewManager.attachWebViewToContainer(webView, container: webViewContainer)
         MacNativeBridge.attachIfNeeded(to: webView, in: webViewContainer)
         webView.resumeWebView()
+        activeWebView = webView
         setupPullToRefresh(for: webView)
     }
 
@@ -104,7 +117,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     internal func startPullDownRefreshProgrammatically() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: currentPath) {
             setupPullToRefresh(for: webView)
         }
         pullToRefreshHelper?.startRefreshing()
@@ -134,14 +147,18 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     @MainActor
     func navigate(appId: String, to path: String, with animationType: LxAppAnimation) {
         guard !appId.isEmpty else { return }
-        let _ = animationType
 
         self.currentPath = path
         updateNavigationBar(appId: appId, path: path)
-        if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: path) {
             showWebViewToUser(webView, path: path)
         } else {
-            retryShowWebView(appId: appId, path: path, sessionId: sessionId, remainingAttempts: 2)
+            retryShowWebView(
+                appId: appId,
+                path: path,
+                sessionId: sessionId,
+                remainingAttempts: Self.navigationRetryCount
+            )
         }
         LxAppCore.setCurrentPath(path)
     }
@@ -155,12 +172,12 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     ) {
         guard remainingAttempts > 0 else { return }
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 80_000_000)
+            try? await Task.sleep(nanoseconds: Self.navigationRetryDelayNs)
             guard let self,
                   self.appId == appId,
                   self.sessionId == sessionId,
                   self.currentPath == path else { return }
-            if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+            if let webView = self.findManagedWebView(path: path) {
                 self.showWebViewToUser(webView, path: path)
             } else {
                 self.retryShowWebView(
@@ -184,25 +201,47 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         NavigationBarStateManager.shared.updateState(appId: appId, path: path)
     }
 
+    private func findManagedWebView(path: String) -> WKWebView? {
+        if let exactMatch = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+            return exactMatch
+        }
+
+        let lookupPath = normalizePath(path)
+        guard lookupPath != path else { return nil }
+        let fallback = WebViewManager.findWebView(appId: appId, path: lookupPath, sessionId: sessionId)
+        return fallback
+    }
+
+    private func normalizePath(_ rawPath: String) -> String {
+        if rawPath.isEmpty { return "" }
+        if let queryIndex = rawPath.firstIndex(of: "?") {
+            return String(rawPath[..<queryIndex])
+        }
+        if let hashIndex = rawPath.firstIndex(of: "#") {
+            return String(rawPath[..<hashIndex])
+        }
+        return rawPath
+    }
+
     // MARK: - Native Components
 
     @MainActor
     func pauseNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: currentPath) {
             MacNativeBridge.notifyPageInactive(for: webView)
         }
     }
 
     @MainActor
     func resumeNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: currentPath) {
             MacNativeBridge.notifyPageActive(for: webView)
         }
     }
 
     @MainActor
     func destroyNativeComponents() {
-        if let webView = WebViewManager.findWebView(appId: appId, path: currentPath, sessionId: sessionId) {
+        if let webView = findManagedWebView(path: currentPath) {
             MacNativeBridge.notifyPageDestroyed(for: webView)
         }
     }

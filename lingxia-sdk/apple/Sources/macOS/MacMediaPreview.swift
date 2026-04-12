@@ -115,7 +115,7 @@ extension LxAppMedia {
 
     @MainActor
     private static func showQuickLook(urls: [URL], startIndex: Int, callbackId: UInt64) -> Bool {
-        LxAppDocument.closeQLController()
+        LxAppFile.closeQLController()
         qlController?.finish(reason: .interrupted)
 
         let controller = MacQuickLookController(urls: urls, startIndex: startIndex, callbackId: callbackId)

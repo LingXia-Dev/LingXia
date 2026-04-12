@@ -26,7 +26,7 @@ extension macOSLxApp {
     // MARK: - Toggle Entry Point
 
     internal static func togglePanel(id: String) {
-        guard let s = shell else { return }
+        guard let s = activeShell() else { return }
         guard panelItems.contains(where: { $0.id == id }) else { return }
 
         if s.workspaceManager.isPanelVisible(id: id) {
@@ -45,7 +45,7 @@ extension macOSLxApp {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let s = shell else { return false }
+        guard let s = activeShell() else { return false }
 
         let resolvedItem: PanelItemConfig?
         if !panelId.isEmpty {
@@ -82,7 +82,7 @@ extension macOSLxApp {
     // MARK: - Show / Hide (internal)
 
     internal static func hidePanel(id: String) {
-        shell?.hidePanel(id: id)
+        activeShell()?.hidePanel(id: id)
     }
 }
 

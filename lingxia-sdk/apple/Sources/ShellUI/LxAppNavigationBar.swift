@@ -16,7 +16,7 @@ final class NavigationBarStateManager: ObservableObject {
     private init() {}
 
     func updateState(appId: String, path: String) {
-        guard LxAppCore.isInitialized(), !appId.isEmpty, !path.isEmpty else {
+        guard !appId.isEmpty, !path.isEmpty else {
             currentState = nil
             return
         }
@@ -51,6 +51,8 @@ final class NavigationBarStateManager: ObservableObject {
                 navigationBar.layoutIfNeeded()
             }
         }
+        #elseif os(macOS)
+        macOSLxApp.refreshNavigationBar(appId: appId)
         #endif
     }
 }

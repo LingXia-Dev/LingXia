@@ -13,6 +13,8 @@ private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAp
 @MainActor
 final class LxAppViewController: UIViewController, ObservableObject {
     private static let log = lxAppViewControllerLog
+    private static let navigationRetryDelayNs: UInt64 = 80_000_000
+    private static let navigationRetryCount = 20
 
     // Platform-specific UI constraint only - WebView is managed by WebViewManager
     private var currentWebViewTopConstraint: NSLayoutConstraint?
@@ -360,7 +362,14 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
             // Show target WebView using shared logic
             attachWebViewToUI(webView: targetWebView, for: appId, path: path)
-
+        } else {
+            retryShowWebView(
+                appId: appId,
+                path: path,
+                sessionId: currentSessionId,
+                animationType: animationType,
+                remainingAttempts: Self.navigationRetryCount
+            )
         }
 
         // Update WebView constraints if needed
@@ -368,6 +377,59 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         // Ensure UI elements are properly layered above WebView content
         bringUIElementsToFront()
+    }
+
+    private func retryShowWebView(
+        appId: String,
+        path: String,
+        sessionId: UInt64,
+        animationType: LxAppAnimation,
+        remainingAttempts: Int
+    ) {
+        guard remainingAttempts > 0 else { return }
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: Self.navigationRetryDelayNs)
+            guard let self,
+                  LxAppCore.currentAppId == appId,
+                  self.currentSessionId == sessionId,
+                  self.getCurrentPath() == path else {
+                return
+            }
+
+            guard let targetWebView = iOSLxApp.findWebView(appId: appId, path: path, sessionId: sessionId) else {
+                self.retryShowWebView(
+                    appId: appId,
+                    path: path,
+                    sessionId: sessionId,
+                    animationType: animationType,
+                    remainingAttempts: remainingAttempts - 1
+                )
+                return
+            }
+
+            if let existingWebView = self.getCurrentWebView(),
+               existingWebView !== targetWebView {
+                switch animationType {
+                case .push, .pop:
+                    self.performSlideTransition(
+                        from: existingWebView,
+                        to: targetWebView,
+                        animationType: animationType,
+                        appId: appId,
+                        path: path
+                    )
+                    return
+                case .none, .fade:
+                    existingWebView.isHidden = true
+                    existingWebView.pauseWebView()
+                }
+            }
+
+            self.attachWebViewToUI(webView: targetWebView, for: appId, path: path)
+            self.updateWebViewConstraints(for: appId)
+            self.bringUIElementsToFront()
+        }
     }
 
     private func updateCapsuleButton(for appId: String) {

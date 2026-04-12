@@ -40,7 +40,7 @@ extension LxApp {
         guard session_id > 0 else { return false }
 
         return executeOnMain {
-            if let controller = Lingxia.currentController {
+            if let controller = LxAppActiveHost.activeController {
                 let openPresentation: LxAppOpenPresentation = presentation == 1 ? .panel : .normal
                 Task { @MainActor in
                     _ = await controller.handleOpen(
@@ -69,7 +69,7 @@ extension LxApp {
         guard session_id > 0 else { return false }
 
         return executeOnMain {
-            if let controller = Lingxia.currentController {
+            if let controller = LxAppActiveHost.activeController {
                 Task { @MainActor in
                     _ = await controller.handleClose(appId: appIdString, sessionId: session_id)
                 }
@@ -94,7 +94,7 @@ extension LxApp {
         }
 
         return executeOnMain {
-            if let controller = Lingxia.currentController,
+            if let controller = LxAppActiveHost.activeController,
                let session = controller.session(forAppId: appIdString) {
                 controller.navigate(LxAppNavigateRequest(
                     sessionId: session.id,
@@ -263,7 +263,7 @@ extension LxApp {
         let pathString = filePath.toString()
         let mimeString = mimeType.toString()
         return executeOnMain {
-            LxAppDocument.reviewDocument(
+            LxAppFile.reviewDocument(
                 path: pathString,
                 mimeType: mimeString.isEmpty ? nil : mimeString,
                 showMenu: showMenu
@@ -275,7 +275,7 @@ extension LxApp {
         let pathString = filePath.toString()
         let mimeString = mimeType.toString()
         return executeOnMain {
-            LxAppDocument.openExternal(
+            LxAppFile.openExternal(
                 path: pathString,
                 mimeType: mimeString.isEmpty ? nil : mimeString,
                 showMenu: showMenu

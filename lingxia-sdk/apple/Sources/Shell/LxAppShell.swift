@@ -75,7 +75,44 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private(set) var contentPanelView: NSView?
 
     func getViewController(for appId: String) -> macOSLxAppViewController? {
-        viewControllers[appId]
+        if let viewController = viewControllers[appId] {
+            return viewController
+        }
+        if let currentViewController, currentViewController.appId == appId {
+            return currentViewController
+        }
+        return nil
+    }
+
+    func ensureViewController(for appId: String, path: String) -> macOSLxAppViewController? {
+        if let viewController = getViewController(for: appId) {
+            return viewController
+        }
+        let resolvedSessionId: UInt64? = {
+            if let sessionId = appSessions[appId], sessionId > 0 {
+                return sessionId
+            }
+            if let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 {
+                return sessionId
+            }
+            let sessionId = getLxAppSessionId(appId)
+            return sessionId > 0 ? sessionId : nil
+        }()
+
+        guard let sessionId = resolvedSessionId else {
+            return nil
+        }
+
+        appSessions[appId] = sessionId
+        LxAppCore.setSessionId(sessionId, for: appId)
+        let viewController = macOSLxAppViewController(
+            appId: appId,
+            path: path,
+            sessionId: sessionId
+        )
+        viewControllers[appId] = viewController
+        updateContentView(with: viewController)
+        return viewController
     }
 
     // MARK: - Init
@@ -90,6 +127,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let window = Self.createWindow()
         super.init(window: window)
+        LxAppActiveHost.activate(shell: self)
         browserCoordinator.host = self
         setupTabMode()
         observeControllerEvents()
@@ -193,7 +231,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
             LxAppCore.removeSessionId(for: tab.appId)
         }
-        macOSLxApp.removeShell(self)
+        LxAppActiveHost.clear(shell: self)
     }
 
     public func windowDidResize(_ notification: Notification) {
@@ -558,6 +596,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         currentViewController?.pauseNativeComponents()
         currentViewController?.view.removeFromSuperview()
         currentViewController = viewController
+        navigationToolbar?.forceHide(false)
 
         let container = workspaceManager.contentContainer
 
@@ -572,8 +611,32 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         ])
 
         container.layoutSubtreeIfNeeded()
+        viewController.updateNavigationBar(appId: viewController.appId, path: viewController.currentPath)
+        navigationToolbar?.isHidden = false
+        navigationToolbar?.forceHide(false)
+        navigationToolbar?.refreshCurrentState()
+        applyToolbarMode(configuration.toolbar)
         syncSidebarHeaderButtonAlignment()
         viewController.resumeNativeComponents()
+    }
+
+    func refreshNavigationBar(for appId: String) {
+        guard currentViewController?.appId == appId,
+              let viewController = getViewController(for: appId) else {
+            return
+        }
+
+        viewController.updateNavigationBar(appId: appId, path: viewController.currentPath)
+        navigationToolbar?.isHidden = false
+        navigationToolbar?.forceHide(false)
+        navigationToolbar?.refreshCurrentState()
+
+        workspaceManager.rootView.needsLayout = true
+        workspaceManager.rootView.layoutSubtreeIfNeeded()
+        contentPanelView?.needsLayout = true
+        contentPanelView?.layoutSubtreeIfNeeded()
+        window?.contentView?.needsLayout = true
+        window?.contentView?.layoutSubtreeIfNeeded()
     }
 
     private func syncSidebarHeaderButtonAlignment() {
@@ -613,7 +676,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     override public func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
         MainActor.assumeIsolated {
-            LxAppMedia.qlController != nil || LxAppDocument.qlController != nil
+            LxAppMedia.qlController != nil || LxAppFile.qlController != nil
         }
     }
 
@@ -623,7 +686,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     override public func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
         MainActor.assumeIsolated {
             LxAppMedia.clearQLController()
-            LxAppDocument.clearQLController()
+            LxAppFile.clearQLController()
         }
     }
 
