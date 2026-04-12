@@ -426,16 +426,16 @@ async fn finalize_download_result(
     })
 }
 
-async fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
-    let (mut progress_tx, config) = {
-        let guard = state.lock().await;
-        if guard.status.is_terminal() {
-            return;
-        }
-        (guard.sender.clone(), guard.config.clone())
-    };
-
+fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
     let _ = rong::RongExecutor::global().spawn(async move {
+        let (mut progress_tx, config) = {
+            let guard = state.lock().await;
+            if guard.status.is_terminal() {
+                return;
+            }
+            (guard.sender.clone(), guard.config.clone())
+        };
+
         let persistence = user_cache::DownloadPersistence::new(
             config.app_data_dir.clone(),
             config.task_id.clone(),
@@ -621,7 +621,7 @@ fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promis
     Ok(())
 }
 
-async fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
+fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_download_options(options)?;
     let url = options.url.trim().to_string();
@@ -735,7 +735,7 @@ async fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     install_async_iterator(&ctx, &iterator)?;
     bind_abort_signal_to_iterator(&ctx, options.signal, &iterator)?;
 
-    spawn_download_worker(state.clone()).await;
+    spawn_download_worker(state.clone());
 
     Ok(iterator)
 }
@@ -889,7 +889,7 @@ async fn download_resume_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
         }
     }
 
-    spawn_download_worker(state.clone()).await;
+    spawn_download_worker(state.clone());
 
     Ok(())
 }
@@ -936,9 +936,7 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
 }
 
 pub(super) fn init(ctx: &JSContext) -> JSResult<()> {
-    let download_file_func = JSFunc::new(ctx, |ctx, options| async move {
-        download_file(ctx, options).await
-    })?;
+    let download_file_func = JSFunc::new(ctx, download_file)?;
     lx::register_js_api(ctx, "downloadFile", download_file_func)?;
     Ok(())
 }
