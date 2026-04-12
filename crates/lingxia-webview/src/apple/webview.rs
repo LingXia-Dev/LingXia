@@ -1324,6 +1324,10 @@ define_class!(
                     FileChooserResponse::Cancel => {
                         complete_open_panel_request(completion_ptr, std::ptr::null_mut());
                     }
+                    FileChooserResponse::Error(message) => {
+                        log::warn!("Apple file chooser failed: {}", message);
+                        complete_open_panel_request(completion_ptr, std::ptr::null_mut());
+                    }
                     FileChooserResponse::Files(files) => {
                         let urls: Vec<Retained<NSURL>> = files
                             .into_iter()

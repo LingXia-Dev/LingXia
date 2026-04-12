@@ -1540,6 +1540,10 @@ pub fn on_file_chooser_requested(
     webview.handle_file_chooser(request, move |response| {
         let payload = match response {
             FileChooserResponse::Cancel => "[]".to_string(),
+            FileChooserResponse::Error(message) => {
+                log::warn!("Harmony file chooser failed: {}", message);
+                "[]".to_string()
+            }
             FileChooserResponse::Files(files) => {
                 let selected: Vec<String> = files
                     .into_iter()

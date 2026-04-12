@@ -89,6 +89,7 @@ pub struct FileChooserFile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileChooserResponse {
     Cancel,
+    Error(String),
     Files(Vec<FileChooserFile>),
 }
 

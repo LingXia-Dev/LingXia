@@ -257,6 +257,10 @@ fn complete_android_file_chooser(webtag: WebTag, request_id: u64, response: File
     let _ = crate::android::with_env(move |env| {
         let selected_paths = match response {
             FileChooserResponse::Cancel => JObject::null(),
+            FileChooserResponse::Error(message) => {
+                log::warn!("Android file chooser failed: {}", message);
+                JObject::null()
+            }
             FileChooserResponse::Files(files) => {
                 let string_class = env.find_class(jni_str!("java/lang/String"))?;
                 let array =
