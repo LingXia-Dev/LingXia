@@ -11,7 +11,7 @@ Page({
       cloud: false,
       navigation: false,
       media: false,
-      document: false,
+      file: false,
     },
   },
 
@@ -98,10 +98,22 @@ Page({
     });
   },
 
-  // Navigate to Document API page
-  navigateToDocumentPage: async function() {
+  // Navigate to File API page
+  navigateToFilePage: async function() {
     await lx.navigateTo({
-      url: `pages/document/index`,
+      url: `pages/file/index?section=openFile`,
+    });
+  },
+
+  navigateToOpenFilePage: async function() {
+    await lx.navigateTo({
+      url: `pages/file/index?section=openFile`,
+    });
+  },
+
+  navigateToChooseFilePage: async function() {
+    await lx.navigateTo({
+      url: `pages/file/index?section=chooseFile`,
     });
   },
 

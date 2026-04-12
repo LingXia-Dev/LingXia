@@ -14,7 +14,7 @@
     "pages/wifi/index",
     "pages/system/index",
     "pages/location/index",
-    "pages/document/index",
+    "pages/file/index",
     "pages/components/index",
     "pages/pulltorefresh/index",
     "pages/todo/index",

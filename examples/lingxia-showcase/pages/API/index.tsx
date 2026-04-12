@@ -14,13 +14,14 @@ export default function APIPage() {
     navigateToSystemPage,
     navigateToLocationPage,
     navigateToMediaPage,
-    navigateToDocumentPage,
+    navigateToOpenFilePage,
+    navigateToChooseFilePage,
     navigateToCloudPage,
     navigateToTestMiniApp,
     openDeepSeek,
     navigateToPullDownRefreshPage,
   } = actions;
-  const { expandedSections = { bridge: false, interface: false, device: false, system: false, cloud: false, navigation: false, media: false, document: false } } = data;
+  const { expandedSections = { bridge: false, interface: false, device: false, system: false, cloud: false, navigation: false, media: false, file: false } } = data;
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-y-auto">
@@ -544,13 +545,13 @@ export default function APIPage() {
           )}
         </div>
 
-        {/* Document - Clickable */}
+        {/* File - Dropdown */}
         <div className="bg-white rounded-lg shadow-sm">
           <div
             className="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-            onClick={navigateToDocumentPage}
+            onClick={() => toggleSection({ section: 'file' })}
           >
-            <div className="text-base text-gray-900">Document</div>
+            <div className="text-base text-gray-900">File</div>
             <div className="w-6 h-6 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -558,6 +559,32 @@ export default function APIPage() {
               </svg>
             </div>
           </div>
+          {expandedSections.file && (
+            <div className="border-t border-gray-100 bg-gray-50">
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between"
+                onClick={navigateToOpenFilePage}
+              >
+                <div className="text-sm text-gray-700">Open File</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={navigateToChooseFilePage}
+              >
+                <div className="text-sm text-gray-700">Choose File</div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Location - Clickable */}

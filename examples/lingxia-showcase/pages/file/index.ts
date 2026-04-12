@@ -11,6 +11,15 @@ function detectFileType(url) {
   return "";
 }
 
+function detectFileTypeFromPath(filePath) {
+  if (!filePath) return "";
+  const trimmed = String(filePath).split("?")[0].split("#")[0];
+  const fileName = trimmed.split("/").pop() || "";
+  const dotIndex = fileName.lastIndexOf(".");
+  const ext = dotIndex >= 0 ? fileName.slice(dotIndex + 1).toLowerCase() : "";
+  return ext;
+}
+
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -131,10 +140,15 @@ async function observeOfficeTask(page, task, sessionId) {
 
 Page({
   data: {
+    activeDemo: "openFile",
     pdfUrl: "https://ontheline.trincoll.edu/images/bookdown/sample-local-pdf.pdf",
     officeUrl: "https://example-files.online-convert.com/document/docx/example.docx",
     officeFileType: "docx",
     showMenu: true,
+    chooseFileDefaultPath: "",
+    chooseFileStatusText: "Choose a file from usercache",
+    chooseFileSelectedPath: "",
+    chooseFileSelectedType: "",
     isPdfDownloading: false,
     isOfficeDownloading: false,
     officeDownloadState: "idle",
@@ -143,6 +157,15 @@ Page({
     officeProgressText: "Not started yet",
     officeSupportsTransferControl: false,
     officeTransferButtonText: "Pause Download",
+  },
+
+  onLoad: async function (options = {}) {
+    const requestedSection = options?.section === "chooseFile" ? "chooseFile" : "openFile";
+    this.setData({
+      activeDemo: requestedSection,
+      chooseFileDefaultPath: lx.env.USER_CACHE_PATH || "",
+      chooseFileStatusText: "Choose a file from usercache",
+    });
   },
 
   onUnload: function () {
@@ -224,6 +247,64 @@ Page({
       }
     } catch (error) {
       lx.showToast({ title: error?.message || "Transfer action failed", icon: "none" });
+    }
+  },
+
+  toggleSection: function ({ section } = {}) {
+    if (!section || !this.data.expandedSections || !(section in this.data.expandedSections)) {
+      return;
+    }
+    this.setData({
+      [`expandedSections.${section}`]: !this.data.expandedSections[section],
+    });
+  },
+
+  chooseFileFromUserCache: async function () {
+    try {
+      const result = await lx.chooseFile({
+        title: "Choose file from usercache",
+        defaultPath: this.data.chooseFileDefaultPath,
+      });
+      if (result.canceled || !Array.isArray(result.paths) || result.paths.length === 0) {
+        this.setData({
+          chooseFileStatusText: "Choose file canceled",
+          chooseFileSelectedPath: "",
+          chooseFileSelectedType: "",
+        });
+        return;
+      }
+
+      const selectedPath = result.paths[0];
+      const fileType = detectFileTypeFromPath(selectedPath);
+      this.setData({
+        chooseFileStatusText: "Selected from usercache",
+        chooseFileSelectedPath: selectedPath,
+        chooseFileSelectedType: fileType || "unknown",
+      });
+    } catch (error) {
+      lx.showToast({ title: error?.message || "chooseFile failed", icon: "none" });
+      this.setData({
+        chooseFileStatusText: error?.message || "chooseFile failed",
+      });
+    }
+  },
+
+  openChosenFile: async function () {
+    const filePath = this.data.chooseFileSelectedPath;
+    if (!filePath) {
+      lx.showToast({ title: "Choose a file first", icon: "none" });
+      return;
+    }
+
+    try {
+      await lx.openFile({
+        filePath,
+        fileType: this.data.chooseFileSelectedType || undefined,
+        mode: "auto",
+        showMenu: this.data.showMenu,
+      });
+    } catch (error) {
+      lx.showToast({ title: error?.message || "openFile failed", icon: "none" });
     }
   },
 
