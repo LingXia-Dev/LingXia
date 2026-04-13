@@ -223,15 +223,6 @@ pub(super) struct Res {
 }
 
 #[derive(Serialize)]
-pub(super) struct EventMsg {
-    pub v: u8,
-    pub kind: &'static str,
-    pub id: String,
-    pub seq: u64,
-    pub payload: Box<RawValue>,
-}
-
-#[derive(Serialize)]
 pub(super) struct StateSnapshotOut {
     pub v: u8,
     pub kind: &'static str,
@@ -272,15 +263,6 @@ pub(super) struct ChAck {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<BridgeError>,
-}
-
-#[derive(Serialize)]
-pub(super) struct ChDataOut {
-    pub v: u8,
-    pub kind: &'static str,
-    pub id: String,
-    pub seq: u64,
-    pub payload: Box<RawValue>,
 }
 
 #[derive(Serialize)]

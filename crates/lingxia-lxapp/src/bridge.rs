@@ -105,6 +105,26 @@ impl ViewTransport for Page {
     }
 }
 
+fn serialize_seq_frame_with_payload(
+    kind: &'static str,
+    id: String,
+    seq: u64,
+    payload_json: &str,
+) -> Result<String, LxAppError> {
+    let id_json = serde_json::to_string(&id)?;
+    let mut message_json = String::with_capacity(id_json.len() + payload_json.len() + 64);
+    message_json.push_str("{\"v\":2,\"kind\":\"");
+    message_json.push_str(kind);
+    message_json.push_str("\",\"id\":");
+    message_json.push_str(&id_json);
+    message_json.push_str(",\"seq\":");
+    message_json.push_str(&seq.to_string());
+    message_json.push_str(",\"payload\":");
+    message_json.push_str(payload_json);
+    message_json.push('}');
+    Ok(message_json)
+}
+
 // RpcError
 #[derive(Debug, Clone)]
 pub(crate) struct RpcError {
@@ -632,16 +652,7 @@ impl PageBridge {
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        let payload =
-            RawValue::from_string(payload_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let msg = EventMsg {
-            v: 2,
-            kind: "event",
-            id: id.into(),
-            seq,
-            payload,
-        };
-        self.send_json(transport, &msg)
+        self.send_seq_frame_with_payload(transport, "event", id.into(), seq, &payload_json)
     }
 
     pub(crate) fn send_ch_ack_ok<T: ViewTransport>(
@@ -688,16 +699,7 @@ impl PageBridge {
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        let payload =
-            RawValue::from_string(payload_json).map_err(|e| LxAppError::Bridge(e.to_string()))?;
-        let msg = ChDataOut {
-            v: 2,
-            kind: "ch.data",
-            id: id.into(),
-            seq,
-            payload,
-        };
-        self.send_json(transport, &msg)
+        self.send_seq_frame_with_payload(transport, "ch.data", id.into(), seq, &payload_json)
     }
 
     pub(crate) fn send_ch_close<T: ViewTransport>(
@@ -724,6 +726,22 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         let serialized = serde_json::to_string(msg)?;
         transport.post_message_to_view(serialized)
+    }
+
+    fn send_seq_frame_with_payload<T: ViewTransport>(
+        &self,
+        transport: &T,
+        kind: &'static str,
+        id: String,
+        seq: u64,
+        payload_json: &str,
+    ) -> Result<(), LxAppError> {
+        transport.post_message_to_view(serialize_seq_frame_with_payload(
+            kind,
+            id,
+            seq,
+            payload_json,
+        )?)
     }
 
     fn send_hello_ack<T: ViewTransport>(
@@ -1109,6 +1127,28 @@ impl PageBridge {
                 None => return Ok("null".to_string()),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn send_event_embeds_payload_without_reencoding() {
+        assert_eq!(
+            serialize_seq_frame_with_payload("event", "req\"1".to_string(), 7, r#"{"token":"hi"}"#)
+                .unwrap(),
+            r#"{"v":2,"kind":"event","id":"req\"1","seq":7,"payload":{"token":"hi"}}"#
+        );
+    }
+
+    #[test]
+    fn send_ch_data_embeds_scalar_payload_without_reencoding() {
+        assert_eq!(
+            serialize_seq_frame_with_payload("ch.data", "ch-1".to_string(), 3, "true").unwrap(),
+            r#"{"v":2,"kind":"ch.data","id":"ch-1","seq":3,"payload":true}"#
+        );
     }
 }
 

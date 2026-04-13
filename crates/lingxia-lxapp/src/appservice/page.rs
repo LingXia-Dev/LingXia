@@ -158,11 +158,20 @@ fn maybe_get_async_iterator(
     Ok(None)
 }
 
-#[derive(Deserialize)]
-struct AsyncIteratorStep {
-    done: bool,
-    #[serde(default)]
-    value: Option<Box<RawValue>>,
+fn get_optional_property(obj: &JSObject, field: &str, ctx: &JSContext) -> JSValue {
+    obj.get::<_, JSValue>(field)
+        .unwrap_or_else(|_| JSValue::undefined(ctx))
+}
+
+fn read_async_iterator_step(
+    step_obj: &JSObject,
+    ctx: &JSContext,
+) -> Result<(bool, String), RpcError> {
+    let done = step_obj
+        .get::<_, bool>("done")
+        .map_err(rpc_error_from_rong)?;
+    let value_json = js_value_to_json_str(get_optional_property(step_obj, "value", ctx))?;
+    Ok((done, value_json))
 }
 
 impl ViewTransport for PageSvc {
@@ -624,6 +633,7 @@ impl PageSvc {
         iterator: JSObject,
         cancel_rx: &mut tokio::sync::oneshot::Receiver<()>,
     ) -> Result<String, RpcError> {
+        let ctx = self.get_ctx();
         let next_fn = iterator
             .get::<_, JSFunc>("next")
             .map_err(rpc_error_from_rong)?;
@@ -643,21 +653,9 @@ impl PageSvc {
                 }
             };
 
-            let step_json = step_obj
-                .to_json_string()
-                .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
-            let step: AsyncIteratorStep = serde_json::from_str(&step_json).map_err(|e| {
-                RpcError::new(
-                    BRIDGE_INTERNAL_ERROR,
-                    Some(format!("Invalid async iterator step: {}", e)),
-                )
-            })?;
-            let value_json = step
-                .value
-                .map(|value| value.get().to_owned())
-                .unwrap_or_else(|| "null".to_string());
+            let (done, value_json) = read_async_iterator_step(&step_obj, &ctx)?;
 
-            if step.done {
+            if done {
                 return Ok(value_json);
             }
 
