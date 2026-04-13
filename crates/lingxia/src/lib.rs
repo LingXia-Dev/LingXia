@@ -16,8 +16,8 @@ pub use lingxia_media::{
 };
 
 pub use lingxia_observability::{
-    DEFAULT_DEVTOOLS_RECENT_LIMIT, DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY,
-    LogBuffer, LogBufferConfig, LogProvider,
+    DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY, LogBuffer, LogBufferConfig,
+    LogProvider,
 };
 pub use lingxia_provider::{
     BoxFuture, FingerprintProvider, ProviderError, ProviderErrorCode, PushNotificationProvider,
@@ -44,8 +44,7 @@ mod lxapp_dev;
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
     pub use lingxia_observability::{
-        DEFAULT_DEVTOOLS_RECENT_LIMIT, DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY,
-        LogBuffer, LogBufferConfig,
+        DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY, LogBuffer, LogBufferConfig,
     };
     pub use lxapp::log::{
         AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogManager,
