@@ -10,7 +10,6 @@ use super::{
 };
 use crate::config::MacosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
-use crate::sdk::{self, SdkPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use image::imageops::FilterType;
@@ -239,23 +238,6 @@ impl MacosPlatform {
         executables.sort();
         Ok(executables.remove(0))
     }
-
-    fn ensure_apple_sdk(&self, config: &BuildConfig) -> Result<()> {
-        if config.lingxia_config.is_none() {
-            return Ok(());
-        }
-        let lingxia_config = config
-            .lingxia_config
-            .as_ref()
-            .ok_or_else(|| anyhow!("lingxia.config.json is required to resolve SDK version"))?;
-        let rust_lib_name = lingxia_config
-            .get_rust_lib_name()
-            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
-        let sdk_version =
-            sdk::resolve_sdk_version_from_rust_manifest(&config.project_root, &rust_lib_name)?;
-        sdk::ensure_sdk(&config.project_root, SdkPlatform::Apple, &sdk_version)?;
-        Ok(())
-    }
 }
 
 impl Platform for MacosPlatform {
@@ -295,8 +277,6 @@ impl Platform for MacosPlatform {
             "[macOS]".cyan(),
             macos_dir.display()
         );
-
-        self.ensure_apple_sdk(config)?;
 
         let bundle_id = macos_config
             .and_then(|c| c.bundle_id.clone())

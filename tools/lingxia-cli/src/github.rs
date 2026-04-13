@@ -63,10 +63,6 @@ pub fn release_repo() -> String {
     env::var("LINGXIA_RELEASE_REPO").unwrap_or_else(|_| DEFAULT_GITHUB_REPO.to_string())
 }
 
-pub fn download_release_asset(tag: &str, asset_name: &str) -> Result<Vec<u8>> {
-    download_release_asset_from_repo(&release_repo(), tag, asset_name)
-}
-
 pub fn download_release_asset_from_repo(
     repo: &str,
     tag: &str,

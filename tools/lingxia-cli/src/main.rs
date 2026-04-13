@@ -13,7 +13,6 @@ mod path_completion;
 mod permission_cache;
 mod platform;
 mod runtime;
-pub mod sdk;
 mod update;
 mod versions;
 
