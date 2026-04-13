@@ -6,6 +6,11 @@ import Foundation
 func findProjectRoot() -> String {
     let fm = FileManager.default
 
+    if let explicit = ProcessInfo.processInfo.environment["LINGXIA_PROJECT_ROOT"],
+       !explicit.isEmpty {
+        return URL(fileURLWithPath: explicit).standardizedFileURL.path
+    }
+
     func isWorkspaceRoot(_ path: String) -> Bool {
         fm.fileExists(atPath: "\(path)/Cargo.toml")
             && fm.fileExists(atPath: "\(path)/crates/lingxia/Cargo.toml")
@@ -34,7 +39,6 @@ func findProjectRoot() -> String {
     }
 
     let candidates: [String] = [
-        ProcessInfo.processInfo.environment["LINGXIA_PROJECT_ROOT"],
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().path,
         fm.currentDirectoryPath,
     ].compactMap { $0 }
