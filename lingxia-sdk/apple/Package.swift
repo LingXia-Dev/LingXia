@@ -60,25 +60,32 @@ let projectRoot = findProjectRoot()
 
 let buildConfig = ProcessInfo.processInfo.environment["LINGXIA_BUILD_CONFIG"] ?? "release"
 let runnerTargetTriple = ProcessInfo.processInfo.environment["RUNNER_TARGET_TRIPLE"]?.lowercased()
+let cargoTargetDir: String = {
+    if let explicit = ProcessInfo.processInfo.environment["LINGXIA_CARGO_TARGET_DIR"],
+       !explicit.isEmpty {
+        return URL(fileURLWithPath: explicit).standardizedFileURL.path
+    }
+    return "\(projectRoot)/target"
+}()
 
-let iosLibraryPath = "\(projectRoot)/target/aarch64-apple-ios/\(buildConfig)/liblingxia.a"
+let iosLibraryPath = "\(cargoTargetDir)/aarch64-apple-ios/\(buildConfig)/liblingxia.a"
 
 func resolveMacosLibraryPath() -> String {
     if let triple = runnerTargetTriple {
         if triple.hasPrefix("arm64-apple-macosx") || triple.hasPrefix("aarch64-apple-macosx")
             || triple == "aarch64-apple-darwin" || triple == "arm64-apple-darwin"
         {
-            return "\(projectRoot)/target/aarch64-apple-darwin/\(buildConfig)/liblingxia.a"
+            return "\(cargoTargetDir)/aarch64-apple-darwin/\(buildConfig)/liblingxia.a"
         }
         if triple.hasPrefix("x86_64-apple-macosx") || triple == "x86_64-apple-darwin" {
-            return "\(projectRoot)/target/x86_64-apple-darwin/\(buildConfig)/liblingxia.a"
+            return "\(cargoTargetDir)/x86_64-apple-darwin/\(buildConfig)/liblingxia.a"
         }
     }
 
     #if arch(arm64)
-    return "\(projectRoot)/target/aarch64-apple-darwin/\(buildConfig)/liblingxia.a"
+    return "\(cargoTargetDir)/aarch64-apple-darwin/\(buildConfig)/liblingxia.a"
     #else
-    return "\(projectRoot)/target/x86_64-apple-darwin/\(buildConfig)/liblingxia.a"
+    return "\(cargoTargetDir)/x86_64-apple-darwin/\(buildConfig)/liblingxia.a"
     #endif
 }
 
