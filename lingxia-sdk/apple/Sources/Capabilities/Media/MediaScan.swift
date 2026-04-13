@@ -3,7 +3,7 @@ import UIKit
 import AVFoundation
 import Photos
 import QuartzCore
-import Vision
+@preconcurrency import Vision
 import CLingXiaSwiftAPI
 import CLingXiaRustAPI
 
@@ -614,7 +614,7 @@ private extension ScanCodeViewController {
         let allowedSet = Set(symbologies)
         let request = VNDetectBarcodesRequest { [weak self] request, error in
             guard let self else { return }
-            if let error {
+            if error != nil {
                 DispatchQueue.main.async {
                     self.reportFailure(1001)
                 }

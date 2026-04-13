@@ -116,11 +116,16 @@ struct PdfSinglePageContent {
   private document: pdfService.PdfDocument | null = null;
   @State private pageCount: number = 0;
   @State private currentPage: number = 1; // Current visible page (1-based)
-  @State private pagePixelMaps: image.PixelMap[] = []; // All page images
+  @State private pageIndices: number[] = [];
+  @State private pageCacheVersion: number = 0;
   @State private showPageIndicator: boolean = false; // Show/hide page indicator
   @State private indicatorOpacity: number = 0; // Indicator opacity for animation
   private hideIndicatorTimer: number = -1; // Timer for auto-hiding indicator
   private scroller: Scroller = new Scroller(); // Scroller controller
+  private pagePixelMapCache: Map<number, image.PixelMap> = new Map();
+  private readonly prefetchRadius: number = 2;
+  private readonly releaseRadius: number = 4;
+  private estimatedPageHeight: number = 842;
 
   // Whole-screen zoom state
   @State private contentScale: number = 1.0;
@@ -147,65 +152,106 @@ struct PdfSinglePageContent {
       doc.loadDocument(this.filePath, '');
       this.document = doc;
       this.pageCount = doc.getPageCount();
+      this.pageIndices = Array.from({ length: this.pageCount }, (_: Object, index: number) => index);
+      this.resolveEstimatedPageHeight();
       hilog.info(DOMAIN, TAG, `PDF loaded: pageCount=${this.pageCount}`);
-      this.loadAllPages();
+      this.ensureVisiblePagesLoaded(0, Math.min(2, this.pageCount - 1));
     } catch (e) {
       hilog.error(DOMAIN, TAG, `loadDocument failed: ${e}`);
       this.onClose();
     }
   }
 
-  private loadAllPages(): void {
-    if (!this.document) { return; }
-    const maps: image.PixelMap[] = [];
-
-    // Render at 2x resolution for better zoom quality
-    const renderScale = 2.0;
-
-    for (let i = 0; i < this.pageCount; i++) {
-      try {
-        const page = this.document.getPage(i);
-
-        // Try high-resolution rendering using getBox for dimensions
-        try {
-          const box: pdfService.PdfRect = page.getBox(pdfService.BoxType.BOX_MEDIA);
-          // PdfRect uses left, right, top, bottom
-          const pageWidth: number = Math.abs(box.right - box.left);
-          const pageHeight: number = Math.abs(box.bottom - box.top);
-
-          // Create scale matrix with target dimensions (2x resolution)
-          const scaleMatrix = new pdfService.PdfMatrix();
-          scaleMatrix.width = pageWidth * renderScale;
-          scaleMatrix.height = pageHeight * renderScale;
-          scaleMatrix.rotate = 0;
-
-          // Use getCustomPagePixelMap with scale matrix for higher resolution
-          // Parameters: matrix, isGray (false for color), drawAnnotations (true)
-          const map = page.getCustomPagePixelMap(scaleMatrix, false, true);
-          maps.push(map);
-          hilog.info(DOMAIN, TAG, `Page ${i} loaded at ${renderScale}x (${pageWidth}x${pageHeight})`);
-        } catch (highResErr) {
-          // Fallback to standard resolution
-          hilog.warn(DOMAIN, TAG, `Page ${i} high-res failed, using standard: ${highResErr}`);
-          const map = page.getPagePixelMap();
-          maps.push(map);
-        }
-      } catch (e) {
-        hilog.error(DOMAIN, TAG, `loadPage ${i} failed: ${e}`);
-      }
+  private resolveEstimatedPageHeight(): void {
+    if (!this.document || this.pageCount <= 0) {
+      return;
     }
-    this.pagePixelMaps = maps;
-    hilog.info(DOMAIN, TAG, `Loaded ${maps.length} pages`);
+    try {
+      const page = this.document.getPage(0);
+      const box: pdfService.PdfRect = page.getBox(pdfService.BoxType.BOX_MEDIA);
+      const pageWidth: number = Math.abs(box.right - box.left);
+      const pageHeight: number = Math.abs(box.bottom - box.top);
+      if (pageWidth > 0 && pageHeight > 0) {
+        this.estimatedPageHeight = Math.round((pageHeight / pageWidth) * 360);
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `resolveEstimatedPageHeight failed: ${error}`);
+    }
+  }
+
+  private loadPage(index: number): void {
+    if (!this.document || index < 0 || index >= this.pageCount || this.pagePixelMapCache.has(index)) {
+      return;
+    }
+    try {
+      const page = this.document.getPage(index);
+      const renderScale = 2.0;
+      try {
+        const box: pdfService.PdfRect = page.getBox(pdfService.BoxType.BOX_MEDIA);
+        const pageWidth: number = Math.abs(box.right - box.left);
+        const pageHeight: number = Math.abs(box.bottom - box.top);
+        const scaleMatrix = new pdfService.PdfMatrix();
+        scaleMatrix.width = pageWidth * renderScale;
+        scaleMatrix.height = pageHeight * renderScale;
+        scaleMatrix.rotate = 0;
+        const map = page.getCustomPagePixelMap(scaleMatrix, false, true);
+        this.pagePixelMapCache.set(index, map);
+      } catch (highResErr) {
+        hilog.warn(DOMAIN, TAG, `Page ${index} high-res failed, using standard: ${highResErr}`);
+        const map = page.getPagePixelMap();
+        this.pagePixelMapCache.set(index, map);
+      }
+      this.pageCacheVersion += 1;
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `loadPage ${index} failed: ${error}`);
+    }
+  }
+
+  private ensureVisiblePagesLoaded(start: number, end: number): void {
+    if (this.pageCount <= 0) {
+      return;
+    }
+    const from = Math.max(0, start - this.prefetchRadius);
+    const to = Math.min(this.pageCount - 1, end + this.prefetchRadius);
+    for (let index = from; index <= to; index++) {
+      this.loadPage(index);
+    }
+    this.releaseDistantPages(from, to);
+  }
+
+  private releaseDistantPages(visibleStart: number, visibleEnd: number): void {
+    const keepFrom = Math.max(0, visibleStart - this.releaseRadius);
+    const keepTo = Math.min(this.pageCount - 1, visibleEnd + this.releaseRadius);
+    let released: boolean = false;
+    this.pagePixelMapCache.forEach((map: image.PixelMap, index: number) => {
+      if (index < keepFrom || index > keepTo) {
+        try { map.release(); } catch (_) {}
+        this.pagePixelMapCache.delete(index);
+        released = true;
+      }
+    });
+    if (released) {
+      this.pageCacheVersion += 1;
+    }
+  }
+
+  private hasLoadedPage(index: number): boolean {
+    return this.pagePixelMapCache.has(index);
+  }
+
+  private getLoadedPage(index: number): image.PixelMap {
+    return this.pagePixelMapCache.get(index) as image.PixelMap;
   }
 
   private releaseDocument(): void {
     try { this.document?.releaseDocument(); } catch (_) {}
     this.document = null;
-    // Release all page pixel maps
-    for (const map of this.pagePixelMaps) {
+    this.pagePixelMapCache.forEach((map: image.PixelMap) => {
       try { map?.release(); } catch (_) {}
-    }
-    this.pagePixelMaps = [];
+    });
+    this.pagePixelMapCache.clear();
+    this.pageIndices = [];
+    this.pageCacheVersion = 0;
   }
 
   private resetZoom(): void {
@@ -242,9 +288,14 @@ struct PdfSinglePageContent {
     // Show indicator when scrolling
     this.displayPageIndicator();
 
-    // Update current page based on the last visible item
-    // This ensures we show the correct page number when scrolling to the end
-    this.currentPage = Math.min(end + 1, this.pageCount); // Convert 0-based index to 1-based page number
+    const visibleStart = Math.max(0, Math.min(start, this.pageCount - 1));
+    const visibleEnd = Math.min(this.pageCount - 1, visibleStart + 2);
+
+    // Some Harmony builds may report a very large `end` index here.
+    // Keep the preload window bounded so we never regress back to
+    // whole-document eager rendering.
+    this.currentPage = visibleStart + 1;
+    this.ensureVisiblePagesLoaded(visibleStart, visibleEnd);
   }
 
   build() {
@@ -258,13 +309,13 @@ struct PdfSinglePageContent {
       // Zoomable content container - applies scale/translate to entire content
       Column() {
         // PDF content area - continuous scroll with List
-        if (this.pagePixelMaps.length > 0) {
+        if (this.pageIndices.length > 0) {
           List({ scroller: this.scroller }) {
-            ForEach(this.pagePixelMaps, (pixelMap: image.PixelMap, index: number) => {
+            ForEach(this.pageIndices, (index: number) => {
               ListItem() {
-                this.renderPage(pixelMap, index)
+                this.renderPage(index)
               }
-            }, (pixelMap: image.PixelMap, index: number) => `page_${index}`)
+            }, (index: number) => `page_${index}`)
           }
           .width('100%')
           .height('100%')
@@ -356,13 +407,27 @@ struct PdfSinglePageContent {
   }
 
   @Builder
-  private renderPage(pixelMap: image.PixelMap, index: number) {
-    // Simple page rendering - zoom is handled at container level
+  private renderPage(index: number) {
     Column() {
-      Image(pixelMap)
+      if (this.hasLoadedPage(index)) {
+        Image(this.getLoadedPage(index))
+          .width('100%')
+          .objectFit(ImageFit.Contain)
+          .backgroundColor('#FFFFFF')
+      } else {
+        Column() {
+          LoadingProgress()
+            .color('#9CA3AF')
+        }
         .width('100%')
-        .objectFit(ImageFit.Contain)
+        .height(this.estimatedPageHeight)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
         .backgroundColor('#FFFFFF')
+        .onAppear(() => {
+          this.loadPage(index);
+        })
+      }
     }
     .width('100%')
     .margin({ bottom: 8 })
@@ -379,7 +444,7 @@ struct PdfSinglePageContent {
       Row()
         .width('100%')
         .height(48)
-        .backgroundColor(Color.Transparent)
+        .backgroundColor('#F8F8F8')
 
       // Actual navigation bar
       Row()
