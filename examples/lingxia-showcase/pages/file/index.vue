@@ -129,7 +129,7 @@
       <div v-else class="bg-white rounded-lg shadow-sm">
         <div class="px-4 py-4 border-b border-gray-100">
           <div class="text-base text-gray-900 font-medium">Choose File</div>
-          <div class="text-xs text-gray-500 mt-1">Open the host chooser directly inside usercache instead of the system recent-files picker.</div>
+          <div class="text-xs text-gray-500 mt-1">Open the host chooser in a predefined folder instead of the system recent-files picker.</div>
         </div>
         <div class="px-4 py-4 space-y-3">
           <div class="text-sm text-gray-600">Default folder:</div>
@@ -140,7 +140,7 @@
             @click="chooseFileFromUserCache"
             class="w-full py-3 rounded-lg bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium"
           >
-            Choose File from Usercache
+            Open File Chooser
           </button>
           <div class="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
             <div class="text-xs text-gray-500">Status</div>
@@ -227,7 +227,7 @@ const officeUrl = computed(() => data.officeUrl || '');
 const officeFileType = computed(() => data.officeFileType || '');
 const showMenu = computed(() => Boolean(data.showMenu));
 const chooseFileDefaultPath = computed(() => data.chooseFileDefaultPath || '');
-const chooseFileStatusText = computed(() => data.chooseFileStatusText || 'Choose a file from usercache');
+const chooseFileStatusText = computed(() => data.chooseFileStatusText || 'Choose a file');
 const chooseFileSelectedPath = computed(() => data.chooseFileSelectedPath || '');
 const chooseFileSelectedType = computed(() => data.chooseFileSelectedType || '');
 const isPdfDownloading = computed(() => Boolean(data.isPdfDownloading));

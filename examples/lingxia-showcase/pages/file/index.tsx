@@ -56,7 +56,7 @@ export default function FilePage() {
   const officeFileType = data?.officeFileType || '';
   const showMenu = Boolean(data?.showMenu);
   const chooseFileDefaultPath = data?.chooseFileDefaultPath || '';
-  const chooseFileStatusText = data?.chooseFileStatusText || 'Choose a file from usercache';
+  const chooseFileStatusText = data?.chooseFileStatusText || 'Choose a file';
   const chooseFileSelectedPath = data?.chooseFileSelectedPath || '';
   const chooseFileSelectedType = data?.chooseFileSelectedType || '';
   const isPdfDownloading = Boolean(data?.isPdfDownloading);
@@ -222,7 +222,7 @@ export default function FilePage() {
           <div className="bg-white rounded-lg shadow-sm">
             <div className="px-4 py-4 border-b border-gray-100">
               <div className="text-base text-gray-900 font-medium">Choose File</div>
-              <div className="text-xs text-gray-500 mt-1">Open the host chooser directly inside usercache instead of the system recent-files picker.</div>
+              <div className="text-xs text-gray-500 mt-1">Open the host chooser in a predefined folder instead of the system recent-files picker.</div>
             </div>
             <div className="px-4 py-4 space-y-3">
               <div className="text-sm text-gray-600">Default folder:</div>
@@ -233,7 +233,7 @@ export default function FilePage() {
                 onClick={chooseFileFromUserCache}
                 className="w-full py-3 rounded-lg bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-medium"
               >
-                Choose File from Usercache
+                Open File Chooser
               </button>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 space-y-2">
                 <div className="text-xs text-gray-500">Status</div>

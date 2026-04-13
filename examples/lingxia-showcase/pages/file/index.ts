@@ -148,7 +148,7 @@ async function observePdfTask(page, task, sessionId) {
       continue;
     }
 
-    if (event.kind === "success") {
+    if (event.kind === "completed") {
       page.setData({
         pdfDownloadState: "opening",
         pdfTransferButtonText: "Pause Download",
@@ -170,7 +170,7 @@ Page({
     officeFileType: "docx",
     showMenu: true,
     chooseFileDefaultPath: "",
-    chooseFileStatusText: "Choose a file from usercache",
+    chooseFileStatusText: "Choose a file",
     chooseFileSelectedPath: "",
     chooseFileSelectedType: "",
     isPdfDownloading: false,
@@ -189,7 +189,7 @@ Page({
     this.setData({
       activeDemo: requestedSection,
       chooseFileDefaultPath: lx.env.USER_CACHE_PATH || "",
-      chooseFileStatusText: "Choose a file from usercache",
+      chooseFileStatusText: "Choose a file",
       isPdfDownloading: false,
       pdfDownloadState: "idle",
       pdfProgressKnown: false,
@@ -354,12 +354,11 @@ Page({
   chooseFileFromUserCache: async function () {
     try {
       const result = await lx.chooseFile({
-        title: "Choose file from usercache",
         defaultPath: this.data.chooseFileDefaultPath,
       });
       if (result.canceled || !Array.isArray(result.paths) || result.paths.length === 0) {
         this.setData({
-          chooseFileStatusText: "Choose file canceled",
+          chooseFileStatusText: "File selection canceled",
           chooseFileSelectedPath: "",
           chooseFileSelectedType: "",
         });
@@ -369,7 +368,7 @@ Page({
       const selectedPath = result.paths[0];
       const fileType = detectFileTypeFromPath(selectedPath);
       this.setData({
-        chooseFileStatusText: "Selected from usercache",
+        chooseFileStatusText: "File selected",
         chooseFileSelectedPath: selectedPath,
         chooseFileSelectedType: fileType || "unknown",
       });
