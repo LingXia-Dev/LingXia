@@ -6,10 +6,11 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStandardMenu()
 
-        LxApp.enableWebViewDebugging()
-        Lingxia.initialize()
+        Lingxia.enableWebViewDebugging()
+        _ = try? Lingxia.quickStart()
     }
 
+    @MainActor
     private func setupStandardMenu() {
         let mainMenu = NSMenu()
 
