@@ -4,10 +4,6 @@ use clap::Args;
 
 #[derive(Args, Clone)]
 pub struct PackageOptions {
-    /// Rust features to enable (comma-separated)
-    #[arg(short = 'f', long, value_delimiter = ',')]
-    pub features: Vec<String>,
-
     /// Skip native Rust library compilation (use existing binaries)
     #[arg(long)]
     pub skip_native: bool,
@@ -34,7 +30,6 @@ pub struct PackageOptions {
 }
 
 pub struct PackageExecuteOptions {
-    pub features: Vec<String>,
     pub build_native: bool,
     pub abis: Vec<String>,
     pub macos_arch: Option<String>,
@@ -47,7 +42,6 @@ pub struct PackageExecuteOptions {
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
     build::execute(BuildExecuteOptions {
         release: true,
-        features: options.features,
         build_native: options.build_native,
         abis: options.abis,
         macos_arch: options.macos_arch,

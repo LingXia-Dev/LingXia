@@ -1,5 +1,4 @@
 use crate::platform::BuildProfile;
-use crate::platform::detector::PlatformType;
 use crate::platform::doctor::command_version_line;
 use anyhow::{Context, Result, anyhow};
 use std::path::Path;
@@ -14,17 +13,10 @@ pub fn resolve_build_profile(release: bool) -> BuildProfile {
     }
 }
 
-/// Apply common cargo build switches for profile/features.
-pub fn apply_cargo_profile_and_features(
-    cmd: &mut Command,
-    profile: BuildProfile,
-    features: &[String],
-) {
+/// Apply common cargo build switches for profile.
+pub fn apply_cargo_profile(cmd: &mut Command, profile: BuildProfile) {
     if matches!(profile, BuildProfile::Release) {
         cmd.arg("--release");
-    }
-    if !features.is_empty() {
-        cmd.arg("--features").arg(features.join(","));
     }
 }
 
@@ -40,7 +32,6 @@ pub fn run_cargo_build_for_target<F>(
     target: &str,
     package: Option<&str>,
     profile: BuildProfile,
-    features: &[String],
     configure: F,
 ) -> Result<()>
 where
@@ -59,7 +50,7 @@ where
         cmd.arg("-p").arg(package_name);
     }
 
-    apply_cargo_profile_and_features(&mut cmd, profile, features);
+    apply_cargo_profile(&mut cmd, profile);
     configure(&mut cmd);
 
     let status = cmd.status().context("Failed to execute cargo build")?;
@@ -76,7 +67,6 @@ pub fn run_cargo_rustc_staticlib_for_target<F>(
     target_dir: &Path,
     target: &str,
     profile: BuildProfile,
-    features: &[String],
     configure: F,
 ) -> Result<()>
 where
@@ -92,7 +82,7 @@ where
         .env("CARGO_TARGET_DIR", target_dir)
         .current_dir(working_dir);
 
-    apply_cargo_profile_and_features(&mut cmd, profile, features);
+    apply_cargo_profile(&mut cmd, profile);
     configure(&mut cmd);
 
     let status = cmd.status().context("Failed to execute cargo rustc")?;
@@ -100,21 +90,6 @@ where
         return Err(anyhow!("Rust build failed for target: {}", target));
     }
     Ok(())
-}
-
-pub fn resolve_platform_features(
-    requested: &[String],
-    platform: &PlatformType,
-) -> Result<Vec<String>> {
-    let has_tls_ring = requested.iter().any(|f| f == "tls-ring");
-    let has_tls_aws = requested.iter().any(|f| f == "tls-aws-lc");
-    if has_tls_ring || has_tls_aws {
-        return Err(anyhow!(
-            "LingXia now selects the TLS backend automatically by target: mobile uses `ring`, desktop uses `aws-lc-rs`. Remove `tls-ring`/`tls-aws-lc` from --features for {}.",
-            platform.as_str()
-        ));
-    }
-    Ok(requested.to_vec())
 }
 
 #[cfg(test)]
@@ -128,24 +103,12 @@ mod tests {
     }
 
     #[test]
-    fn apply_cargo_profile_and_features_passes_features_without_touching_defaults() {
+    fn apply_cargo_profile_only_adds_release_when_requested() {
         let mut cmd = Command::new("cargo");
-        let features = vec!["cloud".to_string()];
-        apply_cargo_profile_and_features(&mut cmd, BuildProfile::Debug, &features);
+        apply_cargo_profile(&mut cmd, BuildProfile::Debug);
 
         let args = command_args(&cmd);
         assert!(!args.iter().any(|a| a == "--no-default-features"));
-        assert!(args.windows(2).any(|w| w == ["--features", "cloud"]));
-    }
-
-    #[test]
-    fn resolve_platform_features_rejects_legacy_tls_overrides() {
-        let err = resolve_platform_features(&["tls-ring".to_string()], &PlatformType::Android)
-            .expect_err("legacy tls feature should be rejected");
-        assert!(
-            err.to_string()
-                .contains("selects the TLS backend automatically"),
-            "unexpected error: {err}"
-        );
+        assert!(!args.iter().any(|a| a == "--release"));
     }
 }

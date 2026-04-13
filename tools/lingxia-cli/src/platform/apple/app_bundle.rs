@@ -2,6 +2,7 @@
 //!
 //! Converts a SwiftPM library package into a runnable .app bundle.
 
+use crate::platform::resolve_cargo_target_dir;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::collections::HashMap;
@@ -145,10 +146,12 @@ let package = Package(
         let sdk_path = get_ios_sdk_path()?;
         let build_config = if release { "release" } else { "debug" };
         let scratch_path = package_dir.join(".lingxia").join(".tmp-build");
+        let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         let mut cmd = Command::new("swift");
         cmd.current_dir(package_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env_remove("SDKROOT")
             .args([

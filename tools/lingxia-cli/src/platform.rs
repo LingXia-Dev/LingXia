@@ -1,5 +1,6 @@
 use crate::config::LingXiaConfig;
 use anyhow::Result;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub mod android;
@@ -12,12 +13,36 @@ pub mod ios;
 pub mod macos;
 pub mod spm;
 
+pub fn resolve_cargo_target_dir(project_root: &Path) -> PathBuf {
+    find_workspace_root(project_root)
+        .unwrap_or_else(|| project_root.to_path_buf())
+        .join("target")
+}
+
+fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    for dir in start.ancestors() {
+        let manifest = dir.join("Cargo.toml");
+        if !manifest.exists() {
+            continue;
+        }
+        if manifest_declares_workspace(&manifest) {
+            return Some(dir.to_path_buf());
+        }
+    }
+    None
+}
+
+fn manifest_declares_workspace(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .map(|content| content.contains("[workspace]"))
+        .unwrap_or(false)
+}
+
 /// Platform-specific build configuration
 #[derive(Debug, Clone)]
 pub struct BuildConfig {
     pub project_root: PathBuf,
     pub profile: BuildProfile,
-    pub features: Vec<String>,
     /// Whether to build native Rust libraries
     pub build_native: bool,
     pub targets: Vec<String>,

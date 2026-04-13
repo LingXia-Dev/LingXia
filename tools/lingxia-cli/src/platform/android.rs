@@ -1,4 +1,7 @@
-use super::{BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig};
+use super::{
+    BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
+    resolve_cargo_target_dir,
+};
 use crate::commands::rust::run_cargo_build_for_target;
 use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
@@ -170,7 +173,7 @@ Supported Rust target triples:\n\
             _ => return Err(Self::unsupported_target_error(target)),
         };
 
-        let target_dir = project_root.join("target");
+        let target_dir = resolve_cargo_target_dir(project_root);
         run_cargo_build_for_target(
             &rust_manifest,
             &rust_lib_dir,
@@ -178,7 +181,6 @@ Supported Rust target triples:\n\
             target,
             None,
             config.profile,
-            &config.features,
             |cmd| {
                 // Set Android NDK environment variables
                 cmd.env("ANDROID_NDK_ROOT", ndk_path);

@@ -32,10 +32,6 @@ struct BuildOptions {
     #[arg(long)]
     release: bool,
 
-    /// Rust features to enable (comma-separated)
-    #[arg(short = 'f', long, value_delimiter = ',')]
-    features: Vec<String>,
-
     /// Skip native Rust library compilation (use existing binaries)
     #[arg(long)]
     skip_native: bool,
@@ -410,7 +406,6 @@ fn main() -> Result<()> {
         } => {
             commands::build::execute(commands::build::BuildExecuteOptions {
                 release: build_options.release,
-                features: build_options.features,
                 build_native: !build_options.skip_native,
                 abis: build_options.abis,
                 macos_arch: build_options.macos_arch,
@@ -429,7 +424,6 @@ fn main() -> Result<()> {
             all_platforms,
         } => {
             commands::package::execute(commands::package::PackageExecuteOptions {
-                features: package_options.features,
                 build_native: !package_options.skip_native,
                 abis: package_options.abis,
                 macos_arch: package_options.macos_arch,
@@ -468,7 +462,6 @@ fn main() -> Result<()> {
         Commands::Dev { dev_options } => {
             commands::dev::execute(commands::dev::DevExecuteOptions {
                 release: dev_options.build_options.release,
-                features: dev_options.build_options.features,
                 build_native: !dev_options.build_options.skip_native,
                 abis: dev_options.build_options.abis,
                 macos_arch: dev_options.build_options.macos_arch,

@@ -6,6 +6,7 @@ use super::apple::{self, IOS_TARGET};
 use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
+    resolve_cargo_target_dir,
 };
 use crate::config::IosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
@@ -40,19 +41,18 @@ impl IosPlatform {
     ) -> Result<PathBuf> {
         let is_release = matches!(config.profile, BuildProfile::Release);
         let profile_dir = config.profile.as_str();
+        let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         if !config.build_native {
             // Return expected path even if not building
-            return Ok(project_root
-                .join("target")
+            return Ok(cargo_target_dir
                 .join(IOS_TARGET)
                 .join(profile_dir)
                 .join("liblingxia.a"));
         }
 
         if config.lingxia_config.is_none() {
-            return Ok(project_root
-                .join("target")
+            return Ok(cargo_target_dir
                 .join(IOS_TARGET)
                 .join(profile_dir)
                 .join("liblingxia.a"));
@@ -77,7 +77,6 @@ impl IosPlatform {
             &rust_lib_dir,
             IOS_TARGET,
             is_release,
-            &config.features,
             deployment_target,
         )
     }
@@ -96,12 +95,14 @@ impl IosPlatform {
 
         let is_release = matches!(profile, BuildProfile::Release);
         let build_config = if is_release { "release" } else { "debug" };
+        let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         // Note: We intentionally don't set SDKROOT as it would affect manifest compilation.
         // The --sdk flag is sufficient for cross-compilation to iOS.
         let mut cmd = Command::new("swift");
         cmd.current_dir(ios_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             // Clear any existing SDKROOT to ensure manifest compiles correctly
             .env_remove("SDKROOT")

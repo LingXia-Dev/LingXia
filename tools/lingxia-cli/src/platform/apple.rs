@@ -19,6 +19,7 @@ pub mod signer;
 pub mod srp;
 
 use crate::commands::rust::{resolve_build_profile, run_cargo_rustc_staticlib_for_target};
+use crate::platform::resolve_cargo_target_dir;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::fs;
@@ -369,7 +370,6 @@ pub fn build_rust_staticlib(
     rust_lib_dir: &Path,
     target: &str,
     release: bool,
-    features: &[String],
     deployment_target: Option<&str>,
 ) -> Result<PathBuf> {
     println!("{}", "Compiling native static library...".cyan());
@@ -383,13 +383,13 @@ pub fn build_rust_staticlib(
     }
 
     let profile = resolve_build_profile(release);
+    let cargo_target_dir = resolve_cargo_target_dir(project_root);
     run_cargo_rustc_staticlib_for_target(
         &rust_manifest,
         rust_lib_dir,
-        &project_root.join("target"),
+        &cargo_target_dir,
         target,
         profile,
-        features,
         |cmd| {
             if target.contains("ios") {
                 let deploy_ver = deployment_target.unwrap_or("17.0");
@@ -407,7 +407,7 @@ pub fn build_rust_staticlib(
     // Determine output path - force host project's target directory.
     let profile_dir = if release { "release" } else { "debug" };
 
-    let target_dir = project_root.join("target").join(target).join(profile_dir);
+    let target_dir = cargo_target_dir.join(target).join(profile_dir);
     let dest_path = target_dir.join("liblingxia.a");
     if !dest_path.exists() {
         return Err(anyhow!(
@@ -434,8 +434,7 @@ pub fn update_spm_rust_link_stamp(
     rust_target: &str,
     build_config: &str,
 ) -> Result<()> {
-    let lib_path = project_root
-        .join("target")
+    let lib_path = resolve_cargo_target_dir(project_root)
         .join(rust_target)
         .join(build_config)
         .join("liblingxia.a");
@@ -454,7 +453,7 @@ pub fn update_spm_rust_link_stamp(
     let modified_secs = dur.as_secs();
     let modified_nanos = dur.subsec_nanos();
 
-    let staged_dir = sdk_root.join("target").join("spm").join("lingxia");
+    let staged_dir = sdk_root.join(".lingxia").join("spm").join("lingxia");
     let stamp_path = staged_dir
         .join("Sources")
         .join("_LingXiaRustLinkStamp.swift");

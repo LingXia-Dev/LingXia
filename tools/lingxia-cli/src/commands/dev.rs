@@ -1,4 +1,4 @@
-use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
+use crate::commands::rust::resolve_build_profile;
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp::ProjectFramework;
@@ -25,7 +25,6 @@ const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct DevExecuteOptions {
     pub release: bool,
-    pub features: Vec<String>,
     pub build_native: bool,
     pub abis: Vec<String>,
     pub macos_arch: Option<String>,
@@ -41,7 +40,6 @@ struct DevContext {
     project_root: std::path::PathBuf,
     config: LingXiaConfig,
     build_profile: BuildProfile,
-    features: Vec<String>,
     build_native: bool,
     framework: Option<ProjectFramework>,
     progress: Option<String>,
@@ -131,7 +129,6 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         project_root,
         config,
         build_profile,
-        features: options.features,
         build_native: options.build_native,
         framework: options
             .framework
@@ -153,7 +150,6 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
-    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Android)?;
 
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
 
@@ -175,7 +171,6 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: platform_features,
         build_native: ctx.build_native,
         targets: build_targets,
         lingxia_config: Some(ctx.config.clone()),
@@ -232,7 +227,6 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
 
 fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform = platform::ios::IosPlatform::new();
-    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Ios)?;
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Ios];
@@ -252,7 +246,6 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
@@ -307,7 +300,6 @@ fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
     use std::process::Command;
 
     let platform = platform::macos::MacosPlatform::new();
-    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::MacOs)?;
     let host_arch = if cfg!(target_arch = "aarch64") {
         "arm64"
     } else {
@@ -342,7 +334,6 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),
@@ -378,7 +369,6 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
 
 fn execute_harmony(ctx: DevContext) -> Result<()> {
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
-    let platform_features = resolve_platform_features(&ctx.features, &PlatformType::Harmony)?;
 
     // Generate app.json and embed LxApp assets
     let platforms_to_build = vec![PlatformType::Harmony];
@@ -398,7 +388,6 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
     let build_config = BuildConfig {
         project_root: ctx.project_root.clone(),
         profile: ctx.build_profile,
-        features: platform_features,
         build_native: ctx.build_native,
         targets: vec![],
         lingxia_config: Some(ctx.config.clone()),

@@ -1,4 +1,4 @@
-use crate::commands::rust::{resolve_build_profile, resolve_platform_features};
+use crate::commands::rust::resolve_build_profile;
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets::{prepare_configured_host_assets, prepare_standalone_apple_package_assets};
 use crate::lxapp;
@@ -11,7 +11,6 @@ use std::env;
 
 pub struct BuildExecuteOptions {
     pub release: bool,
-    pub features: Vec<String>,
     pub build_native: bool,
     pub abis: Vec<String>,
     pub macos_arch: Option<String>,
@@ -27,11 +26,10 @@ pub struct BuildExecuteOptions {
 /// Execute the build command
 ///
 /// Builds the project using the detected platform's build system.
-/// Supports debug and release profiles, custom features, and multi-target builds.
+/// Supports debug and release profiles and multi-target builds.
 pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let BuildExecuteOptions {
         release,
-        features,
         build_native,
         abis,
         macos_arch,
@@ -170,7 +168,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
             inferred_platform_from_subdir,
             build_native,
             release,
-            features,
             macos_arch,
             platforms,
             all_platforms,
@@ -316,7 +313,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     let mut all_artifacts = Vec::new();
 
     for platform_type in platforms_to_build {
-        let platform_features = resolve_platform_features(&features, &platform_type)?;
         let platform = match platform::detector::create_platform(&platform_type) {
             Ok(p) => p,
             Err(e) => {
@@ -336,7 +332,6 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         let build_config = BuildConfig {
             project_root: project_root.clone(),
             profile: build_profile,
-            features: platform_features,
             build_native,
             targets: if matches!(platform_type, platform::detector::PlatformType::Android) {
                 build_targets.clone()
@@ -392,7 +387,6 @@ fn build_standalone_apple_swift_package(
     inferred_platform: Option<PlatformType>,
     build_native: bool,
     release: bool,
-    features: Vec<String>,
     macos_arch: Option<String>,
     platforms: Vec<String>,
     all_platforms: bool,
@@ -440,12 +434,10 @@ fn build_standalone_apple_swift_package(
     let mut all_artifacts = Vec::new();
     for platform_type in platforms_to_build {
         prepare_standalone_apple_package_assets(project_root, &platform_type)?;
-        let platform_features = resolve_platform_features(&features, &platform_type)?;
         let platform = platform::detector::create_platform(&platform_type)?;
         let build_config = BuildConfig {
             project_root: project_root.to_path_buf(),
             profile: build_profile,
-            features: platform_features,
             build_native,
             targets: Vec::new(),
             lingxia_config: None,

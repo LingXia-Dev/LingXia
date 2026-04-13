@@ -7,6 +7,7 @@ use super::apple::{self};
 use super::spm;
 use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
+    resolve_cargo_target_dir,
 };
 use crate::config::MacosConfig;
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
@@ -59,18 +60,17 @@ impl MacosPlatform {
         let rust_target = Self::rust_target(arch);
         let is_release = matches!(config.profile, BuildProfile::Release);
         let profile_dir = config.profile.as_str();
+        let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         if !config.build_native {
-            return Ok(project_root
-                .join("target")
+            return Ok(cargo_target_dir
                 .join(rust_target)
                 .join(profile_dir)
                 .join("liblingxia.a"));
         }
 
         if config.lingxia_config.is_none() {
-            return Ok(project_root
-                .join("target")
+            return Ok(cargo_target_dir
                 .join(rust_target)
                 .join(profile_dir)
                 .join("liblingxia.a"));
@@ -92,7 +92,6 @@ impl MacosPlatform {
             &rust_lib_dir,
             rust_target,
             is_release,
-            &config.features,
             Some(deployment_target),
         )
     }
@@ -111,11 +110,13 @@ impl MacosPlatform {
         let is_release = matches!(profile, BuildProfile::Release);
         let build_config = if is_release { "release" } else { "debug" };
         let triple = Self::swift_triple(arch, deployment_target);
+        let cargo_target_dir = resolve_cargo_target_dir(project_root);
 
         let mut build_cmd = Command::new("swift");
         build_cmd
             .current_dir(macos_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--triple", &triple]);
@@ -134,6 +135,7 @@ impl MacosPlatform {
         let mut cmd = Command::new("swift");
         cmd.current_dir(macos_dir)
             .env("LINGXIA_PROJECT_ROOT", project_root)
+            .env("LINGXIA_CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_BUILD_CONFIG", build_config)
             .env("RUNNER_TARGET_TRIPLE", &triple)
             .args(["build", "--disable-sandbox", "--show-bin-path"]);
