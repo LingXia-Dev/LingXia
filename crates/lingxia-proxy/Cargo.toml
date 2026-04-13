@@ -1,0 +1,46 @@
+[package]
+name = "lingxia-proxy"
+version.workspace = true
+edition.workspace = true
+description = "Local HTTP CONNECT proxy with PAC routing and optional MITM capture"
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = []
+# HTTPS MITM + structured HTTP capture. PC-only; off by default.
+# Caller must supply a CA cert+key via LocalProxy::set_capture_ca() before subscribing.
+capture = [
+    "dep:rcgen",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+    "dep:tokio-rustls",
+    "dep:httparse",
+    "dep:base64",
+]
+# GFW-list based routing + update fetch via SOCKS5 + native TLS.
+gfwlist = [
+    "dep:base64",
+    "dep:tokio-native-tls",
+    "dep:native-tls",
+]
+
+[dependencies]
+thiserror   = { workspace = true }
+log         = { workspace = true }
+serde       = { workspace = true }
+tokio       = { workspace = true, features = ["net", "io-util"] }
+http        = { workspace = true }
+fast-socks5 = "0.9"
+
+# capture-only deps
+rcgen        = { version = "0.13",  optional = true, features = ["x509-parser"] }
+rustls       = { version = "0.23",  optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = { version = "0.8", optional = true }
+tokio-rustls = { version = "0.26",  optional = true }
+httparse     = { version = "1.9",   optional = true }
+base64       = { workspace = true,  optional = true }
+
+# gfwlist-only deps
+tokio-native-tls = { version = "0.3", optional = true }
+native-tls       = { version = "0.2", optional = true }
