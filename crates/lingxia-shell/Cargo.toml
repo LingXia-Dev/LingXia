@@ -15,13 +15,16 @@ categories = ["web-programming", "api-bindings"]
 lxapp = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true }
+lingxia-proxy = { workspace = true, features = ["gfwlist"] }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
+lingxia-webview = { workspace = true }
 lingxia-macro = { workspace = true }
 lingxia-platform = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 log = { workspace = true }
 rong = { workspace = true, default-features = false }

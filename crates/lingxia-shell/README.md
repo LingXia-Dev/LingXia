@@ -6,6 +6,7 @@ Shell product module and host registration crate for LingXia.
 
 - Browser capability from `lingxia-browser`
 - Download/settings host APIs
+- Proxy settings, Auto Switch rules, and local proxy runtime
 - Address-bar resolution and navigation helpers
 - Embedded browser Web UI assets and internal pages
 - Panel-related helpers for shell-hosted lxapps
@@ -22,3 +23,7 @@ Shell product module and host registration crate for LingXia.
 
 This crate is the product-facing assembly layer. Lower-level reusable runtime
 pieces live in `lingxia-browser`, `lingxia-transfer`, and `lingxia-settings`.
+
+Proxy configuration is owned by `lingxia-shell` and persisted separately under
+the app state directory as `proxy-settings.json`. Shared lightweight settings
+such as download directory preferences remain in `lingxia-settings`.

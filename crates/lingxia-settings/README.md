@@ -16,5 +16,7 @@ Shared settings/preferences store for LingXia products.
 
 ## Notes
 
-The schema is intentionally small today. This crate exists so download, shell,
-and other runtime crates share one persistence location and format.
+The schema is intentionally small. This crate is for shared lightweight
+preferences such as download directory settings. Product-specific settings such
+as browser proxy configuration or Auto Switch rules should live in their owning
+product/runtime crate instead of this shared settings crate.

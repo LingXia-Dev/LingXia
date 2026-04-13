@@ -5,6 +5,8 @@ mod downloads;
 mod facade;
 mod panel;
 mod platform_error;
+mod proxy;
+mod proxy_settings;
 mod settings;
 
 pub use address_bar::{resolve_input, resolve_input_json};
@@ -106,6 +108,7 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 pub fn register_runtime() {
     lingxia_browser::install_runtime();
     downloads::register();
+    proxy::register();
     settings::register();
 }
 
@@ -144,6 +147,7 @@ pub fn register_bundled_assets() {
 
 #[doc(hidden)]
 pub fn warmup() {
+    proxy::warmup();
     lingxia_browser::warmup();
 }
 
