@@ -1,0 +1,8 @@
+{
+  "appId": "lingxia-chat",
+  "appName": "LingXia Chat",
+  "version": "1.0.3",
+  "pages": [
+    "pages/chat/index"
+  ]
+}

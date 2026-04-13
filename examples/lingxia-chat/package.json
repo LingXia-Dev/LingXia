@@ -1,0 +1,37 @@
+{
+  "name": "lingxia-chat",
+  "version": "1.0.0",
+  "description": "LLM chatbox demo using LingXia streaming bridge",
+  "type": "module",
+  "scripts": {
+    "build": "bash ../scripts/run-lingxia-cli.sh build"
+  },
+  "keywords": [
+    "lingxia",
+    "llm",
+    "chat",
+    "streaming"
+  ],
+  "author": "LingXia Team",
+  "license": "MIT",
+  "dependencies": {
+    "@lingxia/bridge": "file:../../packages/lingxia-bridge",
+    "@lingxia/react": "file:../../packages/lingxia-react",
+    "@lingxia/vue": "file:../../packages/lingxia-vue",
+    "vue": "^3.5.0",
+    "lingxia-types": "file:../../packages/lingxia-types",
+    "echarts": "^5.6.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "tailwindcss": "^3.4.13"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.10",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "@vitejs/plugin-vue": "^6.0.5",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.41",
+    "typescript": "^5.7.2"
+  }
+}
