@@ -1,5 +1,5 @@
 [package]
-name = "lingxia-lib"
+name = "lingxia-example-host"
 version = "0.1.0"
 edition = "2024"
 description = "Native library for LingXia example App (builds to .so/.a)"

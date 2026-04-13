@@ -1,20 +1,10 @@
 //! Native library for the example app (builds to .so/.a).
 //!
 //! This crate:
-//! 1. Re-exports platform FFI symbols from lingxia
+//! 1. Links the core `lingxia` runtime into the final static/shared library
 //! 2. Exports host addon installation via platform FFI (JNI/NAPI/C)
 
 mod extension;
-
-// Re-export platform FFI symbols from lingxia
-#[cfg(target_os = "android")]
-pub use lingxia::android::*;
-
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use lingxia::apple::*;
-
-#[cfg(target_env = "ohos")]
-pub use lingxia::harmony::*;
 
 struct ExampleAppAddon;
 
