@@ -1,7 +1,12 @@
 mod download;
+mod upload;
 
 pub use download::{
     DownloadEvent, DownloadEventKind, DownloadRecord, DownloadStatus, DownloadsSnapshot,
+};
+pub use upload::{
+    UploadBehavior, UploadEvent, UploadFailure, UploadMethod, UploadRequest, UploadResult,
+    resolve_upload_file_name, upload_file_with_behavior,
 };
 
 use std::path::{Path, PathBuf};

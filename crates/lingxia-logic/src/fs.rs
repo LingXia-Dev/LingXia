@@ -8,6 +8,7 @@ use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
 
 mod download;
+mod upload;
 
 #[derive(FromJSObj)]
 struct JSOpenFileOptions {
@@ -269,6 +270,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
     lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
     download::init(ctx)?;
+    upload::init(ctx)?;
 
     Ok(())
 }

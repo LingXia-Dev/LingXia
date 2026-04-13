@@ -103,6 +103,7 @@ struct DownloadIteratorState {
     sender: mpsc::Sender<DownloadIteratorMessage>,
     pending_message: Option<DownloadIteratorMessage>,
     terminal_seen: bool,
+    iteration_closed: bool,
     fallback_progress: f64,
     status: DownloadTaskStatus,
     stop_requested: Option<RequestedStop>,
@@ -122,6 +123,7 @@ impl DownloadIteratorState {
             sender,
             pending_message: None,
             terminal_seen: false,
+            iteration_closed: false,
             fallback_progress: 0.0,
             status: DownloadTaskStatus::Running,
             stop_requested: None,
@@ -207,10 +209,10 @@ fn bind_abort_signal_to_iterator(
         return Ok(());
     };
 
-    let cancel_target = iterator.clone();
+    let target = iterator.clone();
     let cancel_fn = JSFunc::new(ctx, move || -> JSResult<()> {
-        if let Ok(cancel) = cancel_target.get::<_, JSFunc>("cancel") {
-            let _ = cancel.call::<_, JSObject>(Some(cancel_target.clone()), ());
+        if let Ok(cancel) = target.get::<_, JSFunc>("cancel") {
+            let _ = cancel.call::<_, JSObject>(Some(target.clone()), ());
         }
         Ok(())
     })?;
@@ -696,7 +698,10 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         JSFunc::new(&ctx, move || {
             let state = return_state.clone();
             async move {
-                download_cancel_task(&state).await?;
+                let mut guard = state.lock().await;
+                guard.iteration_closed = true;
+                guard.pending_message = None;
+                guard.receiver = None;
                 Ok(JSDownloadIteratorStep {
                     done: true,
                     value: None,
@@ -728,8 +733,7 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let state = cancel_state.clone();
         async move { download_cancel_task(&state).await }
     })?;
-    iterator.set("cancel", cancel_fn.clone())?;
-    iterator.set("abort", cancel_fn)?;
+    iterator.set("cancel", cancel_fn)?;
 
     install_promise_methods(&ctx, &iterator, final_promise)?;
     install_async_iterator(&ctx, &iterator)?;
@@ -750,7 +754,7 @@ async fn download_next_step(
             drop(state_guard);
             return handle_download_message(ctx, state, message).await;
         }
-        if state_guard.terminal_seen {
+        if state_guard.terminal_seen || state_guard.iteration_closed {
             return Ok(JSDownloadIteratorStep {
                 done: true,
                 value: None,
@@ -833,7 +837,7 @@ async fn handle_download_message(
             Ok(JSDownloadIteratorStep {
                 done: false,
                 value: Some(JSDownloadEvent {
-                    kind: "success".to_string(),
+                    kind: "completed".to_string(),
                     downloaded_bytes: Some(result.size),
                     total_bytes: Some(result.size),
                     progress: Some(1.0),

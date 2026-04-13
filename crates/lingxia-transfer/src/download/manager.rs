@@ -575,7 +575,7 @@ fn normalize_request_headers(headers: &[(String, String)]) -> Vec<(String, Strin
 fn should_forward_header(name: &str) -> bool {
     !matches!(
         name,
-        "accept" | "range" | "if-range" | "user-agent" | "cookie"
+        "accept" | "range" | "if-range" | "referer" | "user-agent" | "cookie"
     )
 }
 
