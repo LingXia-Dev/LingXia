@@ -472,6 +472,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
+        let sidebarHidden = !visible
         let targetContentLeading: CGFloat = visible ? 0 : Layout.contentPanelPadding
 
         if animated {
@@ -480,6 +481,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 constraint.animator().constant = targetWidth
                 contentLeadingConstraint?.animator().constant = targetContentLeading
+                browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: true)
             }, completionHandler: {
                 MainActor.assumeIsolated { [weak self] in
                     self?.refreshSidebarVisibilityUI()
@@ -488,6 +490,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         } else {
             constraint.constant = targetWidth
             contentLeadingConstraint?.constant = targetContentLeading
+            browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
             refreshSidebarVisibilityUI()
         }
     }
@@ -508,6 +511,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
                 constraint.animator().constant = width
                 contentLeadingConstraint?.animator().constant = targetContentLeading
+                browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: true)
             }, completionHandler: {
                 MainActor.assumeIsolated { [weak self] in
                     self?.refreshSidebarVisibilityUI()
@@ -516,6 +520,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         } else {
             constraint.constant = width
             contentLeadingConstraint?.constant = targetContentLeading
+            browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
             refreshSidebarVisibilityUI()
         }
     }
@@ -525,6 +530,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
         contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
         sidebarRevealButton.isHidden = !sidebarHidden
+        browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
     }
 
@@ -652,6 +658,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             toolbarCenterY = Layout.toolbarCenterY
         }
         browserCoordinator.syncToolbarCenterY(toolbarCenterY)
+        browserCoordinator.syncToolbarLeading(collapsed: isSidebarCollapsed(), animated: false)
     }
 
     private func configureSidebarRevealButton() {

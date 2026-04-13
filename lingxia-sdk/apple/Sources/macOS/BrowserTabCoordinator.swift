@@ -115,6 +115,15 @@ final class BrowserTabCoordinator: NSObject {
         toolbarCenterYConstraints.forEach { $0.constant = centerY }
     }
 
+    func syncToolbarLeading(collapsed: Bool, animated: Bool) {
+        let targetLeading = collapsed ? (host?.trafficLightClearance() ?? 80) : Layout.buttonLeading
+        if animated {
+            backButtonLeadingConstraint?.animator().constant = targetLeading
+        } else {
+            backButtonLeadingConstraint?.constant = targetLeading
+        }
+    }
+
     // MARK: - Public Tab Operations
 
     func addTab() {

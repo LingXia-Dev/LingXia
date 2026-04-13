@@ -77,7 +77,9 @@ class SidebarView: NSView {
         static let maxWidth: CGFloat = 400
         static let collapseThreshold: CGFloat = 80
         static let fullyHiddenThreshold: CGFloat = 1
-        static let trafficLightsHeight: CGFloat = 68
+        // Reserve only the shared traffic-light / toolbar row; the titlebar offset is
+        // already handled by `buttonCenterYFromTop`.
+        static let trafficLightsHeight: CGFloat = 38
         static let actionButtonSize: CGFloat = 28
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
