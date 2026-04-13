@@ -13,13 +13,13 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(name: "lingxia", path: "../target/spm/lingxia"),
+        // Add the LingXia Swift package dependency here before building.
     ],
     targets: [
         .executableTarget(
             name: "{{SWIFT_TARGET_NAME}}",
             dependencies: [
-                "lingxia",
+                // "lingxia",
             ],
             path: "Sources",
             resources: [

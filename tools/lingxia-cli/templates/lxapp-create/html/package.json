@@ -3,11 +3,6 @@
   "version": "0.1.0",
   "description": "A LingXia mini app powered by HTML",
   "type": "module",
-  "scripts": {
-    "dev": "lingxia build",
-    "build": "lingxia build --release",
-    "release": "lingxia package"
-  },
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
   "license": "MIT",

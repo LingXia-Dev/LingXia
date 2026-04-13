@@ -6,6 +6,6 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "lingxia": "file:../../target/ohpm/lingxia.har"
+    // Add the LingXia dependency via ohpm before building.
   }
 }

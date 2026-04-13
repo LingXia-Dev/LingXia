@@ -1,4 +1,5 @@
 import SwiftUI
+// Add the LingXia Swift package dependency in Package.swift before building.
 import lingxia
 
 public struct ContentView: View {

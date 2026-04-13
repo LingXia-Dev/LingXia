@@ -1,4 +1,5 @@
 import AppKit
+// Add the LingXia Swift package dependency in Package.swift before building.
 import lingxia
 
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
