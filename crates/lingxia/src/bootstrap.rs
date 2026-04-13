@@ -9,7 +9,7 @@ fn default_runtime_threads() -> usize {
 fn install_global_executor() {
     let executor = match RongExecutor::builder()
         .threads(default_runtime_threads())
-        .thread_name("lingxia-host")
+        .thread_name("lingxia")
         .build()
     {
         Ok(executor) => executor,

@@ -117,7 +117,6 @@ fn server_config_for(host: &str, ca: &CaConfig) -> Result<Arc<ServerConfig>, Pro
     Ok(Arc::new(cfg))
 }
 
-
 fn client_config() -> Result<Arc<ClientConfig>, ProxyError> {
     let mut roots = RootCertStore::empty();
     let cert_result = rustls_native_certs::load_native_certs();
