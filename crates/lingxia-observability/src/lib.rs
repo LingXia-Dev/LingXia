@@ -10,8 +10,6 @@ use tokio::sync::broadcast;
 pub const DEFAULT_LOG_LIVE_CAPACITY: usize = 1024;
 /// Default recent history capacity retained in memory.
 pub const DEFAULT_LOG_HISTORY_CAPACITY: usize = 2048;
-/// Recommended recent replay window for devtools log viewers.
-pub const DEFAULT_DEVTOOLS_RECENT_LIMIT: usize = 500;
 
 /// Log levels that match Android/iOS common levels.
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -161,7 +159,7 @@ impl CollectedLogArchive {
     }
 }
 
-/// Combined recent replay plus live log receiver for devtools and diagnostics.
+/// Combined recent replay plus live log receiver for diagnostics consumers.
 pub struct AttachedLogStream {
     pub recent: Vec<LogMessage>,
     pub receiver: broadcast::Receiver<LogMessage>,
@@ -204,7 +202,7 @@ impl Default for LogBufferConfig {
     }
 }
 
-/// Reusable in-memory log pipeline shared by SDK runtimes and tooling bridges.
+/// Reusable in-memory log pipeline shared by SDK runtimes and diagnostics tooling.
 pub struct LogBuffer {
     sender: broadcast::Sender<LogMessage>,
     history: Mutex<VecDeque<LogMessage>>,

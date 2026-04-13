@@ -1,14 +1,14 @@
 pub use lingxia_observability::{
     AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogMessage, LogTag,
 };
-use lingxia_observability::{
-    DEFAULT_DEVTOOLS_RECENT_LIMIT, LogBuffer, LogBufferConfig, normalize_optional_string,
-};
+use lingxia_observability::{LogBuffer, LogBufferConfig, normalize_optional_string};
 use std::cell::Cell;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::broadcast;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::{Registry, layer::Layer, prelude::*};
+
+const DEFAULT_LOG_STREAM_RECENT_LIMIT: usize = 500;
 
 thread_local! {
     static LOG_DISPATCH_GUARD: Cell<bool> = const { Cell::new(false) };
@@ -71,7 +71,7 @@ impl LogManager {
         self.buffer.subscribe()
     }
 
-    /// Atomically attach a devtool log stream with a recent replay window.
+    /// Atomically attach a log stream with a recent replay window.
     ///
     /// The returned `recent` snapshot and `receiver` are stitched together under the
     /// history lock so callers do not see gaps between the replay window and live events.
@@ -79,9 +79,9 @@ impl LogManager {
         self.buffer.attach(recent_limit)
     }
 
-    /// Attach a devtool log stream with the SDK's recommended replay window.
-    pub fn attach_for_devtools(&self) -> AttachedLogStream {
-        self.attach(DEFAULT_DEVTOOLS_RECENT_LIMIT)
+    /// Attach a log stream with the SDK's default replay window.
+    pub fn attach_default(&self) -> AttachedLogStream {
+        self.attach(DEFAULT_LOG_STREAM_RECENT_LIMIT)
     }
 
     /// Print a log message to the native logger.
@@ -136,7 +136,7 @@ pub fn tracing_layer() -> LogTracingLayer {
     LogTracingLayer
 }
 
-/// Attach a devtool-friendly log stream.
+/// Attach a log stream with a recent replay window.
 ///
 /// This returns a bounded recent replay plus a live receiver so callers can render
 /// current logs immediately and then continue tailing new entries.
@@ -146,10 +146,10 @@ pub fn attach_log_stream(recent_limit: usize) -> Result<AttachedLogStream, LogSt
     Ok(manager.attach(recent_limit))
 }
 
-/// Attach a devtool log stream using the SDK's recommended replay window.
+/// Attach a log stream using the SDK's default replay window.
 pub fn attach_log_stream_default() -> Result<AttachedLogStream, LogStreamError> {
     let manager = LogManager::get().ok_or(LogStreamError::NotInitialized)?;
-    Ok(manager.attach_for_devtools())
+    Ok(manager.attach_default())
 }
 
 /// Global logging function for scenarios without appid/path context.
