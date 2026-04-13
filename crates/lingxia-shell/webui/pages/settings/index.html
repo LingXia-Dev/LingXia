@@ -9,7 +9,7 @@
     body { display: flex; min-height: 100vh; }
 
     .sidebar {
-      width: 200px; flex-shrink: 0; background: #fff;
+      width: 208px; flex-shrink: 0; background: #fff;
       border-right: 1px solid #e5e5ea; padding: 20px 0;
       position: sticky; top: 0; height: 100vh; overflow-y: auto;
     }
@@ -36,16 +36,177 @@
     .panel { display: none; }
     .panel.active { display: block; }
 
-    .settings-content { padding: 16px 24px; }
-    .settings-content .section { background: #fff; border: 1px solid #e5e5ea; border-radius: 14px; overflow: hidden; }
+    .settings-content { padding: 18px 24px 28px; display: flex; flex-direction: column; gap: 16px; }
+    .settings-content .section { background: #fff; border: 1px solid #e5e5ea; border-radius: 16px; overflow: hidden; }
     .settings-content .row {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      padding: 12px 16px; border-top: 1px solid #f2f2f7;
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 13px 16px; border-top: 1px solid #f2f2f7;
     }
     .settings-content .row:first-child { border-top: none; }
     .settings-content .row-main { min-width: 0; flex: 1; }
-    .settings-content .row-title { font-size: 13px; font-weight: 500; }
-    .settings-content .row-value { font-size: 12px; color: #6e6e73; margin-top: 2px; word-break: break-all; }
+    .settings-content .row-title { font-size: 13px; font-weight: 600; }
+    .settings-content .row-value { font-size: 12px; color: #667085; margin-top: 3px; word-break: break-word; line-height: 1.45; }
+    .row-control { width: min(300px, 100%); flex-shrink: 0; }
+    .row-control.compact { width: 132px; }
+    .row-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .settings-input {
+      width: 100%; height: 36px; border-radius: 11px; border: 1px solid #d0d5dd;
+      padding: 0 11px; background: #fff; color: #101828; font-size: 13px;
+    }
+    .settings-input:focus { outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
+    .settings-input:disabled { background: #f5f5f7; color: #98a2b3; cursor: not-allowed; }
+    .row-action { padding: 8px 13px; border-radius: 999px; background: #007AFF; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .row-action.secondary { background: #eef1f6; color: #344054; }
+    .row-action:hover, .row-action:focus-visible { filter: brightness(0.97); }
+    .row-action:disabled { opacity: 0.55; cursor: default; filter: none; }
+    .pill { flex-shrink: 0; font-size: 11px; padding: 4px 9px; border-radius: 999px; font-weight: 600; }
+    .pill.is-active { background: #ecfdf3; color: #067647; }
+    .pill.is-success { background: #ecfdf3; color: #067647; }
+    .pill.is-disabled { background: #f2f4f7; color: #475467; }
+    .pill.is-error { background: #fff1f3; color: #c01048; }
+    .pill.is-unsupported { background: #fff7ed; color: #b54708; }
+    .pill.is-pending { background: #eef4ff; color: #175cd3; }
+    .pill.is-ready { background: #ecfdf3; color: #067647; }
+    .pill.is-empty { background: #f2f4f7; color: #475467; }
+
+    .proxy-stack { display: flex; flex-direction: column; gap: 16px; }
+    .proxy-block {
+      background:
+        radial-gradient(circle at top right, rgba(0,122,255,0.12), transparent 32%),
+        linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+      border: 1px solid #dbe7ff;
+      border-radius: 18px;
+      overflow: hidden;
+    }
+    .proxy-block-head {
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid rgba(219, 231, 255, 0.9);
+    }
+    .proxy-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #175cd3; }
+    .proxy-title { margin-top: 6px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+    .proxy-subtitle { margin-top: 8px; max-width: 720px; font-size: 13px; line-height: 1.5; color: #475467; }
+    .proxy-block-body { padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 16px; }
+    .proxy-mode-group {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+    }
+    .proxy-mode {
+      text-align: left; padding: 14px 15px; border-radius: 16px;
+      border: 1px solid #d0d5dd; background: rgba(255,255,255,0.88);
+      transition: transform 120ms, border-color 120ms, box-shadow 120ms, background 120ms;
+    }
+    .proxy-mode:hover, .proxy-mode:focus-visible {
+      border-color: #84caff; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08); transform: translateY(-1px);
+    }
+    .proxy-mode.active {
+      border-color: #0b57d0; background: linear-gradient(180deg, #f0f7ff 0%, #e8f1ff 100%);
+      box-shadow: 0 14px 28px rgba(11, 87, 208, 0.14);
+    }
+    .proxy-mode:disabled {
+      cursor: not-allowed; opacity: 0.52; transform: none; box-shadow: none;
+      border-color: #d0d5dd; background: #f8fafc;
+    }
+    .proxy-mode-label { display: block; font-size: 13px; font-weight: 700; color: #101828; }
+    .proxy-mode-desc { display: block; margin-top: 6px; font-size: 12px; line-height: 1.45; color: #667085; }
+    .proxy-helper {
+      font-size: 12px; line-height: 1.45; color: #667085;
+    }
+    .proxy-helper.is-warning { color: #b54708; }
+    .proxy-mini {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden;
+    }
+    .proxy-mini .row { padding: 12px 14px; }
+    .autoswitch-grid { display: flex; flex-direction: column; gap: 16px; }
+    .autoswitch-table {
+      width: 100%; border-collapse: collapse; background: #fff;
+      border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden;
+    }
+    .autoswitch-table th, .autoswitch-table td {
+      padding: 12px 14px; border-top: 1px solid #edf0f4; text-align: left;
+      font-size: 12px; vertical-align: top;
+    }
+    .autoswitch-table thead th {
+      border-top: none; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: #667085; background: #f8fafc;
+    }
+    .autoswitch-profile {
+      display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid #d0d5dd; background: #fff;
+    }
+    .autoswitch-profile.is-proxy { color: #175cd3; background: #eef4ff; border-color: #bfd4ff; }
+    .autoswitch-profile.is-direct { color: #475467; background: #f8fafc; }
+    .autoswitch-card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px;
+    }
+    .autoswitch-card-title { font-size: 15px; font-weight: 700; color: #111827; }
+    .autoswitch-card-copy { margin-top: 6px; font-size: 12px; line-height: 1.5; color: #667085; }
+    .autoswitch-card-note {
+      margin-top: 12px; padding: 12px 14px; border-radius: 12px;
+      background: linear-gradient(180deg, #f8fbff 0%, #eef6ff 100%);
+      border: 1px solid #dbe7ff; color: #36536b; font-size: 12px; line-height: 1.55;
+    }
+    .autoswitch-card-note strong { color: #0f172a; }
+    .autoswitch-card-actions { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+    .autoswitch-rule-row td { background: #fff; }
+    .autoswitch-rule-input {
+      width: 100%; height: 34px; border-radius: 10px; border: 1px solid #d0d5dd;
+      padding: 0 10px; background: #fff; color: #101828; font-size: 12px;
+    }
+    .autoswitch-rule-input:focus {
+      outline: none; border-color: #84caff; box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+    }
+    .autoswitch-rule-cell {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .autoswitch-rule-segment {
+      display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2f6 100%);
+      border: 1px solid #d7dee7;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+    }
+    .autoswitch-rule-action {
+      min-width: 72px; height: 30px; padding: 0 14px; border-radius: 999px; border: none;
+      background: transparent; color: #526072; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.01em; transition: background 120ms, color 120ms, box-shadow 120ms, transform 120ms;
+    }
+    .autoswitch-rule-action.active {
+      color: #175cd3;
+      background: linear-gradient(180deg, #ffffff 0%, #f5faff 100%);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(191, 212, 255, 0.7);
+      transform: translateY(-0.5px);
+    }
+    .autoswitch-rule-delete {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 10px; color: #b42318; background: #fff1f3;
+      border: 1px solid #fecdd6;
+    }
+    .autoswitch-rule-empty {
+      color: #98a2b3; font-style: italic;
+    }
+    .mode-detail { display: none; }
+    .mode-detail.active { display: block; }
+    .mode-detail-card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 16px;
+    }
+    .mode-detail-title { font-size: 15px; font-weight: 700; color: #111827; }
+    .mode-detail-copy { margin-top: 6px; font-size: 12px; line-height: 1.55; color: #667085; }
+    .row-action.is-success { background: #12b76a; }
+    .proxy-toast {
+      display: none; align-items: center; gap: 10px; padding: 12px 14px;
+      border-radius: 14px; border: 1px solid #dbe7ff; background: #eef4ff; color: #175cd3;
+      font-size: 12px; font-weight: 600;
+    }
+    .proxy-toast.active { display: flex; }
+    .proxy-toast.is-success { background: #ecfdf3; border-color: #b7ebc6; color: #067647; }
+    .proxy-toast.is-error { background: #fff1f3; border-color: #fecdd6; color: #c01048; }
+
+    .section-title {
+      padding: 14px 16px 0; font-size: 12px; font-weight: 700;
+      letter-spacing: 0.06em; text-transform: uppercase; color: #667085;
+    }
+    .section.is-muted { opacity: 0.72; }
 
     .about-content { padding: 24px; }
     .about-content .section { background: #fff; border: 1px solid #e5e5ea; border-radius: 14px; overflow: hidden; }
@@ -70,6 +231,23 @@
     .about-logo-icon img { display: block; width: 100%; height: 100%; object-fit: cover; }
     .about-logo h3 { font-size: 17px; font-weight: 600; }
     .about-logo p { font-size: 12px; color: #8e8e93; }
+
+    @media (max-width: 980px) {
+      .proxy-mode-group { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 820px) {
+      body { display: block; }
+      .sidebar {
+        width: auto; height: auto; position: static;
+        border-right: none; border-bottom: 1px solid #e5e5ea;
+        padding: 12px 0; white-space: nowrap; overflow-x: auto;
+      }
+      .main-header { padding: 12px 16px; }
+      .settings-content, .about-content { padding: 12px 16px 20px; }
+      .settings-content .row, .about-content .row, .proxy-block-head { align-items: flex-start; flex-direction: column; }
+      .row-control, .row-control.compact, .row-actions { width: 100%; }
+    }
   </style>
 </head>
 <body>
@@ -80,6 +258,12 @@
         <path d="M8 2v8m0 0l-3-3m3 3l3-3"/><path d="M3 12h10"/>
       </svg>
       Downloads
+    </a>
+    <a class="nav-item" data-panel="proxy">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 5.5h5"/><path d="M8 5.5l1.8-1.8"/><path d="M8 5.5l1.8 1.8"/><path d="M13 10.5H8"/><path d="M8 10.5L6.2 8.7"/><path d="M8 10.5l-1.8 1.8"/>
+      </svg>
+      Proxy
     </a>
     <a class="nav-item" data-panel="about">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
@@ -101,7 +285,7 @@
               <div class="row-title">Location</div>
               <div class="row-value" id="downloadDir">Loading...</div>
             </div>
-            <span class="pill" id="downloadMode">-</span>
+            <span class="pill is-disabled" id="downloadMode">-</span>
           </div>
           <div class="row">
             <div class="row-main"><div class="row-title">Change location</div></div>
@@ -111,6 +295,203 @@
             <div class="row-main"><div class="row-title">Reset to default</div></div>
             <button class="row-action secondary" id="resetBtn" type="button">Reset</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-proxy">
+      <div class="main-header">
+        <div><h2>Proxy</h2></div>
+      </div>
+      <div class="settings-content">
+        <div class="proxy-stack">
+          <section class="proxy-block">
+            <div class="proxy-block-head">
+              <div>
+                <div class="proxy-kicker">Proxy Server</div>
+                <div class="proxy-title">SOCKS</div>
+                <div class="proxy-subtitle">
+                  Configure the SOCKS server used by both <strong>Always Proxy</strong> and <strong>Auto Switch</strong> modes.
+                </div>
+              </div>
+            </div>
+            <div class="proxy-block-body">
+              <div class="proxy-mini">
+                <div class="row">
+                  <div class="row-main">
+                    <div class="row-title">SOCKS host</div>
+                    <div class="row-value">Used by both Always Proxy and Auto Switch modes.</div>
+                  </div>
+                  <div class="row-control">
+                    <input class="settings-input" id="proxyHost" type="text" placeholder="127.0.0.1" autocomplete="off">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-main">
+                    <div class="row-title">SOCKS port</div>
+                    <div class="row-value">Default is 1080.</div>
+                  </div>
+                  <div class="row-control compact">
+                    <input class="settings-input" id="proxyPort" type="text" inputmode="numeric" placeholder="1080" autocomplete="off">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-main">
+                    <div class="row-title">Username</div>
+                    <div class="row-value">Optional SOCKS username.</div>
+                  </div>
+                  <div class="row-control">
+                    <input class="settings-input" id="proxyUsername" type="text" autocomplete="off">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-main">
+                    <div class="row-title">Password</div>
+                    <div class="row-value">Optional SOCKS password.</div>
+                  </div>
+                  <div class="row-control">
+                    <input class="settings-input" id="proxyPassword" type="password" autocomplete="off">
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="row-main">
+                    <div class="row-title">Save server settings</div>
+                    <div class="row-value">Save the server fields and reapply the current routing mode.</div>
+                  </div>
+                  <div class="row-actions">
+                    <button class="row-action" id="saveServerBtn" type="button">Save Server</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="proxy-block">
+            <div class="proxy-block-head">
+              <div>
+                <div class="proxy-kicker">Proxy</div>
+                <div class="proxy-title">Routing Mode</div>
+                <div class="proxy-subtitle" id="proxySummary">
+                  Choose how browser traffic should be routed: direct, auto switch by rule list, or always through the upstream proxy.
+                </div>
+              </div>
+              <span class="pill is-pending" id="proxyStatusPill">Loading</span>
+            </div>
+            <div class="proxy-block-body">
+              <div class="proxy-mode-group">
+                <button class="proxy-mode" data-proxy-mode="direct" type="button">
+                  <span class="proxy-mode-label">Direct</span>
+                  <span class="proxy-mode-desc">No proxy. Browser traffic goes out normally.</span>
+                </button>
+                <button class="proxy-mode" data-proxy-mode="gfw_list" type="button">
+                  <span class="proxy-mode-label">Auto Switch</span>
+                  <span class="proxy-mode-desc">Use the rule list below. Matched requests go to the proxy server, default traffic stays direct.</span>
+                </button>
+                <button class="proxy-mode" data-proxy-mode="global" type="button">
+                  <span class="proxy-mode-label">Always Proxy</span>
+                  <span class="proxy-mode-desc">Send all browser traffic to the configured SOCKS server.</span>
+                </button>
+              </div>
+
+              <div class="proxy-toast" id="proxyToast"></div>
+
+              <div class="mode-detail active" id="modeDetailDirect">
+                <div class="mode-detail-card">
+                  <div class="mode-detail-title">Direct</div>
+                  <div class="mode-detail-copy">
+                    Browser traffic goes out normally. The proxy server configuration stays saved, but it is not used in this mode.
+                  </div>
+                </div>
+              </div>
+
+              <div class="mode-detail" id="modeDetailGlobal">
+                <div class="mode-detail-card">
+                  <div class="mode-detail-title">Always Proxy</div>
+                  <div class="mode-detail-copy">
+                    All browser requests are configured to use the <strong>SOCKS</strong> server for newly created browser tabs.
+                  </div>
+                </div>
+              </div>
+
+              <div class="mode-detail autoswitch-grid section is-muted" id="gfwListSection">
+                <div class="autoswitch-card">
+                  <div class="autoswitch-card-title">Switch Rules</div>
+                  <div class="autoswitch-card-copy">
+                    Auto Switch checks your custom rules first, then the downloaded rule list, and finally falls back to direct.
+                    Use <strong>SOCKS</strong> to manually add sites that are not covered by gfwlist, or <strong>Direct</strong> to create whitelist exceptions.
+                  </div>
+                  <div class="autoswitch-card-note">
+                    <strong>How match works:</strong> enter a host pattern to match that host and its subdomains.
+                  </div>
+                  <table class="autoswitch-table">
+                    <thead>
+                      <tr>
+                        <th>Condition Type</th>
+                        <th>Condition Details</th>
+                        <th>Profile</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Rule list rules</td>
+                        <td>Any request matching the configured rule list.</td>
+                        <td><span class="autoswitch-profile is-proxy">SOCKS</span></td>
+                      </tr>
+                    </tbody>
+                    <tbody id="autoSwitchRulesBody">
+                      <tr>
+                        <td colspan="3" class="autoswitch-rule-empty">No custom rules yet.</td>
+                      </tr>
+                    </tbody>
+                    <tbody>
+                      <tr>
+                        <td>Default</td>
+                        <td>Requests that do not match the rule list.</td>
+                        <td><span class="autoswitch-profile is-direct">Direct</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div class="autoswitch-card-actions">
+                    <button class="row-action secondary" id="addAutoSwitchRuleBtn" type="button">Add Rule</button>
+                  </div>
+                </div>
+
+                <div class="autoswitch-card">
+                  <div class="autoswitch-card-title">Rule List Config</div>
+                  <div class="autoswitch-card-copy" id="gfwListStatusMessage">
+                    Loading...
+                  </div>
+                  <div class="autoswitch-card-actions">
+                    <span class="pill is-empty" id="gfwListStatusPill">Empty</span>
+                  </div>
+                  <div class="proxy-mini" style="margin-top:14px;">
+                    <div class="row">
+                      <div class="row-main">
+                        <div class="row-title">Rule List URL</div>
+                        <div class="row-value">HTTPS URL for the rule list source. Used when you click Download Rules Now.</div>
+                      </div>
+                      <div class="row-control">
+                        <input class="settings-input" id="gfwListSourceInput" type="url" placeholder="https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt" autocomplete="off">
+                      </div>
+                    </div>
+                    <div class="row">
+                      <div class="row-main">
+                        <div class="row-title">Last updated</div>
+                        <div class="row-value" id="gfwListUpdatedAt">Never</div>
+                      </div>
+                      <div class="row-actions">
+                        <button class="row-action secondary" id="refreshGfwListBtn" type="button">Download Rules Now</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="proxy-helper" id="proxyModeHelper">
+                Choose a mode, then save when you want to update the proxy configuration used by browser tabs.
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
@@ -148,6 +529,24 @@
   <script>
     (function () {
       var navItems = document.querySelectorAll('.nav-item[data-panel]');
+      var modeButtons = document.querySelectorAll('.proxy-mode[data-proxy-mode]');
+      var DEFAULT_PROXY_PORT = 1080;
+      var DEFAULT_GFWLIST_SOURCE_URL = 'https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt';
+      var proxyWatchHandle = null;
+      var proxyToastTimer = null;
+      var autoSwitchSaveTimer = null;
+      var settingsState = {
+        downloadSettings: null,
+        proxySettings: null,
+        proxyBusy: false,
+        serverDirty: false,
+        autoSwitchDirty: false,
+        serverSavedFeedback: false
+      };
+
+      var downloadsApi = function () { return window.host.downloads; };
+      var proxyApi = function () { return window.host.proxy; };
+
       navItems.forEach(function (nav) {
         nav.addEventListener('click', function (e) {
           e.preventDefault();
@@ -161,37 +560,509 @@
         history.replaceState(null, '', '#' + name);
       }
 
-      var hash = location.hash.replace('#', '');
-      if (hash && document.getElementById('panel-' + hash)) switchPanel(hash);
+      function proxyField(id) {
+        return document.getElementById(id);
+      }
 
-      var settingsState = { downloadSettings: null };
+      function formatTimestamp(ts) {
+        if (!ts) return 'Never';
+        try {
+          return new Date(ts).toLocaleString();
+        } catch (_) {
+          return 'Never';
+        }
+      }
 
-      var api = function () { return window.host.downloads; };
+      function selectedProxyMode() {
+        var active = document.querySelector('.proxy-mode.active');
+        return active ? active.dataset.proxyMode : 'direct';
+      }
 
-      function renderSettings() {
+      function hasValidUpstreamConfig() {
+        var payload = proxyPayloadFromForm('global');
+        return !validateProxyPayload(payload);
+      }
+
+      function getEffectiveGfwListSource() {
+        var value = String(proxyField('gfwListSourceInput').value || '').trim();
+        return value || DEFAULT_GFWLIST_SOURCE_URL;
+      }
+
+      function collectAutoSwitchRules(includeEmpty) {
+        var rows = document.querySelectorAll('#autoSwitchRulesBody tr[data-rule-index]');
+        var rules = Array.prototype.map.call(rows, function (row) {
+          return {
+            pattern: String(row.querySelector('[data-rule-pattern]').value || '').trim(),
+            action: String(row.querySelector('[data-rule-action]').value || 'proxy')
+          };
+        });
+        if (includeEmpty) return rules;
+        return rules.filter(function (rule) { return !!rule.pattern; });
+      }
+
+      function renderAutoSwitchRules(rules) {
+        var body = document.getElementById('autoSwitchRulesBody');
+        var list = Array.isArray(rules) ? rules : [];
+        if (!list.length) {
+          body.innerHTML = '<tr><td colspan="3" class="autoswitch-rule-empty">No custom rules yet.</td></tr>';
+          return;
+        }
+
+        body.innerHTML = list.map(function (rule, index) {
+          var pattern = String(rule.pattern || '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          var action = rule.action === 'direct' ? 'direct' : 'proxy';
+          return [
+            '<tr class="autoswitch-rule-row" data-rule-index="', index, '">',
+            '<td>Match site</td>',
+            '<td><input class="autoswitch-rule-input" data-rule-pattern type="text" placeholder="site.test" value="', pattern, '"></td>',
+            '<td><div class="autoswitch-rule-cell">',
+            '<div class="autoswitch-rule-segment">',
+            '<button class="autoswitch-rule-action', action === 'proxy' ? ' active' : '', '" data-rule-action-btn data-rule-action-value="proxy" type="button">SOCKS</button>',
+            '<button class="autoswitch-rule-action', action === 'direct' ? ' active' : '', '" data-rule-action-btn data-rule-action-value="direct" type="button">Direct</button>',
+            '<input type="hidden" data-rule-action value="', action, '">',
+            '</div>',
+            '<button class="autoswitch-rule-delete" data-rule-delete type="button">×</button>',
+            '</div></td>',
+            '</tr>'
+          ].join('');
+        }).join('');
+      }
+
+      function scheduleAutoSwitchAutosave() {
+        if (autoSwitchSaveTimer) window.clearTimeout(autoSwitchSaveTimer);
+        autoSwitchSaveTimer = window.setTimeout(function () {
+          autoSwitchSaveTimer = null;
+          if (collectAutoSwitchRules(true).some(function (rule) { return !rule.pattern; })) {
+            return;
+          }
+          saveAutoSwitchConfig();
+        }, 700);
+      }
+
+      function showProxyToast(kind, message) {
+        var toast = document.getElementById('proxyToast');
+        if (proxyToastTimer) window.clearTimeout(proxyToastTimer);
+        toast.className = 'proxy-toast active' + (kind === 'error' ? ' is-error' : kind === 'success' ? ' is-success' : '');
+        toast.textContent = message;
+        proxyToastTimer = window.setTimeout(function () {
+          toast.className = 'proxy-toast';
+          toast.textContent = '';
+          proxyToastTimer = null;
+        }, 2600);
+      }
+
+      function setSelectedProxyMode(mode) {
+        modeButtons.forEach(function (btn) {
+          btn.classList.toggle('active', btn.dataset.proxyMode === mode);
+        });
+        document.getElementById('modeDetailDirect').classList.toggle('active', mode === 'direct');
+        document.getElementById('modeDetailGlobal').classList.toggle('active', mode === 'global');
+        document.getElementById('gfwListSection').classList.toggle('active', mode === 'gfw_list');
+        document.getElementById('gfwListSection').classList.toggle('is-muted', mode !== 'gfw_list');
+
+        var summaryMap = {
+          direct: 'Direct mode disables the browser proxy and keeps the upstream server settings available for later use.',
+          global: 'Always Proxy configures browser tabs to use the specified SOCKS server.',
+          gfw_list: 'Auto Switch uses the rule list below. Matched domains go to the proxy server and unmatched traffic stays direct.'
+        };
+
+        document.getElementById('proxySummary').textContent = summaryMap[mode] || summaryMap.direct;
+      }
+
+      function syncProxyFormState() {
+        var disabled = settingsState.proxyBusy;
+        ['proxyHost', 'proxyPort', 'proxyUsername', 'proxyPassword'].forEach(function (id) {
+          proxyField(id).disabled = disabled;
+        });
+        proxyField('gfwListSourceInput').disabled = disabled;
+        var hasUpstream = hasValidUpstreamConfig();
+        modeButtons.forEach(function (btn) {
+          btn.disabled = disabled;
+        });
+        var saveServerBtn = document.getElementById('saveServerBtn');
+        saveServerBtn.disabled = disabled || !settingsState.serverDirty;
+        document.getElementById('refreshGfwListBtn').disabled = disabled;
+
+        saveServerBtn.classList.toggle('is-success', settingsState.serverSavedFeedback && !settingsState.serverDirty);
+        saveServerBtn.textContent = settingsState.serverSavedFeedback && !settingsState.serverDirty ? 'Saved' : 'Save Server';
+
+        var helper = document.getElementById('proxyModeHelper');
+        if (disabled) {
+          helper.className = 'proxy-helper';
+          helper.textContent = 'Applying configuration...';
+        } else if (!hasUpstream) {
+          helper.className = 'proxy-helper is-warning';
+          helper.textContent = 'Always Proxy and Auto Switch require a valid SOCKS5 host and port.';
+        } else {
+          helper.className = 'proxy-helper';
+          helper.textContent = 'Mode buttons update the selected configuration. Use "Save Server" after editing the SOCKS fields.';
+        }
+      }
+
+      function setProxyBusy(busy) {
+        settingsState.proxyBusy = !!busy;
+        syncProxyFormState();
+      }
+
+      function setProxyStatus(status, message, localAddr) {
+        var pill = document.getElementById('proxyStatusPill');
+        var text = (status || '').toLowerCase();
+        var labelMap = {
+          saved: 'Saved',
+          active: 'Active',
+          disabled: 'Direct',
+          unsupported: 'Unsupported',
+          error: 'Error',
+          pending: 'Pending'
+        };
+        var classMap = {
+          saved: 'is-success',
+          active: 'is-active',
+          disabled: 'is-disabled',
+          unsupported: 'is-unsupported',
+          error: 'is-error',
+          pending: 'is-pending'
+        };
+        pill.className = 'pill ' + (classMap[text] || 'is-pending');
+        pill.textContent = labelMap[text] || 'Loading';
+        var summary = document.getElementById('proxySummary');
+        if (summary && message) summary.textContent = message;
+      }
+
+      function setGfwListStatus(status, message, source, updatedAt) {
+        var pill = document.getElementById('gfwListStatusPill');
+        var text = (status || '').toLowerCase();
+        var labelMap = {
+          ready: 'Ready',
+          empty: 'Empty',
+          error: 'Error'
+        };
+        var classMap = {
+          ready: 'is-ready',
+          empty: 'is-empty',
+          error: 'is-error'
+        };
+        pill.className = 'pill ' + (classMap[text] || 'is-empty');
+        pill.textContent = labelMap[text] || 'Empty';
+        document.getElementById('gfwListStatusMessage').textContent = message || 'Rules have not been downloaded yet.';
+        if (source != null) proxyField('gfwListSourceInput').value = source || '';
+        document.getElementById('gfwListUpdatedAt').textContent = formatTimestamp(updatedAt);
+      }
+
+      function renderDownloadSettings() {
         var s = settingsState.downloadSettings;
         var dir = document.getElementById('downloadDir');
         var mode = document.getElementById('downloadMode');
         var resetRow = document.getElementById('resetRow');
-        if (!s) { dir.textContent = 'Loading...'; mode.textContent = '-'; resetRow.style.display = 'none'; return; }
+        if (!s) {
+          dir.textContent = 'Loading...';
+          mode.textContent = '-';
+          resetRow.style.display = 'none';
+          return;
+        }
         var isDefault = !!s.usesDefaultDir;
         dir.textContent = s.downloadDir || '-';
         mode.textContent = isDefault ? 'Default' : 'Custom';
+        mode.className = 'pill ' + (isDefault ? 'is-disabled' : 'is-active');
         resetRow.style.display = isDefault ? 'none' : '';
       }
 
+      function renderProxySettings() {
+        var s = settingsState.proxySettings;
+        if (!s) {
+          setProxyStatus('pending', 'Loading...', null);
+          setGfwListStatus('empty', 'Loading...', null, null);
+          return;
+        }
+
+        setSelectedProxyMode(s.mode || 'direct');
+        proxyField('proxyHost').value = s.socks5Host || '';
+        proxyField('proxyPort').value = s.socks5Port || DEFAULT_PROXY_PORT;
+        proxyField('proxyUsername').value = s.username || '';
+        proxyField('proxyPassword').value = s.password || '';
+        proxyField('gfwListSourceInput').value = s.gfwlistSourceUrl || DEFAULT_GFWLIST_SOURCE_URL;
+        renderAutoSwitchRules(s.autoSwitchRules || []);
+        setProxyStatus(s.status, s.statusMessage, s.localProxyAddr);
+        setGfwListStatus(
+          s.gfwlistStatus,
+          s.gfwlistStatusMessage,
+          s.gfwlistSourceUrl,
+          s.gfwlistUpdatedAtMs
+        );
+        syncProxyFormState();
+      }
+
+      function proxyPayloadFromForm(overrideMode) {
+        var portRaw = String(proxyField('proxyPort').value || '').trim();
+        var port = portRaw ? Number(portRaw) : DEFAULT_PROXY_PORT;
+        return {
+          mode: overrideMode || selectedProxyMode(),
+          socks5Host: String(proxyField('proxyHost').value || '').trim(),
+          socks5Port: port,
+          username: String(proxyField('proxyUsername').value || ''),
+          password: String(proxyField('proxyPassword').value || ''),
+          gfwlistSourceUrl: getEffectiveGfwListSource(),
+          autoSwitchRules: collectAutoSwitchRules(false)
+        };
+      }
+
+      function proxyErrorMessage(err) {
+        if (!err) return 'Unknown proxy error';
+        if (typeof err === 'string') return err;
+        if (err.message) return err.message;
+        try {
+          return JSON.stringify(err);
+        } catch (_) {
+          return 'Unknown proxy error';
+        }
+      }
+
+      function withTimeout(promise, timeoutMs, label) {
+        return new Promise(function (resolve, reject) {
+          var settled = false;
+          var timer = window.setTimeout(function () {
+            if (settled) return;
+            settled = true;
+            reject(new Error(label + ' timed out after ' + timeoutMs + 'ms'));
+          }, timeoutMs);
+
+          promise.then(function (value) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            resolve(value);
+          }, function (error) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timer);
+            reject(error);
+          });
+        });
+      }
+
+      function ensureProxyWatch() {
+        if (proxyWatchHandle) return;
+        proxyWatchHandle = proxyApi().watch();
+        proxyWatchHandle.on('data', function (event) {
+          console.info('[Settings] proxy.watch event:', event);
+          var previousStatus = settingsState.proxySettings && settingsState.proxySettings.status;
+          var normalizedEvent = event;
+          if (event && event.status === 'active' && /new webviews only/i.test(event.statusMessage || '')) {
+            normalizedEvent = Object.assign({}, event, {
+              status: 'saved',
+              statusMessage: 'Saved. Configuration updated and will apply to newly created browser tabs.'
+            });
+          }
+          settingsState.proxySettings = normalizedEvent;
+          renderProxySettings();
+          if (normalizedEvent && normalizedEvent.status !== previousStatus) {
+            if (normalizedEvent.status === 'saved') showProxyToast('success', normalizedEvent.statusMessage || 'Settings saved.');
+            else if (normalizedEvent.status === 'active') showProxyToast('success', normalizedEvent.statusMessage || 'Proxy configuration is active.');
+            else if (normalizedEvent.status === 'error') showProxyToast('error', normalizedEvent.statusMessage || 'Proxy configuration failed.');
+            else if (normalizedEvent.status === 'pending') showProxyToast('', normalizedEvent.statusMessage || 'Applying proxy configuration...');
+          }
+        });
+        proxyWatchHandle.on('error', function (err) {
+          console.error('[Settings] proxy.watch error:', err);
+        });
+        proxyWatchHandle.on('end', function () {
+          console.warn('[Settings] proxy.watch ended');
+          proxyWatchHandle = null;
+        });
+        if (proxyWatchHandle.result && typeof proxyWatchHandle.result.catch === 'function') {
+          proxyWatchHandle.result.catch(function () {});
+        }
+      }
+
+      function validateProxyPayload(payload) {
+        if (payload.mode === 'direct') return null;
+        if (!payload.socks5Host) return 'SOCKS5 host is required for the selected mode.';
+        if (!Number.isInteger(payload.socks5Port) || payload.socks5Port <= 0 || payload.socks5Port > 65535) {
+          return 'SOCKS5 port must be between 1 and 65535.';
+        }
+        return null;
+      }
+
+      function saveAutoSwitchConfig() {
+        var payload = proxyPayloadFromForm();
+        var validationError = validateProxyPayload(payload);
+        if (validationError) {
+          setProxyStatus('error', validationError, null);
+          return;
+        }
+
+        submitProxySettings(payload, { source: 'auto_switch', autosave: true });
+      }
+
+      function submitProxySettings(payload, options) {
+        var submitOptions = options || {};
+        var validationError = validateProxyPayload(payload);
+        if (validationError) {
+          setSelectedProxyMode(payload.mode);
+          setProxyStatus('error', validationError, null);
+          return;
+        }
+
+        console.info('[Settings] submitProxySettings:', payload);
+        setProxyBusy(true);
+        withTimeout(proxyApi().updateSettings(payload), 10000, 'proxy.updateSettings').then(function (result) {
+          console.info('[Settings] proxy.updateSettings result:', result);
+          settingsState.proxySettings = result;
+          if (submitOptions.source === 'server') {
+            settingsState.serverDirty = false;
+            settingsState.serverSavedFeedback = true;
+            showProxyToast('success', 'Proxy server settings saved.');
+          } else if (submitOptions.source === 'auto_switch') {
+            settingsState.autoSwitchDirty = false;
+            if (!submitOptions.autosave) showProxyToast('success', 'Auto Switch settings saved.');
+          }
+
+          if (payload.mode === 'gfw_list' && !result.gfwlistReady) {
+            setProxyStatus('pending', 'Downloading Auto Switch rules and applying the mode...', result.localProxyAddr);
+            setGfwListStatus('empty', 'Downloading rules from the configured source...', payload.gfwlistSourceUrl, result.gfwlistUpdatedAtMs);
+            withTimeout(proxyApi().refreshGfwList(), 15000, 'proxy.refreshGfwList').then(function (refreshResult) {
+              settingsState.proxySettings = refreshResult;
+              renderProxySettings();
+              setProxyBusy(false);
+            }, function (refreshErr) {
+              console.error('[Settings] proxy.refreshGfwList after update error:', refreshErr);
+              settingsState.proxySettings = result;
+              renderProxySettings();
+              setProxyStatus('error', proxyErrorMessage(refreshErr), result.localProxyAddr);
+              setGfwListStatus(
+                'error',
+                proxyErrorMessage(refreshErr),
+                payload.gfwlistSourceUrl,
+                result.gfwlistUpdatedAtMs
+              );
+              setProxyBusy(false);
+            });
+            return;
+          }
+
+          renderProxySettings();
+          setProxyBusy(false);
+        }, function (err) {
+          console.error('[Settings] proxy.updateSettings error:', err);
+          setProxyStatus('error', proxyErrorMessage(err), null);
+          setProxyBusy(false);
+        });
+      }
+
+      modeButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          submitProxySettings(proxyPayloadFromForm(btn.dataset.proxyMode), { source: 'mode' });
+        });
+      });
+
+      document.getElementById('saveServerBtn').addEventListener('click', function () {
+        submitProxySettings(proxyPayloadFromForm(), { source: 'server' });
+      });
+
+      ['proxyHost', 'proxyPort', 'proxyUsername', 'proxyPassword'].forEach(function (id) {
+        proxyField(id).addEventListener('input', function () {
+          settingsState.serverDirty = true;
+          settingsState.serverSavedFeedback = false;
+          syncProxyFormState();
+        });
+      });
+
+      ['gfwListSourceInput'].forEach(function (id) {
+        proxyField(id).addEventListener('input', function () {
+          settingsState.autoSwitchDirty = true;
+          syncProxyFormState();
+          scheduleAutoSwitchAutosave();
+        });
+      });
+
+      document.getElementById('addAutoSwitchRuleBtn').addEventListener('click', function () {
+        var nextRules = collectAutoSwitchRules(true);
+        nextRules.push({ pattern: '', action: 'proxy' });
+        renderAutoSwitchRules(nextRules);
+        settingsState.autoSwitchDirty = true;
+        syncProxyFormState();
+      });
+
+      document.getElementById('autoSwitchRulesBody').addEventListener('click', function (event) {
+        var target = event.target;
+        if (!target) return;
+        if (target.hasAttribute('data-rule-action-btn')) {
+          var rowForAction = target.closest('tr[data-rule-index]');
+          if (!rowForAction) return;
+          Array.prototype.forEach.call(rowForAction.querySelectorAll('[data-rule-action-btn]'), function (btn) {
+            btn.classList.toggle('active', btn === target);
+          });
+          rowForAction.querySelector('[data-rule-action]').value = target.getAttribute('data-rule-action-value') || 'proxy';
+          settingsState.autoSwitchDirty = true;
+          syncProxyFormState();
+          scheduleAutoSwitchAutosave();
+          return;
+        }
+        if (!target.hasAttribute('data-rule-delete')) return;
+        var row = target.closest('tr[data-rule-index]');
+        if (!row) return;
+        var index = Number(row.getAttribute('data-rule-index'));
+        var rules = collectAutoSwitchRules(true);
+        if (Number.isInteger(index) && index >= 0 && index < rules.length) {
+          rules.splice(index, 1);
+          renderAutoSwitchRules(rules);
+          settingsState.autoSwitchDirty = true;
+          syncProxyFormState();
+          scheduleAutoSwitchAutosave();
+        }
+      });
+
+      document.getElementById('autoSwitchRulesBody').addEventListener('input', function () {
+        settingsState.autoSwitchDirty = true;
+        syncProxyFormState();
+        scheduleAutoSwitchAutosave();
+      });
+
+      document.getElementById('refreshGfwListBtn').addEventListener('click', function () {
+        var validationError = validateProxyPayload(proxyPayloadFromForm('gfw_list'));
+        if (validationError) {
+          setSelectedProxyMode('gfw_list');
+          setGfwListStatus('error', validationError, proxyField('gfwListSourceInput').value, null);
+          return;
+        }
+
+        setProxyBusy(true);
+        withTimeout(proxyApi().refreshGfwList(), 15000, 'proxy.refreshGfwList').then(function (result) {
+          settingsState.proxySettings = result;
+          renderProxySettings();
+          setProxyBusy(false);
+        }, function (err) {
+          console.error('[Settings] proxy.refreshGfwList error:', err);
+          setGfwListStatus(
+            'error',
+            proxyErrorMessage(err),
+            proxyField('gfwListSourceInput').value,
+            settingsState.proxySettings ? settingsState.proxySettings.gfwlistUpdatedAtMs : null
+          );
+          setProxyBusy(false);
+        });
+      });
+
+      var hash = location.hash.replace('#', '');
+      if (hash && document.getElementById('panel-' + hash)) switchPanel(hash);
+
       document.getElementById('changeBtn').addEventListener('click', function () {
-        api().chooseDirectory().then(function (s) {
+        downloadsApi().chooseDirectory().then(function (s) {
           settingsState.downloadSettings = s;
-          renderSettings();
+          renderDownloadSettings();
         }, function (err) {
           console.error('[Settings] chooseDirectory error:', err);
         });
       });
+
       document.getElementById('resetBtn').addEventListener('click', function () {
-        api().resetDirectory().then(function (s) {
+        downloadsApi().resetDirectory().then(function (s) {
           settingsState.downloadSettings = s;
-          renderSettings();
+          renderDownloadSettings();
         }, function (err) {
           console.error('[Settings] resetDirectory error:', err);
         });
@@ -209,12 +1080,22 @@
         }
       }).catch(function () {});
 
-      api().getSettings().then(function (s) {
+      downloadsApi().getSettings().then(function (s) {
         settingsState.downloadSettings = s;
-        renderSettings();
+        renderDownloadSettings();
       });
 
-      renderSettings();
+      proxyApi().getSettings().then(function (s) {
+        settingsState.proxySettings = s;
+        renderProxySettings();
+      }, function (err) {
+        console.error('[Settings] proxy.getSettings error:', err);
+        setProxyStatus('error', proxyErrorMessage(err), null);
+      });
+
+      ensureProxyWatch();
+      renderDownloadSettings();
+      renderProxySettings();
     })();
   </script>
 </body>
