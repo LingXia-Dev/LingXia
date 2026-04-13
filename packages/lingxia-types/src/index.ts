@@ -10,6 +10,7 @@ export * from './display';
 export * from './input';
 export * from './storage';
 export * from './file';
+export * from './transfer';
 export * from './location';
 export * from './navigator';
 export * from './system';
@@ -52,11 +53,14 @@ import type {
   ChooseDirectoryResult,
   ChooseFileOptions,
   ChooseFileResult,
+} from './file';
+
+import type {
   DownloadOptions,
   DownloadTask,
   UploadOptions,
   UploadTask,
-} from './file';
+} from './transfer';
 
 import type {
   DeviceOrientation,

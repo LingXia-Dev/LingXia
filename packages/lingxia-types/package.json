@@ -46,6 +46,11 @@
       "import": "./dist/file/index.js",
       "require": "./dist/file/index.js"
     },
+    "./transfer": {
+      "types": "./dist/transfer/index.d.ts",
+      "import": "./dist/transfer/index.js",
+      "require": "./dist/transfer/index.js"
+    },
     "./location": {
       "types": "./dist/location/index.d.ts",
       "import": "./dist/location/index.js",

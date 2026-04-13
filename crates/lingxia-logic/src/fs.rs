@@ -133,7 +133,6 @@ struct JSFileDialogFilter {
 struct JSChooseFileOptions {
     multiple: Option<bool>,
     filters: Option<Vec<JSFileDialogFilter>>,
-    title: Option<String>,
     #[rename = "defaultPath"]
     default_path: Option<String>,
 }
@@ -146,7 +145,6 @@ struct ChooseFileResultObj {
 
 #[derive(FromJSObj, Clone, Default)]
 struct JSChooseDirectoryOptions {
-    title: Option<String>,
     #[rename = "defaultPath"]
     default_path: Option<String>,
 }
@@ -213,7 +211,7 @@ async fn choose_file(
         .choose_file(ChooseFileRequest {
             multiple: opts.multiple.unwrap_or(false),
             filters,
-            title: opts.title,
+            title: None,
             default_path,
         })
         .await
@@ -248,7 +246,7 @@ async fn choose_directory(
     let result = lxapp
         .runtime
         .choose_directory(ChooseDirectoryRequest {
-            title: opts.title,
+            title: None,
             default_path,
         })
         .await
@@ -271,8 +269,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
     lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
     download::init(ctx)?;
-
-    // mod upload; upload::init(ctx)?;
 
     Ok(())
 }
