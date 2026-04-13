@@ -32,6 +32,7 @@ dirs = "6.0"
 tempfile = "3.24"
 flate2 = "1.1"
 tar = "0.4"
+ctrlc = "3.4"
 
 # Apple signing and API
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
@@ -58,9 +59,11 @@ which = "8.0"
 adb_client = { git = "https://github.com/butterflyfish/adb_client", rev = "6ba0e8a97fc92c60f48625a232e8aee47d1d4069" }
 urlencoding = "2.1"
 
-image = { version = "0.25", default-features = false, features = ["png", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
 
 openssl = { version = "0.10", features = ["vendored"] }
+lingxia_devtool = { workspace = true }
+lingxia-observability = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
 oxc_parser = "0.124.0"
@@ -78,3 +81,6 @@ oxc_sourcemap = "6.1.1"
 
 [build-dependencies]
 serde_json = "1.0"
+
+[dev-dependencies]
+filetime = "0.2"

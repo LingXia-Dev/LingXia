@@ -8,11 +8,19 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
+
+pub(crate) mod log_store;
+mod server;
 
 const RUNNER_APP_NAME: &str = "LingXia Runner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
+const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub struct DevExecuteOptions {
@@ -489,6 +497,10 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
     println!("{}", "Development Mode: LxApp -> Runner".bold().cyan());
     println!();
 
+    let server = server::start_server(&project_root)?;
+    let ws_url = server.ws_url();
+    let session = server.session().clone();
+
     let mut build_args = vec!["build".to_string()];
     if options.release {
         build_args.push("--release".to_string());
@@ -502,20 +514,49 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
         build_args.push(progress.to_string());
     }
 
-    println!("{}", "Step 1/2: Building lxapp...".bold());
-    crate::lxapp::run_in_dir(&build_args, &project_root)?;
+    let run_result = (|| -> Result<()> {
+        println!("{}", "Step 1/2: Building lxapp...".bold());
+        crate::lxapp::run_in_dir(&build_args, &project_root)?;
 
-    println!();
-    println!("{}", "Step 2/2: Launching Runner...".bold());
-    launch_runner_for_lxapp(&project_root)?;
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_dev_info(&project_root, &session, &ws_url)?;
 
-    println!();
-    println!("{}", "Dev workflow started.".green().bold());
-    println!("  {} Mode: {}", "*".bold(), "LxApp Runner".cyan());
-    println!("  {} Project: {}", "*".bold(), project_root.display());
-    println!();
+        println!();
+        println!("{}", "Step 2/2: Launching Runner...".bold());
+        let mut runner = launch_runner_for_lxapp(&project_root, &ws_url)?;
 
-    Ok(())
+        println!();
+        println!("{}", "Dev workflow started.".green().bold());
+        println!("  {} Mode: {}", "*".bold(), "LxApp Runner".cyan());
+        println!("  {} Project: {}", "*".bold(), project_root.display());
+        println!(
+            "  {} Dev info: {}",
+            "*".bold(),
+            log_store::dev_info_path(&project_root).display()
+        );
+        println!("  {} WS: {}", "*".bold(), ws_url);
+        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
+        println!("  {} Session: {}", "*".bold(), session.session_id);
+        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close Runner".cyan());
+        println!();
+
+        wait_for_runner_or_interrupt(&mut runner, stop_requested)?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_dev_info(&project_root);
+    let stop_result = server.stop();
+    match (run_result, stop_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(()), Err(err)) => Err(err),
+        (Err(run_err), Err(stop_err)) => Err(anyhow!(
+            "{}\nAlso failed to stop dev server: {}",
+            run_err,
+            stop_err
+        )),
+    }
 }
 
 fn is_standalone_lxapp_project(project_root: &Path) -> bool {
@@ -533,7 +574,7 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
-fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
+fn launch_runner_for_lxapp(lxapp_path: &Path, ws_url: &str) -> Result<Child> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
     let app_path = installed_runner_app_path()?;
@@ -553,11 +594,12 @@ fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
 
     let mut command = Command::new(&executable_path);
     command.env(RUNNER_LXAPP_PATH_ENV, lxapp_path);
+    command.env(RUNNER_DEV_WS_URL_ENV, ws_url);
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
 
-    command.spawn().with_context(|| {
+    let child = command.spawn().with_context(|| {
         format!(
             "Failed to launch installed Runner executable: {}",
             executable_path.display()
@@ -565,6 +607,49 @@ fn launch_runner_for_lxapp(lxapp_path: &Path) -> Result<()> {
     })?;
 
     println!("{} Launched {}", "[runner]".cyan(), app_path.display());
+    Ok(child)
+}
+
+fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
+    ctrlc::set_handler(move || {
+        stop_requested.store(true, Ordering::Release);
+    })
+    .context("Failed to install Ctrl+C handler for dev mode")
+}
+
+fn wait_for_runner_or_interrupt(runner: &mut Child, stop_requested: Arc<AtomicBool>) -> Result<()> {
+    loop {
+        if stop_requested.load(Ordering::Acquire) {
+            terminate_runner_child(runner)?;
+            println!();
+            println!("{}", "Dev workflow stopped.".yellow().bold());
+            return Ok(());
+        }
+
+        if let Some(status) = runner
+            .try_wait()
+            .context("Failed to poll LingXia Runner process")?
+        {
+            println!();
+            println!("{}", "Runner exited.".yellow().bold());
+            if !status.success() {
+                return Err(anyhow!("LingXia Runner exited with non-zero status"));
+            }
+            return Ok(());
+        }
+
+        thread::sleep(Duration::from_millis(150));
+    }
+}
+
+fn terminate_runner_child(runner: &mut Child) -> Result<()> {
+    if runner.try_wait()?.is_some() {
+        return Ok(());
+    }
+    runner
+        .kill()
+        .context("Failed to terminate LingXia Runner process")?;
+    let _ = runner.wait();
     Ok(())
 }
 
