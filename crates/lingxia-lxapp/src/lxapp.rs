@@ -927,17 +927,32 @@ impl LxApp {
             return Ok(self.lxapp_dir.join(rel));
         }
 
-        // 4. Handle Absolute paths: Must start with one of the trusted roots
-        // Note: Since we've already rejected "..", a simple starts_with check is safe.
+        // 4. Handle Absolute paths: Must start with one of the trusted roots.
+        //
+        // On Apple platforms, the same sandbox path may appear with different
+        // spellings (for example `/var/...` vs `/private/var/...`). When the
+        // target exists, compare canonicalized paths as well so chooser-returned
+        // absolute paths remain accessible.
         let trusted_roots = [
             (&self.lxapp_dir, "app bundle"),
             (&self.user_data_dir, "user data"),
             (&self.user_cache_dir, "user cache"),
         ];
 
+        let resolved_target = std::fs::canonicalize(path_ref).ok();
+
         for (root, _name) in trusted_roots {
-            if !root.as_os_str().is_empty() && path_ref.starts_with(root) {
+            if root.as_os_str().is_empty() {
+                continue;
+            }
+            if path_ref.starts_with(root) {
                 return Ok(path_ref.to_path_buf());
+            }
+            if let (Some(target), Ok(canonical_root)) =
+                (resolved_target.as_ref(), std::fs::canonicalize(root))
+                && target.starts_with(&canonical_root)
+            {
+                return Ok(target.to_path_buf());
             }
         }
 
@@ -947,6 +962,12 @@ impl LxApp {
             if let Some(parent) = root.parent() {
                 if path_ref.starts_with(parent) {
                     return Ok(path_ref.to_path_buf());
+                }
+                if let (Some(target), Ok(canonical_parent)) =
+                    (resolved_target.as_ref(), std::fs::canonicalize(parent))
+                    && target.starts_with(&canonical_parent)
+                {
+                    return Ok(target.to_path_buf());
                 }
             }
         }

@@ -4,12 +4,13 @@ use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
 };
 use serde::Deserialize;
+use std::path::Path;
 
 impl FileService for Platform {
     async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
-        if !request.is_pdf_like() {
+        if !supports_native_review(&request) {
             return Err(PlatformError::NotSupported(
-                "review_file is only supported for PDF on HarmonyOS".to_string(),
+                "review_file is only supported for PDF and images on HarmonyOS".to_string(),
             ));
         }
         crate::rt::blocking(move || review_file_sync(request)).await
@@ -69,6 +70,29 @@ impl FileService for Platform {
 struct HarmonyFileDialogResult {
     canceled: bool,
     paths: Vec<String>,
+}
+
+fn supports_native_review(request: &OpenFileRequest) -> bool {
+    if request.is_pdf_like() {
+        return true;
+    }
+
+    if let Some(mime) = request.mime_type.as_deref()
+        && mime.to_ascii_lowercase().starts_with("image/")
+    {
+        return true;
+    }
+
+    Path::new(&request.path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "png" | "webp" | "gif" | "bmp" | "heic" | "heif"
+            )
+        })
+        .unwrap_or(false)
 }
 
 fn review_file_sync(request: OpenFileRequest) -> Result<(), PlatformError> {

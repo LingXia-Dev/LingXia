@@ -290,6 +290,43 @@ extension LxApp {
         return openDocumentExternal(file_path: filePath, mime_type: mimeType, show_menu: showMenu)
     }
 
+    nonisolated static func chooseFile(
+        title: RustStr,
+        default_path defaultPath: RustStr,
+        multiple: Bool,
+        filters_json filtersJson: RustStr,
+        callback_id callbackId: UInt64
+    ) -> Bool {
+        let titleString = title.toString()
+        let defaultPathString = defaultPath.toString()
+        let filtersJsonString = filtersJson.toString()
+        return executeOnMain {
+            LxAppFile.chooseFile(
+                title: titleString,
+                defaultPath: defaultPathString,
+                multiple: multiple,
+                filtersJson: filtersJsonString,
+                callbackId: callbackId
+            )
+        }
+    }
+
+    nonisolated static func chooseDirectory(
+        title: RustStr,
+        default_path defaultPath: RustStr,
+        callback_id callbackId: UInt64
+    ) -> Bool {
+        let titleString = title.toString()
+        let defaultPathString = defaultPath.toString()
+        return executeOnMain {
+            LxAppFile.chooseDirectory(
+                title: titleString,
+                defaultPath: defaultPathString,
+                callbackId: callbackId
+            )
+        }
+    }
+
     nonisolated static func revealInFileManager(path: RustStr) -> Bool {
         let pathString = path.toString()
         #if os(macOS)

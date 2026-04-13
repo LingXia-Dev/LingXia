@@ -12,6 +12,7 @@ import { PopupManager } from './APIs/LxAppPopup';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
+import { LocalFileChooserOverlay, LocalFileChooserOverlayManager } from './APIs/file/LocalFileChooserOverlay';
 import { BrowserOverlay, BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
 
 const DOMAIN = 0xA000;
@@ -98,6 +99,16 @@ export struct LxAppNavigation {
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Error closing overlay PdfSinglePageViewerOverlay: ${error}`);
+    }
+
+    try {
+      if (LocalFileChooserOverlayManager.isShowing()) {
+        hilog.info(DOMAIN, TAG, 'BackPress: closing overlay LocalFileChooserOverlay');
+        LocalFileChooserOverlayManager.cancel();
+        return true;
+      }
+    } catch (error) {
+      hilog.error(DOMAIN, TAG, `Error closing overlay LocalFileChooserOverlay: ${error}`);
     }
 
     try {
@@ -568,9 +579,12 @@ export struct LxAppNavigation {
       PdfSinglePageViewerOverlay()
         .zIndex(10007)
 
+      LocalFileChooserOverlay()
+        .zIndex(10008)
+
       // In-app browser overlay
       BrowserOverlay()
-        .zIndex(10008)
+        .zIndex(10009)
 
       // Custom edge-swipe back gesture zone
       this.buildEdgeBackSwipeZone()

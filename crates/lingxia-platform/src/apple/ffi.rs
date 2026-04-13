@@ -188,6 +188,18 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openDocumentExternal")]
         fn open_document_external(file_path: &str, mime_type: &str, show_menu: bool) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.chooseFile")]
+        fn choose_file(
+            title: &str,
+            default_path: &str,
+            multiple: bool,
+            filters_json: &str,
+            callback_id: u64,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.chooseDirectory")]
+        fn choose_directory(title: &str, default_path: &str, callback_id: u64) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.revealInFileManager")]
         fn reveal_in_file_manager(path: &str) -> bool;
 
@@ -332,6 +344,9 @@ pub use bridge::{
     open_lxapp, open_url, preview_media, review_document, show_action_sheet, show_modal,
     show_popup, show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
+
+#[cfg(target_os = "ios")]
+pub use bridge::{choose_directory, choose_file};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
 pub use bridge::{

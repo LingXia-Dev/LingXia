@@ -68,6 +68,19 @@ video:
 document:
   pdf_page_preview: "PDF page preview"
 
+# File Chooser
+file_chooser:
+  default_title: "Choose File"
+  filter_label: "Showing %1$s"
+  filter_images: "Images"
+  filter_videos: "Videos"
+  filter_audio: "Audio"
+  folder_subtitle: "Folder"
+  empty_title: "Nothing here yet"
+  empty_subtitle: "This folder does not contain any files or subfolders yet."
+  filtered_empty_title: "No matching files"
+  filtered_empty_subtitle: "There are no files matching the current filter in this folder."
+
 # Date Range Picker
 date:
   last_7_days: "Last 7 Days"

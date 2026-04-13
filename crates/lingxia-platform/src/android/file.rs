@@ -11,11 +11,6 @@ use std::error::Error;
 
 impl FileService for Platform {
     async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
-        if !request.is_pdf_like() {
-            return Err(PlatformError::NotSupported(
-                "review_file is only supported for PDF on Android".to_string(),
-            ));
-        }
         crate::rt::blocking(move || review_file_sync(request)).await
     }
 

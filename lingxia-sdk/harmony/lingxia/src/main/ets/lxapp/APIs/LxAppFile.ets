@@ -5,6 +5,8 @@ import common from '@ohos.app.ability.common';
 import picker from '@ohos.file.picker';
 import { LxApp } from '../LxApp';
 import { PdfSingleViewerOverlayManager } from './document/PdfSinglePageViewerOverlay';
+import { LocalFileChooserOverlayManager, resolveLocalFileChooserRoot } from './file/LocalFileChooserOverlay';
+import { MediaPreviewOverlayManager, MediaPreviewPageParams, MediaPreviewItem } from './media/MediaPreviewOverlay';
 import fileUri from '@ohos.file.fileuri';
 import { systemShare } from '@kit.ShareKit';
 import { uniformTypeDescriptor } from '@kit.ArkData';
@@ -58,6 +60,24 @@ export class LxAppFile {
       return true;
     }
 
+    const isImage = (req.normalizedMime && req.normalizedMime.toLowerCase().startsWith('image/')) ||
+      /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(filePath);
+    if (isImage) {
+      const item: MediaPreviewItem = {
+        id: filePath,
+        uri: filePath.startsWith('file://') ? filePath : `file://${filePath}`,
+        mediaType: 0,
+      };
+      const params: MediaPreviewPageParams = {
+        items: [item],
+        initialIndex: 0,
+        advance: 'manual',
+        showIndexIndicator: false,
+      };
+      MediaPreviewOverlayManager.show(params);
+      return true;
+    }
+
     hilog.info(DOMAIN, TAG, `reviewDocument: no native review handler for ${filePath}`);
     return false;
   }
@@ -76,7 +96,7 @@ export class LxAppFile {
     callbackId: string,
     multiple: string,
     title: string,
-    _defaultPath: string,
+    defaultPath: string,
     filtersJson: string
   ): boolean {
     const context = LxApp.context;
@@ -86,6 +106,17 @@ export class LxAppFile {
         onCallback(id, false, '1000');
       }
       return false;
+    }
+
+    const localRoot = String(multiple ?? '') !== '1' ? resolveLocalFileChooserRoot(defaultPath) : null;
+    if (localRoot) {
+      return LocalFileChooserOverlayManager.show({
+        title: title && title.length > 0 ? title : '',
+        rootPath: localRoot,
+        mode: 'file',
+        callbackId: id,
+        filters: parseLocalChooserFilters(filtersJson),
+      });
     }
 
     const options = new picker.DocumentSelectOptions();
@@ -111,8 +142,8 @@ export class LxAppFile {
 
   public static chooseDirectory(
     callbackId: string,
-    _title: string,
-    _defaultPath: string
+    title: string,
+    defaultPath: string
   ): boolean {
     const context = LxApp.context;
     const id = String(callbackId ?? '').trim();
@@ -121,6 +152,17 @@ export class LxAppFile {
         onCallback(id, false, '1000');
       }
       return false;
+    }
+
+    const localRoot = resolveLocalFileChooserRoot(defaultPath);
+    if (localRoot) {
+      return LocalFileChooserOverlayManager.show({
+        title: title && title.length > 0 ? title : '',
+        rootPath: localRoot,
+        mode: 'directory',
+        callbackId: id,
+        filters: [],
+      });
     }
 
     const options = new picker.DocumentSelectOptions();
@@ -151,6 +193,20 @@ function parseDocumentFilters(filtersJson: string): Array<string> {
     return (parsed ?? [])
       .map((raw: string) => String(raw ?? '').trim().replace(/^\./, ''))
       .filter((raw: string) => raw.length > 0 && raw.indexOf('/') < 0);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function parseLocalChooserFilters(filtersJson: string): Array<string> {
+  if (!filtersJson || filtersJson.trim().length === 0) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(filtersJson) as Array<string>;
+    return (parsed ?? [])
+      .map((raw: string) => String(raw ?? '').trim())
+      .filter((raw: string) => raw.length > 0);
   } catch (_error) {
     return [];
   }

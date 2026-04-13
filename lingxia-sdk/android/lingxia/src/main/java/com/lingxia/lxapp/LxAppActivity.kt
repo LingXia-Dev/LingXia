@@ -581,6 +581,7 @@ class LxAppActivity : AppCompatActivity() {
         }
 
         val values = mutableListOf<String>()
+        data?.getStringArrayListExtra("selectedPaths")?.let { values.addAll(it) }
         data?.data?.toString()?.let { values.add(it) }
         val clipData = data?.clipData
         if (clipData != null) {

@@ -68,6 +68,19 @@ video:
 document:
   pdf_page_preview: "PDF页面预览"
 
+# File Chooser
+file_chooser:
+  default_title: "选择文件"
+  filter_label: "筛选：%1$s"
+  filter_images: "图片"
+  filter_videos: "视频"
+  filter_audio: "音频"
+  folder_subtitle: "文件夹"
+  empty_title: "这里还是空的"
+  empty_subtitle: "这个文件夹里还没有可显示的文件或子文件夹。"
+  filtered_empty_title: "没有匹配的文件"
+  filtered_empty_subtitle: "当前文件夹里没有符合筛选条件的文件。"
+
 # Date Range Picker
 date:
   last_7_days: "近7日"
