@@ -11,7 +11,7 @@ Usage:
 
 Notes:
   This script only builds the Harmony HAR. Rust .so build is handled by app-side
-  scripts (for example, examples/harmony/dev.sh), so --skip-rust is accepted only
+  LingXia CLI builds, so --skip-rust is accepted only
   for compatibility and has no effect here.
 EOF
 }
