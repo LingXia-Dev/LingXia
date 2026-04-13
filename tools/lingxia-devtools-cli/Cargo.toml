@@ -1,0 +1,16 @@
+[package]
+name = "lingxia-devtools-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "lxdev"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+lingxia_devtool = { workspace = true }
