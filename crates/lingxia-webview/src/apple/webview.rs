@@ -38,7 +38,7 @@ use std::{ffi::CString, ffi::c_char, ffi::c_void};
 
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
-    WebTag, WebViewCreateSender, WebViewCreateStage, current_proxy,
+    WebTag, WebViewCreateSender, WebViewCreateStage, configured_proxy_for_new_webviews,
 };
 
 #[cfg(target_os = "ios")]
@@ -1629,11 +1629,11 @@ impl WebViewInner {
             if is_strict {
                 let non_persistent_store = WKWebsiteDataStore::nonPersistentDataStore(mtm);
                 config.setWebsiteDataStore(&non_persistent_store);
-            } else if let Some(proxy) = current_proxy() {
+            } else if let Some(proxy) = configured_proxy_for_new_webviews() {
                 let default_store = WKWebsiteDataStore::defaultDataStore(mtm);
                 if let Err(e) = apply_proxy_to_data_store(&default_store, Some(&proxy)) {
                     log::warn!(
-                        "Failed to apply global proxy to default data store webtag={}: {}",
+                        "Failed to apply configured proxy to default data store webtag={}: {}",
                         WebTag::new(appid, path, session_id),
                         e
                     );

@@ -60,12 +60,20 @@ pub mod runtime {
         webview::destroy_webview(webtag);
     }
 
-    pub fn set_proxy(config: Option<ProxyConfig>) -> Result<ProxyApplyReport, WebViewError> {
-        webview::set_proxy(config)
+    pub fn configure_proxy_for_new_webviews(
+        config: Option<ProxyConfig>,
+    ) -> Result<(), WebViewError> {
+        webview::configure_proxy_for_new_webviews(config)
     }
 
-    pub fn current_proxy() -> Option<ProxyConfig> {
-        webview::current_proxy()
+    pub fn apply_proxy_to_current_runtime(
+        config: Option<ProxyConfig>,
+    ) -> Result<ProxyApplyReport, WebViewError> {
+        webview::apply_proxy_to_current_runtime(config)
+    }
+
+    pub fn configured_proxy_for_new_webviews() -> Option<ProxyConfig> {
+        webview::configured_proxy_for_new_webviews()
     }
 }
 

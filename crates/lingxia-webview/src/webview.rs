@@ -1039,7 +1039,7 @@ static WEBVIEW_INSTANCES: OnceLock<WebViewInstancesMap> = OnceLock::new();
 static PENDING_CALLBACKS: OnceLock<Mutex<HashMap<String, PendingCallbacks>>> = OnceLock::new();
 static WEBVIEW_SESSIONS: OnceLock<Mutex<HashMap<String, Arc<WebViewSessionSignals>>>> =
     OnceLock::new();
-static CURRENT_PROXY: OnceLock<RwLock<Option<ProxyConfig>>> = OnceLock::new();
+static DESIRED_PROXY_FOR_NEW_WEBVIEWS: OnceLock<RwLock<Option<ProxyConfig>>> = OnceLock::new();
 static PROXY_APPLY_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn apply_http_proxy_platform(
@@ -1074,11 +1074,39 @@ fn apply_http_proxy_platform(
     }
 }
 
-/// Apply or clear process-level HTTP proxy for WebView networking.
+/// Configure the proxy that should be used for newly created WebViews in this process.
+///
+/// This only updates the desired configuration kept in process memory. It does
+/// not live-apply the proxy to currently active WebViews.
+pub fn configure_proxy_for_new_webviews(config: Option<ProxyConfig>) -> Result<(), WebViewError> {
+    let apply_lock = PROXY_APPLY_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock_or_recover(apply_lock, "webview_proxy_apply_lock");
+
+    let normalized_config = match config {
+        Some(cfg) => Some(cfg.validate()?),
+        None => None,
+    };
+
+    let state = DESIRED_PROXY_FOR_NEW_WEBVIEWS.get_or_init(|| RwLock::new(None));
+    match state.write() {
+        Ok(mut guard) => {
+            *guard = normalized_config;
+        }
+        Err(poisoned) => {
+            log::error!("RwLock poisoned at webview_desired_proxy.write, recovering");
+            *poisoned.into_inner() = normalized_config;
+        }
+    }
+    Ok(())
+}
+
+/// Apply or clear process-level HTTP proxy for the current platform runtime now.
 ///
 /// - `Some(config)`: set proxy
 /// - `None`: clear proxy
-pub fn set_proxy(config: Option<ProxyConfig>) -> Result<ProxyApplyReport, WebViewError> {
+pub fn apply_proxy_to_current_runtime(
+    config: Option<ProxyConfig>,
+) -> Result<ProxyApplyReport, WebViewError> {
     let apply_lock = PROXY_APPLY_LOCK.get_or_init(|| Mutex::new(()));
     let _guard = lock_or_recover(apply_lock, "webview_proxy_apply_lock");
 
@@ -1093,13 +1121,13 @@ pub fn set_proxy(config: Option<ProxyConfig>) -> Result<ProxyApplyReport, WebVie
         report.status,
         ProxyApplyStatus::Applied | ProxyApplyStatus::Cleared
     ) {
-        let state = CURRENT_PROXY.get_or_init(|| RwLock::new(None));
+        let state = DESIRED_PROXY_FOR_NEW_WEBVIEWS.get_or_init(|| RwLock::new(None));
         match state.write() {
             Ok(mut guard) => {
                 *guard = normalized_config;
             }
             Err(poisoned) => {
-                log::error!("RwLock poisoned at webview_current_proxy.write, recovering");
+                log::error!("RwLock poisoned at webview_desired_proxy.write, recovering");
                 *poisoned.into_inner() = normalized_config;
             }
         }
@@ -1108,13 +1136,13 @@ pub fn set_proxy(config: Option<ProxyConfig>) -> Result<ProxyApplyReport, WebVie
     Ok(report)
 }
 
-/// Get currently active global proxy configuration.
-pub fn current_proxy() -> Option<ProxyConfig> {
-    let state = CURRENT_PROXY.get()?;
+/// Get the configured proxy that will be used for newly created WebViews.
+pub fn configured_proxy_for_new_webviews() -> Option<ProxyConfig> {
+    let state = DESIRED_PROXY_FOR_NEW_WEBVIEWS.get()?;
     match state.read() {
         Ok(guard) => guard.clone(),
         Err(poisoned) => {
-            log::error!("RwLock poisoned at webview_current_proxy.read, recovering");
+            log::error!("RwLock poisoned at webview_desired_proxy.read, recovering");
             poisoned.into_inner().clone()
         }
     }
