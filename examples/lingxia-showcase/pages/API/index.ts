@@ -98,13 +98,6 @@ Page({
     });
   },
 
-  // Navigate to File API page
-  navigateToFilePage: async function() {
-    await lx.navigateTo({
-      url: `pages/file/index?section=openFile`,
-    });
-  },
-
   navigateToOpenFilePage: async function() {
     await lx.navigateTo({
       url: `pages/file/index?section=openFile`,
@@ -155,6 +148,18 @@ Page({
         return;
       }
       lx.showToast({ title: error.message, icon: "none" });
+    }
+  },
+
+  exitApp: async function() {
+    const result = await lx.showModal({
+      title: "Exit App",
+      content: "lx.app.exit() exits immediately. Close the host app now?",
+      confirmText: "Exit",
+      cancelText: "Cancel",
+    });
+    if (result.confirm) {
+      lx.app.exit();
     }
   },
 

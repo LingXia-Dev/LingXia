@@ -3,7 +3,7 @@ import '../../tailwind.css';
 
 export default function SystemPage() {
   const { data, actions } = useLxPage();
-  const { getAppBaseInfo, getSystemSetting } = actions;
+  const { getBaseInfo, getSystemSetting } = actions;
   const { currentType = 'appBaseInfo', appBaseInfo = null, systemSetting = null } = data;
 
   return (
@@ -12,7 +12,7 @@ export default function SystemPage() {
         {currentType === 'appBaseInfo' && (
           <>
             <div className="mb-6 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">getAppBaseInfo</h1>
+              <h1 className="text-2xl font-light text-gray-800 mb-2">app.getBaseInfo</h1>
               <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
             </div>
 
@@ -26,7 +26,7 @@ export default function SystemPage() {
                   <div className="text-xs text-gray-500 mt-0.5">Get application language settings</div>
                 </div>
                 <button
-                  onClick={getAppBaseInfo}
+                  onClick={getBaseInfo}
                   className="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
                 >
                   Get Info

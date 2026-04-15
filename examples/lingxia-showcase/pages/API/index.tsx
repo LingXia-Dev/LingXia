@@ -19,6 +19,7 @@ export default function APIPage() {
     navigateToCloudPage,
     navigateToTestMiniApp,
     openDeepSeek,
+    exitApp,
     navigateToPullDownRefreshPage,
   } = actions;
   const { expandedSections = { bridge: false, interface: false, device: false, system: false, cloud: false, navigation: false, media: false, file: false } } = data;
@@ -330,6 +331,22 @@ export default function APIPage() {
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                     <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
+              <div
+                className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
+                onClick={exitApp}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Exit App</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Confirm with showModal, then call app.exit</div>
+                </div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                    <path d="M10 17l5-5-5-5"/>
+                    <path d="M15 12H3"/>
                   </svg>
                 </div>
               </div>

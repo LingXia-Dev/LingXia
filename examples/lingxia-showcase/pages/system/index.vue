@@ -4,7 +4,7 @@
       <!-- App Base Info -->
       <template v-if="currentType === 'appBaseInfo'">
         <div class="mb-6 text-center">
-          <h1 class="text-2xl font-light text-gray-800 mb-2">getAppBaseInfo</h1>
+          <h1 class="text-2xl font-light text-gray-800 mb-2">app.getBaseInfo</h1>
           <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
         </div>
 
@@ -18,7 +18,7 @@
               <div class="text-xs text-gray-500 mt-0.5">Get application language settings</div>
             </div>
             <button
-              @click="getAppBaseInfo"
+              @click="getBaseInfo"
               class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
             >
               Get Info
@@ -108,7 +108,7 @@ import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const { data, actions } = useLxPage();
-const { getAppBaseInfo, getSystemSetting } = actions;
+const { getBaseInfo, getSystemSetting } = actions;
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
 const appBaseInfo = computed(() => data.appBaseInfo ?? null);

@@ -54,6 +54,46 @@
             </div>
           </div>
         </div>
+
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-gray-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-50 to-sky-50">
+              <span class="text-2xl">🌐</span>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Network Information</div>
+              <div class="text-xs text-gray-500 mt-0.5">Get network info and listen for network changes</div>
+            </div>
+            <button
+              @click="getNetworkInfo"
+              class="px-5 py-2.5 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+            >
+              Get Info
+            </button>
+          </div>
+          <div class="p-5 space-y-4">
+            <div class="grid grid-cols-2 gap-3">
+              <button
+                @click="startNetworkChangeListen"
+                class="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              >
+                Start Listen
+              </button>
+              <button
+                @click="stopNetworkChangeListen"
+                class="py-3 text-sm font-medium transition-all duration-200 bg-gradient-to-r from-gray-600 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white rounded-xl shadow-sm active:scale-[0.98]"
+              >
+                Stop Listen
+              </button>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white p-4 text-xs text-gray-700">
+              <div class="mb-2 font-semibold text-gray-800">Current</div>
+              <pre class="whitespace-pre-wrap break-all">{{ formatJson(networkInfo) }}</pre>
+              <div class="mb-2 mt-4 font-semibold text-gray-800">Last Change</div>
+              <pre class="whitespace-pre-wrap break-all">{{ formatJson(networkChange) }}</pre>
+            </div>
+          </div>
+        </div>
       </template>
 
       <!-- Screen Info Section -->
@@ -278,6 +318,9 @@ const {
   startDeviceOrientationListen,
   stopDeviceOrientationListen,
   clearOrientationEvents,
+  getNetworkInfo,
+  startNetworkChangeListen,
+  stopNetworkChangeListen,
 } = actions;
 
 const phoneNumber = ref('');
@@ -290,6 +333,8 @@ const orientationLock = computed(() => data.orientationLock ?? '');
 const deviceOrientationValue = computed(() => data.deviceOrientationValue ?? '');
 const orientationEvents = computed(() => Array.isArray(data.orientationEvents) ? data.orientationEvents : []);
 const orientationEventsText = computed(() => orientationEvents.value.length ? orientationEvents.value.join('\n') : '--');
+const networkInfo = computed(() => data.networkInfo ?? null);
+const networkChange = computed(() => data.networkChange ?? null);
 
 watch(currentType, () => {
   phoneNumber.value = '';
@@ -308,6 +353,15 @@ function formatNumber(value: number | undefined): string {
     return '--';
   }
   return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+}
+
+function formatJson(value: unknown): string {
+  if (value === null || value === undefined) return '--';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (_error) {
+    return String(value);
+  }
 }
 
 </script>

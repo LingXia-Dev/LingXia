@@ -1,5 +1,45 @@
 const app = getApp();
 
+function startWifiConnectedListener(page) {
+  if (page.data.wifiListenerEnabled) {
+    return;
+  }
+
+  const handler = (payload) => {
+    const event = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      time: new Date().toLocaleTimeString(),
+      ...payload,
+    };
+
+    const nextEvents = [event, ...page.data.wifiConnectedEvents].slice(0, 5);
+    page.setData({ wifiConnectedEvents: nextEvents });
+  };
+
+  page._wifiConnectedHandler = handler;
+  try {
+    lx.onWifiConnected(handler);
+    page.setData({ wifiListenerEnabled: true });
+  } catch (error) {
+    console.error("Failed to register WiFi listener:", error);
+    page._wifiConnectedHandler = null;
+  }
+}
+
+function stopWifiConnectedListener(page) {
+  if (!page.data.wifiListenerEnabled) {
+    return;
+  }
+  try {
+    lx.offWifiConnected(page._wifiConnectedHandler);
+  } catch (error) {
+    console.error("Failed to unregister WiFi listener:", error);
+  } finally {
+    page._wifiConnectedHandler = null;
+    page.setData({ wifiListenerEnabled: false });
+  }
+}
+
 Page({
   data: {
     wifiList: null,
@@ -30,13 +70,13 @@ Page({
   onHide: function () {
     console.log("WiFi page onHide");
     // Stop WiFi listener to prevent events firing against hidden page
-    this.stopWifiConnectedListener();
+    stopWifiConnectedListener(this);
   },
 
   onUnload: function () {
     console.log("WiFi page onUnload");
     // Cleanup: stop listener when page is destroyed
-    this.stopWifiConnectedListener();
+    stopWifiConnectedListener(this);
   },
 
   // WiFi APIs
@@ -59,7 +99,7 @@ Page({
     try {
       await lx.stopWifi();
       console.log("WiFi module stopped");
-      this.stopWifiConnectedListener();
+      stopWifiConnectedListener(this);
       // Persist state to app globalData
       if (app.globalData) {
         app.globalData.wifiModuleEnabled = false;
@@ -105,51 +145,11 @@ Page({
   },
 
   onWifiConnected: function () {
-    this.startWifiConnectedListener();
+    startWifiConnectedListener(this);
   },
 
   offWifiConnected: function () {
-    this.stopWifiConnectedListener();
-  },
-
-  startWifiConnectedListener: function () {
-    if (this.data.wifiListenerEnabled) {
-      return;
-    }
-
-    const handler = (payload) => {
-      const event = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        time: new Date().toLocaleTimeString(),
-        ...payload,
-      };
-
-      const nextEvents = [event, ...this.data.wifiConnectedEvents].slice(0, 5);
-      this.setData({ wifiConnectedEvents: nextEvents });
-    };
-
-    this._wifiConnectedHandler = handler;
-    try {
-      lx.onWifiConnected(handler);
-      this.setData({ wifiListenerEnabled: true });
-    } catch (error) {
-      console.error("Failed to register WiFi listener:", error);
-      this._wifiConnectedHandler = null;
-    }
-  },
-
-  stopWifiConnectedListener: function () {
-    if (!this.data.wifiListenerEnabled) {
-      return;
-    }
-    try {
-      lx.offWifiConnected(this._wifiConnectedHandler);
-    } catch (error) {
-      console.error("Failed to unregister WiFi listener:", error);
-    } finally {
-      this._wifiConnectedHandler = null;
-      this.setData({ wifiListenerEnabled: false });
-    }
+    stopWifiConnectedListener(this);
   },
 
   clearWifiConnectedEvents: function () {

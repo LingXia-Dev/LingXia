@@ -342,15 +342,6 @@ Page({
     }
   },
 
-  toggleSection: function ({ section } = {}) {
-    if (!section || !this.data.expandedSections || !(section in this.data.expandedSections)) {
-      return;
-    }
-    this.setData({
-      [`expandedSections.${section}`]: !this.data.expandedSections[section],
-    });
-  },
-
   chooseFileFromUserCache: async function () {
     try {
       const result = await lx.chooseFile({

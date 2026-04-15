@@ -123,6 +123,38 @@
         </div>
       </template>
 
+      <template v-else-if="type === 'functions'">
+        <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div class="px-5 py-5 border-b border-gray-100">
+            <div class="text-sm text-gray-800 font-semibold">Cloud Functions</div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              Invoke demo cloud functions for the current lxapp.
+            </div>
+          </div>
+          <div class="p-5 space-y-4">
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+              {{ functionsStatus }}
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <button
+                v-for="name in functionsAvailable"
+                :key="name"
+                @click="callNamedFunction({ name })"
+                class="rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-3 py-3 text-sm font-medium text-white shadow-sm active:scale-[0.98]"
+              >
+                {{ name }}
+              </button>
+            </div>
+            <div v-if="functionsLastCall || functionsLastResult" class="rounded-xl border border-gray-200 bg-white p-4">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Last call</div>
+              <div class="mt-1 font-mono text-sm text-gray-800">{{ functionsLastCall || '-' }}</div>
+              <div class="mt-3 text-xs uppercase tracking-wide text-gray-500">Result</div>
+              <pre class="mt-1 whitespace-pre-wrap break-all rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{{ functionsLastResult || '-' }}</pre>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <template v-else>
         <div class="mb-5 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div class="p-6">
@@ -260,7 +292,7 @@ type TenantLike = {
   logoUrl?: string;
 };
 
-type CloudPageType = 'auth' | 'mqtt';
+type CloudPageType = 'auth' | 'mqtt' | 'functions';
 
 type PageData = {
   type?: CloudPageType;
@@ -276,6 +308,10 @@ type PageData = {
   mqttLastTopic?: string;
   mqttLastPayload?: string;
   mqttLastReceivedAt?: string;
+  functionsStatus?: string;
+  functionsAvailable?: string[];
+  functionsLastCall?: string;
+  functionsLastResult?: string;
 };
 
 type PageActions = {
@@ -284,6 +320,7 @@ type PageActions = {
   switchTenant: (params: { tenantId: string }) => void | Promise<void>;
   startMqttDemo: () => void | Promise<void>;
   stopMqttDemo: () => void | Promise<void>;
+  callNamedFunction: (params: { name: string }) => void | Promise<void>;
 };
 
 const { data, actions } = useLxPage<PageData, PageActions>();
@@ -293,6 +330,7 @@ const {
   switchTenant,
   startMqttDemo,
   stopMqttDemo,
+  callNamedFunction,
 } = actions;
 
 const type = computed(() => data.type || 'auth');
@@ -308,6 +346,10 @@ const mqttMessageCount = computed(() => data.mqttMessageCount || 0);
 const mqttLastTopic = computed(() => data.mqttLastTopic || '');
 const mqttLastPayload = computed(() => data.mqttLastPayload || '');
 const mqttLastReceivedAt = computed(() => data.mqttLastReceivedAt || '');
+const functionsStatus = computed(() => data.functionsStatus || 'Idle');
+const functionsAvailable = computed(() => data.functionsAvailable || []);
+const functionsLastCall = computed(() => data.functionsLastCall || '');
+const functionsLastResult = computed(() => data.functionsLastResult || '');
 const activeTenantId = computed(() => getTenantId(tenant.value));
 
 const mqttStateColorClass = computed(() => {

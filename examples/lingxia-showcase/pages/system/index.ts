@@ -21,9 +21,9 @@ Page({
     console.log('System page onHide');
   },
 
-  getAppBaseInfo: async function () {
+  getBaseInfo: async function () {
     try {
-      const info = lx.getAppBaseInfo();
+      const info = lx.app.getBaseInfo();
       console.log('App base info:', info);
       this.setData({
         appBaseInfo: info
