@@ -35,7 +35,6 @@ final class LxAppMacAppUIRuntime: NSObject {
     private var openedSurfaceIDs = Set<String>()
     private var statusItems: [String: NSStatusItem] = [:]
     private var defaultMenuBarActivatorID: String?
-    private var sidebarChromeEnabled = false
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
     private var handlingAppActivation = false
 
@@ -71,8 +70,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
-        shell.setSidebarChromeEnabled(!sidebarActivators.isEmpty)
-        sidebarChromeEnabled = !sidebarActivators.isEmpty
+        shell.setTitlebarHostActionHandler { [weak self] actionID in
+            self?.performActivator(id: actionID)
+        }
+        shell.setSidebarChromeEnabled(true)
 
         Self.active = self
     }
@@ -347,7 +348,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             .map(makeChromeActionItem)
 
         shell.updateSidebarHostActions(sidebarItems)
-        shell.setManagedNavigationToolbarVisible(!toolbarItems.isEmpty)
+        shell.setManagedNavigationToolbarVisible(true)
         shell.updateToolbarHostActions(toolbarItems)
         shell.updateTitlebarHostActions(titlebarItems)
     }
@@ -619,11 +620,6 @@ final class LxAppMacAppUIRuntime: NSObject {
                     throw LxAppUIError.invalidConfig("menuBarItem activator \(activator.id) cannot set hostSurface")
                 }
                 menuBarActivators.append(activator)
-            case .trayItem:
-                if activator.hostSurface != nil {
-                    throw LxAppUIError.invalidConfig("trayItem activator \(activator.id) cannot set hostSurface")
-                }
-                continue
             case .appActivation:
                 if activator.hostSurface != nil {
                     throw LxAppUIError.invalidConfig("appActivation activator \(activator.id) cannot set hostSurface")
@@ -644,11 +640,6 @@ final class LxAppMacAppUIRuntime: NSObject {
                     throw LxAppUIError.invalidConfig("titlebarItem activator \(activator.id) requires a valid hostSurface")
                 }
                 titlebarActivators.append(activator)
-            case .deepLink:
-                if activator.hostSurface != nil {
-                    throw LxAppUIError.invalidConfig("deepLink activator \(activator.id) cannot set hostSurface")
-                }
-                continue
             }
         }
 

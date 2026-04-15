@@ -100,8 +100,8 @@ public enum Lingxia {
 
         let controller = LxAppController()
         let shellConfiguration = LxAppShellConfiguration(
-            sidebar: bundleConfig.ui.activators.contains(where: { $0.kind == .sidebarItem }) ? .declarative(.init()) : .hidden,
-            toolbar: bundleConfig.ui.activators.contains(where: { $0.kind == .toolbarItem }) ? .declarative(.default) : .hidden
+            sidebar: .declarative(.init()),
+            toolbar: .declarative(.default)
         )
         let shell = LxAppShell(
             controller: controller,

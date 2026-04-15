@@ -86,6 +86,8 @@ class SidebarView: NSView {
         static let footerHeight: CGFloat = 48
         /// Square icon button size in the dock.
         static let footerButtonSize: CGFloat = 28
+        /// Rendered glyph size inside footer icon buttons.
+        static let footerIconSize: CGFloat = 16
         /// Horizontal/vertical padding inside the dock.
         static let footerInset: CGFloat = 10
     }
@@ -293,6 +295,7 @@ class SidebarView: NSView {
             footerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
 
             footerStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            footerStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
             footerStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
 
             hideButton.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
@@ -421,26 +424,31 @@ class SidebarView: NSView {
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         footerStack.addArrangedSubview(spacer)
         panelSpacer = spacer
 
-        for item in items {
+        for item in items.reversed() {
             let btn = NSButton()
             btn.translatesAutoresizingMaskIntoConstraints = false
             btn.isBordered = false
             btn.bezelStyle = .regularSquare
             btn.imagePosition = .imageOnly
+            btn.imageScaling = .scaleProportionallyDown
             btn.wantsLayer = true
             btn.layer?.cornerRadius = 6
             btn.layer?.backgroundColor = NSColor.clear.cgColor
             btn.toolTip = item.label
             if let iconURL = item.iconURL,
                let image = NSImage(contentsOf: iconURL) {
+                image.size = NSSize(width: Layout.footerIconSize, height: Layout.footerIconSize)
                 image.isTemplate = true
                 btn.image = image
                 btn.contentTintColor = NSColor.secondaryLabelColor
             } else {
-                btn.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                let fallback = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                fallback?.size = NSSize(width: Layout.footerIconSize, height: Layout.footerIconSize)
+                btn.image = fallback
                 btn.contentTintColor = NSColor.secondaryLabelColor
             }
             btn.target = self

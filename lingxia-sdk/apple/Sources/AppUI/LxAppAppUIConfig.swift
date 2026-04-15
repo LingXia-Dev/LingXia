@@ -83,12 +83,10 @@ struct LxAppUIConfig: Decodable, Sendable {
 
         enum Kind: String, Decodable, Sendable {
             case menuBarItem
-            case trayItem
             case sidebarItem
             case toolbarItem
             case titlebarItem
             case appActivation
-            case deepLink
         }
     }
 

@@ -18,6 +18,7 @@ enum LxAppShellStartupBehavior {
 final class MacTitlebarActionStrip: NSView {
     private let stackView = NSStackView()
     private var buttons: [NSButton] = []
+    private var widthConstraint: NSLayoutConstraint?
 
     var onAction: ((String) -> Void)?
 
@@ -35,16 +36,18 @@ final class MacTitlebarActionStrip: NSView {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.orientation = .horizontal
         stackView.alignment = .centerY
-        stackView.spacing = 6
+        stackView.spacing = 2
         addSubview(stackView)
 
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: topAnchor),
-            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stackView.centerYAnchor.constraint(equalTo: centerYAnchor),
             stackView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            heightAnchor.constraint(equalToConstant: 28),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor),
+            heightAnchor.constraint(equalToConstant: 22),
         ])
+        let width = widthAnchor.constraint(equalToConstant: 0)
+        width.isActive = true
+        widthConstraint = width
     }
 
     func updateActions(_ items: [LxAppUIActionItem]) {
@@ -53,13 +56,15 @@ final class MacTitlebarActionStrip: NSView {
             button.removeFromSuperview()
         }
         buttons.removeAll()
+        widthConstraint?.constant = CGFloat(items.count * 20 + max(0, items.count - 1) * 2)
 
-        for item in items {
+        for item in items.reversed() {
             let button = NSButton()
             button.translatesAutoresizingMaskIntoConstraints = false
             button.isBordered = false
             button.bezelStyle = .regularSquare
             button.imagePosition = .imageOnly
+            button.imageScaling = .scaleProportionallyDown
             button.toolTip = item.label
             button.identifier = NSUserInterfaceItemIdentifier(item.id)
             button.target = self
@@ -67,17 +72,20 @@ final class MacTitlebarActionStrip: NSView {
 
             if let iconURL = item.iconURL,
                let image = NSImage(contentsOf: iconURL) {
+                image.size = NSSize(width: 14, height: 14)
                 image.isTemplate = true
                 button.image = image
                 button.contentTintColor = NSColor.secondaryLabelColor
             } else {
-                button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                let fallback = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                fallback?.size = NSSize(width: 14, height: 14)
+                button.image = fallback
                 button.contentTintColor = NSColor.secondaryLabelColor
             }
 
             NSLayoutConstraint.activate([
-                button.widthAnchor.constraint(equalToConstant: 28),
-                button.heightAnchor.constraint(equalToConstant: 28),
+                button.widthAnchor.constraint(equalToConstant: 20),
+                button.heightAnchor.constraint(equalToConstant: 20),
             ])
 
             stackView.addArrangedSubview(button)
@@ -157,6 +165,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private let startupBehavior: LxAppShellStartupBehavior
     private var sidebarHostActionHandler: ((String) -> Void)?
     private var toolbarHostActionHandler: ((String) -> Void)?
+    private var titlebarHostActionHandler: ((String) -> Void)?
     private var appUIRuntimeRef: AnyObject?
     private var titlebarActionStrip: MacTitlebarActionStrip?
     private var titlebarAccessoryController: NSTitlebarAccessoryViewController?
@@ -917,6 +926,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         toolbarHostActionHandler = handler
     }
 
+    func setTitlebarHostActionHandler(_ handler: @escaping (String) -> Void) {
+        titlebarHostActionHandler = handler
+    }
+
     func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
         let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
         sidebarView?.updatePanelItems(sidebarItems)
@@ -999,8 +1012,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     func setSidebarChromeEnabled(_ enabled: Bool) {
         sidebarChromeEnabled = enabled
-        if !enabled {
-            sidebarWidthConstraint?.constant = 0
+        guard let constraint = sidebarWidthConstraint else {
+            refreshSidebarVisibilityUI()
+            return
+        }
+        if enabled {
+            if constraint.constant < Layout.sidebarHiddenThreshold {
+                constraint.constant = lastExpandedSidebarWidth
+                contentLeadingConstraint?.constant = 0
+            }
+        } else {
+            constraint.constant = 0
             contentLeadingConstraint?.constant = Layout.contentPanelPadding
         }
         refreshSidebarVisibilityUI()
@@ -1029,7 +1051,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         } else {
             strip = MacTitlebarActionStrip()
             strip.onAction = { [weak self] actionID in
-                self?.toolbarHostActionHandler?(actionID)
+                self?.titlebarHostActionHandler?(actionID)
             }
 
             let accessoryController = NSTitlebarAccessoryViewController()
