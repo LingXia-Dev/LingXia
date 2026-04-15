@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-runner-lib"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "lingxia"
+crate-type = ["staticlib"]
+
+[dependencies]
+lingxia = { workspace = true, features = ["shell"] }
+lingxia_devtool = { workspace = true }

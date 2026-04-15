@@ -113,6 +113,7 @@ struct RunnerBuildTool {
             cargoPath: tools.cargo,
             baseEnvironment: baseEnvironment
         )
+        try syncBridgeRuntimeAsset(projectRoot: projectRoot, packageDir: options.packageDir)
 
         let stampPath = (options.outputDir as NSString).appendingPathComponent("prepared.stamp")
         let formatter = ISO8601DateFormatter()
@@ -147,10 +148,10 @@ struct RunnerBuildTool {
 
         while true {
             let candidate = currentURL.path
-            let devtoolCargo = pathJoin(candidate, "crates/lingxia-devtool/Cargo.toml")
+            let runnerLibCargo = pathJoin(candidate, "tools/lingxia-runner/runner-lib/Cargo.toml")
             let sdkPackage = pathJoin(candidate, "lingxia-sdk/apple/Package.swift")
 
-            if fileManager.fileExists(atPath: devtoolCargo)
+            if fileManager.fileExists(atPath: runnerLibCargo)
                 && fileManager.fileExists(atPath: sdkPackage)
             {
                 return candidate
@@ -281,7 +282,7 @@ struct RunnerBuildTool {
             "--target",
             targetTriple,
             "-p",
-            "lingxia-devtool",
+            "lingxia-runner-lib",
         ]
         if buildConfig == "release" {
             args.insert("--release", at: 4)
@@ -317,6 +318,23 @@ struct RunnerBuildTool {
         let dst = pathJoin(libDir, "liblingxia.a")
         try copyIfChanged(from: src, to: dst)
         print("[runner-plugin] liblingxia.a updated: \(dst)")
+    }
+
+    private static func syncBridgeRuntimeAsset(projectRoot: String, packageDir: String) throws {
+        let source = pathJoin(
+            projectRoot,
+            "packages/lingxia-bridge/dist/bridge-runtime.es2020.js"
+        )
+        guard FileManager.default.fileExists(atPath: source) else {
+            throw RunnerBuildToolError.missingFile(source)
+        }
+
+        let destination = pathJoin(
+            packageDir,
+            "Sources/Resources/bridge-runtime.js"
+        )
+        try copyIfChanged(from: source, to: destination)
+        print("[runner-plugin] bridge-runtime.js updated: \(destination)")
     }
 
     private static func resolveRustTargetTriple(baseEnvironment: [String: String]) throws -> String {
