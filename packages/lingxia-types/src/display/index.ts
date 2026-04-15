@@ -1,6 +1,5 @@
 /**
- * Display APIs
- * Corresponds to: lingxia-logic/src/display.rs
+ * Display and orientation APIs.
  */
 
 export type DeviceOrientation = "portrait" | "landscape";

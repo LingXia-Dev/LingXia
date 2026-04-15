@@ -1,6 +1,5 @@
 /**
- * Storage APIs
- * Corresponds to: lingxia-logic/src/storage.rs, env.rs
+ * Storage and environment path APIs.
  */
 
 export interface LxEnv {

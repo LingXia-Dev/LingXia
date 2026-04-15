@@ -1,6 +1,5 @@
 /**
- * LxApp navigator APIs
- * Corresponds to: lingxia-logic/src/navigator.rs
+ * LxApp navigator APIs.
  */
 
 export interface NavigateToLxAppOptions {

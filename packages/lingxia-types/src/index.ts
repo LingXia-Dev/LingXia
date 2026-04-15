@@ -5,6 +5,7 @@
  */
 
 export * from './app';
+export * from './lxapp';
 export * from './device';
 export * from './display';
 export * from './input';
@@ -24,10 +25,14 @@ export * from './generated/i18n';
 import type {
   AppConfig,
   AppInstance,
-  LxAppInfo,
+  HostAppApi,
   PageConfig,
   PageInstance,
 } from './app';
+
+import type {
+  LxAppInfo,
+} from './lxapp';
 
 import type {
   DeviceInfo,
@@ -73,7 +78,6 @@ import type {
 } from './location';
 
 import type {
-  AppBaseInfo,
   SystemSettingInfo,
   OpenURLOptions,
 } from './system';
@@ -129,6 +133,7 @@ import type {
 
 export interface Lx {
   env: LxEnv;
+  app: HostAppApi;
 
   getDeviceInfo(): DeviceInfo;
   getScreenInfo(): ScreenInfo;
@@ -167,7 +172,6 @@ export interface Lx {
   navigateToLxApp(options: NavigateToLxAppOptions): Promise<void>;
   navigateBackLxApp(): Promise<void>;
 
-  getAppBaseInfo(): AppBaseInfo;
   getLxAppInfo(): LxAppInfo;
   getSystemSetting(): SystemSettingInfo;
   openURL(options: OpenURLOptions): void;

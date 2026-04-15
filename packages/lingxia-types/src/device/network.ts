@@ -1,6 +1,5 @@
 /**
- * Network APIs
- * Corresponds to: lingxia-logic/src/device/network.rs
+ * Network status APIs.
  */
 
 // Matches mini-program style where possible: wifi/2g/3g/4g/5g/none/unknown.

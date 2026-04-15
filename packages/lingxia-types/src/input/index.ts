@@ -1,6 +1,5 @@
 /**
- * Input APIs
- * Corresponds to: lingxia-logic/src/input.rs
+ * Input event APIs.
  *
  * Platform support: Android only
  */

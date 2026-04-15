@@ -1,6 +1,5 @@
 /**
- * Media APIs
- * Corresponds to: lingxia-logic/src/media/
+ * Media picker, preview, scan, and file processing APIs.
  */
 
 export interface GetImageInfoOptions {

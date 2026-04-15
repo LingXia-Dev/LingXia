@@ -1,6 +1,5 @@
 /**
  * Transfer task APIs.
- * Corresponds to: lingxia-logic/src/fs/download.rs and lingxia-logic/src/fs/upload.rs
  */
 
 export interface DownloadOptions {

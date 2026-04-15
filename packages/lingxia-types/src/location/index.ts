@@ -1,6 +1,5 @@
 /**
- * Location APIs
- * Corresponds to: lingxia-logic/src/location.rs
+ * Location APIs.
  */
 
 export interface GetLocationOptions {

@@ -1,6 +1,5 @@
 /**
- * Update APIs
- * Corresponds to: lingxia-logic/src/update.rs
+ * Runtime update APIs.
  */
 
 export interface UpdateManager {

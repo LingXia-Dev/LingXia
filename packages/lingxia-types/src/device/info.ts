@@ -1,6 +1,5 @@
 /**
- * Device info APIs
- * Corresponds to: lingxia-logic/src/device/info.rs
+ * Device info APIs.
  */
 
 export interface DeviceInfo {

@@ -21,6 +21,11 @@
       "import": "./dist/app/index.js",
       "require": "./dist/app/index.js"
     },
+    "./lxapp": {
+      "types": "./dist/lxapp/index.d.ts",
+      "import": "./dist/lxapp/index.js",
+      "require": "./dist/lxapp/index.js"
+    },
     "./device": {
       "types": "./dist/device/index.d.ts",
       "import": "./dist/device/index.js",

@@ -1,4 +1,4 @@
-use lxapp::lx::{LxLogicExtension, register_logic_extension};
+use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod app;
@@ -9,6 +9,7 @@ mod fs;
 pub mod i18n;
 mod input;
 mod location;
+mod lxapp;
 mod media;
 mod navigator;
 mod storage;
@@ -26,6 +27,7 @@ impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
         env::init(ctx)?;
         app::init(ctx)?;
+        lxapp::init(ctx)?;
         device::init(ctx)?;
         display::init(ctx)?;
         location::init(ctx)?;

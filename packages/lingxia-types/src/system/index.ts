@@ -1,14 +1,6 @@
 /**
- * System APIs
- * Corresponds to: lingxia-logic/src/system.rs
+ * System settings and URL APIs.
  */
-
-export interface AppBaseInfo {
-  language: string;
-  productName: string;
-  version: string;
-  SDKVersion: string;
-}
 
 export interface SystemSettingInfo {
   bluetoothEnabled: boolean;

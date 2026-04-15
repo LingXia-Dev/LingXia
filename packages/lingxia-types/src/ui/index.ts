@@ -1,6 +1,5 @@
 /**
- * UI APIs
- * Corresponds to: lingxia-logic/src/ui/
+ * UI feedback, navigation, and surface control APIs.
  */
 
 import type { EventEmitter } from '../app';

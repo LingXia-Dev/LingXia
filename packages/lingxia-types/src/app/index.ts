@@ -1,7 +1,26 @@
 /**
- * App & Page APIs
- * Corresponds to: lingxia-lxapp/src/appservice/
+ * Host app, app lifecycle, and page instance APIs.
  */
+
+export interface AppBaseInfo {
+  language: string;
+  productName: string;
+  version: string;
+  SDKVersion: string;
+}
+
+export interface HostAppApi {
+  getBaseInfo(): AppBaseInfo;
+
+  /**
+   * Exit the host app immediately.
+   *
+   * This API does not show a confirmation dialog. If the user should confirm
+   * first, call `lx.showModal(...)` in page logic and invoke `lx.app.exit()`
+   * only after the user confirms.
+   */
+  exit(): void;
+}
 
 export interface AppLifecycleEventArgs {
   source: 'host' | 'lxapp';
@@ -13,15 +32,6 @@ export interface AppLifecycleEventArgs {
     | 'close'
     | 'switch_back'
     | 'switch_away';
-}
-
-export type LxAppReleaseType = 'release' | 'preview' | 'developer';
-
-export interface LxAppInfo {
-  appId: string;
-  appName: string;
-  version: string;
-  releaseType: LxAppReleaseType;
 }
 
 export interface AppLaunchOptions {

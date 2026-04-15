@@ -1,6 +1,5 @@
 /**
- * WiFi APIs
- * Corresponds to: lingxia-logic/src/device/wifi.rs
+ * Wi-Fi APIs.
  */
 
 export interface WifiInfo {

@@ -1,6 +1,5 @@
 /**
  * File system APIs.
- * Corresponds to: lingxia-logic/src/fs.rs
  */
 
 export interface OpenFileOptions {

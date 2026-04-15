@@ -2,27 +2,14 @@
 
 use crate::i18n::{
     host_error_from_platform_error, js_error_from_business_code_with_detail,
-    js_error_from_platform_error, js_service_unavailable_error,
+    js_error_from_platform_error,
 };
-use lingxia_app_context::app_config;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::location::Location;
 use lingxia_platform::traits::wifi::Wifi;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use serde::Deserialize;
-
-/// AppBase information
-#[derive(Debug, Clone, IntoJSObj)]
-pub struct AppBaseInfo {
-    language: String,
-    #[rename = "productName"]
-    product_name: String,
-    #[rename = "version"]
-    version: String,
-    #[rename = "SDKVersion"]
-    sdk_version: String,
-}
 
 /// System setting status
 #[derive(Debug, Clone, IntoJSObj)]
@@ -33,19 +20,6 @@ pub struct SystemSettingInfo {
     location_enabled: bool,
     #[rename = "wifiEnabled"]
     wifi_enabled: bool,
-}
-
-fn get_system_locale(ctx: JSContext) -> JSResult<AppBaseInfo> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let locale = lxapp.runtime.get_system_locale();
-    let app_cfg =
-        app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
-    Ok(AppBaseInfo {
-        language: locale.to_string(),
-        product_name: app_cfg.product_name.clone(),
-        version: app_cfg.product_version.clone(),
-        sdk_version: lxapp::SDK_RUNTIME_VERSION.to_string(),
-    })
 }
 
 fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
@@ -107,9 +81,6 @@ fn open_url(ctx: JSContext, options: JSOpenURLOptions) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let get_app_base_info = JSFunc::new(ctx, get_system_locale)?;
-    lx::register_js_api(ctx, "getAppBaseInfo", get_app_base_info)?;
-
     let get_system_setting_func = JSFunc::new(ctx, get_system_setting)?;
     lx::register_js_api(ctx, "getSystemSetting", get_system_setting_func)?;
 

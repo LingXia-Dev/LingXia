@@ -1,6 +1,5 @@
 /**
- * Device action APIs
- * Corresponds to: lingxia-logic/src/device/actions.rs
+ * Device action APIs.
  */
 
 export interface MakePhoneCallOptions {
