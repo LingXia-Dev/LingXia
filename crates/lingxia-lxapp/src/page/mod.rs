@@ -637,20 +637,12 @@ impl Page {
         Err("webview ready channel closed before result".to_string())
     }
 
-    /// Unified page-loaded handler. Call from any delegate (lxapp or external)
-    /// when the WebView finishes a navigation.
-    ///
-    /// Performs state update, lifecycle dispatch, synchronous script injection,
-    /// and async notification — in that order.
-    pub fn handle_loaded(&self) {
+    async fn handle_loaded_async(&self) {
         self.set_render_status(PageRenderStatus::Finished);
-        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
-
-        // Synchronous script injection (zero timing gap).
         if !self.inner.page_scripts.is_empty() {
             if let Some(webview) = self.webview() {
                 for js in &self.inner.page_scripts {
-                    if let Err(e) = webview.evaluate_javascript(js) {
+                    if let Err(e) = webview.exec_js(js) {
                         crate::error!("page script injection failed: {}", e)
                             .with_appid(self.inner.appid.clone())
                             .with_path(self.inner.path.clone());
@@ -659,8 +651,19 @@ impl Page {
             }
         }
 
-        // Async notification for subscribers.
+        self.dispatch_lifecycle_event(PageLifecycleEvent::OnReady);
         self.inner.loaded_tx.send_modify(|v| *v = v.wrapping_add(1));
+    }
+
+    /// Unified page-loaded handler. Call from any delegate (lxapp or external)
+    /// when the WebView finishes a navigation.
+    ///
+    /// Script injection is awaited before `OnReady` and loaded notifications.
+    pub fn handle_loaded(&self) {
+        let page = self.clone();
+        let _ = crate::executor::spawn(async move {
+            page.handle_loaded_async().await;
+        });
     }
 
     /// Subscribe to page-loaded events.
