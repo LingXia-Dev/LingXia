@@ -3,6 +3,8 @@ mod vite_html;
 mod vite_pipeline;
 mod vite_tooling;
 
+pub(crate) use vite_assets::configured_native_rust_dir;
+
 use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};
 use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::Project;

@@ -591,10 +591,7 @@ fn prepare_resource_bundles(
             build_profile.as_str(),
             plan.bundle_type.as_str()
         );
-        let inputs_hash = hash_tree(
-            &plan.bundle_dir,
-            &["dist", "node_modules", ".git", ".lingxia"],
-        )?;
+        let inputs_hash = hash_resource_bundle_inputs(&plan)?;
         let mut needs_build = true;
 
         if let Some(stamp) = cache.lxapp_builds.get(&cache_key)
@@ -1020,6 +1017,26 @@ fn sha256_hex(bytes: &[u8]) -> String {
 fn hash_tree(root: &Path, ignore_dir_names: &[&str]) -> Result<String> {
     let mut hasher = sha2::Sha256::new();
     hash_tree_inner(root, root, &mut hasher, ignore_dir_names)?;
+    Ok(hex_lower(&hasher.finalize()))
+}
+
+fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(b"bundle");
+    hasher.update(path_key(&plan.bundle_dir).as_bytes());
+    hasher.update(hash_tree(
+        &plan.bundle_dir,
+        &["dist", "node_modules", ".git", ".lingxia"],
+    )?);
+
+    if matches!(plan.bundle_type, ResourceBundleType::Lxapp)
+        && let Some(rust_dir) = crate::lxapp::configured_native_rust_dir(&plan.bundle_dir)?
+    {
+        hasher.update(b"native-client-rust-dir");
+        hasher.update(path_key(&rust_dir).as_bytes());
+        hasher.update(hash_tree(&rust_dir, &["target", ".git"])?);
+    }
+
     Ok(hex_lower(&hasher.finalize()))
 }
 

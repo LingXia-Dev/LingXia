@@ -11,6 +11,7 @@ use std::env;
 use std::path::Path;
 
 pub(crate) use framework::ProjectFramework;
+pub(crate) use view::configured_native_rust_dir;
 
 /// Page lifecycle method names that are NOT user-defined action handlers.
 /// Shared between logic (binding meta extraction) and view (action mode inference).
