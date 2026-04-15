@@ -316,7 +316,8 @@ impl Platform for MacosPlatform {
             .unwrap_or_else(|| "14.0".to_string());
 
         // Build Rust static library
-        self.build_rust_library(&config.project_root, config, arch, &deployment_target)?;
+        let native_lib_path =
+            self.build_rust_library(&config.project_root, config, arch, &deployment_target)?;
         if config.build_native && config.lingxia_config.is_some() {
             let rust_target = Self::rust_target(arch);
             apple::update_spm_rust_link_stamp(
@@ -328,7 +329,7 @@ impl Platform for MacosPlatform {
         }
 
         // Build Swift Package and get bin dir
-        let bin_dir = self.swift_build_and_get_bin_dir(
+        let mut bin_dir = self.swift_build_and_get_bin_dir(
             &macos_dir,
             &config.project_root,
             config.profile,
@@ -351,7 +352,23 @@ impl Platform for MacosPlatform {
             preferred.push(dir_name.to_string());
         }
 
-        let executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+        let mut executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+        if config.build_native && executable_needs_native_relink(&executable_path, &native_lib_path)
+        {
+            println!(
+                "  {} Swift executable is older than native library; forcing relink",
+                "ℹ".blue()
+            );
+            let _ = fs::remove_dir_all(macos_dir.join(".build"));
+            bin_dir = self.swift_build_and_get_bin_dir(
+                &macos_dir,
+                &config.project_root,
+                config.profile,
+                arch,
+                &deployment_target,
+            )?;
+            executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+        }
 
         let product_name = config
             .lingxia_config
@@ -501,6 +518,16 @@ fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str)
             .unwrap_or_default();
     }
     current
+}
+
+fn executable_needs_native_relink(executable_path: &Path, native_lib_path: &Path) -> bool {
+    let Ok(executable_modified) = fs::metadata(executable_path).and_then(|m| m.modified()) else {
+        return false;
+    };
+    let Ok(native_modified) = fs::metadata(native_lib_path).and_then(|m| m.modified()) else {
+        return false;
+    };
+    native_modified > executable_modified
 }
 
 fn warn_missing_restricted_apple_entitlements(
