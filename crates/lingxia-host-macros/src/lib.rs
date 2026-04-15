@@ -3,19 +3,23 @@ use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
 use syn::{
-    Expr, FnArg, GenericArgument, ItemFn, Lit, LitStr, PatType, Path, PathArguments, Token, Type,
+    Expr, FnArg, GenericArgument, ItemFn, Lit, LitStr, PatType, PathArguments, Token, Type,
     parse_macro_input,
 };
 
 #[proc_macro_attribute]
-pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn native(attr: TokenStream, item: TokenStream) -> TokenStream {
+    expand_host_attribute(attr, item, "native")
+}
+
+fn expand_host_attribute(attr: TokenStream, item: TokenStream, macro_name: &str) -> TokenStream {
     let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
     let args = match parser.parse(attr) {
         Ok(args) => args,
         Err(err) => return err.to_compile_error().into(),
     };
 
-    let (route_lit, mode) = match parse_host_attr(args) {
+    let (route_lit, mode) = match parse_host_attr(args, macro_name) {
         Ok(parsed) => parsed,
         Err(err) => return err.to_compile_error().into(),
     };
@@ -24,7 +28,7 @@ pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
     let Some((namespace, method)) = route.rsplit_once('.') else {
         return syn::Error::new(
             route_lit.span(),
-            "host route must look like \"namespace.method\"",
+            format!("{macro_name} route must look like \"namespace.method\""),
         )
         .to_compile_error()
         .into();
@@ -32,7 +36,7 @@ pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
     if namespace.trim().is_empty() || method.trim().is_empty() {
         return syn::Error::new(
             route_lit.span(),
-            "host route must contain non-empty namespace and method",
+            format!("{macro_name} route must contain non-empty namespace and method"),
         )
         .to_compile_error()
         .into();
@@ -40,7 +44,7 @@ pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
     if namespace == "channel" {
         return syn::Error::new(
             route_lit.span(),
-            "host namespace 'channel' is reserved by the JS API; choose a different namespace",
+            format!("{macro_name} namespace 'channel' is reserved by the JS API; choose a different namespace"),
         )
         .to_compile_error()
         .into();
@@ -54,43 +58,26 @@ pub fn host(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-#[proc_macro]
-pub fn register_hosts(input: TokenStream) -> TokenStream {
-    let parser = Punctuated::<Path, Token![,]>::parse_terminated;
-    let paths = parse_macro_input!(input with parser);
-
-    let registrations = match paths
-        .iter()
-        .map(expand_register_host_path)
-        .collect::<syn::Result<Vec<_>>>()
-    {
-        Ok(registrations) => registrations,
-        Err(err) => return err.to_compile_error().into(),
-    };
-
-    quote!({
-        #(#registrations)*
-    })
-    .into()
-}
-
-fn parse_host_attr(args: Punctuated<Expr, Token![,]>) -> syn::Result<(LitStr, HostMode)> {
+fn parse_host_attr(
+    args: Punctuated<Expr, Token![,]>,
+    macro_name: &str,
+) -> syn::Result<(LitStr, HostMode)> {
     let Some(first) = args.first() else {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
-            "expected #[host(\"namespace.method\")]",
+            format!("expected #[{macro_name}(\"namespace.method\")]"),
         ));
     };
     let Expr::Lit(first_lit) = first else {
         return Err(syn::Error::new_spanned(
             first,
-            "expected #[host(\"namespace.method\")]",
+            format!("expected #[{macro_name}(\"namespace.method\")]"),
         ));
     };
     let Lit::Str(route_lit) = &first_lit.lit else {
         return Err(syn::Error::new_spanned(
             &first_lit.lit,
-            "expected #[host(\"namespace.method\")]",
+            format!("expected #[{macro_name}(\"namespace.method\")]"),
         ));
     };
 
@@ -101,7 +88,7 @@ fn parse_host_attr(args: Punctuated<Expr, Token![,]>) -> syn::Result<(LitStr, Ho
                 if !matches!(mode, HostMode::Unary) {
                     return Err(syn::Error::new_spanned(
                         arg,
-                        "duplicate or conflicting mode flag in #[host(...)]",
+                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
                     ));
                 }
                 mode = HostMode::Stream;
@@ -110,7 +97,7 @@ fn parse_host_attr(args: Punctuated<Expr, Token![,]>) -> syn::Result<(LitStr, Ho
                 if !matches!(mode, HostMode::Unary) {
                     return Err(syn::Error::new_spanned(
                         arg,
-                        "duplicate or conflicting mode flag in #[host(...)]",
+                        format!("duplicate or conflicting mode flag in #[{macro_name}(...)]"),
                     ));
                 }
                 mode = HostMode::Channel;
@@ -118,7 +105,9 @@ fn parse_host_attr(args: Punctuated<Expr, Token![,]>) -> syn::Result<(LitStr, Ho
             _ => {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "expected only #[host(\"namespace.method\")], #[host(\"namespace.method\", stream)], or #[host(\"namespace.method\", channel)]",
+                    format!(
+                        "expected only #[{macro_name}(\"namespace.method\")], #[{macro_name}(\"namespace.method\", stream)], or #[{macro_name}(\"namespace.method\", channel)]"
+                    ),
                 ));
             }
         }
@@ -132,28 +121,6 @@ enum HostMode {
     Unary,
     Stream,
     Channel,
-}
-
-fn expand_register_host_path(path: &Path) -> syn::Result<proc_macro2::TokenStream> {
-    let mut helper_path = path.clone();
-    let Some(last_segment) = helper_path.segments.last_mut() else {
-        return Err(syn::Error::new_spanned(
-            path,
-            "register_hosts! expects a handler function path",
-        ));
-    };
-
-    if !matches!(last_segment.arguments, PathArguments::None) {
-        return Err(syn::Error::new_spanned(
-            &last_segment.arguments,
-            "register_hosts! does not accept generic arguments",
-        ));
-    }
-
-    last_segment.ident = format_ident!("{}_host", last_segment.ident);
-    Ok(quote! {
-        ::lingxia::register_host_entry(#helper_path());
-    })
 }
 
 fn expand_host(
@@ -238,7 +205,7 @@ impl HostFnPlan {
             let FnArg::Typed(arg) = arg else {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host] does not support methods with a receiver",
+                    "#[native] does not support methods with a receiver",
                 ));
             };
 
@@ -251,13 +218,13 @@ impl HostFnPlan {
                 if index + 1 != input_count {
                     return Err(syn::Error::new_spanned(
                         arg,
-                        "HostCancel must be the last argument in a #[host] function",
+                        "HostCancel must be the last argument in a #[native] function",
                     ));
                 }
                 if has_cancel {
                     return Err(syn::Error::new_spanned(
                         arg,
-                        "#[host] functions can only take one HostCancel argument",
+                        "#[native] functions can only take one HostCancel argument",
                     ));
                 }
                 has_cancel = true;
@@ -267,7 +234,7 @@ impl HostFnPlan {
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host] functions support at most one JSON payload argument",
+                    "#[native] functions support at most one JSON payload argument",
                 ));
             }
             input_ty = Some((*arg.ty).clone());
@@ -479,19 +446,19 @@ impl StreamFnPlan {
         let Some(last) = inputs.last() else {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "#[host(..., stream)] function must take `StreamContext` as its last argument",
+                "#[native(..., stream)] function must take `StreamContext` as its last argument",
             ));
         };
         let FnArg::Typed(last_arg) = last else {
             return Err(syn::Error::new_spanned(
                 last,
-                "#[host] does not support methods with a receiver",
+                "#[native] does not support methods with a receiver",
             ));
         };
         if !type_is_stream_context(&last_arg.ty) {
             return Err(syn::Error::new_spanned(
                 last,
-                "last argument of a #[host(..., stream)] function must be `StreamContext`",
+                "last argument of a #[native(..., stream)] function must be `StreamContext`",
             ));
         }
 
@@ -504,7 +471,7 @@ impl StreamFnPlan {
             let FnArg::Typed(arg) = arg else {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host] does not support methods with a receiver",
+                    "#[native] does not support methods with a receiver",
                 ));
             };
             if index == 0 && is_lxapp_arg(arg) {
@@ -514,7 +481,7 @@ impl StreamFnPlan {
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host(stream)] functions support at most one JSON payload argument",
+                    "#[native(stream)] functions support at most one JSON payload argument",
                 ));
             }
             input_ty = Some((*arg.ty).clone());
@@ -647,19 +614,19 @@ impl ChannelFnPlan {
         let Some(last) = inputs.last() else {
             return Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "#[host(..., channel)] function must take `ChannelContext` as its last argument",
+                "#[native(..., channel)] function must take `ChannelContext` as its last argument",
             ));
         };
         let FnArg::Typed(last_arg) = last else {
             return Err(syn::Error::new_spanned(
                 last,
-                "#[host] does not support methods with a receiver",
+                "#[native] does not support methods with a receiver",
             ));
         };
         if !type_is_channel_context(&last_arg.ty) {
             return Err(syn::Error::new_spanned(
                 last,
-                "last argument of a #[host(..., channel)] function must be `ChannelContext`",
+                "last argument of a #[native(..., channel)] function must be `ChannelContext`",
             ));
         }
 
@@ -673,7 +640,7 @@ impl ChannelFnPlan {
             let FnArg::Typed(arg) = arg else {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host] does not support methods with a receiver",
+                    "#[native] does not support methods with a receiver",
                 ));
             };
             if index == 0 && is_lxapp_arg(arg) {
@@ -683,7 +650,7 @@ impl ChannelFnPlan {
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
                     arg,
-                    "#[host(channel)] functions support at most one JSON payload argument",
+                    "#[native(channel)] functions support at most one JSON payload argument",
                 ));
             }
             input_ty = Some((*arg.ty).clone());

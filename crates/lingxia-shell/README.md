@@ -17,7 +17,6 @@ Shell product module and host registration crate for LingXia.
 - `open(...)`, `open_for_app(...)`, `close(...)`, `download(...)`
 - `resolve_input(...)`, `classify_navigation(...)`
 - `open_panel_lxapp(...)`, `panel_item_for_id(...)`, `panels_config_json()`
-- `register_hosts!(...)` macro for host handler registration
 
 ## Notes
 

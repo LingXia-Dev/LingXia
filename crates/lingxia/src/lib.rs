@@ -5,7 +5,7 @@ pub use host_addon::{HostAddon, install_host_addon};
 pub use lingxia_app_context::{
     AppConfig, app_config, app_state_dir, lingxia_id, product_name, product_version,
 };
-pub use lingxia_macro::{host, register_hosts};
+pub use lingxia_macro::native;
 pub use lingxia_platform as platform;
 pub use lxapp_dev::{
     LxAppDevConfig, LxAppDevIdentity, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
@@ -28,8 +28,6 @@ pub use lingxia_update::{
 };
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
-#[doc(hidden)]
-pub use lxapp::host::{HostRegistrationEntry, register_host_entry};
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::set_num_workers;
 pub use lxapp::{

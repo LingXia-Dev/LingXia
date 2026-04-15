@@ -820,12 +820,12 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     Ok(result)
 }
 
-#[lingxia::host("proxy.getSettings")]
+#[lingxia::native("proxy.getSettings")]
 fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     get_proxy_settings_result(&app.app_data_dir())
 }
 
-#[lingxia::host("proxy.updateSettings")]
+#[lingxia::native("proxy.updateSettings")]
 async fn update_proxy_settings(
     app: Arc<LxApp>,
     input: ProxySettingsInput,
@@ -862,7 +862,7 @@ async fn update_proxy_settings(
     }
 }
 
-#[lingxia::host("proxy.refreshGfwList")]
+#[lingxia::native("proxy.refreshGfwList")]
 async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
@@ -881,7 +881,7 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     result
 }
 
-#[lingxia::host("proxy.watch", stream)]
+#[lingxia::native("proxy.watch", stream)]
 async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
@@ -909,12 +909,10 @@ async fn watch_proxy_settings(
 }
 
 pub(crate) fn register() {
-    crate::register_hosts![
-        get_proxy_settings,
-        update_proxy_settings,
-        refresh_gfwlist,
-        watch_proxy_settings
-    ];
+    lxapp::host::register_host_entry(get_proxy_settings_host());
+    lxapp::host::register_host_entry(update_proxy_settings_host());
+    lxapp::host::register_host_entry(refresh_gfwlist_host());
+    lxapp::host::register_host_entry(watch_proxy_settings_host());
 }
 
 pub(crate) fn warmup() {

@@ -34,7 +34,7 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     })
 }
 
-#[lingxia::host("app.getInfo")]
+#[lingxia::native("app.getInfo")]
 fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     let (product_name, version) = match app_config() {
         Some(cfg) => (cfg.product_name.clone(), cfg.product_version.clone()),
@@ -47,12 +47,12 @@ fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     })
 }
 
-#[lingxia::host("downloads.getSettings")]
+#[lingxia::native("downloads.getSettings")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     download_settings_result(&app)
 }
 
-#[lingxia::host("downloads.chooseDirectory")]
+#[lingxia::native("downloads.chooseDirectory")]
 async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
@@ -83,7 +83,7 @@ async fn choose_download_directory(
     download_settings_result(&app)
 }
 
-#[lingxia::host("downloads.resetDirectory")]
+#[lingxia::native("downloads.resetDirectory")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     lingxia_transfer::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
@@ -91,10 +91,8 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
 }
 
 pub(crate) fn register() {
-    crate::register_hosts![
-        get_app_info,
-        get_download_settings,
-        choose_download_directory,
-        reset_download_directory,
-    ];
+    lxapp::host::register_host_entry(get_app_info_host());
+    lxapp::host::register_host_entry(get_download_settings_host());
+    lxapp::host::register_host_entry(choose_download_directory_host());
+    lxapp::host::register_host_entry(reset_download_directory_host());
 }

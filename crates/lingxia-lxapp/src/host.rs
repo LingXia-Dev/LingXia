@@ -146,8 +146,8 @@ pub fn register_host(registration: HostRegistration) {
     reg.handlers.insert(key, registration.handler);
 }
 
-/// Unified registration entry returned by the `#[host]` macro for all modes
-/// (unary, stream, channel). `register_hosts!` dispatches each entry to the
+/// Unified registration entry returned by the `#[native]` macro for all modes
+/// (unary, stream, channel). Runtime assembly code dispatches each entry to the
 /// correct registry.
 pub enum HostRegistrationEntry {
     Handler(HostRegistration),
@@ -199,7 +199,7 @@ pub fn serialize_result<T: Serialize>(result: HostResult<T>) -> HostResult<HostO
         .map_err(|e| LxAppError::Bridge(e.to_string()))
 }
 
-/// Imperative stream context passed to `#[host(..., stream)]` handlers.
+/// Imperative stream context passed to `#[native(..., stream)]` handlers.
 ///
 /// Handlers emit zero or more events with [`send`](Self::send), then finish
 /// with [`end`](Self::end) or [`error`](Self::error).

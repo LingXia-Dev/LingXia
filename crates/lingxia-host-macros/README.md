@@ -1,11 +1,12 @@
 # lingxia-macro
 
-Procedural macros for registering LingXia host APIs.
+Procedural macros for registering LingXia native APIs.
 
 ## What it provides
 
-- `#[host("namespace.method")]` for unary host handlers
-- `#[host("namespace.method", stream)]` for streaming host handlers
+- `#[native("namespace.method")]` for unary View-to-native handlers
+- `#[native("namespace.method", stream)]` for streaming View-to-native handlers
+- `#[native("namespace.method", channel)]` for bidirectional channels
 
 ## What the macro generates
 
@@ -15,5 +16,5 @@ Procedural macros for registering LingXia host APIs.
 
 ## Notes
 
-This crate is internal infrastructure for LingXia host extensions. Most users
+This crate is internal infrastructure for LingXia native extensions. Most users
 consume it indirectly through the top-level `lingxia` or `lingxia-shell` crates.

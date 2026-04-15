@@ -24,14 +24,12 @@ pub use lingxia_browser::{
     BrowserNavigationPolicyResponse, BrowserTabInfo,
 };
 #[doc(hidden)]
-pub use lingxia_macro::{host, register_hosts};
+pub use lingxia_macro::native;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[doc(hidden)]
 pub use lxapp::LxApp;
 #[doc(hidden)]
 pub use lxapp::host;
-#[doc(hidden)]
-pub use lxapp::host::register_host_entry;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
 use std::collections::BTreeMap;

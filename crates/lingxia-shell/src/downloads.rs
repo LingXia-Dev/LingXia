@@ -110,19 +110,19 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
     }
 }
 
-#[lingxia::host("downloads.list")]
+#[lingxia::native("downloads.list")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
     Ok(lingxia_transfer::snapshot(&app.app_data_dir()).map_err(map_downloads_error)?)
 }
 
-#[lingxia::host("downloads.clearCompleted")]
+#[lingxia::native("downloads.clearCompleted")]
 fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
     let removed =
         lingxia_transfer::clear_completed(&app.app_data_dir()).map_err(map_downloads_error)?;
     Ok(ClearCompletedResult { removed })
 }
 
-#[lingxia::host("downloads.remove")]
+#[lingxia::native("downloads.remove")]
 fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -133,7 +133,7 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     Ok(())
 }
 
-#[lingxia::host("downloads.cancel")]
+#[lingxia::native("downloads.cancel")]
 fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -143,7 +143,7 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     lingxia_transfer::cancel(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
-#[lingxia::host("downloads.pause")]
+#[lingxia::native("downloads.pause")]
 fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -153,7 +153,7 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
     lingxia_transfer::pause(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
-#[lingxia::host("downloads.retry")]
+#[lingxia::native("downloads.retry")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -163,7 +163,7 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
     lingxia_transfer::retry(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
-#[lingxia::host("downloads.resume")]
+#[lingxia::native("downloads.resume")]
 fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
@@ -173,7 +173,7 @@ fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     lingxia_transfer::resume(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
 }
 
-#[lingxia::host("downloads.open")]
+#[lingxia::native("downloads.open")]
 async fn open_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -211,7 +211,7 @@ async fn open_download_route(
     .await
 }
 
-#[lingxia::host("downloads.reveal")]
+#[lingxia::native("downloads.reveal")]
 async fn reveal_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -255,7 +255,7 @@ async fn reveal_download_route(
     .await
 }
 
-#[lingxia::host("downloads.watch", stream)]
+#[lingxia::native("downloads.watch", stream)]
 async fn watch_downloads(
     app: Arc<LxApp>,
     mut stream: StreamContext<DownloadEvent>,
@@ -282,16 +282,14 @@ async fn watch_downloads(
 }
 
 pub(crate) fn register() {
-    crate::register_hosts![
-        list_downloads,
-        clear_completed_downloads,
-        remove_download_route,
-        cancel_download_route,
-        pause_download_route,
-        retry_download_route,
-        resume_download_route,
-        open_download_route,
-        reveal_download_route,
-        watch_downloads,
-    ];
+    lxapp::host::register_host_entry(list_downloads_host());
+    lxapp::host::register_host_entry(clear_completed_downloads_host());
+    lxapp::host::register_host_entry(remove_download_route_host());
+    lxapp::host::register_host_entry(cancel_download_route_host());
+    lxapp::host::register_host_entry(pause_download_route_host());
+    lxapp::host::register_host_entry(retry_download_route_host());
+    lxapp::host::register_host_entry(resume_download_route_host());
+    lxapp::host::register_host_entry(open_download_route_host());
+    lxapp::host::register_host_entry(reveal_download_route_host());
+    lxapp::host::register_host_entry(watch_downloads_host());
 }
