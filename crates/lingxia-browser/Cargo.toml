@@ -19,6 +19,7 @@ lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 http = { workspace = true }
 rong = { workspace = true, default-features = false }

@@ -9,8 +9,10 @@ keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [features]
-default = []
-shell = ["dep:lingxia-shell", "dep:lingxia-browser"]
+default = ["browser"]
+browser = ["dep:lingxia-browser"]
+shell = ["browser", "dep:lingxia-shell"]
+webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
 rong = { workspace = true, default-features = false }

@@ -4,10 +4,11 @@ pub use runtime::{
     BUILTIN_BROWSER_APPID, BrowserAddressAction, BrowserAddressInputContext,
     BrowserAddressInputError, BrowserAddressInputRequest, BrowserAddressInputResponse,
     BrowserAddressInputTrigger, BrowserAddressNavigation, BrowserAddressState,
-    BrowserAddressSuggestion, BrowserAddressValueKind, BrowserNavigationPolicyDecision,
-    BrowserNavigationPolicyRequest, BrowserNavigationPolicyResponse, BrowserNavigationTarget,
-    BrowserTabInfo,
+    BrowserAddressSuggestion, BrowserAddressValueKind, BrowserAutomationError,
+    BrowserNativeInputHost, BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest,
+    BrowserNavigationPolicyResponse, BrowserNavigationTarget, BrowserTabInfo,
 };
+use std::sync::Arc;
 
 pub use lxapp::LxAppError;
 
@@ -58,6 +59,45 @@ pub fn open_for_app(
 
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
     runtime::close_browser_tab(tab_id)
+}
+
+pub fn tabs() -> Vec<BrowserTabInfo> {
+    runtime::browser_tabs()
+}
+
+pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
+    runtime::register_native_input_host(host)
+}
+
+pub async fn evaluate_javascript(
+    tab_id: &str,
+    js: &str,
+) -> Result<serde_json::Value, BrowserAutomationError> {
+    runtime::browser_evaluate_javascript(tab_id, js).await
+}
+
+pub async fn click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_click(tab_id, selector).await
+}
+
+pub async fn type_text(
+    tab_id: &str,
+    selector: &str,
+    text: &str,
+) -> Result<(), BrowserAutomationError> {
+    runtime::browser_type_text(tab_id, selector, text).await
+}
+
+pub async fn press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_press(tab_id, key).await
+}
+
+pub async fn scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), BrowserAutomationError> {
+    runtime::browser_scroll(tab_id, dx, dy).await
+}
+
+pub async fn scroll_to(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_scroll_to(tab_id, selector).await
 }
 
 pub fn tab_path(tab_id: &str) -> String {

@@ -9,7 +9,7 @@ use lingxia_webview::runtime::{
 use lingxia_webview::{
     DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse, LogLevel,
     NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController,
-    WebViewDelegate, WebViewSession,
+    WebViewDelegate, WebViewInputError, WebViewScriptError, WebViewSession,
 };
 use lxapp::{LxApp, LxAppError, Page, publish_app_event};
 use serde::{Deserialize, Serialize};
@@ -447,6 +447,26 @@ pub struct BrowserTabInfo {
     pub title: Option<String>,
 }
 
+pub trait BrowserNativeInputHost: Send + Sync {
+    fn prepare_for_input(&self, tab_id: &str) -> Result<(), String>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum BrowserAutomationError {
+    #[error("browser tab not found: {0}")]
+    TabNotFound(String),
+    #[error("browser tab webview not found: {0}")]
+    WebViewNotFound(String),
+    #[error(transparent)]
+    Script(#[from] WebViewScriptError),
+    #[error(transparent)]
+    Input(#[from] WebViewInputError),
+    #[error("native input host is not registered")]
+    NativeInputHostMissing,
+    #[error("native input error: {0}")]
+    NativeInput(String),
+}
+
 fn default_true() -> bool {
     true
 }
@@ -591,6 +611,7 @@ static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_STARTUP_PAGE_SCRIPTS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
+static BROWSER_NATIVE_INPUT_HOST: OnceLock<Arc<dyn BrowserNativeInputHost>> = OnceLock::new();
 
 fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -604,6 +625,31 @@ fn lock_state() -> MutexGuard<'static, BrowserState> {
             lxapp::warn!("[InternalBrowser] recovered poisoned browser state mutex");
             e.into_inner()
         })
+}
+
+pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
+    BROWSER_NATIVE_INPUT_HOST.set(host).is_ok()
+}
+
+fn native_input_host() -> Option<&'static Arc<dyn BrowserNativeInputHost>> {
+    BROWSER_NATIVE_INPUT_HOST.get()
+}
+
+async fn prepare_browser_tab_for_input(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    if let Some(host) = native_input_host() {
+        let mut last_error = None;
+        for _ in 0..10 {
+            match host.prepare_for_input(tab_id) {
+                Ok(()) => return Ok(()),
+                Err(error) => last_error = Some(error),
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        return Err(BrowserAutomationError::NativeInput(
+            last_error.unwrap_or_else(|| format!("failed to prepare browser tab: {tab_id}")),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]
@@ -1722,6 +1768,88 @@ pub fn browser_tab_info(tab_id: &str) -> Option<BrowserTabInfo> {
         .tabs
         .get(&normalized)
         .map(|tab| build_tab_info(&normalized, tab))
+}
+
+pub fn browser_tabs() -> Vec<BrowserTabInfo> {
+    let state = lock_state();
+    let mut tabs: Vec<BrowserTabInfo> = state
+        .tabs
+        .iter()
+        .map(|(tab_id, tab)| build_tab_info(tab_id, tab))
+        .collect();
+    tabs.sort_by(|a, b| a.tab_id.cmp(&b.tab_id));
+    tabs
+}
+
+fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationError> {
+    let normalized_tab_id = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    let session_id = {
+        let state = lock_state();
+        state
+            .tabs
+            .get(&normalized_tab_id)
+            .map(|tab| tab.session_id)
+            .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?
+    };
+    let path = browser_tab_path_for_runtime_id(&normalized_tab_id);
+    let webtag = WebTag::new(BUILTIN_BROWSER_APPID, &path, Some(session_id));
+    find_managed_webview(&webtag)
+        .ok_or_else(|| BrowserAutomationError::WebViewNotFound(tab_id.to_string()))
+}
+
+pub async fn browser_evaluate_javascript(
+    tab_id: &str,
+    js: &str,
+) -> Result<serde_json::Value, BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .evaluate_javascript(js)
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .click(selector, lingxia_webview::ClickOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_type_text(
+    tab_id: &str,
+    selector: &str,
+    text: &str,
+) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .type_text(selector, text, lingxia_webview::TypeOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .press(key, lingxia_webview::PressOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_scroll(tab_id: &str, dx: f64, dy: f64) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .scroll(dx, dy, lingxia_webview::ScrollOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_scroll_to(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .scroll_to(selector, lingxia_webview::ScrollOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
 }
 
 pub(crate) fn browser_update_tab_info(

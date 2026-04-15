@@ -1,5 +1,7 @@
-/// All access to `lingxia-shell` and `lingxia-browser` goes through this module.
-/// When the `shell` feature is disabled every function is a no-op / returns an empty value.
+/// Browser runtime access.
+///
+/// `browser` is a product/runtime capability. `shell` is one optional UI
+/// presentation for that capability.
 
 /// Returns a bitmask of host app capabilities.
 /// Bit 0 (0x1) = shell (browser, downloads, settings, panels).
@@ -10,13 +12,13 @@ pub(crate) fn app_capabilities() -> u32 {
     0
 }
 
-#[cfg(feature = "shell")]
-pub(crate) const APP_ID: &str = lingxia_shell::APP_ID;
-#[cfg(not(feature = "shell"))]
+#[cfg(feature = "browser")]
+pub(crate) const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
+#[cfg(not(feature = "browser"))]
 pub(crate) const APP_ID: &str = "";
 
 pub(crate) fn register_bundled_app() {
-    #[cfg(feature = "shell")]
+    #[cfg(feature = "browser")]
     lingxia_browser::register_bundled_app();
 }
 
@@ -26,33 +28,33 @@ pub(crate) fn open_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, lxapp::LxAppError> {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::open_for_app(appid, session_id, url, tab_id);
-    #[cfg(not(feature = "shell"))]
+    #[cfg(feature = "browser")]
+    return lingxia_browser::open_for_app(appid, session_id, url, tab_id);
+    #[cfg(not(feature = "browser"))]
     {
         let _ = (appid, session_id, url, tab_id);
         Err(lxapp::LxAppError::UnsupportedOperation(
-            "browser not available (shell feature disabled)".to_string(),
+            "browser not available (browser feature disabled)".to_string(),
         ))
     }
 }
 
 pub(crate) fn close(tab_id: &str) -> Result<(), lxapp::LxAppError> {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::close(tab_id);
-    #[cfg(not(feature = "shell"))]
+    #[cfg(feature = "browser")]
+    return lingxia_browser::close(tab_id);
+    #[cfg(not(feature = "browser"))]
     {
         let _ = tab_id;
         Err(lxapp::LxAppError::UnsupportedOperation(
-            "browser not available (shell feature disabled)".to_string(),
+            "browser not available (browser feature disabled)".to_string(),
         ))
     }
 }
 
 pub(crate) fn tab_path(tab_id: &str) -> String {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::tab_path(tab_id);
-    #[cfg(not(feature = "shell"))]
+    #[cfg(feature = "browser")]
+    return lingxia_browser::tab_path(tab_id);
+    #[cfg(not(feature = "browser"))]
     {
         let _ = tab_id;
         String::new()
@@ -61,9 +63,9 @@ pub(crate) fn tab_path(tab_id: &str) -> String {
 
 #[cfg_attr(not(any(target_os = "ios", target_os = "macos")), allow(dead_code))]
 pub(crate) fn update_tab(tab_id: &str, current_url: Option<&str>, title: Option<&str>) -> bool {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::update_tab(tab_id, current_url, title);
-    #[cfg(not(feature = "shell"))]
+    #[cfg(feature = "browser")]
+    return lingxia_browser::update_tab(tab_id, current_url, title);
+    #[cfg(not(feature = "browser"))]
     {
         let _ = (tab_id, current_url, title);
         false
@@ -79,8 +81,8 @@ pub(crate) fn download(
     source_page_url: Option<&str>,
     cookie: Option<&str>,
 ) -> Result<(), lxapp::LxAppError> {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::download(
+    #[cfg(feature = "browser")]
+    return lingxia_browser::start_download(
         tab_id,
         url,
         user_agent,
@@ -88,7 +90,7 @@ pub(crate) fn download(
         source_page_url,
         cookie,
     );
-    #[cfg(not(feature = "shell"))]
+    #[cfg(not(feature = "browser"))]
     {
         let _ = (
             tab_id,
@@ -99,7 +101,7 @@ pub(crate) fn download(
             cookie,
         );
         Err(lxapp::LxAppError::UnsupportedOperation(
-            "browser not available (shell feature disabled)".to_string(),
+            "browser not available (browser feature disabled)".to_string(),
         ))
     }
 }
@@ -116,9 +118,9 @@ pub(crate) fn resolve_input_json(request_json: &str) -> Option<String> {
 
 #[cfg_attr(not(any(target_os = "android", target_env = "ohos")), allow(dead_code))]
 pub(crate) fn classify_navigation_json(request_json: &str) -> Option<String> {
-    #[cfg(feature = "shell")]
-    return lingxia_shell::classify_navigation_json(request_json);
-    #[cfg(not(feature = "shell"))]
+    #[cfg(feature = "browser")]
+    return lingxia_browser::classify_navigation_json(request_json);
+    #[cfg(not(feature = "browser"))]
     {
         let _ = request_json;
         None
@@ -164,24 +166,30 @@ pub(crate) fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 }
 
 pub(crate) fn register_builtin_runtime() {
-    #[cfg(feature = "shell")]
+    #[cfg(all(feature = "browser", not(feature = "shell")))]
     {
         use std::sync::OnceLock;
         static REGISTERED: OnceLock<()> = OnceLock::new();
-        REGISTERED.get_or_init(lingxia_shell::register_runtime);
+        REGISTERED.get_or_init(lingxia_browser::install_runtime);
     }
+    #[cfg(feature = "shell")]
+    lingxia_shell::register_runtime();
 }
 
 pub(crate) fn register_builtin_assets() {
-    #[cfg(feature = "shell")]
+    #[cfg(all(feature = "browser", not(feature = "shell")))]
     {
         use std::sync::OnceLock;
         static REGISTERED: OnceLock<()> = OnceLock::new();
-        REGISTERED.get_or_init(lingxia_shell::register_bundled_assets);
+        REGISTERED.get_or_init(lingxia_browser::register_bundled_app);
     }
+    #[cfg(feature = "shell")]
+    lingxia_shell::register_bundled_assets();
 }
 
 pub(crate) fn warmup() {
+    #[cfg(all(feature = "browser", not(feature = "shell")))]
+    lingxia_browser::warmup();
     #[cfg(feature = "shell")]
     lingxia_shell::warmup();
 }
