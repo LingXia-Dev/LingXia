@@ -1,4 +1,4 @@
-//! GFW-list based routing (requires `feature = "gfwlist"`).
+//! Rule-list based proxy routing (requires `feature = "rule-list-routing"`).
 //!
 //! Parses the community gfwlist (base64 + Adblock Plus rule format) into a
 //! domain-suffix HashSet.  Routing decisions are a single RwLock read + O(n)
@@ -15,34 +15,36 @@ use crate::router::{ProxyRouter, RouteDecision, UpstreamConfig};
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 
-#[cfg(feature = "gfwlist")]
+#[cfg(feature = "rule-list-routing")]
 use {
     crate::upstream::connect_upstream,
     http::Uri,
     tokio::io::{AsyncReadExt, AsyncWriteExt},
 };
 
-/// Default gfwlist source URL.
-pub const GFWLIST_URL: &str =
+/// Default rule-list source URL. The default source is gfwlist-compatible.
+pub const DEFAULT_RULE_LIST_URL: &str =
     "https://raw.githubusercontent.com/gfwlist/gfwlist/master/gfwlist.txt";
 
-#[cfg(feature = "gfwlist")]
+#[cfg(feature = "rule-list-routing")]
 fn parse_source_url(url: &str) -> Result<(String, u16, String), ProxyError> {
     let trimmed = url.trim();
     if trimmed.is_empty() {
-        return Err(ProxyError::Gfwlist("source URL must not be empty".into()));
+        return Err(ProxyError::RuleList("source URL must not be empty".into()));
     }
 
     let uri: Uri = trimmed
         .parse()
-        .map_err(|e| ProxyError::Gfwlist(format!("invalid source URL: {e}")))?;
+        .map_err(|e| ProxyError::RuleList(format!("invalid source URL: {e}")))?;
     if uri.scheme_str() != Some("https") {
-        return Err(ProxyError::Gfwlist("source URL must use https".to_string()));
+        return Err(ProxyError::RuleList(
+            "source URL must use https".to_string(),
+        ));
     }
 
     let host = uri
         .host()
-        .ok_or_else(|| ProxyError::Gfwlist("source URL is missing host".into()))?
+        .ok_or_else(|| ProxyError::RuleList("source URL is missing host".into()))?
         .to_string();
     let port = uri.port_u16().unwrap_or(443);
     let path = uri
@@ -53,7 +55,7 @@ fn parse_source_url(url: &str) -> Result<(String, u16, String), ProxyError> {
     Ok((host, port, path))
 }
 
-#[cfg(feature = "gfwlist")]
+#[cfg(feature = "rule-list-routing")]
 pub fn validate_source_url(url: &str) -> Result<(), ProxyError> {
     let _ = parse_source_url(url)?;
     Ok(())
@@ -85,7 +87,7 @@ impl Rules {
         }
     }
 
-    #[cfg(feature = "gfwlist")]
+    #[cfg(feature = "rule-list-routing")]
     fn from_encoded(b64: &str) -> Result<Self, ProxyError> {
         use base64::Engine as _;
         let compact = b64
@@ -94,9 +96,9 @@ impl Rules {
             .collect::<String>();
         let decoded = base64::engine::general_purpose::STANDARD
             .decode(compact)
-            .map_err(|e| ProxyError::Gfwlist(format!("base64 decode: {e}")))?;
+            .map_err(|e| ProxyError::RuleList(format!("base64 decode: {e}")))?;
         let text = String::from_utf8(decoded)
-            .map_err(|e| ProxyError::Gfwlist(format!("utf-8 decode: {e}")))?;
+            .map_err(|e| ProxyError::RuleList(format!("utf-8 decode: {e}")))?;
         Ok(Self::parse_abp(&text))
     }
 
@@ -155,16 +157,16 @@ fn extract_domain(rule: &str) -> Option<&str> {
 
 /// Routes GFW-blocked domains through `upstream`; everything else goes direct.
 ///
-/// Rules are hot-swappable: call [`GfwlistRouter::update_encoded`] without
+/// Rules are hot-swappable: call [`RuleListRouter::update_encoded`] without
 /// taking the proxy offline.
-pub struct GfwlistRouter {
+pub struct RuleListRouter {
     rules: RwLock<Arc<Rules>>,
     upstream: UpstreamConfig,
 }
 
-impl GfwlistRouter {
-    /// Construct from a base64-encoded gfwlist payload.
-    #[cfg(feature = "gfwlist")]
+impl RuleListRouter {
+    /// Construct from a base64-encoded ABP-compatible rule-list payload.
+    #[cfg(feature = "rule-list-routing")]
     pub fn from_encoded(b64: &str, upstream: UpstreamConfig) -> Result<Self, ProxyError> {
         Ok(Self {
             rules: RwLock::new(Arc::new(Rules::from_encoded(b64)?)),
@@ -173,7 +175,7 @@ impl GfwlistRouter {
     }
 
     /// Atomically replace the active rule set (zero downtime).
-    #[cfg(feature = "gfwlist")]
+    #[cfg(feature = "rule-list-routing")]
     pub fn update_encoded(&self, b64: &str) -> Result<(), ProxyError> {
         let new_rules = Arc::new(Rules::from_encoded(b64)?);
         *self.rules.write().unwrap() = new_rules;
@@ -186,7 +188,7 @@ impl GfwlistRouter {
     }
 }
 
-impl ProxyRouter for GfwlistRouter {
+impl ProxyRouter for RuleListRouter {
     fn route(&self, host: &str, _port: u16) -> Result<RouteDecision, ProxyError> {
         let matched = self.rules.read().unwrap().matches(host);
         Ok(RouteDecision::Upstream(if matched {
@@ -204,14 +206,14 @@ impl ProxyRouter for GfwlistRouter {
 /// Connects directly to the SOCKS5 server using the system TLS trust store,
 /// bypassing the local proxy so the fetch always succeeds regardless of the
 /// current routing rules.
-#[cfg(feature = "gfwlist")]
+#[cfg(feature = "rule-list-routing")]
 pub async fn fetch_encoded(socks5: &UpstreamConfig) -> Result<String, ProxyError> {
-    fetch_encoded_from_url(GFWLIST_URL, socks5).await
+    fetch_encoded_from_url(DEFAULT_RULE_LIST_URL, socks5).await
 }
 
 /// Fetch the raw (base64-encoded) gfwlist payload from a custom HTTPS source URL
 /// via `socks5` upstream.
-#[cfg(feature = "gfwlist")]
+#[cfg(feature = "rule-list-routing")]
 pub async fn fetch_encoded_from_url(
     source_url: &str,
     socks5: &UpstreamConfig,
@@ -222,12 +224,12 @@ pub async fn fetch_encoded_from_url(
     // TLS using the system trust store (Security.framework on Apple,
     // SChannel on Windows, OpenSSL on Linux/Android).
     let native_cx = native_tls::TlsConnector::new()
-        .map_err(|e| ProxyError::Gfwlist(format!("TLS init: {e}")))?;
+        .map_err(|e| ProxyError::RuleList(format!("TLS init: {e}")))?;
     let cx = tokio_native_tls::TlsConnector::from(native_cx);
     let mut tls = cx
         .connect(&host, stream)
         .await
-        .map_err(|e| ProxyError::Gfwlist(format!("TLS handshake: {e}")))?;
+        .map_err(|e| ProxyError::RuleList(format!("TLS handshake: {e}")))?;
 
     let host_header = if port == 443 {
         host.clone()
@@ -249,14 +251,14 @@ pub async fn fetch_encoded_from_url(
     let body_start = buf
         .windows(sep.len())
         .position(|w| w == sep)
-        .ok_or_else(|| ProxyError::Gfwlist("no HTTP header separator in response".into()))?
+        .ok_or_else(|| ProxyError::RuleList("no HTTP header separator in response".into()))?
         + sep.len();
 
     let body = String::from_utf8(buf[body_start..].to_vec())
-        .map_err(|e| ProxyError::Gfwlist(format!("response body utf-8: {e}")))?;
+        .map_err(|e| ProxyError::RuleList(format!("response body utf-8: {e}")))?;
 
     if body.trim().is_empty() {
-        return Err(ProxyError::Gfwlist("empty response body".into()));
+        return Err(ProxyError::RuleList("empty response body".into()));
     }
 
     Ok(body)

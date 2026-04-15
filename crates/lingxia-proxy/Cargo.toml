@@ -18,8 +18,8 @@ capture = [
     "dep:httparse",
     "dep:base64",
 ]
-# GFW-list based routing + update fetch via SOCKS5 + native TLS.
-gfwlist = [
+# Rule-list based proxy routing + update fetch via SOCKS5 + native TLS.
+rule-list-routing = [
     "dep:base64",
     "dep:tokio-native-tls",
     "dep:native-tls",
@@ -41,6 +41,6 @@ tokio-rustls = { version = "0.26",  optional = true }
 httparse     = { version = "1.9",   optional = true }
 base64       = { workspace = true,  optional = true }
 
-# gfwlist-only deps
+# rule-list-routing-only deps
 tokio-native-tls = { version = "0.3", optional = true }
 native-tls       = { version = "0.2", optional = true }

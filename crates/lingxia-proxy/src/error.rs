@@ -14,8 +14,8 @@ pub enum ProxyError {
     #[error("Upstream connection failed: {0}")]
     UpstreamConnect(String),
 
-    #[error("GFW-list error: {0}")]
-    Gfwlist(String),
+    #[error("Rule-list routing error: {0}")]
+    RuleList(String),
 
     #[error("Proxy already running")]
     AlreadyRunning,

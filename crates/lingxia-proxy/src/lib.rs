@@ -3,8 +3,8 @@ mod router;
 mod server;
 mod upstream;
 
-#[cfg(feature = "gfwlist")]
-pub mod gfwlist;
+#[cfg(feature = "rule-list-routing")]
+pub mod rule_list;
 
 #[cfg(feature = "capture")]
 pub mod capture;
@@ -18,8 +18,8 @@ pub use router::{
 };
 pub use server::LocalProxy;
 
-#[cfg(feature = "gfwlist")]
-pub use gfwlist::GfwlistRouter;
+#[cfg(feature = "rule-list-routing")]
+pub use rule_list::RuleListRouter;
 
 #[cfg(feature = "capture")]
 pub use capture::{

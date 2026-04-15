@@ -6,7 +6,7 @@ It provides:
 
 - A local HTTP proxy listener bound on `127.0.0.1:*`
 - Runtime-swappable routing between `Direct` and upstream `SOCKS5`
-- Optional GFW-list based routing with cached rule updates
+- Optional rule-list based proxy routing with cached rule updates
 - Optional HTTPS MITM capture for development/debugging
 
 ## Scope
@@ -25,7 +25,7 @@ The main public types exported by this crate are:
 - `RouteDecision`
 - `UpstreamConfig`
 - `Socks5Credentials`
-- `GfwlistRouter` with feature `gfwlist`
+- `RuleListRouter` with feature `rule-list-routing`
 - `CaConfig` and capture session types with feature `capture`
 
 ## Quick Start
@@ -109,16 +109,18 @@ impl ProxyRouter for BlockExample {
 }
 ```
 
-## GFW List
+## Rule-List Routing
 
-Enable feature `gfwlist` to use:
+Enable feature `rule-list-routing` to use:
 
-- `GfwlistRouter`
+- `RuleListRouter`
 - `fetch_encoded_from_url(...)`
 - `validate_source_url(...)`
 
 This is intended for shells that want an "Auto Switch" style mode backed by a
-downloaded rule list plus their own higher-level settings/runtime logic.
+downloaded rule list plus their own higher-level settings/runtime logic. The
+current implementation supports gfwlist-compatible sources, but the Cargo
+feature is named after the product capability rather than a specific source.
 
 ## HTTPS MITM Capture
 
@@ -138,7 +140,7 @@ Important notes:
 
 ## Feature Flags
 
-- `gfwlist`
-  Adds GFW-list routing and HTTPS download support for rule list refresh.
+- `rule-list-routing`
+  Adds rule-list routing and HTTPS download support for rule list refresh.
 - `capture`
   Adds MITM interception and structured HTTP capture types.

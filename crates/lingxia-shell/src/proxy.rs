@@ -3,9 +3,9 @@ use crate::proxy_settings::{
     AutoSwitchRule, DEFAULT_PROXY_SOCKS_PORT, ProxyMode, ProxyRuleAction, ProxySettings,
 };
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_proxy::gfwlist::{fetch_encoded_from_url, validate_source_url};
+use lingxia_proxy::rule_list::{fetch_encoded_from_url, validate_source_url};
 use lingxia_proxy::{
-    FixedRouter, GfwlistRouter, LocalProxy, ProxyRouter, RouteDecision, Socks5Credentials,
+    FixedRouter, LocalProxy, ProxyRouter, RouteDecision, RuleListRouter, Socks5Credentials,
     UpstreamConfig,
 };
 use lingxia_webview::runtime as webview_runtime;
@@ -98,7 +98,7 @@ struct ProxyRuntimeState {
 struct AutoSwitchRouter {
     rules: Vec<AutoSwitchRule>,
     upstream: UpstreamConfig,
-    rule_list_router: Option<GfwlistRouter>,
+    rule_list_router: Option<RuleListRouter>,
 }
 
 fn mode_label(mode: ProxyMode) -> &'static str {
@@ -130,7 +130,7 @@ impl AutoSwitchRouter {
     ) -> Result<Self, LxAppError> {
         let rule_list_router = match rule_list_cache {
             Some(cache) => Some(
-                GfwlistRouter::from_encoded(&cache.encoded, upstream.clone())
+                RuleListRouter::from_encoded(&cache.encoded, upstream.clone())
                     .map_err(|error| LxAppError::Runtime(error.to_string()))?,
             ),
             None => None,

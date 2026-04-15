@@ -15,7 +15,7 @@ categories = ["web-programming", "api-bindings"]
 lxapp = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-browser = { workspace = true }
-lingxia-proxy = { workspace = true, features = ["gfwlist"] }
+lingxia-proxy = { workspace = true, features = ["rule-list-routing"] }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-webview = { workspace = true }
