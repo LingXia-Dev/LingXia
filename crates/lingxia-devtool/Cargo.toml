@@ -11,6 +11,7 @@ default = []
 browser = ["dep:lingxia-browser"]
 
 [dependencies]
+lingxia-devtool-protocol = { workspace = true }
 lingxia = { path = "../lingxia", default-features = false }
 lingxia-browser = { workspace = true, optional = true }
 log = { workspace = true }

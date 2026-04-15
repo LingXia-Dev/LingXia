@@ -3,6 +3,7 @@
 //! Host libraries decide how this service is installed into their own
 //! `HostAddon`; this crate only exposes the service entry points.
 
+use lingxia::log::{LogLevel, LogMessage, LogTag};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
@@ -11,9 +12,8 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WsError, WebSocket, connect};
 
 mod browser;
-mod protocol;
 
-pub use protocol::{
+pub use lingxia_devtool_protocol::{
     DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
     handlers,
 };
@@ -181,9 +181,38 @@ fn send_log_batch(
     send_wire_message(
         websocket,
         &DevtoolsWireMessage::LogBatch {
-            logs: logs.iter().map(DevtoolsLogMessage::from).collect(),
+            logs: logs.iter().map(devtools_log_message).collect(),
         },
     )
+}
+
+fn devtools_log_message(value: &LogMessage) -> DevtoolsLogMessage {
+    DevtoolsLogMessage {
+        timestamp_ms: value.timestamp_ms,
+        source: devtools_log_source(value.tag),
+        level: devtools_log_level(value.level),
+        appid: value.appid.clone(),
+        path: value.path.clone(),
+        message: value.message.clone(),
+    }
+}
+
+fn devtools_log_level(value: LogLevel) -> DevtoolsLogLevel {
+    match value {
+        LogLevel::Verbose => DevtoolsLogLevel::Verbose,
+        LogLevel::Debug => DevtoolsLogLevel::Debug,
+        LogLevel::Info => DevtoolsLogLevel::Info,
+        LogLevel::Warn => DevtoolsLogLevel::Warn,
+        LogLevel::Error => DevtoolsLogLevel::Error,
+    }
+}
+
+fn devtools_log_source(value: LogTag) -> DevtoolsLogSource {
+    match value {
+        LogTag::Native => DevtoolsLogSource::Native,
+        LogTag::WebViewConsole => DevtoolsLogSource::WebViewConsole,
+        LogTag::LxAppServiceConsole => DevtoolsLogSource::LxAppServiceConsole,
+    }
 }
 
 fn send_wire_message(

@@ -1,5 +1,5 @@
 #[cfg(feature = "browser")]
-use crate::protocol::handlers;
+use lingxia_devtool_protocol::handlers;
 #[cfg(feature = "browser")]
 use serde::Deserialize;
 use serde_json::Value;

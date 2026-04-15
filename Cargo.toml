@@ -2,6 +2,7 @@
 members = [
     "crates/lingxia-app-context",
     "crates/lingxia-devtool",
+    "crates/lingxia-devtool-protocol",
     "crates/lingxia-media",
     "crates/lingxia-shell",
     "crates/lingxia-browser",
@@ -51,6 +52,7 @@ tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1" }
 lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1" }
 lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.5.1" }
+lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.5.1" }
 lingxia-observability = { path = "crates/lingxia-observability", version = "0.5.1" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.5.1" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.5.1" }

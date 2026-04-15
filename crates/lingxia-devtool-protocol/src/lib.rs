@@ -1,4 +1,3 @@
-use lingxia::log::{LogLevel, LogMessage, LogTag};
 use serde::{Deserialize, Serialize};
 
 pub mod handlers {
@@ -7,13 +6,27 @@ pub mod handlers {
     pub mod browser {
         pub const OPEN: &str = "browser.open";
         pub const TABS: &str = "browser.tabs";
+        pub const CURRENT: &str = "browser.current";
+        pub const ACTIVATE: &str = "browser.activate";
         pub const CLOSE: &str = "browser.close";
+        pub const RELOAD: &str = "browser.reload";
+        pub const BACK: &str = "browser.back";
+        pub const FORWARD: &str = "browser.forward";
         pub const EVAL: &str = "browser.eval";
+        pub const QUERY: &str = "browser.query";
+        pub const WAIT: &str = "browser.wait";
+        pub const WAIT_URL: &str = "browser.wait_url";
+        pub const WAIT_NAVIGATION: &str = "browser.wait_navigation";
         pub const CLICK: &str = "browser.click";
         pub const TYPE: &str = "browser.type";
+        pub const FILL: &str = "browser.fill";
         pub const PRESS: &str = "browser.press";
         pub const SCROLL: &str = "browser.scroll";
         pub const SCROLL_TO: &str = "browser.scroll_to";
+        pub const COOKIES_LIST: &str = "browser.cookies.list";
+        pub const COOKIES_SET: &str = "browser.cookies.set";
+        pub const COOKIES_DELETE: &str = "browser.cookies.delete";
+        pub const COOKIES_CLEAR: &str = "browser.cookies.clear";
     }
 }
 
@@ -34,34 +47,12 @@ pub enum DevtoolsLogLevel {
     Error,
 }
 
-impl From<LogLevel> for DevtoolsLogLevel {
-    fn from(value: LogLevel) -> Self {
-        match value {
-            LogLevel::Verbose => Self::Verbose,
-            LogLevel::Debug => Self::Debug,
-            LogLevel::Info => Self::Info,
-            LogLevel::Warn => Self::Warn,
-            LogLevel::Error => Self::Error,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DevtoolsLogSource {
     Native,
     WebViewConsole,
     LxAppServiceConsole,
-}
-
-impl From<LogTag> for DevtoolsLogSource {
-    fn from(value: LogTag) -> Self {
-        match value {
-            LogTag::Native => Self::Native,
-            LogTag::WebViewConsole => Self::WebViewConsole,
-            LogTag::LxAppServiceConsole => Self::LxAppServiceConsole,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,19 +64,6 @@ pub struct DevtoolsLogMessage {
     pub appid: Option<String>,
     pub path: Option<String>,
     pub message: String,
-}
-
-impl From<&LogMessage> for DevtoolsLogMessage {
-    fn from(value: &LogMessage) -> Self {
-        Self {
-            timestamp_ms: value.timestamp_ms,
-            source: value.tag.into(),
-            level: value.level.into(),
-            appid: value.appid.clone(),
-            path: value.path.clone(),
-            message: value.message.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
