@@ -134,11 +134,11 @@ Supported Rust target triples:\n\
         let lingxia_config = config
             .lingxia_config
             .as_ref()
-            .ok_or_else(|| anyhow!("lingxia.config.json is required to build native libraries"))?;
+            .ok_or_else(|| anyhow!("lingxia.yaml is required to build native libraries"))?;
 
         let rust_lib_name = lingxia_config
             .get_rust_lib_name()
-            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.config.json"))?;
+            .ok_or_else(|| anyhow!("app.projectName is required in lingxia.yaml"))?;
         let rust_lib_dir = project_root.join(&rust_lib_name);
         let rust_manifest = rust_lib_dir.join("Cargo.toml");
         if !rust_manifest.exists() {

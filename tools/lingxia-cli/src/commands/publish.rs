@@ -5,7 +5,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::http_client;
 use crate::lxapp;
 
@@ -215,7 +215,7 @@ fn detect_target(cwd: &Path) -> Result<String> {
     if cwd.join("lxplugin.json").exists() {
         return Ok("lxplugin".to_string());
     }
-    if cwd.join(HOST_CONFIG_FILE).exists() {
+    if has_host_config(cwd) {
         return Ok("app".to_string());
     }
     bail!(
@@ -268,19 +268,17 @@ fn read_lxplugin_json(cwd: &Path) -> Result<(String, String)> {
 
 fn read_app_config(cwd: &Path) -> Result<(String, String)> {
     let cfg = LingXiaConfig::load(cwd)?;
-    let app = cfg
-        .app
-        .context("app section missing in lingxia.config.json")?;
+    let app = cfg.app.context("app section missing in lingxia.yaml")?;
 
     let target_id = app
         .lingxia_id
         .clone()
         .filter(|value| !value.trim().is_empty())
-        .context("app.lingxiaId is required in lingxia.config.json when publishing target=app")?;
+        .context("app.lingxiaId is required in lingxia.yaml when publishing target=app")?;
 
     let version = app.product_version;
     if version.trim().is_empty() {
-        bail!("productVersion is empty in lingxia.config.json");
+        bail!("productVersion is empty in lingxia.yaml");
     }
 
     Ok((target_id, version))

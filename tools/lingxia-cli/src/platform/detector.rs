@@ -2,6 +2,7 @@ use super::Platform;
 use super::android::AndroidPlatform;
 use super::ios::IosPlatform;
 use super::spm;
+use crate::config::dir_matches_host_config;
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -31,7 +32,7 @@ impl PlatformType {
 pub fn find_host_project_root(start: &Path, host_config_file: &str) -> Option<PathBuf> {
     let mut current = start.parent();
     while let Some(dir) = current {
-        if dir.join(host_config_file).exists() {
+        if dir_matches_host_config(dir, host_config_file) {
             return Some(dir.to_path_buf());
         }
         current = dir.parent();

@@ -1,5 +1,5 @@
 use crate::commands::rust::cargo_version_line;
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::platform::detector::PlatformType;
 use crate::platform::doctor::{CheckResult, CheckStatus, command_version_line};
 use crate::platform::{android, detector, harmony, ios, macos};
@@ -10,7 +10,7 @@ use std::env;
 /// Execute environment doctor checks.
 ///
 /// If `platforms` is empty:
-/// - Prefer platforms from `lingxia.config.json` when available.
+/// - Prefer platforms from `lingxia.yaml` when available.
 /// - Otherwise, check all supported platforms.
 pub fn execute(platforms: Vec<String>) -> Result<()> {
     println!("{}", "🔍 LingXia Doctor".bold().cyan());
@@ -137,7 +137,7 @@ fn parse_requested_platforms(requested: Vec<String>) -> Result<Vec<PlatformType>
 
 fn platforms_from_project_config() -> Result<Option<Vec<PlatformType>>> {
     let current_dir = env::current_dir()?;
-    let config_root = if current_dir.join(HOST_CONFIG_FILE).exists() {
+    let config_root = if has_host_config(&current_dir) {
         Some(current_dir.clone())
     } else if let Some(ctx) =
         crate::platform::spm::find_apple_swift_package_context(&current_dir, HOST_CONFIG_FILE)?

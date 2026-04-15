@@ -1,4 +1,5 @@
 use super::detector::PlatformType;
+use crate::config::dir_matches_host_config;
 use anyhow::{Context, Result, anyhow};
 use std::path::{Path, PathBuf};
 
@@ -54,7 +55,7 @@ pub fn find_apple_swift_package_context(
 
     let mut current = start.parent();
     while let Some(dir) = current {
-        if dir.join(host_config_file).exists() {
+        if dir_matches_host_config(dir, host_config_file) {
             return Ok(Some(AppleSwiftPackageContext {
                 host_project_root: dir.to_path_buf(),
                 inferred_platform,

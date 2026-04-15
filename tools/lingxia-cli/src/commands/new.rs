@@ -144,7 +144,11 @@ pub fn execute(
     println!();
     println!(
         "{}",
-        "Note: in lingxia.config.json -> app, set cacheMaxAgeDays=0 and/or cacheMaxSizeMB=0 to disable cache cleanup limits.".yellow()
+        format!(
+            "Note: in {} -> [app], set cacheMaxAgeDays=0 and/or cacheMaxSizeMB=0 to disable cache cleanup limits.",
+            crate::config::HOST_CONFIG_FILE
+        )
+        .yellow()
     );
     println!();
     println!("{}", "Next steps:".bold());

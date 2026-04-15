@@ -1,5 +1,5 @@
 use crate::appicon;
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::platform;
 use crate::platform::detector::PlatformType;
 use anyhow::{Context, Result, anyhow};
@@ -47,7 +47,7 @@ pub fn execute(
 
     if platforms.is_empty() {
         return Err(anyhow!(
-            "No platforms specified. Please specify a platform using --platform or configure app.platforms in lingxia.config.json"
+            "No platforms specified. Please specify a platform using --platform or configure app.platforms in lingxia.yaml"
         ));
     }
 
@@ -165,10 +165,11 @@ struct IconCommandContext {
 }
 
 fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandContext> {
-    if current_dir.join(HOST_CONFIG_FILE).exists() {
-        let config = LingXiaConfig::load(current_dir).context(
-            "Failed to load lingxia.config.json. Are you in a LingXia project directory?",
-        )?;
+    if has_host_config(current_dir) {
+        let config = LingXiaConfig::load(current_dir).context(format!(
+            "Failed to load {}. Are you in a LingXia project directory?",
+            HOST_CONFIG_FILE
+        ))?;
         return Ok(IconCommandContext {
             project_root: current_dir.to_path_buf(),
             config: Some(config),
@@ -179,9 +180,10 @@ fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandCont
     if let Some(ctx) =
         platform::spm::find_apple_swift_package_context(current_dir, HOST_CONFIG_FILE)?
     {
-        let config = LingXiaConfig::load(&ctx.host_project_root).context(
-            "Failed to load lingxia.config.json from the host project for this Apple Swift Package.",
-        )?;
+        let config = LingXiaConfig::load(&ctx.host_project_root).context(format!(
+            "Failed to load {} from the host project for this Apple Swift Package.",
+            HOST_CONFIG_FILE
+        ))?;
         return Ok(IconCommandContext {
             project_root: ctx.host_project_root,
             config: Some(config),
@@ -193,8 +195,10 @@ fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandCont
         platform::detector::find_host_project_root(current_dir, HOST_CONFIG_FILE)
     {
         if let Ok(inferred_platform) = platform::detector::detect_platform_type(current_dir) {
-            let config = LingXiaConfig::load(&host_root)
-                .context("Failed to load lingxia.config.json from the detected host project.")?;
+            let config = LingXiaConfig::load(&host_root).context(format!(
+                "Failed to load {} from the detected host project.",
+                HOST_CONFIG_FILE
+            ))?;
             return Ok(IconCommandContext {
                 project_root: host_root,
                 config: Some(config),
@@ -214,7 +218,8 @@ fn resolve_icon_context(current_dir: &std::path::Path) -> Result<IconCommandCont
     }
 
     Err(anyhow!(
-        "Failed to load lingxia.config.json. Are you in a LingXia project directory?\n\
-         Supported icon targets without host config: local Apple Swift Packages (ios, macos)."
+        "Failed to load {}. Are you in a LingXia project directory?\n\
+         Supported icon targets without host config: local Apple Swift Packages (ios, macos).",
+        HOST_CONFIG_FILE
     ))
 }
