@@ -78,6 +78,7 @@ impl IosPlatform {
             IOS_TARGET,
             is_release,
             deployment_target,
+            &config.native_features,
         )
     }
 

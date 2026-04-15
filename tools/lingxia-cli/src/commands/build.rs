@@ -350,6 +350,11 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             } else {
                 None
             },
+            native_features: if matches!(platform_type, platform::detector::PlatformType::MacOs) {
+                vec!["shell".to_string()]
+            } else {
+                Vec::new()
+            },
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -450,6 +455,11 @@ fn build_standalone_apple_swift_package(
                 macos_arch.clone()
             } else {
                 None
+            },
+            native_features: if matches!(platform_type, PlatformType::MacOs) {
+                vec!["shell".to_string()]
+            } else {
+                Vec::new()
             },
         };
 

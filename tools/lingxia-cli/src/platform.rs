@@ -56,6 +56,8 @@ pub struct BuildConfig {
     pub dmg: bool,
     /// Requested macOS architecture for native build (`arm64` or `x86_64`)
     pub macos_arch: Option<String>,
+    /// Extra Rust features enabled for native app builds.
+    pub native_features: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

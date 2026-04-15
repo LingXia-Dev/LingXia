@@ -93,6 +93,7 @@ impl MacosPlatform {
             rust_target,
             is_release,
             Some(deployment_target),
+            &config.native_features,
         )
     }
 

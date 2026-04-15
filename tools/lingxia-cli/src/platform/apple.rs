@@ -371,6 +371,7 @@ pub fn build_rust_staticlib(
     target: &str,
     release: bool,
     deployment_target: Option<&str>,
+    features: &[String],
 ) -> Result<PathBuf> {
     println!("{}", "Compiling native static library...".cyan());
 
@@ -391,6 +392,9 @@ pub fn build_rust_staticlib(
         target,
         profile,
         |cmd| {
+            if !features.is_empty() {
+                cmd.arg("--features").arg(features.join(","));
+            }
             if target.contains("ios") {
                 let deploy_ver = deployment_target.unwrap_or("17.0");
                 cmd.env("IPHONEOS_DEPLOYMENT_TARGET", deploy_ver);

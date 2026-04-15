@@ -179,6 +179,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         package: false,
         dmg: false,
         macos_arch: None,
+        native_features: Vec::new(),
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -254,6 +255,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
         package: false,
         dmg: false,
         macos_arch: None,
+        native_features: Vec::new(),
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -342,6 +344,11 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         package: false,
         dmg: false,
         macos_arch,
+        native_features: vec![
+            "shell".to_string(),
+            "devtools".to_string(),
+            "webview-input".to_string(),
+        ],
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -430,6 +437,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
         package: false,
         dmg: false,
         macos_arch: None,
+        native_features: Vec::new(),
     };
 
     let artifacts = harmony_platform.build(&build_config)?;
