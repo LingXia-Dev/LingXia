@@ -102,20 +102,30 @@ struct Stats {
     errors: usize,
 }
 
-/// Convert SVG to PDF for iOS
-fn convert_to_pdf(svg_content: &str, output_path: &Path) -> Result<()> {
+pub fn svg_to_pdf_bytes(svg_content: &str) -> Result<Vec<u8>> {
     use svg2pdf::{ConversionOptions, PageOptions};
 
-    let mut options = svg2pdf::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
-
-    let tree =
-        svg2pdf::usvg::Tree::from_str(svg_content, &options).context("Failed to parse SVG")?;
-
+    let tree = parse_svg_tree(svg_content)?;
     let pdf = svg2pdf::to_pdf(&tree, ConversionOptions::default(), PageOptions::default())
         .map_err(|e| anyhow::anyhow!("Failed to convert SVG to PDF: {:?}", e))?;
+    Ok(pdf)
+}
 
-    fs::write(output_path, pdf).context("Failed to write PDF")?;
+pub fn svg_size(svg_content: &str) -> Result<(f32, f32)> {
+    let tree = parse_svg_tree(svg_content)?;
+    let size = tree.size();
+    Ok((size.width(), size.height()))
+}
+
+fn parse_svg_tree(svg_content: &str) -> Result<svg2pdf::usvg::Tree> {
+    let mut options = svg2pdf::usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    svg2pdf::usvg::Tree::from_str(svg_content, &options).context("Failed to parse SVG")
+}
+
+/// Convert SVG to PDF for iOS
+fn convert_to_pdf(svg_content: &str, output_path: &Path) -> Result<()> {
+    fs::write(output_path, svg_to_pdf_bytes(svg_content)?).context("Failed to write PDF")?;
     Ok(())
 }
 

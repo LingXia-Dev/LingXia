@@ -1,6 +1,6 @@
 # lingxia-gen
 
-`lingxia-gen` is a unified resource generation tool for the LingXia project. It manages internationalization (i18n), icons, and other asset pipelines.
+`lingxia-gen` is a resource generation library for the LingXia workspace. It manages internationalization (i18n), icons, and other asset pipelines used by build tools.
 
 ## Features
 
@@ -9,43 +9,23 @@
 -   **Platform Overrides**: Supports defining platform-specific strings in YAML.
 -   **Schema Lint**: Validates locale and permission files against JSON Schemas.
 -   **Strict Validation**: Fails generation when locale keys mismatch, permission keys mismatch, or `err_code_*` definitions are missing.
--   **(Future) Icon Generation**: Sync SVG icons to native platforms.
+-   **Icon Generation**: Convert SVG source icons to native platform resources.
 
-## Usage
+## Library Usage
 
 ### i18n
 
 Ensure your `i18n` source YAML files are prepared.
 
-#### Automated Build (Rust)
-Projects like `crates/lingxia-logic` integrate `lingxia-gen` via `build.rs` as a library and emit generated Rust into `OUT_DIR`.
+Projects like `crates/lingxia-logic` and `tools/lingxia-cli` integrate `lingxia-gen` as a library and emit generated resources during build steps.
 
-#### Manual Execution (CLI)
-Run from the project root:
+The `i18n` module exposes `I18nConfig` and `run(...)` for build tooling.
 
-```bash
- cargo run -p lingxia-gen -- i18n \
-  --input i18n \
-  --rust-out crates/lingxia-logic/src/i18n_generated.rs \
-  --ts-out packages/lingxia-types/src/generated \
-  --android-out lingxia-sdk/android/lingxia/src/main/res \
-  --ios-out lingxia-sdk/apple/Sources/Resources \
-  --harmony-out lingxia-sdk/harmony/lingxia/src/main/resources
-```
+### icons
 
-### Subcommands
+The `icons` module exposes SVG conversion helpers and `IconsConfig` / `run(...)` for build tooling.
 
-*   `i18n`: Generate internationalization resources.
-
-### Arguments (i18n)
-
--   `-i, --input <PATH>`: Source directory (Default: `i18n`)
--   `--rust-out <PATH>`: Output path for Rust code (Optional)
--   `--ts-out <PATH>`: Output directory for TypeScript generated files (`error.ts`, `i18n.ts`) (Optional)
--   `--android-out <PATH>`: Output path for Android resources (Optional)
--   `--ios-out <PATH>`: Output path for iOS resources (Optional)
--   `--harmony-out <PATH>`: Output path for HarmonyOS resources (Optional)
--   `--schema-dir <PATH>`: JSON Schema directory (Optional, defaults to `<input>/schema`)
+`tools/lingxia-cli` provides hidden internal `gen` commands for release scripts that need a process entry point.
 
 ## Validation Rules
 
