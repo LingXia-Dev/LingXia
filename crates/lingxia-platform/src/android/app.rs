@@ -483,6 +483,22 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
     }
 
+    fn exit(&self) -> Result<(), PlatformError> {
+        let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
+            let result =
+                env.call_static_method(lxapp_class, jni_str!("exitApp"), jni_sig!("()Z"), &[])?;
+            if !result.z()? {
+                return Err(PlatformError::Platform(
+                    "exitApp returned false".to_string(),
+                ));
+            }
+            Ok(())
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
+    }
+
     fn navigate(
         &self,
         appid: String,

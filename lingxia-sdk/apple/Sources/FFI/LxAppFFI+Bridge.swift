@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import OSLog
 import WebKit
 import CLingXiaRustAPI
@@ -104,6 +105,22 @@ extension LxApp {
                 #endif
             }
             return true
+        }
+    }
+
+    nonisolated static func exitApp() -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            NSApp.terminate(nil)
+            return true
+            #elseif os(iOS)
+            DispatchQueue.main.async {
+                Darwin.exit(0)
+            }
+            return true
+            #else
+            return false
+            #endif
         }
     }
 

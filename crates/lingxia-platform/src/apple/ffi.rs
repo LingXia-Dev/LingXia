@@ -146,6 +146,9 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.openUrl")]
         fn open_url(owner_appid: &str, owner_session_id: u64, url: &str, target: i32) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.exitApp")]
+        fn exit_app() -> bool;
+
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
 
@@ -340,9 +343,10 @@ mod bridge {
 pub use bridge::reveal_in_file_manager;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
-    cancel_preview_media, close_lxapp, hide_popup, hide_toast, navigate, open_document_external,
-    open_lxapp, open_url, preview_media, review_document, show_action_sheet, show_modal,
-    show_popup, show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
+    cancel_preview_media, close_lxapp, exit_app, hide_popup, hide_toast, navigate,
+    open_document_external, open_lxapp, open_url, preview_media, review_document,
+    show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui, update_orientation_ui,
+    update_tabbar_ui,
 };
 
 #[cfg(target_os = "ios")]

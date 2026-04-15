@@ -135,6 +135,24 @@ class LxApp private constructor(private val context: Context) {
             return getInstance().context
         }
 
+        @JvmStatic
+        fun exitApp(): Boolean {
+            val activity = currentActivity ?: (instance?.context as? Activity)
+            if (activity == null) {
+                Log.w(TAG, "exitApp failed: no active Activity")
+                return false
+            }
+
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                activity.finishAffinity()
+            } else {
+                activity.runOnUiThread {
+                    activity.finishAffinity()
+                }
+            }
+            return true
+        }
+
         /**
          * Launch external application with URI
          * @param uri Complete URI to open the target app (e.g., "weixin://dl/scan")

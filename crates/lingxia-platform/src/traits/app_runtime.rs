@@ -153,6 +153,9 @@ pub trait AppRuntime:
     /// Hide the UI container for the given LxApp (does not destroy its runtime state).
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError>;
 
+    /// Exits the host app.
+    fn exit(&self) -> Result<(), PlatformError>;
+
     /// Navigates within the given LxApp using an animation.
     fn navigate(
         &self,

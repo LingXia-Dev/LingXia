@@ -558,6 +558,11 @@ impl AppRuntime for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to hide lxapp: {}", e)))
     }
 
+    fn exit(&self) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("exitApp", &[])
+            .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
+    }
+
     fn navigate(
         &self,
         appid: String,

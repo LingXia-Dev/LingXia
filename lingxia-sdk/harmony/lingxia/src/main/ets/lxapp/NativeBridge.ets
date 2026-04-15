@@ -119,6 +119,19 @@ class NativeBridge {
       return true;
     });
 
+    this.register('exitApp', () => {
+      const context = LxApp.context;
+      if (!context) {
+        hilog.error(DOMAIN, TAG, 'exitApp failed: UIAbility context not available');
+        return false;
+      }
+
+      context.terminateSelf().catch((error: Error) => {
+        hilog.error(DOMAIN, TAG, `exitApp failed: ${error.message}`);
+      });
+      return true;
+    });
+
     // Navigate with animation type
     // 0=None, 1=Forward, 2=Backward
     this.register('navigate', (appId: string, path: string, animationType: number) => {

@@ -199,6 +199,14 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn exit(&self) -> Result<(), PlatformError> {
+        if ffi::exit_app() {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform("Failed to exit app".to_string()))
+        }
+    }
+
     fn navigate(
         &self,
         appid: String,
