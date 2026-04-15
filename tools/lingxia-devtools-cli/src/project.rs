@@ -8,6 +8,7 @@ const DEV_INFO_FILE_NAME: &str = "dev.json";
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct DevInfo {
+    pub ws_url: Option<String>,
     pub log_file: String,
 }
 

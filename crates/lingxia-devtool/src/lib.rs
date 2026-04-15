@@ -10,14 +10,15 @@ use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WsError, WebSocket, connect};
 
+mod browser;
 mod protocol;
 
 pub use protocol::{
     DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
+    handlers,
 };
 
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
-const ECHO_HANDLER: &str = "echo";
 
 pub fn start_devtool_bridge_from_env() {
     static STARTED: OnceLock<()> = OnceLock::new();
@@ -139,19 +140,36 @@ fn handle_incoming_message(
         return Ok(());
     };
 
-    let result = match handler.as_str() {
-        ECHO_HANDLER => DevtoolsWireMessage::Result {
-            command_id,
-            ok: true,
-            data: args,
-            error: None,
-        },
-        other => DevtoolsWireMessage::Result {
-            command_id,
-            ok: false,
-            data: None,
-            error: Some(format!("unknown handler: {}", other)),
-        },
+    let result = if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
+        match result {
+            Ok(data) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data,
+                error: None,
+            },
+            Err(error) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: false,
+                data: None,
+                error: Some(error),
+            },
+        }
+    } else {
+        match handler.as_str() {
+            handlers::ECHO => DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data: args,
+                error: None,
+            },
+            other => DevtoolsWireMessage::Result {
+                command_id,
+                ok: false,
+                data: None,
+                error: Some(format!("unknown handler: {}", other)),
+            },
+        }
     };
     send_wire_message(websocket, &result)
 }

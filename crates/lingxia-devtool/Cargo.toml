@@ -6,8 +6,13 @@ description = "Devtool runtime bridge and protocol helpers for LingXia apps"
 license = "MIT"
 repository = "https://github.com/LingXia-Dev/LingXia"
 
+[features]
+default = []
+browser = ["dep:lingxia-browser"]
+
 [dependencies]
 lingxia = { path = "../lingxia", default-features = false }
+lingxia-browser = { workspace = true, optional = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

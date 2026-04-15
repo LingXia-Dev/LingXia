@@ -2,6 +2,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::Path;
 
+mod browser;
+mod client;
 mod logs;
 mod project;
 
@@ -16,6 +18,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Control browser tabs in the current dev session
+    Browser(browser::BrowserOptions),
     /// Query and filter the current dev session log file
     Logs(logs::LogsOptions),
 }
@@ -26,6 +30,7 @@ fn main() -> Result<()> {
     let info = project::read_dev_info(&project_root)?;
 
     match cli.command {
+        Commands::Browser(options) => browser::execute(&info, options),
         Commands::Logs(options) => logs::execute(Path::new(&info.log_file), options),
     }
 }

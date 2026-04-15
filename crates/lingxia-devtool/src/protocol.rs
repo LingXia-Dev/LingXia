@@ -1,6 +1,22 @@
 use lingxia::log::{LogLevel, LogMessage, LogTag};
 use serde::{Deserialize, Serialize};
 
+pub mod handlers {
+    pub const ECHO: &str = "echo";
+
+    pub mod browser {
+        pub const OPEN: &str = "browser.open";
+        pub const TABS: &str = "browser.tabs";
+        pub const CLOSE: &str = "browser.close";
+        pub const EVAL: &str = "browser.eval";
+        pub const CLICK: &str = "browser.click";
+        pub const TYPE: &str = "browser.type";
+        pub const PRESS: &str = "browser.press";
+        pub const SCROLL: &str = "browser.scroll";
+        pub const SCROLL_TO: &str = "browser.scroll_to";
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DevtoolsPeerRole {
