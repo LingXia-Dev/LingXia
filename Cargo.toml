@@ -22,7 +22,7 @@ members = [
     "tools/lingxia-runner/runner-lib",
     "tools/lingxia-cli",
     "tools/lingxia-devtools-cli",
-    "tools/lingxia-gen",
+    "crates/lingxia-gen",
 ]
 exclude = ["examples/lingxia-lib"]
 resolver = "2"
@@ -63,7 +63,7 @@ lingxia-platform = { path = "crates/lingxia-platform", version = "0.5.1" }
 lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.5.1" }
 lingxia-logic = { path = "crates/lingxia-logic", version = "0.5.1" }
 lingxia = { path = "crates/lingxia", version = "0.5.1" }
-lingxia-gen = { path = "tools/lingxia-gen", version = "0.1.0" }
+lingxia-gen = { path = "crates/lingxia-gen", version = "0.1.0" }
 lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.5.1" }
 lingxia-macro = { path = "crates/lingxia-host-macros", version = "0.5.1" }
 lingxia-browser = { path = "crates/lingxia-browser", version = "0.5.1" }

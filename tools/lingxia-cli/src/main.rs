@@ -198,7 +198,7 @@ enum Commands {
 
     /// Uninstall an app from a device
     Uninstall {
-        /// Bundle ID / Package ID to uninstall. If omitted, LingXia will try to infer it from lingxia.config.json.
+        /// Bundle ID / Package ID to uninstall. If omitted, LingXia will try to infer it from lingxia.yaml.
         bundle_id: Option<String>,
 
         /// Device ID (required if multiple devices connected)
@@ -212,7 +212,7 @@ enum Commands {
 
     /// Launch an installed app on a device
     Launch {
-        /// Bundle ID / Package ID to launch. If omitted, LingXia will try to infer it from lingxia.config.json.
+        /// Bundle ID / Package ID to launch. If omitted, LingXia will try to infer it from lingxia.yaml.
         bundle_id: Option<String>,
 
         /// Device ID (required if multiple devices connected)
@@ -249,6 +249,13 @@ enum Commands {
         platform: commands::ds::DsPlatform,
     },
 
+    /// Internal resource generation helpers
+    #[command(hide = true)]
+    Gen {
+        #[command(subcommand)]
+        command: GenCommand,
+    },
+
     /// Publish a package to the API server
     Publish {
         /// Bearer token for authentication (or set LINGXIA_AUTH_TOKEN env var)
@@ -279,6 +286,16 @@ enum Commands {
         #[arg(long, value_parser = ["task", "plain"])]
         progress: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum GenCommand {
+    /// Generate i18n resources
+    I18n(lingxia_gen::i18n::I18nConfig),
+    /// Sync static assets
+    Assets(lingxia_gen::assets::AssetsConfig),
+    /// Convert icons to platform-specific resources
+    Icons(lingxia_gen::icons::IconsConfig),
 }
 
 #[derive(Subcommand)]
@@ -531,6 +548,17 @@ fn main() -> Result<()> {
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
         }
+        Commands::Gen { command } => match command {
+            GenCommand::I18n(config) => {
+                lingxia_gen::i18n::run(config)?;
+            }
+            GenCommand::Assets(config) => {
+                lingxia_gen::assets::run(config)?;
+            }
+            GenCommand::Icons(config) => {
+                lingxia_gen::icons::run(config)?;
+            }
+        },
         Commands::Publish {
             token,
             api_server,
