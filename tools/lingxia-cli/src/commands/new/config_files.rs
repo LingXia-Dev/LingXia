@@ -6,12 +6,13 @@ use crate::config::{
     ResourceBundleDetail, ResourceBundleType, ResourcesConfig,
 };
 use anyhow::Result;
+use serde_json::json;
 
 pub(super) fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
     let lingxia_config = build_lingxia_config(config, lxapp);
 
     // Save config file
-    lingxia_config.save(&config.target_dir)?;
+    lingxia_config.save_with_comments(&config.target_dir)?;
 
     Ok(())
 }
@@ -86,6 +87,7 @@ fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaCon
         ios,
         macos,
         harmony,
+        ui: default_ui_config(config, lxapp),
         resources: Some(ResourcesConfig {
             i18n: None,
             icons: None,
@@ -95,9 +97,38 @@ fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaCon
                 target: None,
             })]),
         }),
-        splash: None,
-        panels: None,
     }
+}
+
+fn default_ui_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> Option<serde_json::Value> {
+    if !config.platforms.contains(&Platform::Macos) {
+        return None;
+    }
+
+    Some(json!({
+        "launch": {
+            "initialSurface": "main",
+            "openOnLaunch": true
+        },
+        "surfaces": [{
+            "id": "main",
+            "presentation": {
+                "style": "window",
+                "resizable": true,
+                "showTrafficLights": true,
+                "size": {
+                    "width": 960,
+                    "height": 720
+                }
+            },
+            "content": {
+                "kind": "lxapp",
+                "appId": lxapp.app_id,
+                "path": "/"
+            }
+        }],
+        "activators": []
+    }))
 }
 
 #[cfg(test)]
@@ -133,5 +164,28 @@ mod tests {
                     && detail.path == "demo"
                     && detail.target.is_none()
         ));
+    }
+
+    #[test]
+    fn build_lingxia_config_adds_default_ui_for_macos() {
+        let config = ProjectConfig {
+            name: "demo".to_string(),
+            product_name: "Demo".to_string(),
+            project_type: super::super::types::ProjectType::NativeApp,
+            platforms: vec![Platform::Macos],
+            package_id: "com.example.demo".to_string(),
+            target_dir: PathBuf::from("/tmp/demo"),
+        };
+        let lxapp = LxAppInfo {
+            app_id: "demo-home".to_string(),
+        };
+
+        let lingxia = build_lingxia_config(&config, &lxapp);
+        let ui = lingxia.ui.expect("macOS config should include default ui");
+
+        assert_eq!(ui["launch"]["initialSurface"], "main");
+        assert_eq!(ui["surfaces"][0]["id"], "main");
+        assert_eq!(ui["surfaces"][0]["content"]["appId"], "demo-home");
+        assert_eq!(ui["activators"].as_array().unwrap().len(), 0);
     }
 }

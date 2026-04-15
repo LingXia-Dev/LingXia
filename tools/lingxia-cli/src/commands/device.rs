@@ -204,9 +204,8 @@ mod tests {
                 compatible_sdk_version: None,
                 target_sdk_version: None,
             }),
+            ui: None,
             resources: None,
-            splash: None,
-            panels: None,
         }
     }
 

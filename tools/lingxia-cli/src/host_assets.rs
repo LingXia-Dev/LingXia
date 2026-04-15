@@ -26,15 +26,15 @@ fn is_png_path(path: &Path) -> bool {
 }
 
 fn copy_splash_asset(config: &LingXiaConfig, project_root: &Path, dest_dir: &Path) -> Result<()> {
-    let splash = match config.splash.as_ref().filter(|s| !s.path.is_empty()) {
-        Some(s) => s,
+    let splash_path = match config.splash_path() {
+        Some(path) => path,
         None => return Ok(()),
     };
-    let src = project_root.join(&splash.path);
+    let src = project_root.join(splash_path);
     if !is_png_path(&src) {
         anyhow::bail!(
-            "Invalid splash.path '{}': splash image must be a PNG file",
-            splash.path
+            "Invalid ui.launch.splash.path '{}': splash image must be a PNG file",
+            splash_path
         );
     }
     if !src.exists() {
@@ -102,6 +102,8 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
     }
     let app_json = build_app_json_from_config(config, home_bundle)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
+    let ui_json = build_ui_json_from_config(config)?;
+    let ui_json_hash = ui_json.as_ref().map(|json| sha256_hex(json.as_bytes()));
 
     let has_android = platforms
         .iter()
@@ -135,6 +137,8 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
                     &assets_root,
                     &app_json,
                     &app_json_hash,
+                    ui_json.as_deref(),
+                    ui_json_hash.as_deref(),
                     &prepared_bundles,
                     prepared_runtime_es5
                         .as_ref()
@@ -159,6 +163,8 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
+                    ui_json.as_deref(),
+                    ui_json_hash.as_deref(),
                     &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -182,6 +188,8 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
                     &resources_dir,
                     &app_json,
                     &app_json_hash,
+                    ui_json.as_deref(),
+                    ui_json_hash.as_deref(),
                     &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -196,6 +204,8 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
                     &rawfile_root,
                     &app_json,
                     &app_json_hash,
+                    ui_json.as_deref(),
+                    ui_json_hash.as_deref(),
                     &prepared_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
@@ -243,6 +253,8 @@ fn prepare_android_assets_root(
     assets_root: &Path,
     app_json: &str,
     app_json_hash: &str,
+    ui_json: Option<&str>,
+    ui_json_hash: Option<&str>,
     bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
@@ -254,6 +266,7 @@ fn prepare_android_assets_root(
 
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
+        ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
@@ -266,6 +279,12 @@ fn prepare_android_assets_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_optional_json_file(
+        &assets_root.join("ui.json"),
+        ui_json,
+        prev.as_ref().and_then(|s| s.ui_json_hash.as_deref()),
+        "ui.json",
+    )?;
     changed |= sync_runtime_file(
         &assets_root.join("bridge-runtime.js"),
         runtime_asset,
@@ -288,6 +307,8 @@ fn prepare_apple_resources_root(
     resources_dir: &Path,
     app_json: &str,
     app_json_hash: &str,
+    ui_json: Option<&str>,
+    ui_json_hash: Option<&str>,
     bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     prepared_roots: &mut HashSet<PathBuf>,
@@ -309,6 +330,7 @@ fn prepare_apple_resources_root(
 
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
+        ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
@@ -320,6 +342,12 @@ fn prepare_apple_resources_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_optional_json_file(
+        &resources_dir.join("ui.json"),
+        ui_json,
+        prev.as_ref().and_then(|s| s.ui_json_hash.as_deref()),
+        "ui.json",
+    )?;
     changed |= sync_runtime_file(
         &resources_dir.join("bridge-runtime.js"),
         runtime_asset,
@@ -342,6 +370,8 @@ fn prepare_harmony_rawfile_root(
     rawfile_root: &Path,
     app_json: &str,
     app_json_hash: &str,
+    ui_json: Option<&str>,
+    ui_json_hash: Option<&str>,
     bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
     cache: &mut HostAssetsCache,
@@ -358,6 +388,7 @@ fn prepare_harmony_rawfile_root(
 
     let desired = DestinationStamp {
         app_json_hash: app_json_hash.to_string(),
+        ui_json_hash: ui_json_hash.map(ToOwned::to_owned),
         bundle_hashes: bundle_hashes(bundles),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
     };
@@ -370,6 +401,12 @@ fn prepare_harmony_rawfile_root(
         changed = true;
         println!("  {} app.json → {}", "✓".green(), app_json_path.display());
     }
+    changed |= sync_optional_json_file(
+        &rawfile_root.join("ui.json"),
+        ui_json,
+        prev.as_ref().and_then(|s| s.ui_json_hash.as_deref()),
+        "ui.json",
+    )?;
     changed |= sync_runtime_file(
         &rawfile_root.join("bridge-runtime.js"),
         runtime_asset,
@@ -391,6 +428,7 @@ fn prepare_harmony_rawfile_root(
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct DestinationStamp {
     app_json_hash: String,
+    ui_json_hash: Option<String>,
     bundle_hashes: BTreeMap<String, String>,
     runtime_hash: Option<String>,
 }
@@ -696,19 +734,17 @@ fn build_app_json_from_config(
     if let Some(max_size_mb) = app.cache_max_size_mb {
         obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
     }
-    if let Some(splash) = &config.splash {
-        obj.insert(
-            "splashTimeout".to_string(),
-            serde_json::json!(splash.timeout),
-        );
-    }
-    if let Some(panels) = &config.panels {
-        obj.insert("panels".to_string(), panels.clone());
-    }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)
+}
+
+fn build_ui_json_from_config(config: &LingXiaConfig) -> Result<Option<String>> {
+    let Some(ui) = config.ui.as_ref() else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::to_string_pretty(ui)?))
 }
 
 struct LxAppMetadata {
@@ -754,6 +790,35 @@ fn run_npm_bundle_build(bundle_dir: &Path, build_profile: BuildProfile) -> Resul
         ));
     }
     Ok(())
+}
+
+fn sync_optional_json_file(
+    json_path: &Path,
+    json_contents: Option<&str>,
+    prev_json_hash: Option<&str>,
+    label: &str,
+) -> Result<bool> {
+    if let Some(json_contents) = json_contents {
+        if write_if_changed(json_path, json_contents.as_bytes())? {
+            println!("  {} {} → {}", "✓".green(), label, json_path.display());
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    if prev_json_hash.is_some() && json_path.exists() {
+        fs::remove_file(json_path)
+            .with_context(|| format!("Failed to remove {}", json_path.display()))?;
+        println!(
+            "  {} remove stale {} → {}",
+            "✓".green(),
+            label,
+            json_path.display()
+        );
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 fn bundle_hashes(bundles: &[PreparedResourceBundle]) -> BTreeMap<String, String> {
@@ -896,7 +961,8 @@ fn sync_runtime_file(
 
 #[cfg(test)]
 mod tests {
-    use super::is_png_path;
+    use super::{build_app_json_from_config, build_ui_json_from_config, is_png_path};
+    use crate::config::{HostAppConfig, LingXiaConfig};
     use std::path::Path;
 
     #[test]
@@ -912,6 +978,66 @@ mod tests {
         assert!(!is_png_path(Path::new("splash.jpeg")));
         assert!(!is_png_path(Path::new("splash.webp")));
         assert!(!is_png_path(Path::new("splash")));
+    }
+
+    #[test]
+    fn generated_app_json_excludes_ui_fields() {
+        let config = LingXiaConfig {
+            app: Some(HostAppConfig {
+                project_name: "demo".into(),
+                product_name: "Demo".into(),
+                product_version: "1.2.3".into(),
+                api_server: Some("http://127.0.0.1:8080".into()),
+                lingxia_id: Some("demo".into()),
+                platforms: vec!["macos".into()],
+                home_lxapp_id: Some("demo-home".into()),
+                cache_max_age_days: Some(7),
+                cache_max_size_mb: Some(64),
+            }),
+            android: None,
+            ios: None,
+            macos: None,
+            harmony: None,
+            ui: Some(serde_json::json!({
+                "launch": { "initialSurface": "main" },
+                "surfaces": [],
+                "activators": []
+            })),
+            resources: None,
+        };
+
+        let app_json = build_app_json_from_config(&config, None).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+        assert!(value.get("ui").is_none());
+        assert!(value.get("panels").is_none());
+        assert!(value.get("splashTimeout").is_none());
+    }
+
+    #[test]
+    fn generated_ui_json_matches_ui_section() {
+        let ui = serde_json::json!({
+            "launch": { "initialSurface": "main" },
+            "surfaces": [{
+                "id": "main",
+                "presentation": { "style": "window" },
+                "content": { "kind": "lxapp", "appId": "demo-home" }
+            }],
+            "activators": []
+        });
+        let config = LingXiaConfig {
+            app: None,
+            android: None,
+            ios: None,
+            macos: None,
+            harmony: None,
+            ui: Some(ui.clone()),
+            resources: None,
+        };
+
+        let ui_json = build_ui_json_from_config(&config).unwrap().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+        assert_eq!(value, ui);
     }
 }
 
