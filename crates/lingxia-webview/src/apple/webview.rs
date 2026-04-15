@@ -2367,11 +2367,12 @@ impl WebViewInner {
         let selector_json = serde_json::to_string(selector)
             .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
         let expr = format!("window.__LingXiaInput.query_box({selector_json})");
-        let script = build_helper_invocation(&expr);
-        let value = <Self as WebViewController>::eval_js(self, &script)
+        let script = format!("JSON.stringify({})", build_helper_invocation(&expr));
+        let raw = self
+            .eval_js_raw_string(&script)
             .await
             .map_err(WebViewInputError::Script)?;
-        let result: InputHelperElementResult = serde_json::from_value(value).map_err(|err| {
+        let result: InputHelperElementResult = serde_json::from_str(&raw).map_err(|err| {
             WebViewInputError::Platform(format!(
                 "Failed to decode input helper element result: {err}"
             ))
