@@ -1,10 +1,13 @@
 package com.lingxia.lxapp
 
 import android.app.Dialog
+import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import android.util.TypedValue
@@ -27,6 +30,9 @@ import org.json.JSONObject
  */
 internal object UpdateManager {
     private const val TAG = "LingXia.UpdateManager"
+    private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+    private const val FILE_PROVIDER_SUFFIX = ".fileprovider"
+    private const val UPDATE_CACHE_DIR = "lingxia-updates"
 
     private var progressDialog: Dialog? = null
     private var progressBar: ProgressBar? = null
@@ -547,21 +553,22 @@ internal object UpdateManager {
                 }
             }
 
-            val apkUri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                // Use FileProvider for Android 7.0+
-                androidx.core.content.FileProvider.getUriForFile(
-                    activity,
-                    "${activity.packageName}.fileprovider",
-                    apkFile
-                )
-            } else {
-                android.net.Uri.fromFile(apkFile)
-            }
+            val apkUri = resolveInstallUri(activity, apkFile)
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                setDataAndType(apkUri, APK_MIME_TYPE)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                if (usesFileProviderUri()) {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    clipData = ClipData.newUri(
+                        activity.contentResolver,
+                        "LingXia update APK",
+                        apkUri
+                    )
+                }
+            }
+            if (usesFileProviderUri()) {
+                grantInstallerReadPermissions(activity, intent, apkUri)
             }
 
             activity.startActivity(intent)
@@ -569,6 +576,73 @@ internal object UpdateManager {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to install update from: $apkPath", e)
             return false
+        }
+    }
+
+    private fun resolveInstallUri(activity: LxAppActivity, apkFile: File): Uri {
+        if (!usesFileProviderUri()) {
+            return Uri.fromFile(stageApkForLegacyInstaller(activity, apkFile))
+        }
+
+        return try {
+            fileProviderUri(activity, apkFile)
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "APK path is outside FileProvider roots; staging to cache: ${apkFile.path}")
+            fileProviderUri(activity, stageApkInCache(activity, apkFile))
+        }
+    }
+
+    private fun usesFileProviderUri(): Boolean {
+        return android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N
+    }
+
+    private fun fileProviderUri(activity: LxAppActivity, apkFile: File): Uri {
+        return androidx.core.content.FileProvider.getUriForFile(
+            activity,
+            "${activity.packageName}$FILE_PROVIDER_SUFFIX",
+            apkFile
+        )
+    }
+
+    private fun stageApkForLegacyInstaller(activity: LxAppActivity, apkFile: File): File {
+        val updateDir = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?: activity.externalCacheDir
+            ?: throw IllegalStateException("No external directory available for legacy APK install")
+        if (!updateDir.exists() && !updateDir.mkdirs()) {
+            throw IllegalStateException("Failed to create update dir: ${updateDir.path}")
+        }
+
+        val fileName = apkFile.name.takeIf { it.isNotBlank() } ?: "update.apk"
+        val stagedFile = File(updateDir, fileName)
+        if (apkFile.canonicalPath != stagedFile.canonicalPath) {
+            apkFile.copyTo(stagedFile, overwrite = true)
+        }
+        return stagedFile
+    }
+
+    private fun stageApkInCache(activity: LxAppActivity, apkFile: File): File {
+        val updateDir = File(activity.cacheDir, UPDATE_CACHE_DIR)
+        if (!updateDir.exists() && !updateDir.mkdirs()) {
+            throw IllegalStateException("Failed to create update cache dir: ${updateDir.path}")
+        }
+
+        val fileName = apkFile.name.takeIf { it.isNotBlank() } ?: "update.apk"
+        val stagedFile = File(updateDir, fileName)
+        if (apkFile.canonicalPath != stagedFile.canonicalPath) {
+            apkFile.copyTo(stagedFile, overwrite = true)
+        }
+        return stagedFile
+    }
+
+    private fun grantInstallerReadPermissions(activity: LxAppActivity, intent: Intent, apkUri: Uri) {
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        val installers = activity.packageManager.queryIntentActivities(
+            intent,
+            PackageManager.MATCH_DEFAULT_ONLY
+        )
+        installers.forEach { resolveInfo ->
+            val packageName = resolveInfo.activityInfo?.packageName ?: return@forEach
+            activity.grantUriPermission(packageName, apkUri, flags)
         }
     }
 }
