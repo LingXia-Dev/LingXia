@@ -292,8 +292,6 @@ enum Commands {
 enum GenCommand {
     /// Generate i18n resources
     I18n(lingxia_gen::i18n::I18nConfig),
-    /// Sync static assets
-    Assets(lingxia_gen::assets::AssetsConfig),
     /// Convert icons to platform-specific resources
     Icons(lingxia_gen::icons::IconsConfig),
 }
@@ -551,9 +549,6 @@ fn main() -> Result<()> {
         Commands::Gen { command } => match command {
             GenCommand::I18n(config) => {
                 lingxia_gen::i18n::run(config)?;
-            }
-            GenCommand::Assets(config) => {
-                lingxia_gen::assets::run(config)?;
             }
             GenCommand::Icons(config) => {
                 lingxia_gen::icons::run(config)?;
