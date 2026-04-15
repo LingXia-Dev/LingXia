@@ -584,6 +584,7 @@ struct BrowserState {
 }
 
 static BROWSER_STATE: OnceLock<Mutex<BrowserState>> = OnceLock::new();
+static BROWSER_TAB_COUNTER: AtomicU64 = AtomicU64::new(1);
 static BROWSER_CREATE_TOKEN: AtomicU64 = AtomicU64::new(1);
 static BROWSER_LOAD_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
@@ -615,7 +616,15 @@ enum BrowserTabScope<'a> {
 }
 
 fn generate_tab_id() -> String {
-    Uuid::new_v4().to_string()
+    loop {
+        let candidate = format!(
+            "tab-{}",
+            BROWSER_TAB_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        if !lock_state().tabs.contains_key(&candidate) {
+            return candidate;
+        }
+    }
 }
 
 fn validate_requested_tab_key(input: &str) -> Result<String, LxAppError> {
@@ -633,15 +642,11 @@ fn validate_requested_tab_key(input: &str) -> Result<String, LxAppError> {
             "tab_id must contain only ASCII letters, digits, '-' or '_'".to_string(),
         ));
     }
-    Ok(trimmed.to_string())
+    Ok(trimmed.to_ascii_lowercase())
 }
 
 fn normalize_runtime_tab_id(input: &str) -> Option<String> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    Uuid::parse_str(trimmed).ok().map(|id| id.to_string())
+    validate_requested_tab_key(input).ok()
 }
 
 fn resolve_tab_scope_seed(scope: BrowserTabScope<'_>, stable_tab_key: &str) -> String {
@@ -654,9 +659,8 @@ fn resolve_tab_scope_seed(scope: BrowserTabScope<'_>, stable_tab_key: &str) -> S
     }
 }
 
-fn deterministic_tab_uuid(seed: &str) -> Uuid {
+fn deterministic_tab_suffix(seed: &str) -> String {
     const FNV_OFFSET_A: u64 = 0xcbf29ce484222325;
-    const FNV_OFFSET_B: u64 = 0x84222325cbf29ce4;
     const FNV_PRIME: u64 = 0x100000001b3;
 
     fn fnv1a64(bytes: &[u8], offset: u64, prime: u64) -> u64 {
@@ -668,14 +672,10 @@ fn deterministic_tab_uuid(seed: &str) -> Uuid {
         hash
     }
 
-    let mut bytes = [0u8; 16];
-    let hi = fnv1a64(seed.as_bytes(), FNV_OFFSET_A, FNV_PRIME).to_be_bytes();
-    let lo = fnv1a64(seed.as_bytes(), FNV_OFFSET_B, FNV_PRIME).to_be_bytes();
-    bytes[..8].copy_from_slice(&hi);
-    bytes[8..].copy_from_slice(&lo);
-    bytes[6] = (bytes[6] & 0x0f) | 0x50;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Uuid::from_bytes(bytes)
+    format!(
+        "{:08x}",
+        fnv1a64(seed.as_bytes(), FNV_OFFSET_A, FNV_PRIME) as u32
+    )
 }
 
 fn resolve_browser_tab_id(
@@ -685,8 +685,17 @@ fn resolve_browser_tab_id(
     match requested_tab_key {
         Some(tab_key) => {
             let stable_tab_key = validate_requested_tab_key(tab_key)?;
-            let seed = resolve_tab_scope_seed(scope, &stable_tab_key);
-            Ok(deterministic_tab_uuid(&seed).to_string())
+            match scope {
+                BrowserTabScope::Global => Ok(stable_tab_key),
+                BrowserTabScope::OwnerSession { .. } => {
+                    let seed = resolve_tab_scope_seed(scope, &stable_tab_key);
+                    Ok(format!(
+                        "{}-{}",
+                        stable_tab_key,
+                        deterministic_tab_suffix(&seed)
+                    ))
+                }
+            }
         }
         None => Ok(generate_tab_id()),
     }
@@ -2144,9 +2153,15 @@ mod tests {
     }
 
     #[test]
-    fn runtime_tab_id_lookup_requires_uuid() {
-        assert!(normalize_runtime_tab_id("settings").is_none());
+    fn runtime_tab_id_lookup_normalizes_stable_keys() {
+        assert_eq!(
+            normalize_runtime_tab_id("settings"),
+            Some("settings".to_string())
+        );
+        assert_eq!(
+            normalize_runtime_tab_id("SeTtings"),
+            Some("settings".to_string())
+        );
         assert!(normalize_runtime_tab_id("settings/main").is_none());
-        assert!(normalize_runtime_tab_id(&Uuid::new_v4().to_string()).is_some());
     }
 }
