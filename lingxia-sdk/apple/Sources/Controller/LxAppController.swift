@@ -52,6 +52,8 @@ public final class LxAppController {
     private var interceptors: [LxAppControllerInterceptor:
         (LxAppInterceptContext) async -> LxAppInterceptDecision?] = [:]
 
+    internal var hasInterceptors: Bool { !interceptors.isEmpty }
+
     /// Register an interceptor for a named decision point.
     ///
     /// The last registration wins. Pass `nil` to unregister.
@@ -106,6 +108,69 @@ public final class LxAppController {
                 message: "open was rejected for \(request.appId)"
             )
         }
+        return session
+    }
+
+    /// Synchronous open path used by the default product host runtime.
+    ///
+    /// This path intentionally rejects async interceptors. Advanced custom hosts
+    /// should continue using the async `open(_:)` API.
+    @discardableResult
+    internal func openSync(_ request: LxAppOpenRequest) throws -> LxAppSession {
+        let sessionId = getLxAppSessionId(request.appId)
+        return try openSync(request, sessionId: sessionId)
+    }
+
+    /// Synchronous open path that preserves a caller-provided runtime session ID.
+    ///
+    /// This is used by FFI-driven runtime callbacks that already resolved the
+    /// correct session on the Rust side and must not look it up again.
+    @discardableResult
+    internal func openSync(_ request: LxAppOpenRequest, sessionId: UInt64) throws -> LxAppSession {
+        guard interceptors.isEmpty else {
+            throw LxAppErrorPayload(
+                code: "SYNC_OPEN_UNSUPPORTED",
+                message: "openSync cannot be used when controller interceptors are installed"
+            )
+        }
+
+        guard sessionId > 0 else {
+            let error = LxAppErrorPayload(
+                code: "OPEN_REJECTED",
+                message: "no session available for \(request.appId)",
+                details: nil
+            )
+            emit(.didFailOpen(request: request, error: error))
+            throw error
+        }
+
+        emit(.willOpen(request))
+
+        guard LxAppCore.executeOpenLxApp(
+            appId: request.appId,
+            path: request.path,
+            sessionId: sessionId,
+            presentation: request.presentation.ffiValue,
+            panelId: request.panelId ?? ""
+        ) else {
+            let error = LxAppErrorPayload(
+                code: "OPEN_REJECTED",
+                message: "open was rejected for \(request.appId)"
+            )
+            emit(.didFailOpen(request: request, error: error))
+            throw error
+        }
+
+        let session = LxAppSession(
+            id: LxAppSessionID(rawValue: sessionId),
+            appId: request.appId,
+            path: request.path,
+            presentation: request.presentation,
+            userInfo: request.userInfo,
+            openedAt: Date()
+        )
+        sessions[session.id] = session
+        emit(.didOpen(session))
         return session
     }
 
@@ -181,13 +246,20 @@ public final class LxAppController {
         }
 
         // Perform the platform open.
-        LxAppCore.executeOpenLxApp(
+        guard LxAppCore.executeOpenLxApp(
             appId: appId,
             path: path,
             sessionId: sessionId,
             presentation: presentation.ffiValue,
             panelId: panelId
-        )
+        ) else {
+            let error = LxAppErrorPayload(
+                code: "OPEN_REJECTED",
+                message: "open was rejected for \(appId)"
+            )
+            emit(.didFailOpen(request: request, error: error))
+            return nil
+        }
 
         let session = LxAppSession(
             id: LxAppSessionID(rawValue: sessionId),

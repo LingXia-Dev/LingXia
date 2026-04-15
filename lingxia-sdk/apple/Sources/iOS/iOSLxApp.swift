@@ -151,7 +151,7 @@ class iOSLxApp {
     /// Opens a lxapp
     static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("iOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+        _ = LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Opens the home mini app

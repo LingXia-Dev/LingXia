@@ -20,15 +20,19 @@ class MacNavigationToolbar: NSView {
     private let backButton = NSButton()
     private let homeButton = NSButton()
     private let titleLabel = NSTextField(labelWithString: "")
+    private let hostActionsStack = NSStackView()
     private let separator = NSView()
     private var heightConstraint: NSLayoutConstraint!
     private var cancellables = Set<AnyCancellable>()
+    private var hostActionButtons: [NSButton] = []
 
     private var showNavbar = false
     private var forceHidden = false
+    private var hasHostActions: Bool { !hostActionButtons.isEmpty }
 
     /// Called with "back" or "home" when user clicks a nav button
     var onNavigationAction: ((String) -> Void)?
+    var onHostAction: ((String) -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -85,6 +89,12 @@ class MacNavigationToolbar: NSView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         contentContainer.addSubview(titleLabel)
 
+        hostActionsStack.translatesAutoresizingMaskIntoConstraints = false
+        hostActionsStack.orientation = .horizontal
+        hostActionsStack.alignment = .centerY
+        hostActionsStack.spacing = 6
+        contentContainer.addSubview(hostActionsStack)
+
         NSLayoutConstraint.activate([
             contentContainer.topAnchor.constraint(equalTo: topAnchor),
             contentContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -105,7 +115,11 @@ class MacNavigationToolbar: NSView {
             titleLabel.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
             titleLabel.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
             titleLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backButton.trailingAnchor, constant: Layout.titleLeading),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentContainer.trailingAnchor, constant: -12),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: hostActionsStack.leadingAnchor, constant: -12),
+
+            hostActionsStack.trailingAnchor.constraint(equalTo: contentContainer.trailingAnchor, constant: -12),
+            hostActionsStack.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
+            hostActionsStack.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 12),
         ])
 
         // Bottom separator
@@ -190,12 +204,51 @@ class MacNavigationToolbar: NSView {
         updateFromState(NavigationBarStateManager.shared.currentState)
     }
 
+    func updateHostActions(_ items: [LxAppUIActionItem]) {
+        hostActionButtons.forEach { button in
+            hostActionsStack.removeArrangedSubview(button)
+            button.removeFromSuperview()
+        }
+        hostActionButtons.removeAll()
+
+        for item in items {
+            let button = NSButton()
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.isBordered = false
+            button.bezelStyle = .regularSquare
+            button.imagePosition = .imageOnly
+            button.toolTip = item.label
+            button.identifier = NSUserInterfaceItemIdentifier(item.id)
+            button.target = self
+            button.action = #selector(hostActionClicked(_:))
+
+            if let iconURL = item.iconURL, let image = NSImage(contentsOf: iconURL) {
+                image.isTemplate = true
+                button.image = image
+                button.contentTintColor = NSColor.secondaryLabelColor
+            } else {
+                button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                button.contentTintColor = NSColor.secondaryLabelColor
+            }
+
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: Layout.buttonSize),
+                button.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
+            ])
+
+            hostActionsStack.addArrangedSubview(button)
+            hostActionButtons.append(button)
+        }
+
+        updateHeight()
+    }
+
     private func updateHeight() {
-        let targetHeight: CGFloat = (showNavbar && !forceHidden) ? Layout.height : 0
+        let targetHeight: CGFloat = ((showNavbar || hasHostActions) && !forceHidden) ? Layout.height : 0
         if heightConstraint.constant != targetHeight {
             heightConstraint.constant = targetHeight
         }
-        separator.isHidden = !showNavbar || forceHidden
+        separator.isHidden = forceHidden || (!showNavbar && !hasHostActions)
         needsLayout = true
         layoutSubtreeIfNeeded()
         superview?.needsLayout = true
@@ -208,6 +261,11 @@ class MacNavigationToolbar: NSView {
 
     @objc private func homeClicked() {
         onNavigationAction?("home")
+    }
+
+    @objc private func hostActionClicked(_ sender: NSButton) {
+        guard let actionID = sender.identifier?.rawValue else { return }
+        onHostAction?(actionID)
     }
 }
 

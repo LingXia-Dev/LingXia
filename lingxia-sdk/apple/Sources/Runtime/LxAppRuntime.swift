@@ -70,12 +70,10 @@ public final class LxAppRuntime {
         }
 
         let caps = LxAppCapabilities(rawValue: getAppCapabilities())
-        let panels = getPanelsConfigJson()?.toString()
 
         let runtimeInfo = LxAppRuntimeInfo(
             homeAppId: homeAppId,
             capabilities: caps,
-            panelsConfigJson: panels,
             dataPath: dirs.dataPath,
             cachesPath: dirs.cachesPath
         )
@@ -84,16 +82,14 @@ public final class LxAppRuntime {
 
         LxAppCore.homeLxAppId = homeAppId
         LxAppCore.capabilities = caps.rawValue
-        LxAppCore.panelsConfigJson = panels
 
         os_log(
-            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u shell=%{public}@ panels=%{public}@",
+            "LxAppRuntime initialized — home: %{public}@ capabilities=%{public}u shell=%{public}@",
             log: Self.log,
             type: .info,
             homeAppId,
             caps.rawValue,
-            caps.contains(.shell) ? "true" : "false",
-            panels ?? "nil"
+            caps.contains(.shell) ? "true" : "false"
         )
 
         return runtimeInfo

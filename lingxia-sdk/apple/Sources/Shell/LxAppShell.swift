@@ -8,6 +8,89 @@ import WebKit
 import Quartz
 import CLingXiaRustAPI
 
+@MainActor
+enum LxAppShellStartupBehavior {
+    case automaticHome
+    case managedByAppUI
+}
+
+@MainActor
+final class MacTitlebarActionStrip: NSView {
+    private let stackView = NSStackView()
+    private var buttons: [NSButton] = []
+
+    var onAction: ((String) -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        translatesAutoresizingMaskIntoConstraints = false
+        setupViews()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupViews() {
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.orientation = .horizontal
+        stackView.alignment = .centerY
+        stackView.spacing = 6
+        addSubview(stackView)
+
+        NSLayoutConstraint.activate([
+            stackView.topAnchor.constraint(equalTo: topAnchor),
+            stackView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            heightAnchor.constraint(equalToConstant: 28),
+        ])
+    }
+
+    func updateActions(_ items: [LxAppUIActionItem]) {
+        buttons.forEach { button in
+            stackView.removeArrangedSubview(button)
+            button.removeFromSuperview()
+        }
+        buttons.removeAll()
+
+        for item in items {
+            let button = NSButton()
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.isBordered = false
+            button.bezelStyle = .regularSquare
+            button.imagePosition = .imageOnly
+            button.toolTip = item.label
+            button.identifier = NSUserInterfaceItemIdentifier(item.id)
+            button.target = self
+            button.action = #selector(actionClicked(_:))
+
+            if let iconURL = item.iconURL,
+               let image = NSImage(contentsOf: iconURL) {
+                image.isTemplate = true
+                button.image = image
+                button.contentTintColor = NSColor.secondaryLabelColor
+            } else {
+                button.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                button.contentTintColor = NSColor.secondaryLabelColor
+            }
+
+            NSLayoutConstraint.activate([
+                button.widthAnchor.constraint(equalToConstant: 28),
+                button.heightAnchor.constraint(equalToConstant: 28),
+            ])
+
+            stackView.addArrangedSubview(button)
+            buttons.append(button)
+        }
+    }
+
+    @objc private func actionClicked(_ sender: NSButton) {
+        guard let actionID = sender.identifier?.rawValue else { return }
+        onAction?(actionID)
+    }
+}
+
 /// The main integration point for macOS apps that want the default LingXia
 /// chrome (sidebar + toolbar + floating content panel).
 ///
@@ -71,6 +154,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
+    private let startupBehavior: LxAppShellStartupBehavior
+    private var sidebarHostActionHandler: ((String) -> Void)?
+    private var toolbarHostActionHandler: ((String) -> Void)?
+    private var appUIRuntimeRef: AnyObject?
+    private var titlebarActionStrip: MacTitlebarActionStrip?
+    private var titlebarAccessoryController: NSTitlebarAccessoryViewController?
+    private var usesStatusPanelPresentation = false
+    private var sidebarChromeEnabled = true
+
+    var onManagedWindowCloseRequested: (() -> Void)?
 
     private(set) var contentPanelView: NSView?
 
@@ -117,13 +210,26 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     // MARK: - Init
 
-    public init(
+    public convenience init(
         controller: LxAppController = LxAppController(),
         configuration: LxAppShellConfiguration = LxAppShellConfiguration()
+    ) {
+        self.init(
+            controller: controller,
+            configuration: configuration,
+            startupBehavior: .automaticHome
+        )
+    }
+
+    internal init(
+        controller: LxAppController = LxAppController(),
+        configuration: LxAppShellConfiguration = LxAppShellConfiguration(),
+        startupBehavior: LxAppShellStartupBehavior
     ) {
         self.controller = controller
         self.configuration = configuration
         self.hostView = LxAppHostView(controller: controller)
+        self.startupBehavior = startupBehavior
 
         let window = Self.createWindow()
         super.init(window: window)
@@ -167,7 +273,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     public func show() {
         showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
-        guard !didRequestHomeOpen, !tabManager.hasTabs else { return }
+        guard startupBehavior == .automaticHome,
+              !didRequestHomeOpen,
+              !tabManager.hasTabs else { return }
         didRequestHomeOpen = true
         Task { @MainActor [controller] in
             _ = try? await controller.openHomeApp()
@@ -202,16 +310,23 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         tabManager.onTabChanged = { [weak self] tab in
-            self?.switchToTab(tab.appId)
+            guard let self else { return }
+            self.switchToTab(tab.appId)
         }
 
         tabManager.onTabsChanged = { [weak self] tabs in
-            self?.sidebarView?.updateForTabs(tabs, activeTab: self?.tabManager.activeTab)
+            guard let self else { return }
+            self.sidebarView?.updateForTabs(tabs, activeTab: self.tabManager.activeTab)
         }
 
         setupSidebarInterface()
         setupNotificationObservers()
-        setupInitialTab()
+        applySidebarMode(configuration.sidebar)
+        applyToolbarMode(configuration.toolbar)
+        applyChromeStyle(configuration.chrome)
+        if startupBehavior == .automaticHome {
+            setupInitialTab()
+        }
     }
 
     // MARK: - NSWindowDelegate
@@ -234,11 +349,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         LxAppActiveHost.clear(shell: self)
     }
 
-    public func windowDidResize(_ notification: Notification) {
-        syncSidebarHeaderButtonAlignment()
+    public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard startupBehavior == .managedByAppUI else { return true }
+        onManagedWindowCloseRequested?()
+        return false
     }
 
-    public func windowDidMove(_ notification: Notification) {
+    public func windowDidResize(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
     }
 
@@ -276,12 +393,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseRequested = { [weak self] id in
             self?.browserCoordinator.closeTab(id: id)
         }
-        sidebar.onPanelItemToggled = { panelId in
-            macOSLxApp.togglePanel(id: panelId)
+        sidebar.onPanelItemToggled = { [weak self] actionID in
+            self?.sidebarHostActionHandler?(actionID)
         }
-        sidebar.updatePanelItems(macOSLxApp.panelItems.map {
-            PanelIconItem(id: $0.id, icon: $0.icon, label: $0.label)
-        })
         sidebarView = sidebar
         contentView.addSubview(sidebar)
 
@@ -322,6 +436,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             } else if action == "home" {
                 let _ = onLxappEvent(appId, LxAppEvent.navigationClick, LxAppEvent.navigationActionHome)
             }
+        }
+        toolbar.onHostAction = { [weak self] actionID in
+            self?.toolbarHostActionHandler?(actionID)
         }
         navigationToolbar = toolbar
         let workspace = workspaceManager.workspaceView
@@ -460,6 +577,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func setSidebarVisible(_ visible: Bool, animated: Bool) {
         guard let constraint = sidebarWidthConstraint else { return }
+        guard sidebarChromeEnabled else {
+            constraint.constant = 0
+            contentLeadingConstraint?.constant = Layout.contentPanelPadding
+            refreshSidebarVisibilityUI()
+            return
+        }
 
         let isVisible = constraint.constant >= Layout.sidebarHiddenThreshold
         if isVisible == visible {
@@ -529,7 +652,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarView?.updateVisibilityState()
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
         contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
-        sidebarRevealButton.isHidden = !sidebarHidden
+        sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
     }
@@ -633,9 +756,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         viewController.updateNavigationBar(appId: appId, path: viewController.currentPath)
-        navigationToolbar?.isHidden = false
-        navigationToolbar?.forceHide(false)
         navigationToolbar?.refreshCurrentState()
+        applyToolbarMode(configuration.toolbar)
 
         workspaceManager.rootView.needsLayout = true
         workspaceManager.rootView.layoutSubtreeIfNeeded()
@@ -786,6 +908,143 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             shadowWrapper.layer?.shadowOpacity = style.hasShadow ? 0.15 : 0
         }
     }
+
+    func setSidebarHostActionHandler(_ handler: @escaping (String) -> Void) {
+        sidebarHostActionHandler = handler
+    }
+
+    func setToolbarHostActionHandler(_ handler: @escaping (String) -> Void) {
+        toolbarHostActionHandler = handler
+    }
+
+    func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
+        let sidebarItems = items.map { PanelIconItem(id: $0.id, iconURL: $0.iconURL, label: $0.label) }
+        sidebarView?.updatePanelItems(sidebarItems)
+    }
+
+    func updateToolbarHostActions(_ items: [LxAppUIActionItem]) {
+        navigationToolbar?.updateHostActions(items)
+    }
+
+    func updateTitlebarHostActions(_ items: [LxAppUIActionItem]) {
+        updateTitlebarAccessoryActions(items)
+    }
+
+    func setManagedNavigationToolbarVisible(_ visible: Bool) {
+        guard startupBehavior == .managedByAppUI else { return }
+        if visible {
+            navigationToolbar?.isHidden = false
+            navigationToolbar?.forceHide(false)
+        } else {
+            navigationToolbar?.isHidden = true
+            navigationToolbar?.forceHide(true)
+        }
+    }
+
+    func applyManagedWindowPresentation(
+        title: String?,
+        size: CGSize?,
+        resizable: Bool,
+        style: LxAppUIConfig.Presentation.Style,
+        showTrafficLights: Bool
+    ) {
+        guard let window else { return }
+
+        if let title, !title.isEmpty {
+            window.title = title
+        }
+
+        usesStatusPanelPresentation = style == .statusPanel
+
+        if let size {
+            window.setContentSize(size)
+            if !resizable {
+                window.minSize = size
+                window.maxSize = size
+            }
+        }
+
+        if resizable && style == .window {
+            window.styleMask.insert(.resizable)
+            window.maxSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        } else {
+            window.styleMask.remove(.resizable)
+        }
+
+        if let lxWindow = window as? LxAppWindow {
+            lxWindow.setTrafficLightsHidden(!showTrafficLights)
+        } else {
+            for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+                window.standardWindowButton(type)?.isHidden = !showTrafficLights
+            }
+        }
+
+        if style == .statusPanel {
+            window.level = .floating
+            window.isMovableByWindowBackground = true
+            window.collectionBehavior.insert(.transient)
+        } else {
+            window.level = .normal
+            window.collectionBehavior.remove(.transient)
+            window.isMovableByWindowBackground = false
+        }
+    }
+
+    func retainAppUIRuntime(_ runtime: AnyObject) {
+        appUIRuntimeRef = runtime
+    }
+
+    func setSidebarChromeEnabled(_ enabled: Bool) {
+        sidebarChromeEnabled = enabled
+        if !enabled {
+            sidebarWidthConstraint?.constant = 0
+            contentLeadingConstraint?.constant = Layout.contentPanelPadding
+        }
+        refreshSidebarVisibilityUI()
+    }
+
+    private func updateTitlebarAccessoryActions(_ items: [LxAppUIActionItem]) {
+        guard let window else { return }
+
+        if items.isEmpty {
+            if let controller = titlebarAccessoryController,
+               let index = window.titlebarAccessoryViewControllers.firstIndex(of: controller) {
+                window.removeTitlebarAccessoryViewController(at: index)
+            }
+            titlebarAccessoryController = nil
+            titlebarActionStrip = nil
+            return
+        }
+
+        let strip: MacTitlebarActionStrip
+        let controller: NSTitlebarAccessoryViewController
+
+        if let existingStrip = titlebarActionStrip,
+           let existingController = titlebarAccessoryController {
+            strip = existingStrip
+            controller = existingController
+        } else {
+            strip = MacTitlebarActionStrip()
+            strip.onAction = { [weak self] actionID in
+                self?.toolbarHostActionHandler?(actionID)
+            }
+
+            let accessoryController = NSTitlebarAccessoryViewController()
+            accessoryController.view = strip
+            accessoryController.layoutAttribute = .right
+            window.addTitlebarAccessoryViewController(accessoryController)
+
+            titlebarActionStrip = strip
+            titlebarAccessoryController = accessoryController
+            controller = accessoryController
+        }
+
+        strip.updateActions(items)
+        controller.isHidden = false
+    }
 }
 
 // MARK: - Browser Coordinator Forwarding
@@ -815,6 +1074,7 @@ extension LxAppShell {
 extension LxAppShell: BrowserCoordinatorHost {
     var browserContentContainer: NSView { workspaceManager.contentContainer }
     var hostWindow: NSWindow? { window }
+    var hasOpenTabs: Bool { tabManager.hasTabs }
 
     func browserOwnerForNewTab() -> (appId: String, sessionId: UInt64)? {
         if let appId = tabManager.activeTab?.appId {
@@ -888,6 +1148,10 @@ extension LxAppShell {
 
     func hidePanel(id: String) {
         workspaceManager.hidePanel(id: id)
+    }
+
+    func showPanel(id: String) {
+        workspaceManager.showPanel(id: id)
     }
 
     func togglePanel(id: String) {

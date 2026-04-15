@@ -64,8 +64,20 @@ public enum Lingxia {
         LxApp.handleAppLink(url: url)
     }
 
-    /// One-call entry point: initialize runtime, create controller,
-    /// build shell, show window, and open the home LxApp.
+    @MainActor
+    public static func handleAppActivation() -> Bool {
+        #if os(macOS)
+        return LxAppMacAppUIRuntime.handleAppActivation()
+        #else
+        return false
+        #endif
+    }
+
+    /// Default product entry point on Apple platforms.
+    ///
+    /// On macOS this loads bundled `app.json` plus `macos-ui.json` / `ui.json`
+    /// and uses them to build the host shell. On iOS this keeps the legacy
+    /// home-app startup behavior for now.
     ///
     /// ```swift
     /// @main struct MyApp: App {
@@ -76,8 +88,46 @@ public enum Lingxia {
     /// ```
     @MainActor
     @discardableResult
+    public static func quickStart() throws -> LxAppShell {
+        #if os(macOS)
+        if let currentShell = LxAppActiveHost.activeShell {
+            currentShell.show()
+            return currentShell
+        }
+
+        let bundleConfig = try LxAppAppUIBundleLoader.loadFromMainBundle()
+        _ = try initializeRuntime()
+
+        let controller = LxAppController()
+        let shellConfiguration = LxAppShellConfiguration(
+            sidebar: bundleConfig.ui.activators.contains(where: { $0.kind == .sidebarItem }) ? .declarative(.init()) : .hidden,
+            toolbar: bundleConfig.ui.activators.contains(where: { $0.kind == .toolbarItem }) ? .declarative(.default) : .hidden
+        )
+        let shell = LxAppShell(
+            controller: controller,
+            configuration: shellConfiguration,
+            startupBehavior: .managedByAppUI
+        )
+        let hostRuntime = try LxAppMacAppUIRuntime(
+            bundleConfig: bundleConfig,
+            controller: controller,
+            shell: shell
+        )
+        shell.retainAppUIRuntime(hostRuntime)
+        try hostRuntime.start()
+        return shell
+        #else
+        return try quickStart(configuration: LxAppShellConfiguration())
+        #endif
+    }
+
+    /// Legacy shell override path. Product UI should be configured in `lingxia.yaml`
+    /// and started with `quickStart()`.
+    @available(*, deprecated, message: "Configure product UI in lingxia.yaml and use Lingxia.quickStart(). Use initializeRuntime() + LxAppController + LxAppHostView for advanced embedding.")
+    @MainActor
+    @discardableResult
     public static func quickStart(
-        configuration: LxAppShellConfiguration = LxAppShellConfiguration()
+        configuration: LxAppShellConfiguration
     ) throws -> LxAppShell {
         if let currentShell = LxAppActiveHost.activeShell {
             currentShell.show()

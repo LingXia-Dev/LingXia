@@ -6,9 +6,6 @@ public struct LxAppRuntimeInfo: Codable, Sendable, Hashable {
     /// Bitmask of host-app capabilities (e.g. `.shell`).
     public let capabilities: LxAppCapabilities
 
-    /// Raw JSON string of the panels configuration, if any.
-    public let panelsConfigJson: String?
-
     /// Absolute path to the data directory used by this runtime.
     public let dataPath: String
 

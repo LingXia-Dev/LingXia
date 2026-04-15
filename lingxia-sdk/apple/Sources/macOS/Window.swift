@@ -6,6 +6,12 @@ import CLingXiaRustAPI
 /// NSWindow class for LxApp Tab mode
 class LxAppWindow: NSWindow {
     nonisolated(unsafe) private var titlebarObserver: Any?
+    private var lastTrafficLightContainerHeight: CGFloat?
+    var trafficLightsHidden: Bool = false {
+        didSet {
+            applyTrafficLightVisibility()
+        }
+    }
     var trafficLightCenterYFromTop: CGFloat = 19 {
         didSet {
             guard abs(oldValue - trafficLightCenterYFromTop) > 0.5 else { return }
@@ -28,6 +34,10 @@ class LxAppWindow: NSWindow {
         super.init(contentRect: contentRect, styleMask: style, backing: backingStoreType, defer: flag)
     }
 
+    func setTrafficLightsHidden(_ hidden: Bool) {
+        trafficLightsHidden = hidden
+    }
+
     func configureForTabStyle() {
         styleMask.insert(.fullSizeContentView)
         titlebarAppearsTransparent = true
@@ -41,20 +51,40 @@ class LxAppWindow: NSWindow {
         }
 
         if let button = standardWindowButton(.closeButton), let container = button.superview {
+            lastTrafficLightContainerHeight = nil
             container.postsFrameChangedNotifications = true
             titlebarObserver = NotificationCenter.default.addObserver(
                 forName: NSView.frameDidChangeNotification, object: container, queue: .main
             ) { [weak self] _ in
                 Task { @MainActor [weak self] in
-                    self?.adjustTrafficLightPositions()
+                    self?.adjustTrafficLightPositionsIfTitlebarHeightChanged()
                 }
             }
         }
 
         adjustTrafficLightPositions()
+        applyTrafficLightVisibility()
         DispatchQueue.main.async { [weak self] in
             self?.adjustTrafficLightPositions()
+            self?.applyTrafficLightVisibility()
         }
+    }
+
+    private func applyTrafficLightVisibility() {
+        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
+            standardWindowButton(type)?.isHidden = trafficLightsHidden
+        }
+    }
+
+    private func adjustTrafficLightPositionsIfTitlebarHeightChanged() {
+        guard let container = standardWindowButton(.closeButton)?.superview,
+              container.frame.height > 0 else { return }
+        let height = container.frame.height
+        guard lastTrafficLightContainerHeight == nil
+            || abs((lastTrafficLightContainerHeight ?? 0) - height) > 0.5 else {
+            return
+        }
+        adjustTrafficLightPositions()
     }
 
     private func adjustTrafficLightPositions() {
@@ -63,6 +93,7 @@ class LxAppWindow: NSWindow {
               container.frame.height > 0 else { return }
 
         let containerHeight = container.frame.height
+        lastTrafficLightContainerHeight = containerHeight
         let targetCenterY = effectiveTrafficLightCenterYFromTop()
         for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
             guard let button = standardWindowButton(type), button.frame.height > 0 else { continue }

@@ -49,9 +49,6 @@ final class LxAppCore {
     /// Home LxApp configuration
     internal static var homeLxAppId: String?
 
-    /// Panels configuration JSON (populated after lingxiaInit)
-    internal static var panelsConfigJson: String?
-
     /// Bitmask of host app capabilities, queried from Rust after init.
     static var capabilities: UInt32 = 0
     static let capShell: UInt32 = 0x1
@@ -73,10 +70,10 @@ final class LxAppCore {
         sessionId: UInt64,
         presentation: Int32 = 0,
         panelId: String = ""
-    ) {
+    ) -> Bool {
         guard sessionId > 0 else {
             os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
-            return
+            return false
         }
 
         // Call onLxappOpened to get the resolved path
@@ -84,14 +81,14 @@ final class LxAppCore {
         let finalPath = resolvedPath.toString()
         guard !finalPath.isEmpty else {
             os_log("executeOpenLxApp rejected by Rust (stale session?) for %@ session=%{public}llu", log: log, type: .info, appId, sessionId)
-            return
+            return false
         }
         appSessions[appId] = sessionId
         let isPanel = (presentation == 1)
 
         // Check for custom handler first (e.g., Runner's Capsule mode)
         if let handler = openLxAppHandler, handler(appId, finalPath) {
-            return
+            return true
         }
 
         // Panel presentation bypasses normal tab routing on macOS.
@@ -103,7 +100,7 @@ final class LxAppCore {
             sessionId: sessionId,
             panelId: panelId
            ) {
-            return
+            return true
         }
         #endif
 
@@ -113,6 +110,7 @@ final class LxAppCore {
         #elseif os(macOS)
         macOSLxApp.openLxAppDirect(appId: appId, path: finalPath, sessionId: sessionId)
         #endif
+        return true
     }
 
     /// Shared navigate logic - used by both iOS and macOS platforms
@@ -183,7 +181,6 @@ final class LxAppCore {
         instance = LxAppCore()
         homeLxAppId = info.homeAppId
         capabilities = info.capabilities.rawValue
-        panelsConfigJson = info.panelsConfigJson
 
         if autoOpenHome && !skipAutoOpenWindow {
             DispatchQueue.main.async {
@@ -207,7 +204,6 @@ final class LxAppCore {
         if let homeAppId = initResultString {
             homeLxAppId = homeAppId
             capabilities = getAppCapabilities()
-            panelsConfigJson = getPanelsConfigJson()?.toString()
             os_log("LxApp initialized successfully with home app: %{public}@", log: log, type: .info, homeAppId)
 
             // Auto-open home lxapp after initialization (unless skipped by external tools)
