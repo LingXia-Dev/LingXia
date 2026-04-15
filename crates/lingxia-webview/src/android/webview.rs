@@ -1,15 +1,21 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
+use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag,
     WebViewCreateSender, WebViewCreateStage,
 };
-use crate::{LoadDataRequest, WebViewController, WebViewError};
+use crate::{LoadDataRequest, WebViewController, WebViewError, WebViewScriptError};
+use async_trait::async_trait;
 use jni::objects::{Global, JObject};
 use jni::{jni_sig, jni_str};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio::time::timeout;
 
 // Import JNI environment access from shared utils
 use super::jni_env::{get_lingxia_webview_class, with_env};
@@ -28,9 +34,67 @@ pub(crate) struct PendingWebViewCreation {
 }
 
 type WebViewSendersMap = Arc<Mutex<HashMap<String, PendingWebViewCreation>>>;
+type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
+
+enum PendingEvalResponse {
+    Success(String),
+    Failure(String),
+    Destroyed,
+}
+
+struct PendingEvalEntry {
+    webtag: String,
+    sender: oneshot::Sender<PendingEvalResponse>,
+}
 
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
+static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
+static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn pending_eval_requests() -> &'static PendingEvalRequests {
+    PENDING_EVAL_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+pub(crate) fn complete_pending_eval_request(request_id: u64, result: Result<String, String>) {
+    if let Ok(mut pending) = pending_eval_requests().lock()
+        && let Some(entry) = pending.remove(&request_id)
+    {
+        let message = match result {
+            Ok(value) => PendingEvalResponse::Success(value),
+            Err(error) => PendingEvalResponse::Failure(error),
+        };
+        let _ = entry.sender.send(message);
+    }
+}
+
+fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
+    if let Ok(mut pending) = pending_eval_requests().lock() {
+        let matching = pending
+            .iter()
+            .filter_map(|(request_id, entry)| {
+                (entry.webtag == webtag.as_str()).then_some(*request_id)
+            })
+            .collect::<Vec<_>>();
+        for request_id in matching {
+            if let Some(entry) = pending.remove(&request_id) {
+                let _ = entry.sender.send(PendingEvalResponse::Destroyed);
+            }
+        }
+    }
+}
+
+fn decode_android_eval_string(raw: &str) -> Result<String, WebViewScriptError> {
+    let decoded: Option<String> = serde_json::from_str(raw).map_err(|err| {
+        WebViewScriptError::Platform(format!(
+            "Failed to decode Android evaluateJavascript payload: {err}"
+        ))
+    })?;
+    decoded.ok_or_else(|| {
+        WebViewScriptError::Platform("Android evaluateJavascript returned null result".to_string())
+    })
+}
 
 pub(crate) fn apply_http_proxy(
     config: Option<&ProxyConfig>,
@@ -193,6 +257,7 @@ impl WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
+        fail_pending_eval_requests_for_webtag(&self.webtag);
         let _ = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let _ = env.call_method(
                 &*self.java_webview,
@@ -209,6 +274,7 @@ impl Drop for WebViewInner {
     }
 }
 
+#[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
@@ -248,10 +314,9 @@ impl WebViewController for WebViewInner {
         .map_err(|e| WebViewError::WebView(format!("Failed to load data: {:?}", e)))
     }
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
+    fn exec_js(&self, js: &str) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let script_string = env.new_string(&js)?;
-
+            let script_string = env.new_string(js)?;
             env.call_method(
                 &*self.java_webview,
                 jni_str!("evaluateJavascript"),
@@ -260,7 +325,67 @@ impl WebViewController for WebViewInner {
             )?;
             Ok(())
         })
-        .map_err(|e| WebViewError::WebView(format!("JavaScript evaluation failed: {:?}", e)))
+        .map_err(|e| WebViewError::WebView(format!("JavaScript execution failed: {:?}", e)))
+    }
+
+    async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
+        let wrapped = build_wrapped_eval_script(js)?;
+        let request_id = NEXT_EVAL_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        pending_eval_requests()
+            .lock()
+            .map_err(|_| {
+                WebViewScriptError::Platform("Android pending eval_js map poisoned".to_string())
+            })?
+            .insert(
+                request_id,
+                PendingEvalEntry {
+                    webtag: self.webtag.to_string(),
+                    sender: tx,
+                },
+            );
+
+        {
+            let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                let script_string = env.new_string(&wrapped)?;
+                env.call_method(
+                    &*self.java_webview,
+                    jni_str!("evaluateJavascriptWithResult"),
+                    jni_sig!("(Ljava/lang/String;J)V"),
+                    &[(&script_string).into(), (request_id as i64).into()],
+                )?;
+                Ok(())
+            });
+
+            if let Err(err) = dispatch_result {
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Platform(format!(
+                    "Failed to dispatch Android JavaScript evaluation: {:?}",
+                    err
+                )));
+            }
+        }
+
+        let raw = match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(PendingEvalResponse::Success(raw))) => raw,
+            Ok(Ok(PendingEvalResponse::Failure(err))) => {
+                return Err(WebViewScriptError::Platform(err));
+            }
+            Ok(Ok(PendingEvalResponse::Destroyed)) => return Err(WebViewScriptError::Destroyed),
+            Ok(Err(_)) => return Err(WebViewScriptError::Destroyed),
+            Err(_) => {
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Timeout);
+            }
+        };
+
+        let decoded = decode_android_eval_string(&raw)?;
+        parse_wrapped_eval_result(&decoded)
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {

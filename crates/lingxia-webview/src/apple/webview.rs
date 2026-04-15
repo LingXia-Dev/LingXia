@@ -1,3 +1,12 @@
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use crate::WebViewInputError;
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use crate::input_helper::build_helper_invocation;
+use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use crate::traits::{ClickOptions, PressOptions, ScrollOptions, TypeOptions};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
     NewWindowPolicy,
@@ -5,8 +14,9 @@ use crate::traits::{
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{
     DownloadRequest, LoadDataRequest, LogLevel, SystemPipeReader, WebResourceResponse,
-    WebViewController, WebViewError,
+    WebViewController, WebViewError, WebViewScriptError,
 };
+use async_trait::async_trait;
 use block2::{Block, RcBlock, StackBlock};
 use dispatch2::DispatchQueue;
 use http::{Method, Response, StatusCode};
@@ -15,6 +25,8 @@ use objc2::{
     AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send,
     rc::Retained,
 };
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use objc2_core_foundation::{CFRetained, CGPoint, CGRect};
 use objc2_foundation::{
     NSArray, NSDate, NSError, NSJSONSerialization, NSJSONWritingOptions, NSObjectProtocol, NSPoint,
     NSRect, NSSize, NSString, NSURL, NSURLRequest,
@@ -25,6 +37,8 @@ use objc2_web_kit::{
 };
 #[cfg(target_os = "ios")]
 use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -34,7 +48,15 @@ use std::os::unix::net::UnixStream;
 use std::ptr::NonNull;
 use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::time::Duration;
 use std::{ffi::CString, ffi::c_char, ffi::c_void};
+use tokio::sync::oneshot;
+use tokio::time::timeout;
+
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType, NSResponder, NSView};
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+use objc2_core_graphics::CGEvent;
 
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
@@ -45,6 +67,7 @@ use crate::webview::{
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
 const INTERNAL_BRIDGE_DOWNSTREAM_PATH: &str = "/__lingxia/bridge/downstream";
 const APPLE_BRIDGE_QUEUE_LIMIT: usize = 1024;
+const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_JSON: &str = r#"
 [
@@ -69,6 +92,19 @@ unsafe extern "C" {
     fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
     fn nw_release(object: *mut AnyObject);
     fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+}
+
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+unsafe extern "C" {
+    fn CGEventCreateScrollWheelEvent(
+        source: *mut c_void,
+        units: u32,
+        wheel_count: u32,
+        wheel1: i32,
+        ...
+    ) -> Option<std::ptr::NonNull<CGEvent>>;
+    fn CGMainDisplayID() -> u32;
+    fn CGDisplayBounds(display: u32) -> CGRect;
 }
 
 type OpenPanelStringArrayCopyFn = unsafe extern "C" fn(*mut AnyObject) -> *mut AnyObject;
@@ -710,22 +746,20 @@ define_class!(
                     msg_send![navigation_action, shouldPerformDownload];
                 value.as_bool()
             };
-            if should_perform_download {
-                if let Some(managed_webview) = find_webview(webtag)
-                    && managed_webview.effective_options().profile
-                        == SecurityProfile::BrowserRelaxed
-                {
-                    self.ivars()
-                        .pending_browser_download_url
-                        .replace(Some(url.clone()));
-                    log::info!(
-                        "Apple decidePolicy mark browser download webtag={} url={}",
-                        webtag,
-                        url
-                    );
-                    allow_navigation();
-                    return;
-                }
+            if should_perform_download
+                && let Some(managed_webview) = find_webview(webtag)
+                && managed_webview.effective_options().profile == SecurityProfile::BrowserRelaxed
+            {
+                self.ivars()
+                    .pending_browser_download_url
+                    .replace(Some(url.clone()));
+                log::info!(
+                    "Apple decidePolicy mark browser download webtag={} url={}",
+                    webtag,
+                    url
+                );
+                allow_navigation();
+                return;
             }
 
             // Check closure-based navigation handler first
@@ -1955,6 +1989,18 @@ impl WebViewInner {
 
             let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
 
+            #[cfg(all(feature = "webview-input", target_os = "macos"))]
+            {
+                let input_helper_string = NSString::from_str(INPUT_HELPER_BOOTSTRAP);
+                let input_helper_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let input_helper_script: *mut AnyObject = msg_send![input_helper_script,
+                    initWithSource: &*input_helper_string,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: false];
+
+                let _: () = msg_send![user_content_controller, addUserScript: input_helper_script];
+            }
+
             let message_handler = LingXiaMessageHandler::new(
                 appid.to_string(),
                 path.to_string(),
@@ -2031,20 +2077,65 @@ impl WebViewInner {
         }
     }
 
-    /// Helper method to evaluate JavaScript on main thread
-    fn evaluate_javascript_on_main_thread(&self, js: &str) -> Result<(), WebViewError> {
-        unsafe {
-            let js_string = NSString::from_str(js);
-            let completion =
-                StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
-            // Note: evaluateJavaScript is async, but we're treating it as fire-and-forget
-            // In a more complete implementation, we might want to handle the completion
+    async fn eval_js_raw_string(&self, js: &str) -> Result<String, WebViewScriptError> {
+        let (tx, rx) = oneshot::channel::<Result<String, String>>();
+        let webview_ptr_addr = self.webview as usize;
+        let js_clone = js.to_string();
+
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let js_nsstring = NSString::from_str(&js_clone);
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                let Some(sender) = sender else {
+                    return;
+                };
+
+                if !error.is_null() {
+                    let description: *mut NSString = msg_send![error, localizedDescription];
+                    let description = if description.is_null() {
+                        "Apple evaluateJavaScript returned NSError".to_string()
+                    } else {
+                        (&*description).to_string()
+                    };
+                    let _ = sender.send(Err(description));
+                    return;
+                }
+
+                if result.is_null() {
+                    let _ = sender.send(Err(
+                        "Apple evaluateJavaScript returned null result".to_string()
+                    ));
+                    return;
+                }
+
+                let description: *mut NSString = msg_send![result, description];
+                let text = if description.is_null() {
+                    String::new()
+                } else {
+                    (&*description).to_string()
+                };
+                let _ = sender.send(Ok(text));
+            })
+            .copy();
+
             let _: () = msg_send![
-                self.webview,
-                evaluateJavaScript: &*js_string,
+                webview_ptr,
+                evaluateJavaScript: &*js_nsstring,
                 completionHandler: Some(&*completion)
             ];
-            Ok(())
+        });
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(Ok(raw))) => Ok(raw),
+            Ok(Ok(Err(err))) => Err(WebViewScriptError::Platform(err)),
+            Ok(Err(_)) => Err(WebViewScriptError::Destroyed),
+            Err(_) => Err(WebViewScriptError::Timeout),
         }
     }
 
@@ -2084,6 +2175,7 @@ impl WebViewInner {
     }
 }
 
+#[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
@@ -2134,12 +2226,20 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
+    fn exec_js(&self, js: &str) -> Result<(), WebViewError> {
         if MainThreadMarker::new().is_some() {
-            // Already on main thread, execute directly
-            self.evaluate_javascript_on_main_thread(js)
+            unsafe {
+                let js_string = NSString::from_str(js);
+                let completion =
+                    StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
+                let _: () = msg_send![
+                    self.webview,
+                    evaluateJavaScript: &*js_string,
+                    completionHandler: Some(&*completion)
+                ];
+                Ok(())
+            }
         } else {
-            // Not on main thread, dispatch to main thread using GCD
             let webview_ptr_addr = self.webview as usize;
             let js_clone = js.to_string();
 
@@ -2157,6 +2257,12 @@ impl WebViewController for WebViewInner {
 
             Ok(())
         }
+    }
+
+    async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
+        let wrapped = build_wrapped_eval_script(js)?;
+        let raw = self.eval_js_raw_string(&wrapped).await?;
+        parse_wrapped_eval_result(&raw)
     }
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
@@ -2212,6 +2318,707 @@ impl WebViewController for WebViewInner {
 
             Ok(())
         }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+struct InputHelperElementResult {
+    ok: bool,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default, rename = "centerX")]
+    center_x: f64,
+    #[serde(default, rename = "centerY")]
+    center_y: f64,
+    #[serde(default, rename = "viewportWidth")]
+    viewport_width: f64,
+    #[serde(default, rename = "viewportHeight")]
+    viewport_height: f64,
+    #[serde(default)]
+    visible: bool,
+    #[serde(default)]
+    editable: bool,
+}
+
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+impl WebViewInner {
+    async fn run_input_on_main<T, F>(&self, f: F) -> Result<T, WebViewInputError>
+    where
+        T: Send + 'static,
+        F: FnOnce(usize) -> Result<T, WebViewInputError> + Send + 'static,
+    {
+        let webview_ptr = self.webview as usize;
+        if MainThreadMarker::new().is_some() {
+            return f(webview_ptr);
+        }
+
+        let (tx, rx) = oneshot::channel();
+        DispatchQueue::main().exec_async(move || {
+            let _ = tx.send(f(webview_ptr));
+        });
+        rx.await.map_err(|_| WebViewInputError::Destroyed)?
+    }
+
+    async fn query_helper_element(
+        &self,
+        selector: &str,
+    ) -> Result<InputHelperElementResult, WebViewInputError> {
+        let selector_json = serde_json::to_string(selector)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
+        let expr = format!("window.__LingXiaInput.query_box({selector_json})");
+        let script = build_helper_invocation(&expr);
+        let value = <Self as WebViewController>::eval_js(self, &script)
+            .await
+            .map_err(WebViewInputError::Script)?;
+        let result: InputHelperElementResult = serde_json::from_value(value).map_err(|err| {
+            WebViewInputError::Platform(format!(
+                "Failed to decode input helper element result: {err}"
+            ))
+        })?;
+        if !result.ok {
+            return Err(WebViewInputError::ElementNotFound(
+                result
+                    .error
+                    .unwrap_or_else(|| format!("Element not found: {selector}")),
+            ));
+        }
+        Ok(result)
+    }
+
+    fn webview_screen_point_on_main(
+        webview_ptr: usize,
+        x: f64,
+        y: f64,
+    ) -> Result<CGPoint, WebViewInputError> {
+        unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let bounds = view.bounds();
+            let local_y = if view.isFlipped() {
+                y
+            } else {
+                bounds.size.height - y
+            };
+            let window_point = view.convertPoint_toView(NSPoint::new(x, local_y), None);
+            let window = view.window().ok_or_else(|| {
+                WebViewInputError::Platform("WebView is not attached to a window".to_string())
+            })?;
+            Ok(window.convertPointToScreen(window_point))
+        }
+    }
+
+    async fn webview_center_screen_point(&self) -> Result<CGPoint, WebViewInputError> {
+        self.run_input_on_main(|webview_ptr| unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let bounds = view.bounds();
+            Self::webview_screen_point_on_main(
+                webview_ptr,
+                bounds.size.width / 2.0,
+                bounds.size.height / 2.0,
+            )
+        })
+        .await
+    }
+
+    fn focus_webview_for_input_on_main(webview_ptr: usize) -> Result<(), WebViewInputError> {
+        unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let window = view.window().ok_or_else(|| {
+                WebViewInputError::Platform("WebView is not attached to a window".to_string())
+            })?;
+            let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+            if !app.is_null() {
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+            }
+            window.makeKeyAndOrderFront(None);
+            let responder = &*(webview_ptr as *mut NSResponder);
+            let _ = window.makeFirstResponder(Some(responder));
+        }
+        Ok(())
+    }
+
+    async fn focus_webview_for_input(&self) -> Result<(), WebViewInputError> {
+        self.run_input_on_main(Self::focus_webview_for_input_on_main)
+            .await
+    }
+
+    async fn wait_presentation_update(&self) -> Result<(), WebViewInputError> {
+        let webview_ptr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr as *mut AnyObject;
+            let responds: objc2::runtime::Bool =
+                msg_send![webview, respondsToSelector: objc2::sel!(_doAfterNextPresentationUpdate:)];
+            if !responds.as_bool() {
+                let _ = tx.send(Ok(()));
+                return;
+            }
+
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move || {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                if let Some(sender) = sender {
+                    let _ = sender.send(Ok(()));
+                }
+            })
+            .copy();
+            let _: () = msg_send![webview, _doAfterNextPresentationUpdate: &*completion];
+        });
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
+            Err(_) => Err(WebViewInputError::Platform(
+                "Timed out waiting for WebKit presentation update".to_string(),
+            )),
+        }
+    }
+
+    async fn wait_pending_mouse_events(&self) -> Result<(), WebViewInputError> {
+        let webview_ptr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr as *mut AnyObject;
+            let responds: objc2::runtime::Bool =
+                msg_send![webview, respondsToSelector: objc2::sel!(_doAfterProcessingAllPendingMouseEvents:)];
+            if !responds.as_bool() {
+                let _ = tx.send(Ok(()));
+                return;
+            }
+
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move || {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                if let Some(sender) = sender {
+                    let _ = sender.send(Ok(()));
+                }
+            })
+            .copy();
+            let _: () = msg_send![webview, _doAfterProcessingAllPendingMouseEvents: &*completion];
+        });
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
+            Err(_) => Err(WebViewInputError::Platform(
+                "Timed out waiting for WebKit mouse event queue".to_string(),
+            )),
+        }
+    }
+
+    async fn execute_edit_command(
+        &self,
+        command: &'static str,
+        argument: String,
+    ) -> Result<(), WebViewInputError> {
+        let webview_ptr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr as *mut AnyObject;
+            let responds: objc2::runtime::Bool =
+                msg_send![webview, respondsToSelector: objc2::sel!(_executeEditCommand:argument:completion:)];
+            if !responds.as_bool() {
+                let _ = tx.send(Err(WebViewInputError::Unsupported(
+                    "WKWebView edit commands are unavailable",
+                )));
+                return;
+            }
+
+            let command = NSString::from_str(command);
+            let argument = NSString::from_str(&argument);
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move |success: objc2::runtime::Bool| {
+                let sender = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take());
+                let Some(sender) = sender else {
+                    return;
+                };
+
+                let result = if success.as_bool() {
+                    Ok(())
+                } else {
+                    Err(WebViewInputError::Platform(
+                        "WebKit edit command failed".to_string(),
+                    ))
+                };
+                let _ = sender.send(result);
+            })
+            .copy();
+
+            let _: () = msg_send![
+                webview,
+                _executeEditCommand: &*command,
+                argument: &*argument,
+                completion: Some(&*completion)
+            ];
+        });
+
+        match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
+            Err(_) => Err(WebViewInputError::Platform(format!(
+                "Timed out waiting for WebKit edit command `{command}`"
+            ))),
+        }
+    }
+
+    fn post_mouse_click_at_on_main(
+        webview_ptr: usize,
+        x: f64,
+        y: f64,
+    ) -> Result<(), WebViewInputError> {
+        unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let window = view.window().ok_or_else(|| {
+                WebViewInputError::Platform("WebView is not attached to a window".to_string())
+            })?;
+            let bounds = view.bounds();
+            let local_y = if view.isFlipped() {
+                y
+            } else {
+                bounds.size.height - y
+            };
+            let direct_location = NSPoint::new(x, local_y);
+            let location = view.convertPoint_toView(direct_location, None);
+            let window_number = window.windowNumber();
+            let direct_down = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                NSEventType::LeftMouseDown,
+                direct_location,
+                NSEventModifierFlags::empty(),
+                0.0,
+                window_number,
+                None,
+                0,
+                1,
+                1.0,
+            )
+            .ok_or_else(|| WebViewInputError::Platform("Failed to create direct mouse down event".to_string()))?;
+            let direct_up = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                NSEventType::LeftMouseUp,
+                direct_location,
+                NSEventModifierFlags::empty(),
+                0.0,
+                window_number,
+                None,
+                0,
+                1,
+                1.0,
+            )
+            .ok_or_else(|| WebViewInputError::Platform("Failed to create direct mouse up event".to_string()))?;
+            let down = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                NSEventType::LeftMouseDown,
+                location,
+                NSEventModifierFlags::empty(),
+                0.0,
+                window_number,
+                None,
+                0,
+                1,
+                1.0,
+            )
+            .ok_or_else(|| WebViewInputError::Platform("Failed to create mouse down event".to_string()))?;
+            let up = NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                NSEventType::LeftMouseUp,
+                location,
+                NSEventModifierFlags::empty(),
+                0.0,
+                window_number,
+                None,
+                0,
+                1,
+                1.0,
+            )
+            .ok_or_else(|| WebViewInputError::Platform("Failed to create mouse up event".to_string()))?;
+
+            let webview = webview_ptr as *mut AnyObject;
+            let window_ptr = (&*window) as *const _ as *mut AnyObject;
+            let mut direct_down_ptr: *mut AnyObject = msg_send![
+                direct_down.as_ref() as *const NSEvent as *mut AnyObject,
+                _eventRelativeToWindow: window_ptr
+            ];
+            if direct_down_ptr.is_null() {
+                direct_down_ptr = direct_down.as_ref() as *const NSEvent as *mut AnyObject;
+            }
+            let mut direct_up_ptr: *mut AnyObject = msg_send![
+                direct_up.as_ref() as *const NSEvent as *mut AnyObject,
+                _eventRelativeToWindow: window_ptr
+            ];
+            if direct_up_ptr.is_null() {
+                direct_up_ptr = direct_up.as_ref() as *const NSEvent as *mut AnyObject;
+            }
+            let _: () = msg_send![webview, mouseDown: direct_down_ptr];
+            let _: () = msg_send![webview, mouseUp: direct_up_ptr];
+
+            let mut down_ptr: *mut AnyObject = msg_send![
+                down.as_ref() as *const NSEvent as *mut AnyObject,
+                _eventRelativeToWindow: window_ptr
+            ];
+            if down_ptr.is_null() {
+                down_ptr = down.as_ref() as *const NSEvent as *mut AnyObject;
+            }
+            let mut up_ptr: *mut AnyObject = msg_send![
+                up.as_ref() as *const NSEvent as *mut AnyObject,
+                _eventRelativeToWindow: window_ptr
+            ];
+            if up_ptr.is_null() {
+                up_ptr = up.as_ref() as *const NSEvent as *mut AnyObject;
+            }
+            let _: () = msg_send![&*window, sendEvent: down_ptr];
+            let _: () = msg_send![&*window, sendEvent: up_ptr];
+        }
+        Ok(())
+    }
+
+    async fn post_mouse_click_at(&self, x: f64, y: f64) -> Result<(), WebViewInputError> {
+        self.run_input_on_main(move |webview_ptr| {
+            Self::post_mouse_click_at_on_main(webview_ptr, x, y)
+        })
+        .await?;
+        self.wait_pending_mouse_events().await
+    }
+
+    fn post_scroll_at_on_main(
+        webview_ptr: usize,
+        _point: CGPoint,
+        dx: f64,
+        dy: f64,
+    ) -> Result<(), WebViewInputError> {
+        unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let window = view.window().ok_or_else(|| {
+                WebViewInputError::Platform("WebView is not attached to a window".to_string())
+            })?;
+            let bounds = view.bounds();
+            let center = NSPoint::new(bounds.size.width / 2.0, bounds.size.height / 2.0);
+            let window_point = view.convertPoint_toView(center, None);
+            let screen_point = window.convertPointToScreen(window_point);
+            let main_display_height = CGDisplayBounds(CGMainDisplayID()).size.height;
+            let cg_point = CGPoint {
+                x: screen_point.x,
+                y: main_display_height - screen_point.y,
+            };
+
+            // CGEventCreateScrollWheelEvent's wheel order is vertical, then horizontal.
+            // Positive API dy means scroll viewport down, so the native wheel delta is negated.
+            let event_ref = CGEventCreateScrollWheelEvent(
+                std::ptr::null_mut(),
+                0,
+                2,
+                (-dy).round() as i32,
+                (-dx).round() as i32,
+            )
+            .ok_or_else(|| {
+                WebViewInputError::Platform("Failed to create scroll event".to_string())
+            })?;
+            let event = CFRetained::<CGEvent>::from_raw(event_ref);
+            CGEvent::set_location(Some(event.as_ref()), cg_point);
+
+            let ns_event = NSEvent::eventWithCGEvent(event.as_ref()).ok_or_else(|| {
+                WebViewInputError::Platform("Failed to convert scroll event".to_string())
+            })?;
+            let ns_event_ptr = ns_event.as_ref() as *const NSEvent as *mut AnyObject;
+            let window_ptr = (&*window) as *const _ as *mut AnyObject;
+            let relative_event: *mut AnyObject =
+                msg_send![ns_event_ptr, _eventRelativeToWindow: window_ptr];
+            if relative_event.is_null() {
+                return Err(WebViewInputError::Platform(
+                    "Failed to attach scroll event to window".to_string(),
+                ));
+            }
+            let webview = webview_ptr as *mut AnyObject;
+            let _: () = msg_send![webview, scrollWheel: relative_event];
+        }
+        Ok(())
+    }
+
+    async fn post_scroll_at(
+        &self,
+        point: CGPoint,
+        dx: f64,
+        dy: f64,
+    ) -> Result<(), WebViewInputError> {
+        self.wait_presentation_update().await?;
+        self.run_input_on_main(move |webview_ptr| {
+            Self::post_scroll_at_on_main(webview_ptr, point, dx, dy)
+        })
+        .await?;
+        self.wait_presentation_update().await
+    }
+
+    async fn post_unicode_text(&self, text: &str) -> Result<(), WebViewInputError> {
+        let text = text.to_string();
+        self.run_input_on_main(move |webview_ptr| {
+            for ch in text.chars() {
+                Self::post_appkit_key_on_main(
+                    webview_ptr,
+                    &ch.to_string(),
+                    0,
+                    NSEventModifierFlags::empty(),
+                )?;
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    fn post_appkit_key_on_main(
+        webview_ptr: usize,
+        characters: &str,
+        key_code: u16,
+        flags: NSEventModifierFlags,
+    ) -> Result<(), WebViewInputError> {
+        let (window, location) = unsafe {
+            let view = &*(webview_ptr as *mut NSView);
+            let window = view.window().ok_or_else(|| {
+                WebViewInputError::Platform("WebView is not attached to a window".to_string())
+            })?;
+            (window, NSPoint::new(0.0, 0.0))
+        };
+        let chars = NSString::from_str(characters);
+        let window_number = window.windowNumber();
+        let down = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+            NSEventType::KeyDown,
+            location,
+            flags,
+            0.0,
+            window_number,
+            None,
+            &chars,
+            &chars,
+            false,
+            key_code,
+        )
+        .ok_or_else(|| WebViewInputError::Platform("Failed to create key down event".to_string()))?;
+        let up = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+            NSEventType::KeyUp,
+            location,
+            flags,
+            0.0,
+            window_number,
+            None,
+            &chars,
+            &chars,
+            false,
+            key_code,
+        )
+        .ok_or_else(|| WebViewInputError::Platform("Failed to create key up event".to_string()))?;
+        unsafe {
+            let webview = webview_ptr as *mut AnyObject;
+            let down_ptr = down.as_ref() as *const NSEvent as *mut AnyObject;
+            let up_ptr = up.as_ref() as *const NSEvent as *mut AnyObject;
+            let _: () = msg_send![webview, keyDown: down_ptr];
+            let _: () = msg_send![webview, keyUp: up_ptr];
+        }
+        Ok(())
+    }
+
+    async fn post_appkit_key(
+        &self,
+        characters: String,
+        key_code: u16,
+        flags: NSEventModifierFlags,
+    ) -> Result<(), WebViewInputError> {
+        self.run_input_on_main(move |webview_ptr| {
+            Self::post_appkit_key_on_main(webview_ptr, &characters, key_code, flags)
+        })
+        .await
+    }
+
+    async fn post_special_key(&self, key_code: u16) -> Result<(), WebViewInputError> {
+        self.post_appkit_key(
+            Self::key_char_for_code(key_code).to_string(),
+            key_code,
+            NSEventModifierFlags::empty(),
+        )
+        .await
+    }
+
+    async fn clear_focused_text(&self) -> Result<(), WebViewInputError> {
+        self.execute_edit_command("SelectAll", String::new())
+            .await?;
+        self.execute_edit_command("DeleteBackward", String::new())
+            .await
+    }
+
+    fn edit_command_for_key(key_code: u16) -> Option<&'static str> {
+        match key_code {
+            36 => Some("InsertNewline"),
+            48 => Some("InsertTab"),
+            51 => Some("DeleteBackward"),
+            115 => Some("MoveToBeginningOfLine"),
+            116 => Some("ScrollPageBackward"),
+            117 => Some("DeleteForward"),
+            119 => Some("MoveToEndOfLine"),
+            121 => Some("ScrollPageForward"),
+            123 => Some("MoveLeft"),
+            124 => Some("MoveRight"),
+            125 => Some("MoveDown"),
+            126 => Some("MoveUp"),
+            _ => None,
+        }
+    }
+
+    fn key_char_for_code(key_code: u16) -> &'static str {
+        match key_code {
+            36 => "\r",
+            48 => "\t",
+            49 => " ",
+            51 => "\u{7f}",
+            53 => "\u{1b}",
+            115 => "\u{f729}",
+            116 => "\u{f72c}",
+            117 => "\u{f728}",
+            119 => "\u{f72b}",
+            121 => "\u{f72d}",
+            123 => "\u{f702}",
+            124 => "\u{f703}",
+            125 => "\u{f701}",
+            126 => "\u{f700}",
+            _ => "",
+        }
+    }
+
+    fn scroll_delta(center: f64, viewport: f64) -> f64 {
+        if !center.is_finite() || !viewport.is_finite() || viewport <= 0.0 {
+            return 0.0;
+        }
+        (center - (viewport / 2.0)).clamp(-900.0, 900.0)
+    }
+
+    async fn ensure_element_visible(
+        &self,
+        selector: &str,
+    ) -> Result<InputHelperElementResult, WebViewInputError> {
+        let point = self.webview_center_screen_point().await?;
+        for _ in 0..12 {
+            let result = self.query_helper_element(selector).await?;
+            if result.visible {
+                return Ok(result);
+            }
+            let dx = Self::scroll_delta(result.center_x, result.viewport_width);
+            let dy = Self::scroll_delta(result.center_y, result.viewport_height);
+            if dx.abs() < 1.0 && dy.abs() < 1.0 {
+                break;
+            }
+            self.focus_webview_for_input().await?;
+            self.post_scroll_at(point, dx, dy).await?;
+            tokio::time::sleep(Duration::from_millis(80)).await;
+        }
+        let result = self.query_helper_element(selector).await?;
+        if result.visible {
+            Ok(result)
+        } else {
+            Err(WebViewInputError::ElementNotInteractable(format!(
+                "Element not visible: {selector}"
+            )))
+        }
+    }
+
+    pub(crate) async fn click_inner(
+        &self,
+        selector: &str,
+        _options: ClickOptions,
+    ) -> Result<(), WebViewInputError> {
+        let result = self.ensure_element_visible(selector).await?;
+        self.focus_webview_for_input().await?;
+        self.post_mouse_click_at(result.center_x, result.center_y)
+            .await?;
+        Ok(())
+    }
+
+    pub(crate) async fn type_text_inner(
+        &self,
+        selector: &str,
+        text: &str,
+        options: TypeOptions,
+    ) -> Result<(), WebViewInputError> {
+        let result = self.ensure_element_visible(selector).await?;
+        if !result.editable {
+            return Err(WebViewInputError::ElementNotInteractable(format!(
+                "Element is not editable: {selector}"
+            )));
+        }
+        let _ = options;
+        self.focus_webview_for_input().await?;
+        self.post_mouse_click_at(result.center_x, result.center_y)
+            .await?;
+        tokio::time::sleep(Duration::from_millis(32)).await;
+        self.clear_focused_text().await?;
+        tokio::time::sleep(Duration::from_millis(16)).await;
+        if !text.is_empty() {
+            self.execute_edit_command("InsertText", text.to_string())
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn press_inner(
+        &self,
+        key: &str,
+        _options: PressOptions,
+    ) -> Result<(), WebViewInputError> {
+        self.focus_webview_for_input().await?;
+        let normalized = key.trim().to_ascii_lowercase();
+        let mapped = match normalized.as_str() {
+            "enter" | "return" => Some(36),
+            "tab" => Some(48),
+            "space" => Some(49),
+            "backspace" | "delete" => Some(51),
+            "escape" | "esc" => Some(53),
+            "home" => Some(115),
+            "pageup" => Some(116),
+            "forwarddelete" => Some(117),
+            "end" => Some(119),
+            "pagedown" => Some(121),
+            "arrowleft" | "left" => Some(123),
+            "arrowright" | "right" => Some(124),
+            "arrowdown" | "down" => Some(125),
+            "arrowup" | "up" => Some(126),
+            _ => None,
+        };
+        if let Some(key_code) = mapped {
+            if let Some(command) = Self::edit_command_for_key(key_code) {
+                self.execute_edit_command(command, String::new()).await
+            } else {
+                self.post_special_key(key_code).await
+            }
+        } else if key.chars().count() == 1 {
+            self.post_unicode_text(key).await
+        } else {
+            Err(WebViewInputError::Unsupported("unsupported macOS key name"))
+        }
+    }
+
+    pub(crate) async fn scroll_inner(
+        &self,
+        dx: f64,
+        dy: f64,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        self.focus_webview_for_input().await?;
+        let point = self.webview_center_screen_point().await?;
+        self.post_scroll_at(point, dx, dy).await?;
+        Ok(())
+    }
+
+    pub(crate) async fn scroll_to_inner(
+        &self,
+        selector: &str,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        let _ = self.ensure_element_visible(selector).await?;
+        Ok(())
     }
 }
 
@@ -2342,7 +3149,7 @@ define_class!(
                                     Err(err) => {
                                         log::error!(
                                             "Failed to serialize dictionary to JSON: {}",
-                                            err.localizedDescription().to_string()
+                                            err.localizedDescription()
                                         );
                                         return;
                                     }

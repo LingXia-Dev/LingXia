@@ -10,6 +10,51 @@ pub enum WebViewError {
     InvalidCreateOptions(String),
 }
 
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum WebViewScriptError {
+    #[error("JavaScript error: {0}")]
+    Js(String),
+
+    #[error("JavaScript evaluation timed out")]
+    Timeout,
+
+    #[error("JavaScript evaluation unsupported: {0}")]
+    Unsupported(&'static str),
+
+    #[error("WebView destroyed during JavaScript evaluation")]
+    Destroyed,
+
+    #[error("Navigation changed during JavaScript evaluation")]
+    NavigationChanged,
+
+    #[error("Platform JavaScript evaluation error: {0}")]
+    Platform(String),
+}
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum WebViewInputError {
+    #[error(transparent)]
+    Script(#[from] WebViewScriptError),
+
+    #[error("Element not found: {0}")]
+    ElementNotFound(String),
+
+    #[error("Element not interactable: {0}")]
+    ElementNotInteractable(String),
+
+    #[error("Input unsupported: {0}")]
+    Unsupported(&'static str),
+
+    #[error("WebView destroyed during input handling")]
+    Destroyed,
+
+    #[error("Navigation changed during input handling")]
+    NavigationChanged,
+
+    #[error("Platform input error: {0}")]
+    Platform(String),
+}
+
 /// Log levels for WebView logging
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogLevel {
@@ -20,6 +65,7 @@ pub enum LogLevel {
     Error,
 }
 
+mod input_helper;
 mod traits;
 mod webview;
 
@@ -35,9 +81,10 @@ mod harmony;
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use traits::{
-    DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse, LoadDataRequest,
-    LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy, SchemeOutcome, SystemPipeReader,
-    WebResourceBody, WebResourceResponse, WebViewController, WebViewDelegate,
+    ClickOptions, DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse,
+    LoadDataRequest, LoadError, LoadErrorKind, NavigationPolicy, NewWindowPolicy, PressOptions,
+    SchemeOutcome, ScrollOptions, SystemPipeReader, TypeOptions, WebResourceBody,
+    WebResourceResponse, WebViewController, WebViewDelegate, WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
@@ -54,6 +101,10 @@ pub mod runtime {
 
     pub fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
         webview::find_webview(webtag)
+    }
+
+    pub fn list_webviews() -> Vec<WebTag> {
+        webview::list_webviews()
     }
 
     pub fn destroy_webview(webtag: &WebTag) {

@@ -14,7 +14,7 @@ use std::fs;
 use std::sync::Arc;
 
 // Import from webview.rs
-use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner};
+use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner, complete_pending_eval_request};
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
@@ -92,6 +92,28 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
             delegate.on_page_finished();
         }
         Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onEvaluateJavascriptResult(
+    mut env: EnvUnowned,
+    _this: JObject,
+    request_id: jlong,
+    value: JString,
+    error: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let request_id = request_id as u64;
+        let value: String = value.try_to_string(env)?;
+        let error: String = error.try_to_string(env)?;
+        if error.trim().is_empty() {
+            complete_pending_eval_request(request_id, Ok(value));
+        } else {
+            complete_pending_eval_request(request_id, Err(error));
+        }
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

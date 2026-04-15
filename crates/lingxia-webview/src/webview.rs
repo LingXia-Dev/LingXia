@@ -17,12 +17,15 @@ use crate::apple::WebViewInner;
 use crate::harmony::WebViewInner;
 
 use crate::traits::{
-    AsyncSchemeHandler, DownloadHandler, DownloadRequest, FileChooserRequest, FileChooserResponse,
-    NavigationHandler, NavigationPolicy, NewWindowHandler, NewWindowPolicy, SchemeOutcome,
+    AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
+    FileChooserResponse, NavigationHandler, NavigationPolicy, NewWindowHandler, NewWindowPolicy,
+    PressOptions, SchemeOutcome, ScrollOptions, TypeOptions, WebViewInputController,
 };
 use crate::{
     LoadDataRequest, WebResourceResponse, WebViewController, WebViewDelegate, WebViewError,
+    WebViewInputError, WebViewScriptError,
 };
+use async_trait::async_trait;
 
 fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
     match mutex.lock() {
@@ -806,8 +809,54 @@ impl WebView {
     pub fn get_java_webview(&self) -> &jni::objects::Global<jni::objects::JObject<'static>> {
         self.inner.get_java_webview()
     }
+
+    pub async fn evaluate_javascript(
+        &self,
+        js: &str,
+    ) -> Result<serde_json::Value, crate::WebViewScriptError> {
+        self.inner.eval_js(js).await
+    }
+
+    pub async fn click(
+        &self,
+        selector: &str,
+        options: ClickOptions,
+    ) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::click(self, selector, options).await
+    }
+
+    pub async fn type_text(
+        &self,
+        selector: &str,
+        text: &str,
+        options: TypeOptions,
+    ) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::type_text(self, selector, text, options).await
+    }
+
+    pub async fn press(&self, key: &str, options: PressOptions) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::press(self, key, options).await
+    }
+
+    pub async fn scroll(
+        &self,
+        dx: f64,
+        dy: f64,
+        options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::scroll(self, dx, dy, options).await
+    }
+
+    pub async fn scroll_to(
+        &self,
+        selector: &str,
+        options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::scroll_to(self, selector, options).await
+    }
 }
 
+#[async_trait]
 impl WebViewController for WebView {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         self.inner.load_url(url)
@@ -817,8 +866,12 @@ impl WebViewController for WebView {
         self.inner.load_data(request)
     }
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
-        self.inner.evaluate_javascript(js)
+    fn exec_js(&self, js: &str) -> Result<(), WebViewError> {
+        self.inner.exec_js(js)
+    }
+
+    async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
+        self.inner.eval_js(js).await
     }
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
@@ -831,6 +884,82 @@ impl WebViewController for WebView {
 
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         self.inner.set_user_agent(ua)
+    }
+}
+
+#[async_trait]
+impl WebViewInputController for WebView {
+    async fn click(
+        &self,
+        _selector: &str,
+        _options: ClickOptions,
+    ) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.click_inner(_selector, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn type_text(
+        &self,
+        _selector: &str,
+        _text: &str,
+        _options: TypeOptions,
+    ) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.type_text_inner(_selector, _text, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn press(&self, _key: &str, _options: PressOptions) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.press_inner(_key, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn scroll(
+        &self,
+        _dx: f64,
+        _dy: f64,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.scroll_inner(_dx, _dy, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn scroll_to(
+        &self,
+        _selector: &str,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            return self.inner.scroll_to_inner(_selector, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
     }
 }
 
@@ -1047,17 +1176,17 @@ fn apply_http_proxy_platform(
 ) -> Result<ProxyApplyReport, WebViewError> {
     #[cfg(target_os = "android")]
     {
-        return crate::android::apply_http_proxy(config);
+        crate::android::apply_http_proxy(config)
     }
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
-        return crate::apple::apply_http_proxy(config);
+        crate::apple::apply_http_proxy(config)
     }
 
     #[cfg(all(target_os = "linux", target_env = "ohos"))]
     {
-        return crate::harmony::apply_http_proxy(config);
+        crate::harmony::apply_http_proxy(config)
     }
 
     #[cfg(not(any(
@@ -1371,6 +1500,17 @@ pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     } else {
         None
     }
+}
+
+pub(crate) fn list_webviews() -> Vec<WebTag> {
+    if let Some(instances) = WEBVIEW_INSTANCES.get()
+        && let Ok(webviews) = instances.lock()
+    {
+        let mut tags: Vec<WebTag> = webviews.values().map(|webview| webview.webtag()).collect();
+        tags.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        return tags;
+    }
+    Vec::new()
 }
 
 #[cfg(any(

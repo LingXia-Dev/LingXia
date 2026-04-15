@@ -638,6 +638,43 @@ public class LingXiaWebView extends WebView {
         });
     }
 
+    public void evaluateJavascriptWithResult(String script, long requestId) {
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    LingXiaWebView.super.evaluateJavascript(
+                        script,
+                        new ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String value) {
+                                try {
+                                    onEvaluateJavascriptResult(
+                                        requestId,
+                                        value != null ? value : "null",
+                                        ""
+                                    );
+                                } catch (Throwable callbackError) {
+                                    Log.e(TAG, "Failed to forward evaluateJavascript result", callbackError);
+                                }
+                            }
+                        }
+                    );
+                } catch (Throwable error) {
+                    try {
+                        onEvaluateJavascriptResult(
+                            requestId,
+                            "null",
+                            error.getMessage() != null ? error.getMessage() : error.toString()
+                        );
+                    } catch (Throwable callbackError) {
+                        Log.e(TAG, "Failed to forward evaluateJavascript error", callbackError);
+                    }
+                }
+            }
+        });
+    }
+
     public boolean openFileChooser(
         final ValueCallback<android.net.Uri[]> filePathCallback,
         final WebChromeClient.FileChooserParams fileChooserParams
@@ -842,6 +879,7 @@ public class LingXiaWebView extends WebView {
         long contentLength,
         String cookie
     );
+    native void onEvaluateJavascriptResult(long requestId, String value, String error);
     native int handlePostMessage(String appId, String path, long sessionId, String message);
     native static void notifyWebViewReady(String appId, String path, long sessionId, Object webView);
 }

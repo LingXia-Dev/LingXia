@@ -8,7 +8,12 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "webview", "lxapp", "cross-platform"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = []
+webview-input = []
+
 [dependencies]
+async-trait = "0.1"
 log = { workspace = true }
 thiserror =  { workspace = true }
 
@@ -16,7 +21,7 @@ thiserror =  { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 http = { workspace = true }
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 
 # Android-specific dependencies
 [target.'cfg(target_os = "android")'.dependencies]
@@ -35,6 +40,12 @@ objc2-foundation = "0.3"
 block2 = "0.6"
 # GCD dispatch for main thread operations
 dispatch2 = "0.3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3", default-features = false, features = ["NSEvent", "NSGraphicsContext", "NSResponder", "NSView", "NSWindow", "objc2-core-graphics"] }
+objc2-core-foundation = "0.3"
+objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGBase", "CGEvent", "CGEventSource", "CGEventTypes", "CGGeometry", "CGRemoteOperation", "libc", "objc2"] }
+libc = "0.2"
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 base64 = { workspace = true }

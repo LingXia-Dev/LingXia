@@ -1,4 +1,6 @@
-use crate::{LogLevel, WebViewError};
+use crate::{LogLevel, WebViewError, WebViewInputError, WebViewScriptError};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -138,6 +140,7 @@ impl SystemPipeReader {
 }
 
 /// Interface for controlling WebView (100% copy from lxapp)
+#[async_trait]
 pub trait WebViewController: Send + Sync {
     /// Load a URL in the WebView
     fn load_url(&self, url: &str) -> Result<(), WebViewError>;
@@ -145,8 +148,11 @@ pub trait WebViewController: Send + Sync {
     /// Load HTML data into the WebView.
     fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError>;
 
-    /// Evaluate JavaScript in the WebView
-    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError>;
+    /// Execute JavaScript in the WebView without observing its return value.
+    fn exec_js(&self, js: &str) -> Result<(), WebViewError>;
+
+    /// Evaluate JavaScript in the WebView and return the decoded JSON value.
+    async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError>;
 
     /// Post a message to the WebView
     fn post_message(&self, message: &str) -> Result<(), WebViewError>;
@@ -156,6 +162,69 @@ pub trait WebViewController: Send + Sync {
 
     /// Set the user agent string for the WebView
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ClickOptions;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TypeOptions;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PressOptions;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScrollOptions;
+
+#[async_trait]
+pub trait WebViewInputController: WebViewController {
+    async fn click(
+        &self,
+        _selector: &str,
+        _options: ClickOptions,
+    ) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn type_text(
+        &self,
+        _selector: &str,
+        _text: &str,
+        _options: TypeOptions,
+    ) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn press(&self, _key: &str, _options: PressOptions) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn scroll(
+        &self,
+        _dx: f64,
+        _dy: f64,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn scroll_to(
+        &self,
+        _selector: &str,
+        _options: ScrollOptions,
+    ) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

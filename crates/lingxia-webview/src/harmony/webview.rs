@@ -3,6 +3,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
+use crate::input_helper::{build_wrapped_eval_script, parse_wrapped_eval_result};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
 };
@@ -11,13 +12,20 @@ use crate::webview::{
     WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_delegate,
     register_webview,
 };
-use crate::{DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError};
+use crate::{
+    DownloadRequest, LoadDataRequest, LogLevel, WebViewController, WebViewError, WebViewScriptError,
+};
+use async_trait::async_trait;
 use ohos_web_sys::*;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
+use tokio::sync::oneshot;
+use tokio::time::timeout;
 
 fn encode_options_token(options: &EffectiveWebViewCreateOptions) -> Result<String, WebViewError> {
     let json = serde_json::to_vec(options).map_err(|e| {
@@ -186,6 +194,91 @@ fn get_message_api() -> Result<&'static ArkWeb_WebMessageAPI, WebViewError> {
 }
 
 type WebViewCreationSender = WebViewCreateSender;
+type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
+
+enum PendingEvalResponse {
+    Success(String),
+    Failure(String),
+    Destroyed,
+}
+
+struct PendingEvalEntry {
+    webtag: String,
+    sender: oneshot::Sender<PendingEvalResponse>,
+}
+
+static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
+static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn pending_eval_requests() -> &'static PendingEvalRequests {
+    PENDING_EVAL_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+fn complete_pending_eval_request(request_id: u64, result: Result<String, String>) {
+    if let Ok(mut pending) = pending_eval_requests().lock()
+        && let Some(entry) = pending.remove(&request_id)
+    {
+        let message = match result {
+            Ok(value) => PendingEvalResponse::Success(value),
+            Err(error) => PendingEvalResponse::Failure(error),
+        };
+        let _ = entry.sender.send(message);
+    }
+}
+
+fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
+    if let Ok(mut pending) = pending_eval_requests().lock() {
+        let matching = pending
+            .iter()
+            .filter_map(|(request_id, entry)| {
+                (entry.webtag == webtag.as_str()).then_some(*request_id)
+            })
+            .collect::<Vec<_>>();
+        for request_id in matching {
+            if let Some(entry) = pending.remove(&request_id) {
+                let _ = entry.sender.send(PendingEvalResponse::Destroyed);
+            }
+        }
+    }
+}
+
+unsafe extern "C" fn on_evaluate_javascript_callback(
+    _web_tag: *const c_char,
+    data: *const ArkWeb_JavaScriptBridgeData,
+    user_data: *mut c_void,
+) {
+    if user_data.is_null() {
+        log::warn!("evaluate_javascript callback missing user_data");
+        return;
+    }
+    let request_id = unsafe { *Box::from_raw(user_data as *mut u64) };
+    if data.is_null() {
+        complete_pending_eval_request(
+            request_id,
+            Err("Harmony JavaScript callback returned null data".to_string()),
+        );
+        return;
+    }
+
+    let bridge = unsafe { &*data };
+    if bridge.buffer.is_null() {
+        complete_pending_eval_request(
+            request_id,
+            Err("Harmony JavaScript callback missing buffer".to_string()),
+        );
+        return;
+    }
+
+    let bytes = unsafe { std::slice::from_raw_parts(bridge.buffer, bridge.size) };
+    match std::str::from_utf8(bytes) {
+        Ok(text) => complete_pending_eval_request(request_id, Ok(text.to_string())),
+        Err(err) => complete_pending_eval_request(
+            request_id,
+            Err(format!("Harmony JavaScript callback invalid UTF-8: {err}")),
+        ),
+    }
+}
 
 #[derive(Debug, Default, Clone, Copy)]
 struct WebMessagePorts {
@@ -304,6 +397,7 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
 /// rather than the low-level ArkWeb onDestroy callback to avoid double free.
 pub fn webview_controller_destroyed(webtag_str: &str) {
     let webtag = WebTag::from(webtag_str);
+    fail_pending_eval_requests_for_webtag(&webtag);
     if let Some(webview) = find_webview(&webtag) {
         // Allow callbacks to be re-registered if a new controller is later created
         *webview.inner.callbacks_registered.borrow_mut() = false;
@@ -845,6 +939,7 @@ impl WebViewInner {
     }
 }
 
+#[async_trait]
 impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         let ark_tag = self.ark_webtag_string();
@@ -888,40 +983,82 @@ impl WebViewController for WebViewInner {
         }
     }
 
-    fn evaluate_javascript(&self, js: &str) -> Result<(), WebViewError> {
-        // Evaluate JS via ArkWeb controller API directly.
+    fn exec_js(&self, js: &str) -> Result<(), WebViewError> {
+        self.dispatch_javascript_without_result(js)
+    }
+
+    async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError> {
+        let wrapped = build_wrapped_eval_script(js)?;
+        let request_id = NEXT_EVAL_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        pending_eval_requests()
+            .lock()
+            .map_err(|_| {
+                WebViewScriptError::Platform("Harmony pending eval_js map poisoned".to_string())
+            })?
+            .insert(
+                request_id,
+                PendingEvalEntry {
+                    webtag: self.webtag.to_string(),
+                    sender: tx,
+                },
+            );
+
         unsafe {
             let ark_webtag = self.ark_webtag_string();
-            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
-
-            // Get Controller API
+            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)
+                .map_err(|err| WebViewScriptError::Platform(err.to_string()))?;
             let controller_api =
                 OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
             if controller_api.is_null() {
-                return Err(WebViewError::WebView(
-                    "Failed to get Controller API".to_string(),
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Platform(
+                    "Failed to get Harmony Controller API".to_string(),
                 ));
             }
             let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
-
-            // Execute the actual JavaScript
-            let js_cstr = cstring_from_str("evaluate_javascript.js", js)?;
+            let js_cstr = cstring_from_str("evaluate_javascript.js", &wrapped)
+                .map_err(|err| WebViewScriptError::Platform(err.to_string()))?;
+            let user_data = Box::into_raw(Box::new(request_id)) as *mut c_void;
             let js_object = ArkWeb_JavaScriptObject {
-                buffer: js_cstr.as_ptr() as *mut u8,
-                size: js.len(),
-                callback: None,
-                userData: std::ptr::null_mut(),
+                buffer: js_cstr.as_ptr() as *const u8,
+                size: wrapped.len(),
+                callback: Some(on_evaluate_javascript_callback),
+                userData: user_data,
             };
 
             if let Some(run_js) = controller.runJavaScript {
                 run_js(web_tag_cstr.as_ptr(), &js_object);
-                Ok(())
             } else {
-                Err(WebViewError::WebView(
-                    "runJavaScript function not available".to_string(),
-                ))
+                let _ = Box::from_raw(user_data as *mut u64);
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Platform(
+                    "Harmony runJavaScript function not available".to_string(),
+                ));
             }
         }
+
+        let raw = match timeout(EVAL_TIMEOUT, rx).await {
+            Ok(Ok(PendingEvalResponse::Success(raw))) => raw,
+            Ok(Ok(PendingEvalResponse::Failure(err))) => {
+                return Err(WebViewScriptError::Platform(err));
+            }
+            Ok(Ok(PendingEvalResponse::Destroyed)) => return Err(WebViewScriptError::Destroyed),
+            Ok(Err(_)) => return Err(WebViewScriptError::Destroyed),
+            Err(_) => {
+                if let Ok(mut pending) = pending_eval_requests().lock() {
+                    pending.remove(&request_id);
+                }
+                return Err(WebViewScriptError::Timeout);
+            }
+        };
+
+        parse_wrapped_eval_result(&raw)
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
@@ -1078,10 +1215,42 @@ impl WebViewInner {
             retry_result
         )))
     }
+
+    fn dispatch_javascript_without_result(&self, js: &str) -> Result<(), WebViewError> {
+        unsafe {
+            let ark_webtag = self.ark_webtag_string();
+            let web_tag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
+            let controller_api =
+                OH_ArkWeb_GetNativeAPI(ArkWeb_NativeAPIVariantKind_ARKWEB_NATIVE_CONTROLLER);
+            if controller_api.is_null() {
+                return Err(WebViewError::WebView(
+                    "Failed to get Controller API".to_string(),
+                ));
+            }
+            let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
+            let js_cstr = cstring_from_str("evaluate_javascript.js", js)?;
+            let js_object = ArkWeb_JavaScriptObject {
+                buffer: js_cstr.as_ptr() as *const u8,
+                size: js.len(),
+                callback: None,
+                userData: std::ptr::null_mut(),
+            };
+
+            if let Some(run_js) = controller.runJavaScript {
+                run_js(web_tag_cstr.as_ptr(), &js_object);
+                Ok(())
+            } else {
+                Err(WebViewError::WebView(
+                    "runJavaScript function not available".to_string(),
+                ))
+            }
+        }
+    }
 }
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
+        fail_pending_eval_requests_for_webtag(&self.webtag);
         // Cleanup all tracked scheme handlers first
         self.cleanup_scheme_handlers();
 
@@ -1354,7 +1523,9 @@ fn inject_console_script(webtag: &WebTag) -> Result<(), WebViewError> {
         WebViewError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
-    webview.inner.evaluate_javascript(console_script)
+    webview
+        .inner
+        .dispatch_javascript_without_result(console_script)
 }
 
 /// WebMessage callback
