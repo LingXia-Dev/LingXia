@@ -1,14 +1,16 @@
+mod react;
 mod vite_assets;
 mod vite_html;
 mod vite_pipeline;
 mod vite_tooling;
+mod vue;
 
 pub(crate) use vite_assets::configured_native_rust_dir;
 
 use crate::lxapp::framework::{PageAction, PageActionMode, ProjectFramework};
 use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::Project;
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use indicatif::ProgressBar;
 use oxc_allocator::Allocator;
 use oxc_ast::ast::{BindingPattern, Expression, ObjectPropertyKind, PropertyKey, Statement};
@@ -150,29 +152,16 @@ struct ViewDirectLxUse {
     origin: &'static str,
 }
 
-#[derive(Debug, Clone)]
-struct VueTemplateExpression {
-    source: String,
-    line: usize,
-}
-
-#[derive(Debug, Clone)]
-struct VueSfcSections {
-    script: String,
-    script_source_type: SourceType,
-    template: String,
-}
-
 #[derive(Debug, Default, Clone)]
-struct ViewBindingAnalyzer {
-    action_object_aliases: HashSet<String>,
-    local_action_aliases: HashMap<String, String>,
-    used_actions: BTreeSet<String>,
-    direct_lx_uses: Vec<(usize, String)>,
+pub(super) struct ViewBindingAnalyzer {
+    pub(super) action_object_aliases: HashSet<String>,
+    pub(super) local_action_aliases: HashMap<String, String>,
+    pub(super) used_actions: BTreeSet<String>,
+    pub(super) direct_lx_uses: Vec<(usize, String)>,
 }
 
 impl ViewBindingAnalyzer {
-    fn with_bindings(
+    pub(super) fn with_bindings(
         action_object_aliases: HashSet<String>,
         local_action_aliases: HashMap<String, String>,
     ) -> Self {
@@ -279,6 +268,10 @@ impl ViewBindingAnalyzer {
 
     fn resolve_action_member(&self, expression: &Expression<'_>) -> Option<String> {
         match expression {
+            Expression::Identifier(identifier) => self
+                .local_action_aliases
+                .get(identifier.name.as_str())
+                .cloned(),
             Expression::StaticMemberExpression(member) => {
                 let Expression::Identifier(identifier) = unwrap_expression(&member.object) else {
                     return None;
@@ -296,6 +289,9 @@ impl<'a> Visit<'a> for ViewBindingAnalyzer {
     fn visit_variable_declarator(&mut self, it: &oxc_ast::ast::VariableDeclarator<'a>) {
         if let Some(init) = &it.init {
             self.register_binding_from_init(&it.id, init);
+            if let Some(action_name) = self.resolve_action_member(init) {
+                self.used_actions.insert(action_name);
+            }
         }
         walk::walk_variable_declarator(self, it);
     }
@@ -343,73 +339,15 @@ pub(crate) fn validate_component_view_bindings(
     actions: &[PageAction],
 ) -> Result<ViewUsageAudit> {
     match project.framework {
-        ProjectFramework::React => {
-            let source_path = project.root.join(page_path);
-            let source = fs::read_to_string(&source_path)
-                .with_context(|| format!("Failed to read {}", source_path.display()))?;
-            let source_type = SourceType::from_path(&source_path)
-                .map_err(|_| anyhow!("Unsupported view file {}", source_path.display()))?;
-            let analyzer = analyze_script_bindings(&source, source_type, None)
-                .with_context(|| format!("Failed to analyze {}", source_path.display()))?;
-            ensure_no_direct_lx_usage(page_path, &source, &analyzer.direct_lx_uses, "script")?;
-            ensure_used_actions_exist(page_path, actions, &analyzer.used_actions)?;
-            Ok(ViewUsageAudit {
-                used_actions: analyzer.used_actions,
-            })
-        }
-        ProjectFramework::Vue => {
-            let source_path = project.root.join(page_path);
-            let source = fs::read_to_string(&source_path)
-                .with_context(|| format!("Failed to read {}", source_path.display()))?;
-            let sections = extract_vue_sfc_sections(&source);
-            let script_analyzer =
-                analyze_script_bindings(&sections.script, sections.script_source_type, None)
-                    .with_context(|| format!("Failed to analyze {}", source_path.display()))?;
-            ensure_no_direct_lx_usage(
-                page_path,
-                &sections.script,
-                &script_analyzer.direct_lx_uses,
-                "script",
-            )?;
-
-            let mut used_actions = script_analyzer.used_actions.clone();
-            for expression in extract_vue_template_expressions(&sections.template) {
-                let template_analyzer = analyze_script_bindings(
-                    &expression.source,
-                    SourceType::ts(),
-                    Some((
-                        script_analyzer.action_object_aliases.clone(),
-                        script_analyzer.local_action_aliases.clone(),
-                    )),
-                )
-                .with_context(|| format!("Failed to analyze {}", source_path.display()))?;
-
-                if !template_analyzer.direct_lx_uses.is_empty() {
-                    let members = template_analyzer
-                        .direct_lx_uses
-                        .iter()
-                        .map(|(_, member)| format!("lx.{member}"))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    bail!(
-                        "View {page_path} must not call lx.* directly in template expressions. Move it into Page(...) logic actions. Approx line {}: {}",
-                        expression.line,
-                        members
-                    );
-                }
-                used_actions.extend(template_analyzer.used_actions);
-            }
-
-            ensure_used_actions_exist(page_path, actions, &used_actions)?;
-            Ok(ViewUsageAudit { used_actions })
-        }
+        ProjectFramework::React => react::validate_react_bindings(project, page_path, actions),
+        ProjectFramework::Vue => vue::validate_vue_bindings(project, page_path, actions),
         ProjectFramework::Html => Ok(ViewUsageAudit {
             used_actions: BTreeSet::new(),
         }),
     }
 }
 
-fn analyze_script_bindings(
+pub(super) fn analyze_script_bindings(
     source: &str,
     source_type: SourceType,
     bindings: Option<(HashSet<String>, HashMap<String, String>)>,
@@ -429,7 +367,7 @@ fn analyze_script_bindings(
     Ok(analyzer)
 }
 
-fn ensure_no_direct_lx_usage(
+pub(super) fn ensure_no_direct_lx_usage(
     page_path: &str,
     source: &str,
     uses: &[(usize, String)],
@@ -466,7 +404,7 @@ fn ensure_no_direct_lx_usage(
     );
 }
 
-fn ensure_used_actions_exist(
+pub(super) fn ensure_used_actions_exist(
     page_path: &str,
     actions: &[PageAction],
     used_actions: &BTreeSet<String>,
@@ -488,149 +426,6 @@ fn ensure_used_actions_exist(
         "View {page_path} references missing Page(...) actions: {}",
         missing.join(", ")
     );
-}
-
-fn extract_vue_sfc_sections(source: &str) -> VueSfcSections {
-    let mut script = String::new();
-    let mut script_source_type = SourceType::ts();
-    let mut cursor = 0;
-    while let Some(tag_start_rel) = source[cursor..].find("<script") {
-        let tag_start = cursor + tag_start_rel;
-        let tag_end = match source[tag_start..].find('>') {
-            Some(index) => tag_start + index,
-            None => break,
-        };
-        let attrs = &source[tag_start..=tag_end];
-        let close_tag = match source[tag_end + 1..].find("</script>") {
-            Some(index) => tag_end + 1 + index,
-            None => break,
-        };
-        let content = &source[tag_end + 1..close_tag];
-        if !content.trim().is_empty() {
-            if !script.is_empty() {
-                script.push('\n');
-            }
-            script.push_str(content);
-        }
-        script_source_type = vue_script_source_type(attrs);
-        cursor = close_tag + "</script>".len();
-    }
-
-    let template = extract_tag_content(source, "template").unwrap_or_default();
-    VueSfcSections {
-        script,
-        script_source_type,
-        template,
-    }
-}
-
-fn extract_vue_template_expressions(template: &str) -> Vec<VueTemplateExpression> {
-    let mut expressions = Vec::new();
-    let mut cursor = 0;
-
-    while let Some(start_rel) = template[cursor..].find("{{") {
-        let start = cursor + start_rel;
-        let expr_start = start + 2;
-        if let Some(end_rel) = template[expr_start..].find("}}") {
-            let end = expr_start + end_rel;
-            let expr = template[expr_start..end].trim();
-            if !expr.is_empty() {
-                expressions.push(VueTemplateExpression {
-                    source: wrap_template_expression(expr),
-                    line: line_number_for_offset(template, expr_start),
-                });
-            }
-            cursor = end + 2;
-        } else {
-            break;
-        }
-    }
-
-    cursor = 0;
-    let bytes = template.as_bytes();
-    while cursor < bytes.len() {
-        let ch = bytes[cursor] as char;
-        let is_directive = ch == '@'
-            || ch == ':'
-            || (ch == 'v' && matches!(bytes.get(cursor + 1).copied(), Some(b'-')));
-        if !is_directive {
-            cursor += 1;
-            continue;
-        }
-
-        let name_start = cursor;
-        while cursor < bytes.len() {
-            let ch = bytes[cursor] as char;
-            if ch == '=' || ch.is_whitespace() || ch == '>' {
-                break;
-            }
-            cursor += 1;
-        }
-        if name_start == cursor {
-            cursor += 1;
-            continue;
-        }
-
-        while cursor < bytes.len() && (bytes[cursor] as char).is_whitespace() {
-            cursor += 1;
-        }
-        if cursor >= bytes.len() || bytes[cursor] as char != '=' {
-            continue;
-        }
-        cursor += 1;
-        while cursor < bytes.len() && (bytes[cursor] as char).is_whitespace() {
-            cursor += 1;
-        }
-        if cursor >= bytes.len() {
-            break;
-        }
-        let quote = bytes[cursor] as char;
-        if quote != '"' && quote != '\'' {
-            continue;
-        }
-        let value_start = cursor + 1;
-        cursor += 1;
-        while cursor < bytes.len() && bytes[cursor] as char != quote {
-            cursor += 1;
-        }
-        if cursor >= bytes.len() {
-            break;
-        }
-        let expr = template[value_start..cursor].trim();
-        if !expr.is_empty() {
-            expressions.push(VueTemplateExpression {
-                source: wrap_template_expression(expr),
-                line: line_number_for_offset(template, value_start),
-            });
-        }
-        cursor += 1;
-    }
-
-    expressions
-}
-
-fn wrap_template_expression(expression: &str) -> String {
-    format!("const __lx_expr__ = ({expression});")
-}
-
-fn extract_tag_content(source: &str, tag_name: &str) -> Option<String> {
-    let open_tag = format!("<{tag_name}");
-    let close_tag = format!("</{tag_name}>");
-    let start = source.find(&open_tag)?;
-    let tag_end = start + source[start..].find('>')?;
-    let content_start = tag_end + 1;
-    let end = content_start + source[content_start..].find(&close_tag)?;
-    Some(source[content_start..end].to_string())
-}
-
-fn vue_script_source_type(attrs: &str) -> SourceType {
-    let lower = attrs.to_ascii_lowercase();
-    let is_ts = lower.contains("lang=\"ts\"")
-        || lower.contains("lang='ts'")
-        || lower.contains("lang=\"tsx\"")
-        || lower.contains("lang='tsx'");
-    let is_jsx = lower.contains("lang=\"tsx\"") || lower.contains("lang='tsx'");
-    SourceType::mjs().with_typescript(is_ts).with_jsx(is_jsx)
 }
 
 fn line_col_for_offset(source: &str, offset: usize) -> (usize, usize) {
@@ -1312,6 +1107,64 @@ mod tests {
         assert_eq!(
             audit.used_actions,
             BTreeSet::from(["navigateToUIPage".to_string(), "openDeepSeek".to_string()])
+        );
+    }
+
+    #[test]
+    fn vue_template_marks_bare_action_identifiers() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/api/index.vue";
+        let full_path = temp.path().join(page_path);
+        fs::create_dir_all(full_path.parent().unwrap()).unwrap();
+        fs::write(
+            &full_path,
+            r#"
+            <template>
+              <template v-if="enabled">
+                <button
+                  @click="primaryAction"
+                  class="sm:hover:text-blue-500 primary"
+                >
+                  primary
+                </button>
+              </template>
+              <button
+                @click="secondaryAction"
+                :class="enabled ? 'sm:text-green-500' : 'text-gray-500'"
+              >
+                secondary
+              </button>
+              <button @click="primaryAction(); secondaryAction()">both</button>
+            </template>
+            <script setup lang="ts">
+            import { useLxPage } from "@lingxia/vue";
+            const { actions } = useLxPage();
+            const { primaryAction, secondaryAction } = actions;
+            </script>
+            "#,
+        )
+        .unwrap();
+
+        let project = create_project(temp.path(), ProjectFramework::Vue, page_path);
+        let audit = validate_component_view_bindings(
+            &project,
+            page_path,
+            &[
+                PageAction {
+                    name: "primaryAction".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+                PageAction {
+                    name: "secondaryAction".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(
+            audit.used_actions,
+            BTreeSet::from(["primaryAction".to_string(), "secondaryAction".to_string()])
         );
     }
 }
