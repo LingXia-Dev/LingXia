@@ -25,6 +25,10 @@ export interface LxNavigatorEvent extends CustomEvent<LxNavigatorEventDetail> {
   detail: LxNavigatorEventDetail;
 }
 
+type LingXiaBridgeCall = {
+  call(method: string, params?: unknown, options?: { cap?: string }): Promise<unknown>;
+};
+
 export type LxNavigatorAttributes = {
   // Navigation
   url?: string;                    // Target URL or path
@@ -370,28 +374,12 @@ export class LxNavigatorElement extends HTMLElement {
     this.dispatchEvent(completeEvent);
   }
 
-  private getHostApi() {
-    const host = (window as any).host;
-    if (!host || typeof host !== 'object') {
-      return null;
+  private callHost(route: string, params?: unknown): Promise<void> {
+    const bridge = (window as unknown as { LingXiaBridge?: LingXiaBridgeCall }).LingXiaBridge;
+    if (!bridge || typeof bridge.call !== 'function') {
+      return Promise.reject(new Error('LingXiaBridge is not available'));
     }
-    return host as {
-      navigation?: {
-        navigateTo?: (params: { url: string }) => Promise<void>;
-        navigateBack?: (params: { delta: number }) => Promise<void>;
-        redirectTo?: (params: { url: string }) => Promise<void>;
-        switchTab?: (params: { url: string }) => Promise<void>;
-        reLaunch?: (params: { url: string }) => Promise<void>;
-      };
-      navigator?: {
-        navigateToLxApp?: (params: { appId: string; path?: string }) => Promise<void>;
-        navigateBackLxApp?: () => Promise<void>;
-      };
-      device?: {
-        makePhoneCall?: (params: { phoneNumber: string }) => Promise<void>;
-        openUrl?: (params: { url: string; target?: 'external' | 'self' | 'new_browser_tab' }) => Promise<void>;
-      };
-    };
+    return bridge.call(`host.${route}`, params, { cap: 'host' }).then(() => undefined);
   }
 
   private async performNavigation(options: {
@@ -403,11 +391,6 @@ export class LxNavigatorElement extends HTMLElement {
     path?: string | null;
     phoneNumber?: string | null;
   }) {
-    const host = this.getHostApi();
-    if (!host) {
-      throw new Error('LingXia bridge not available');
-    }
-
     const url = options.url || '';
     const delta = Number.isFinite(options.delta) && options.delta > 0 ? options.delta : 1;
 
@@ -415,36 +398,24 @@ export class LxNavigatorElement extends HTMLElement {
       if (!options.phoneNumber) {
         throw new Error('tel requires phone-number attribute');
       }
-      if (typeof host.device?.makePhoneCall !== 'function') {
-        throw new Error('host.device.makePhoneCall is not available');
-      }
-      await host.device.makePhoneCall({ phoneNumber: options.phoneNumber });
+      await this.callHost('device.makePhoneCall', { phoneNumber: options.phoneNumber });
       return;
     }
 
     if (options.openType === 'exit') {
-      if (typeof host.navigator?.navigateBackLxApp !== 'function') {
-        throw new Error('host.navigator.navigateBackLxApp is not available');
-      }
-      await host.navigator.navigateBackLxApp();
+      await this.callHost('navigator.navigateBackLxApp');
       return;
     }
 
     if (options.openType === 'navigateBack') {
       if (options.target === 'lxapp') {
-        if (typeof host.navigator?.navigateBackLxApp !== 'function') {
-          throw new Error('host.navigator.navigateBackLxApp is not available');
-        }
-        await host.navigator.navigateBackLxApp();
+        await this.callHost('navigator.navigateBackLxApp');
         return;
       }
       if (options.target === 'browser') {
         throw new Error('navigateBack is not supported for browser target');
       }
-      if (typeof host.navigation?.navigateBack !== 'function') {
-        throw new Error('host.navigation.navigateBack is not available');
-      }
-      await host.navigation.navigateBack({ delta });
+      await this.callHost('navigation.navigateBack', { delta });
       return;
     }
 
@@ -452,10 +423,7 @@ export class LxNavigatorElement extends HTMLElement {
       if (!url) {
         throw new Error('openUrl requires url');
       }
-      if (typeof host.device?.openUrl !== 'function') {
-        throw new Error('host.device.openUrl is not available');
-      }
-      await host.device.openUrl({ url, target: 'external' });
+      await this.callHost('device.openUrl', { url, target: 'external' });
       return;
     }
 
@@ -464,10 +432,7 @@ export class LxNavigatorElement extends HTMLElement {
         throw new Error('navigateToLxApp requires app-id');
       }
       const lxappPath = options.path || '';
-      if (typeof host.navigator?.navigateToLxApp !== 'function') {
-        throw new Error('host.navigator.navigateToLxApp is not available');
-      }
-      await host.navigator.navigateToLxApp({ appId: options.appId, path: lxappPath });
+      await this.callHost('navigator.navigateToLxApp', { appId: options.appId, path: lxappPath });
       return;
     }
 
@@ -475,10 +440,7 @@ export class LxNavigatorElement extends HTMLElement {
       if (!url) {
         throw new Error('openUrl requires url');
       }
-      if (typeof host.device?.openUrl !== 'function') {
-        throw new Error('host.device.openUrl is not available');
-      }
-      await host.device.openUrl({ url, target: 'self' });
+      await this.callHost('device.openUrl', { url, target: 'self' });
       return;
     }
 
@@ -488,34 +450,19 @@ export class LxNavigatorElement extends HTMLElement {
 
     switch (options.openType) {
       case 'navigate':
-        if (typeof host.navigation?.navigateTo !== 'function') {
-          throw new Error('host.navigation.navigateTo is not available');
-        }
-        await host.navigation.navigateTo({ url });
+        await this.callHost('navigation.navigateTo', { url });
         break;
       case 'redirect':
-        if (typeof host.navigation?.redirectTo !== 'function') {
-          throw new Error('host.navigation.redirectTo is not available');
-        }
-        await host.navigation.redirectTo({ url });
+        await this.callHost('navigation.redirectTo', { url });
         break;
       case 'switchTab':
-        if (typeof host.navigation?.switchTab !== 'function') {
-          throw new Error('host.navigation.switchTab is not available');
-        }
-        await host.navigation.switchTab({ url });
+        await this.callHost('navigation.switchTab', { url });
         break;
       case 'reLaunch':
-        if (typeof host.navigation?.reLaunch !== 'function') {
-          throw new Error('host.navigation.reLaunch is not available');
-        }
-        await host.navigation.reLaunch({ url });
+        await this.callHost('navigation.reLaunch', { url });
         break;
       case 'openUrl':
-        if (typeof host.device?.openUrl !== 'function') {
-          throw new Error('host.device.openUrl is not available');
-        }
-        await host.device.openUrl({
+        await this.callHost('device.openUrl', {
           url,
           target: options.target === 'self' ? 'self' : 'external'
         });

@@ -64,6 +64,29 @@ export function toBridgeError(err: unknown): LxBridgeError {
   return new BridgeInvocationError(BRIDGE_ERROR.INTERNAL_ERROR, message);
 }
 
+export function toNativeError(err: unknown): import("./types").NativeError {
+  const bridgeError = toBridgeError(err);
+  return {
+    code: String(bridgeError.code || BRIDGE_ERROR.INTERNAL_ERROR),
+    message:
+      typeof bridgeError.message === "string" && bridgeError.message.trim() !== ""
+        ? bridgeError.message
+        : "Unknown error",
+    ...(bridgeError.data === undefined ? {} : { data: bridgeError.data }),
+  };
+}
+
+export function isNativeError(
+  error: unknown,
+  code?: string,
+): error is import("./types").NativeError {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  if (typeof candidate.code !== "string" || candidate.code.trim() === "") return false;
+  if (typeof candidate.message !== "string") return false;
+  return code === undefined || candidate.code === code;
+}
+
 export function resolveParams<T>(source?: ParamsSource<T>): T | undefined {
   if (typeof source === "function") {
     return (source as () => T)();

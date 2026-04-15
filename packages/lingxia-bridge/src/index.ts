@@ -9,13 +9,13 @@
 export type {
   BridgeConfig,
   CallOptions,
+  ChannelCloseEvent,
+  ChannelOptions,
   ChannelOpenOptions,
   BridgeErrorCode,
   ChannelEventName,
   DataSubscriber,
   ErrorInfo,
-  HostChannelApi,
-  HostApi,
   LingXiaBridgeInterface,
   LxChannel,
   LxBridgeError,
@@ -25,13 +25,26 @@ export type {
   LxMethodStreamData,
   LxStream,
   NativeComponentMessage,
+  NativeChannel,
+  NativeError,
+  NativeStream,
   NotifyOptions,
+  InvokeOptions,
   StateInfo,
   StreamCallOptions,
+  StreamOptions,
   StreamEventName,
 } from './types';
 
-export { LingXiaBridge, host, initBridge } from './bridge';
+export {
+  LingXiaBridge,
+  channel,
+  initBridge,
+  invoke,
+  notify,
+  stream,
+} from './bridge';
+export { isNativeError } from './invocation';
 export { renderErrorUI, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 

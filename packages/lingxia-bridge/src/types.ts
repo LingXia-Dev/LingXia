@@ -38,6 +38,12 @@ export interface LxBridgeError {
   data?: unknown;
 }
 
+export interface NativeError {
+  code: string;
+  message: string;
+  data?: unknown;
+}
+
 export interface StateInfo {
   rev: number;
   initial: boolean;
@@ -95,13 +101,11 @@ export interface LxStream<TData = unknown, TResult = unknown> extends AsyncItera
   readonly result: Promise<TResult>;
 }
 
-export interface HostChannelApi {
-  [namespace: string]: unknown;
-}
-
-export interface HostApi {
-  channel: HostChannelApi;
-  [namespace: string]: unknown;
+export interface NativeStream<TEvent = unknown, TResult = void> {
+  onEvent(listener: (event: TEvent) => void): () => void;
+  onError(listener: (error: NativeError) => void): () => void;
+  result: Promise<TResult>;
+  cancel(): void;
 }
 
 export interface LxChannel<TIn = unknown, TOut = TIn> extends AsyncIterable<TIn> {
@@ -112,6 +116,18 @@ export interface LxChannel<TIn = unknown, TOut = TIn> extends AsyncIterable<TIn>
   close(code?: string, reason?: string): void;
   [Symbol.asyncIterator](): AsyncIterator<TIn, void, void>;
   readonly id: string;
+}
+
+export interface ChannelCloseEvent {
+  code?: string;
+  reason?: string;
+}
+
+export interface NativeChannel<TIn = unknown, TOut = unknown> {
+  send(message: TIn): void;
+  onMessage(listener: (message: TOut) => void): () => void;
+  onClose(listener: (event: ChannelCloseEvent) => void): () => void;
+  close(code?: string, reason?: string): void;
 }
 
 declare global {
@@ -130,7 +146,6 @@ declare global {
     NativeComponentBridge?: {
       postMessage: (message: string) => void;
     };
-    host?: HostApi;
     webkit?: {
       messageHandlers: {
         [key: string]: {
@@ -176,3 +191,7 @@ export interface LingXiaBridgeInterface {
   };
   isReady(): boolean;
 }
+
+export interface InvokeOptions extends CallOptions {}
+export interface StreamOptions extends StreamCallOptions {}
+export interface ChannelOptions extends ChannelOpenOptions {}

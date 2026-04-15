@@ -1,9 +1,9 @@
 import type {
   CallOptions,
   ChannelOpenOptions,
+  ChannelOptions,
+  ChannelCloseEvent,
   DataSubscriber,
-  HostChannelApi,
-  HostApi,
   LingXiaBridgeInterface,
   LxChannel,
   LxBridgeError,
@@ -13,11 +13,16 @@ import type {
   LxMethodStreamData,
   LxStream,
   NativeComponentMessage,
+  NativeChannel,
+  NativeError,
+  NativeStream,
   NotifyOptions,
+  InvokeOptions,
   StreamCallOptions,
+  StreamOptions,
 } from "./types";
 import { BRIDGE_ERROR } from "./types";
-import { toBridgeError } from "./invocation";
+import { toBridgeError, toNativeError } from "./invocation";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
   BRIDGE_CONFIG,
@@ -1736,84 +1741,121 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 };
 
-function createHostPathProxy(path: string[]): unknown {
-  const callable = (): void => {};
-  return new Proxy(callable, {
-    apply(_target, _thisArg, args: unknown[]) {
-      const method = path.join(".");
-      const payload =
-        args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
-      // Always use stream — it works for both unary and stream host handlers.
-      // Unary handlers return a single `res`; stream handlers emit `event`s then `res`.
-      // The returned handle is also thenable so `await host.x.y()` just works.
-      const handle = LingXiaBridge.stream(`host.${method}`, payload, { cap: "host", timeoutMs: 0 });
-      // Make thenable: `await host.x.y()` resolves to the final result,
-      // while `host.x.y().on('data', ...)` works for streams.
-      const result = handle.result;
-      return new Proxy(handle, {
-        get(target, prop) {
-          if (prop === "then") return result.then.bind(result);
-          if (prop === "catch") return result.catch.bind(result);
-          const val = (target as unknown as Record<string | symbol, unknown>)[prop];
-          return typeof val === "function" ? (val as Function).bind(target) : val;
-        },
-      });
-    },
-    get(_target, prop) {
-      if (prop === "then") return undefined;
-      if (prop === "__funcName") return `host.${path.join(".")}`;
-      if (prop === "__bridgeMode") return "stream";
-      if (typeof prop !== "string") return undefined;
-      return createHostPathProxy([...path, prop]);
-    },
-  });
+function nativeRoute(route: string): string {
+  return route.startsWith("host.") ? route : `host.${route}`;
 }
 
-function createHostChannelProxy(path: string[]): unknown {
-  const callable = (): void => {};
-  return new Proxy(callable, {
-    apply(_target, _thisArg, args: unknown[]) {
-      const method = path.join(".");
-      const payload =
-        args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
-      return LingXiaBridge.channel.open(`host.${method}`, payload, { cap: "host" });
-    },
-    get(_target, prop) {
-      if (prop === "then") return undefined;
-      if (prop === "__funcName") return `host.${path.join(".")}`;
-      if (prop === "__bridgeMode") return "channel";
-      if (prop === "open") {
-        return (...args: unknown[]) => {
-          const method = path.join(".");
-          const payload =
-            args.length === 0 ? undefined : args.length === 1 ? args[0] : args;
-          return LingXiaBridge.channel.open(`host.${method}`, payload, { cap: "host" });
-        };
-      }
-      if (typeof prop !== "string") return undefined;
-      return createHostChannelProxy([...path, prop]);
-    },
-  });
+function nativeOptions<T extends { cap?: string }>(options?: T): T {
+  return { ...(options || ({} as T)), cap: options?.cap || "host" };
 }
 
-export const host: HostApi = new Proxy({} as HostApi, {
-  get(_target, prop) {
-    if (typeof prop !== "string") {
-      return undefined;
-    }
-    if (prop === "channel") {
-      return new Proxy({} as HostChannelApi, {
-        get(_target, channelProp) {
-          if (typeof channelProp !== "string") {
-            return undefined;
-          }
-          return createHostChannelProxy([channelProp]);
-        },
-      }) as HostChannelApi;
-    }
-    return createHostPathProxy([prop]);
-  },
-}) as HostApi;
+function wrapNativeStream<TEvent, TResult>(
+  handle: LxStream<TEvent, TResult>,
+): NativeStream<TEvent, TResult> {
+  const eventListeners = new Set<(event: TEvent) => void>();
+  const errorListeners = new Set<(error: NativeError) => void>();
+  handle.on("data", (event) => {
+    for (const listener of eventListeners) listener(event);
+  });
+  handle.on("error", (error) => {
+    const nativeError = toNativeError(error);
+    for (const listener of errorListeners) listener(nativeError);
+  });
+  return {
+    onEvent(listener: (event: TEvent) => void): () => void {
+      eventListeners.add(listener);
+      return () => {
+        eventListeners.delete(listener);
+      };
+    },
+    onError(listener: (error: NativeError) => void): () => void {
+      errorListeners.add(listener);
+      return () => {
+        errorListeners.delete(listener);
+      };
+    },
+    result: handle.result.catch((error) => Promise.reject(toNativeError(error))),
+    cancel(): void {
+      handle.cancel();
+    },
+  };
+}
+
+function wrapNativeChannel<TIn, TOut>(
+  channel: LxChannel<TOut, TIn>,
+): NativeChannel<TIn, TOut> {
+  const messageListeners = new Set<(message: TOut) => void>();
+  const closeListeners = new Set<(event: ChannelCloseEvent) => void>();
+  channel.on("data", (message) => {
+    for (const listener of messageListeners) listener(message);
+  });
+  channel.on("close", (code, reason) => {
+    const event = { code, reason };
+    for (const listener of closeListeners) listener(event);
+  });
+  return {
+    send(message: TIn): void {
+      channel.send(message);
+    },
+    onMessage(listener: (message: TOut) => void): () => void {
+      messageListeners.add(listener);
+      return () => {
+        messageListeners.delete(listener);
+      };
+    },
+    onClose(listener: (event: ChannelCloseEvent) => void): () => void {
+      closeListeners.add(listener);
+      return () => {
+        closeListeners.delete(listener);
+      };
+    },
+    close(code?: string, reason?: string): void {
+      channel.close(code, reason);
+    },
+  };
+}
+
+export function invoke<TResult = unknown, TInput = void>(
+  route: string,
+  input?: TInput,
+  options?: InvokeOptions,
+): Promise<TResult> {
+  return LingXiaBridge.call(nativeRoute(route), input, nativeOptions(options))
+    .then((value) => value as TResult)
+    .catch((error) => Promise.reject(toNativeError(error)));
+}
+
+export function notify<TInput = void>(
+  route: string,
+  input?: TInput,
+  options?: NotifyOptions,
+): void {
+  LingXiaBridge.notify(nativeRoute(route), input, nativeOptions(options));
+}
+
+export function stream<TEvent = unknown, TResult = void, TInput = void>(
+  route: string,
+  input?: TInput,
+  options?: StreamOptions,
+): NativeStream<TEvent, TResult> {
+  return wrapNativeStream<TEvent, TResult>(
+    LingXiaBridge.stream(nativeRoute(route), input, nativeOptions(options)) as LxStream<
+      TEvent,
+      TResult
+    >,
+  );
+}
+
+export function channel<TIn = unknown, TOut = unknown>(
+  route: string,
+  input?: unknown,
+  options?: ChannelOptions,
+): Promise<NativeChannel<TIn, TOut>> {
+  return LingXiaBridge.channel
+    .open<TOut, TIn>(nativeRoute(route), input, nativeOptions(options))
+    .then((handle) => wrapNativeChannel<TIn, TOut>(handle))
+    .catch((error) => Promise.reject(toNativeError(error)));
+}
 
 export function initBridge(): void {
   if (window.__LX_BRIDGE_INIT_STATE) {
@@ -1844,7 +1886,6 @@ export function initBridge(): void {
     }
 
     window.LingXiaBridge = LingXiaBridge;
-    window.host = host;
     installNativeComponentCoverageMonitor({
       os: getPlatformOS(),
       send: sendNativeComponentMessage,
