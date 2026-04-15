@@ -219,36 +219,6 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
     Ok(())
 }
 
-pub(crate) fn prepare_standalone_apple_package_assets(
-    project_root: &Path,
-    platform: &platform::detector::PlatformType,
-) -> Result<()> {
-    let runtime_asset = prepare_runtime_asset(runtime::RuntimeEcmaTarget::Es2020);
-
-    let resources_dir = match platform {
-        platform::detector::PlatformType::MacOs => {
-            crate::platform::macos::get_resources_dir(project_root, None, None)?
-        }
-        platform::detector::PlatformType::Ios => {
-            crate::platform::ios::get_resources_dir(project_root, None, None)?
-        }
-        other => {
-            return Err(anyhow!(
-                "Standalone Apple runtime asset preparation only supports ios/macos, got {}",
-                other.as_str()
-            ));
-        }
-    };
-
-    fs::create_dir_all(&resources_dir)?;
-    sync_runtime_file(
-        &resources_dir.join("bridge-runtime.js"),
-        Some(&runtime_asset),
-        None,
-    )?;
-    Ok(())
-}
-
 fn prepare_android_assets_root(
     assets_root: &Path,
     app_json: &str,

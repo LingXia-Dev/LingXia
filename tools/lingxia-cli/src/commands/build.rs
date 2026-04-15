@@ -1,6 +1,6 @@
 use crate::commands::rust::resolve_build_profile;
 use crate::config::{HOST_CONFIG_FILE, LXAPP_BUILD_CONFIG_FILE, LingXiaConfig};
-use crate::host_assets::{prepare_configured_host_assets, prepare_standalone_apple_package_assets};
+use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -140,7 +140,10 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
                     current_dir.display()
                 );
                 println!("  {} Platform: {}", "•".cyan(), inferred_platform.as_str());
-                println!("  {} Host config: optional", "•".cyan());
+                println!(
+                    "  {} lingxia.yaml: not required for standalone Swift Package builds",
+                    "•".cyan()
+                );
                 println!();
 
                 project_root = current_dir.clone();
@@ -433,7 +436,6 @@ fn build_standalone_apple_swift_package(
 
     let mut all_artifacts = Vec::new();
     for platform_type in platforms_to_build {
-        prepare_standalone_apple_package_assets(project_root, &platform_type)?;
         let platform = platform::detector::create_platform(&platform_type)?;
         let build_config = BuildConfig {
             project_root: project_root.to_path_buf(),
