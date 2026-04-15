@@ -1,9 +1,8 @@
-//! Native entry library for LingXia development tools.
+//! Devtool runtime bridge and protocol helpers for LingXia apps.
 //!
-//! This crate owns devtool-specific bootstrap behavior for Apple hosts such as
-//! LingXia Runner while reusing the shared LingXia runtime.
+//! Host libraries decide how this service is installed into their own
+//! `HostAddon`; this crate only exposes the service entry points.
 
-use lingxia::{HostAddon, install_host_addon};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
@@ -13,8 +12,6 @@ use tungstenite::{Error as WsError, WebSocket, connect};
 
 mod protocol;
 
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-pub use lingxia::apple::*;
 pub use protocol::{
     DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
 };
@@ -22,15 +19,7 @@ pub use protocol::{
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const ECHO_HANDLER: &str = "echo";
 
-struct DevtoolHostAddon;
-
-impl HostAddon for DevtoolHostAddon {
-    fn start_services(&self) {
-        start_dev_bridge_once();
-    }
-}
-
-fn start_dev_bridge_once() {
+pub fn start_devtool_bridge_from_env() {
     static STARTED: OnceLock<()> = OnceLock::new();
     if STARTED.set(()).is_err() {
         return;
@@ -206,9 +195,4 @@ fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<std::net::Tcp
         }
         _ => {}
     }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn lingxia_install_host_addon() {
-    install_host_addon(Box::new(DevtoolHostAddon));
 }
