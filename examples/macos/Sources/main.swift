@@ -1,13 +1,25 @@
 import AppKit
+import OSLog
 import lingxia
 
 class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
+    private static let log = OSLog(subsystem: "LingXia", category: "ExampleApp")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStandardMenu()
 
         Lingxia.enableWebViewDebugging()
-        _ = try? Lingxia.quickStart()
+        do {
+            _ = try Lingxia.quickStart()
+        } catch {
+            os_log(
+                "Lingxia.quickStart() app-ui path failed: %{public}@",
+                log: Self.log,
+                type: .error,
+                String(describing: error)
+            )
+            fatalError("Lingxia startup failed: \(error)")
+        }
     }
 
     @MainActor
@@ -49,7 +61,11 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        return true
+        return false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        return !Lingxia.handleAppActivation()
     }
 }
 
