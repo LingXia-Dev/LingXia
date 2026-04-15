@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
-use lingxia_devtool::{DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource};
+use lingxia_devtool_protocol::{DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;

@@ -62,7 +62,7 @@ urlencoding = "2.1"
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
 
 openssl = { version = "0.10", features = ["vendored"] }
-lingxia_devtool = { workspace = true }
+lingxia-devtool-protocol = { workspace = true }
 lingxia-observability = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation

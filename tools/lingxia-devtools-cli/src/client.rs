@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool::{DevtoolsPeerRole, DevtoolsWireMessage};
+use lingxia_devtool_protocol::{DevtoolsPeerRole, DevtoolsWireMessage};
 use serde_json::Value;
 use std::net::TcpStream;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

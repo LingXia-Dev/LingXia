@@ -1,6 +1,6 @@
 use super::log_store::{DevLogSession, create_session};
 use anyhow::{Context, Result, anyhow};
-use lingxia_devtool::{DevtoolsLogMessage, DevtoolsPeerRole, DevtoolsWireMessage};
+use lingxia_devtool_protocol::{DevtoolsLogMessage, DevtoolsPeerRole, DevtoolsWireMessage};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::{SocketAddr, TcpListener, TcpStream};

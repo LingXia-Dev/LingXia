@@ -2,7 +2,7 @@ use crate::client;
 use crate::project::DevInfo;
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Subcommand};
-use lingxia_devtool::handlers;
+use lingxia_devtool_protocol::handlers;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
