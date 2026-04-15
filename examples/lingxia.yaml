@@ -1,0 +1,83 @@
+app:
+  projectName: lingxia
+  lingxiaId: lingxia
+  productName: LingXia App Demo
+  productVersion: 0.2.0
+  platforms:
+    - android
+    - ios
+    - macos
+    - harmony
+  homeLxAppID: lingxia-showcase
+  cacheMaxAgeDays: 7
+
+android:
+  packageId: com.lingxia.example
+  minSdk: 29
+  targetSdk: 35
+  compileSdk: 35
+
+ios:
+  bundleId: com.lingxia.example
+  deploymentTarget: "17.0"
+  targetName: lxapp
+
+macos:
+  bundleId: com.lingxia.example
+  deploymentTarget: "12.0"
+  targetName: LingXiaDemo
+  executableName: LingXiaDemo
+
+harmony:
+  bundleName: app.lingxia.lxapp.example
+
+ui:
+  launch:
+    initialSurface: main
+    openOnLaunch: true
+  surfaces:
+    - id: main
+      presentation:
+        style: window
+        resizable: true
+        showTrafficLights: true
+        size:
+          width: 960
+          height: 720
+      content:
+        kind: lxapp
+        appId: lingxia-showcase
+        path: /
+    - id: assistant
+      presentation:
+        style: attachedPanel
+        attachTo: main
+        edge: trailing
+      content:
+        kind: lxapp
+        appId: app.lingxia.browser
+        path: /
+  activators:
+    - id: assistantSidebar
+      kind: sidebarItem
+      hostSurface: main
+      label: Browser
+      icon: app.lingxia.browser/public/LingXia.png
+      action:
+        kind: toggleSurface
+        surface: assistant
+    - id: assistantClose
+      kind: toolbarItem
+      hostSurface: assistant
+      label: Close Browser
+      icon: app.lingxia.browser/public/LingXia.png
+      action:
+        kind: closeSurface
+        surface: assistant
+
+resources:
+  bundles:
+    - type: lxapp
+      path: lingxia-showcase
+    - type: lxapp
+      path: ../crates/lingxia-shell/webui

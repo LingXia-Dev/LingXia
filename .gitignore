@@ -3,6 +3,7 @@ target
 node_modules/
 dist/
 *.tar.zst
+.lingxia/
 
 # Gradle/Kotlin local build dirs
 **/.gradle/
