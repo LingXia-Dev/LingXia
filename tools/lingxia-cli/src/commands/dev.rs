@@ -1,5 +1,5 @@
 use crate::commands::rust::resolve_build_profile;
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::config::{LingXiaConfig, has_host_config};
 use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
@@ -13,6 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
+use sysinfo::{ProcessesToUpdate, Signal, System};
 
 pub(crate) mod log_store;
 mod server;
@@ -79,7 +80,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
     // Determine platform from argument or config
     let app = config.app.as_ref().ok_or_else(|| {
         anyhow!(
-            "Missing app section in lingxia.config.json.\n\
+            "Missing app section in lingxia.yaml.\n\
              Please configure app.platforms."
         )
     })?;
@@ -192,7 +193,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
         .android
         .as_ref()
         .map(|android| android.package_id.clone())
-        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.config.json"))?;
+        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.yaml"))?;
     let install_config = InstallConfig {
         project_root: ctx.project_root.clone(),
         artifact_path: Some(artifact_path.to_path_buf()),
@@ -346,25 +347,59 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
     let artifacts = platform.build(&build_config)?;
     let app_path = artifacts.path().to_path_buf();
     let exe = platform::macos::app_bundle_executable(&app_path)?;
-
     println!();
 
-    // Step 2: Run (run the built executable directly)
-    println!("{}", "Step 2/2: Running...".bold());
-    let status = Command::new(&exe)
-        .status()
-        .with_context(|| format!("Failed to run {}", exe.display()))?;
-    if !status.success() {
-        return Err(anyhow!("macOS app exited with non-zero status"));
+    let server = server::start_server(&ctx.project_root)?;
+    let ws_url = server.ws_url();
+    let session = server.session().clone();
+
+    let run_result = (|| -> Result<()> {
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_dev_info(&ctx.project_root, &session, &ws_url)?;
+
+        // Step 2: Run (run the built executable directly)
+        println!("{}", "Step 2/2: Running...".bold());
+        terminate_existing_macos_app_processes(&exe)?;
+        let mut child = Command::new(&exe)
+            .env(RUNNER_DEV_WS_URL_ENV, &ws_url)
+            .stdin(Stdio::null())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .with_context(|| format!("Failed to run {}", exe.display()))?;
+
+        println!();
+        println!("{}", "Dev workflow started.".green().bold());
+        println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
+        println!("  {} Artifact: {}", "*".bold(), app_path.display());
+        println!(
+            "  {} Dev info: {}",
+            "*".bold(),
+            log_store::dev_info_path(&ctx.project_root).display()
+        );
+        println!("  {} WS: {}", "*".bold(), ws_url);
+        println!("  {} Log file: {}", "*".bold(), session.log_file.display());
+        println!("  {} Session: {}", "*".bold(), session.session_id);
+        println!("  {} Stop: {}", "*".bold(), "Ctrl+C or close app".cyan());
+        println!();
+
+        wait_for_child_or_interrupt(&mut child, stop_requested, "macOS app")?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_dev_info(&ctx.project_root);
+    let stop_result = server.stop();
+    match (run_result, stop_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(()), Err(err)) => Err(err),
+        (Err(run_err), Err(stop_err)) => Err(anyhow!(
+            "{}\nAlso failed to stop dev server: {}",
+            run_err,
+            stop_err
+        )),
     }
-
-    println!();
-    println!("{}", "Dev workflow complete!".green().bold());
-    println!("  {} Platform: {}", "*".bold(), "macOS".cyan());
-    println!("  {} Artifact: {}", "*".bold(), app_path.display());
-    println!();
-
-    Ok(())
 }
 
 fn execute_harmony(ctx: DevContext) -> Result<()> {
@@ -549,7 +584,7 @@ fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Resul
 }
 
 fn is_standalone_lxapp_project(project_root: &Path) -> bool {
-    project_root.join("lxapp.json").exists() && !project_root.join(HOST_CONFIG_FILE).exists()
+    project_root.join("lxapp.json").exists() && !has_host_config(project_root)
 }
 
 fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
@@ -607,22 +642,30 @@ fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
 }
 
 fn wait_for_runner_or_interrupt(runner: &mut Child, stop_requested: Arc<AtomicBool>) -> Result<()> {
+    wait_for_child_or_interrupt(runner, stop_requested, "LingXia Runner")
+}
+
+fn wait_for_child_or_interrupt(
+    child: &mut Child,
+    stop_requested: Arc<AtomicBool>,
+    label: &str,
+) -> Result<()> {
     loop {
         if stop_requested.load(Ordering::Acquire) {
-            terminate_runner_child(runner)?;
+            terminate_child(child, label)?;
             println!();
             println!("{}", "Dev workflow stopped.".yellow().bold());
             return Ok(());
         }
 
-        if let Some(status) = runner
+        if let Some(status) = child
             .try_wait()
-            .context("Failed to poll LingXia Runner process")?
+            .with_context(|| format!("Failed to poll {}", label))?
         {
             println!();
-            println!("{}", "Runner exited.".yellow().bold());
+            println!("{}", format!("{} exited.", label).yellow().bold());
             if !status.success() {
-                return Err(anyhow!("LingXia Runner exited with non-zero status"));
+                return Err(anyhow!("{} exited with non-zero status", label));
             }
             return Ok(());
         }
@@ -631,14 +674,14 @@ fn wait_for_runner_or_interrupt(runner: &mut Child, stop_requested: Arc<AtomicBo
     }
 }
 
-fn terminate_runner_child(runner: &mut Child) -> Result<()> {
-    if runner.try_wait()?.is_some() {
+fn terminate_child(child: &mut Child, label: &str) -> Result<()> {
+    if child.try_wait()?.is_some() {
         return Ok(());
     }
-    runner
+    child
         .kill()
-        .context("Failed to terminate LingXia Runner process")?;
-    let _ = runner.wait();
+        .with_context(|| format!("Failed to terminate {}", label))?;
+    let _ = child.wait();
     Ok(())
 }
 
@@ -660,6 +703,47 @@ fn terminate_existing_runner_processes() -> Result<()> {
 
     std::thread::sleep(std::time::Duration::from_millis(300));
     Ok(())
+}
+
+fn terminate_existing_macos_app_processes(executable_path: &Path) -> Result<()> {
+    let executable_path = canonical_path_or_self(executable_path);
+    let mut system = System::new_all();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    let mut terminated = false;
+
+    for (pid, process) in system.processes() {
+        let Some(process_exe) = process.exe() else {
+            continue;
+        };
+        if !process_executable_matches(process_exe, &executable_path) {
+            continue;
+        }
+
+        let killed = process
+            .kill_with(Signal::Term)
+            .unwrap_or_else(|| process.kill());
+        if !killed {
+            return Err(anyhow!(
+                "Failed to terminate existing macOS app process {} ({})",
+                pid,
+                executable_path.display()
+            ));
+        }
+        terminated = true;
+    }
+
+    if terminated {
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    Ok(())
+}
+
+fn canonical_path_or_self(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn process_executable_matches(process_exe: &Path, executable_path: &Path) -> bool {
+    canonical_path_or_self(process_exe) == canonical_path_or_self(executable_path)
 }
 
 fn installed_runner_app_path() -> Result<PathBuf> {
@@ -764,8 +848,10 @@ fn install_signed_output_path(input_hap: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use super::is_standalone_lxapp_project;
+    use super::{is_standalone_lxapp_project, process_executable_matches};
+    use crate::config::HOST_CONFIG_FILE;
     use std::fs;
+    use std::path::Path;
     use tempfile::tempdir;
 
     #[test]
@@ -780,8 +866,23 @@ mod tests {
     fn host_project_is_not_treated_as_standalone_lxapp() {
         let temp = tempdir().unwrap();
         fs::write(temp.path().join("lxapp.json"), "{}").unwrap();
-        fs::write(temp.path().join("lingxia.config.json"), "{}").unwrap();
+        fs::write(temp.path().join(HOST_CONFIG_FILE), "").unwrap();
 
         assert!(!is_standalone_lxapp_project(temp.path()));
+    }
+
+    #[test]
+    fn process_match_requires_exact_executable_path() {
+        let exe = Path::new("/tmp/LingXia Demo.app/Contents/MacOS/Demo");
+
+        assert!(process_executable_matches(exe, exe));
+        assert!(!process_executable_matches(
+            Path::new("/tmp/LingXia Demo.app/Contents/MacOS/DemoOther"),
+            exe
+        ));
+        assert!(!process_executable_matches(
+            Path::new("/Applications/Other.app/Contents/MacOS/Demo"),
+            exe
+        ));
     }
 }

@@ -170,6 +170,7 @@ fn run_server(
     while !stop_flag.load(Ordering::Acquire) {
         match listener.accept() {
             Ok((stream, _)) => {
+                let _ = stream.set_nonblocking(false);
                 let writer = writer.clone();
                 let state = state.clone();
                 thread::spawn(move || {
