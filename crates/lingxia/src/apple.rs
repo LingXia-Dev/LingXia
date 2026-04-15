@@ -1,5 +1,7 @@
 use lingxia_messaging::invoke_callback;
 use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
+#[cfg(all(target_os = "macos", feature = "shell"))]
+use std::sync::Arc;
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
 fn parse_color_to_u32(color_str: &str, default_color: u32) -> u32 {
@@ -242,13 +244,43 @@ mod bridge {
         // panel_id is forwarded so Swift can route the openLxApp callback to the right panel.
         #[swift_bridge(swift_name = "openPanelLxapp")]
         fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str);
+    }
 
+    extern "Swift" {
+        #[swift_bridge(swift_name = "LxApp.presentInternalBrowserTab")]
+        fn present_internal_browser_tab(tab_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.prepareInternalBrowserTabForInput")]
+        fn prepare_internal_browser_tab_for_input(tab_id: &str) -> bool;
     }
 }
+
+#[cfg(all(target_os = "macos", feature = "shell"))]
+struct AppleBrowserNativeInputHost;
+
+#[cfg(all(target_os = "macos", feature = "shell"))]
+impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
+    fn prepare_for_input(&self, tab_id: &str) -> Result<(), String> {
+        if self::bridge::prepare_internal_browser_tab_for_input(tab_id) {
+            Ok(())
+        } else {
+            Err(format!("failed to prepare browser tab for input: {tab_id}"))
+        }
+    }
+}
+
+#[cfg(all(target_os = "macos", feature = "shell"))]
+fn install_browser_native_input_host() {
+    let _ = lingxia_browser::register_native_input_host(Arc::new(AppleBrowserNativeInputHost));
+}
+
+#[cfg(not(all(target_os = "macos", feature = "shell")))]
+fn install_browser_native_input_host() {}
 
 /// Initialize the Lingxia SDK for iOS/macOS
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String> {
     crate::logging::init();
+    install_browser_native_input_host();
 
     log::info!(
         "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}",
@@ -443,6 +475,12 @@ pub fn get_builtin_browser_app_id() -> String {
 
 pub fn browser_tab_path_for_id(tab_id: &str) -> String {
     crate::browser::tab_path(tab_id)
+}
+
+pub fn present_internal_browser_tab(tab_id: &str) -> bool {
+    ffi_catch_unwind!("present_internal_browser_tab", false, || {
+        self::bridge::present_internal_browser_tab(tab_id)
+    })
 }
 
 pub fn update_browser_tab_info(tab_id: &str, current_url: &str, title: &str) -> bool {

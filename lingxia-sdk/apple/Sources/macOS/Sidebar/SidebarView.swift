@@ -60,7 +60,7 @@ private final class SidebarScrollView: NSScrollView {
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
 struct PanelIconItem {
     let id: String
-    let icon: String
+    let iconURL: URL?
     let label: String
 }
 
@@ -103,6 +103,7 @@ class SidebarView: NSView {
     private var hideButtonTrackingArea: NSTrackingArea?
     private var panelButtons: [NSButton] = []
     private var panelSpacer: NSView?
+    private var appUIOnlyMode = false
 
     /// Called when a panel icon button is clicked: (panelId)
     var onPanelItemToggled: ((String) -> Void)?
@@ -111,9 +112,9 @@ class SidebarView: NSView {
     private var currentTabs: [LxAppTab] = []
 
     // Browser tab views
-    private var browserItemViews: [UUID: SidebarBrowserItemView] = [:]
-    private var browserItemTopConstraints: [UUID: NSLayoutConstraint] = [:]
-    private var browserTabOrder: [UUID] = []
+    private var browserItemViews: [String: SidebarBrowserItemView] = [:]
+    private var browserItemTopConstraints: [String: NSLayoutConstraint] = [:]
+    private var browserTabOrder: [String] = []
     private let addButton = NSButton()
     private var addButtonTopConstraint: NSLayoutConstraint?
     private var groupTopConstraints: [String: NSLayoutConstraint] = [:]
@@ -143,9 +144,9 @@ class SidebarView: NSView {
     /// Called when "+" button is clicked to add a browser tab
     var onAddBrowserTab: (() -> Void)?
     /// Called when a browser tab is selected
-    var onBrowserTabSelected: ((UUID) -> Void)?
+    var onBrowserTabSelected: ((String) -> Void)?
     /// Called when a browser tab close is requested
-    var onBrowserTabCloseRequested: ((UUID) -> Void)?
+    var onBrowserTabCloseRequested: ((String) -> Void)?
     /// Called when settings button is clicked
     var onOpenSettings: (() -> Void)?
     /// Called when downloads button is clicked
@@ -369,11 +370,39 @@ class SidebarView: NSView {
             shellEnabled ? "true" : "false",
             LxAppCore.capabilities
         )
-        scrollView.isHidden = hidden
-        settingsButton.isHidden = hidden || !shellEnabled
-        downloadButton.isHidden = hidden || !shellEnabled
+        scrollView.isHidden = hidden || appUIOnlyMode
+        settingsButton.isHidden = hidden || !shellEnabled || appUIOnlyMode
+        downloadButton.isHidden = hidden || !shellEnabled || appUIOnlyMode
         footerView.isHidden = hidden
         resizeHandle.isHidden = hidden
+    }
+
+    func setAppUIOnlyMode(_ enabled: Bool) {
+        appUIOnlyMode = enabled
+
+        guard enabled else {
+            updateVisibilityState()
+            return
+        }
+
+        currentTabs.removeAll()
+        groupViews.values.forEach { $0.removeFromSuperview() }
+        groupViews.removeAll()
+        groupTopConstraints.removeAll()
+
+        browserItemViews.values.forEach { $0.removeFromSuperview() }
+        browserItemViews.removeAll()
+        browserItemTopConstraints.removeAll()
+        browserTabOrder.removeAll()
+        addButton.removeFromSuperview()
+        addButtonTopConstraint = nil
+
+        if let docView = scrollView.documentView {
+            docView.subviews.forEach { $0.removeFromSuperview() }
+            docView.frame = .zero
+        }
+
+        updateVisibilityState()
     }
 
     /// Populate panel icon buttons in the footer.
@@ -405,9 +434,15 @@ class SidebarView: NSView {
             btn.layer?.cornerRadius = 6
             btn.layer?.backgroundColor = NSColor.clear.cgColor
             btn.toolTip = item.label
-            // Use a system symbol as fallback; replace with asset loading if icon paths are supported
-            btn.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
-            btn.contentTintColor = NSColor.secondaryLabelColor
+            if let iconURL = item.iconURL,
+               let image = NSImage(contentsOf: iconURL) {
+                image.isTemplate = true
+                btn.image = image
+                btn.contentTintColor = NSColor.secondaryLabelColor
+            } else {
+                btn.image = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
+                btn.contentTintColor = NSColor.secondaryLabelColor
+            }
             btn.target = self
             btn.action = #selector(panelButtonClicked(_:))
             // Store panel id in the button's identifier
@@ -439,6 +474,7 @@ class SidebarView: NSView {
 
     /// Rebuild all groups based on current tabs
     func updateForTabs(_ tabs: [LxAppTab], activeTab: LxAppTab?) {
+        guard !appUIOnlyMode else { return }
         guard let docView = scrollView.documentView else { return }
 
         currentTabs = tabs
@@ -512,11 +548,13 @@ class SidebarView: NSView {
 
     /// Refresh a specific app group from Rust data
     func refreshAppGroup(appId: String) {
+        guard !appUIOnlyMode else { return }
         groupViews[appId]?.refreshFromRust()
     }
 
     /// Set active highlight on the appropriate group and item
     func setActiveHighlight(appId: String, pageIndex: Int? = nil) {
+        guard !appUIOnlyMode else { return }
         // Clear browser selections when an lxapp is selected
         for (_, itemView) in browserItemViews {
             itemView.isSelected = false
@@ -539,6 +577,7 @@ class SidebarView: NSView {
 
     /// Clear all highlights (both lxapp and browser)
     func clearAllHighlights() {
+        guard !appUIOnlyMode else { return }
         for (_, group) in groupViews {
             group.clearHighlight()
         }
@@ -550,7 +589,8 @@ class SidebarView: NSView {
     // MARK: - Browser Items
 
     /// Update browser tab items in the sidebar
-    func updateBrowserItems(_ items: [(id: UUID, title: String, favicon: NSImage?)], activeId: UUID?) {
+    func updateBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
+        guard !appUIOnlyMode else { return }
         guard let docView = scrollView.documentView else { return }
 
         // Store ordering

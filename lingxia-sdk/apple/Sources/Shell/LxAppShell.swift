@@ -795,8 +795,13 @@ extension LxAppShell {
         browserCoordinator.toggleActiveDevTools()
     }
 
-    func presentInternalBrowserTab(id: UUID) {
+    func presentInternalBrowserTab(id: String) {
         browserCoordinator.presentInternalBrowserTab(id: id)
+    }
+
+    @MainActor
+    func prepareInternalBrowserTabForInput(id: String) -> Bool {
+        browserCoordinator.prepareNativeInput(tabId: id)
     }
 
     @MainActor
@@ -840,7 +845,7 @@ extension LxAppShell: BrowserCoordinatorHost {
         tabManager.activeTab?.appId
     }
 
-    func updateSidebarBrowserItems(_ items: [(id: UUID, title: String, favicon: NSImage?)], activeId: UUID?) {
+    func updateSidebarBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?) {
         sidebarView?.updateBrowserItems(items, activeId: activeId)
     }
 

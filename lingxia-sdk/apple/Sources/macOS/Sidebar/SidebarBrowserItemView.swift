@@ -26,11 +26,11 @@ class SidebarBrowserItemView: NSView {
     private(set) var isHovered = false
     var isSelected = false { didSet { updateAppearance() } }
 
-    let browserId: UUID
-    var onClick: ((UUID) -> Void)?
-    var onClose: ((UUID) -> Void)?
+    let browserId: String
+    var onClick: ((String) -> Void)?
+    var onClose: ((String) -> Void)?
 
-    init(id: UUID) {
+    init(id: String) {
         self.browserId = id
         super.init(frame: .zero)
         setupViews()

@@ -28,7 +28,7 @@ class macOSLxApp: ObservableObject {
 
     static func openLxApp(appId: String, path: String, sessionId: UInt64) {
         os_log("macOS openLxApp: %@ at path: %@", log: log, type: .info, appId, path)
-        LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
+        _ = LxAppCore.executeOpenLxApp(appId: appId, path: path, sessionId: sessionId)
     }
 
     private static func openShellWindow() {
@@ -90,7 +90,6 @@ class macOSLxApp: ObservableObject {
         if !isInitialized {
             os_log("Failed to initialize LxApps - no home app ID", log: log, type: .error)
         } else {
-            loadPanelConfig()
             setupLifecycleObservers()
         }
         return isInitialized
@@ -200,7 +199,7 @@ extension macOSLxApp {
     @MainActor
     internal static func presentInternalBrowserTab(tabId: String) -> Bool {
         let normalized = tabId.lowercased()
-        guard let id = UUID(uuidString: normalized) else {
+        guard !normalized.isEmpty else {
             os_log("presentInternalBrowserTab invalid tab id: %{public}@", log: log, type: .error, tabId)
             return false
         }
@@ -210,9 +209,20 @@ extension macOSLxApp {
         }
 
         guard let s = activeShell() else { return false }
-        s.presentInternalBrowserTab(id: id)
+        s.presentInternalBrowserTab(id: normalized)
         s.window?.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    @MainActor
+    internal static func prepareInternalBrowserTabForInput(tabId: String) -> Bool {
+        let normalized = tabId.lowercased()
+        guard !normalized.isEmpty else { return false }
+        if activeShell() == nil {
+            openShellWindow()
+        }
+        guard let s = activeShell() else { return false }
+        return s.prepareInternalBrowserTabForInput(id: normalized)
     }
 
     @MainActor

@@ -42,17 +42,43 @@ extension LxApp {
         return executeOnMain {
             if let controller = LxAppActiveHost.activeController {
                 let openPresentation: LxAppOpenPresentation = presentation == 1 ? .panel : .normal
-                Task { @MainActor in
-                    _ = await controller.handleOpen(
-                        appId: appIdString,
-                        path: pathString,
-                        sessionId: session_id,
-                        presentation: openPresentation,
-                        panelId: panelIdString
+                let request = LxAppOpenRequest(
+                    appId: appIdString,
+                    path: pathString,
+                    presentation: openPresentation,
+                    panelId: panelIdString.isEmpty ? nil : panelIdString
+                )
+                if controller.hasInterceptors {
+                    Task { @MainActor in
+                        _ = await controller.handleOpen(
+                            appId: appIdString,
+                            path: pathString,
+                            sessionId: session_id,
+                            presentation: openPresentation,
+                            panelId: panelIdString
+                        )
+                    }
+                    return true
+                }
+                do {
+                    _ = try controller.openSync(
+                        request,
+                        sessionId: session_id
                     )
+                    return true
+                } catch {
+                    os_log(
+                        "openLxApp rejected by active controller for %{public}@ path=%{public}@ error=%{public}@",
+                        log: .default,
+                        type: .error,
+                        appIdString,
+                        pathString,
+                        String(describing: error)
+                    )
+                    return false
                 }
             } else {
-                LxAppCore.executeOpenLxApp(
+                return LxAppCore.executeOpenLxApp(
                     appId: appIdString,
                     path: pathString,
                     sessionId: session_id,
@@ -60,7 +86,6 @@ extension LxApp {
                     panelId: panelIdString
                 )
             }
-            return true
         }
     }
 
@@ -179,6 +204,26 @@ extension LxApp {
         #elseif os(iOS)
         return executeOnMain { LxAppBrowserOverlay.show(tabId: tabId) }
         #else
+        return false
+        #endif
+    }
+
+    nonisolated static func presentInternalBrowserTab(tab_id: RustStr) -> Bool {
+        let tabId = tab_id.toString()
+        #if os(macOS)
+        return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
+        #else
+        _ = tabId
+        return false
+        #endif
+    }
+
+    nonisolated static func prepareInternalBrowserTabForInput(tab_id: RustStr) -> Bool {
+        let tabId = tab_id.toString()
+        #if os(macOS)
+        return executeOnMain { macOSLxApp.prepareInternalBrowserTabForInput(tabId: tabId) }
+        #else
+        _ = tabId
         return false
         #endif
     }

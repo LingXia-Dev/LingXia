@@ -21,7 +21,7 @@ protocol BrowserCoordinatorHost: AnyObject {
     /// Currently active lxapp tab appId (if any).
     func activeAppTabId() -> String?
     /// Update sidebar browser items.
-    func updateSidebarBrowserItems(_ items: [(id: UUID, title: String, favicon: NSImage?)], activeId: UUID?)
+    func updateSidebarBrowserItems(_ items: [(id: String, title: String, favicon: NSImage?)], activeId: String?)
     /// Clear all sidebar highlights.
     func clearSidebarHighlights()
     /// Show/hide the lxapp navigation toolbar.
@@ -59,14 +59,14 @@ final class BrowserTabCoordinator: NSObject {
     weak var host: BrowserCoordinatorHost?
 
     // Tab state
-    private let settingsTabId = UUID().uuidString.lowercased()
-    private let downloadsTabId = UUID().uuidString.lowercased()
-    private(set) var activeTabId: UUID?
-    private var tabIds: [UUID] = []
-    private var tabTitles: [UUID: String] = [:]
-    private var tabFavicons: [UUID: NSImage] = [:]
-    private var tabFaviconRequestOrigins: [UUID: String] = [:]
-    private var lastObservedURLs: [UUID: String] = [:]
+    private let settingsTabId = "settings"
+    private let downloadsTabId = "downloads"
+    private(set) var activeTabId: String?
+    private var tabIds: [String] = []
+    private var tabTitles: [String: String] = [:]
+    private var tabFavicons: [String: NSImage] = [:]
+    private var tabFaviconRequestOrigins: [String: String] = [:]
+    private var lastObservedURLs: [String: String] = [:]
 
     // UI
     private var browserView: NSView?
@@ -138,12 +138,12 @@ final class BrowserTabCoordinator: NSObject {
         addTabWithURL("lingxia://downloads", stableTabId: downloadsTabId)
     }
 
-    func selectTab(id: UUID) {
+    func selectTab(id: String) {
         switchToTab(id: id)
         host?.updateSidebarBrowserItems(sidebarItems(), activeId: id)
     }
 
-    func closeTab(id: UUID) {
+    func closeTab(id: String) {
         guard let index = tabIds.firstIndex(of: id) else { return }
 
         // Detach WebView from UI BEFORE Rust destroy to prevent ObjC exceptions
@@ -196,11 +196,34 @@ final class BrowserTabCoordinator: NSObject {
         host?.updateSidebarBrowserItems([], activeId: nil)
     }
 
-    func presentInternalBrowserTab(id: UUID) {
+    func presentInternalBrowserTab(id: String) {
         if !tabIds.contains(id) {
             tabIds.append(id)
         }
         switchToTab(id: id)
+    }
+
+    private func attachedWebViewForNativeInput(tabId: String) -> WKWebView? {
+        let id = tabId.lowercased()
+        if activeTabId != id {
+            presentInternalBrowserTab(id: id)
+        }
+
+        guard let webView = findWebView(for: id), let window = webView.window else {
+            return nil
+        }
+        if webView.superview == nil || webView.superview !== webContainer {
+            attachWebViewToContainer(webView)
+            activeWebView = webView
+            observeActiveWebView(webView)
+        }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(webView)
+        return webView
+    }
+
+    func prepareNativeInput(tabId: String) -> Bool {
+        attachedWebViewForNativeInput(tabId: tabId) != nil
     }
 
     @MainActor
@@ -283,7 +306,7 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     @discardableResult
-    private func toggleBrowserDevToolsWhenReady(tabId: UUID, attempt: Int, token: UInt64) -> Bool {
+    private func toggleBrowserDevToolsWhenReady(tabId: String, attempt: Int, token: UInt64) -> Bool {
         guard token == devToolsRequestToken else { return false }
         guard activeTabId == tabId else { return false }
         guard let webView = findWebView(for: tabId) else {
@@ -303,7 +326,7 @@ final class BrowserTabCoordinator: NSObject {
         return ok
     }
 
-    private func scheduleBrowserDevToolsRetry(tabId: UUID, attempt: Int, token: UInt64, reason: String) -> Bool {
+    private func scheduleBrowserDevToolsRetry(tabId: String, attempt: Int, token: UInt64, reason: String) -> Bool {
         guard attempt < Self.devToolsMaxRetry else {
             os_log(
                 "toggleBrowserDevToolsWhenReady timed out after %d attempts for tab=%{public}@ reason=%{public}@",
@@ -333,7 +356,7 @@ final class BrowserTabCoordinator: NSObject {
         host?.hostWindow?.contentView?.layoutSubtreeIfNeeded()
     }
 
-    private func scheduleBrowserDevToolsDetachedFallback(tabId: UUID, webView: WKWebView, token: UInt64) {
+    private func scheduleBrowserDevToolsDetachedFallback(tabId: String, webView: WKWebView, token: UInt64) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak webView] in
             guard let self, let webView else { return }
             guard token == self.devToolsRequestToken else { return }
@@ -393,7 +416,7 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - WebView Management
 
-    private func findWebView(for id: UUID) -> WKWebView? {
+    private func findWebView(for id: String) -> WKWebView? {
         let appId = getBuiltinBrowserAppId().toString()
         let sessionId = getLxAppSessionId(appId)
         guard sessionId > 0 else {
@@ -519,8 +542,13 @@ final class BrowserTabCoordinator: NSObject {
             return
         }
 
-        let openedTab = if let stableTabId {
-            openBrowserTabWithId(owner.appId, owner.sessionId, url, stableTabId)
+        let normalizedStableTabId = stableTabId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let requestedStableTabId = normalizedStableTabId?.isEmpty == false ? normalizedStableTabId : nil
+
+        let openedTab = if let requestedStableTabId {
+            openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
         } else {
             openBrowserTab(owner.appId, owner.sessionId, url)
         }
@@ -533,28 +561,21 @@ final class BrowserTabCoordinator: NSObject {
                 owner.appId,
                 owner.sessionId,
                 url,
-                stableTabId ?? ""
+                requestedStableTabId ?? ""
             )
             return
         }
 
         let tabId = openedTab.toString().lowercased()
-        guard let id = UUID(uuidString: tabId) else {
-            os_log(
-                "openBrowserTab returned invalid tab id=%{public}@ for %{public}@/%{public}llu",
-                log: Self.log,
-                type: .error,
-                tabId,
-                owner.appId,
-                owner.sessionId,
-            )
+        guard !tabId.isEmpty else {
+            os_log("openBrowserTab returned empty tab id", log: Self.log, type: .error)
             return
         }
 
-        presentInternalBrowserTab(id: id)
+        presentInternalBrowserTab(id: tabId)
     }
 
-    private func switchToTab(id: UUID) {
+    private func switchToTab(id: String) {
         guard tabIds.contains(id) else { return }
         if activeTabId == id {
             host?.updateSidebarBrowserItems(sidebarItems(), activeId: id)
@@ -577,7 +598,7 @@ final class BrowserTabCoordinator: NSObject {
         attachWebView(for: id, attempt: 0)
     }
 
-    private func attachWebView(for tabId: UUID, attempt: Int) {
+    private func attachWebView(for tabId: String, attempt: Int) {
         guard activeTabId == tabId else { return }
 
         if let webView = findWebView(for: tabId) {
@@ -636,7 +657,7 @@ final class BrowserTabCoordinator: NSObject {
         guard let result = handleBrowserAddressSubmission(
             rawInput: sender.stringValue,
             currentURL: activeWebView?.url?.absoluteString,
-            tabId: activeTabId?.uuidString
+            tabId: activeTabId
         ) else { return }
         _ = openAddressInActiveTab(result.url)
     }
@@ -815,8 +836,8 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - Data Helpers
 
-    private func tabIdString(_ id: UUID) -> String {
-        id.uuidString.lowercased()
+    private func tabIdString(_ id: String) -> String {
+        id.lowercased()
     }
 
     private func displayableURL(_ raw: String?) -> String {
@@ -826,13 +847,13 @@ final class BrowserTabCoordinator: NSObject {
         return browserUrlIsHidden(trimmed) ? "" : trimmed
     }
 
-    private func sidebarItems() -> [(id: UUID, title: String, favicon: NSImage?)] {
+    private func sidebarItems() -> [(id: String, title: String, favicon: NSImage?)] {
         tabIds.map { id in
             (id, tabTitles[id] ?? "New Tab", tabFavicons[id])
         }
     }
 
-    private func handleTitleChanged(id: UUID, title: String) {
+    private func handleTitleChanged(id: String, title: String) {
         guard tabIds.contains(id) else { return }
         if tabTitles[id] == title {
             return
@@ -873,7 +894,7 @@ final class BrowserTabCoordinator: NSObject {
         return NSImage(contentsOf: faviconURL)
     }
 
-    private func fetchFavicon(for origin: String, tabId: UUID) {
+    private func fetchFavicon(for origin: String, tabId: String) {
         if origin.hasPrefix("lingxia://") {
             guard let image = bundledFavicon() else { return }
             tabFavicons[tabId] = image
