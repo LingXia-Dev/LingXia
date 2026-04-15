@@ -5,7 +5,9 @@ mod downloads;
 mod facade;
 mod panel;
 mod platform_error;
+#[cfg(not(target_os = "android"))]
 mod proxy;
+#[cfg(not(target_os = "android"))]
 mod proxy_settings;
 mod settings;
 
@@ -108,6 +110,7 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 pub fn register_runtime() {
     lingxia_browser::install_runtime();
     downloads::register();
+    #[cfg(not(target_os = "android"))]
     proxy::register();
     settings::register();
 }
@@ -147,6 +150,7 @@ pub fn register_bundled_assets() {
 
 #[doc(hidden)]
 pub fn warmup() {
+    #[cfg(not(target_os = "android"))]
     proxy::warmup();
     lingxia_browser::warmup();
 }
