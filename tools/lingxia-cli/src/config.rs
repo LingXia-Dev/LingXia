@@ -650,7 +650,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         }
 
         match kind {
-            "menuBarItem" | "trayItem" | "appActivation" | "deepLink" => {
+            "menuBarItem" | "appActivation" => {
                 if obj.get("hostSurface").is_some() {
                     return Err(anyhow!(
                         "ui activator '{id}' with kind '{kind}' cannot set hostSurface"
@@ -798,6 +798,135 @@ mod tests {
         }));
 
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_accepts_titlebar_item() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "style": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "main"
+                }
+            }],
+            "activators": [{
+                "id": "titlebarAction",
+                "kind": "titlebarItem",
+                "hostSurface": "main",
+                "action": {
+                    "kind": "focusSurface",
+                    "surface": "main"
+                }
+            }]
+        }));
+
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_rejects_non_macos_activators() {
+        for kind in ["trayItem", "deepLink"] {
+            let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+            let app = config.app.as_mut().unwrap();
+            app.platforms = vec!["macos".to_string()];
+            config.ui = Some(serde_json::json!({
+                "launch": {
+                    "initialSurface": "main"
+                },
+                "surfaces": [{
+                    "id": "main",
+                    "presentation": {
+                        "style": "window"
+                    },
+                    "content": {
+                        "kind": "lxapp",
+                        "appId": "main"
+                    }
+                }],
+                "activators": [{
+                    "id": kind,
+                    "kind": kind,
+                    "action": {
+                        "kind": "focusSurface",
+                        "surface": "main"
+                    }
+                }]
+            }));
+
+            let err = config.validate().unwrap_err().to_string();
+            assert!(err.contains("unknown kind"), "{kind}: {err}");
+        }
+    }
+
+    #[test]
+    fn macos_ui_rejects_invalid_host_surface_usage() {
+        let mut missing_host = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        missing_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        missing_host.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "style": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "main"
+                }
+            }],
+            "activators": [{
+                "id": "sidebar",
+                "kind": "sidebarItem",
+                "action": {
+                    "kind": "focusSurface",
+                    "surface": "main"
+                }
+            }]
+        }));
+        let err = missing_host.validate().unwrap_err().to_string();
+        assert!(err.contains("hostSurface"));
+
+        let mut app_level_host =
+            LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        app_level_host.app.as_mut().unwrap().platforms = vec!["macos".to_string()];
+        app_level_host.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "style": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "main"
+                }
+            }],
+            "activators": [{
+                "id": "dock",
+                "kind": "appActivation",
+                "hostSurface": "main",
+                "action": {
+                    "kind": "focusSurface",
+                    "surface": "main"
+                }
+            }]
+        }));
+        let err = app_level_host.validate().unwrap_err().to_string();
+        assert!(err.contains("cannot set hostSurface"));
     }
 
     #[test]
