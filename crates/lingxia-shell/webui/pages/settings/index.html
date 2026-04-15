@@ -526,6 +526,7 @@
     </div>
   </div>
 
+  <script src="lingxia://lxapp/__lingxia/native.js"></script>
   <script>
     (function () {
       var navItems = document.querySelectorAll('.nav-item[data-panel]');
@@ -544,8 +545,9 @@
         serverSavedFeedback: false
       };
 
-      var downloadsApi = function () { return window.host.downloads; };
-      var proxyApi = function () { return window.host.proxy; };
+      var appApi = function () { return window.native.app; };
+      var downloadsApi = function () { return window.native.downloads; };
+      var proxyApi = function () { return window.native.proxy; };
 
       navItems.forEach(function (nav) {
         nav.addEventListener('click', function (e) {
@@ -847,7 +849,7 @@
       function ensureProxyWatch() {
         if (proxyWatchHandle) return;
         proxyWatchHandle = proxyApi().watch();
-        proxyWatchHandle.on('data', function (event) {
+        proxyWatchHandle.onEvent(function (event) {
           console.info('[Settings] proxy.watch event:', event);
           var previousStatus = settingsState.proxySettings && settingsState.proxySettings.status;
           var normalizedEvent = event;
@@ -866,15 +868,14 @@
             else if (normalizedEvent.status === 'pending') showProxyToast('', normalizedEvent.statusMessage || 'Applying proxy configuration...');
           }
         });
-        proxyWatchHandle.on('error', function (err) {
+        proxyWatchHandle.onError(function (err) {
           console.error('[Settings] proxy.watch error:', err);
         });
-        proxyWatchHandle.on('end', function () {
-          console.warn('[Settings] proxy.watch ended');
-          proxyWatchHandle = null;
-        });
-        if (proxyWatchHandle.result && typeof proxyWatchHandle.result.catch === 'function') {
-          proxyWatchHandle.result.catch(function () {});
+        if (proxyWatchHandle.result && typeof proxyWatchHandle.result.then === 'function') {
+          proxyWatchHandle.result.then(function () {
+            console.warn('[Settings] proxy.watch ended');
+            proxyWatchHandle = null;
+          }, function () {});
         }
       }
 
@@ -1068,7 +1069,7 @@
         });
       });
 
-      host.app.getInfo().then(function (info) {
+      appApi().getInfo().then(function (info) {
         if (!info) return;
         if (info.productName) document.getElementById('aboutProductName').textContent = info.productName;
         if (info.version) {

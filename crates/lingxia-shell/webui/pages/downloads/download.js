@@ -12,7 +12,7 @@
   var progressAnimationFrame = 0;
   var lastProgressAnimationTs = 0;
 
-  var api = function () { return window.host.downloads; };
+  var api = function () { return window.native.downloads; };
 
   function sortDownloads(arr) {
     function weight(d) {
@@ -85,7 +85,7 @@
       streamHandle = nextHandle;
       if (previousHandle && typeof previousHandle.cancel === 'function') previousHandle.cancel();
 
-      nextHandle.on('data', function (event) {
+      nextHandle.onEvent(function (event) {
         if (disposed || streamHandle !== nextHandle) return;
         if (bufferedEvents) {
           bufferedEvents.push(event);
@@ -95,18 +95,17 @@
         currentState = reduceDownloadsSnapshot(currentState, event);
         emit();
       });
-      nextHandle.on('error', function (err) {
+      nextHandle.onError(function (err) {
         if (disposed || streamHandle !== nextHandle) return;
         console.warn('[DL] resource stream failed', err);
         reloadInBackground();
       });
-      nextHandle.on('end', function () {
-        if (disposed || streamHandle !== nextHandle) return;
-        console.warn('[DL] resource stream ended; reloading');
-        reloadInBackground();
-      });
-      if (nextHandle.result && typeof nextHandle.result.catch === 'function') {
-        nextHandle.result.catch(function () {});
+      if (nextHandle.result && typeof nextHandle.result.then === 'function') {
+        nextHandle.result.then(function () {
+          if (disposed || streamHandle !== nextHandle) return;
+          console.warn('[DL] resource stream ended; reloading');
+          reloadInBackground();
+        }, function () {});
       }
       return nextHandle;
     }
