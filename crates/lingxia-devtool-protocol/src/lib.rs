@@ -28,6 +28,18 @@ pub mod handlers {
         pub const COOKIES_DELETE: &str = "browser.cookies.delete";
         pub const COOKIES_CLEAR: &str = "browser.cookies.clear";
     }
+
+    pub mod lxapp {
+        pub const LIST: &str = "lxapp.list";
+        pub const CURRENT: &str = "lxapp.current";
+        pub const INFO: &str = "lxapp.info";
+        pub const PAGES: &str = "lxapp.pages";
+        pub const EVAL: &str = "lxapp.eval";
+        pub const OPEN: &str = "lxapp.open";
+        pub const CLOSE: &str = "lxapp.close";
+        pub const RESTART: &str = "lxapp.restart";
+        pub const UNINSTALL: &str = "lxapp.uninstall";
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
