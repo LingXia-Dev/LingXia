@@ -1184,6 +1184,9 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     entries.sort_by_key(|e| e.file_name());
 
     for entry in entries {
+        if is_apple_junk_entry(&entry.file_name()) {
+            continue;
+        }
         let path = entry.path();
         let target = dest.join(entry.file_name());
         if path.is_dir() {
@@ -1193,6 +1196,13 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    name == ".DS_Store" || name == "__MACOSX" || name.starts_with("._")
 }
 
 fn write_if_changed(path: &Path, bytes: &[u8]) -> Result<bool> {

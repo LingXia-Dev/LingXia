@@ -508,6 +508,9 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
 
     for entry in std::fs::read_dir(src)? {
         let entry = entry?;
+        if is_apple_junk_entry(&entry.file_name()) {
+            continue;
+        }
         let path = entry.path();
         let target = dest.join(entry.file_name());
 
@@ -519,6 +522,13 @@ pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
+    let Some(name) = name.to_str() else {
+        return false;
+    };
+    name == ".DS_Store" || name == "__MACOSX" || name.starts_with("._")
 }
 
 #[cfg(test)]
@@ -533,5 +543,14 @@ mod tests {
 
         #[cfg(not(target_os = "macos"))]
         assert!(!is_macos());
+    }
+
+    #[test]
+    fn apple_junk_filter_is_narrow() {
+        assert!(is_apple_junk_entry(std::ffi::OsStr::new(".DS_Store")));
+        assert!(is_apple_junk_entry(std::ffi::OsStr::new("__MACOSX")));
+        assert!(is_apple_junk_entry(std::ffi::OsStr::new("._Icon")));
+        assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".well-known")));
+        assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".config")));
     }
 }

@@ -241,10 +241,7 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
                         let item: Retained<NSString> = msg_send![&contents_array, objectAtIndex: i];
                         let item_str = item.to_string();
 
-                        // Filter out hidden files (starting with .)
-                        if !item_str.starts_with('.') {
-                            result.push(item_str);
-                        }
+                        result.push(item_str);
                     }
 
                     return result;
