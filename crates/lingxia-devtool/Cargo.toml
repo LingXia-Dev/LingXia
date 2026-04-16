@@ -14,6 +14,7 @@ browser = ["dep:lingxia-browser"]
 lingxia-devtool-protocol = { workspace = true }
 lingxia = { path = "../lingxia", default-features = false }
 lingxia-browser = { workspace = true, optional = true }
+lxapp = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

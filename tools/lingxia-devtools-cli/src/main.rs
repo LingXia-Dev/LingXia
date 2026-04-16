@@ -5,6 +5,7 @@ use std::path::Path;
 mod browser;
 mod client;
 mod logs;
+mod lxapp;
 mod project;
 
 #[derive(Parser)]
@@ -20,6 +21,8 @@ struct Cli {
 enum Commands {
     /// Control browser tabs in the current dev session
     Browser(browser::BrowserOptions),
+    /// Manage lxapps in the current dev session
+    Lxapp(lxapp::LxAppOptions),
     /// Query and filter the current dev session log file
     Logs(logs::LogsOptions),
 }
@@ -31,6 +34,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Browser(options) => browser::execute(&info, options),
+        Commands::Lxapp(options) => lxapp::execute(&project_root, &info, options),
         Commands::Logs(options) => logs::execute(Path::new(&info.log_file), options),
     }
 }
