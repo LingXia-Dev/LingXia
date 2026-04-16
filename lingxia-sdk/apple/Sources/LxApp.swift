@@ -30,6 +30,17 @@ struct AppEvent {
 
 let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"
 
+enum OpenURLTarget: Int32 {
+    case external = 0
+    case selfTarget = 1
+    case newBrowserTab = 2
+}
+
+enum OpenURLHandlerResult {
+    case handled(Bool)
+    case useDefault
+}
+
 /// Core LxApp management logic shared between platforms
 @MainActor
 final class LxAppCore {
@@ -147,6 +158,9 @@ final class LxAppCore {
     /// Custom handler for navigation - for tools like Runner that manage their own windows
     /// Return true to indicate the call was handled, false to use default behavior
     nonisolated(unsafe) internal static var navigationHandler: ((String, String, LxAppAnimation) -> Bool)?
+
+    /// Custom handler for openURL - for tools like Runner that own their browser presentation.
+    nonisolated(unsafe) internal static var openUrlHandler: ((String, UInt64, String, OpenURLTarget) -> OpenURLHandlerResult)?
 
     /// Initialize the LxApp system (internal core initialization)
     internal static func initializeCore(autoOpenHome: Bool = true) {
@@ -373,6 +387,11 @@ final class LxApp {
     nonisolated(unsafe) internal static var navigationHandler: ((String, String, LxAppAnimation) -> Bool)? {
         get { LxAppCore.navigationHandler }
         set { LxAppCore.navigationHandler = newValue }
+    }
+
+    nonisolated(unsafe) internal static var openUrlHandler: ((String, UInt64, String, OpenURLTarget) -> OpenURLHandlerResult)? {
+        get { LxAppCore.openUrlHandler }
+        set { LxAppCore.openUrlHandler = newValue }
     }
 
     public static func enableWebViewDebugging() {

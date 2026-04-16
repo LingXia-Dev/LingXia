@@ -28,6 +28,14 @@ public class RunnerApp {
 
     public func bind(controller: LxAppController) {
         self.controller = controller
+        os_log("Installing Runner openURL self handler", log: Self.log, type: .info)
+        RunnerSupport.Runtime.setOpenUrlHandler { [weak self] ownerAppId, ownerSessionId, url in
+            self?.handleOpenURL(
+                ownerAppId: ownerAppId,
+                ownerSessionId: ownerSessionId,
+                url: url
+            ) ?? false
+        }
         controllerEventsTask?.cancel()
         controllerEventsTask = Task { [weak self, controller] in
             for await event in controller.events {
@@ -110,6 +118,33 @@ public class RunnerApp {
     /// Navigate to path in current LxApp
     public func navigate(to path: String) {
         windowController?.navigate(to: path)
+    }
+
+    private func handleOpenURL(
+        ownerAppId: String,
+        ownerSessionId: UInt64,
+        url rawURL: String
+    ) -> Bool {
+        guard windowController?.appId == ownerAppId else {
+            os_log("Runner rejected self openURL for non-active appId=%@", log: Self.log, type: .info, ownerAppId)
+            return false
+        }
+        guard RunnerSupport.Runtime.sessionId(for: ownerAppId) == ownerSessionId else {
+            os_log("Runner rejected self openURL for stale session appId=%@ session=%{public}llu", log: Self.log, type: .info, ownerAppId, ownerSessionId)
+            return false
+        }
+        guard let tabId = RunnerSupport.Browser.openTab(
+            ownerAppId: ownerAppId,
+            ownerSessionId: ownerSessionId,
+            url: rawURL
+        ) else {
+            os_log("Runner failed to open browser tab for appId=%@ url=%@", log: Self.log, type: .error, ownerAppId, rawURL)
+            return false
+        }
+
+        os_log("Runner presenting browser tab appId=%@ tab=%@ url=%@", log: Self.log, type: .info, ownerAppId, tabId, rawURL)
+        windowController?.presentBrowserTab(id: tabId)
+        return true
     }
     
     /// Handle navigation with animation type (called from SDK handler)

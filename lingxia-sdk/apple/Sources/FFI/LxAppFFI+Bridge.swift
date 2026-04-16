@@ -11,6 +11,8 @@ import UIKit
 import AppKit
 #endif
 
+private let lxAppFFILog = OSLog(subsystem: "LingXia", category: "LxAppFFI")
+
 /// FFI callbacks dispatched from Rust via the generated bridge.
 extension LxApp {
 
@@ -189,24 +191,50 @@ extension LxApp {
     ) -> Bool {
         let ownerAppId = owner_appid.toString()
         let urlString = url.toString()
-        let selfTarget: Int32 = 1
-        let newBrowserTab: Int32 = 2
+        let openTarget = OpenURLTarget(rawValue: target) ?? .external
+        os_log(
+            "openURL owner=%{public}@ session=%{public}llu target=%{public}d resolvedTarget=%{public}@ url=%{private}@",
+            log: lxAppFFILog,
+            type: .info,
+            ownerAppId,
+            owner_session_id,
+            target,
+            String(describing: openTarget),
+            urlString
+        )
 
-        guard target == selfTarget || target == newBrowserTab else {
+        if let handler = LxApp.openUrlHandler {
+            switch executeOnMain({ handler(ownerAppId, owner_session_id, urlString, openTarget) }) {
+            case .handled(let accepted):
+                os_log("openURL handled by custom handler accepted=%{public}@", log: lxAppFFILog, type: .info, String(accepted))
+                return accepted
+            case .useDefault:
+                break
+            }
+        }
+
+        guard openTarget == .selfTarget || openTarget == .newBrowserTab else {
             return openExternalUrlString(urlString)
         }
 
         guard !ownerAppId.isEmpty, owner_session_id > 0 else { return false }
 
         #if os(macOS)
-        if target == selfTarget && ownerAppId == getBuiltinBrowserAppId().toString() {
-            let scheme = URL(string: urlString)?.scheme?.lowercased()
-            if let scheme, scheme != "http", scheme != "https" {
-                return openExternalUrlString(urlString)
+        if openTarget == .selfTarget {
+            if ownerAppId == getBuiltinBrowserAppId().toString() {
+                let scheme = URL(string: urlString)?.scheme?.lowercased()
+                if let scheme, scheme != "http", scheme != "https" {
+                    return openExternalUrlString(urlString)
+                }
+                if executeOnMain({ macOSLxApp.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString) }) {
+                    return true
+                }
+                return false
             }
-            if executeOnMain({ macOSLxApp.consumeSelfTargetNavigationInActiveBrowserTab(urlString: urlString) }) {
-                return true
-            }
+        }
+        #else
+        if openTarget == .selfTarget {
+            return false
         }
         #endif
 

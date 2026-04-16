@@ -8,6 +8,10 @@ typealias RunnerNavigationBarState = NavigationBarState
 enum RunnerSupport {
     @MainActor
     enum Runtime {
+        static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
+            LingxiaRunnerSPI.Runtime.setOpenUrlHandler(handler)
+        }
+
         static func sessionId(for appId: String) -> UInt64? {
             LingxiaRunnerSPI.Runtime.sessionId(for: appId)
         }
@@ -49,6 +53,38 @@ enum RunnerSupport {
 
         static func attach(_ webView: WKWebView, to container: NSView) {
             LingxiaRunnerSPI.WebView.attach(webView, to: container)
+        }
+
+    }
+
+    @MainActor
+    enum Browser {
+        static func openTab(ownerAppId: String, ownerSessionId: UInt64, url: String) -> String? {
+            LingxiaRunnerSPI.WebView.openBrowserTab(
+                ownerAppId: ownerAppId,
+                ownerSessionId: ownerSessionId,
+                url: url
+            )
+        }
+
+        static func webView(tabId: String) -> WKWebView? {
+            LingxiaRunnerSPI.WebView.browserTabWebView(tabId: tabId)
+        }
+
+        static func closeTab(tabId: String) -> Bool {
+            LingxiaRunnerSPI.WebView.closeBrowserTab(tabId: tabId)
+        }
+
+        static func handleAddressSubmission(
+            rawInput: String,
+            currentURL: String?,
+            tabId: String
+        ) -> (url: String, displayText: String)? {
+            LingxiaRunnerSPI.WebView.handleAddressSubmission(
+                rawInput: rawInput,
+                currentURL: currentURL,
+                tabId: tabId
+            )
         }
     }
 

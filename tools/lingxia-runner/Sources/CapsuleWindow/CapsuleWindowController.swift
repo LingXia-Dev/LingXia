@@ -60,6 +60,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
     private var floatingCapsuleContainer: NSView?
+    private let browserOverlay = RunnerBrowserOverlay()
 
     // Status bar components
     private var timeLabel: NSTextField?
@@ -294,7 +295,9 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private func currentInspectableWebView() -> WKWebView? {
-        RunnerSupport.WebView.current() ?? RunnerSupport.WebView.find(appId: appId, path: currentPath)
+        browserOverlay.activeWebView
+            ?? RunnerSupport.WebView.current()
+            ?? RunnerSupport.WebView.find(appId: appId, path: currentPath)
     }
     
     // MARK: - Phone Content Setup
@@ -820,6 +823,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
     
     public func windowWillClose(_ notification: Notification) {
+        browserOverlay.dismiss(closeTab: true)
         if let sessionId = RunnerSupport.Runtime.sessionId(for: appId), sessionId > 0 {
             if !suppressRuntimeCloseNotification {
                 let _ = onLxappClosed(appId, sessionId)
@@ -833,6 +837,12 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     func closeFromRuntime() {
         suppressRuntimeCloseNotification = true
         window?.close()
+    }
+
+    func presentBrowserTab(id tabId: String) {
+        guard let phoneContentView else { return }
+        browserOverlay.present(tabId: tabId, in: phoneContentView, window: window)
+        window?.makeKeyAndOrderFront(nil)
     }
     
     // MARK: - Navigation

@@ -2,12 +2,29 @@ import Foundation
 
 #if os(macOS)
 import AppKit
+import OSLog
 import WebKit
 import CLingXiaRustAPI
 import CLingXiaSwiftAPI
 
 @MainActor
 enum RunnerBridge {
+    private static let log = OSLog(subsystem: "LingXiaRunner", category: "RunnerBridge")
+
+    static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
+        LxApp.openUrlHandler = { ownerAppId, ownerSessionId, url, target in
+            switch target {
+            case .selfTarget:
+                return .handled(handler(ownerAppId, ownerSessionId, url))
+            case .newBrowserTab:
+                os_log("Runner rejected openURL newBrowserTab owner=%{public}@ session=%{public}llu url=%{private}@", log: log, type: .info, ownerAppId, ownerSessionId, url)
+                return .handled(false)
+            case .external:
+                return .useDefault
+            }
+        }
+    }
+
     static func sessionId(for appId: String) -> UInt64? {
         LxAppCore.sessionId(for: appId)
     }
@@ -50,6 +67,48 @@ enum RunnerBridge {
 
     static func attachWebView(_ webView: WKWebView, to container: NSView) {
         WebViewManager.attachWebViewToContainer(webView, container: container)
+    }
+
+    static func createBrowserTab(ownerAppId: String, ownerSessionId: UInt64, url: String) -> String? {
+        guard let openedTab = openBrowserTab(ownerAppId, ownerSessionId, url) else {
+            return nil
+        }
+        let tabId = openedTab.toString().lowercased()
+        return tabId.isEmpty ? nil : tabId
+    }
+
+    static func browserTabWebView(tabId: String) -> WKWebView? {
+        let normalized = tabId.lowercased()
+        guard !normalized.isEmpty else { return nil }
+
+        let appId = getBuiltinBrowserAppId().toString()
+        let sessionId = getLxAppSessionId(appId)
+        guard sessionId > 0 else { return nil }
+
+        let path = browserTabPathForId(normalized).toString()
+        guard !path.isEmpty else { return nil }
+        return WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+    }
+
+    static func closeBrowserTab(tabId: String) -> Bool {
+        let normalized = tabId.lowercased()
+        guard !normalized.isEmpty else { return false }
+        return browserTabClose(normalized)
+    }
+
+    static func handleBrowserAddressSubmission(
+        rawInput: String,
+        currentURL: String?,
+        tabId: String
+    ) -> (url: String, displayText: String)? {
+        guard let result = lingxia.handleBrowserAddressSubmission(
+            rawInput: rawInput,
+            currentURL: currentURL,
+            tabId: tabId
+        ) else {
+            return nil
+        }
+        return (url: result.url, displayText: result.displayText)
     }
 
     static func tabBar(appId: String) -> TabBar? {

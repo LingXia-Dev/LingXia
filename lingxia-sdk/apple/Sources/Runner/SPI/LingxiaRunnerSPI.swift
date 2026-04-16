@@ -8,6 +8,10 @@ import WebKit
 @_spi(Runner) public enum LingxiaRunnerSPI {
     @MainActor
     public enum Runtime {
+        public static func setOpenUrlHandler(_ handler: @escaping (String, UInt64, String) -> Bool) {
+            RunnerBridge.setOpenUrlHandler(handler)
+        }
+
         public static func sessionId(for appId: String) -> UInt64? {
             RunnerBridge.sessionId(for: appId)
         }
@@ -53,6 +57,38 @@ import WebKit
 
         public static func attach(_ webView: WKWebView, to container: NSView) {
             RunnerBridge.attachWebView(webView, to: container)
+        }
+
+        public static func openBrowserTab(
+            ownerAppId: String,
+            ownerSessionId: UInt64,
+            url: String
+        ) -> String? {
+            RunnerBridge.createBrowserTab(
+                ownerAppId: ownerAppId,
+                ownerSessionId: ownerSessionId,
+                url: url
+            )
+        }
+
+        public static func browserTabWebView(tabId: String) -> WKWebView? {
+            RunnerBridge.browserTabWebView(tabId: tabId)
+        }
+
+        public static func closeBrowserTab(tabId: String) -> Bool {
+            RunnerBridge.closeBrowserTab(tabId: tabId)
+        }
+
+        public static func handleAddressSubmission(
+            rawInput: String,
+            currentURL: String?,
+            tabId: String
+        ) -> (url: String, displayText: String)? {
+            RunnerBridge.handleBrowserAddressSubmission(
+                rawInput: rawInput,
+                currentURL: currentURL,
+                tabId: tabId
+            )
         }
     }
 
