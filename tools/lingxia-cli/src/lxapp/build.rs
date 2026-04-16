@@ -251,7 +251,6 @@ impl Reporter {
 }
 
 struct TaskReporter {
-    #[allow(dead_code)]
     multi: MultiProgress,
     build: ProgressBar,
     logic: ProgressBar,
@@ -282,9 +281,10 @@ impl TaskReporter {
         self.build
             .set_message(format!("{}", style("Building...").bold()));
         self.logic
-            .set_message(format!("{} compiling", style("Logic").cyan()));
+            .set_message(format!("{} waiting", style("Logic").cyan()));
         self.view
-            .set_message(format!("{} bundling", style("View").cyan()));
+            .set_message(format!("{} waiting", style("View").cyan()));
+        let _ = &self.multi;
         self.build.enable_steady_tick(Duration::from_millis(80));
         self.logic.enable_steady_tick(Duration::from_millis(80));
         self.view.enable_steady_tick(Duration::from_millis(80));
