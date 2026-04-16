@@ -106,6 +106,22 @@ When a host project has `lingxia.yaml`, `lingxia build` also prepares configured
 
 ---
 
+### `lingxia clean`
+
+Remove generated artifacts for the current project context.
+
+```bash
+lingxia clean
+```
+
+Context rules:
+
+- In a host app project with `lingxia.yaml`, cleans host outputs, generated host assets, platform build directories, configured bundle `dist/` directories, and native `target/`.
+- In an lxapp or lxplugin project, cleans local `dist/` or `dist-plugin/`, `node_modules/`, and LingXia view build cache.
+- In a standalone Apple Swift Package, such as runner development packages without `lingxia.yaml`, cleans `.build/` and `.lingxia/`.
+
+---
+
 ### `lingxia package`
 
 Package release artifacts for publishing or delivery.

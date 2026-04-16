@@ -148,6 +148,9 @@ enum Commands {
         dmg: bool,
     },
 
+    /// Remove generated build artifacts
+    Clean,
+
     /// Package release artifacts for publishing or delivery
     Package {
         #[command(flatten)]
@@ -433,6 +436,9 @@ fn main() -> Result<()> {
                 dmg,
                 package: false,
             })?;
+        }
+        Commands::Clean => {
+            commands::clean::execute()?;
         }
         Commands::Package {
             package_options,

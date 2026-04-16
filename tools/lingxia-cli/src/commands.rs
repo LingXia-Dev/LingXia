@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod build;
+pub mod clean;
 pub mod dev;
 pub mod device;
 pub mod doctor;
