@@ -7,7 +7,7 @@ use crate::{LxAppError, error, info};
 use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, mpsc};
-use tokio::sync::oneshot::Sender;
+use tokio::sync::oneshot::{self, Sender};
 
 /// LxApp Async Executor
 ///
@@ -216,6 +216,7 @@ impl LxAppWorkers {
             ServiceMessage::CreatePage { lxapp, .. } => lxapp.appid.clone(),
             ServiceMessage::CallPageSvcEvent { lxapp, .. } => lxapp.appid.clone(),
             ServiceMessage::DispatchAppBusEvent { lxapp, .. } => lxapp.appid.clone(),
+            ServiceMessage::Eval { lxapp, .. } => lxapp.appid.clone(),
         };
 
         // Resolve target worker strictly from instance mapping (object identity)
@@ -227,9 +228,8 @@ impl LxAppWorkers {
             | ServiceMessage::CallPageSvc { lxapp, .. }
             | ServiceMessage::CreatePage { lxapp, .. }
             | ServiceMessage::CallPageSvcEvent { lxapp, .. }
-            | ServiceMessage::DispatchAppBusEvent { lxapp, .. } => {
-                Some(lxapp.as_ref() as *const _ as usize)
-            }
+            | ServiceMessage::DispatchAppBusEvent { lxapp, .. }
+            | ServiceMessage::Eval { lxapp, .. } => Some(lxapp.as_ref() as *const _ as usize),
         };
 
         let target_worker_id =
@@ -374,6 +374,18 @@ impl LxAppWorkers {
         self.sender
             .send(ServiceMessage::DispatchAppBusEvent { lxapp, event })?;
         Ok(())
+    }
+
+    pub async fn eval_app_service(
+        &self,
+        lxapp: Arc<crate::lxapp::LxApp>,
+        script: String,
+    ) -> Result<String, LxAppError> {
+        let (tx, rx) = oneshot::channel();
+        self.sender
+            .send(ServiceMessage::Eval { lxapp, script, tx })?;
+        rx.await
+            .map_err(|err| LxAppError::ChannelError(err.to_string()))?
     }
 }
 

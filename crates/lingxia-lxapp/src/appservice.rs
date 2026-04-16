@@ -4,7 +4,7 @@ use crate::lx;
 use crate::lxapp::LxApp;
 use crate::{error, info};
 
-use rong::{JSContext, JSResult, JSRuntime, RongJSError, error::HostError};
+use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
 use rong_console as console;
 use rong_fs as fs;
 use rong_http as http;
@@ -80,6 +80,11 @@ pub(crate) enum ServiceMessage {
         lxapp: Arc<LxApp>,
         event: event_bus::AppBusEvent,
     },
+    Eval {
+        lxapp: Arc<LxApp>,
+        script: String,
+        tx: oneshot::Sender<Result<String, LxAppError>>,
+    },
 }
 
 /// Enum representing different sources of Page service calls
@@ -131,6 +136,45 @@ async fn handle_app_service_event(
             .with_appid(appid);
         }
     }
+}
+
+fn js_value_to_json_string(value: JSValue) -> Result<String, LxAppError> {
+    if value.is_undefined() || value.is_null() {
+        return Ok("null".to_string());
+    }
+    if value.is_boolean() {
+        let value: bool = value.into_value().try_into().map_err(LxAppError::from)?;
+        return Ok(if value { "true" } else { "false" }.to_string());
+    }
+    if value.is_number() {
+        let value: f64 = value.into_value().try_into().map_err(LxAppError::from)?;
+        let number = serde_json::Number::from_f64(value)
+            .ok_or_else(|| LxAppError::Runtime("eval returned invalid number".to_string()))?;
+        return Ok(number.to_string());
+    }
+    if value.is_string() {
+        let value: String = value.into_value().try_into().map_err(LxAppError::from)?;
+        return serde_json::to_string(&value).map_err(LxAppError::from);
+    }
+    if let Some(object) = value.into_object() {
+        return object.to_json_string().map_err(LxAppError::from);
+    }
+    Ok("null".to_string())
+}
+
+async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAppError> {
+    let script_json = serde_json::to_string(script).map_err(LxAppError::from)?;
+    let wrapped = format!(
+        r#"(async () => {{
+  const __lxdev_eval = eval({script_json});
+  return await __lxdev_eval;
+}})()"#
+    );
+    let value = ctx
+        .eval_async::<JSValue>(Source::from_bytes(wrapped))
+        .await
+        .map_err(LxAppError::from)?;
+    js_value_to_json_string(value)
 }
 
 // Handles a bridge-routed message that must enter the JS runtime worker.
@@ -543,6 +587,27 @@ pub(crate) async fn lxapp_service_handler(
                     });
                 }
             }
+        }
+        ServiceMessage::Eval { lxapp, script, tx } => {
+            let result = if let Some(ctx) = current_ctx.as_ref() {
+                let same_app = LxApp::from_ctx(ctx)
+                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
+                    .unwrap_or(false);
+                if same_app {
+                    eval_logic_script(ctx, &script).await
+                } else {
+                    Err(LxAppError::Runtime(format!(
+                        "logic runtime is bound to a different lxapp than {}",
+                        lxapp.appid
+                    )))
+                }
+            } else {
+                Err(LxAppError::Runtime(format!(
+                    "logic runtime is not ready for {}",
+                    lxapp.appid
+                )))
+            };
+            let _ = tx.send(result);
         }
     }
 }

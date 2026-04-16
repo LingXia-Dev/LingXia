@@ -42,10 +42,11 @@ pub use lingxia_update::{
 };
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    LxApp, PopupMode, config::LxAppInfo, ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp,
-    get_locale, get_platform, init, installed_lxapp_path, is_pull_down_refresh_enabled,
-    on_low_memory, open_lxapp, page_config::OrientationConfig, page_config::PageOrientation,
-    register_builtin_asset_bundle, register_dev_bundle_source, tabbar, try_get,
+    LxApp, LxAppRuntimeInfo, PopupMode, close_lxapp, config::LxAppInfo, ensure_builtin_lxapp,
+    ensure_lxapp, get_current_lxapp, get_locale, get_platform, init, installed_lxapp_path,
+    is_pull_down_refresh_enabled, list_lxapps, on_low_memory, open_lxapp,
+    page_config::OrientationConfig, page_config::PageOrientation, register_builtin_asset_bundle,
+    register_dev_bundle_source, restart_lxapp, tabbar, try_get, uninstall_lxapp,
 };
 pub use page::{
     NavigationType, Page, ViewCallOptions, add_global_page_script, register_page_resolver,

@@ -291,17 +291,46 @@ pub(crate) async fn ensure_first_install(
         return Ok(());
     }
 
-    let pkg = with_foreground_update_timeout(
+    if bundled_lxapp_available(current_lxapp, target_appid) {
+        lxapp_runtime::register_builtin_asset_bundle(
+            target_appid.to_string(),
+            target_appid.to_string(),
+        );
+        return Ok(());
+    }
+
+    if !crate::provider::has_update_provider() {
+        crate::warn!(
+            "Cannot first-install lxapp '{target_appid}': not installed, no bundled manifest, and no UpdateProvider"
+        );
+        return Err(LxAppError::UnsupportedOperation(format!(
+            "lxapp '{target_appid}' is not installed; remote install unavailable"
+        )));
+    }
+
+    let pkg = match with_foreground_update_timeout(
         manager.check_latest_update(target_appid, release_type, None),
         &format!("first install update check for {}", target_appid),
     )
-    .await?
-    .ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!(
-            "No package available for first install of {}",
-            target_appid
-        ))
-    })?;
+    .await
+    {
+        Ok(Some(pkg)) => pkg,
+        Ok(None) => {
+            crate::warn!(
+                "Cannot first-install lxapp '{target_appid}': UpdateProvider returned no package for {}",
+                release_type.as_str()
+            );
+            return Err(LxAppError::ResourceNotFound(format!(
+                "lxapp '{target_appid}' package not found ({})",
+                release_type.as_str()
+            )));
+        }
+        Err(err) => {
+            return Err(LxAppError::Runtime(format!(
+                "failed to query UpdateProvider for first install of '{target_appid}': {err}"
+            )));
+        }
+    };
 
     ensure_runtime_version_compatible(target_appid, &pkg)?;
 
@@ -316,6 +345,11 @@ pub(crate) async fn ensure_first_install(
         .await?;
 
     Ok(())
+}
+
+fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_appid: &str) -> bool {
+    let manifest = format!("{target_appid}/lxapp.json");
+    current_lxapp.runtime.read_asset(&manifest).is_ok()
 }
 
 /// Ensure a specific target version package is prepared before opening.

@@ -430,10 +430,41 @@ pub(crate) enum LxAppSessionStatus {
     Restarting = 4,
 }
 
+impl LxAppSessionStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Closed => "closed",
+            Self::Opening => "opening",
+            Self::Opened => "opened",
+            Self::Closing => "closing",
+            Self::Restarting => "restarting",
+        }
+    }
+}
+
 /// A single runtime session of a LxApp: id + status.
 pub(crate) struct LxAppSession {
     pub(crate) id: LxAppSessionId,
     status: AtomicU8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeInfo {
+    pub appid: String,
+    pub app_name: String,
+    pub version: String,
+    pub release_type: String,
+    pub session_id: u64,
+    pub status: String,
+    pub is_home: bool,
+    pub current_page: Option<String>,
+    pub initial_route: String,
+    pub pages_count: usize,
+    pub pages: Vec<String>,
+    pub page_stack: Vec<String>,
+    pub lxapp_dir: String,
+    pub data_dir: String,
+    pub cache_dir: String,
 }
 
 impl LxAppSession {
@@ -489,12 +520,50 @@ impl LxApp {
         self.session.id
     }
 
+    fn status_name(&self) -> &'static str {
+        self.status().as_str()
+    }
+
     pub fn release_type(&self) -> ReleaseType {
         self.release_type
     }
 
     pub fn app_data_dir(&self) -> PathBuf {
         self.runtime.app_data_dir()
+    }
+
+    fn page_paths(&self) -> Vec<String> {
+        self.config.page_paths()
+    }
+
+    pub fn runtime_info(&self) -> LxAppRuntimeInfo {
+        let info = self.get_lxapp_info();
+        let pages = self.page_paths();
+        LxAppRuntimeInfo {
+            appid: self.appid.clone(),
+            app_name: info.app_name,
+            version: info.version,
+            release_type: info.release_type,
+            session_id: self.session_id(),
+            status: self.status_name().to_string(),
+            is_home: self.is_home_lxapp,
+            current_page: self.peek_current_page(),
+            initial_route: self.initial_route(),
+            pages_count: pages.len(),
+            pages,
+            page_stack: self.get_page_stack(),
+            lxapp_dir: self.lxapp_dir.to_string_lossy().into_owned(),
+            data_dir: self.user_data_dir.to_string_lossy().into_owned(),
+            cache_dir: self.user_cache_dir.to_string_lossy().into_owned(),
+        }
+    }
+
+    pub async fn eval_logic(&self, script: String) -> Result<serde_json::Value, LxAppError> {
+        let json = self
+            .executor
+            .eval_app_service(self.clone_arc(), script)
+            .await?;
+        serde_json::from_str(&json).map_err(LxAppError::from)
     }
 
     pub(crate) fn set_status(&self, s: LxAppSessionStatus) {
@@ -2038,6 +2107,51 @@ pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp
     let app = manager.ensure_lxapp(appid.to_string(), options.release_type);
     app.open(options)?;
     Ok(app)
+}
+
+pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
+    let Some(manager) = get_lxapps_manager() else {
+        return Vec::new();
+    };
+    let mut apps: Vec<LxAppRuntimeInfo> = manager
+        .lxapps
+        .iter()
+        .map(|entry| entry.value().runtime_info())
+        .collect();
+    apps.sort_by(|a, b| a.appid.cmp(&b.appid));
+    apps
+}
+
+pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
+    let app = try_get(appid).ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    app.shutdown()?;
+    if let Some(manager) = get_lxapps_manager() {
+        manager.remove_from_stack(appid);
+    }
+    Ok(())
+}
+
+pub fn restart_lxapp(appid: &str) -> Result<(), LxAppError> {
+    let app = try_get(appid).ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    app.restart()
+}
+
+pub fn uninstall_lxapp(appid: &str) -> Result<(), LxAppError> {
+    let manager = get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    let app = if let Some(app) = try_get(appid) {
+        manager.destroy_lxapp_with_options(appid, true);
+        app
+    } else {
+        manager
+            .lxapps
+            .iter()
+            .next()
+            .map(|entry| entry.value().clone())
+            .ok_or_else(|| LxAppError::Runtime("No LxApp runtime available".to_string()))?
+    };
+    let updater = UpdateManager::new(app);
+    updater.uninstall_all(appid)
 }
 
 pub fn installed_lxapp_path(appid: &str, release_type: ReleaseType) -> Option<String> {

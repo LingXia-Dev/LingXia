@@ -82,6 +82,10 @@ pub(crate) fn get_provider() -> &'static dyn Provider {
     PROVIDER.get().map(|b| b.as_ref()).unwrap_or(&NoOpProvider)
 }
 
+pub(crate) fn has_update_provider() -> bool {
+    PROVIDER.get().is_some()
+}
+
 /// Get the registered log provider, or a default no-op provider.
 pub(crate) fn get_log_provider() -> &'static dyn LogProvider {
     LOG_PROVIDER
