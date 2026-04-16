@@ -18,14 +18,17 @@ use crate::harmony::WebViewInner;
 
 use crate::traits::{
     AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
-    FileChooserResponse, NavigationHandler, NavigationPolicy, NewWindowHandler, NewWindowPolicy,
-    PressOptions, SchemeOutcome, ScrollOptions, TypeOptions, WebViewInputController,
+    FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NewWindowHandler,
+    NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
+    WebViewInputController,
 };
 use crate::{
-    LoadDataRequest, WebResourceResponse, WebViewController, WebViewDelegate, WebViewError,
-    WebViewInputError, WebViewScriptError,
+    LoadDataRequest, WebResourceResponse, WebViewController, WebViewCookie,
+    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
+
+const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
 
 fn lock_or_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
     match mutex.lock() {
@@ -397,6 +400,11 @@ impl WebViewCreateOptions {
             return Err(WebViewError::InvalidCreateOptions(
                 "download callback is only supported in browser profile; use WebViewBuilder::browser(webtag).on_download(...).create()".to_string(),
             ));
+        }
+        if self.scheme_handlers.contains_key(APPLE_INTERNAL_SCHEME) {
+            return Err(WebViewError::InvalidCreateOptions(format!(
+                "scheme '{APPLE_INTERNAL_SCHEME}' is reserved for LingXia Apple bridge transport"
+            )));
         }
         let mut registered_schemes: Vec<String> = self.scheme_handlers.keys().cloned().collect();
         registered_schemes.sort_unstable();
@@ -817,6 +825,27 @@ impl WebView {
         self.inner.eval_js(js).await
     }
 
+    pub async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
+        self.inner.list_cookies().await
+    }
+
+    pub async fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
+        self.inner.set_cookie(request).await
+    }
+
+    pub async fn delete_cookie(
+        &self,
+        name: &str,
+        domain: &str,
+        path: &str,
+    ) -> Result<(), WebViewError> {
+        self.inner.delete_cookie(name, domain, path).await
+    }
+
+    pub async fn clear_cookies(&self) -> Result<(), WebViewError> {
+        self.inner.clear_cookies().await
+    }
+
     pub async fn click(
         &self,
         selector: &str,
@@ -832,6 +861,15 @@ impl WebView {
         options: TypeOptions,
     ) -> Result<(), WebViewInputError> {
         <Self as WebViewInputController>::type_text(self, selector, text, options).await
+    }
+
+    pub async fn fill(
+        &self,
+        selector: &str,
+        text: &str,
+        options: FillOptions,
+    ) -> Result<(), WebViewInputError> {
+        <Self as WebViewInputController>::fill(self, selector, text, options).await
     }
 
     pub async fn press(&self, key: &str, options: PressOptions) -> Result<(), WebViewInputError> {
@@ -885,6 +923,27 @@ impl WebViewController for WebView {
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         self.inner.set_user_agent(ua)
     }
+
+    async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
+        self.inner.list_cookies().await
+    }
+
+    async fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
+        self.inner.set_cookie(request).await
+    }
+
+    async fn delete_cookie(
+        &self,
+        name: &str,
+        domain: &str,
+        path: &str,
+    ) -> Result<(), WebViewError> {
+        self.inner.delete_cookie(name, domain, path).await
+    }
+
+    async fn clear_cookies(&self) -> Result<(), WebViewError> {
+        self.inner.clear_cookies().await
+    }
 }
 
 #[async_trait]
@@ -913,6 +972,26 @@ impl WebViewInputController for WebView {
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
             return self.inner.type_text_inner(_selector, _text, _options).await;
+        }
+        #[allow(unreachable_code)]
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn fill(
+        &self,
+        _selector: &str,
+        _text: &str,
+        _options: FillOptions,
+    ) -> Result<(), WebViewInputError> {
+        #[cfg(all(feature = "webview-input", target_os = "macos"))]
+        {
+            let _ = _options;
+            return self
+                .inner
+                .type_text_inner(_selector, _text, TypeOptions { replace: true })
+                .await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(

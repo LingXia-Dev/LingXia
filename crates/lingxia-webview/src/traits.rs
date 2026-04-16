@@ -68,6 +68,72 @@ pub struct DownloadRequest {
 /// app callback path instead of in-WebView download UI.
 pub type DownloadHandler = Box<dyn Fn(DownloadRequest) + Send + Sync>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WebViewCookieSameSite {
+    Lax,
+    Strict,
+    None,
+}
+
+impl WebViewCookieSameSite {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Lax => "lax",
+            Self::Strict => "strict",
+            Self::None => "none",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebViewCookie {
+    pub name: String,
+    pub value: String,
+    pub domain: String,
+    pub path: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub host_only: bool,
+    #[serde(default)]
+    pub secure: bool,
+    #[serde(default)]
+    pub http_only: bool,
+    #[serde(default)]
+    pub session: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_site: Option<WebViewCookieSameSite>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebViewCookieSetRequest {
+    #[serde(default)]
+    pub url: String,
+    pub name: String,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain: Option<String>,
+    #[serde(default = "default_cookie_path")]
+    pub path: String,
+    #[serde(default)]
+    pub secure: bool,
+    #[serde(default)]
+    pub http_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_unix_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub same_site: Option<WebViewCookieSameSite>,
+}
+
+fn default_cookie_path() -> String {
+    "/".to_string()
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileChooserRequest {
     /// Accepted MIME types / extensions requested by the page.
@@ -162,13 +228,52 @@ pub trait WebViewController: Send + Sync {
 
     /// Set the user agent string for the WebView
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+
+    /// List HTTP cookies from the platform WebView cookie store.
+    async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
+        Err(WebViewError::WebView(
+            "cookie store is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Set an HTTP cookie through the platform WebView cookie store.
+    async fn set_cookie(&self, _request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "cookie store is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Delete an HTTP cookie from the platform WebView cookie store.
+    async fn delete_cookie(
+        &self,
+        _name: &str,
+        _domain: &str,
+        _path: &str,
+    ) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "cookie store is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Clear all HTTP cookies from the platform WebView cookie store.
+    async fn clear_cookies(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "cookie store is not implemented for this platform".to_string(),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ClickOptions;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TypeOptions;
+pub struct TypeOptions {
+    #[serde(default)]
+    pub replace: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FillOptions;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PressOptions;
@@ -193,6 +298,17 @@ pub trait WebViewInputController: WebViewController {
         _selector: &str,
         _text: &str,
         _options: TypeOptions,
+    ) -> Result<(), WebViewInputError> {
+        Err(WebViewInputError::Unsupported(
+            "input control is not implemented for this platform",
+        ))
+    }
+
+    async fn fill(
+        &self,
+        _selector: &str,
+        _text: &str,
+        _options: FillOptions,
     ) -> Result<(), WebViewInputError> {
         Err(WebViewInputError::Unsupported(
             "input control is not implemented for this platform",
