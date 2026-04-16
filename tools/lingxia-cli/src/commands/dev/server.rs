@@ -14,7 +14,8 @@ use tungstenite::protocol::Message;
 use tungstenite::{Error as WsError, WebSocket, accept};
 
 const SERVER_BIND_ADDR: &str = "127.0.0.1:0";
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 
 #[derive(Debug)]
 pub struct DevServerHandle {
@@ -78,6 +79,7 @@ impl SessionLogWriter {
 struct DevServerState {
     runtime_sender: Mutex<Option<Sender<DevtoolsWireMessage>>>,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
+    command_lock: Mutex<()>,
 }
 
 impl DevServerState {
@@ -85,6 +87,7 @@ impl DevServerState {
         Self {
             runtime_sender: Mutex::new(None),
             pending_results: Mutex::new(std::collections::HashMap::new()),
+            command_lock: Mutex::new(()),
         }
     }
 
@@ -135,6 +138,12 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clear();
     }
+
+    fn lock_command_forwarding(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.command_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 pub fn start_server(project_root: &Path) -> Result<DevServerHandle> {
@@ -173,9 +182,14 @@ fn run_server(
                 let _ = stream.set_nonblocking(false);
                 let writer = writer.clone();
                 let state = state.clone();
+                let stop_flag = stop_flag.clone();
                 thread::spawn(move || {
                     if let Err(err) = handle_connection(stream, &writer, &state) {
-                        eprintln!("[lingxia dev] websocket connection failed: {err}");
+                        if !stop_flag.load(Ordering::Acquire)
+                            && !is_expected_websocket_shutdown_error(&err)
+                        {
+                            eprintln!("[lingxia dev] websocket connection failed: {err}");
+                        }
                     }
                 });
             }
@@ -223,7 +237,12 @@ fn handle_devtool_connection(
     }
 
     let result = loop {
-        drain_outgoing_messages(&mut websocket, &outgoing_rx)?;
+        if let Err(err) = drain_outgoing_messages(&mut websocket, &outgoing_rx) {
+            if is_expected_websocket_shutdown_error(&err) {
+                break Ok(());
+            }
+            break Err(err);
+        }
 
         match websocket.read() {
             Ok(message) => match parse_text_message(message)? {
@@ -255,6 +274,7 @@ fn handle_devtool_connection(
             Err(WsError::Io(err))
                 if err.kind() == std::io::ErrorKind::WouldBlock
                     || err.kind() == std::io::ErrorKind::TimedOut => {}
+            Err(err) if is_expected_tungstenite_shutdown_error(&err) => break Ok(()),
             Err(WsError::ConnectionClosed) | Err(WsError::AlreadyClosed) => break Ok(()),
             Err(err) => break Err(err.into()),
         }
@@ -263,6 +283,28 @@ fn handle_devtool_connection(
     state.clear_runtime_sender();
     state.clear_pending_results();
     result
+}
+
+fn is_expected_websocket_shutdown_error(err: &anyhow::Error) -> bool {
+    let message = err.to_string();
+    message.contains("Connection reset without closing handshake")
+        || message.contains("Connection reset by peer")
+        || message.contains("Broken pipe")
+}
+
+fn is_expected_tungstenite_shutdown_error(err: &WsError) -> bool {
+    match err {
+        WsError::ConnectionClosed | WsError::AlreadyClosed => true,
+        WsError::Io(io) => matches!(
+            io.kind(),
+            std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::UnexpectedEof
+        ),
+        _ => err
+            .to_string()
+            .contains("Connection reset without closing handshake"),
+    }
 }
 
 fn handle_client_connection(
@@ -293,6 +335,8 @@ fn handle_client_connection(
         return Ok(());
     };
 
+    let _command_guard = state.lock_command_forwarding();
+    let command_timeout = command_timeout(args.as_ref());
     let (result_tx, result_rx) = mpsc::channel::<DevtoolsWireMessage>();
     state.register_pending_result(command_id.clone(), result_tx);
     let bridged_command = DevtoolsWireMessage::Command {
@@ -306,7 +350,7 @@ fn handle_client_connection(
         anyhow!("Failed to forward command to devtool")
     })?;
 
-    match result_rx.recv_timeout(COMMAND_TIMEOUT) {
+    match result_rx.recv_timeout(command_timeout) {
         Ok(result) => {
             send_wire_message(&mut websocket, &result)?;
         }
@@ -337,6 +381,16 @@ fn handle_client_connection(
     }
     let _ = websocket.close(None);
     Ok(())
+}
+
+fn command_timeout(args: Option<&serde_json::Value>) -> Duration {
+    let Some(timeout_ms) = args
+        .and_then(|value| value.get("timeout_ms"))
+        .and_then(serde_json::Value::as_u64)
+    else {
+        return DEFAULT_COMMAND_TIMEOUT;
+    };
+    Duration::from_millis(timeout_ms).saturating_add(COMMAND_TIMEOUT_BUFFER)
 }
 
 fn drain_outgoing_messages(

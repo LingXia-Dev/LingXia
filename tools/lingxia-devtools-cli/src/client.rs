@@ -7,16 +7,19 @@ use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{WebSocket, connect};
 
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
+const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 
 pub fn execute_command(
     ws_url: &str,
     handler: impl Into<String>,
     args: Option<Value>,
 ) -> Result<Option<Value>> {
+    let handler = handler.into();
+    let timeout = command_timeout(args.as_ref());
     let (mut websocket, _) =
         connect(ws_url).with_context(|| format!("Failed to connect dev websocket: {ws_url}"))?;
-    configure_read_timeout(&mut websocket);
+    configure_read_timeout(&mut websocket, timeout);
 
     send_wire_message(
         &mut websocket,
@@ -30,7 +33,7 @@ pub fn execute_command(
         &mut websocket,
         &DevtoolsWireMessage::Command {
             command_id: command_id.clone(),
-            handler: handler.into(),
+            handler,
             args,
         },
     )?;
@@ -76,10 +79,20 @@ fn send_wire_message(
         .context("Failed to send dev websocket message")
 }
 
-fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<TcpStream>>) {
+fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<TcpStream>>, timeout: Duration) {
     if let MaybeTlsStream::Plain(stream) = websocket.get_mut() {
-        let _ = stream.set_read_timeout(Some(COMMAND_TIMEOUT));
+        let _ = stream.set_read_timeout(Some(timeout));
     }
+}
+
+fn command_timeout(args: Option<&Value>) -> Duration {
+    let Some(timeout_ms) = args
+        .and_then(|value| value.get("timeout_ms"))
+        .and_then(Value::as_u64)
+    else {
+        return DEFAULT_COMMAND_TIMEOUT;
+    };
+    Duration::from_millis(timeout_ms).saturating_add(COMMAND_TIMEOUT_BUFFER)
 }
 
 fn command_id() -> String {
