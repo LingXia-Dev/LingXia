@@ -46,7 +46,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     let current_dir = env::current_dir()?;
     let mut project_root = current_dir.clone();
     let mut inferred_platform_from_subdir = None;
-    let mut skip_host_assets = false;
     let mut standalone_apple_swift_package = false;
     let lxapp_json_exists = current_dir.join("lxapp.json").exists();
     let lxplugin_json_exists = current_dir.join("lxplugin.json").exists();
@@ -102,7 +101,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
             project_root = ctx.host_project_root;
             inferred_platform_from_subdir = Some(ctx.inferred_platform);
-            skip_host_assets = true;
         } else if let Some(host_root) =
             platform::detector::find_host_project_root(&current_dir, HOST_CONFIG_FILE)
         {
@@ -118,7 +116,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
                 project_root = host_root;
                 inferred_platform_from_subdir = Some(inferred_platform);
-                skip_host_assets = true;
             } else {
                 return Err(anyhow!(
                     "No config file found in {}.\n\
@@ -148,7 +145,6 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
                 project_root = current_dir.clone();
                 inferred_platform_from_subdir = Some(inferred_platform);
-                skip_host_assets = true;
                 standalone_apple_swift_package = true;
             } else {
                 return Err(anyhow!(
@@ -290,27 +286,19 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         Vec::new()
     };
 
-    // Prepare host assets unless we're building from a platform subdirectory.
-    if skip_host_assets {
-        println!(
-            "{} Skipping host assets (building from platform subdirectory)",
-            "ℹ".blue()
-        );
-    } else {
-        prepare_configured_host_assets(
-            &project_root,
-            &config,
-            build_profile,
-            framework
-                .as_deref()
-                .map(parse_lxapp_framework)
-                .transpose()?,
-            progress.as_deref(),
-            &platforms_to_build,
-            &build_targets,
-            constrained_platforms,
-        )?;
-    }
+    prepare_configured_host_assets(
+        &project_root,
+        &config,
+        build_profile,
+        framework
+            .as_deref()
+            .map(parse_lxapp_framework)
+            .transpose()?,
+        progress.as_deref(),
+        &platforms_to_build,
+        &build_targets,
+        constrained_platforms,
+    )?;
 
     // Build each selected platform
     let mut all_artifacts = Vec::new();
