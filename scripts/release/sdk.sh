@@ -249,12 +249,12 @@ publish_github_release() {
 }
 
 generate_resources() {
-  log "==> Generating SDK resources (lingxia-gen)"
+  log "==> Generating SDK resources"
   [[ -d "$I18N_DIR" ]] || die "Missing i18n dir: $I18N_DIR"
   [[ -d "$ICONS_SVG_DIR" ]] || die "Missing icons svg dir: $ICONS_SVG_DIR"
 
-  local i18n_args=(cargo run -p lingxia-gen -- i18n --input "$I18N_DIR")
-  local icons_args=(cargo run -p lingxia-gen -- icons --input "$ICONS_SVG_DIR")
+  local i18n_args=(lingxia gen i18n --input "$I18N_DIR")
+  local icons_args=(lingxia gen icons --input "$ICONS_SVG_DIR")
 
   if $WANT_ANDROID; then
     i18n_args+=(--android-out "$ANDROID_RES_DIR")

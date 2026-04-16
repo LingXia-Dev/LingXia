@@ -4,6 +4,7 @@ set -euo pipefail
 START_DIR="$(pwd)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKSPACE_CARGO_TOML="$ROOT_DIR/Cargo.toml"
+RUNNER_PACKAGE_DIR="$ROOT_DIR/tools/lingxia-runner"
 RUNNER_RAW_APP_DIR="$ROOT_DIR/tools/lingxia-runner/.lingxia"
 RUNNER_RAW_DIST_DIR="$ROOT_DIR/tools/lingxia-runner/dist/macos"
 RUNNER_RELEASE_APP_NAME="LingXia Runner.app"
@@ -206,8 +207,10 @@ for arch in "${ARCHES[@]}"; do
   echo "========================================"
 
   if [[ "$SKIP_BUILD" -ne 1 ]]; then
+    echo "[runner:$arch] Cleaning Runner build outputs"
+    rm -rf "$RUNNER_PACKAGE_DIR/.build" "$RUNNER_PACKAGE_DIR/.lingxia"
     (
-      cd "$ROOT_DIR/tools/lingxia-runner"
+      cd "$RUNNER_PACKAGE_DIR"
       "$CLI_BIN" package --platform macos --macos-arch "$arch"
     )
   fi
