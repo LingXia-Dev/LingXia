@@ -9,9 +9,16 @@ name = "lingxia"
 # cdylib for Android/Harmony (.so), staticlib for iOS (.a)
 crate-type = ["cdylib", "staticlib"]
 
+[features]
+default = []
+shell = ["lingxia/shell", "webview-input"]
+devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
+webview-input = ["lingxia/webview-input"]
+
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}" }
 lingxia-macro = { version = "{{LINGXIA_VERSION}}" }
+lingxia_devtool = { package = "lingxia-devtool", version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
 
 # Platform-specific dependencies for FFI
 [target.'cfg(target_os = "android")'.dependencies]

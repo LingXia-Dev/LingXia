@@ -1,0 +1,18 @@
+{
+  "launch": {
+    "initialSurface": "main"
+  },
+  "surfaces": [
+    {
+      "id": "main",
+      "presentation": {
+        "style": "window"
+      },
+      "content": {
+        "kind": "lxapp",
+        "appId": "__HOME_LXAPP_ID__"
+      }
+    }
+  ],
+  "activators": []
+}

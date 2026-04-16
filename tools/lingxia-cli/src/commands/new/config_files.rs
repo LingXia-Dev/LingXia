@@ -6,7 +6,10 @@ use crate::config::{
     ResourceBundleDetail, ResourceBundleType, ResourcesConfig,
 };
 use anyhow::Result;
-use serde_json::json;
+use serde_json::Value;
+
+const DEFAULT_MACOS_UI_TEMPLATE: &str =
+    include_str!("../../../templates/host-ui/macos-default.json");
 
 pub(super) fn generate_config_file(config: &ProjectConfig, lxapp: &LxAppInfo) -> Result<()> {
     let lingxia_config = build_lingxia_config(config, lxapp);
@@ -105,30 +108,10 @@ fn default_ui_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> Option<serde_
         return None;
     }
 
-    Some(json!({
-        "launch": {
-            "initialSurface": "main",
-            "openOnLaunch": true
-        },
-        "surfaces": [{
-            "id": "main",
-            "presentation": {
-                "style": "window",
-                "resizable": true,
-                "showTrafficLights": true,
-                "size": {
-                    "width": 960,
-                    "height": 720
-                }
-            },
-            "content": {
-                "kind": "lxapp",
-                "appId": lxapp.app_id,
-                "path": "/"
-            }
-        }],
-        "activators": []
-    }))
+    let mut ui: Value = serde_json::from_str(DEFAULT_MACOS_UI_TEMPLATE)
+        .expect("built-in macOS App UI template must be valid JSON");
+    ui["surfaces"][0]["content"]["appId"] = Value::String(lxapp.app_id.clone());
+    Some(ui)
 }
 
 #[cfg(test)]
@@ -186,6 +169,7 @@ mod tests {
         assert_eq!(ui["launch"]["initialSurface"], "main");
         assert_eq!(ui["surfaces"][0]["id"], "main");
         assert_eq!(ui["surfaces"][0]["content"]["appId"], "demo-home");
+        assert!(ui["surfaces"][0]["presentation"].get("size").is_none());
         assert_eq!(ui["activators"].as_array().unwrap().len(), 0);
     }
 }

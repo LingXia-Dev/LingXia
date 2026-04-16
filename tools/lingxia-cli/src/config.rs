@@ -759,19 +759,16 @@ mod tests {
         app.platforms = vec!["macos".to_string()];
         config.ui = Some(serde_json::json!({
             "launch": {
-                "initialSurface": "main",
-                "openOnLaunch": true
+                "initialSurface": "main"
             },
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window",
-                    "resizable": true
+                    "style": "window"
                 },
                 "content": {
                     "kind": "lxapp",
-                    "appId": "my-app",
-                    "path": "/"
+                    "appId": "my-app"
                 }
             }, {
                 "id": "side",
@@ -782,8 +779,7 @@ mod tests {
                 },
                 "content": {
                     "kind": "lxapp",
-                    "appId": "my-side-app",
-                    "path": "/"
+                    "appId": "my-side-app"
                 }
             }],
             "activators": [{

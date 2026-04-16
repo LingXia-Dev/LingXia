@@ -23,6 +23,22 @@ impl lingxia::HostAddon for AppHostAddon {
     }
 }
 
+#[cfg(all(feature = "devtools", any(target_os = "ios", target_os = "macos")))]
+struct DevtoolAddon;
+
+#[cfg(all(feature = "devtools", any(target_os = "ios", target_os = "macos")))]
+impl lingxia::HostAddon for DevtoolAddon {
+    fn start_services(&self) {
+        lingxia_devtool::start_devtool_bridge_from_env();
+    }
+}
+
+fn install_host_addons() {
+    lingxia::install_host_addon(Box::new(AppHostAddon));
+    #[cfg(all(feature = "devtools", any(target_os = "ios", target_os = "macos")))]
+    lingxia::install_host_addon(Box::new(DevtoolAddon));
+}
+
 // Android: JNI export
 #[cfg(target_os = "android")]
 mod android {
@@ -34,7 +50,7 @@ mod android {
         _env: EnvUnowned,
         _class: JClass,
     ) {
-        lingxia::install_host_addon(Box::new(super::AppHostAddon));
+        super::install_host_addons();
     }
 }
 
@@ -42,12 +58,12 @@ mod android {
 #[cfg(target_env = "ohos")]
 #[napi_derive_ohos::napi]
 pub fn lingxia_install_host_addon() {
-    lingxia::install_host_addon(Box::new(AppHostAddon));
+    install_host_addons();
 }
 
 // iOS/macOS: C export
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn lingxia_install_host_addon() {
-    lingxia::install_host_addon(Box::new(AppHostAddon));
+    install_host_addons();
 }
