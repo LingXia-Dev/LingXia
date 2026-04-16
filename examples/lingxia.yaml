@@ -34,20 +34,13 @@ harmony:
 ui:
   launch:
     initialSurface: main
-    openOnLaunch: true
   surfaces:
     - id: main
       presentation:
         style: window
-        resizable: true
-        showTrafficLights: true
-        size:
-          width: 960
-          height: 720
       content:
         kind: lxapp
         appId: lingxia-showcase
-        path: /
     - id: assistant
       presentation:
         style: attachedPanel
@@ -55,24 +48,15 @@ ui:
         edge: trailing
       content:
         kind: lxapp
-        appId: app.lingxia.browser
-        path: /
+        appId: lingxia-chat
   activators:
     - id: assistantSidebar
       kind: sidebarItem
       hostSurface: main
-      label: Browser
-      icon: app.lingxia.browser/public/LingXia.png
+      label: AI Chat
+      icon: lingxia-chat/chat.svg
       action:
         kind: toggleSurface
-        surface: assistant
-    - id: assistantClose
-      kind: toolbarItem
-      hostSurface: assistant
-      label: Close Browser
-      icon: app.lingxia.browser/public/LingXia.png
-      action:
-        kind: closeSurface
         surface: assistant
 
 resources:
