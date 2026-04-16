@@ -550,6 +550,8 @@ import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type ExpandedSections = {
+  bridge: boolean;
+  cloud: boolean;
   interface: boolean;
   device: boolean;
   system: boolean;
@@ -572,6 +574,7 @@ type PageActions = {
   navigateToStreamPage(): void;
   navigateToChannelPage(): void;
   navigateToCloudPage(payload: { type: string }): void;
+  navigateToTestMiniApp(): void;
   openDeepSeek(): void;
   exitApp(): void;
   navigateToPullDownRefreshPage(): void;
@@ -591,12 +594,15 @@ const {
   navigateToStreamPage,
   navigateToChannelPage,
   navigateToCloudPage,
+  navigateToTestMiniApp,
   openDeepSeek,
   exitApp,
   navigateToPullDownRefreshPage,
 } = actions;
 
 const expandedSections = computed(() => data.expandedSections ?? {
+  bridge: false,
+  cloud: false,
   interface: false,
   device: false,
   system: false,
