@@ -825,6 +825,22 @@ impl WebView {
         self.inner.eval_js(js).await
     }
 
+    pub async fn current_url(&self) -> Result<Option<String>, WebViewError> {
+        self.inner.current_url().await
+    }
+
+    pub fn reload(&self) -> Result<(), WebViewError> {
+        self.inner.reload()
+    }
+
+    pub fn go_back(&self) -> Result<(), WebViewError> {
+        self.inner.go_back()
+    }
+
+    pub fn go_forward(&self) -> Result<(), WebViewError> {
+        self.inner.go_forward()
+    }
+
     pub async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
         self.inner.list_cookies().await
     }
@@ -912,6 +928,10 @@ impl WebViewController for WebView {
         self.inner.eval_js(js).await
     }
 
+    async fn current_url(&self) -> Result<Option<String>, WebViewError> {
+        self.inner.current_url().await
+    }
+
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         self.inner.post_message(message)
     }
@@ -922,6 +942,18 @@ impl WebViewController for WebView {
 
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError> {
         self.inner.set_user_agent(ua)
+    }
+
+    fn reload(&self) -> Result<(), WebViewError> {
+        self.inner.reload()
+    }
+
+    fn go_back(&self) -> Result<(), WebViewError> {
+        self.inner.go_back()
+    }
+
+    fn go_forward(&self) -> Result<(), WebViewError> {
+        self.inner.go_forward()
     }
 
     async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {

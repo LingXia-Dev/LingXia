@@ -2449,6 +2449,46 @@ impl WebViewController for WebViewInner {
         }
     }
 
+    async fn current_url(&self) -> Result<Option<String>, WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Option<String>>();
+
+        DispatchQueue::main().exec_async(move || {
+            let webview_ptr = webview_ptr_addr as *mut AnyObject;
+            let _ = tx.send(source_page_url_from_webview(webview_ptr));
+        });
+
+        rx.await
+            .map_err(|_| WebViewError::WebView("WKWebView current URL callback dropped".into()))
+    }
+
+    fn reload(&self) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let _: *mut AnyObject = msg_send![webview, reload];
+        });
+        Ok(())
+    }
+
+    fn go_back(&self) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let _: *mut AnyObject = msg_send![webview, goBack];
+        });
+        Ok(())
+    }
+
+    fn go_forward(&self) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let _: *mut AnyObject = msg_send![webview, goForward];
+        });
+        Ok(())
+    }
+
     async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
         let webview_ptr_addr = self.webview as usize;
         let (tx, rx) = oneshot::channel::<Result<Vec<WebViewCookie>, WebViewError>>();

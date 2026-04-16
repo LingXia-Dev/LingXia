@@ -220,6 +220,13 @@ pub trait WebViewController: Send + Sync {
     /// Evaluate JavaScript in the WebView and return the decoded JSON value.
     async fn eval_js(&self, js: &str) -> Result<serde_json::Value, WebViewScriptError>;
 
+    /// Return the platform WebView's current URL.
+    async fn current_url(&self) -> Result<Option<String>, WebViewError> {
+        Err(WebViewError::WebView(
+            "current_url is not implemented for this platform".to_string(),
+        ))
+    }
+
     /// Post a message to the WebView
     fn post_message(&self, message: &str) -> Result<(), WebViewError>;
 
@@ -228,6 +235,27 @@ pub trait WebViewController: Send + Sync {
 
     /// Set the user agent string for the WebView
     fn set_user_agent(&self, ua: &str) -> Result<(), WebViewError>;
+
+    /// Reload the current WebView document.
+    fn reload(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "reload is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Navigate back in WebView history.
+    fn go_back(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "go_back is not implemented for this platform".to_string(),
+        ))
+    }
+
+    /// Navigate forward in WebView history.
+    fn go_forward(&self) -> Result<(), WebViewError> {
+        Err(WebViewError::WebView(
+            "go_forward is not implemented for this platform".to_string(),
+        ))
+    }
 
     /// List HTTP cookies from the platform WebView cookie store.
     async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
