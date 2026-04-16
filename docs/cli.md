@@ -102,6 +102,8 @@ lingxia build --platform android
 lingxia build --skip-native
 ```
 
+When a host project has `lingxia.yaml`, `lingxia build` also prepares configured host assets. LxApp builds generate the Native client automatically when `lxapp.config.ts` contains `native`.
+
 ---
 
 ### `lingxia package`
@@ -278,7 +280,7 @@ lingxia publish --token <token> [options]
 |---|---|---|---|
 | `lxapp.json` | `lxapp` | `appId` | `version` |
 | `lxplugin.json` | `lxplugin` | `lxPluginId` | `version` |
-| `lingxia.config.json` | `app` | `app.lingxiaId` | `app.productVersion` |
+| `lingxia.yaml` | `app` | `app.lingxiaId` | `app.productVersion` |
 
 **Examples:**
 
@@ -423,13 +425,13 @@ This reference focuses on commands and flags. File schemas live in the dedicated
 
 | File | Purpose | Canonical guide |
 |---|---|---|
-| `lingxia.config.json` | Host app metadata, platform config, runtime-facing build inputs | [App Project](./app-project.md) |
+| `lingxia.yaml` | Host app metadata, platform config, runtime-facing build inputs | [App Project](./app-project.md) |
 | `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](./lxapp-guide.md) |
 | `lxapp.config.ts` | LxApp build config such as aliases, view tooling, and `staticDirs` | [LxApp Development Guide](./lxapp-guide.md) |
 
 Quick reminders:
 
-- `lingxia.config.json` is the source of truth for host app build metadata.
+- `lingxia.yaml` is the source of truth for host app build metadata.
 - `homeLxAppVersion` is generated into runtime `app.json`; you do not set it manually.
 - `app.cacheMaxAgeDays` and `app.cacheMaxSizeMB` are optional; set either to `0` to disable that cleanup policy.
 - When `splash` is configured, CLI requires a PNG source image and writes `splashTimeout` into runtime `app.json`.

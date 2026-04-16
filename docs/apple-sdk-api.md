@@ -3,190 +3,118 @@
 > Scope: app-facing Apple SDK APIs for host apps on iOS and macOS.
 > If a symbol is not documented here, it is not part of the supported host-app contract.
 
-## Start Here
+## Integration Paths
 
-### Choose Your Integration Path
+Use one of two paths:
 
-Use this rule of thumb:
-
-| If you want... | Use... |
+| If you are... | Use |
 |---|---|
-| the default LingXia app shell with minimal setup | `Lingxia.quickStart()` |
-| the default shell, but with your own sidebar / toolbar / padding / chrome | `Lingxia.quickStart(configuration:)` |
-| your own window, split view, panel, or layout, with LingXia mounted inside part of it | `Lingxia.initializeRuntime()` + `LxAppController` + `LxAppHostView` |
-| runner / tooling integration | internal runner SPI only, not host-app API |
+| Building a LingXia host app | `Lingxia.quickStart()` + `lingxia.yaml` |
+| Embedding LingXia into an existing native app UI | `Lingxia.initializeRuntime()` + `LxAppController` + `LxAppHostView` |
 
-The main product-grade host APIs are:
+Most apps should use `Lingxia.quickStart()`. Window shape, menu bar entries,
+sidebar items, toolbar items, titlebar items, startup behavior, and the home
+surface are configured in `lingxia.yaml`.
 
-- `Lingxia`
-- `LxAppShell` and `LxAppShellConfiguration`
-- `LxAppRuntime`
-- `LxAppController`
-- `LxAppHostView`
-
-Tooling-only namespaces such as runner SPI are intentionally excluded from the supported host-app contract.
-
-## Recommended Naming
-
-Use these names in host app code. They match the SDK mental model and make code easier to read.
-
-- `runtime`: `LxAppRuntime` singleton state
-- `controller`: `LxAppController` session lifecycle owner
-- `shell`: `LxAppShell` default LingXia chrome
-- `hostView`: `LxAppHostView` embedded LingXia content region
-- `session`: `LxAppSession` opened app instance
-- `config`: `LxAppShellConfiguration` shell layout/style value
-
-Avoid app-side wrapper names like `manager`, `engine`, or `bridge` unless you are wrapping the SDK on purpose.
+For `lingxia.yaml` configuration, see [App Project Configuration](./app-project.md).
 
 ## Quick Start
 
-Use `Lingxia.quickStart()` when the host wants the default LingXia shell.
+Use `Lingxia.quickStart()` for product apps.
 
 ```swift
+import AppKit
 import lingxia
 
-@MainActor
-func startApp() {
-    Lingxia.enableWebViewDebugging()
-    _ = try? Lingxia.quickStart()
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Lingxia.enableWebViewDebugging()
+        do {
+            try Lingxia.quickStart()
+        } catch {
+            fatalError("Lingxia startup failed: \(error)")
+        }
+    }
+
+    func applicationShouldHandleReopen(
+        _ sender: NSApplication,
+        hasVisibleWindows flag: Bool
+    ) -> Bool {
+        return !Lingxia.handleAppActivation()
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(
+        _ sender: NSApplication
+    ) -> Bool {
+        return false
+    }
 }
+
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.run()
 ```
 
-Use `Lingxia.quickStart(configuration:)` when you want the shell, but you also want to control sidebar, toolbar, chrome, and layout.
+`quickStart()` loads bundled `app.json` and `ui.json`, initializes the runtime,
+creates the host shell, installs configured activators, and opens
+`ui.launch.initialSurface` when `openOnLaunch` is true.
 
-## Shell Customization
+`handleAppActivation()` forwards Dock/app activation to `ui.activators` entries
+with `kind: appActivation`.
 
-For host apps, the most important advanced API is `LxAppShellConfiguration`.
+## UI Configuration
 
-Use it when you want to control:
-
-- whether the sidebar exists at all
-- whether the toolbar exists at all
-- sidebar structure
-- custom Swift-native sidebar / toolbar providers
-- content padding
-- corner radius and shadow
-- floating panel layout
-- macOS traffic-light placement
-- shell background colors
-
-### Most Important Fields
-
-```swift
-public struct LxAppShellConfiguration: Codable, Sendable {
-    public var sidebar: LxAppSidebarMode
-    public var toolbar: LxAppToolbarMode
-    public var chrome: LxAppChromeStyle
-    public var trafficLightPlacement: LxAppTrafficLightPlacement
-    public var panelLayout: LxAppFloatingPanelLayout
-    public var sidebarBackground: LxAppColor
-    public var toolbarBackground: LxAppColor
-}
-```
-
-Field intent:
-
-- `sidebar`: no sidebar, declarative sidebar, or Swift-native sidebar.
-- `toolbar`: no toolbar, declarative toolbar, or Swift-native toolbar.
-- `chrome`: corner radius, shadow, and content padding around the main content area.
-- `trafficLightPlacement`: macOS traffic-light placement.
-- `panelLayout`: floating-panel geometry behavior.
-- `sidebarBackground` / `toolbarBackground`: shell chrome colors.
-
-### Common Layout Recipes
-
-Immersive content:
-
-```swift
-var config = LxAppShellConfiguration()
-config.sidebar = .hidden
-config.toolbar = .hidden
-config.chrome = .flat
-_ = try? Lingxia.quickStart(configuration: config)
-```
-
-Standard desktop app shell:
-
-```swift
-var config = LxAppShellConfiguration()
-config.sidebar = .declarative(mySidebar)
-config.toolbar = .declarative(.default)
-config.chrome = .init(cornerRadius: 12, hasShadow: true, contentPadding: 8)
-config.sidebarBackground = .sidebarBackground
-config.toolbarBackground = .toolbarBackground
-_ = try? Lingxia.quickStart(configuration: config)
-```
-
-Hybrid shell with host-owned sidebar:
-
-```swift
-var config = LxAppShellConfiguration()
-config.sidebar = .swiftNative(mySidebarHandle)
-config.toolbar = .declarative(.default)
-config.chrome = .default
-_ = try? Lingxia.quickStart(configuration: config)
-```
-
-## Local Embedding
-
-Use `LxAppHostView` when the host app wants to build its own window or layout and embed LingXia content inside one region of it.
+Host UI belongs in `lingxia.yaml`, not in Swift code.
 
 Examples:
 
-- a macOS split view where the right side is LingXia content
-- a custom AppKit / UIKit container window
-- a floating panel owned by the host app
-- an inspector or tool pane that embeds one lxapp session
+- Hide sidebar and toolbar by omitting `sidebarItem` and `toolbarItem`.
+- Create a normal window with a `window` surface.
+- Create a menu bar monitor app with `statusPanel`, `menuBarItem`, and `openOnLaunch: false`.
+- Add sidebar, toolbar, or titlebar actions with `sidebarItem`, `toolbarItem`, and `titlebarItem`.
+
+See [macOS App UI](./app-project.md#macos-app-ui) for the full configuration model.
+
+## Advanced Embedding
+
+Use this path only when an existing native app already owns its windows, scenes,
+navigation, split views, panels, or layout, and LingXia should be mounted into
+one native region.
 
 ```swift
+import AppKit
 import lingxia
 
 @MainActor
-func mountIntoMyOwnWindow(containerView: NSView) async throws {
-    _ = try Lingxia.initializeRuntime()
+func mountLingXia(in containerView: NSView) async throws {
+    try Lingxia.initializeRuntime()
 
     let controller = LxAppController()
     Lingxia.activate(controller: controller)
 
     let hostView = LxAppHostView(controller: controller)
-    hostView.frame = containerView.bounds
+    hostView.translatesAutoresizingMaskIntoConstraints = false
     containerView.addSubview(hostView)
+
+    NSLayoutConstraint.activate([
+        hostView.topAnchor.constraint(equalTo: containerView.topAnchor),
+        hostView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+        hostView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+        hostView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+    ])
 
     let session = try await controller.openHomeApp()
     try await hostView.mount(session)
 }
 ```
 
-Recommended rule:
+Rules:
 
-- use one `LxAppController` per host integration flow
-- use one `LxAppHostView` per embedded visual region
-- keep the host app responsible for window creation, container layout, and resize behavior
-- let the SDK own lxapp session lifecycle and webview attachment
-
-## Advanced Runtime Integration
-
-Use `Lingxia.initializeRuntime()` when the host wants to build its own integration without the default shell.
-
-```swift
-import lingxia
-
-@MainActor
-func startCustomHost() async throws {
-    let runtime = try Lingxia.initializeRuntime()
-    let controller = LxAppController()
-    Lingxia.activate(controller: controller)
-    _ = runtime
-}
-```
-
-This path is appropriate when:
-
-- the host app already has its own navigation model
-- the host app already owns windows or scenes
-- LingXia should appear only inside one area of the UI
-- the host app wants to intercept open / close decisions itself
+- Use one `LxAppController` per native integration flow.
+- Use one `LxAppHostView` per embedded visual region.
+- The host app owns native window/layout behavior.
+- LingXia owns lxapp session lifecycle and webview attachment.
 
 ## API Reference
 
@@ -196,6 +124,17 @@ This path is appropriate when:
 @MainActor
 public enum Lingxia {
     @discardableResult
+    public static func quickStart() throws -> LxAppShell
+
+    @available(*, deprecated, message: "Configure product UI in lingxia.yaml and use Lingxia.quickStart(). Use initializeRuntime() + LxAppController + LxAppHostView for advanced embedding.")
+    @discardableResult
+    public static func quickStart(
+        configuration: LxAppShellConfiguration
+    ) throws -> LxAppShell
+
+    public static func handleAppActivation() -> Bool
+
+    @discardableResult
     public static func initializeRuntime() throws -> LxAppRuntimeInfo
 
     public static func activate(controller: LxAppController)
@@ -203,15 +142,11 @@ public enum Lingxia {
     public static func enableWebViewDebugging()
 
     public static func handleAppLink(url: URL)
-
-    @discardableResult
-    public static func quickStart(
-        configuration: LxAppShellConfiguration = .init()
-    ) throws -> LxAppShell
 }
 ```
 
-`Lingxia.initialize()` is removed. Hosts should use `quickStart()` or `initializeRuntime()`.
+`Lingxia.initialize()` has been removed. Use `quickStart()` for product apps or
+`initializeRuntime()` for advanced embedding.
 
 ### `LxAppController`
 
@@ -262,6 +197,12 @@ public struct LxAppErrorPayload: Codable, Sendable, Error, Hashable
 public enum LxAppJSONValue: Codable, Sendable, Hashable
 ```
 
+Controller event semantics:
+
+- `didOpen` carries the opened `LxAppSession`.
+- `didClose` carries the closed `LxAppSession`.
+- `.mountInHost(id:)` mounts the opened session into the registered `LxAppHostView`.
+
 ### `LxAppHostView`
 
 ```swift
@@ -274,9 +215,6 @@ public typealias LxAppPlatformView = NSView
 @MainActor
 public final class LxAppHostView: LxAppPlatformView {
     public let id: LxAppHostViewID
-    @available(*, deprecated, renamed: "id")
-    public var viewId: LxAppHostViewID { get }
-
     public let controller: LxAppController
     public private(set) var webView: WKWebView? { get }
     public private(set) var mountedSession: LxAppSession? { get }
@@ -312,54 +250,10 @@ public enum LxAppHostViewEvent: Codable, Sendable
 public enum LxAppHostViewCommand: Codable, Sendable
 ```
 
-### `LxAppShell`
+Host-view event semantics:
 
-```swift
-@MainActor
-public final class LxAppShell {
-    public let controller: LxAppController
-    public private(set) var configuration: LxAppShellConfiguration
-    public let hostView: LxAppHostView
-
-    public init(
-        controller: LxAppController = .init(),
-        configuration: LxAppShellConfiguration = .init()
-    )
-
-    public func updateConfiguration(_ newConfig: LxAppShellConfiguration)
-    public func show()
-    public func hide()
-}
-```
-
-Configuration types:
-
-```swift
-public struct LxAppShellConfiguration: Codable, Sendable {
-    public var sidebar: LxAppSidebarMode
-    public var toolbar: LxAppToolbarMode
-    public var chrome: LxAppChromeStyle
-    public var trafficLightPlacement: LxAppTrafficLightPlacement
-    public var panelLayout: LxAppFloatingPanelLayout
-    public var sidebarBackground: LxAppColor
-    public var toolbarBackground: LxAppColor
-}
-
-public enum LxAppSidebarMode: Sendable, Codable
-public enum LxAppToolbarMode: Sendable, Codable
-public struct LxAppSidebarTree: Codable, Sendable, Hashable
-public struct LxAppSidebarSection: Codable, Sendable, Hashable, Identifiable
-public struct LxAppSidebarTab: Codable, Sendable, Hashable, Identifiable
-public struct LxAppSidebarHandle: Sendable, Hashable
-public protocol LxAppSidebarProviding: AnyObject
-public struct LxAppToolbarSpec: Codable, Sendable, Hashable
-public struct LxAppToolbarHandle: Sendable, Hashable
-public protocol LxAppToolbarProviding: AnyObject
-public struct LxAppChromeStyle: Codable, Sendable, Hashable
-public struct LxAppColor: Codable, Sendable, Hashable
-public struct LxAppFloatingPanelLayout: Codable, Sendable, Hashable
-public enum LxAppTrafficLightPlacement: String, Codable, Sendable, CaseIterable
-```
+- `didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`, `didFinishLoading`, and `didFail` come from the mounted webview.
+- `dispatch(.triggerCapsuleAction(...))` forwards that action into the runtime for the mounted app session.
 
 ### `LxAppRuntime`
 
@@ -368,56 +262,51 @@ public enum LxAppTrafficLightPlacement: String, Codable, Sendable, CaseIterable
 public final class LxAppRuntime {
     public static let shared: LxAppRuntime
     public private(set) var info: LxAppRuntimeInfo? { get }
-    public var isInitialized: Bool { get }
-
-    @discardableResult
     public func initialize() throws -> LxAppRuntimeInfo
+}
+
+public struct LxAppRuntimeInfo: Codable, Sendable, Hashable {
+    public let homeAppId: String
+    public let capabilities: LxAppCapabilities
+    public let dataPath: String
+    public let cachesPath: String
 }
 ```
 
-Supporting types:
+Most apps should not call `LxAppRuntime.shared.initialize()` directly. Use
+`Lingxia.quickStart()` or `Lingxia.initializeRuntime()`.
+
+## Legacy Shell Override
+
+`LxAppShellConfiguration`, `LxAppShell`, `LxAppSidebarMode`, and
+`LxAppToolbarMode` remain available for migration and internal shell work.
+
+New host apps should not use them to configure product UI. Put product UI in
+`lingxia.yaml` instead.
+
+Legacy examples:
 
 ```swift
-public struct LxAppRuntimeInfo: Codable, Sendable, Hashable
-public struct LxAppCapabilities: OptionSet, Sendable, Codable, Hashable
-public enum LxAppRuntimeError: Error, Codable, Sendable
+var config = LxAppShellConfiguration()
+config.sidebar = .hidden
+config.toolbar = .hidden
+_ = try Lingxia.quickStart(configuration: config)
 ```
 
-## Internal Rust Bridge Contract
+Equivalent product configuration:
 
-The Rust bridge is an internal contract.
+```yaml
+ui:
+  launch:
+    initialSurface: main
+  surfaces:
+    - id: main
+      presentation:
+        style: window
+      content:
+        kind: lxapp
+        appId: myapp
+  activators: []
+```
 
-- Rust-facing callback names and generated bridge symbols are not host-app API.
-- Directory changes on the Swift side do not matter to Rust by themselves.
-- Rust only needs updates when bridge function names or bridge signatures change.
-
-In this repository, host-app API and Rust bridge API are intentionally treated as separate contracts.
-
-## Not Shipped
-
-These host-app namespaces are intentionally absent from the current supported contract:
-
-- toast namespace
-- dialogs
-- popups
-- documents
-- URL routing facade
-- push integration helpers
-
-They may return in a future revision once they have product-level behavior and tests.
-
-## Source Layout
-
-For the Apple SDK source tree:
-
-- `Sources/Runtime`, `Controller`, `HostView`, `Shell`, `Sidebar`, and `Toolbar`
-  are the formal host-app API layers.
-- `Sources/Capabilities` contains internal implementation for host-facing capabilities.
-- `Sources/ShellUI` contains internal shared shell UI implementation that is not host-app API.
-- `Sources/Browser` contains internal browser-only helpers.
-- `Sources/Runner/SPI` contains runner-only SPI bridge code.
-- `Sources/Support` contains internal support helpers.
-- `Sources/macOS/Sidebar` and `Sources/macOS/Toolbar` contain macOS-only shell view implementations.
-- `Sources/FFI` contains Rust-calls-Swift bridge entry points only.
-
-This split is intentional. Host-app APIs and Rust bridge APIs should not live in the same folder or share the same namespace.
+Prefer the YAML form for new apps.

@@ -58,7 +58,7 @@ cd my-app
 ```
 
 `my-app` contains:
-- `lingxia.config.json` (host project config)
+- `lingxia.yaml` (host project config)
 - native platform project folders (`android/`, `ios/`, `macos/`, `harmony/` based on selection)
 - home lxapp folder (default `lingxia-showcase/`)
 

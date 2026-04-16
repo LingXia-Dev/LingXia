@@ -41,8 +41,7 @@ App authors should define page-facing host functions only through `lingxia`.
 
 This includes:
 
-- `#[lingxia::host(...)]`
-- `lingxia::register_hosts![...]`
+- `#[lingxia::native(...)]`
 - `lingxia::host::*`
 - `lingxia::host::HostResult`
 - `lingxia::host::HostCancel`
@@ -162,7 +161,7 @@ Application crates should not directly depend on:
 - `lingxia-macro`
 - `lingxia-host-macros`
 
-These are implementation details behind `lingxia::host_api`.
+These are implementation details behind `lingxia::native`.
 
 ## Recommended Public Shape
 
@@ -175,8 +174,7 @@ lingxia::
   harmony
 
   host
-  host_api
-  register_hosts!
+  native
 
   LxApp
   LxLogicExtension

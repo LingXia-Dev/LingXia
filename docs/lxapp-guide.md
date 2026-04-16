@@ -60,6 +60,22 @@ Rules:
 - Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
 - LingXia does not scan HTML, manifest files, or arbitrary source strings to discover static assets.
 
+### Native client
+
+Views call Rust native APIs through a generated Native client. Add `native` to `lxapp.config.ts` when the lxapp is backed by Rust native APIs:
+
+```ts
+export default {
+  staticDirs: ['public', '__lingxia'],
+  native: {
+    rustDir: '../src',
+    out: '__lingxia/native.js',
+  },
+};
+```
+
+`rustDir` points to the Rust source directory that contains `#[lingxia::native]` functions. `out` is root-relative. A `.ts` output creates an importable module; a `.js` output creates `window.native` for HTML pages. `lingxia build` and `lingxia dev` generate the client before copying static assets, so `.js` outputs are included in `dist/`.
+
 ### Build
 
 - `lingxia build` builds page assets and runtime artifacts into `dist/`.
