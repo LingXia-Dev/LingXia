@@ -59,6 +59,10 @@ import WebKit
             RunnerBridge.attachWebView(webView, to: container)
         }
 
+        public static func attachLxApp(_ webView: WKWebView, to container: NSView) {
+            RunnerBridge.attachLxAppWebView(webView, to: container)
+        }
+
         public static func openBrowserTab(
             ownerAppId: String,
             ownerSessionId: UInt64,

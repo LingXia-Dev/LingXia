@@ -69,6 +69,12 @@ enum RunnerBridge {
         WebViewManager.attachWebViewToContainer(webView, container: container)
     }
 
+    static func attachLxAppWebView(_ webView: WKWebView, to container: NSView) {
+        WebViewManager.attachWebViewToContainer(webView, container: container)
+        MacNativeBridge.attachIfNeeded(to: webView, in: container)
+        webView.resumeWebView()
+    }
+
     static func createBrowserTab(ownerAppId: String, ownerSessionId: UInt64, url: String) -> String? {
         guard let openedTab = openBrowserTab(ownerAppId, ownerSessionId, url) else {
             return nil

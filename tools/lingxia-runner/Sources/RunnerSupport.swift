@@ -55,6 +55,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.WebView.attach(webView, to: container)
         }
 
+        static func attachLxApp(_ webView: WKWebView, to container: NSView) {
+            LingxiaRunnerSPI.WebView.attachLxApp(webView, to: container)
+        }
+
     }
 
     @MainActor

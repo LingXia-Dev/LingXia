@@ -206,7 +206,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     /// Unified method to show a WebView to the user
     private func showWebViewToUser(_ webView: WKWebView, path: String) {
         RunnerSupport.WebView.removeCurrentFromSuperview()
-        RunnerSupport.WebView.attach(webView, to: webViewContainer)
+        RunnerSupport.WebView.attachLxApp(webView, to: webViewContainer)
         if let tabBar = tabBarView {
             view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
         }
