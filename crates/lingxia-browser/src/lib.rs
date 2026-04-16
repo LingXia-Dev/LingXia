@@ -1,14 +1,17 @@
 mod runtime;
 
+pub use lingxia_webview::{WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest};
 pub use runtime::{
     BUILTIN_BROWSER_APPID, BrowserAddressAction, BrowserAddressInputContext,
     BrowserAddressInputError, BrowserAddressInputRequest, BrowserAddressInputResponse,
     BrowserAddressInputTrigger, BrowserAddressNavigation, BrowserAddressState,
-    BrowserAddressSuggestion, BrowserAddressValueKind, BrowserAutomationError,
+    BrowserAddressSuggestion, BrowserAddressValueKind, BrowserAutomationError, BrowserElementInfo,
     BrowserNativeInputHost, BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest,
-    BrowserNavigationPolicyResponse, BrowserNavigationTarget, BrowserTabInfo,
+    BrowserNavigationPolicyResponse, BrowserNavigationTarget, BrowserRect, BrowserTabInfo,
+    BrowserWaitCondition, BrowserWaitResult,
 };
 use std::sync::Arc;
+use std::time::Duration;
 
 pub use lxapp::LxAppError;
 
@@ -65,6 +68,14 @@ pub fn tabs() -> Vec<BrowserTabInfo> {
     runtime::browser_tabs()
 }
 
+pub fn current_tab() -> Option<BrowserTabInfo> {
+    runtime::browser_current_tab()
+}
+
+pub fn activate(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
+    runtime::browser_activate_tab(tab_id)
+}
+
 pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
     runtime::register_native_input_host(host)
 }
@@ -74,6 +85,93 @@ pub async fn evaluate_javascript(
     js: &str,
 ) -> Result<serde_json::Value, BrowserAutomationError> {
     runtime::browser_evaluate_javascript(tab_id, js).await
+}
+
+pub async fn current_url(tab_id: &str) -> Result<Option<String>, BrowserAutomationError> {
+    runtime::browser_current_url(tab_id).await
+}
+
+pub fn reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_reload(tab_id)
+}
+
+pub fn go_back(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_go_back(tab_id)
+}
+
+pub fn go_forward(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_go_forward(tab_id)
+}
+
+pub async fn list_cookies(tab_id: &str) -> Result<Vec<WebViewCookie>, BrowserAutomationError> {
+    runtime::browser_list_cookies(tab_id).await
+}
+
+pub async fn set_cookie(
+    tab_id: &str,
+    request: WebViewCookieSetRequest,
+) -> Result<(), BrowserAutomationError> {
+    runtime::browser_set_cookie(tab_id, request).await
+}
+
+pub async fn delete_cookie(
+    tab_id: &str,
+    name: &str,
+    domain: &str,
+    path: &str,
+) -> Result<(), BrowserAutomationError> {
+    runtime::browser_delete_cookie(tab_id, name, domain, path).await
+}
+
+pub async fn clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_clear_cookies(tab_id).await
+}
+
+pub async fn query(
+    tab_id: &str,
+    selector: &str,
+) -> Result<BrowserElementInfo, BrowserAutomationError> {
+    runtime::browser_query(tab_id, selector).await
+}
+
+pub async fn query_with_max_text(
+    tab_id: &str,
+    selector: &str,
+    max_text_chars: Option<usize>,
+) -> Result<BrowserElementInfo, BrowserAutomationError> {
+    runtime::browser_query_with_max_text(tab_id, selector, max_text_chars).await
+}
+
+pub async fn wait(
+    tab_id: &str,
+    condition: BrowserWaitCondition,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    runtime::browser_wait(tab_id, condition, timeout).await
+}
+
+pub async fn wait_for_url(
+    tab_id: &str,
+    url: &str,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    runtime::browser_wait_for_url(tab_id, url, timeout).await
+}
+
+pub async fn wait_for_url_contains(
+    tab_id: &str,
+    text: &str,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    runtime::browser_wait_for_url_contains(tab_id, text, timeout).await
+}
+
+pub async fn wait_for_navigation(
+    tab_id: &str,
+    timeout: Duration,
+    wait_until_complete: bool,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    runtime::browser_wait_for_navigation(tab_id, timeout, wait_until_complete).await
 }
 
 pub async fn click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
@@ -86,6 +184,10 @@ pub async fn type_text(
     text: &str,
 ) -> Result<(), BrowserAutomationError> {
     runtime::browser_type_text(tab_id, selector, text).await
+}
+
+pub async fn fill(tab_id: &str, selector: &str, text: &str) -> Result<(), BrowserAutomationError> {
+    runtime::browser_fill(tab_id, selector, text).await
 }
 
 pub async fn press(tab_id: &str, key: &str) -> Result<(), BrowserAutomationError> {

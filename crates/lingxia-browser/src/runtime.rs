@@ -9,7 +9,8 @@ use lingxia_webview::runtime::{
 use lingxia_webview::{
     DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse, LogLevel,
     NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController,
-    WebViewDelegate, WebViewInputError, WebViewScriptError, WebViewSession,
+    WebViewCookie, WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError,
+    WebViewScriptError, WebViewSession,
 };
 use lxapp::{LxApp, LxAppError, Page, publish_app_event};
 use serde::{Deserialize, Serialize};
@@ -17,9 +18,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
+const DEFAULT_QUERY_TEXT_LIMIT: usize = 4096;
 const INTERNAL_TAB_PATH_PREFIX: &str = "/tabs/";
 
 /// Register a startup-time script that should run after each browser page load.
@@ -96,6 +99,39 @@ fn normalize_browser_target_url(raw: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+fn normalize_url_for_wait_compare(raw: &str) -> String {
+    let normalized = normalize_browser_target_url(raw);
+    let trimmed = normalized.trim();
+    let Ok(uri) = trimmed.parse::<http::Uri>() else {
+        return trimmed.to_string();
+    };
+    let Some(scheme) = uri.scheme_str().map(str::to_ascii_lowercase) else {
+        return trimmed.to_string();
+    };
+    if !matches!(scheme.as_str(), "http" | "https") {
+        return trimmed.to_string();
+    }
+    let Some(host) = uri.host() else {
+        return trimmed.to_string();
+    };
+    let host = host.to_ascii_lowercase();
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host
+    };
+    let port = uri
+        .port()
+        .map(|port| format!(":{}", port.as_str()))
+        .unwrap_or_default();
+    let path_and_query = uri
+        .path_and_query()
+        .map(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("/");
+    format!("{scheme}://{host}{port}{path_and_query}")
 }
 
 fn normalize_internal_page_route_key(raw: &str) -> Result<String, LxAppError> {
@@ -447,6 +483,82 @@ pub struct BrowserTabInfo {
     pub title: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserRect {
+    pub left: f64,
+    pub top: f64,
+    pub width: f64,
+    pub height: f64,
+    pub right: f64,
+    pub bottom: f64,
+    pub center_x: f64,
+    pub center_y: f64,
+    pub viewport_width: f64,
+    pub viewport_height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserElementInfo {
+    pub exists: bool,
+    pub visible: bool,
+    pub enabled: bool,
+    pub editable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub text_truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub value_truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rect: Option<BrowserRect>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BrowserWaitCondition {
+    Loaded,
+    SelectorExists {
+        selector: String,
+    },
+    SelectorVisible {
+        selector: String,
+    },
+    SelectorHidden {
+        selector: String,
+    },
+    SelectorEditable {
+        selector: String,
+    },
+    JsTrue {
+        js: String,
+    },
+    UrlEquals {
+        url: String,
+    },
+    UrlContains {
+        text: String,
+    },
+    Navigation {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        initial_url: Option<String>,
+        #[serde(default)]
+        wait_until_complete: bool,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserWaitResult {
+    pub elapsed_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub element: Option<BrowserElementInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<serde_json::Value>,
+}
+
 pub trait BrowserNativeInputHost: Send + Sync {
     fn prepare_for_input(&self, tab_id: &str) -> Result<(), String>;
 }
@@ -461,14 +573,22 @@ pub enum BrowserAutomationError {
     Script(#[from] WebViewScriptError),
     #[error(transparent)]
     Input(#[from] WebViewInputError),
+    #[error(transparent)]
+    WebView(#[from] WebViewError),
     #[error("native input host is not registered")]
     NativeInputHostMissing,
     #[error("native input error: {0}")]
     NativeInput(String),
+    #[error("timed out after {timeout_ms}ms waiting for {condition}")]
+    WaitTimeout { condition: String, timeout_ms: u64 },
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 pub(crate) fn extract_url_scheme(raw: &str) -> Option<String> {
@@ -612,6 +732,7 @@ static BROWSER_STARTUP_PAGE_SCRIPTS: OnceLock<Mutex<Vec<String>>> = OnceLock::ne
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
 static BROWSER_NATIVE_INPUT_HOST: OnceLock<Arc<dyn BrowserNativeInputHost>> = OnceLock::new();
+static BROWSER_ACTIVE_TAB_ID: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 fn lock_state() -> MutexGuard<'static, BrowserState> {
     BROWSER_STATE
@@ -625,6 +746,17 @@ fn lock_state() -> MutexGuard<'static, BrowserState> {
             lxapp::warn!("[InternalBrowser] recovered poisoned browser state mutex");
             e.into_inner()
         })
+}
+
+fn lock_active_tab() -> MutexGuard<'static, Option<String>> {
+    BROWSER_ACTIVE_TAB_ID
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn set_active_browser_tab(tab_id: &str) {
+    *lock_active_tab() = Some(tab_id.to_string());
 }
 
 pub fn register_native_input_host(host: Arc<dyn BrowserNativeInputHost>) -> bool {
@@ -1781,6 +1913,24 @@ pub fn browser_tabs() -> Vec<BrowserTabInfo> {
     tabs
 }
 
+pub fn browser_current_tab() -> Option<BrowserTabInfo> {
+    if let Some(tab_id) = lock_active_tab().clone()
+        && let Some(info) = browser_tab_info(&tab_id)
+    {
+        return Some(info);
+    }
+    browser_tabs().into_iter().next()
+}
+
+pub fn browser_activate_tab(tab_id: &str) -> Result<BrowserTabInfo, BrowserAutomationError> {
+    let normalized_tab_id = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    let info = browser_tab_info(&normalized_tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    set_active_browser_tab(&normalized_tab_id);
+    Ok(info)
+}
+
 fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationError> {
     let normalized_tab_id = normalize_runtime_tab_id(tab_id)
         .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
@@ -1798,6 +1948,264 @@ fn browser_tab_webview(tab_id: &str) -> Result<Arc<WebView>, BrowserAutomationEr
         .ok_or_else(|| BrowserAutomationError::WebViewNotFound(tab_id.to_string()))
 }
 
+fn build_browser_query_script(
+    selector: &str,
+    max_text_chars: Option<usize>,
+) -> Result<String, BrowserAutomationError> {
+    let selector_json = serde_json::to_string(selector)
+        .map_err(|err| BrowserAutomationError::NativeInput(format!("invalid selector: {err}")))?;
+    let max_text_json = serde_json::to_string(&max_text_chars).map_err(|err| {
+        BrowserAutomationError::NativeInput(format!("invalid query limit: {err}"))
+    })?;
+    Ok(format!(
+        r#"
+(() => {{
+  const selector = {selector_json};
+  const maxText = {max_text_json};
+  const truncate = (value) => {{
+    const text = String(value ?? "");
+    if (typeof maxText === "number" && maxText >= 0 && text.length > maxText) {{
+      return {{ value: text.slice(0, maxText), truncated: true }};
+    }}
+    return {{ value: text, truncated: false }};
+  }};
+  if (typeof selector !== "string" || selector.trim() === "") {{
+    throw new Error("selector must not be empty");
+  }}
+  let el;
+  try {{
+    el = document.querySelector(selector);
+  }} catch (err) {{
+    throw new Error("invalid selector: " + String(err && err.message ? err.message : err));
+  }}
+  if (!el) {{
+    return {{
+      exists: false,
+      visible: false,
+      enabled: false,
+      editable: false
+    }};
+  }}
+
+  const rect = el.getBoundingClientRect();
+  const style = window.getComputedStyle(el);
+  const disabled = !!el.disabled || el.getAttribute("aria-disabled") === "true";
+  const tag = (el.tagName || "").toLowerCase();
+  const inputType = tag === "input" ? String(el.type || "text").toLowerCase() : "";
+  const blockedInputTypes = new Set([
+    "button", "checkbox", "color", "file", "hidden", "image", "radio",
+    "range", "reset", "submit"
+  ]);
+  const editable = !!el.isContentEditable ||
+    (tag === "textarea" && !disabled && !el.readOnly) ||
+    (tag === "input" && !disabled && !el.readOnly && !blockedInputTypes.has(inputType));
+  const visible = rect.width > 0 &&
+    rect.height > 0 &&
+    rect.bottom > 0 &&
+    rect.right > 0 &&
+    rect.top < window.innerHeight &&
+    rect.left < window.innerWidth &&
+    style.visibility !== "hidden" &&
+    style.display !== "none" &&
+    Number(style.opacity || "1") !== 0;
+  const hasValue = "value" in el;
+  const text = truncate(el.innerText || el.textContent || "");
+  const value = hasValue ? truncate(el.value ?? "") : null;
+  return {{
+    exists: true,
+    visible,
+    enabled: !disabled,
+    editable,
+    text: text.value,
+    text_truncated: text.truncated,
+    value: value ? value.value : null,
+    value_truncated: value ? value.truncated : false,
+    rect: {{
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      right: rect.right,
+      bottom: rect.bottom,
+      center_x: rect.left + (rect.width / 2),
+      center_y: rect.top + (rect.height / 2),
+      viewport_width: window.innerWidth,
+      viewport_height: window.innerHeight
+    }}
+  }};
+}})()
+"#
+    ))
+}
+
+fn browser_tab_current_url(tab_id: &str) -> Result<Option<String>, BrowserAutomationError> {
+    let normalized_tab_id = normalize_runtime_tab_id(tab_id)
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))?;
+    let state = lock_state();
+    state
+        .tabs
+        .get(&normalized_tab_id)
+        .map(|tab| tab.current_url.clone().or_else(|| tab.pending_url.clone()))
+        .ok_or_else(|| BrowserAutomationError::TabNotFound(tab_id.to_string()))
+}
+
+async fn browser_live_current_url(tab_id: &str) -> Result<Option<String>, BrowserAutomationError> {
+    let state_url = browser_tab_current_url(tab_id)?;
+    let webview = browser_tab_webview(tab_id)?;
+
+    match webview.current_url().await {
+        Ok(Some(url)) => {
+            let _ = browser_update_tab_info(tab_id, Some(url.as_str()), None);
+            Ok(Some(url))
+        }
+        Ok(None) => Ok(state_url),
+        Err(_) => Ok(state_url),
+    }
+}
+
+pub async fn browser_current_url(tab_id: &str) -> Result<Option<String>, BrowserAutomationError> {
+    browser_live_current_url(tab_id).await
+}
+
+fn wait_condition_label(condition: &BrowserWaitCondition) -> String {
+    match condition {
+        BrowserWaitCondition::Loaded => "loaded".to_string(),
+        BrowserWaitCondition::SelectorExists { selector } => format!("selector exists {selector}"),
+        BrowserWaitCondition::SelectorVisible { selector } => {
+            format!("selector visible {selector}")
+        }
+        BrowserWaitCondition::SelectorHidden { selector } => {
+            format!("selector hidden {selector}")
+        }
+        BrowserWaitCondition::SelectorEditable { selector } => {
+            format!("selector editable {selector}")
+        }
+        BrowserWaitCondition::JsTrue { .. } => "js returns true".to_string(),
+        BrowserWaitCondition::UrlEquals { url } => format!("url equals {url}"),
+        BrowserWaitCondition::UrlContains { text } => format!("url contains {text}"),
+        BrowserWaitCondition::Navigation { .. } => "navigation".to_string(),
+    }
+}
+
+fn duration_ms_u64(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+struct BrowserWaitCheck {
+    matched: bool,
+    current_url: Option<String>,
+    element: Option<BrowserElementInfo>,
+    value: Option<serde_json::Value>,
+}
+
+async fn check_wait_condition(
+    tab_id: &str,
+    condition: &BrowserWaitCondition,
+) -> Result<BrowserWaitCheck, BrowserAutomationError> {
+    match condition {
+        BrowserWaitCondition::Loaded => {
+            let value = browser_evaluate_javascript(tab_id, "document.readyState").await?;
+            let matched = value.as_str() == Some("complete");
+            Ok(BrowserWaitCheck {
+                matched,
+                current_url: browser_live_current_url(tab_id).await?,
+                element: None,
+                value: Some(value),
+            })
+        }
+        BrowserWaitCondition::SelectorExists { selector } => {
+            let element = browser_query(tab_id, selector).await?;
+            Ok(BrowserWaitCheck {
+                matched: element.exists,
+                current_url: browser_live_current_url(tab_id).await?,
+                element: Some(element),
+                value: None,
+            })
+        }
+        BrowserWaitCondition::SelectorVisible { selector } => {
+            let element = browser_query(tab_id, selector).await?;
+            Ok(BrowserWaitCheck {
+                matched: element.exists && element.visible,
+                current_url: browser_live_current_url(tab_id).await?,
+                element: Some(element),
+                value: None,
+            })
+        }
+        BrowserWaitCondition::SelectorHidden { selector } => {
+            let element = browser_query(tab_id, selector).await?;
+            Ok(BrowserWaitCheck {
+                matched: !element.exists || !element.visible,
+                current_url: browser_live_current_url(tab_id).await?,
+                element: Some(element),
+                value: None,
+            })
+        }
+        BrowserWaitCondition::SelectorEditable { selector } => {
+            let element = browser_query(tab_id, selector).await?;
+            Ok(BrowserWaitCheck {
+                matched: element.exists && element.visible && element.enabled && element.editable,
+                current_url: browser_live_current_url(tab_id).await?,
+                element: Some(element),
+                value: None,
+            })
+        }
+        BrowserWaitCondition::JsTrue { js } => {
+            let value = browser_evaluate_javascript(tab_id, js).await?;
+            Ok(BrowserWaitCheck {
+                matched: value.as_bool().unwrap_or(false),
+                current_url: browser_live_current_url(tab_id).await?,
+                element: None,
+                value: Some(value),
+            })
+        }
+        BrowserWaitCondition::UrlEquals { url } => {
+            let current_url = browser_live_current_url(tab_id).await?;
+            let expected = normalize_url_for_wait_compare(url);
+            Ok(BrowserWaitCheck {
+                matched: current_url
+                    .as_deref()
+                    .is_some_and(|url| normalize_url_for_wait_compare(url) == expected),
+                current_url,
+                element: None,
+                value: None,
+            })
+        }
+        BrowserWaitCondition::UrlContains { text } => {
+            let current_url = browser_live_current_url(tab_id).await?;
+            Ok(BrowserWaitCheck {
+                matched: current_url
+                    .as_deref()
+                    .is_some_and(|url| url.contains(text.as_str())),
+                current_url,
+                element: None,
+                value: None,
+            })
+        }
+        BrowserWaitCondition::Navigation {
+            initial_url,
+            wait_until_complete,
+        } => {
+            let current_url = browser_live_current_url(tab_id).await?;
+            let changed = current_url.as_deref().map(normalize_url_for_wait_compare)
+                != initial_url.as_deref().map(normalize_url_for_wait_compare);
+            let loaded = if changed && *wait_until_complete {
+                browser_evaluate_javascript(tab_id, "document.readyState")
+                    .await?
+                    .as_str()
+                    == Some("complete")
+            } else {
+                true
+            };
+            Ok(BrowserWaitCheck {
+                matched: changed && loaded,
+                current_url,
+                element: None,
+                value: None,
+            })
+        }
+    }
+}
+
 pub async fn browser_evaluate_javascript(
     tab_id: &str,
     js: &str,
@@ -1808,10 +2216,242 @@ pub async fn browser_evaluate_javascript(
         .map_err(BrowserAutomationError::from)
 }
 
+pub fn browser_reload(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?.reload()?;
+    Ok(())
+}
+
+pub fn browser_go_back(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?.go_back()?;
+    Ok(())
+}
+
+pub fn browser_go_forward(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?.go_forward()?;
+    Ok(())
+}
+
+pub async fn browser_list_cookies(
+    tab_id: &str,
+) -> Result<Vec<WebViewCookie>, BrowserAutomationError> {
+    let current_url = browser_live_current_url(tab_id).await?;
+    let cookies = browser_tab_webview(tab_id)?
+        .list_cookies()
+        .await
+        .map_err(BrowserAutomationError::from)?;
+    Ok(
+        match current_url
+            .as_deref()
+            .and_then(cookie_filter_context_for_url)
+        {
+            Some((host, path)) => cookies
+                .into_iter()
+                .filter(|cookie| cookie_matches_url(cookie, &host, &path))
+                .collect(),
+            None => cookies,
+        },
+    )
+}
+
+pub async fn browser_set_cookie(
+    tab_id: &str,
+    mut request: WebViewCookieSetRequest,
+) -> Result<(), BrowserAutomationError> {
+    if request.url.trim().is_empty() {
+        request.url = browser_live_current_url(tab_id).await?.ok_or_else(|| {
+            BrowserAutomationError::NativeInput(
+                "cookie url is required when tab has no current URL".to_string(),
+            )
+        })?;
+    }
+    browser_tab_webview(tab_id)?
+        .set_cookie(request)
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_delete_cookie(
+    tab_id: &str,
+    name: &str,
+    domain: &str,
+    path: &str,
+) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .delete_cookie(name, domain, path)
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_clear_cookies(tab_id: &str) -> Result<(), BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .clear_cookies()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+fn cookie_filter_context_for_url(url: &str) -> Option<(String, String)> {
+    let uri = url.parse::<http::Uri>().ok()?;
+    let host = normalize_cookie_host(uri.host()?);
+    if host.is_empty() {
+        None
+    } else {
+        let path = uri
+            .path_and_query()
+            .map(|value| value.path())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("/")
+            .to_string();
+        Some((host, path))
+    }
+}
+
+fn cookie_matches_url(cookie: &WebViewCookie, host: &str, path: &str) -> bool {
+    let domain = normalize_cookie_host(cookie.domain.trim_start_matches('.'));
+    if domain.is_empty() {
+        return false;
+    }
+    let domain_matches = if cookie.host_only {
+        host == domain
+    } else {
+        host == domain || host.ends_with(&format!(".{domain}"))
+    };
+    if !domain_matches {
+        return false;
+    }
+    let cookie_path = if cookie.path.trim().is_empty() {
+        "/"
+    } else {
+        cookie.path.as_str()
+    };
+    if cookie_path == "/" || path == cookie_path {
+        return true;
+    }
+    if cookie_path.ends_with('/') {
+        return path.starts_with(cookie_path);
+    }
+    path.strip_prefix(cookie_path)
+        .is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn normalize_cookie_host(host: &str) -> String {
+    host.trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_ascii_lowercase()
+}
+
+pub async fn browser_query(
+    tab_id: &str,
+    selector: &str,
+) -> Result<BrowserElementInfo, BrowserAutomationError> {
+    browser_query_with_max_text(tab_id, selector, Some(DEFAULT_QUERY_TEXT_LIMIT)).await
+}
+
+pub async fn browser_query_with_max_text(
+    tab_id: &str,
+    selector: &str,
+    max_text_chars: Option<usize>,
+) -> Result<BrowserElementInfo, BrowserAutomationError> {
+    let script = build_browser_query_script(selector, max_text_chars)?;
+    let value = browser_evaluate_javascript(tab_id, &script).await?;
+    serde_json::from_value(value).map_err(|err| {
+        BrowserAutomationError::NativeInput(format!("failed to decode element info: {err}"))
+    })
+}
+
+pub async fn browser_wait(
+    tab_id: &str,
+    condition: BrowserWaitCondition,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    let started = Instant::now();
+    let timeout_ms = duration_ms_u64(timeout);
+
+    loop {
+        let check = check_wait_condition(tab_id, &condition).await?;
+        if check.matched {
+            return Ok(BrowserWaitResult {
+                elapsed_ms: duration_ms_u64(started.elapsed()),
+                current_url: check.current_url,
+                element: check.element,
+                value: check.value,
+            });
+        }
+
+        if started.elapsed() >= timeout {
+            return Err(BrowserAutomationError::WaitTimeout {
+                condition: wait_condition_label(&condition),
+                timeout_ms,
+            });
+        }
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+pub async fn browser_wait_for_url(
+    tab_id: &str,
+    url: &str,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    browser_wait(
+        tab_id,
+        BrowserWaitCondition::UrlEquals {
+            url: url.to_string(),
+        },
+        timeout,
+    )
+    .await
+}
+
+pub async fn browser_wait_for_url_contains(
+    tab_id: &str,
+    text: &str,
+    timeout: Duration,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    browser_wait(
+        tab_id,
+        BrowserWaitCondition::UrlContains {
+            text: text.to_string(),
+        },
+        timeout,
+    )
+    .await
+}
+
+pub async fn browser_wait_for_navigation(
+    tab_id: &str,
+    timeout: Duration,
+    wait_until_complete: bool,
+) -> Result<BrowserWaitResult, BrowserAutomationError> {
+    let initial_url = browser_live_current_url(tab_id).await?;
+    browser_wait(
+        tab_id,
+        BrowserWaitCondition::Navigation {
+            initial_url,
+            wait_until_complete,
+        },
+        timeout,
+    )
+    .await
+}
+
 pub async fn browser_click(tab_id: &str, selector: &str) -> Result<(), BrowserAutomationError> {
     prepare_browser_tab_for_input(tab_id).await?;
     browser_tab_webview(tab_id)?
         .click(selector, lingxia_webview::ClickOptions::default())
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
+pub async fn browser_fill(
+    tab_id: &str,
+    selector: &str,
+    text: &str,
+) -> Result<(), BrowserAutomationError> {
+    prepare_browser_tab_for_input(tab_id).await?;
+    browser_tab_webview(tab_id)?
+        .fill(selector, text, lingxia_webview::FillOptions::default())
         .await
         .map_err(BrowserAutomationError::from)
 }
@@ -2013,6 +2653,7 @@ fn open_internal_browser_tab_with_scope(
             lock_state().tabs.remove(&tab_id);
             return Err(e);
         }
+        set_active_browser_tab(&tab_id);
         return Ok(tab_id);
     }
 
@@ -2035,6 +2676,7 @@ fn open_internal_browser_tab_with_scope(
         }
     }
 
+    set_active_browser_tab(&tab_id);
     Ok(tab_id)
 }
 
@@ -2101,6 +2743,11 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         }
         browser_destroy_webview(&tab_path, tab.session_id);
     }
+    let active_matches_closed = lock_active_tab().as_deref() == Some(normalized.as_str());
+    if active_matches_closed {
+        let next = browser_tabs().into_iter().next().map(|tab| tab.tab_id);
+        *lock_active_tab() = next;
+    }
     Ok(())
 }
 
@@ -2132,6 +2779,64 @@ mod tests {
             normalize_browser_target_url("https://example.com"),
             "https://example.com"
         );
+    }
+
+    #[test]
+    fn normalize_url_for_wait_compare_canonicalizes_browser_urls() {
+        assert_eq!(
+            normalize_url_for_wait_compare("https://Example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            normalize_url_for_wait_compare("http://example.com"),
+            "https://example.com/"
+        );
+        assert_eq!(
+            normalize_url_for_wait_compare("https://[::1]:8443/path?q=1"),
+            "https://[::1]:8443/path?q=1"
+        );
+    }
+
+    #[test]
+    fn cookie_filter_context_handles_ipv6_urls() {
+        assert_eq!(
+            cookie_filter_context_for_url("https://[::1]:8443/path?q=1"),
+            Some(("::1".to_string(), "/path".to_string()))
+        );
+    }
+
+    #[test]
+    fn cookie_matches_url_respects_host_only_and_path_rules() {
+        let host_only = WebViewCookie {
+            name: "a".to_string(),
+            value: "1".to_string(),
+            domain: "example.com".to_string(),
+            path: "/foo".to_string(),
+            host_only: true,
+            secure: false,
+            http_only: false,
+            session: true,
+            expires_unix_ms: None,
+            same_site: None,
+        };
+        assert!(cookie_matches_url(&host_only, "example.com", "/foo/bar"));
+        assert!(!cookie_matches_url(
+            &host_only,
+            "sub.example.com",
+            "/foo/bar"
+        ));
+        assert!(!cookie_matches_url(&host_only, "example.com", "/foobar"));
+
+        let domain_cookie = WebViewCookie {
+            host_only: false,
+            domain: ".example.com".to_string(),
+            ..host_only
+        };
+        assert!(cookie_matches_url(
+            &domain_cookie,
+            "sub.example.com",
+            "/foo/bar"
+        ));
     }
 
     #[test]
