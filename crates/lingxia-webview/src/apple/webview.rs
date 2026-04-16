@@ -1,3 +1,7 @@
+use super::bridge_transport::{
+    APPLE_INTERNAL_SCHEME, AppleBridgeTransport, bridge_downstream_cors_origin,
+    is_bridge_downstream_request,
+};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
@@ -13,8 +17,9 @@ use crate::traits::{
 };
 use crate::webview::{find_webview, find_webview_delegate};
 use crate::{
-    DownloadRequest, LoadDataRequest, LogLevel, SystemPipeReader, WebResourceResponse,
-    WebViewController, WebViewError, WebViewScriptError,
+    DownloadRequest, LoadDataRequest, LogLevel, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError,
+    WebViewScriptError,
 };
 use async_trait::async_trait;
 use block2::{Block, RcBlock, StackBlock};
@@ -28,8 +33,10 @@ use objc2::{
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect};
 use objc2_foundation::{
-    NSArray, NSDate, NSError, NSJSONSerialization, NSJSONWritingOptions, NSObjectProtocol, NSPoint,
-    NSRect, NSSize, NSString, NSURL, NSURLRequest,
+    NSArray, NSDate, NSDictionary, NSError, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieExpires,
+    NSHTTPCookieName, NSHTTPCookieOriginURL, NSHTTPCookiePath, NSHTTPCookiePropertyKey,
+    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSJSONSerialization,
+    NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKNavigation, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler,
@@ -40,15 +47,11 @@ use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentCont
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
 use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::io::Write;
-use std::os::fd::IntoRawFd;
-use std::os::unix::net::UnixStream;
 #[cfg(target_os = "ios")]
 use std::ptr::NonNull;
 use std::sync::mpsc::sync_channel;
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{ffi::CString, ffi::c_char, ffi::c_void};
 use tokio::sync::oneshot;
 use tokio::time::timeout;
@@ -65,8 +68,6 @@ use crate::webview::{
 
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
-const INTERNAL_BRIDGE_DOWNSTREAM_PATH: &str = "/__lingxia/bridge/downstream";
-const APPLE_BRIDGE_QUEUE_LIMIT: usize = 1024;
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(target_os = "ios")]
 const HTTPS_BLOCK_RULE_JSON: &str = r#"
@@ -92,6 +93,296 @@ unsafe extern "C" {
     fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
     fn nw_release(object: *mut AnyObject);
     fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+}
+
+fn nsstring_to_string(value: &NSString) -> String {
+    unsafe {
+        let cstr: *const std::ffi::c_char = msg_send![value, UTF8String];
+        if cstr.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(cstr).to_string_lossy().to_string()
+        }
+    }
+}
+
+fn cookie_to_webview_cookie(cookie: &NSHTTPCookie) -> WebViewCookie {
+    let expires_unix_ms = cookie
+        .expiresDate()
+        .map(|date| (date.timeIntervalSince1970() * 1000.0).round() as i64);
+    let same_site = cookie.sameSitePolicy().and_then(|value| {
+        WebViewCookieSameSite::from_platform_str(&nsstring_to_string(value.as_ref()))
+    });
+    let domain = nsstring_to_string(cookie.domain().as_ref());
+
+    WebViewCookie {
+        name: nsstring_to_string(cookie.name().as_ref()),
+        value: nsstring_to_string(cookie.value().as_ref()),
+        domain: domain.clone(),
+        path: nsstring_to_string(cookie.path().as_ref()),
+        host_only: !domain.starts_with('.'),
+        secure: cookie.isSecure(),
+        http_only: cookie.isHTTPOnly(),
+        session: cookie.isSessionOnly(),
+        expires_unix_ms,
+        same_site,
+    }
+}
+
+impl WebViewCookieSameSite {
+    fn from_platform_str(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "lax" => Some(Self::Lax),
+            "strict" => Some(Self::Strict),
+            "none" => Some(Self::None),
+            _ => None,
+        }
+    }
+
+    fn platform_value(self) -> Retained<NSString> {
+        NSString::from_str(match self {
+            Self::Lax => "Lax",
+            Self::Strict => "Strict",
+            Self::None => "None",
+        })
+    }
+}
+
+fn cookie_set_properties(
+    request: &WebViewCookieSetRequest,
+) -> Result<Retained<NSDictionary<NSHTTPCookiePropertyKey, AnyObject>>, WebViewError> {
+    validate_cookie_set_request(request)?;
+
+    let url_string = NSString::from_str(request.url.trim());
+    let Some(url) = NSURL::URLWithString(&url_string) else {
+        return Err(WebViewError::WebView("invalid cookie url".to_string()));
+    };
+    let name = NSString::from_str(request.name.as_str());
+    let value = NSString::from_str(request.value.as_str());
+    let path = NSString::from_str(if request.path.trim().is_empty() {
+        "/"
+    } else {
+        request.path.as_str()
+    });
+
+    let mut keys: Vec<&NSHTTPCookiePropertyKey> = unsafe {
+        vec![
+            &*NSHTTPCookieName,
+            &*NSHTTPCookieValue,
+            &*NSHTTPCookieOriginURL,
+            &*NSHTTPCookiePath,
+        ]
+    };
+    let mut values: Vec<&AnyObject> =
+        vec![name.as_ref(), value.as_ref(), url.as_ref(), path.as_ref()];
+
+    let secure;
+    if request.secure {
+        secure = NSString::from_str("TRUE");
+        keys.push(unsafe { &*NSHTTPCookieSecure });
+        values.push(secure.as_ref());
+    }
+
+    let domain;
+    if let Some(request_domain) = request
+        .domain
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        domain = NSString::from_str(&cookie_domain_attribute(request_domain));
+        keys.push(unsafe { &*NSHTTPCookieDomain });
+        values.push(domain.as_ref());
+    }
+
+    let same_site;
+    if let Some(request_same_site) = request.same_site {
+        same_site = request_same_site.platform_value();
+        keys.push(unsafe { &*NSHTTPCookieSameSitePolicy });
+        values.push(same_site.as_ref());
+    }
+
+    let expires;
+    if let Some(expires_unix_ms) = request.expires_unix_ms {
+        expires = NSDate::dateWithTimeIntervalSince1970(expires_unix_ms as f64 / 1000.0);
+        keys.push(unsafe { &*NSHTTPCookieExpires });
+        values.push(expires.as_ref());
+    }
+
+    Ok(NSDictionary::from_slices::<NSHTTPCookiePropertyKey>(
+        &keys, &values,
+    ))
+}
+
+fn cookie_set_header(
+    request: &WebViewCookieSetRequest,
+) -> Result<(String, Retained<NSURL>), WebViewError> {
+    validate_cookie_set_request(request)?;
+    let url_string = NSString::from_str(request.url.trim());
+    let Some(url) = NSURL::URLWithString(&url_string) else {
+        return Err(WebViewError::WebView("invalid cookie url".to_string()));
+    };
+
+    let mut header = format!("{}={}", request.name, request.value);
+    if let Some(domain) = request
+        .domain
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        header.push_str("; Domain=");
+        header.push_str(&cookie_domain_attribute(domain));
+    }
+    header.push_str("; Path=");
+    header.push_str(if request.path.trim().is_empty() {
+        "/"
+    } else {
+        request.path.as_str()
+    });
+    if request.secure {
+        header.push_str("; Secure");
+    }
+    if request.http_only {
+        header.push_str("; HttpOnly");
+    }
+    if let Some(same_site) = request.same_site {
+        header.push_str("; SameSite=");
+        header.push_str(same_site.as_str());
+    }
+    if let Some(expires_unix_ms) = request.expires_unix_ms {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_millis() as i64)
+            .unwrap_or_default();
+        let max_age = ((expires_unix_ms - now_ms) / 1000).max(0);
+        header.push_str("; Max-Age=");
+        header.push_str(&max_age.to_string());
+    }
+    Ok((header, url))
+}
+
+fn cookie_from_set_request(
+    request: &WebViewCookieSetRequest,
+) -> Result<Retained<NSHTTPCookie>, WebViewError> {
+    if request.http_only {
+        return unsafe { cookie_from_set_header(request) };
+    }
+    let properties = cookie_set_properties(request)?;
+    unsafe {
+        NSHTTPCookie::cookieWithProperties(&properties).ok_or_else(|| {
+            WebViewError::WebView("cookie request did not produce a valid cookie".to_string())
+        })
+    }
+}
+
+unsafe fn cookie_from_set_header(
+    request: &WebViewCookieSetRequest,
+) -> Result<Retained<NSHTTPCookie>, WebViewError> {
+    let (header, url) = cookie_set_header(request)?;
+    let header_key = NSString::from_str("Set-Cookie");
+    let header_value = NSString::from_str(&header);
+    let headers: *mut NSDictionary<NSString, NSString> = msg_send![
+        class!(NSDictionary),
+        dictionaryWithObject: &*header_value,
+        forKey: &*header_key
+    ];
+    if headers.is_null() {
+        return Err(WebViewError::WebView(
+            "failed to build cookie header".to_string(),
+        ));
+    }
+    let cookies = NSHTTPCookie::cookiesWithResponseHeaderFields_forURL(unsafe { &*headers }, &url);
+    let cookies_ref: &NSArray<NSHTTPCookie> = cookies.as_ref();
+    let count: usize = msg_send![cookies_ref, count];
+    if count == 0 {
+        return Err(WebViewError::WebView(
+            "cookie request did not produce a valid cookie".to_string(),
+        ));
+    }
+    let cookie: *mut NSHTTPCookie = msg_send![cookies_ref, objectAtIndex: 0usize];
+    if cookie.is_null() {
+        return Err(WebViewError::WebView(
+            "cookie request did not produce a valid cookie".to_string(),
+        ));
+    }
+    Ok(unsafe { Retained::retain(cookie) }.expect("NSHTTPCookie from NSArray must be retainable"))
+}
+
+fn validate_cookie_set_request(request: &WebViewCookieSetRequest) -> Result<(), WebViewError> {
+    if request.url.trim().is_empty() {
+        return Err(WebViewError::WebView("cookie url is required".to_string()));
+    }
+    if request.name.trim().is_empty() {
+        return Err(WebViewError::WebView("cookie name is required".to_string()));
+    }
+    if request
+        .name
+        .chars()
+        .any(|c| c.is_ascii_control() || matches!(c, ';' | '=' | ',' | ' '))
+    {
+        return Err(WebViewError::WebView(
+            "cookie name contains invalid characters".to_string(),
+        ));
+    }
+    for (label, value) in [
+        ("cookie value", request.value.as_str()),
+        ("cookie path", request.path.as_str()),
+    ] {
+        if value.chars().any(|c| c.is_ascii_control() || c == ';') {
+            return Err(WebViewError::WebView(format!(
+                "{label} contains invalid characters"
+            )));
+        }
+    }
+    if let Some(domain) = request.domain.as_deref() {
+        if domain.chars().any(|c| c.is_ascii_control() || c == ';') {
+            return Err(WebViewError::WebView(
+                "cookie domain contains invalid characters".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn cookie_delete_domain_matches(candidate: &str, requested: &str) -> bool {
+    let candidate = candidate
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    let requested = requested
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    !candidate.is_empty() && candidate == requested
+}
+
+fn cookie_domain_attribute(domain: &str) -> String {
+    let trimmed = domain.trim();
+    if trimmed.starts_with('.') {
+        trimmed.to_string()
+    } else {
+        format!(".{trimmed}")
+    }
+}
+
+struct CookieDeleteCompletionState {
+    pending: usize,
+    enumerated: bool,
+    sender: Option<oneshot::Sender<Result<(), WebViewError>>>,
+}
+
+fn finish_cookie_delete_if_done(state: &Arc<Mutex<CookieDeleteCompletionState>>) {
+    let sender = {
+        let Ok(mut guard) = state.lock() else {
+            return;
+        };
+        if guard.enumerated && guard.pending == 0 {
+            guard.sender.take()
+        } else {
+            None
+        }
+    };
+    if let Some(sender) = sender {
+        let _ = sender.send(Ok(()));
+    }
 }
 
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
@@ -218,174 +509,6 @@ impl Drop for NwOwned {
         if !self.0.is_null() {
             unsafe {
                 nw_release(self.0);
-            }
-        }
-    }
-}
-
-struct AppleBridgeConnection {
-    id: u64,
-    writer: UnixStream,
-}
-
-struct AppleBridgeTransportState {
-    queue: VecDeque<Vec<u8>>,
-    connection: Option<AppleBridgeConnection>,
-    next_connection_id: u64,
-    shutdown: bool,
-}
-
-struct AppleBridgeTransport {
-    webtag: WebTag,
-    state: Mutex<AppleBridgeTransportState>,
-    signal: Condvar,
-}
-
-impl AppleBridgeTransport {
-    fn new(webtag: WebTag) -> Arc<Self> {
-        let transport = Arc::new(Self {
-            webtag,
-            state: Mutex::new(AppleBridgeTransportState {
-                queue: VecDeque::new(),
-                connection: None,
-                next_connection_id: 0,
-                shutdown: false,
-            }),
-            signal: Condvar::new(),
-        });
-        let worker = Arc::clone(&transport);
-        std::thread::spawn(move || worker.run_writer_loop());
-        transport
-    }
-
-    fn connect_downstream(&self) -> Result<SystemPipeReader, WebViewError> {
-        let (read_end, write_end) = UnixStream::pair().map_err(|e| {
-            WebViewError::WebView(format!(
-                "Failed to create Apple bridge downstream pipe: {e}"
-            ))
-        })?;
-        let read_fd = read_end.into_raw_fd();
-        let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
-
-        let (replaced_existing, dropped_queued_frames) = {
-            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            guard.next_connection_id += 1;
-            let replaced = guard.connection.is_some();
-            let dropped = guard.queue.len();
-            guard.queue.clear();
-            guard.connection = Some(AppleBridgeConnection {
-                id: guard.next_connection_id,
-                writer: write_end,
-            });
-            (replaced, dropped)
-        };
-        self.signal.notify_all();
-        let dropped_suffix = if dropped_queued_frames > 0 {
-            format!(" (dropped {} stale queued frame(s))", dropped_queued_frames)
-        } else {
-            String::new()
-        };
-        log::info!(
-            "Apple bridge downstream connected webtag={}{}{}",
-            self.webtag,
-            if replaced_existing {
-                " (replaced existing stream)"
-            } else {
-                ""
-            },
-            dropped_suffix
-        );
-        Ok(reader)
-    }
-
-    fn enqueue_message(&self, message: &str) -> Result<(), WebViewError> {
-        let mut frame = Vec::with_capacity(message.len() + 1);
-        frame.extend_from_slice(message.as_bytes());
-        frame.push(b'\n');
-
-        let queued_len = {
-            let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-            if guard.shutdown {
-                return Err(WebViewError::WebView(format!(
-                    "Apple bridge downstream is closed for {}",
-                    self.webtag
-                )));
-            }
-            if guard.queue.len() >= APPLE_BRIDGE_QUEUE_LIMIT {
-                return Err(WebViewError::WebView(format!(
-                    "Apple bridge downstream queue overflow for {} (limit={})",
-                    self.webtag, APPLE_BRIDGE_QUEUE_LIMIT
-                )));
-            }
-            guard.queue.push_back(frame);
-            guard.queue.len()
-        };
-        if queued_len > (APPLE_BRIDGE_QUEUE_LIMIT / 2) {
-            log::warn!(
-                "Apple bridge downstream backlog webtag={} queued={}",
-                self.webtag,
-                queued_len
-            );
-        }
-        self.signal.notify_one();
-        Ok(())
-    }
-
-    fn shutdown(&self) {
-        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        guard.shutdown = true;
-        guard.connection = None;
-        self.signal.notify_all();
-    }
-
-    fn run_writer_loop(self: Arc<Self>) {
-        loop {
-            let (connection_id, mut writer, frame) = {
-                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                while !guard.shutdown && (guard.connection.is_none() || guard.queue.is_empty()) {
-                    guard = self.signal.wait(guard).unwrap_or_else(|e| e.into_inner());
-                }
-                if guard.shutdown {
-                    return;
-                }
-                let Some(frame) = guard.queue.pop_front() else {
-                    continue;
-                };
-                let Some(connection) = guard.connection.as_ref() else {
-                    guard.queue.push_front(frame);
-                    continue;
-                };
-                let writer = match connection.writer.try_clone() {
-                    Ok(writer) => writer,
-                    Err(e) => {
-                        log::warn!(
-                            "Apple bridge downstream clone failed webtag={}: {}",
-                            self.webtag,
-                            e
-                        );
-                        guard.queue.push_front(frame);
-                        guard.connection = None;
-                        continue;
-                    }
-                };
-                (connection.id, writer, frame)
-            };
-
-            if let Err(e) = writer.write_all(&frame) {
-                log::debug!(
-                    "Apple bridge downstream write failed webtag={}: {}",
-                    self.webtag,
-                    e
-                );
-                let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
-                guard.queue.push_front(frame);
-                if guard
-                    .connection
-                    .as_ref()
-                    .is_some_and(|connection| connection.id == connection_id)
-                {
-                    guard.connection = None;
-                }
             }
         }
     }
@@ -1479,7 +1602,7 @@ impl WebViewInner {
         &self,
         request: &http::Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
-        if request.uri().path() != INTERNAL_BRIDGE_DOWNSTREAM_PATH {
+        if !is_bridge_downstream_request(request) {
             return None;
         }
 
@@ -1520,6 +1643,10 @@ impl WebViewInner {
             .status(StatusCode::OK)
             .header("Content-Type", "application/x-ndjson; charset=utf-8")
             .header("Cache-Control", "no-store")
+            .header(
+                "Access-Control-Allow-Origin",
+                bridge_downstream_cors_origin(request),
+            )
             .body(())
             .unwrap_or_else(|_| {
                 Response::builder()
@@ -1674,22 +1801,24 @@ impl WebViewInner {
                 }
             }
 
-            // Register custom scheme handlers for this WebView.
-            // Use registered_schemes from options; fall back to "lx" for backward compatibility.
+            // Register the framework-owned Apple bridge scheme plus app custom schemes.
             let webtag = WebTag::new(appid, path, session_id);
-            let schemes_to_register: Vec<String> =
-                if effective_options.registered_schemes.is_empty() {
-                    vec!["lx".to_string()]
-                } else {
-                    // Only register non-standard schemes with WKURLSchemeHandler
-                    // (http/https are handled via navigation delegate, not scheme handler)
+            let mut schemes_to_register = vec![APPLE_INTERNAL_SCHEME.to_string()];
+            if effective_options.registered_schemes.is_empty() {
+                schemes_to_register.push("lx".to_string());
+            } else {
+                // Only register non-standard schemes with WKURLSchemeHandler
+                // (http/https are handled via navigation delegate, not scheme handler).
+                schemes_to_register.extend(
                     effective_options
                         .registered_schemes
                         .iter()
-                        .filter(|s| *s != "http" && *s != "https")
-                        .cloned()
-                        .collect()
-                };
+                        .filter(|s| *s != "http" && *s != "https" && *s != APPLE_INTERNAL_SCHEME)
+                        .cloned(),
+                );
+            }
+            schemes_to_register.sort_unstable();
+            schemes_to_register.dedup();
 
             for scheme_name in &schemes_to_register {
                 if let Some(scheme_handler) =
@@ -2318,6 +2447,225 @@ impl WebViewController for WebViewInner {
 
             Ok(())
         }
+    }
+
+    async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<Vec<WebViewCookie>, WebViewError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let configuration: *mut AnyObject = msg_send![webview, configuration];
+            if configuration.is_null() {
+                let _ = tx.send(Err(WebViewError::WebView(
+                    "WKWebView configuration is unavailable".to_string(),
+                )));
+                return;
+            }
+            let config_ref = &*(configuration as *const WKWebViewConfiguration);
+            let cookie_store = config_ref.websiteDataStore().httpCookieStore();
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion =
+                StackBlock::new(move |cookies: std::ptr::NonNull<NSArray<NSHTTPCookie>>| {
+                    let cookies_ref = cookies.as_ref();
+                    let count: usize = msg_send![cookies_ref, count];
+                    let mut result = Vec::with_capacity(count);
+                    for index in 0..count {
+                        let cookie: *mut NSHTTPCookie =
+                            msg_send![cookies_ref, objectAtIndex: index];
+                        if !cookie.is_null() {
+                            result.push(cookie_to_webview_cookie(&*cookie));
+                        }
+                    }
+                    if let Some(sender) = tx_state_for_block
+                        .lock()
+                        .ok()
+                        .and_then(|mut guard| guard.take())
+                    {
+                        let _ = sender.send(Ok(result));
+                    }
+                })
+                .copy();
+            cookie_store.getAllCookies(&*completion);
+        });
+        rx.await
+            .map_err(|_| WebViewError::WebView("cookie list request was canceled".to_string()))?
+    }
+
+    async fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let configuration: *mut AnyObject = msg_send![webview, configuration];
+            if configuration.is_null() {
+                let _ = tx.send(Err(WebViewError::WebView(
+                    "WKWebView configuration is unavailable".to_string(),
+                )));
+                return;
+            }
+
+            let cookie = match cookie_from_set_request(&request) {
+                Ok(cookie) => cookie,
+                Err(err) => {
+                    let _ = tx.send(Err(err));
+                    return;
+                }
+            };
+
+            let config_ref = &*(configuration as *const WKWebViewConfiguration);
+            let cookie_store = config_ref.websiteDataStore().httpCookieStore();
+            let tx_state = Arc::new(Mutex::new(Some(tx)));
+            let tx_state_for_block = Arc::clone(&tx_state);
+            let completion = StackBlock::new(move || {
+                if let Some(sender) = tx_state_for_block
+                    .lock()
+                    .ok()
+                    .and_then(|mut guard| guard.take())
+                {
+                    let _ = sender.send(Ok(()));
+                }
+            })
+            .copy();
+            cookie_store.setCookie_completionHandler(&cookie, Some(&*completion));
+        });
+        rx.await
+            .map_err(|_| WebViewError::WebView("cookie set request was canceled".to_string()))?
+    }
+
+    async fn delete_cookie(
+        &self,
+        name: &str,
+        domain: &str,
+        path: &str,
+    ) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        let name = name.to_string();
+        let domain = domain.to_string();
+        let path = if path.trim().is_empty() {
+            "/".to_string()
+        } else {
+            path.to_string()
+        };
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let configuration: *mut AnyObject = msg_send![webview, configuration];
+            if configuration.is_null() {
+                let _ = tx.send(Err(WebViewError::WebView(
+                    "WKWebView configuration is unavailable".to_string(),
+                )));
+                return;
+            }
+            let config_ref = &*(configuration as *const WKWebViewConfiguration);
+            let cookie_store = config_ref.websiteDataStore().httpCookieStore();
+            let cookie_store_for_block = cookie_store.clone();
+            let delete_state = Arc::new(Mutex::new(CookieDeleteCompletionState {
+                pending: 0,
+                enumerated: false,
+                sender: Some(tx),
+            }));
+            let delete_state_for_block = Arc::clone(&delete_state);
+            let completion =
+                StackBlock::new(move |cookies: std::ptr::NonNull<NSArray<NSHTTPCookie>>| {
+                    let cookies_ref = cookies.as_ref();
+                    let count: usize = msg_send![cookies_ref, count];
+                    for index in 0..count {
+                        let cookie: *mut NSHTTPCookie =
+                            msg_send![cookies_ref, objectAtIndex: index];
+                        if cookie.is_null() {
+                            continue;
+                        }
+                        let candidate = cookie_to_webview_cookie(&*cookie);
+                        if candidate.name == name
+                            && cookie_delete_domain_matches(&candidate.domain, &domain)
+                            && candidate.path == path
+                        {
+                            if let Ok(mut guard) = delete_state_for_block.lock() {
+                                guard.pending += 1;
+                            }
+                            let delete_state_for_completion = Arc::clone(&delete_state_for_block);
+                            let delete_completion = StackBlock::new(move || {
+                                if let Ok(mut guard) = delete_state_for_completion.lock() {
+                                    guard.pending = guard.pending.saturating_sub(1);
+                                }
+                                finish_cookie_delete_if_done(&delete_state_for_completion);
+                            })
+                            .copy();
+                            cookie_store_for_block.deleteCookie_completionHandler(
+                                &*cookie,
+                                Some(&*delete_completion),
+                            );
+                        }
+                    }
+                    if let Ok(mut guard) = delete_state_for_block.lock() {
+                        guard.enumerated = true;
+                    }
+                    finish_cookie_delete_if_done(&delete_state_for_block);
+                })
+                .copy();
+            cookie_store.getAllCookies(&*completion);
+        });
+        rx.await
+            .map_err(|_| WebViewError::WebView("cookie delete request was canceled".to_string()))?
+    }
+
+    async fn clear_cookies(&self) -> Result<(), WebViewError> {
+        let webview_ptr_addr = self.webview as usize;
+        let (tx, rx) = oneshot::channel::<Result<(), WebViewError>>();
+        DispatchQueue::main().exec_async(move || unsafe {
+            let webview = webview_ptr_addr as *mut AnyObject;
+            let configuration: *mut AnyObject = msg_send![webview, configuration];
+            if configuration.is_null() {
+                let _ = tx.send(Err(WebViewError::WebView(
+                    "WKWebView configuration is unavailable".to_string(),
+                )));
+                return;
+            }
+            let config_ref = &*(configuration as *const WKWebViewConfiguration);
+            let cookie_store = config_ref.websiteDataStore().httpCookieStore();
+            let cookie_store_for_block = cookie_store.clone();
+            let delete_state = Arc::new(Mutex::new(CookieDeleteCompletionState {
+                pending: 0,
+                enumerated: false,
+                sender: Some(tx),
+            }));
+            let delete_state_for_block = Arc::clone(&delete_state);
+            let completion =
+                StackBlock::new(move |cookies: std::ptr::NonNull<NSArray<NSHTTPCookie>>| {
+                    let cookies_ref = cookies.as_ref();
+                    let count: usize = msg_send![cookies_ref, count];
+                    for index in 0..count {
+                        let cookie: *mut NSHTTPCookie =
+                            msg_send![cookies_ref, objectAtIndex: index];
+                        if !cookie.is_null() {
+                            if let Ok(mut guard) = delete_state_for_block.lock() {
+                                guard.pending += 1;
+                            }
+                            let delete_state_for_completion = Arc::clone(&delete_state_for_block);
+                            let delete_completion = StackBlock::new(move || {
+                                if let Ok(mut guard) = delete_state_for_completion.lock() {
+                                    guard.pending = guard.pending.saturating_sub(1);
+                                }
+                                finish_cookie_delete_if_done(&delete_state_for_completion);
+                            })
+                            .copy();
+                            cookie_store_for_block.deleteCookie_completionHandler(
+                                &*cookie,
+                                Some(&*delete_completion),
+                            );
+                        }
+                    }
+                    if let Ok(mut guard) = delete_state_for_block.lock() {
+                        guard.enumerated = true;
+                    }
+                    finish_cookie_delete_if_done(&delete_state_for_block);
+                })
+                .copy();
+            cookie_store.getAllCookies(&*completion);
+        });
+        rx.await
+            .map_err(|_| WebViewError::WebView("cookie clear request was canceled".to_string()))?
     }
 }
 
@@ -2950,13 +3298,14 @@ impl WebViewInner {
                 "Element is not editable: {selector}"
             )));
         }
-        let _ = options;
         self.focus_webview_for_input().await?;
         self.post_mouse_click_at(result.center_x, result.center_y)
             .await?;
         tokio::time::sleep(Duration::from_millis(32)).await;
-        self.clear_focused_text().await?;
-        tokio::time::sleep(Duration::from_millis(16)).await;
+        if options.replace {
+            self.clear_focused_text().await?;
+            tokio::time::sleep(Duration::from_millis(16)).await;
+        }
         if !text.is_empty() {
             self.execute_edit_command("InsertText", text.to_string())
                 .await?;
@@ -3069,19 +3418,20 @@ impl WebViewInner {
             let _: () = msg_send![self.webview, stopLoading];
 
             // Clear navigation delegate to prevent callbacks after deallocation
-            let _: () = msg_send![self.webview, setNavigationDelegate: std::ptr::null::<*const AnyObject>()];
+            let nil_navigation_delegate: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![self.webview, setNavigationDelegate: nil_navigation_delegate];
 
             // Clear UI delegate to prevent callbacks after deallocation
-            let _: () =
-                msg_send![self.webview, setUIDelegate: std::ptr::null::<*const AnyObject>()];
+            let nil_ui_delegate: *mut AnyObject = std::ptr::null_mut();
+            let _: () = msg_send![self.webview, setUIDelegate: nil_ui_delegate];
 
             // Clear scroll view delegate if any (iOS only — macOS WKWebView has no scrollView property)
             #[cfg(target_os = "ios")]
             {
                 let scroll_view: *mut AnyObject = msg_send![self.webview, scrollView];
                 if !scroll_view.is_null() {
-                    let _: () =
-                        msg_send![scroll_view, setDelegate: std::ptr::null::<*const AnyObject>()];
+                    let nil_scroll_delegate: *mut AnyObject = std::ptr::null_mut();
+                    let _: () = msg_send![scroll_view, setDelegate: nil_scroll_delegate];
                 }
             }
 

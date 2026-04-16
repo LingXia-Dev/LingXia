@@ -34,8 +34,8 @@ android_logger = "0.15.0"
 oslog = "0.2.0"
 # objc2 dependencies for direct WebView management
 objc2 = { version = "0.6", features = ["exception"] }
-objc2-web-kit = "0.3"
-objc2-foundation = "0.3"
+objc2-web-kit = { version = "0.3", features = ["WKHTTPCookieStore"] }
+objc2-foundation = { version = "0.3", features = ["NSDictionary", "NSHTTPCookie", "NSDate"] }
 # block2 for Objective-C blocks and delegates
 block2 = "0.6"
 # GCD dispatch for main thread operations

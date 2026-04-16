@@ -1,3 +1,4 @@
+mod bridge_transport;
 mod schemehandler;
 mod webview;
 
