@@ -193,7 +193,7 @@ async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAp
         .await
     {
         Ok(value) => return js_value_to_json_string(value),
-        Err(expression_error) => {
+        Err(expression_error) if script_may_be_function_body(script, &expression_error) => {
             let body = format!(
                 r#"(async () => {{
 {script}
@@ -202,19 +202,21 @@ async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAp
             let value = ctx
                 .eval_async::<JSValue>(Source::from_bytes(body))
                 .await
-                .map_err(|body_error| {
-                    if script_may_be_function_body(script) {
-                        eval_error_from_rong(ctx, body_error)
-                    } else {
-                        eval_error_from_rong(ctx, expression_error)
-                    }
-                })?;
+                .map_err(|body_error| eval_error_from_rong(ctx, body_error))?;
             js_value_to_json_string(value)
         }
+        Err(expression_error) => Err(eval_error_from_rong(ctx, expression_error)),
     }
 }
 
-fn script_may_be_function_body(script: &str) -> bool {
+fn script_may_be_function_body(script: &str, expression_error: &RongJSError) -> bool {
+    if !expression_error
+        .to_string()
+        .to_ascii_lowercase()
+        .contains("syntax")
+    {
+        return false;
+    }
     let trimmed = script.trim_start();
     trimmed.starts_with("return")
         || trimmed.starts_with("const ")
