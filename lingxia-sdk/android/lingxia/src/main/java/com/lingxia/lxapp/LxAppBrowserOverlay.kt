@@ -15,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import java.net.URI
 
 internal object LxAppBrowserOverlay {
     private const val TAG = "LingXia.BrowserOverlay"
@@ -26,6 +27,7 @@ internal object LxAppBrowserOverlay {
     private var currentTabId: String? = null
     private var pendingTabId: String? = null
     private var pendingAttachToken: Long = 0L
+    private var addressIcon: ImageView? = null
     private var addressField: TextView? = null
     private var backButton: ImageView? = null
     private var forwardButton: ImageView? = null
@@ -167,6 +169,19 @@ internal object LxAppBrowserOverlay {
             setPadding((12 * density).toInt(), 0, (4 * density).toInt(), 0)
         }
 
+        val addrIconSize = (18 * density).toInt()
+        val addrIcon = ImageView(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(addrIconSize, addrIconSize).apply {
+                rightMargin = (6 * density).toInt()
+            }
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setImageResource(R.drawable.icon_lock)
+            setColorFilter(Color.parseColor("#666666"))
+            isFocusable = false
+            isClickable = false
+        }
+        addressPill.addView(addrIcon)
+
         val addrField = TextView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
                 0,
@@ -238,6 +253,7 @@ internal object LxAppBrowserOverlay {
         overlayContainer = container
         webView = managedWebView
         currentTabId = tabId
+        addressIcon = addrIcon
         addressField = addrField
         backButton = backBtn
         forwardButton = fwdBtn
@@ -296,6 +312,7 @@ internal object LxAppBrowserOverlay {
         }
         overlayContainer = null
         currentTabId = null
+        addressIcon = null
         addressField = null
         backButton = null
         forwardButton = null
@@ -320,7 +337,43 @@ internal object LxAppBrowserOverlay {
     private fun updateAddressBar(url: String?) {
         if (url == null) return
         val field = addressField ?: return
-        field.setText(url)
+        val display = browserUrlDisplay(url)
+        addressIcon?.apply {
+            setImageResource(display.iconResId)
+            setColorFilter(display.iconColor)
+        }
+        field.text = display.text
+    }
+
+    private data class BrowserUrlDisplay(
+        val text: String,
+        val iconResId: Int,
+        val iconColor: Int
+    )
+
+    private fun browserUrlDisplay(rawUrl: String): BrowserUrlDisplay {
+        val trimmed = rawUrl.trim()
+        if (trimmed.isEmpty()) {
+            return BrowserUrlDisplay("", R.drawable.icon_lock, Color.parseColor("#666666"))
+        }
+        return try {
+            val uri = URI(trimmed)
+            when (uri.scheme?.lowercase()) {
+                "https" -> BrowserUrlDisplay(
+                    uri.host?.takeIf { it.isNotBlank() } ?: "Web page",
+                    R.drawable.icon_lock,
+                    Color.parseColor("#666666")
+                )
+                "http" -> BrowserUrlDisplay(
+                    uri.host?.takeIf { it.isNotBlank() } ?: "Web page",
+                    R.drawable.icon_warning,
+                    Color.parseColor("#A15C00")
+                )
+                else -> BrowserUrlDisplay("Web page", R.drawable.icon_warning, Color.parseColor("#A15C00"))
+            }
+        } catch (_: Throwable) {
+            BrowserUrlDisplay("Web page", R.drawable.icon_warning, Color.parseColor("#A15C00"))
+        }
     }
 
     private fun updateNavigationButtons() {
