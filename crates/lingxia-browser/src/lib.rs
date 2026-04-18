@@ -107,6 +107,10 @@ pub async fn list_cookies(tab_id: &str) -> Result<Vec<WebViewCookie>, BrowserAut
     runtime::browser_list_cookies(tab_id).await
 }
 
+pub async fn list_all_cookies(tab_id: &str) -> Result<Vec<WebViewCookie>, BrowserAutomationError> {
+    runtime::browser_list_all_cookies(tab_id).await
+}
+
 pub async fn set_cookie(
     tab_id: &str,
     request: WebViewCookieSetRequest,

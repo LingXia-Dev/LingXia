@@ -267,9 +267,14 @@ fn handle_browser_command_impl(
             Ok(None)
         }
         handlers::browser::COOKIES_LIST => {
-            let args: TabArgs = parse_args(handler, args)?;
+            let args: CookieListArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
-            run_async(lingxia_browser::list_cookies(&tab_id))
+            let cookies = if args.visible {
+                run_async(lingxia_browser::list_cookies(&tab_id))
+            } else {
+                run_async(lingxia_browser::list_all_cookies(&tab_id))
+            };
+            cookies
                 .and_then(|result| serde_json::to_value(result).map_err(|err| err.to_string()))
                 .map(Some)
         }
@@ -441,6 +446,14 @@ struct OpenArgs {
 #[derive(Deserialize)]
 struct TabArgs {
     tab_id: String,
+}
+
+#[cfg(feature = "browser")]
+#[derive(Deserialize)]
+struct CookieListArgs {
+    tab_id: String,
+    #[serde(default)]
+    visible: bool,
 }
 
 #[cfg(feature = "browser")]

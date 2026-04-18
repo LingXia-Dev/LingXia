@@ -262,24 +262,25 @@ pub enum BrowserCommand {
 
 #[derive(Args, Clone)]
 pub struct CookiesOptions {
+    #[arg(long, default_value = "current", global = true)]
+    pub tab: String,
     #[command(subcommand)]
     pub command: CookiesCommand,
 }
 
 #[derive(Subcommand, Clone)]
 pub enum CookiesCommand {
-    /// List cookies visible to the tab's WebView cookie store
+    /// List all cookies in the tab's WebView cookie store
     List {
-        #[arg(long, default_value = "current")]
-        tab: String,
+        /// Only list cookies visible to the tab's current URL
+        #[arg(long)]
+        visible: bool,
         /// Print pretty JSON output
         #[arg(long)]
         pretty: bool,
     },
     /// Set a cookie in the tab's WebView cookie store
     Set {
-        #[arg(long, default_value = "current")]
-        tab: String,
         /// Cookie URL; defaults to the current tab URL
         #[arg(long)]
         url: Option<String>,
@@ -313,8 +314,6 @@ pub enum CookiesCommand {
     },
     /// Delete one cookie by name/domain/path
     Delete {
-        #[arg(long, default_value = "current")]
-        tab: String,
         /// Cookie name
         #[arg(long)]
         name: String,
@@ -330,8 +329,6 @@ pub enum CookiesCommand {
     },
     /// Clear all cookies in the shared WebView cookie store
     Clear {
-        #[arg(long, default_value = "current")]
-        tab: String,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -650,18 +647,18 @@ pub fn execute(info: &DevInfo, options: BrowserOptions) -> Result<()> {
 }
 
 fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
+    let tab = options.tab;
     match options.command {
-        CookiesCommand::List { tab, pretty } => {
+        CookiesCommand::List { visible, pretty } => {
             let data = client::execute_command(
                 ws_url,
                 handlers::browser::COOKIES_LIST,
-                Some(json!({ "tab_id": tab })),
+                Some(json!({ "tab_id": tab, "visible": visible })),
             )?
             .unwrap_or_else(|| json!([]));
             print_json(&data, pretty)?;
         }
         CookiesCommand::Set {
-            tab,
             url,
             name,
             value,
@@ -694,7 +691,6 @@ fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         CookiesCommand::Delete {
-            tab,
             name,
             domain,
             path,
@@ -712,7 +708,7 @@ fn execute_cookies(ws_url: &str, options: CookiesOptions) -> Result<()> {
             )?;
             print_optional_json(data, json)?;
         }
-        CookiesCommand::Clear { tab, json } => {
+        CookiesCommand::Clear { json } => {
             let data = client::execute_command(
                 ws_url,
                 handlers::browser::COOKIES_CLEAR,

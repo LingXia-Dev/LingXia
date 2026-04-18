@@ -2254,6 +2254,15 @@ pub async fn browser_list_cookies(
     )
 }
 
+pub async fn browser_list_all_cookies(
+    tab_id: &str,
+) -> Result<Vec<WebViewCookie>, BrowserAutomationError> {
+    browser_tab_webview(tab_id)?
+        .list_cookies()
+        .await
+        .map_err(BrowserAutomationError::from)
+}
+
 pub async fn browser_set_cookie(
     tab_id: &str,
     mut request: WebViewCookieSetRequest,
