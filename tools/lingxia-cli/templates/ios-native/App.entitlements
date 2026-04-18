@@ -6,5 +6,6 @@
     <string>$(AppIdentifierPrefix){{PACKAGE_ID}}</string>
     <key>get-task-allow</key>
     <true/>
+{{APPLE_ASSOCIATED_DOMAINS_ENTITLEMENT}}
 </dict>
 </plist>

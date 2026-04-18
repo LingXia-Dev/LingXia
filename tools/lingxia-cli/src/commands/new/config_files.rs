@@ -1,8 +1,8 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::{
-    AndroidConfig, DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB, HarmonyConfig,
-    HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourceBundleConfig,
+    AndroidConfig, AppLinksConfig, DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB,
+    HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourceBundleConfig,
     ResourceBundleDetail, ResourceBundleType, ResourcesConfig,
 };
 use anyhow::Result;
@@ -91,6 +91,9 @@ fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaCon
         macos,
         harmony,
         ui: default_ui_config(config, lxapp),
+        app_links: (!config.app_link_hosts.is_empty()).then(|| AppLinksConfig {
+            hosts: config.app_link_hosts.clone(),
+        }),
         resources: Some(ResourcesConfig {
             i18n: None,
             icons: None,
@@ -128,6 +131,7 @@ mod tests {
             project_type: super::super::types::ProjectType::NativeApp,
             platforms: vec![Platform::Android],
             package_id: "com.example.demo".to_string(),
+            app_link_hosts: vec!["demo.example.com".to_string()],
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {
@@ -140,6 +144,10 @@ mod tests {
 
         assert_eq!(app.cache_max_age_days, Some(DEFAULT_CACHE_MAX_AGE_DAYS));
         assert_eq!(app.cache_max_size_mb, Some(DEFAULT_CACHE_MAX_SIZE_MB));
+        assert_eq!(
+            lingxia.app_links.as_ref().unwrap().hosts,
+            vec!["demo.example.com"]
+        );
         assert!(matches!(
             resources.bundles.as_deref(),
             Some([ResourceBundleConfig::Detailed(detail)])
@@ -157,6 +165,7 @@ mod tests {
             project_type: super::super::types::ProjectType::NativeApp,
             platforms: vec![Platform::Macos],
             package_id: "com.example.demo".to_string(),
+            app_link_hosts: vec!["demo.example.com".to_string()],
             target_dir: PathBuf::from("/tmp/demo"),
         };
         let lxapp = LxAppInfo {

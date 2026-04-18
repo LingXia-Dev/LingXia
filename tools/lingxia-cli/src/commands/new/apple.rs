@@ -30,8 +30,26 @@ pub(super) fn create_apple_project(
     vars.insert("PRODUCT_NAME".to_string(), config.product_name.clone());
     vars.insert("PACKAGE_ID".to_string(), config.package_id.clone());
     vars.insert("SWIFT_TARGET_NAME".to_string(), swift_target_name);
+    vars.insert(
+        "APPLE_ASSOCIATED_DOMAINS_ENTITLEMENT".to_string(),
+        render_apple_associated_domains_entitlement(&config.app_link_hosts),
+    );
 
     process_template_dir(&template_dir, &output_dir, &vars)?;
     println!("  Created {platform_label} project structure");
     Ok(())
+}
+
+fn render_apple_associated_domains_entitlement(hosts: &[String]) -> String {
+    if hosts.is_empty() {
+        return String::new();
+    }
+    let domains = hosts
+        .iter()
+        .map(|host| format!("        <string>applinks:{host}</string>"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "    <key>com.apple.developer.associated-domains</key>\n    <array>\n{domains}\n    </array>"
+    )
 }

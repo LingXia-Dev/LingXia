@@ -10,6 +10,7 @@ pub(super) struct ProjectConfig {
     pub(super) project_type: ProjectType,
     pub(super) platforms: Vec<Platform>,
     pub(super) package_id: String,
+    pub(super) app_link_hosts: Vec<String>,
     pub(super) target_dir: PathBuf,
 }
 

@@ -153,6 +153,7 @@ pub(super) fn gather_native_project_info(
         product_name,
         project_type,
         platforms,
+        app_link_hosts: Vec::new(),
         package_id,
         target_dir,
     })

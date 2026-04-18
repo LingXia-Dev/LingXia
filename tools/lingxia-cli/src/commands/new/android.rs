@@ -32,6 +32,10 @@ pub fn create_android_project(config: &ProjectConfig, versions: &LingXiaVersions
     vars.insert("PROJECT_NAME".to_string(), config.name.clone());
     vars.insert("PRODUCT_NAME".to_string(), config.product_name.clone());
     vars.insert("PACKAGE_ID".to_string(), config.package_id.clone());
+    vars.insert(
+        "APP_LINK_INTENT_FILTERS".to_string(),
+        render_android_app_link_intent_filters(&config.app_link_hosts),
+    );
 
     // Add SDK version variables
     vars.insert("MIN_SDK".to_string(), "29".to_string());
@@ -56,4 +60,27 @@ pub fn create_android_project(config: &ProjectConfig, versions: &LingXiaVersions
 
     println!("  Created Android project structure");
     Ok(())
+}
+
+fn render_android_app_link_intent_filters(hosts: &[String]) -> String {
+    if hosts.is_empty() {
+        return String::new();
+    }
+    let filters = hosts
+        .iter()
+        .map(|host| {
+            format!(
+                r#"            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="{host}" />
+            </intent-filter>"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    format!(
+        "            <!-- LingXia AppLinks BEGIN -->\n{filters}\n            <!-- LingXia AppLinks END -->"
+    )
 }

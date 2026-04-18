@@ -205,6 +205,7 @@ mod tests {
                 target_sdk_version: None,
             }),
             ui: None,
+            app_links: None,
             resources: None,
         }
     }

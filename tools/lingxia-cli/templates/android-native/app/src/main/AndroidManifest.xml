@@ -15,6 +15,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+{{APP_LINK_INTENT_FILTERS}}
         </activity>
     </application>
 

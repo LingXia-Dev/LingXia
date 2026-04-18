@@ -30,8 +30,17 @@ pub struct LingXiaConfig {
     /// App-level UI config used to generate `ui.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<Value>,
+    #[serde(rename = "appLinks", skip_serializing_if = "Option::is_none")]
+    pub app_links: Option<AppLinksConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppLinksConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -298,6 +307,7 @@ impl LingXiaConfig {
             macos: None,
             harmony: None,
             ui: None,
+            app_links: None,
             resources: Some(ResourcesConfig {
                 i18n: None,
                 icons: None,
@@ -346,6 +356,11 @@ impl LingXiaConfig {
                     ));
                 };
                 validate_macos_ui_config(ui)?;
+            }
+        }
+        if let Some(app_links) = &self.app_links {
+            for host in &app_links.hosts {
+                validate_applink_host(host)?;
             }
         }
         if let Some(resources) = &self.resources
@@ -440,6 +455,42 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(ToOwned::to_owned)
+}
+
+fn validate_applink_host(host: &str) -> Result<()> {
+    let raw_host = host;
+    let host = raw_host.trim();
+    if host.is_empty() {
+        return Err(anyhow!("appLinks.hosts entries must not be empty"));
+    }
+    if host.len() != raw_host.len() {
+        return Err(anyhow!(
+            "appLinks.hosts entries must not contain surrounding whitespace"
+        ));
+    }
+    if host.len() > 253 {
+        return Err(anyhow!(
+            "appLinks.hosts entries must be DNS host names, got '{host}'"
+        ));
+    }
+    let labels = host.split('.').collect::<Vec<_>>();
+    if labels.len() < 2
+        || labels.iter().any(|label| {
+            label.is_empty()
+                || label.len() > 63
+                || label.starts_with('-')
+                || label.ends_with('-')
+                || !label
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+    {
+        return Err(anyhow!(
+            "appLinks.hosts entries must be DNS host names, got '{host}'"
+        ));
+    }
+
+    Ok(())
 }
 
 fn validate_macos_ui_config(ui: &Value) -> Result<()> {

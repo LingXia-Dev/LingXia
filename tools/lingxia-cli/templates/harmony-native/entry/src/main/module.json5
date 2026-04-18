@@ -30,7 +30,7 @@
             "actions": [
               "action.system.home"
             ]
-          }
+          }{{APP_LINK_SKILL}}
         ]
       }
     ],
