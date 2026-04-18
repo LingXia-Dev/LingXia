@@ -8,6 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -16,20 +17,6 @@ pub use doctor::doctor_checks;
 
 /// Android platform implementation
 pub struct AndroidPlatform;
-
-fn format_install_progress(uploaded: u64, total: u64) -> String {
-    let uploaded_mb = uploaded as f64 / 1024.0 / 1024.0;
-    let total_mb = total as f64 / 1024.0 / 1024.0;
-    let percent = if total > 0 {
-        (uploaded as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
-    format!(
-        "Installing {:.1}% ({:.1}/{:.1} MB)...",
-        percent, uploaded_mb, total_mb
-    )
-}
 
 impl AndroidPlatform {
     fn unsupported_target_error(target: &str) -> anyhow::Error {
@@ -182,6 +169,10 @@ Supported Rust target triples:\n\
             None,
             config.profile,
             |cmd| {
+                if !config.native_features.is_empty() {
+                    cmd.arg("--features").arg(config.native_features.join(","));
+                }
+
                 // Set Android NDK environment variables
                 cmd.env("ANDROID_NDK_ROOT", ndk_path);
                 cmd.env("ANDROID_API_LEVEL", api_level.to_string());
@@ -310,6 +301,18 @@ impl Platform for AndroidPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
+        let app_link_hosts = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|config| config.app_links.as_ref())
+            .map(|app_links| app_links.hosts.as_slice())
+            .unwrap_or(&[]);
+        if sync_android_app_links(&android_root, app_link_hosts)? {
+            println!(
+                "{} Synced Android AppLinks to AndroidManifest.xml",
+                "[Android]".cyan()
+            );
+        }
 
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
@@ -389,42 +392,12 @@ impl Platform for AndroidPlatform {
             }
         }
 
-        // Install APK
-        let install_bar = (!config.quiet).then(|| {
-            let bar = ProgressBar::new(file_size.max(1));
-            bar.set_style(
-                ProgressStyle::with_template(
-                    "{spinner:.cyan} [{bar:30.cyan/blue}] {percent:>3}% {msg}",
-                )
-                .unwrap()
-                .progress_chars("=>-"),
-            );
-            bar.set_message(format!("Installing ({:.1} MB)...", size_mb));
-            bar.enable_steady_tick(std::time::Duration::from_millis(80));
-            bar
-        });
-        let progress_bar = install_bar.clone();
-        let mut on_progress = move |uploaded: u64, total: u64| {
-            if let Some(progress_bar) = progress_bar.as_ref() {
-                let bounded_total = total.max(1);
-                progress_bar.set_length(bounded_total);
-                progress_bar.set_position(uploaded.min(bounded_total));
-                progress_bar.set_message(format_install_progress(uploaded, total));
-            }
-        };
-        let result = device.install_with_progress(&apk_path, None, Some(&mut on_progress));
-
-        if let Some(install_bar) = install_bar {
-            install_bar.finish_and_clear();
+        if !config.quiet {
+            println!("Installing ({:.1} MB) with rust adb...", size_mb);
         }
-
-        match result {
-            Ok(_) => {
-                println!("{}", "✓ Installed".green());
-                Ok(())
-            }
-            Err(e) => Err(anyhow!("Installation failed: {}", e)),
-        }
+        install_with_rust_adb(&mut device, &apk_path, file_size, config.quiet)?;
+        println!("{}", "✓ Installed".green());
+        Ok(())
     }
 
     fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
@@ -448,32 +421,17 @@ impl Platform for AndroidPlatform {
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
-        // Create ADB server connection
-        let mut server = ADBServer::default();
+        let activity = config
+            .main_activity
+            .as_ref()
+            .map(|activity| format!("{}/{}", config.package_id, activity))
+            .unwrap_or_else(|| format!("{}/{}.MainActivity", config.package_id, config.package_id));
 
-        // Get device
-        let mut device = if let Some(ref device_id) = config.device_id {
-            server
-                .get_device_by_name(device_id)
-                .context(format!("Failed to get device: {}", device_id))?
-        } else {
-            server.get_device().context(
-                "Failed to get device. Use --device to specify a device if multiple are connected",
-            )?
-        };
-
-        let activity = if let Some(ref activity) = config.main_activity {
-            format!("{}/{}", config.package_id, activity)
-        } else {
-            format!("{}/{}.MainActivity", config.package_id, config.package_id)
-        };
-
-        // Start activity using shell_command
-        let start_cmd = format!("am start -n {}", activity);
-        let mut output = Vec::new();
-        device
-            .shell_command(&start_cmd, Some(&mut output), None)
-            .context("Failed to start activity")?;
+        run_adb_shell_checked(
+            config.device_id.as_deref(),
+            &["am", "start", "-n", &activity],
+            "adb shell am start",
+        )?;
 
         println!("{}", "✓ App launched".green());
 
@@ -510,6 +468,180 @@ impl Platform for AndroidPlatform {
 
         Ok(devices)
     }
+}
+
+fn install_with_rust_adb(
+    device: &mut dyn ADBDeviceExt,
+    apk_path: &Path,
+    file_size: u64,
+    quiet: bool,
+) -> Result<()> {
+    let install_bar = (!quiet).then(|| {
+        let bar = ProgressBar::new(file_size.max(1));
+        bar.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.cyan} [{bar:30.cyan/blue}] {percent:>3}% {msg}",
+            )
+            .unwrap()
+            .progress_chars("=>-"),
+        );
+        bar.enable_steady_tick(std::time::Duration::from_millis(80));
+        bar
+    });
+    let progress_bar = install_bar.clone();
+    let mut on_progress = move |uploaded: u64, total: u64| {
+        if let Some(progress_bar) = progress_bar.as_ref() {
+            let bounded_total = total.max(1);
+            progress_bar.set_length(bounded_total);
+            progress_bar.set_position(uploaded.min(bounded_total));
+            progress_bar.set_message(format_install_progress(uploaded, total));
+        }
+    };
+    let result = device.install_with_progress(&apk_path, None, Some(&mut on_progress));
+    if let Some(install_bar) = install_bar {
+        install_bar.finish_and_clear();
+    }
+    result.map_err(|err| anyhow!("rust adb install failed: {}", err))
+}
+
+fn format_install_progress(uploaded: u64, total: u64) -> String {
+    let uploaded_mb = uploaded as f64 / 1024.0 / 1024.0;
+    let total_mb = total as f64 / 1024.0 / 1024.0;
+    let percent = if total > 0 {
+        (uploaded as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    format!(
+        "Installing {:.1}% ({:.1}/{:.1} MB)...",
+        percent, uploaded_mb, total_mb
+    )
+}
+
+fn adb_command(device_id: Option<&str>) -> Command {
+    let mut command = Command::new("adb");
+    if let Some(device_id) = device_id {
+        command.arg("-s").arg(device_id);
+    }
+    command
+}
+
+fn run_adb_shell_checked(device_id: Option<&str>, args: &[&str], label: &str) -> Result<()> {
+    let output = adb_command(device_id)
+        .arg("shell")
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to execute {label}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Err(anyhow!(
+        "{label} failed\nstdout: {}\nstderr: {}",
+        stdout.trim(),
+        stderr.trim()
+    ))
+}
+
+const APPLINKS_BEGIN: &str = "            <!-- LingXia AppLinks BEGIN -->";
+const APPLINKS_END: &str = "            <!-- LingXia AppLinks END -->";
+
+fn sync_android_app_links(android_root: &Path, hosts: &[String]) -> Result<bool> {
+    let manifest_path = android_root.join("app/src/main/AndroidManifest.xml");
+    if !manifest_path.exists() {
+        return Ok(false);
+    }
+    let content = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+    let block = render_android_applinks_block(hosts);
+    let updated = if content.contains(APPLINKS_BEGIN) && content.contains(APPLINKS_END) {
+        replace_managed_applink_block(&content, &block)?
+    } else if block.is_empty() {
+        content.clone()
+    } else {
+        insert_applink_block(&content, &block)?
+    };
+    if updated == content {
+        return Ok(false);
+    }
+    fs::write(&manifest_path, updated)
+        .with_context(|| format!("Failed to write {}", manifest_path.display()))?;
+    Ok(true)
+}
+
+fn render_android_applinks_block(hosts: &[String]) -> String {
+    if hosts.is_empty() {
+        return String::new();
+    }
+    let filters = hosts
+        .iter()
+        .map(|host| {
+            format!(
+                r#"            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="{host}" />
+            </intent-filter>"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    format!("{APPLINKS_BEGIN}\n{filters}\n{APPLINKS_END}")
+}
+
+fn replace_managed_applink_block(content: &str, block: &str) -> Result<String> {
+    let start = content
+        .find(APPLINKS_BEGIN)
+        .ok_or_else(|| anyhow!("AndroidManifest.xml AppLinks begin marker not found"))?;
+    let end = content
+        .find(APPLINKS_END)
+        .ok_or_else(|| anyhow!("AndroidManifest.xml AppLinks end marker not found"))?
+        + APPLINKS_END.len();
+    let mut updated = String::new();
+    updated.push_str(&content[..start]);
+    if !block.is_empty() {
+        updated.push_str(block);
+    }
+    updated.push_str(&content[end..]);
+    Ok(updated)
+}
+
+fn insert_applink_block(content: &str, block: &str) -> Result<String> {
+    let insert_at = find_launcher_activity_end(content).ok_or_else(|| {
+        anyhow!("AndroidManifest.xml missing launcher activity for AppLinks insertion")
+    })?;
+    let mut updated = String::new();
+    updated.push_str(&content[..insert_at]);
+    updated.push_str(block);
+    updated.push('\n');
+    updated.push_str(&content[insert_at..]);
+    Ok(updated)
+}
+
+fn find_launcher_activity_end(content: &str) -> Option<usize> {
+    let mut offset = 0;
+    while let Some(relative_start) = content[offset..].find("<activity") {
+        let start = offset + relative_start;
+        let after_activity = content.as_bytes().get(start + "<activity".len()).copied();
+        if !matches!(after_activity, Some(b' ' | b'\n' | b'\r' | b'\t' | b'>')) {
+            offset = start + "<activity".len();
+            continue;
+        }
+        let Some(relative_end) = content[start..].find("</activity>") else {
+            return None;
+        };
+        let end = start + relative_end;
+        let block = &content[start..end];
+        if block.contains("android.intent.action.MAIN")
+            && block.contains("android.intent.category.LAUNCHER")
+        {
+            return Some(end);
+        }
+        offset = end + "</activity>".len();
+    }
+    None
 }
 
 fn infer_android_package_id_for_uninstall(project_root: &Path) -> Option<String> {
