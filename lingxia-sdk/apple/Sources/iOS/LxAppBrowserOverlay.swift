@@ -73,7 +73,7 @@ final class LxAppBrowserOverlay: NSObject {
 }
 
 @MainActor
-private final class LxAppBrowserViewController: UIViewController, UITextFieldDelegate, UIGestureRecognizerDelegate {
+private final class LxAppBrowserViewController: UIViewController, UIGestureRecognizerDelegate {
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserOverlayViewController")
     private static let attachRetryDelay: TimeInterval = 0.1
     private static let maxAttachRetries = 8
@@ -237,12 +237,8 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.font = UIFont.systemFont(ofSize: 13)
         addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
-        addressField.autocapitalizationType = .none
-        addressField.autocorrectionType = .no
-        addressField.clearButtonMode = .whileEditing
-        addressField.keyboardType = .webSearch
-        addressField.returnKeyType = .go
-        addressField.delegate = self
+        addressField.borderStyle = .none
+        addressField.isUserInteractionEnabled = false
         addressPill.addSubview(addressField)
 
         configureIconButton(refreshButton, iconName: "icon_browser_refresh", iconSize: 16, tintColor: UIColor(white: 0.4, alpha: 1.0), action: #selector(refreshTapped))
@@ -382,7 +378,6 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
     }
 
     private func updateAddressBar(url: URL?) {
-        guard !addressField.isFirstResponder else { return }
         addressField.text = url?.absoluteString ?? ""
     }
 
@@ -394,18 +389,6 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         let canGoForward = activeBrowserWebView?.canGoForward ?? false
         forwardButton.isEnabled = canGoForward
         forwardButton.alpha = canGoForward ? 1.0 : 0.3
-    }
-
-    private func submitAddressField() {
-        guard let result = handleBrowserAddressSubmission(
-            rawInput: addressField.text ?? "",
-            currentURL: activeBrowserWebView?.url?.absoluteString,
-            tabId: tabId
-        ),
-        let url = URL(string: result.url) else { return }
-        addressField.text = result.displayText
-        addressField.resignFirstResponder()
-        activeBrowserWebView?.load(URLRequest(url: url))
     }
 
     private func configureIconButton(
@@ -506,11 +489,6 @@ private final class LxAppBrowserViewController: UIViewController, UITextFieldDel
         UIView.animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16)) {
             self.view.layoutIfNeeded()
         }
-    }
-
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        submitAddressField()
-        return false
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
