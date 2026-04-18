@@ -1,4 +1,5 @@
 use super::{ProjectFramework, ViewProgress};
+use crate::lxapp::options::BuildOptions;
 use crate::lxapp::project::Project;
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
@@ -80,6 +81,7 @@ pub(super) fn run_vite_build(
 pub(super) fn ensure_component_view_tooling(
     project: &Project,
     framework: ProjectFramework,
+    options: &BuildOptions,
     progress: Option<&ViewProgress>,
     install_duration_hint: Option<Duration>,
 ) -> Result<Option<Duration>> {
@@ -89,7 +91,7 @@ pub(super) fn ensure_component_view_tooling(
 
     let install_duration = match install_duration_hint {
         Some(duration) => Some(duration),
-        None => ensure_project_tooling(project, progress)?,
+        None => ensure_project_tooling(project, options, progress)?,
     };
     let vite_bin = project_vite_bin(project.root.as_path());
     if !vite_bin.exists() {
@@ -189,6 +191,7 @@ fs.writeFileSync(filePath, result.outputText, 'utf8');
 
 pub(super) fn ensure_project_tooling(
     project: &Project,
+    options: &BuildOptions,
     progress: Option<&ViewProgress>,
 ) -> Result<Option<Duration>> {
     let package_json = project.root.join("package.json");
@@ -217,17 +220,24 @@ pub(super) fn ensure_project_tooling(
         return Ok(None);
     }
 
-    let use_ci = project.root.join("package-lock.json").exists();
+    let use_ci =
+        (options.release || options.package) && project.root.join("package-lock.json").exists();
     let mut command = Command::new("npm");
     if use_ci {
         command.arg("ci");
     } else {
         command.arg("install");
     }
+    command.args(["--no-audit", "--no-fund"]);
 
     let started = Instant::now();
     if let Some(progress) = progress {
         progress.installing_project_deps();
+    } else {
+        println!(
+            "  ▸ installing project dependencies with npm {}",
+            if use_ci { "ci" } else { "install" }
+        );
     }
     let status = command
         .current_dir(&project.root)
@@ -240,7 +250,9 @@ pub(super) fn ensure_project_tooling(
         })?;
     if !status.success() {
         return Err(anyhow!(
-            "Failed to install project dependencies with npm {}",
+            "Failed to install project dependencies with npm {}.\n\
+Tip: npm ci requires package.json and package-lock.json to be in sync. \
+For local debug builds, rerun without --release so LingXia can use npm install.",
             if use_ci { "ci" } else { "install" }
         ));
     }
@@ -289,6 +301,15 @@ mod tests {
         }
     }
 
+    fn build_options() -> BuildOptions {
+        BuildOptions {
+            release: false,
+            package: false,
+            framework: None,
+            progress: crate::lxapp::options::ProgressMode::Task,
+        }
+    }
+
     #[test]
     fn project_vite_bin_points_to_project_node_modules() {
         let temp = tempdir().unwrap();
@@ -311,6 +332,7 @@ mod tests {
         let error = ensure_component_view_tooling(
             &make_project(temp.path(), ProjectFramework::React),
             ProjectFramework::React,
+            &build_options(),
             None,
             None,
         )
@@ -333,6 +355,7 @@ mod tests {
         let error = ensure_component_view_tooling(
             &make_project(temp.path(), ProjectFramework::Vue),
             ProjectFramework::Vue,
+            &build_options(),
             None,
             None,
         )
@@ -361,6 +384,7 @@ mod tests {
         let install_duration = ensure_component_view_tooling(
             &make_project(temp.path(), ProjectFramework::React),
             ProjectFramework::React,
+            &build_options(),
             None,
             None,
         )

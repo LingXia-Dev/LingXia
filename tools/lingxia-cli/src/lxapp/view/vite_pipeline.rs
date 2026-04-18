@@ -42,6 +42,7 @@ pub fn build(
             let install_duration = super::vite_tooling::ensure_component_view_tooling(
                 project,
                 project.framework,
+                options,
                 progress.as_ref(),
                 install_duration_hint,
             )?;
@@ -55,6 +56,7 @@ pub fn build(
                 let install_duration = super::vite_tooling::ensure_component_view_tooling(
                     project,
                     ProjectFramework::Html,
+                    options,
                     progress.as_ref(),
                     install_duration_hint,
                 )?;
@@ -90,17 +92,19 @@ pub fn build(
 
 pub fn prepare_tooling(
     project: &Project,
+    options: &BuildOptions,
     progress: Option<ViewProgress>,
 ) -> Result<Option<Duration>> {
     match project.framework {
         ProjectFramework::React | ProjectFramework::Vue => {
-            super::vite_tooling::ensure_project_tooling(project, progress.as_ref())
+            super::vite_tooling::ensure_project_tooling(project, options, progress.as_ref())
         }
         ProjectFramework::Html => {
             if super::vite_html::html_pages_require_bundling(project)? {
                 super::vite_tooling::ensure_component_view_tooling(
                     project,
                     ProjectFramework::Html,
+                    options,
                     progress.as_ref(),
                     None,
                 )

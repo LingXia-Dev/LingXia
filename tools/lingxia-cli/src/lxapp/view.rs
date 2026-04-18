@@ -93,9 +93,10 @@ pub fn build(
 
 pub fn prepare_tooling(
     project: &Project,
+    options: &BuildOptions,
     progress: Option<ViewProgress>,
 ) -> Result<Option<Duration>> {
-    vite_pipeline::prepare_tooling(project, progress)
+    vite_pipeline::prepare_tooling(project, options, progress)
 }
 
 pub(crate) fn page_logic_path(project: &Project, page_path: &str) -> Result<Option<PathBuf>> {

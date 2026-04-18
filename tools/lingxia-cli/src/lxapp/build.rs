@@ -49,7 +49,8 @@ pub fn run(args: &[String], cwd: &Path) -> Result<()> {
 
     let reporter = Reporter::new(options.progress);
     reporter.start_parallel_tasks();
-    let install_duration_hint = view::prepare_tooling(&project, reporter.view_progress())?;
+    let install_duration_hint =
+        view::prepare_tooling(&project, &options, reporter.view_progress())?;
     let logic_progress = reporter.logic_progress();
     let view_progress = reporter.view_progress();
     let logic_project = project.clone();
