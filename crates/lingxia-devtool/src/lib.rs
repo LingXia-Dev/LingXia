@@ -27,18 +27,29 @@ pub fn start_devtool_bridge_from_env() {
         return;
     }
 
-    let ws_url = match std::env::var(DEV_WS_URL_ENV) {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            log::info!(
-                "Devtool bridge disabled because {} is not set",
-                DEV_WS_URL_ENV
-            );
+    let ws_url = match dev_ws_url() {
+        Some(value) => value,
+        None => {
+            log::info!("Devtool bridge disabled because no dev websocket URL is configured");
             return;
         }
     };
 
     thread::spawn(move || run_dev_bridge(ws_url));
+}
+
+fn dev_ws_url() -> Option<String> {
+    std::env::var(DEV_WS_URL_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            lingxia::app_config()
+                .and_then(|config| config.dev_ws_url.as_deref())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned)
+        })
 }
 
 fn run_dev_bridge(ws_url: String) {
