@@ -15,9 +15,9 @@ pub use lingxia_media::{
     FrameSink, StreamError, StreamProvider, StreamSession, register_stream_provider,
 };
 
-pub use lingxia_observability::{
+pub use lingxia_log::{
     DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY, LogBuffer, LogBufferConfig,
-    LogProvider,
+    LogProvider, register_log_provider,
 };
 pub use lingxia_provider::{
     BoxFuture, FingerprintProvider, ProviderError, ProviderErrorCode, PushNotificationProvider,
@@ -30,9 +30,7 @@ pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 pub use lxapp::lx::{LxLogicExtension, register_logic_extension};
 pub use lxapp::set_num_workers;
-pub use lxapp::{
-    LxApp, NoOpProvider, Provider, ProviderErrorExt, register_log_provider, register_provider,
-};
+pub use lxapp::{LxApp, NoOpProvider, Provider, ProviderErrorExt, register_provider};
 
 mod bootstrap;
 mod host_addon;
@@ -41,13 +39,11 @@ mod lxapp_dev;
 
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
-    pub use lingxia_observability::{
+    pub use lingxia_log::{
+        AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo,
         DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY, LogBuffer, LogBufferConfig,
-    };
-    pub use lxapp::log::{
-        AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogManager,
-        LogMessage, LogStreamError, LogTag, attach_log_stream, attach_log_stream_default,
-        tracing_layer, upload_collected_logs,
+        LogLevel, LogManager, LogMessage, LogStreamError, LogTag, attach_log_stream,
+        attach_log_stream_default, register_log_provider, tracing_layer, upload_collected_logs,
     };
 }
 

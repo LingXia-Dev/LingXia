@@ -1,13 +1,16 @@
 [package]
-name = "lingxia-observability"
+name = "lingxia-log"
 version.workspace = true
 edition.workspace = true
-description = "LingXia observability domain and in-memory log pipeline primitives"
+description = "LingXia structured logging domain and in-memory log pipeline primitives"
 license = "MIT"
 
 [dependencies]
 lingxia-provider = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 zstd = "0.13.3"

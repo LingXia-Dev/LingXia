@@ -8,7 +8,6 @@ mod error;
 mod executor;
 pub mod host;
 pub mod lifecycle;
-pub mod log;
 pub mod lx;
 mod lxapp;
 mod page;
@@ -54,9 +53,9 @@ pub use page::{
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
-    BoxFuture, FingerprintProvider, LogProvider, LxAppUpdateQuery, NoOpProvider, Provider,
-    ProviderError, ProviderErrorCode, ProviderErrorExt, PushNotificationProvider,
-    UpdatePackageInfo, UpdateProvider, UpdateTarget, register_log_provider, register_provider,
+    BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,
+    ProviderErrorCode, ProviderErrorExt, PushNotificationProvider, UpdatePackageInfo,
+    UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
 pub use update::{
@@ -66,3 +65,62 @@ pub use update::{
 
 // Re-export for internal crate usage
 pub(crate) use provider::get_provider;
+
+#[doc(hidden)]
+pub mod __private {
+    pub use lingxia_log::{LogBuilder, LogLevel, LogTag};
+}
+
+#[macro_export]
+macro_rules! info {
+    ($($arg:tt)*) => {
+        $crate::__private::LogBuilder::new(
+            $crate::__private::LogTag::Native,
+            format!($($arg)*),
+        )
+    };
+}
+
+#[macro_export]
+macro_rules! warn {
+    ($($arg:tt)*) => {
+        $crate::__private::LogBuilder::new(
+            $crate::__private::LogTag::Native,
+            format!($($arg)*),
+        )
+        .with_level($crate::__private::LogLevel::Warn)
+    };
+}
+
+#[macro_export]
+macro_rules! error {
+    ($($arg:tt)*) => {
+        $crate::__private::LogBuilder::new(
+            $crate::__private::LogTag::Native,
+            format!($($arg)*),
+        )
+        .with_level($crate::__private::LogLevel::Error)
+    };
+}
+
+#[macro_export]
+macro_rules! debug {
+    ($($arg:tt)*) => {
+        $crate::__private::LogBuilder::new(
+            $crate::__private::LogTag::Native,
+            format!($($arg)*),
+        )
+        .with_level($crate::__private::LogLevel::Debug)
+    };
+}
+
+#[macro_export]
+macro_rules! verbose {
+    ($($arg:tt)*) => {
+        $crate::__private::LogBuilder::new(
+            $crate::__private::LogTag::Native,
+            format!($($arg)*),
+        )
+        .with_level($crate::__private::LogLevel::Verbose)
+    };
+}

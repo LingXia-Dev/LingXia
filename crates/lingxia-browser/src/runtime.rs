@@ -1,4 +1,5 @@
 use http::{Request, Response, StatusCode, Uri};
+use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::file::FileDialogFilter;
 use lingxia_platform::traits::file::{ChooseDirectoryRequest, ChooseFileRequest, FileService};
@@ -969,12 +970,12 @@ impl WebViewDelegate for BrowserTabDelegate {
 
     fn log(&self, level: LogLevel, message: &str) {
         let log_level = match level {
-            LogLevel::Error => lxapp::log::LogLevel::Error,
-            LogLevel::Warn => lxapp::log::LogLevel::Warn,
-            LogLevel::Info => lxapp::log::LogLevel::Info,
-            LogLevel::Debug | LogLevel::Verbose => lxapp::log::LogLevel::Debug,
+            LogLevel::Error => LxLogLevel::Error,
+            LogLevel::Warn => LxLogLevel::Warn,
+            LogLevel::Info => LxLogLevel::Info,
+            LogLevel::Debug | LogLevel::Verbose => LxLogLevel::Debug,
         };
-        lxapp::log::LogBuilder::new(lxapp::log::LogTag::WebViewConsole, message)
+        LogBuilder::new(LogTag::WebViewConsole, message)
             .with_level(log_level)
             .with_path(&self.page_path)
             .with_appid(BUILTIN_BROWSER_APPID.to_string());

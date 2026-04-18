@@ -17,6 +17,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
+use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
@@ -1084,16 +1085,16 @@ impl WebViewDelegate for Page {
 
     /// Receive log from WebView
     fn log(&self, level: LogLevel, message: &str) {
-        // Convert lingxia_webview::LogLevel to crate::log::LogLevel
+        // Convert lingxia_webview::LogLevel to lingxia_log::LogLevel
         let log_level = match level {
-            LogLevel::Error => crate::log::LogLevel::Error,
-            LogLevel::Warn => crate::log::LogLevel::Warn,
-            LogLevel::Info => crate::log::LogLevel::Info,
-            LogLevel::Debug => crate::log::LogLevel::Debug,
-            LogLevel::Verbose => crate::log::LogLevel::Debug, // Map Verbose to Debug
+            LogLevel::Error => LxLogLevel::Error,
+            LogLevel::Warn => LxLogLevel::Warn,
+            LogLevel::Info => LxLogLevel::Info,
+            LogLevel::Debug => LxLogLevel::Debug,
+            LogLevel::Verbose => LxLogLevel::Debug, // Map Verbose to Debug
         };
 
-        crate::log::LogBuilder::new(crate::log::LogTag::WebViewConsole, message)
+        LogBuilder::new(LogTag::WebViewConsole, message)
             .with_level(log_level)
             .with_path(&self.inner.path)
             .with_appid(self.inner.appid.clone());

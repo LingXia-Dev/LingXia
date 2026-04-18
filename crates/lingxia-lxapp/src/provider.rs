@@ -1,14 +1,14 @@
 //! Provider traits and registration.
 //!
 //! Generic provider contracts live in `lingxia-provider`, `lingxia-update`,
-//! and `lingxia-observability`.
+//! and `lingxia-log`.
 //! This module keeps only lxapp/runtime-specific pieces: provider aggregation,
 //! registration, and conversion into `LxAppError`.
 
 use crate::error::LxAppError;
+use lingxia_log::LogProvider;
 use std::sync::OnceLock;
 
-pub use lingxia_observability::LogProvider;
 pub use lingxia_provider::{
     BoxFuture, FingerprintError, FingerprintProvider, ProviderError, ProviderErrorCode,
     PushNotificationProvider,
@@ -61,19 +61,11 @@ impl PushNotificationProvider for NoOpProvider {}
 impl LogProvider for NoOpProvider {}
 
 static PROVIDER: OnceLock<Box<dyn Provider>> = OnceLock::new();
-static LOG_PROVIDER: OnceLock<Box<dyn LogProvider>> = OnceLock::new();
 
 /// Register a provider. Must be called at app startup before SDK initialization.
 pub fn register_provider(provider: Box<dyn Provider>) {
     if PROVIDER.set(provider).is_err() {
         panic!("register_provider called more than once");
-    }
-}
-
-/// Register an optional log provider. Must be called at app startup before SDK initialization.
-pub fn register_log_provider(provider: Box<dyn LogProvider>) {
-    if LOG_PROVIDER.set(provider).is_err() {
-        panic!("register_log_provider called more than once");
     }
 }
 
@@ -84,14 +76,6 @@ pub(crate) fn get_provider() -> &'static dyn Provider {
 
 pub(crate) fn has_update_provider() -> bool {
     PROVIDER.get().is_some()
-}
-
-/// Get the registered log provider, or a default no-op provider.
-pub(crate) fn get_log_provider() -> &'static dyn LogProvider {
-    LOG_PROVIDER
-        .get()
-        .map(|b| b.as_ref())
-        .unwrap_or(&NoOpProvider)
 }
 
 /// Bind a push token via the registered provider.

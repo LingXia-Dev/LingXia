@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use lingxia_observability::now_timestamp_ms;
+use lingxia_log::now_timestamp_ms;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};

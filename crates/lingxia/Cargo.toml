@@ -18,7 +18,7 @@ webview-input = ["lingxia-webview/webview-input"]
 rong = { workspace = true, default-features = false }
 rong_rt = { workspace = true, default-features = false }
 lxapp = { workspace = true }
-lingxia-observability = { workspace = true }
+lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-app-context = { workspace = true }
@@ -36,8 +36,6 @@ log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.22.1"

@@ -1,5 +1,5 @@
+use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogManager, LogMessage, LogTag};
 use log::{Level, LevelFilter, Log, Metadata, Record};
-use lxapp::log::{LogLevel as LxLogLevel, LogManager, LogMessage, LogTag};
 use std::sync::OnceLock;
 
 static LOGGING_INIT: OnceLock<()> = OnceLock::new();
@@ -57,7 +57,7 @@ impl Log for SdkLogger {
             return;
         }
 
-        lxapp::log::LogBuilder::new(LogTag::Native, format!("{}", record.args()))
+        LogBuilder::new(LogTag::Native, format!("{}", record.args()))
             .with_level(map_level(record.level()))
             .with_target(record.target().to_string());
 

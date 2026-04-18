@@ -13,6 +13,7 @@ categories = ["web-programming", "api-bindings"]
 
 [dependencies]
 lxapp = { workspace = true }
+lingxia-log = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }

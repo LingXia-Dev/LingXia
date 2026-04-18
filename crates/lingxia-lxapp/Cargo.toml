@@ -19,8 +19,6 @@ tokio = { workspace = true }
 futures = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 bytes = "1.11"
 http-body-util = "0.1"
 redb = "3.1.0"
@@ -38,7 +36,7 @@ rong_fs = { workspace = true }
 rong_console = { workspace = true }
 rong_event = { workspace = true }
 lingxia-app-context = { workspace = true }
-lingxia-observability = { workspace = true }
+lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }

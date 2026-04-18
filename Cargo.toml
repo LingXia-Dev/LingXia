@@ -10,7 +10,7 @@ members = [
     "crates/lingxia-settings",
     "crates/lingxia-host-macros",
     "crates/lingxia-lxapp",
-    "crates/lingxia-observability",
+    "crates/lingxia-log",
     "crates/lingxia-provider",
     "crates/lingxia-update",
     "crates/lingxia-webview",
@@ -53,7 +53,7 @@ lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1" }
 lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1" }
 lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.5.1" }
 lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.5.1" }
-lingxia-observability = { path = "crates/lingxia-observability", version = "0.5.1" }
+lingxia-log = { path = "crates/lingxia-log", version = "0.5.1" }
 lingxia-provider = { path = "crates/lingxia-provider", version = "0.5.1" }
 lingxia-update = { path = "crates/lingxia-update", version = "0.5.1" }
 lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.5.1" }

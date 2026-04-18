@@ -3,7 +3,7 @@
 //! Host libraries decide how this service is installed into their own
 //! `HostAddon`; this crate only exposes the service entry points.
 
-use lingxia::log::{LogLevel, LogMessage, LogTag};
+use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
 use std::sync::OnceLock;
 use std::thread;
 use std::time::Duration;
@@ -58,7 +58,7 @@ fn run_dev_bridge(ws_url: String) {
 
                 configure_read_timeout(&mut websocket);
 
-                let attached = match lingxia::log::attach_log_stream_default() {
+                let attached = match attach_log_stream_default() {
                     Ok(attached) => attached,
                     Err(err) => {
                         log::warn!("Failed to attach devtool log stream: {}", err);
@@ -82,7 +82,7 @@ fn run_dev_bridge(ws_url: String) {
 
 fn bridge_loop(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
-    attached: lingxia::log::AttachedLogStream,
+    attached: AttachedLogStream,
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
     for chunk in recent.chunks(128) {
@@ -192,7 +192,7 @@ fn handle_incoming_message(
 
 fn send_log_batch(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
-    logs: &[lingxia::log::LogMessage],
+    logs: &[LogMessage],
 ) -> Result<(), String> {
     send_wire_message(
         websocket,
