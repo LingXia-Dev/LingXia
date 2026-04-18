@@ -3,7 +3,7 @@ use super::{
     SigningMode, project::resolve_harmony_dir, read_bundle_name, resolve_effective_acl_permissions,
 };
 use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use std::env;
 use std::fs::File;
@@ -221,12 +221,13 @@ impl HarmonyPlatform {
         build_profile: BuildProfile,
         target_udids: &[String],
     ) -> Result<PathBuf> {
-        let signer = HarmonySigner::new_native();
         let signing = load_signing_config(project_root, build_profile, target_udids)?;
-
+        let signer = HarmonySigner::new_native();
+        let aligned_hap = align_unsigned_hap_for_mmap(input_hap)?;
+        let signing_input = aligned_hap.as_deref().unwrap_or(input_hap);
         println!("  {} Signing HAP (Rust native signer)...", "→".dimmed());
         signer
-            .sign_hap(&signing, input_hap, &output_path)
+            .sign_hap(&signing, signing_input, &output_path)
             .context("HAP signing failed")?;
         signer
             .verify_hap(&output_path)
@@ -577,6 +578,250 @@ fn sibling_unsigned_hap(path: &Path) -> Option<PathBuf> {
         return Some(path.with_file_name(file_name.replace("signed", "unsigned")));
     }
     None
+}
+
+fn align_unsigned_hap_for_mmap(input_hap: &Path) -> Result<Option<PathBuf>> {
+    let file_name = input_hap
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if !file_name.contains("unsigned") {
+        return Ok(None);
+    }
+
+    let aligned = input_hap.with_file_name(file_name.replace("unsigned", "aligned"));
+    align_hap_entries(input_hap, &aligned)?;
+    Ok(Some(aligned))
+}
+
+#[derive(Debug)]
+struct CentralEntry {
+    start: usize,
+    end: usize,
+    name: String,
+    local_offset: u32,
+}
+
+#[derive(Debug)]
+struct LocalEntry {
+    central_index: usize,
+    local_offset: usize,
+    name: String,
+    method: u16,
+    header: Vec<u8>,
+    name_bytes: Vec<u8>,
+    extra: Vec<u8>,
+    data: Vec<u8>,
+}
+
+fn align_hap_entries(input_hap: &Path, output_hap: &Path) -> Result<()> {
+    const EOCD_MIN_SIZE: usize = 22;
+    const LOCAL_HEADER_SIZE: usize = 30;
+    const ALIGNMENT: usize = 4096;
+
+    let data = std::fs::read(input_hap)
+        .with_context(|| format!("Failed to read HAP {}", input_hap.display()))?;
+    let eocd = find_eocd(&data)?;
+    let cd_size = read_u32(&data, eocd + 12)? as usize;
+    let cd_offset = read_u32(&data, eocd + 16)? as usize;
+    let cd_end = cd_offset
+        .checked_add(cd_size)
+        .ok_or_else(|| anyhow!("Central directory size overflow"))?;
+    if eocd < EOCD_MIN_SIZE || cd_end > data.len() || cd_end > eocd {
+        bail!("Invalid HAP central directory layout");
+    }
+
+    let entries = parse_central_entries(&data, cd_offset, cd_end)?;
+    let mut local_entries = entries
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| parse_local_entry(&data, cd_offset, index, entry))
+        .collect::<Result<Vec<_>>>()?;
+    local_entries.sort_by_key(|entry| {
+        (
+            runnable_order(&entry.name),
+            entry.local_offset,
+            entry.central_index,
+        )
+    });
+
+    let mut out = Vec::with_capacity(data.len() + entries.len() * ALIGNMENT);
+    let mut offset_map = std::collections::HashMap::new();
+    let mut extra_len_map = std::collections::HashMap::new();
+    let mut extra_map = std::collections::HashMap::new();
+
+    for entry in local_entries {
+        let new_local_offset = out.len();
+        let current_data_offset =
+            new_local_offset + LOCAL_HEADER_SIZE + entry.name_bytes.len() + entry.extra.len();
+        let padding = if entry.method == 0 {
+            (ALIGNMENT - (current_data_offset % ALIGNMENT)) % ALIGNMENT
+        } else {
+            0
+        };
+        let new_extra_len = entry.extra.len() + padding;
+        if new_extra_len > u16::MAX as usize {
+            bail!("ZIP extra field too large for {}", entry.name);
+        }
+        let mut header = entry.header;
+        header[28..30].copy_from_slice(&(new_extra_len as u16).to_le_bytes());
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&entry.name_bytes);
+        out.extend_from_slice(&entry.extra);
+        out.resize(out.len() + padding, 0);
+        out.extend_from_slice(&entry.data);
+
+        let mut central_extra = entry.extra;
+        central_extra.resize(central_extra.len() + padding, 0);
+        offset_map.insert(entry.local_offset as u32, new_local_offset as u32);
+        extra_len_map.insert(entry.central_index, new_extra_len);
+        extra_map.insert(entry.central_index, central_extra);
+    }
+
+    let new_cd_offset = out.len();
+    for (index, entry) in entries.iter().enumerate() {
+        let Some(new_offset) = offset_map.get(&entry.local_offset) else {
+            bail!("Missing rewritten local offset for {}", entry.name);
+        };
+        let Some(extra) = extra_map.get(&index) else {
+            bail!("Missing rewritten central extra for {}", entry.name);
+        };
+        let Some(extra_len) = extra_len_map.get(&index) else {
+            bail!("Missing rewritten central extra length for {}", entry.name);
+        };
+        let name_len = read_u16(&data, entry.start + 28)? as usize;
+        let old_extra_len = read_u16(&data, entry.start + 30)? as usize;
+        let name_start = entry.start + 46;
+        let extra_start = name_start + name_len;
+        let comment_start = extra_start + old_extra_len;
+        let mut header = data[entry.start..entry.start + 46].to_vec();
+        header[30..32].copy_from_slice(&(*extra_len as u16).to_le_bytes());
+        header[42..46].copy_from_slice(&new_offset.to_le_bytes());
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&data[name_start..extra_start]);
+        out.extend_from_slice(extra);
+        out.extend_from_slice(&data[comment_start..entry.end]);
+    }
+
+    let mut eocd_bytes = data[eocd..].to_vec();
+    let new_cd_size = out.len() - new_cd_offset;
+    eocd_bytes[12..16].copy_from_slice(&(new_cd_size as u32).to_le_bytes());
+    eocd_bytes[16..20].copy_from_slice(&(new_cd_offset as u32).to_le_bytes());
+    out.extend_from_slice(&eocd_bytes);
+
+    std::fs::write(output_hap, out)
+        .with_context(|| format!("Failed to write aligned HAP {}", output_hap.display()))?;
+    Ok(())
+}
+
+fn parse_local_entry(
+    data: &[u8],
+    cd_offset: usize,
+    central_index: usize,
+    central: &CentralEntry,
+) -> Result<LocalEntry> {
+    let local_offset = central.local_offset as usize;
+    if local_offset + 30 > cd_offset || read_u32(data, local_offset)? != 0x0403_4b50 {
+        bail!("Invalid local entry offset for {}", central.name);
+    }
+    let name_len = read_u16(data, local_offset + 26)? as usize;
+    let extra_len = read_u16(data, local_offset + 28)? as usize;
+    let method = read_u16(data, local_offset + 8)?;
+    let compressed_size = read_u32(data, local_offset + 18)? as usize;
+    let name_start = local_offset + 30;
+    let extra_start = name_start + name_len;
+    let data_offset = extra_start + extra_len;
+    let data_end = data_offset
+        .checked_add(compressed_size)
+        .ok_or_else(|| anyhow!("Local entry size overflow"))?;
+    if data_end > cd_offset {
+        bail!("Invalid local entry data range for {}", central.name);
+    }
+    Ok(LocalEntry {
+        central_index,
+        local_offset,
+        name: central.name.clone(),
+        method,
+        header: data[local_offset..local_offset + 30].to_vec(),
+        name_bytes: data[name_start..extra_start].to_vec(),
+        extra: data[extra_start..data_offset].to_vec(),
+        data: data[data_offset..data_end].to_vec(),
+    })
+}
+
+fn runnable_order(name: &str) -> u8 {
+    if name.ends_with(".abc") {
+        0
+    } else if name.ends_with(".an") || name.starts_with("libs/") {
+        1
+    } else if name == ".pages.info" {
+        2
+    } else if name == "ets/sourceMaps.map" {
+        3
+    } else {
+        4
+    }
+}
+
+fn parse_central_entries(data: &[u8], mut offset: usize, end: usize) -> Result<Vec<CentralEntry>> {
+    let mut entries = Vec::new();
+    while offset < end {
+        if offset + 46 > end || read_u32(data, offset)? != 0x0201_4b50 {
+            bail!("Invalid central directory entry");
+        }
+        let name_len = read_u16(data, offset + 28)? as usize;
+        let extra_len = read_u16(data, offset + 30)? as usize;
+        let comment_len = read_u16(data, offset + 32)? as usize;
+        let local_offset = read_u32(data, offset + 42)?;
+        let name_start = offset + 46;
+        let name_end = name_start + name_len;
+        let next = name_end + extra_len + comment_len;
+        if next > end {
+            bail!("Invalid central directory entry size");
+        }
+        let name = std::str::from_utf8(&data[name_start..name_end])
+            .unwrap_or_default()
+            .to_string();
+        entries.push(CentralEntry {
+            start: offset,
+            end: next,
+            name,
+            local_offset,
+        });
+        offset = next;
+    }
+    Ok(entries)
+}
+
+fn find_eocd(data: &[u8]) -> Result<usize> {
+    let min = 22usize;
+    if data.len() < min {
+        bail!("File too small to be a ZIP");
+    }
+    let search_start = data.len().saturating_sub(min + 65535);
+    for index in (search_start..=data.len() - min).rev() {
+        if data[index..index + 4] == [0x50, 0x4b, 0x05, 0x06] {
+            let comment_len = read_u16(data, index + 20)? as usize;
+            if index + min + comment_len == data.len() {
+                return Ok(index);
+            }
+        }
+    }
+    bail!("End of central directory not found")
+}
+
+fn read_u16(data: &[u8], offset: usize) -> Result<u16> {
+    let bytes = data
+        .get(offset..offset + 2)
+        .ok_or_else(|| anyhow!("Unexpected EOF reading u16"))?;
+    Ok(u16::from_le_bytes([bytes[0], bytes[1]]))
+}
+
+fn read_u32(data: &[u8], offset: usize) -> Result<u32> {
+    let bytes = data
+        .get(offset..offset + 4)
+        .ok_or_else(|| anyhow!("Unexpected EOF reading u32"))?;
+    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
 fn hdc_install_failed(stdout: &str, stderr: &str) -> bool {
