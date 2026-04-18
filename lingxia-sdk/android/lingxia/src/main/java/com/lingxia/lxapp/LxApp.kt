@@ -62,7 +62,7 @@ class LxApp private constructor(private val context: Context) {
         private var lifecycleCallbacksRegistered: Boolean = false
 
         @JvmStatic
-        internal fun initialize(context: Context) {
+        internal fun initializeRuntime(context: Context) {
             synchronized(this) {
                 if (instance != null && HomeLxAppId != null) {
                     Log.d(TAG, "LxApp already successfully initialized, skipping")

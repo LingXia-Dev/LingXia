@@ -1,23 +1,42 @@
 package com.lingxia.lxapp
 
-import android.content.Context
+import androidx.appcompat.app.AppCompatActivity
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Top-level entry point for the LingXia SDK.
- *
- * For most apps, initialization is handled automatically by extending [LxAppLaunchActivity].
- * Call [initialize] directly only if you manage the Activity lifecycle yourself.
  */
 object Lingxia {
+    private val hostAddonInstalled = AtomicBoolean(false)
 
     /**
-     * Initialize the LingXia SDK.
-     *
-     * Idempotent — safe to call multiple times. [LxAppLaunchActivity] calls this automatically;
-     * you only need to call it directly when not using [LxAppLaunchActivity].
+     * Product-app entry point. Initializes the runtime and opens the configured home LxApp.
      */
     @JvmStatic
-    fun initialize(context: Context) {
-        LxApp.initialize(context)
+    fun quickStart(activity: AppCompatActivity) {
+        quickStart(activity, null)
+    }
+
+    /**
+     * Product-app entry point with an app-owned native addon installer.
+     *
+     * The SDK loads liblingxia before invoking [installHostAddon], so host apps do not need to
+     * call System.loadLibrary themselves.
+     */
+    @JvmStatic
+    fun quickStart(activity: AppCompatActivity, installHostAddon: (() -> Unit)?) {
+        if (!NativeApi.ensureLoaded()) {
+            throw IllegalStateException("Failed to load native library 'lingxia'")
+        }
+        if (installHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
+            try {
+                installHostAddon()
+            } catch (error: Throwable) {
+                hostAddonInstalled.set(false)
+                throw error
+            }
+        }
+        LxApp.initializeRuntime(activity)
+        LxApp.openHomeLxApp()
     }
 }
