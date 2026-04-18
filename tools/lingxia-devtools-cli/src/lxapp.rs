@@ -56,6 +56,7 @@ pub enum LxAppCommand {
     },
     /// Evaluate JavaScript in the lxapp logic runtime
     Eval {
+        /// JavaScript expression, or a function body that uses return/await
         script: String,
         /// LxApp context; defaults to current
         #[arg(long, default_value = "current")]
@@ -168,7 +169,7 @@ pub fn execute(project_root: &Path, info: &DevInfo, options: LxAppOptions) -> Re
                 })),
             )?
             .unwrap_or(Value::Null);
-            print_json(&data, pretty)?;
+            print_eval_result(&data, pretty)?;
         }
         LxAppCommand::Open {
             appid,
@@ -280,4 +281,14 @@ fn print_json(value: &Value, pretty: bool) -> Result<()> {
         println!("{}", serde_json::to_string(value)?);
     }
     Ok(())
+}
+
+fn print_eval_result(data: &Value, pretty: bool) -> Result<()> {
+    let Some(value) = data.get("value") else {
+        return print_json(data, pretty);
+    };
+    if value.is_null() {
+        return Ok(());
+    }
+    print_json(value, pretty)
 }

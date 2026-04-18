@@ -162,19 +162,69 @@ fn js_value_to_json_string(value: JSValue) -> Result<String, LxAppError> {
     Ok("null".to_string())
 }
 
+fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxAppError {
+    if let Some(thrown) = error.thrown_value(ctx) {
+        if thrown.is_string() {
+            let value: Result<String, RongJSError> = thrown.into_value().try_into();
+            if let Ok(value) = value {
+                return LxAppError::RongJS(value);
+            }
+        } else if let Some(object) = thrown.into_object() {
+            let name = object
+                .get::<_, String>("name")
+                .unwrap_or_else(|_| "Error".to_string());
+            if let Ok(message) = object.get::<_, String>("message") {
+                return LxAppError::RongJS(format!("{name}: {message}"));
+            }
+        }
+    }
+    LxAppError::from(error)
+}
+
 async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAppError> {
-    let script_json = serde_json::to_string(script).map_err(LxAppError::from)?;
-    let wrapped = format!(
+    let expression_json = serde_json::to_string(script).map_err(LxAppError::from)?;
+    let expression = format!(
         r#"(async () => {{
-  const __lxdev_eval = eval({script_json});
-  return await __lxdev_eval;
+  return await eval({expression_json});
 }})()"#
     );
-    let value = ctx
-        .eval_async::<JSValue>(Source::from_bytes(wrapped))
+    match ctx
+        .eval_async::<JSValue>(Source::from_bytes(expression))
         .await
-        .map_err(LxAppError::from)?;
-    js_value_to_json_string(value)
+    {
+        Ok(value) => return js_value_to_json_string(value),
+        Err(expression_error) => {
+            let body = format!(
+                r#"(async () => {{
+{script}
+}})()"#
+            );
+            let value = ctx
+                .eval_async::<JSValue>(Source::from_bytes(body))
+                .await
+                .map_err(|body_error| {
+                    if script_may_be_function_body(script) {
+                        eval_error_from_rong(ctx, body_error)
+                    } else {
+                        eval_error_from_rong(ctx, expression_error)
+                    }
+                })?;
+            js_value_to_json_string(value)
+        }
+    }
+}
+
+fn script_may_be_function_body(script: &str) -> bool {
+    let trimmed = script.trim_start();
+    trimmed.starts_with("return")
+        || trimmed.starts_with("const ")
+        || trimmed.starts_with("let ")
+        || trimmed.starts_with("var ")
+        || trimmed.starts_with("if ")
+        || trimmed.starts_with("for ")
+        || trimmed.starts_with("while ")
+        || trimmed.starts_with("try ")
+        || trimmed.contains(';')
 }
 
 // Handles a bridge-routed message that must enter the JS runtime worker.
