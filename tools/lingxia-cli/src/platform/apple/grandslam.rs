@@ -734,7 +734,6 @@ impl GrandSlamClient {
         let ciphertext = &encrypted[19..encrypted.len() - 16];
 
         let decrypted = {
-            use aes_gcm::aead::generic_array::GenericArray;
             use aes_gcm::aes::Aes256;
             use aes_gcm::{AesGcm, KeyInit, aead::Aead};
 
@@ -742,14 +741,15 @@ impl GrandSlamClient {
             type Aes256Gcm16 =
                 AesGcm<Aes256, aes_gcm::aead::consts::U16, aes_gcm::aead::consts::U16>;
 
-            let cipher = Aes256Gcm16::new(GenericArray::from_slice(&login_data.sk));
+            let cipher = Aes256Gcm16::new_from_slice(&login_data.sk)
+                .map_err(|_| anyhow!("Invalid AES-GCM key"))?;
 
             let mut combined = ciphertext.to_vec();
             combined.extend_from_slice(tag);
 
             cipher
                 .decrypt(
-                    GenericArray::from_slice(iv),
+                    iv.into(),
                     aes_gcm::aead::Payload {
                         msg: &combined,
                         aad,

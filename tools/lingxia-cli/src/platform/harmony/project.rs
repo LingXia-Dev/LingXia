@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 const MODULE_JSON5_REL_PATH: &str = "entry/src/main/module.json5";
+const DEFAULT_ABILITY_NAME: &str = "EntryAbility";
 const WRITE_IMAGEVIDEO_PERMISSION: &str = "ohos.permission.WRITE_IMAGEVIDEO";
 const MANAGED_ACL_PERMISSIONS: &[&str] = &[WRITE_IMAGEVIDEO_PERMISSION];
 
@@ -114,6 +115,60 @@ pub fn sync_acl_permissions(harmony_dir: &Path, acl_permissions: &[String]) -> R
     Ok(true)
 }
 
+pub fn sync_app_links(harmony_dir: &Path, hosts: &[String]) -> Result<bool> {
+    let module_path = harmony_dir.join(MODULE_JSON5_REL_PATH);
+    let content = std::fs::read_to_string(&module_path)
+        .with_context(|| format!("Failed to read {}", module_path.display()))?;
+
+    let mut root: Value = json5::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", module_path.display()))?;
+    let module_obj = root
+        .get_mut("module")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| anyhow!("Invalid module.json5: missing top-level `module` object"))?;
+    let abilities = module_obj
+        .get_mut("abilities")
+        .and_then(Value::as_array_mut)
+        .ok_or_else(|| anyhow!("Invalid module.json5: `module.abilities` must be an array"))?;
+    let ability_index = abilities
+        .iter()
+        .position(|ability| ability_name(ability) == Some(DEFAULT_ABILITY_NAME))
+        .unwrap_or(0);
+    let ability = abilities
+        .get_mut(ability_index)
+        .ok_or_else(|| anyhow!("Invalid module.json5: no ability found"))?;
+    let ability_obj = ability
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("Invalid module.json5: ability must be an object"))?;
+    let skills = ability_obj
+        .entry("skills".to_string())
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or_else(|| anyhow!("Invalid module.json5: ability.skills must be an array"))?;
+
+    let before = skills.clone();
+    if hosts.is_empty() {
+        return Ok(false);
+    }
+    if skills
+        .iter()
+        .any(|skill| is_same_harmony_applink_skill(skill, hosts))
+    {
+        return Ok(false);
+    }
+    skills.retain(|skill| !is_generated_harmony_applink_skill(skill));
+    skills.push(harmony_applink_skill(hosts));
+    if *skills == before {
+        return Ok(false);
+    }
+
+    let updated =
+        serde_json::to_string_pretty(&root).context("Failed to serialize module.json5")?;
+    std::fs::write(&module_path, format!("{updated}\n"))
+        .with_context(|| format!("Failed to write {}", module_path.display()))?;
+    Ok(true)
+}
+
 fn infer_default_ability_name(module_obj: &serde_json::Map<String, Value>) -> String {
     module_obj
         .get("abilities")
@@ -124,7 +179,82 @@ fn infer_default_ability_name(module_obj: &serde_json::Map<String, Value>) -> St
                 .find_map(|ability| ability.get("name").and_then(Value::as_str))
         })
         .map(str::to_string)
-        .unwrap_or_else(|| "EntryAbility".to_string())
+        .unwrap_or_else(|| DEFAULT_ABILITY_NAME.to_string())
+}
+
+fn ability_name(ability: &Value) -> Option<&str> {
+    ability.get("name").and_then(Value::as_str)
+}
+
+fn is_same_harmony_applink_skill(skill: &Value, hosts: &[String]) -> bool {
+    if !is_generated_harmony_applink_skill(skill) {
+        return false;
+    }
+    let Some(uris) = skill.get("uris").and_then(Value::as_array) else {
+        return false;
+    };
+    let actual = uris
+        .iter()
+        .filter_map(|uri| uri.get("host").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    let expected = hosts.iter().map(String::as_str).collect::<Vec<_>>();
+    actual == expected
+}
+
+fn is_generated_harmony_applink_skill(skill: &Value) -> bool {
+    let Some(obj) = skill.as_object() else {
+        return false;
+    };
+    if obj.len() != 3 {
+        return false;
+    }
+    exact_string_array(obj.get("entities"), &["entity.system.browsable"])
+        && exact_string_array(obj.get("actions"), &["ohos.want.action.viewData"])
+        && obj
+            .get("uris")
+            .and_then(Value::as_array)
+            .is_some_and(|uris| {
+                !uris.is_empty() && uris.iter().all(is_generated_harmony_applink_uri)
+            })
+}
+
+fn is_generated_harmony_applink_uri(uri: &Value) -> bool {
+    let Some(obj) = uri.as_object() else {
+        return false;
+    };
+    obj.len() == 2
+        && obj.get("scheme").and_then(Value::as_str) == Some("https")
+        && obj
+            .get("host")
+            .and_then(Value::as_str)
+            .is_some_and(|host| !host.is_empty())
+}
+
+fn exact_string_array(value: Option<&Value>, expected: &[&str]) -> bool {
+    value.and_then(Value::as_array).is_some_and(|values| {
+        values.len() == expected.len()
+            && values
+                .iter()
+                .zip(expected)
+                .all(|(value, expected)| value.as_str() == Some(*expected))
+    })
+}
+
+fn harmony_applink_skill(hosts: &[String]) -> Value {
+    let uris = hosts
+        .iter()
+        .map(|host| {
+            json!({
+                "scheme": "https",
+                "host": host,
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "entities": ["entity.system.browsable"],
+        "actions": ["ohos.want.action.viewData"],
+        "uris": uris,
+    })
 }
 
 fn normalize_permission_entry(entry: &mut Value, permission: &str, default_ability: &str) {
@@ -282,4 +412,43 @@ pub fn generate_icons(
 ) -> Result<()> {
     let harmony_dir = resolve_harmony_dir(project_root, harmony_config)?;
     crate::appicon::generate_harmony_icons(source_icon, &harmony_dir, background_color)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        harmony_applink_skill, is_generated_harmony_applink_skill, is_same_harmony_applink_skill,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn generated_harmony_applink_skill_is_exact_shape_only() {
+        let generated = harmony_applink_skill(&["applink.lingxia.app".to_string()]);
+        let user_skill = json!({
+            "entities": ["entity.system.browsable"],
+            "actions": ["ohos.want.action.viewData"],
+            "uris": [{
+                "scheme": "https",
+                "host": "callback.example.com",
+                "path": "/oauth"
+            }]
+        });
+
+        assert!(is_generated_harmony_applink_skill(&generated));
+        assert!(!is_generated_harmony_applink_skill(&user_skill));
+    }
+
+    #[test]
+    fn generated_harmony_applink_skill_matches_configured_hosts() {
+        let generated = harmony_applink_skill(&["applink.lingxia.app".to_string()]);
+
+        assert!(is_same_harmony_applink_skill(
+            &generated,
+            &["applink.lingxia.app".to_string()]
+        ));
+        assert!(!is_same_harmony_applink_skill(
+            &generated,
+            &["other.lingxia.app".to_string()]
+        ));
+    }
 }

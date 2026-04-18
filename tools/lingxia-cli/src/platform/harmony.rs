@@ -22,7 +22,7 @@ pub use credentials::AgcCredentialStorage;
 pub use doctor::doctor_checks;
 pub use project::{
     generate_icons, read_bundle_name, resolve_harmony_dir, resolve_harmony_rawfile_dir,
-    sync_acl_permissions,
+    sync_acl_permissions, sync_app_links,
 };
 pub use provisioning::{ProvisioningManager, SigningMode};
 pub use signer::{HarmonySigner, SigningConfig};
@@ -67,6 +67,17 @@ impl Platform for HarmonyPlatform {
             eprintln!(
                 "{} Skip syncing managed Harmony ACL permissions because approvals are not verified.",
                 "Warning:".yellow()
+            );
+        }
+
+        let app_link_hosts = lingxia_config
+            .and_then(|config| config.app_links.as_ref())
+            .map(|app_links| app_links.hosts.as_slice())
+            .unwrap_or(&[]);
+        if sync_app_links(&harmony_dir, app_link_hosts)? {
+            println!(
+                "{} Synced Harmony AppLinks to module.json5",
+                "[Harmony]".cyan()
             );
         }
 

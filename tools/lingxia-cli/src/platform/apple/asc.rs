@@ -151,7 +151,7 @@ impl AppStoreConnectClient {
             ("Content-Type", "application/json"),
         ];
 
-        let mut response = match method {
+        let response_result = match method {
             HttpMethod::Get => crate::http_client::call_with_headers(
                 crate::platform::apple::http_agent(),
                 "GET",
@@ -176,8 +176,30 @@ impl AppStoreConnectClient {
                 &url,
                 &headers,
             ),
-        }
-        .with_context(|| format!("API request failed: {} {}", method.as_str(), endpoint))?;
+        };
+        let mut response = match response_result {
+            Ok(response) => response,
+            Err(err) => {
+                let mut message = format!(
+                    "API request failed: {} {} ({})",
+                    method.as_str(),
+                    endpoint,
+                    url
+                );
+                let lower = err.to_string().to_ascii_lowercase();
+                if lower.contains("connection refused")
+                    || lower.contains("proxy")
+                    || lower.contains("dns")
+                    || lower.contains("certificate")
+                    || lower.contains("tls")
+                {
+                    message.push_str(
+                        "\nHint: check network access to api.appstoreconnect.apple.com. If you use a proxy, verify `http_proxy`/`https_proxy`/`ALL_PROXY`.",
+                    );
+                }
+                return Err(anyhow!("{message}\nCaused by: {err}"));
+            }
+        };
 
         let status = response.status();
         let body_str = response.body_mut().read_to_string().unwrap_or_default();

@@ -37,6 +37,7 @@ const RESTRICTED_APPLE_ENTITLEMENTS: &[&str] = &[
     "com.apple.developer.networking.wifi-info",
     "com.apple.developer.networking.HotspotConfiguration",
 ];
+const ASSOCIATED_DOMAINS_ENTITLEMENT: &str = "com.apple.developer.associated-domains";
 
 const IOS_INFO_PLIST_FILE: &str = "Info.plist";
 const IOS_APP_ENTITLEMENTS_FILE: &str = "App.entitlements";
@@ -48,12 +49,17 @@ pub fn controlled_apple_entitlements() -> impl Iterator<Item = &'static str> {
     RESTRICTED_APPLE_ENTITLEMENTS.iter().copied()
 }
 
-pub fn sync_ios_capability_files(ios_dir: &Path, granted_entitlements: &[String]) -> Result<bool> {
+pub fn sync_ios_capability_files(
+    ios_dir: &Path,
+    granted_entitlements: &[String],
+    app_link_hosts: &[String],
+) -> Result<bool> {
     let info_plist_changed = sync_info_plist(&ios_dir.join(IOS_INFO_PLIST_FILE))?;
     let localization_changed = sync_info_plist_localizations(ios_dir)?;
     let entitlements_changed = sync_app_entitlements(
         &ios_dir.join(IOS_APP_ENTITLEMENTS_FILE),
         granted_entitlements,
+        app_link_hosts,
     )?;
     Ok(info_plist_changed || localization_changed || entitlements_changed)
 }
@@ -61,12 +67,14 @@ pub fn sync_ios_capability_files(ios_dir: &Path, granted_entitlements: &[String]
 pub fn sync_macos_capability_files(
     macos_dir: &Path,
     granted_entitlements: &[String],
+    app_link_hosts: &[String],
 ) -> Result<bool> {
     let info_plist_changed = sync_info_plist(&macos_dir.join(MACOS_INFO_PLIST_FILE))?;
     let localization_changed = sync_info_plist_localizations(macos_dir)?;
     let entitlements_changed = sync_app_entitlements(
         &macos_dir.join(MACOS_APP_ENTITLEMENTS_FILE),
         granted_entitlements,
+        app_link_hosts,
     )?;
     Ok(info_plist_changed || localization_changed || entitlements_changed)
 }
@@ -196,6 +204,7 @@ fn sync_info_plist_localizations(project_dir: &Path) -> Result<bool> {
 fn sync_app_entitlements(
     entitlements_path: &Path,
     granted_entitlements: &[String],
+    app_link_hosts: &[String],
 ) -> Result<bool> {
     let mut dict = if entitlements_path.exists() {
         load_plist_dictionary(entitlements_path)?
@@ -229,6 +238,7 @@ fn sync_app_entitlements(
             changed = true;
         }
     }
+    changed |= merge_associated_domains(&mut dict, app_link_hosts)?;
 
     if changed || !entitlements_path.exists() {
         plist::to_file_xml(entitlements_path, &dict)
@@ -286,6 +296,55 @@ fn desired_apple_entitlements(granted_entitlements: &[String]) -> BTreeMap<Strin
     out
 }
 
+fn desired_applink_domains(app_link_hosts: &[String]) -> Vec<String> {
+    app_link_hosts
+        .iter()
+        .map(|host| host.trim())
+        .filter(|host| !host.is_empty())
+        .map(|host| format!("applinks:{host}"))
+        .collect()
+}
+
+fn merge_associated_domains(
+    dict: &mut plist::Dictionary,
+    app_link_hosts: &[String],
+) -> Result<bool> {
+    let desired = desired_applink_domains(app_link_hosts);
+    if desired.is_empty() {
+        return Ok(false);
+    }
+
+    let mut domains = match dict.remove(ASSOCIATED_DOMAINS_ENTITLEMENT) {
+        Some(Value::Array(values)) => values,
+        Some(_) => {
+            return Err(anyhow!(
+                "{} must be an array in App.entitlements",
+                ASSOCIATED_DOMAINS_ENTITLEMENT
+            ));
+        }
+        None => Vec::new(),
+    };
+
+    let mut existing = domains
+        .iter()
+        .filter_map(Value::as_string)
+        .map(ToOwned::to_owned)
+        .collect::<HashSet<_>>();
+    let mut changed = false;
+    for domain in desired {
+        if existing.insert(domain.clone()) {
+            domains.push(Value::String(domain));
+            changed = true;
+        }
+    }
+
+    dict.insert(
+        ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
+        Value::Array(domains),
+    );
+    Ok(changed)
+}
+
 fn load_plist_dictionary(path: &Path) -> Result<plist::Dictionary> {
     let value: Value =
         plist::from_file(path).with_context(|| format!("Failed to parse {}", path.display()))?;
@@ -296,4 +355,63 @@ fn load_plist_dictionary(path: &Path) -> Result<plist::Dictionary> {
 
 fn escape_strings_value(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ASSOCIATED_DOMAINS_ENTITLEMENT, Value, merge_associated_domains};
+
+    fn associated_domains(dict: &plist::Dictionary) -> Vec<String> {
+        dict.get(ASSOCIATED_DOMAINS_ENTITLEMENT)
+            .and_then(Value::as_array)
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_string)
+            .map(ToOwned::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn associated_domain_sync_preserves_existing_domains() {
+        let mut dict = plist::Dictionary::new();
+        dict.insert(
+            ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
+            Value::Array(vec![
+                Value::String("webcredentials:example.com".to_string()),
+                Value::String("applinks:old.example.com".to_string()),
+            ]),
+        );
+
+        let changed = merge_associated_domains(&mut dict, &["new.example.com".to_string()])
+            .expect("merge associated domains");
+
+        assert!(changed);
+        assert_eq!(
+            associated_domains(&dict),
+            vec![
+                "webcredentials:example.com",
+                "applinks:old.example.com",
+                "applinks:new.example.com",
+            ]
+        );
+    }
+
+    #[test]
+    fn associated_domain_sync_is_noop_without_hosts() {
+        let mut dict = plist::Dictionary::new();
+        dict.insert(
+            ASSOCIATED_DOMAINS_ENTITLEMENT.to_string(),
+            Value::Array(vec![Value::String(
+                "webcredentials:example.com".to_string(),
+            )]),
+        );
+
+        let changed = merge_associated_domains(&mut dict, &[]).expect("merge associated domains");
+
+        assert!(!changed);
+        assert_eq!(
+            associated_domains(&dict),
+            vec!["webcredentials:example.com"]
+        );
+    }
 }

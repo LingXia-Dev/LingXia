@@ -304,7 +304,17 @@ impl Platform for MacosPlatform {
             eprintln!("{} {}", "Warning:".yellow(), err);
         }
 
-        if apple::capabilities::sync_macos_capability_files(&macos_dir, &granted_entitlements)? {
+        let app_link_hosts = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|config| config.app_links.as_ref())
+            .map(|app_links| app_links.hosts.as_slice())
+            .unwrap_or(&[]);
+        if apple::capabilities::sync_macos_capability_files(
+            &macos_dir,
+            &granted_entitlements,
+            app_link_hosts,
+        )? {
             println!(
                 "{} Synced macOS capability metadata (Info.plist/App.entitlements)",
                 "[macOS]".cyan()

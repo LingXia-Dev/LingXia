@@ -243,7 +243,17 @@ impl Platform for IosPlatform {
             eprintln!("{} {}", "Warning:".yellow(), err);
         }
 
-        if apple::capabilities::sync_ios_capability_files(&ios_dir, &granted_entitlements)? {
+        let app_link_hosts = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|config| config.app_links.as_ref())
+            .map(|app_links| app_links.hosts.as_slice())
+            .unwrap_or(&[]);
+        if apple::capabilities::sync_ios_capability_files(
+            &ios_dir,
+            &granted_entitlements,
+            app_link_hosts,
+        )? {
             println!(
                 "{} Synced iOS capability metadata (Info.plist/App.entitlements)",
                 "[iOS]".cyan()
@@ -303,7 +313,7 @@ impl Platform for IosPlatform {
         }
 
         let ipa_path = if config.ipa {
-            apple::provisioning::sign_app(&app_path, None)?;
+            apple::provisioning::sign_app(&app_path, None, app_link_hosts)?;
             let app_name = app_path
                 .file_stem()
                 .and_then(|n| n.to_str())
@@ -329,9 +339,13 @@ impl Platform for IosPlatform {
     fn install(&self, config: &InstallConfig) -> Result<()> {
         apple::ensure_macos()?;
 
-        let ios_config = crate::config::LingXiaConfig::load(&config.project_root)
-            .ok()
-            .and_then(|c| c.ios);
+        let host_config = crate::config::LingXiaConfig::load(&config.project_root).ok();
+        let app_link_hosts = host_config
+            .as_ref()
+            .and_then(|config| config.app_links.as_ref())
+            .map(|app_links| app_links.hosts.clone())
+            .unwrap_or_default();
+        let ios_config = host_config.and_then(|c| c.ios);
 
         // Determine app path
         let app_path = if let Some(ref path) = config.artifact_path {
@@ -352,7 +366,7 @@ impl Platform for IosPlatform {
         };
 
         // Sign the app before installing
-        apple::provisioning::sign_app(&app_path, Some(&device_identifier))?;
+        apple::provisioning::sign_app(&app_path, Some(&device_identifier), &app_link_hosts)?;
 
         if config.reinstall {
             let bundle_id = read_bundle_id(&app_path).ok();

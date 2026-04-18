@@ -11,7 +11,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::NamedTempFile;
@@ -129,12 +129,18 @@ impl TempKeychain {
     pub fn import_identity(&self, cert_der: &[u8], key_pem: &str) -> Result<()> {
         use std::io::Write;
 
-        let mut cert_file = NamedTempFile::new().context("Failed to create cert temp file")?;
+        let mut cert_file = tempfile::Builder::new()
+            .suffix(".cer")
+            .tempfile()
+            .context("Failed to create cert temp file")?;
         cert_file
             .write_all(cert_der)
             .context("Failed to write certificate")?;
 
-        let mut key_file = NamedTempFile::new().context("Failed to create key temp file")?;
+        let mut key_file = tempfile::Builder::new()
+            .suffix(".pem")
+            .tempfile()
+            .context("Failed to create key temp file")?;
         key_file
             .write_all(key_pem.as_bytes())
             .context("Failed to write private key")?;
@@ -336,8 +342,14 @@ impl ProvisioningContext {
 
         // 4. Create provisioning profile
         println!("{}", "Step 4/4: Creating provisioning profile...".cyan());
-        let profile_data =
-            self.create_profile(&client, &app_id_id, &cert_id, &new_bundle_id, is_free_team)?;
+        let profile_data = self.create_profile(
+            &client,
+            &app_id_id,
+            &cert_id,
+            &signing_identity,
+            &new_bundle_id,
+            is_free_team,
+        )?;
 
         // Extract entitlements
         let entitlements = extract_entitlements_from_profile(&profile_data)?;
@@ -380,8 +392,13 @@ impl ProvisioningContext {
 
         // 4. Create provisioning profile
         println!("{}", "Step 4/4: Creating provisioning profile...".cyan());
-        let profile_data =
-            self.create_profile_asc(&client, &bundle_id_record.id, original_bundle_id, &cert_id)?;
+        let profile_data = self.create_profile_asc(
+            &client,
+            &bundle_id_record.id,
+            original_bundle_id,
+            &cert_id,
+            &signing_identity,
+        )?;
 
         // Extract entitlements
         let entitlements = extract_entitlements_from_profile(&profile_data)?;
@@ -588,6 +605,7 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         client: &DeveloperServicesClient,
         app_id_id: &str,
         cert_id: &str,
+        signing_identity: &str,
         bundle_id: &str,
         cleanup_existing: bool,
     ) -> Result<Vec<u8>> {
@@ -607,7 +625,9 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
             &prefix,
         ) {
             match client.download_provisioning_profile(existing.profile_id) {
-                Ok(profile_data) => {
+                Ok(profile_data)
+                    if profile_includes_signing_identity(&profile_data, signing_identity)? =>
+                {
                     println!(
                         "  {} Reusing provisioning profile: {}",
                         "✓".green(),
@@ -615,6 +635,11 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
                     );
                     return Ok(profile_data);
                 }
+                Ok(_) => println!(
+                    "  {} Reusable profile {} does not include current signing certificate, creating a new one",
+                    "!".yellow(),
+                    existing.profile_name
+                ),
                 Err(err) => println!(
                     "  {} Failed to download reusable profile {}, creating a new one: {}",
                     "!".yellow(),
@@ -943,6 +968,7 @@ Fix options:\n\
         bundle_id_id: &str,
         bundle_identifier: &str,
         cert_id: &str,
+        signing_identity: &str,
     ) -> Result<Vec<u8>> {
         // Include only the target device.
         let devices = client.list_devices()?;
@@ -966,7 +992,9 @@ Fix options:\n\
             &prefix,
         ) {
             match client.download_profile(existing.profile_id) {
-                Ok(profile_data) => {
+                Ok(profile_data)
+                    if profile_includes_signing_identity(&profile_data, signing_identity)? =>
+                {
                     println!(
                         "  {} Reusing provisioning profile: {}",
                         "✓".green(),
@@ -974,6 +1002,11 @@ Fix options:\n\
                     );
                     return Ok(profile_data);
                 }
+                Ok(_) => println!(
+                    "  {} Reusable profile {} does not include current signing certificate, creating a new one",
+                    "!".yellow(),
+                    existing.profile_name
+                ),
                 Err(err) => println!(
                     "  {} Failed to download reusable profile {}, creating a new one: {}",
                     "!".yellow(),
@@ -1084,8 +1117,58 @@ fn profile_name_prefix(bundle_id: &str) -> String {
     format!("LingXia Dev {} ", short)
 }
 
+fn profile_includes_signing_identity(profile_data: &[u8], signing_identity: &str) -> Result<bool> {
+    let normalized_identity = signing_identity.trim().to_ascii_uppercase();
+    if normalized_identity.is_empty() {
+        return Ok(false);
+    }
+
+    let plist = decode_mobileprovision_plist(profile_data)?;
+    let Some(certs) = plist
+        .as_dictionary()
+        .and_then(|dict| dict.get("DeveloperCertificates"))
+        .and_then(plist::Value::as_array)
+    else {
+        return Ok(false);
+    };
+
+    for cert in certs {
+        let Some(cert_data) = cert.as_data() else {
+            continue;
+        };
+        if sha1_hex_upper(cert_data) == normalized_identity {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn decode_mobileprovision_plist(profile_data: &[u8]) -> Result<plist::Value> {
+    let mut profile_file = NamedTempFile::new().context("Failed to create profile temp file")?;
+    use std::io::Write;
+    profile_file
+        .write_all(profile_data)
+        .context("Failed to write profile temp file")?;
+
+    let output = Command::new("security")
+        .args(["cms", "-D", "-i"])
+        .arg(profile_file.path())
+        .output()
+        .context("Failed to decode provisioning profile")?;
+
+    if !output.status.success() {
+        return Err(anyhow!("Failed to decode provisioning profile"));
+    }
+
+    plist::from_bytes(&output.stdout).context("Failed to parse provisioning profile plist")
+}
+
 /// High-level function to sign an app with automatic provisioning
-pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<ProvisioningResult> {
+pub fn sign_app(
+    app_path: &Path,
+    device_udid: Option<&str>,
+    app_link_hosts: &[String],
+) -> Result<ProvisioningResult> {
     // Get device
     let device = if let Some(udid) = device_udid {
         DeviceCtl::get_device(udid)?
@@ -1106,7 +1189,7 @@ pub fn sign_app(app_path: &Path, device_udid: Option<&str>) -> Result<Provisioni
     // Run provisioning
     let result = ctx.provision(&bundle_id)?;
     let signing_entitlements =
-        apply_capability_entitlement_policy(&result.entitlements, &bundle_id)?;
+        apply_capability_entitlement_policy(&result.entitlements, &bundle_id, app_link_hosts)?;
 
     if let Some(ref material) = result.identity_material {
         // Create temporary keychain for signing (avoids password prompts)
@@ -1200,12 +1283,15 @@ fn is_profile_create_conflict(err: &anyhow::Error) -> bool {
 fn apply_capability_entitlement_policy(
     profile_entitlements: &[u8],
     bundle_id: &str,
+    app_link_hosts: &[String],
 ) -> Result<Vec<u8>> {
     let value = plist::from_bytes::<plist::Value>(profile_entitlements)
         .context("Failed to parse profile entitlements plist")?;
-    let entitlements = value
+    let mut entitlements = value
         .into_dictionary()
         .ok_or_else(|| anyhow!("Invalid entitlements plist format"))?;
+
+    apply_associated_domains_policy(&mut entitlements, app_link_hosts);
 
     let mut granted_controlled = Vec::new();
     let mut missing_controlled = Vec::new();
@@ -1235,6 +1321,72 @@ fn apply_capability_entitlement_policy(
     plist::to_writer_xml(&mut output, &entitlements)
         .context("Failed to serialize filtered entitlements plist")?;
     Ok(output)
+}
+
+fn apply_associated_domains_policy(
+    entitlements: &mut plist::Dictionary,
+    app_link_hosts: &[String],
+) {
+    const ASSOCIATED_DOMAINS: &str = "com.apple.developer.associated-domains";
+    let requested = app_link_hosts
+        .iter()
+        .map(|host| host.trim())
+        .filter(|host| !host.is_empty())
+        .map(|host| format!("applinks:{host}"))
+        .collect::<Vec<_>>();
+
+    if requested.is_empty() {
+        return;
+    }
+
+    let granted = entitlements
+        .get(ASSOCIATED_DOMAINS)
+        .and_then(plist::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(plist::Value::as_string)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        });
+
+    let Some(granted) = granted else {
+        entitlements.remove(ASSOCIATED_DOMAINS);
+        eprintln!(
+            "  {} Associated Domains not enabled by provisioning profile; AppLinks hosts will not be signed: {}",
+            "!".yellow(),
+            app_link_hosts.join(", ")
+        );
+        return;
+    };
+
+    let missing = requested
+        .iter()
+        .filter(|domain| !granted.iter().any(|entry| entry == *domain))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        let requested_set = requested.iter().map(String::as_str).collect::<HashSet<_>>();
+        let preserved = granted
+            .into_iter()
+            .filter(|domain| !requested_set.contains(domain.as_str()))
+            .map(plist::Value::String)
+            .collect::<Vec<_>>();
+        if preserved.is_empty() {
+            entitlements.remove(ASSOCIATED_DOMAINS);
+        } else {
+            entitlements.insert(
+                ASSOCIATED_DOMAINS.to_string(),
+                plist::Value::Array(preserved),
+            );
+        }
+        eprintln!(
+            "  {} Associated Domains profile mismatch; disabling AppLinks for this build. Missing: {}",
+            "!".yellow(),
+            missing.join(", ")
+        );
+        return;
+    }
 }
 
 fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissions: &[String]) {
@@ -1267,7 +1419,8 @@ mod tests {
         let mut source = Vec::new();
         plist::to_writer_xml(&mut source, &entitlements).unwrap();
 
-        let filtered = apply_capability_entitlement_policy(&source, "app.lingxia.test").unwrap();
+        let filtered =
+            apply_capability_entitlement_policy(&source, "app.lingxia.test", &[]).unwrap();
         let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
         let dict = parsed.as_dictionary().unwrap();
         assert!(dict.contains_key("com.apple.developer.networking.HotspotConfiguration"));
@@ -1279,9 +1432,63 @@ mod tests {
         let mut source = Vec::new();
         plist::to_writer_xml(&mut source, &plist::Dictionary::new()).unwrap();
 
-        let filtered = apply_capability_entitlement_policy(&source, "app.lingxia.test").unwrap();
+        let filtered =
+            apply_capability_entitlement_policy(&source, "app.lingxia.test", &[]).unwrap();
         let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
         let dict = parsed.as_dictionary().unwrap();
         assert!(!dict.contains_key("com.apple.developer.networking.HotspotConfiguration"));
+    }
+
+    #[test]
+    fn test_capability_policy_removes_malformed_associated_domains() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::String("*".to_string()),
+        );
+        entitlements.insert("get-task-allow".to_string(), plist::Value::Boolean(true));
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(
+            &source,
+            "app.lingxia.test",
+            &["www.example.com".to_string()],
+        )
+        .unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        assert!(!dict.contains_key("com.apple.developer.associated-domains"));
+        assert!(dict.contains_key("get-task-allow"));
+    }
+
+    #[test]
+    fn test_capability_policy_preserves_matching_associated_domains() {
+        let mut entitlements = plist::Dictionary::new();
+        entitlements.insert(
+            "com.apple.developer.associated-domains".to_string(),
+            plist::Value::Array(vec![
+                plist::Value::String("applinks:www.example.com".to_string()),
+                plist::Value::String("applinks:other.example.com".to_string()),
+            ]),
+        );
+        let mut source = Vec::new();
+        plist::to_writer_xml(&mut source, &entitlements).unwrap();
+
+        let filtered = apply_capability_entitlement_policy(
+            &source,
+            "app.lingxia.test",
+            &["www.example.com".to_string()],
+        )
+        .unwrap();
+        let parsed = plist::from_bytes::<plist::Value>(&filtered).unwrap();
+        let dict = parsed.as_dictionary().unwrap();
+        let domains = dict
+            .get("com.apple.developer.associated-domains")
+            .and_then(plist::Value::as_array)
+            .unwrap();
+        assert_eq!(domains.len(), 2);
+        assert_eq!(domains[0].as_string(), Some("applinks:www.example.com"));
+        assert_eq!(domains[1].as_string(), Some("applinks:other.example.com"));
     }
 }
