@@ -112,6 +112,10 @@ impl HarmonyPlatform {
             Some(&crate_name),
             config.profile,
             |cmd| {
+                if !config.native_features.is_empty() {
+                    cmd.arg("--features").arg(config.native_features.join(","));
+                }
+
                 let target_env = OHOS_TARGET.replace('-', "_");
                 let target_upper = OHOS_TARGET.to_uppercase().replace('-', "_");
                 cmd.env(format!("CARGO_TARGET_{}_LINKER", target_upper), &linker);

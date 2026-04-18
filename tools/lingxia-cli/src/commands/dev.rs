@@ -151,152 +151,189 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
 fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
     let platform = platform::android::AndroidPlatform::new();
-
     let build_targets = crate::platform::android_abis::resolve_android_targets_from_abis(&abis)?;
+    let server = server::start_server(&ctx.project_root)?;
+    let host_ws_url = server.ws_url();
+    let device_ws_url = loopback_ws_url(server.port());
+    let session = server.session().clone();
 
-    // Generate app.json and embed LxApp assets
-    let platforms_to_build = vec![PlatformType::Android];
-    prepare_configured_host_assets(
-        &ctx.project_root,
-        &ctx.config,
-        ctx.build_profile,
-        ctx.framework,
-        ctx.progress.as_deref(),
-        &platforms_to_build,
-        &build_targets,
-        true,
-    )?;
+    let run_result = (|| -> Result<()> {
+        // Generate app.json and embed LxApp assets
+        let platforms_to_build = vec![PlatformType::Android];
+        prepare_configured_host_assets(
+            &ctx.project_root,
+            &ctx.config,
+            ctx.build_profile,
+            ctx.framework,
+            ctx.progress.as_deref(),
+            &platforms_to_build,
+            &build_targets,
+            true,
+            Some(&device_ws_url),
+        )?;
 
-    // Step 1: Build
-    println!("{}", "Step 1/3: Building...".bold());
-    let build_config = BuildConfig {
-        project_root: ctx.project_root.clone(),
-        profile: ctx.build_profile,
-        build_native: ctx.build_native,
-        targets: build_targets,
-        lingxia_config: Some(ctx.config.clone()),
-        ipa: false,
-        package: false,
-        dmg: false,
-        macos_arch: None,
-        native_features: Vec::new(),
-    };
+        // Step 1: Build
+        println!("{}", "Step 1/4: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: build_targets,
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            macos_arch: None,
+            native_features: vec!["devtools".to_string()],
+        };
 
-    let artifacts = platform.build(&build_config)?;
-    let artifact_path = artifacts.path();
+        let artifacts = platform.build(&build_config)?;
+        let artifact_path = artifacts.path();
 
-    println!();
+        println!();
 
-    // Step 2: Install
-    println!("{}", "Step 2/3: Installing...".bold());
-    let package_id = ctx
-        .config
-        .android
-        .as_ref()
-        .map(|android| android.package_id.clone())
-        .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.yaml"))?;
-    let install_config = InstallConfig {
-        project_root: ctx.project_root.clone(),
-        artifact_path: Some(artifact_path.to_path_buf()),
-        device_id: ctx.device.clone(),
-        reinstall: ctx.reinstall,
-        quiet: false,
-    };
+        // Step 2: Install
+        println!("{}", "Step 2/4: Installing...".bold());
+        let package_id = ctx
+            .config
+            .android
+            .as_ref()
+            .map(|android| android.package_id.clone())
+            .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.yaml"))?;
+        let install_config = InstallConfig {
+            project_root: ctx.project_root.clone(),
+            artifact_path: Some(artifact_path.to_path_buf()),
+            device_id: ctx.device.clone(),
+            reinstall: ctx.reinstall,
+            quiet: false,
+        };
 
-    platform.install(&install_config)?;
+        platform.install(&install_config)?;
 
-    println!();
+        println!();
 
-    // Step 3: Launch app
-    println!("{}", "Step 3/3: Launching app...".bold());
+        // Step 3: Port reverse
+        println!("{}", "Step 3/4: Preparing dev connection...".bold());
+        let _forward = DevPortForward::android(ctx.device.as_deref(), server.port())?;
 
-    let run_config = RunConfig {
-        device_id: ctx.device,
-        package_id,
-        main_activity: None,
-    };
+        println!();
 
-    platform.run(&run_config)?;
+        // Step 4: Launch app
+        println!("{}", "Step 4/4: Launching app...".bold());
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
 
-    println!();
-    println!("{}", "Dev workflow complete!".green().bold());
-    println!("  {} Platform: {}", "*".bold(), "Android".cyan());
-    println!("  {} Artifact: {}", "*".bold(), artifacts.path().display());
-    println!();
+        let run_config = RunConfig {
+            device_id: ctx.device,
+            package_id,
+            main_activity: None,
+        };
 
-    Ok(())
+        platform.run(&run_config)?;
+
+        print_mobile_dev_started(
+            "Android",
+            artifacts.path(),
+            &host_ws_url,
+            &device_ws_url,
+            &ctx.project_root,
+            &session,
+        );
+        wait_for_interrupt(stop_requested)?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_dev_info(&ctx.project_root);
+    stop_dev_server(server, run_result)
 }
 
 fn execute_ios(ctx: DevContext) -> Result<()> {
     let platform = platform::ios::IosPlatform::new();
+    let server = server::start_server_on(&ctx.project_root, "0.0.0.0:0")?;
+    let host_ws_url = loopback_ws_url(server.port());
+    let device_ws_url = lan_ws_url(server.port())?;
+    let session = server.session().clone();
 
-    // Generate app.json and embed LxApp assets
-    let platforms_to_build = vec![PlatformType::Ios];
-    prepare_configured_host_assets(
-        &ctx.project_root,
-        &ctx.config,
-        ctx.build_profile,
-        ctx.framework,
-        ctx.progress.as_deref(),
-        &platforms_to_build,
-        &[],
-        true,
-    )?;
+    let run_result = (|| -> Result<()> {
+        // Generate app.json and embed LxApp assets
+        let platforms_to_build = vec![PlatformType::Ios];
+        prepare_configured_host_assets(
+            &ctx.project_root,
+            &ctx.config,
+            ctx.build_profile,
+            ctx.framework,
+            ctx.progress.as_deref(),
+            &platforms_to_build,
+            &[],
+            true,
+            Some(&device_ws_url),
+        )?;
 
-    // Step 1: Build
-    println!("{}", "Step 1/3: Building...".bold());
-    let build_config = BuildConfig {
-        project_root: ctx.project_root.clone(),
-        profile: ctx.build_profile,
-        build_native: ctx.build_native,
-        targets: vec![],
-        lingxia_config: Some(ctx.config.clone()),
-        ipa: false,
-        package: false,
-        dmg: false,
-        macos_arch: None,
-        native_features: Vec::new(),
-    };
+        // Step 1: Build
+        println!("{}", "Step 1/3: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: vec![],
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            macos_arch: None,
+            native_features: vec!["devtools".to_string()],
+        };
 
-    let artifacts = platform.build(&build_config)?;
-    let app_path = artifacts.path();
+        let artifacts = platform.build(&build_config)?;
+        let app_path = artifacts.path();
 
-    println!();
+        println!();
 
-    // Step 2: Sign + Install
-    println!("{}", "Step 2/3: Installing...".bold());
-    let install_config = InstallConfig {
-        project_root: ctx.project_root.clone(),
-        artifact_path: Some(app_path.to_path_buf()),
-        device_id: ctx.device.clone(),
-        reinstall: ctx.reinstall,
-        quiet: false,
-    };
-    platform.install(&install_config)?;
+        // Step 2: Sign + Install
+        println!("{}", "Step 2/3: Installing...".bold());
+        let install_config = InstallConfig {
+            project_root: ctx.project_root.clone(),
+            artifact_path: Some(app_path.to_path_buf()),
+            device_id: ctx.device.clone(),
+            reinstall: ctx.reinstall,
+            quiet: false,
+        };
+        platform.install(&install_config)?;
 
-    println!();
+        println!();
 
-    // Step 3: Launch app
-    println!("{}", "Step 3/3: Launching...".bold());
+        // Step 3: Launch app
+        println!("{}", "Step 3/3: Launching...".bold());
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
 
-    // Read bundle ID from the signed app (signing may change it for free accounts)
-    let bundle_id = platform::ios::read_bundle_id(app_path)?;
+        // Read bundle ID from the signed app (signing may change it for free accounts)
+        let bundle_id = platform::ios::read_bundle_id(app_path)?;
 
-    let run_config = RunConfig {
-        package_id: bundle_id.clone(),
-        main_activity: None,
-        device_id: ctx.device,
-    };
-    platform.run(&run_config)?;
+        let run_config = RunConfig {
+            package_id: bundle_id.clone(),
+            main_activity: None,
+            device_id: ctx.device,
+        };
+        platform.run(&run_config)?;
 
-    println!();
-    println!("{}", "Dev workflow complete!".green().bold());
-    println!("  {} Platform: {}", "*".bold(), "iOS".cyan());
-    println!("  {} Bundle ID: {}", "*".bold(), bundle_id);
-    println!("  {} Artifact: {}", "*".bold(), app_path.display());
-    println!();
+        print_mobile_dev_started(
+            "iOS",
+            app_path,
+            &host_ws_url,
+            &device_ws_url,
+            &ctx.project_root,
+            &session,
+        );
+        println!("  {} Bundle ID: {}", "*".bold(), bundle_id);
+        wait_for_interrupt(stop_requested)?;
+        Ok(())
+    })();
 
-    Ok(())
+    let _ = log_store::remove_dev_info(&ctx.project_root);
+    stop_dev_server(server, run_result)
 }
 
 fn execute_macos(ctx: DevContext, macos_arch: Option<String>) -> Result<()> {
@@ -330,6 +367,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         &platforms_to_build,
         &[],
         true,
+        None,
     )?;
 
     // Step 1: Build
@@ -411,82 +449,100 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
 
 fn execute_harmony(ctx: DevContext) -> Result<()> {
     let harmony_platform = platform::harmony::HarmonyPlatform::new();
+    let server = server::start_server(&ctx.project_root)?;
+    let host_ws_url = server.ws_url();
+    let device_ws_url = loopback_ws_url(server.port());
+    let session = server.session().clone();
 
-    // Generate app.json and embed LxApp assets
-    let platforms_to_build = vec![PlatformType::Harmony];
-    prepare_configured_host_assets(
-        &ctx.project_root,
-        &ctx.config,
-        ctx.build_profile,
-        ctx.framework,
-        ctx.progress.as_deref(),
-        &platforms_to_build,
-        &[],
-        true,
-    )?;
+    let run_result = (|| -> Result<()> {
+        // Generate app.json and embed LxApp assets
+        let platforms_to_build = vec![PlatformType::Harmony];
+        prepare_configured_host_assets(
+            &ctx.project_root,
+            &ctx.config,
+            ctx.build_profile,
+            ctx.framework,
+            ctx.progress.as_deref(),
+            &platforms_to_build,
+            &[],
+            true,
+            Some(&device_ws_url),
+        )?;
 
-    // Step 1: Build
-    println!("{}", "Step 1/3: Building...".bold());
-    let build_config = BuildConfig {
-        project_root: ctx.project_root.clone(),
-        profile: ctx.build_profile,
-        build_native: ctx.build_native,
-        targets: vec![],
-        lingxia_config: Some(ctx.config.clone()),
-        ipa: false,
-        package: false,
-        dmg: false,
-        macos_arch: None,
-        native_features: Vec::new(),
-    };
+        // Step 1: Build
+        println!("{}", "Step 1/4: Building...".bold());
+        let build_config = BuildConfig {
+            project_root: ctx.project_root.clone(),
+            profile: ctx.build_profile,
+            build_native: ctx.build_native,
+            targets: vec![],
+            lingxia_config: Some(ctx.config.clone()),
+            ipa: false,
+            package: false,
+            dmg: false,
+            macos_arch: None,
+            native_features: vec!["devtools".to_string()],
+        };
 
-    let artifacts = harmony_platform.build(&build_config)?;
-    let built_hap_path = artifacts.path().to_path_buf();
+        let artifacts = harmony_platform.build(&build_config)?;
+        let built_hap_path = artifacts.path().to_path_buf();
 
-    println!();
+        println!();
 
-    // Step 2: Install
-    println!("{}", "Step 2/3: Installing...".bold());
-    let harmony_dir =
-        platform::harmony::resolve_harmony_dir(&ctx.project_root, ctx.config.harmony.as_ref())?;
-    let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
-    let install_config = InstallConfig {
-        project_root: ctx.project_root.clone(),
-        artifact_path: Some(built_hap_path.clone()),
-        device_id: ctx.device.clone(),
-        reinstall: ctx.reinstall,
-        quiet: false,
-    };
+        // Step 2: Install
+        println!("{}", "Step 2/4: Installing...".bold());
+        let harmony_dir =
+            platform::harmony::resolve_harmony_dir(&ctx.project_root, ctx.config.harmony.as_ref())?;
+        let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
+        let install_config = InstallConfig {
+            project_root: ctx.project_root.clone(),
+            artifact_path: Some(built_hap_path.clone()),
+            device_id: ctx.device.clone(),
+            reinstall: ctx.reinstall,
+            quiet: false,
+        };
 
-    harmony_platform.install(&install_config)?;
-    let installed_hap_path = resolve_installed_harmony_hap(&built_hap_path);
+        harmony_platform.install(&install_config)?;
+        let installed_hap_path = resolve_installed_harmony_hap(&built_hap_path);
 
-    println!();
+        println!();
 
-    // Step 3: Launch app
-    println!("{}", "Step 3/3: Launching app...".bold());
+        // Step 3: Port reverse
+        println!("{}", "Step 3/4: Preparing dev connection...".bold());
+        let _forward = DevPortForward::harmony(ctx.device.as_deref(), server.port())?;
 
-    // Read bundleName from app.json5 (authoritative source).
-    let run_config = RunConfig {
-        package_id: bundle_name.clone(),
-        main_activity: None, // defaults to "EntryAbility" in harmony platform
-        device_id: ctx.device,
-    };
+        println!();
 
-    harmony_platform.run(&run_config)?;
+        // Step 4: Launch app
+        println!("{}", "Step 4/4: Launching app...".bold());
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        install_ctrlc_handler(stop_requested.clone())?;
+        log_store::write_dev_info(&ctx.project_root, &session, &host_ws_url)?;
 
-    println!();
-    println!("{}", "Dev workflow complete!".green().bold());
-    println!("  {} Platform: {}", "*".bold(), "HarmonyOS".cyan());
-    println!("  {} Bundle: {}", "*".bold(), bundle_name);
-    println!(
-        "  {} Artifact: {}",
-        "*".bold(),
-        installed_hap_path.display()
-    );
-    println!();
+        // Read bundleName from app.json5 (authoritative source).
+        let run_config = RunConfig {
+            package_id: bundle_name.clone(),
+            main_activity: None, // defaults to "EntryAbility" in harmony platform
+            device_id: ctx.device,
+        };
 
-    Ok(())
+        harmony_platform.run(&run_config)?;
+
+        print_mobile_dev_started(
+            "HarmonyOS",
+            &installed_hap_path,
+            &host_ws_url,
+            &device_ws_url,
+            &ctx.project_root,
+            &session,
+        );
+        println!("  {} Bundle: {}", "*".bold(), bundle_name);
+        wait_for_interrupt(stop_requested)?;
+        Ok(())
+    })();
+
+    let _ = log_store::remove_dev_info(&ctx.project_root);
+    stop_dev_server(server, run_result)
 }
 
 fn execute_lxapp_dev(project_root: PathBuf, options: DevExecuteOptions) -> Result<()> {
@@ -680,6 +736,191 @@ fn wait_for_child_or_interrupt(
 
         thread::sleep(Duration::from_millis(150));
     }
+}
+
+fn wait_for_interrupt(stop_requested: Arc<AtomicBool>) -> Result<()> {
+    while !stop_requested.load(Ordering::Acquire) {
+        thread::sleep(Duration::from_millis(150));
+    }
+    println!();
+    println!("{}", "Dev workflow stopped.".yellow().bold());
+    Ok(())
+}
+
+fn stop_dev_server(server: server::DevServerHandle, run_result: Result<()>) -> Result<()> {
+    let stop_result = server.stop();
+    match (run_result, stop_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), Ok(())) => Err(err),
+        (Ok(()), Err(err)) => Err(err),
+        (Err(run_err), Err(stop_err)) => Err(anyhow!(
+            "{}\nAlso failed to stop dev server: {}",
+            run_err,
+            stop_err
+        )),
+    }
+}
+
+fn loopback_ws_url(port: u16) -> String {
+    format!("ws://127.0.0.1:{port}")
+}
+
+fn lan_ws_url(port: u16) -> Result<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0")
+        .context("Failed to create UDP socket for host address detection")?;
+    if let Err(err) = socket.connect("8.8.8.8:80") {
+        eprintln!(
+            "{} Failed to detect LAN address ({}); falling back to localhost. Use a reachable host address if your device cannot connect.",
+            "Warning:".yellow(),
+            err
+        );
+        return Ok(loopback_ws_url(port));
+    }
+    match socket.local_addr() {
+        Ok(addr) => Ok(format!("ws://{}:{port}", addr.ip())),
+        Err(err) => {
+            eprintln!(
+                "{} Failed to read LAN address ({}); falling back to localhost. Use a reachable host address if your device cannot connect.",
+                "Warning:".yellow(),
+                err
+            );
+            Ok(loopback_ws_url(port))
+        }
+    }
+}
+
+fn print_mobile_dev_started(
+    platform: &str,
+    artifact: &Path,
+    host_ws_url: &str,
+    device_ws_url: &str,
+    project_root: &Path,
+    session: &log_store::DevLogSession,
+) {
+    println!();
+    println!("{}", "Dev workflow started.".green().bold());
+    println!("  {} Platform: {}", "*".bold(), platform.cyan());
+    println!("  {} Artifact: {}", "*".bold(), artifact.display());
+    println!(
+        "  {} Dev info: {}",
+        "*".bold(),
+        log_store::dev_info_path(project_root).display()
+    );
+    println!("  {} Host WS: {}", "*".bold(), host_ws_url);
+    println!("  {} Device WS: {}", "*".bold(), device_ws_url);
+    println!("  {} Log file: {}", "*".bold(), session.log_file.display());
+    println!("  {} Stop: {}", "*".bold(), "Ctrl+C".cyan());
+    println!();
+}
+
+struct DevPortForward {
+    cleanup: Option<PortForwardCleanup>,
+}
+
+enum PortForwardCleanup {
+    Android { device: Option<String>, port: u16 },
+    Harmony { device: Option<String>, port: u16 },
+}
+
+impl DevPortForward {
+    fn android(device: Option<&str>, port: u16) -> Result<Self> {
+        let _ = run_adb_reverse_remove(device, port);
+        run_adb_reverse(device, port)?;
+        println!("  {} adb reverse tcp:{port} -> tcp:{port}", "✓".green());
+        Ok(Self {
+            cleanup: Some(PortForwardCleanup::Android {
+                device: device.map(ToOwned::to_owned),
+                port,
+            }),
+        })
+    }
+
+    fn harmony(device: Option<&str>, port: u16) -> Result<Self> {
+        let _ = run_hdc_reverse_remove(device, port);
+        run_hdc_reverse(device, port)?;
+        println!("  {} hdc rport tcp:{port} -> tcp:{port}", "✓".green());
+        Ok(Self {
+            cleanup: Some(PortForwardCleanup::Harmony {
+                device: device.map(ToOwned::to_owned),
+                port,
+            }),
+        })
+    }
+}
+
+impl Drop for DevPortForward {
+    fn drop(&mut self) {
+        match self.cleanup.take() {
+            Some(PortForwardCleanup::Android { device, port }) => {
+                let _ = run_adb_reverse_remove(device.as_deref(), port);
+            }
+            Some(PortForwardCleanup::Harmony { device, port }) => {
+                let _ = run_hdc_reverse_remove(device.as_deref(), port);
+            }
+            None => {}
+        }
+    }
+}
+
+fn adb_command(device: Option<&str>) -> Command {
+    let mut command = Command::new("adb");
+    if let Some(device) = device {
+        command.arg("-s").arg(device);
+    }
+    command
+}
+
+fn run_adb_reverse(device: Option<&str>, port: u16) -> Result<()> {
+    let output = adb_command(device)
+        .args(["reverse", &format!("tcp:{port}"), &format!("tcp:{port}")])
+        .output()
+        .context("Failed to execute adb reverse")?;
+    ensure_command_success(output, "adb reverse")
+}
+
+fn run_adb_reverse_remove(device: Option<&str>, port: u16) -> Result<()> {
+    let output = adb_command(device)
+        .args(["reverse", "--remove", &format!("tcp:{port}")])
+        .output()
+        .context("Failed to execute adb reverse --remove")?;
+    ensure_command_success(output, "adb reverse --remove")
+}
+
+fn hdc_command(device: Option<&str>) -> Command {
+    let mut command = Command::new("hdc");
+    if let Some(device) = device {
+        command.arg("-t").arg(device);
+    }
+    command
+}
+
+fn run_hdc_reverse(device: Option<&str>, port: u16) -> Result<()> {
+    let output = hdc_command(device)
+        .args(["rport", &format!("tcp:{port}"), &format!("tcp:{port}")])
+        .output()
+        .context("Failed to execute hdc rport")?;
+    ensure_command_success(output, "hdc rport")
+}
+
+fn run_hdc_reverse_remove(device: Option<&str>, port: u16) -> Result<()> {
+    let output = hdc_command(device)
+        .args(["fport", "rm", &format!("tcp:{port} tcp:{port}")])
+        .output()
+        .context("Failed to execute hdc fport rm")?;
+    ensure_command_success(output, "hdc fport rm")
+}
+
+fn ensure_command_success(output: std::process::Output, label: &str) -> Result<()> {
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Err(anyhow!(
+        "{label} failed\nstdout: {}\nstderr: {}",
+        stdout.trim(),
+        stderr.trim()
+    ))
 }
 
 fn terminate_child(child: &mut Child, label: &str) -> Result<()> {

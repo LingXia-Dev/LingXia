@@ -298,6 +298,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &platforms_to_build,
         &build_targets,
         constrained_platforms,
+        None,
     )?;
 
     // Build each selected platform

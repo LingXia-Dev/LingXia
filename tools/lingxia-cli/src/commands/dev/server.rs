@@ -5,7 +5,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -28,6 +28,10 @@ pub struct DevServerHandle {
 impl DevServerHandle {
     pub fn ws_url(&self) -> String {
         format!("ws://{}", self.ws_addr)
+    }
+
+    pub fn port(&self) -> u16 {
+        self.ws_addr.port()
     }
 
     pub fn session(&self) -> &DevLogSession {
@@ -77,7 +81,8 @@ impl SessionLogWriter {
 }
 
 struct DevServerState {
-    runtime_sender: Mutex<Option<Sender<DevtoolsWireMessage>>>,
+    runtime_sender: Mutex<Option<(u64, Sender<DevtoolsWireMessage>)>>,
+    next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevtoolsWireMessage>>>,
     command_lock: Mutex<()>,
 }
@@ -86,36 +91,44 @@ impl DevServerState {
     fn new() -> Self {
         Self {
             runtime_sender: Mutex::new(None),
+            next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
             command_lock: Mutex::new(()),
         }
     }
 
-    fn try_claim_runtime_sender(&self, sender: Sender<DevtoolsWireMessage>) -> bool {
+    fn claim_runtime_sender(&self, sender: Sender<DevtoolsWireMessage>) -> (u64, bool) {
+        let runtime_id = self.next_runtime_id.fetch_add(1, Ordering::AcqRel);
         let mut guard = self
             .runtime_sender
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        if guard.is_some() {
-            return false;
+        let replaced = guard.is_some();
+        *guard = Some((runtime_id, sender));
+        if replaced {
+            self.clear_pending_results();
         }
-        *guard = Some(sender);
-        true
+        (runtime_id, replaced)
     }
 
-    fn clear_runtime_sender(&self) {
+    fn clear_runtime_sender(&self, runtime_id: u64) -> bool {
         let mut guard = self
             .runtime_sender
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *guard = None;
+        if guard.as_ref().is_some_and(|(id, _)| *id == runtime_id) {
+            *guard = None;
+            return true;
+        }
+        false
     }
 
     fn runtime_sender(&self) -> Option<Sender<DevtoolsWireMessage>> {
         self.runtime_sender
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
+            .as_ref()
+            .map(|(_, sender)| sender.clone())
     }
 
     fn register_pending_result(&self, command_id: String, tx: Sender<DevtoolsWireMessage>) {
@@ -147,8 +160,12 @@ impl DevServerState {
 }
 
 pub fn start_server(project_root: &Path) -> Result<DevServerHandle> {
+    start_server_on(project_root, SERVER_BIND_ADDR)
+}
+
+pub fn start_server_on(project_root: &Path, bind_addr: &str) -> Result<DevServerHandle> {
     let session = create_session(project_root)?;
-    let listener = TcpListener::bind(SERVER_BIND_ADDR).context("Failed to bind dev websocket")?;
+    let listener = TcpListener::bind(bind_addr).context("Failed to bind dev websocket")?;
     listener
         .set_nonblocking(true)
         .context("Failed to set dev websocket listener nonblocking")?;
@@ -231,9 +248,9 @@ fn handle_devtool_connection(
         .context("Failed to set devtool websocket read timeout")?;
 
     let (outgoing_tx, outgoing_rx) = mpsc::channel::<DevtoolsWireMessage>();
-    if !state.try_claim_runtime_sender(outgoing_tx) {
-        let _ = websocket.close(None);
-        return Err(anyhow!("a devtool runtime is already connected"));
+    let (runtime_id, replaced_runtime) = state.claim_runtime_sender(outgoing_tx);
+    if replaced_runtime {
+        eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
     }
 
     let result = loop {
@@ -280,8 +297,9 @@ fn handle_devtool_connection(
         }
     };
 
-    state.clear_runtime_sender();
-    state.clear_pending_results();
+    if state.clear_runtime_sender(runtime_id) {
+        state.clear_pending_results();
+    }
     result
 }
 

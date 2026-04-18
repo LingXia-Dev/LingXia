@@ -65,6 +65,7 @@ pub(crate) fn prepare_configured_host_assets(
     platforms: &[platform::detector::PlatformType],
     build_targets: &[String],
     _explicit_platforms: bool,
+    dev_ws_url: Option<&str>,
 ) -> Result<()> {
     let mut cache = HostAssetsCache::load(project_root);
     let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
@@ -107,7 +108,7 @@ Add the home LxApp project to resources.bundles and ensure its lxapp.json appId 
             home_lxapp_id
         ));
     }
-    let app_json = build_app_json_from_config(config, home_bundle)?;
+    let app_json = build_app_json_from_config(config, home_bundle, dev_ws_url)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
     let ui_json = build_ui_json_from_config(config, &prepared_app_ui_icons)?;
@@ -763,6 +764,7 @@ fn prepare_resource_bundles(
 fn build_app_json_from_config(
     config: &LingXiaConfig,
     home_bundle: Option<&PreparedResourceBundle>,
+    dev_ws_url: Option<&str>,
 ) -> Result<String> {
     let app = config
         .app
@@ -801,6 +803,17 @@ fn build_app_json_from_config(
     }
     if let Some(max_size_mb) = app.cache_max_size_mb {
         obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
+    }
+    if let Some(dev_ws_url) = dev_ws_url.map(str::trim).filter(|value| !value.is_empty()) {
+        obj.insert("devWsUrl".to_string(), serde_json::json!(dev_ws_url));
+    }
+    if let Some(app_links) = config.app_links.as_ref()
+        && !app_links.hosts.is_empty()
+    {
+        obj.insert(
+            "appLinks".to_string(),
+            serde_json::json!({ "hosts": app_links.hosts }),
+        );
     }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
@@ -1357,15 +1370,77 @@ mod tests {
                 "surfaces": [],
                 "activators": []
             })),
+            app_links: None,
             resources: None,
         };
 
-        let app_json = build_app_json_from_config(&config, None).unwrap();
+        let app_json = build_app_json_from_config(&config, None, None).unwrap();
         let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
         assert!(value.get("ui").is_none());
         assert!(value.get("panels").is_none());
         assert!(value.get("splashTimeout").is_none());
+    }
+
+    #[test]
+    fn generated_app_json_includes_dev_ws_url_when_configured() {
+        let config = LingXiaConfig {
+            app: Some(HostAppConfig {
+                project_name: "demo".into(),
+                product_name: "Demo".into(),
+                product_version: "1.2.3".into(),
+                api_server: None,
+                lingxia_id: None,
+                platforms: vec!["android".into()],
+                home_lxapp_id: None,
+                cache_max_age_days: None,
+                cache_max_size_mb: None,
+            }),
+            android: None,
+            ios: None,
+            macos: None,
+            harmony: None,
+            ui: None,
+            app_links: None,
+            resources: None,
+        };
+
+        let app_json =
+            build_app_json_from_config(&config, None, Some("ws://127.0.0.1:12345")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+        assert_eq!(value["devWsUrl"], "ws://127.0.0.1:12345");
+    }
+
+    #[test]
+    fn generated_app_json_includes_app_link_hosts() {
+        let config = LingXiaConfig {
+            app: Some(HostAppConfig {
+                project_name: "demo".into(),
+                product_name: "Demo".into(),
+                product_version: "1.2.3".into(),
+                api_server: None,
+                lingxia_id: None,
+                platforms: vec!["android".into()],
+                home_lxapp_id: None,
+                cache_max_age_days: None,
+                cache_max_size_mb: None,
+            }),
+            android: None,
+            ios: None,
+            macos: None,
+            harmony: None,
+            ui: None,
+            app_links: Some(crate::config::AppLinksConfig {
+                hosts: vec!["www.example.com".into()],
+            }),
+            resources: None,
+        };
+
+        let app_json = build_app_json_from_config(&config, None, None).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+        assert_eq!(value["appLinks"]["hosts"][0], "www.example.com");
     }
 
     #[test]
@@ -1386,6 +1461,7 @@ mod tests {
             macos: None,
             harmony: None,
             ui: Some(ui.clone()),
+            app_links: None,
             resources: None,
         };
 
@@ -1413,6 +1489,7 @@ mod tests {
             macos: None,
             harmony: None,
             ui: Some(ui),
+            app_links: None,
             resources: None,
         };
         let icons = vec![super::PreparedAppUiIcon {
@@ -1459,6 +1536,7 @@ mod tests {
                     "action": { "kind": "toggleSurface", "surface": "main" }
                 }]
             })),
+            app_links: None,
             resources: None,
         };
 
