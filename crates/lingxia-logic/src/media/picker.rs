@@ -134,22 +134,43 @@ async fn choose_media(
             Path::new(uri).is_absolute().then(|| PathBuf::from(uri))
         };
 
-        let final_path: PathBuf = if let Some(source_path) = local_path {
+        let final_uri = if let Some(source_path) = local_path {
             match lxapp.resolve_accessible_path(source_path.to_string_lossy().as_ref()) {
-                Ok(path) if lxapp.to_uri(&path).is_some() => path,
-                _ => ensure_cached_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
-                    fs::copy(&source_path, dest_path).map(|_| ()).map_err(|e| {
+                Ok(path) if lxapp.to_uri(&path).is_some() => {
+                    response_path_for_media(&lxapp, &path)?
+                }
+                _ if should_copy_local_media_file_to_cache() => {
+                    let cached_path = ensure_cached_media_path(
+                        lxapp.as_ref(),
+                        &key,
+                        &ext,
+                        |dest_path| {
+                            let result = fs::copy(&source_path, dest_path);
+                            result.map(|_| ()).map_err(|e| {
+                                js_internal_error(format!(
+                                    "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
+                                    source_path.display(),
+                                    dest_path.display(),
+                                    e
+                                ))
+                            })
+                        },
+                    )?;
+                    response_path_for_media(&lxapp, &cached_path)?
+                }
+                _ => lxapp
+                    .grant_transient_file_access(&source_path)
+                    .map_err(|e| {
                         js_internal_error(format!(
-                            "chooseMedia failed to copy temp file into cache (src={}, dest={}): {}",
+                            "chooseMedia failed to register temporary media file {}: {}",
                             source_path.display(),
-                            dest_path.display(),
                             e
                         ))
-                    })
-                })?,
+                    })?
+                    .into_string(),
             }
         } else if let Ok(path) = lxapp.resolve_accessible_path(uri) {
-            path
+            response_path_for_media(&lxapp, &path)?
         } else {
             let media_kind = match kind {
                 "video" => MediaKind::Video,
@@ -159,15 +180,9 @@ async fn choose_media(
             ensure_cached_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
                     .map_err(|err| js_error_from_platform_error(&err))
-            })?
+            })
+            .and_then(|path| response_path_for_media(&lxapp, &path))?
         };
-
-        let final_uri = lxapp
-            .to_uri(&final_path)
-            .ok_or_else(|| {
-                js_internal_error("chooseMedia failed to convert output path to lx:// uri")
-            })?
-            .into_string();
 
         out.push(ChosenMediaEntry {
             path: final_uri,
@@ -184,6 +199,24 @@ async fn choose_media(
             e
         ))
     })
+}
+
+fn response_path_for_media(lxapp: &LxApp, path: &Path) -> JSResult<String> {
+    if let Some(uri) = lxapp.to_uri(path) {
+        return Ok(uri.into_string());
+    }
+
+    Err(js_internal_error(
+        "chooseMedia failed to convert output path to lx:// uri",
+    ))
+}
+
+fn should_copy_local_media_file_to_cache() -> bool {
+    cfg!(any(
+        target_os = "android",
+        target_os = "ios",
+        all(target_os = "linux", target_env = "ohos")
+    ))
 }
 
 fn cache_extension_for_media(kind: &str, raw_ext: Option<&str>, uri: &str) -> String {

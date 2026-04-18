@@ -11,6 +11,7 @@ pub(crate) const HOST_LXAPP: &str = "lxapp";
 pub(crate) const HOST_PLUGIN: &str = "plugin";
 pub(crate) const HOST_PROXY: &str = "proxy";
 pub(crate) const HOST_ASSETS: &str = "assets";
+pub(crate) const HOST_TEMP: &str = "temp";
 pub(crate) const HOST_USER_CACHE: &str = "usercache";
 pub(crate) const HOST_USER_DATA: &str = "userdata";
 pub(crate) const PLUGIN_PAGE_PATH_PREFIX: &str = "plugin/";

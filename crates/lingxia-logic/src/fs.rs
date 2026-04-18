@@ -6,6 +6,7 @@ use lingxia_platform::traits::file::{
 };
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
+use std::path::Path;
 
 mod download;
 mod upload;
@@ -177,6 +178,70 @@ fn resolve_dialog_default_path(lxapp: &LxApp, raw_path: &str) -> JSResult<String
     Ok(resolved.to_string_lossy().into_owned())
 }
 
+fn selected_file_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
+    let path = raw_path.trim();
+    if path.is_empty() {
+        return Err(js_internal_error("chooseFile returned an empty path"));
+    }
+
+    if let Ok(resolved) = lxapp.resolve_accessible_path(path)
+        && let Some(uri) = lxapp.to_uri(&resolved)
+    {
+        return Ok(uri.into_string());
+    }
+
+    let path_ref = Path::new(path);
+    if path_ref.is_absolute() {
+        return lxapp
+            .grant_transient_file_access(path_ref)
+            .map(|uri| uri.into_string())
+            .map_err(|err| {
+                js_internal_error(format!(
+                    "chooseFile failed to grant temporary file access for {}: {}",
+                    path_ref.display(),
+                    err
+                ))
+            });
+    }
+
+    Err(js_internal_error(format!(
+        "chooseFile returned an inaccessible path: {}",
+        path
+    )))
+}
+
+fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<String> {
+    let path = raw_path.trim();
+    if path.is_empty() {
+        return Err(js_internal_error("chooseDirectory returned an empty path"));
+    }
+
+    if let Ok(resolved) = lxapp.resolve_accessible_path(path)
+        && let Some(uri) = lxapp.to_uri(&resolved)
+    {
+        return Ok(uri.into_string());
+    }
+
+    let path_ref = Path::new(path);
+    if path_ref.is_absolute() {
+        return lxapp
+            .grant_transient_directory_access(path_ref)
+            .map(|uri| uri.into_string())
+            .map_err(|err| {
+                js_internal_error(format!(
+                    "chooseDirectory failed to grant temporary directory access for {}: {}",
+                    path_ref.display(),
+                    err
+                ))
+            });
+    }
+
+    Err(js_internal_error(format!(
+        "chooseDirectory returned an inaccessible path: {}",
+        path
+    )))
+}
+
 async fn choose_file(
     ctx: JSContext,
     options: Optional<JSChooseFileOptions>,
@@ -224,9 +289,15 @@ async fn choose_file(
         ));
     }
 
+    let paths = result
+        .paths
+        .iter()
+        .map(|path| selected_file_path_to_uri(&lxapp, path))
+        .collect::<JSResult<Vec<_>>>()?;
+
     Ok(ChooseFileResultObj {
         canceled: result.canceled,
-        paths: result.paths,
+        paths,
     })
 }
 
@@ -259,9 +330,16 @@ async fn choose_directory(
         ));
     }
 
+    let path = result
+        .paths
+        .into_iter()
+        .next()
+        .map(|path| selected_directory_path_to_uri(&lxapp, &path))
+        .transpose()?;
+
     Ok(ChooseDirectoryResultObj {
         canceled: result.canceled,
-        path: result.paths.into_iter().next(),
+        path,
     })
 }
 

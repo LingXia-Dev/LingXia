@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tokio::time;
+use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
 use crate::cache::LxAppCache;
@@ -66,6 +67,32 @@ const PAGE_STACK_MAX: usize = 10;
 static NUM_WORKERS: OnceLock<usize> = OnceLock::new();
 static LXAPP_SOURCE_OVERRIDES: OnceLock<Mutex<HashMap<String, LxAppBundleSource>>> =
     OnceLock::new();
+static TRANSIENT_FILE_GRANTS: OnceLock<DashMap<(String, LxAppSessionId, String), PathBuf>> =
+    OnceLock::new();
+
+#[derive(Debug, Clone, Copy)]
+enum TransientPathKind {
+    File,
+    Directory,
+}
+
+fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<PathBuf, LxAppError> {
+    let normalized = std::fs::canonicalize(path).map_err(|e| {
+        LxAppError::ResourceNotFound(format!("transient path {}: {}", path.display(), e))
+    })?;
+    let metadata = std::fs::metadata(&normalized)?;
+    let valid = match kind {
+        TransientPathKind::File => metadata.is_file(),
+        TransientPathKind::Directory => metadata.is_dir(),
+    };
+    if !valid {
+        return Err(LxAppError::InvalidParameter(format!(
+            "invalid transient path kind: {}",
+            normalized.display()
+        )));
+    }
+    Ok(normalized)
+}
 
 /// Set the number of JS workers (and lxapp navigation stack capacity).
 ///
@@ -520,6 +547,49 @@ impl LxApp {
         self.session.id
     }
 
+    pub fn grant_transient_file_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+        self.grant_transient_path_access(path, TransientPathKind::File)
+    }
+
+    pub fn grant_transient_directory_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+        self.grant_transient_path_access(path, TransientPathKind::Directory)
+    }
+
+    fn grant_transient_path_access(
+        &self,
+        path: &Path,
+        kind: TransientPathKind,
+    ) -> Result<uri::LxUri, LxAppError> {
+        let normalized = normalize_transient_path(path, kind)?;
+        let token = Uuid::new_v4().simple().to_string();
+        TRANSIENT_FILE_GRANTS.get_or_init(DashMap::new).insert(
+            (self.appid.clone(), self.session_id(), token.clone()),
+            normalized,
+        );
+        uri::LxUri::from_str(&format!(
+            "{}://{}/{}",
+            uri::LX_SCHEME,
+            uri::HOST_TEMP,
+            token
+        ))
+        .map_err(LxAppError::InvalidParameter)
+    }
+
+    fn resolve_transient_file(&self, token: &str) -> Option<PathBuf> {
+        TRANSIENT_FILE_GRANTS
+            .get_or_init(DashMap::new)
+            .get(&(self.appid.clone(), self.session_id(), token.to_string()))
+            .map(|entry| entry.value().clone())
+    }
+
+    pub(crate) fn clear_transient_files(&self) {
+        let appid = self.appid.clone();
+        let session_id = self.session_id();
+        if let Some(grants) = TRANSIENT_FILE_GRANTS.get() {
+            grants.retain(|key, _| key.0 != appid || key.1 != session_id);
+        }
+    }
+
     fn status_name(&self) -> &'static str {
         self.status().as_str()
     }
@@ -604,6 +674,7 @@ impl LxApp {
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from Page drops
         self.set_status(LxAppSessionStatus::Closing);
+        self.clear_transient_files();
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
 
         // Close UI window
@@ -970,7 +1041,7 @@ impl LxApp {
         if path.starts_with("lx://") {
             let lx_uri = uri::LxUri::from_str(path)
                 .map_err(|e| LxAppError::InvalidParameter(format!("invalid lx uri: {}", e)))?;
-            return self.resolve_lx_user_uri(&lx_uri);
+            return self.resolve_lx_path_uri(&lx_uri);
         }
 
         // 2. Prevent directory traversal for any input
@@ -1051,7 +1122,7 @@ impl LxApp {
         uri::try_convert_path_to_uri(path, self)
     }
 
-    fn resolve_lx_user_uri(&self, lx_uri: &uri::LxUri) -> Result<PathBuf, LxAppError> {
+    fn resolve_lx_path_uri(&self, lx_uri: &uri::LxUri) -> Result<PathBuf, LxAppError> {
         let uri = HttpUri::from_str(lx_uri.as_str())
             .map_err(|_| LxAppError::InvalidParameter("invalid lx uri".to_string()))?;
 
@@ -1062,6 +1133,21 @@ impl LxApp {
         }
 
         match uri.host() {
+            Some(uri::HOST_TEMP) => {
+                if uri.query().is_some() {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+                let token = uri.path().trim_matches('/');
+                if token.len() != 32 || token.contains('/') {
+                    return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
+                }
+                self.resolve_transient_file(token).ok_or_else(|| {
+                    LxAppError::ResourceNotFound(format!(
+                        "temporary file grant not found: {}",
+                        lx_uri.as_str()
+                    ))
+                })
+            }
             Some(uri::HOST_USER_CACHE) | Some(uri::HOST_USER_DATA) => {
                 let base_dir = match uri.host() {
                     Some(uri::HOST_USER_CACHE) => &self.user_cache_dir,
