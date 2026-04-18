@@ -6,6 +6,12 @@ static LOGGING_INIT: OnceLock<()> = OnceLock::new();
 static DOWNSTREAM_LOGGER: OnceLock<Box<dyn Log + Send + Sync>> = OnceLock::new();
 static SDK_LOGGER: SdkLogger = SdkLogger;
 
+const SDK_LOG_LEVEL_VERBOSE: i32 = 0;
+const SDK_LOG_LEVEL_DEBUG: i32 = 1;
+const SDK_LOG_LEVEL_INFO: i32 = 2;
+const SDK_LOG_LEVEL_WARN: i32 = 3;
+const SDK_LOG_LEVEL_ERROR: i32 = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownstreamLoggerError {
     AlreadyRegistered,
@@ -45,6 +51,33 @@ pub fn register_downstream_logger(
         .map_err(|_| DownstreamLoggerError::AlreadyRegistered)
 }
 
+/// Emit a log entry from non-Rust SDK code through the Rust log pipeline.
+///
+/// The `level` value is the raw FFI contract: 0=verbose, 1=debug, 2=info,
+/// 3=warn, 4=error. SDK-facing wrappers should hide these integer values
+/// behind platform-native enums.
+pub(crate) fn emit_sdk_log(
+    level: i32,
+    category: &str,
+    appid: &str,
+    path: &str,
+    message: &str,
+) -> bool {
+    let Some(level) = map_sdk_level(level) else {
+        return false;
+    };
+    if LogManager::get().is_none() {
+        return false;
+    }
+
+    LogBuilder::new(LogTag::Native, message)
+        .with_level(level)
+        .with_target(category.to_string())
+        .with_appid(appid.to_string())
+        .with_path(path.to_string());
+    true
+}
+
 struct SdkLogger;
 
 impl Log for SdkLogger {
@@ -82,6 +115,17 @@ fn map_level(level: Level) -> LxLogLevel {
         Level::Info => LxLogLevel::Info,
         Level::Debug => LxLogLevel::Debug,
         Level::Trace => LxLogLevel::Verbose,
+    }
+}
+
+fn map_sdk_level(level: i32) -> Option<LxLogLevel> {
+    match level {
+        SDK_LOG_LEVEL_VERBOSE => Some(LxLogLevel::Verbose),
+        SDK_LOG_LEVEL_DEBUG => Some(LxLogLevel::Debug),
+        SDK_LOG_LEVEL_INFO => Some(LxLogLevel::Info),
+        SDK_LOG_LEVEL_WARN => Some(LxLogLevel::Warn),
+        SDK_LOG_LEVEL_ERROR => Some(LxLogLevel::Error),
+        _ => None,
     }
 }
 

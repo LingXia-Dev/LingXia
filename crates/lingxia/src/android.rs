@@ -147,6 +147,28 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_lingxiaInit<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_emitSdkLog(
+    mut env: EnvUnowned,
+    _class: JClass,
+    level: jint,
+    category: JString,
+    appid: JString,
+    path: JString,
+    message: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let category: String = category.try_to_string(env)?;
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let message: String = message.try_to_string(env)?;
+        Ok(crate::logging::emit_sdk_log(
+            level, &category, &appid, &path, &message,
+        ))
+    })
+    .resolve::<LogErrorAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onPageShow(
     mut env: EnvUnowned,
     _class: JClass,

@@ -146,6 +146,17 @@ pub fn lingxia_init(
     crate::init_with_platform(platform)
 }
 
+#[napi]
+pub fn emit_sdk_log(
+    level: i32,
+    category: String,
+    appid: String,
+    path: String,
+    message: String,
+) -> bool {
+    crate::logging::emit_sdk_log(level, &category, &appid, &path, &message)
+}
+
 /// Register custom schemes (must be called before WebEngine initialization)
 #[napi]
 pub fn register_custom_schemes() -> bool {

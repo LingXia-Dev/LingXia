@@ -108,6 +108,10 @@ mod bridge {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
 
+        #[swift_bridge(swift_name = "emitSdkLog")]
+        fn emit_sdk_log(level: i32, category: &str, appid: &str, path: &str, message: &str)
+        -> bool;
+
         #[swift_bridge(swift_name = "onPageShow")]
         fn on_page_show(appid: &str, path: &str);
 
@@ -301,6 +305,10 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<Str
     };
 
     crate::init_with_platform(platform)
+}
+
+pub fn emit_sdk_log(level: i32, category: &str, appid: &str, path: &str, message: &str) -> bool {
+    crate::logging::emit_sdk_log(level, category, appid, path, message)
 }
 
 /// Notify that a page is being shown
