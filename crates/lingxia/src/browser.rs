@@ -106,6 +106,7 @@ pub(crate) fn download(
     }
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn resolve_input_json(request_json: &str) -> Option<String> {
     #[cfg(feature = "shell")]
     return lingxia_shell::resolve_input_json(request_json);

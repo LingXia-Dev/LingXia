@@ -211,11 +211,6 @@ pub fn resolve_lx_uri(appid: String, input: String) -> Option<String> {
 }
 
 #[napi]
-pub fn handle_browser_address_input(request_json: String) -> Option<String> {
-    crate::browser::resolve_input_json(&request_json)
-}
-
-#[napi]
 pub fn handle_browser_navigation_policy(request_json: String) -> Option<String> {
     crate::browser::classify_navigation_json(&request_json)
 }

@@ -7,7 +7,6 @@ import {
   WebViewManager,
   notifyWebViewControllerAttached
 } from '../WebViewBridge';
-import { submitBrowserAddress } from './BrowserAddressInput';
 import {
   resolveBrowserNavigationPolicy,
   type BrowserNavigationPolicyResponse
@@ -22,6 +21,60 @@ const DOMAIN = 0x0000;
 const TAG = 'LingXia.BrowserOverlay';
 const ATTACH_RETRY_DELAY_MS = 100;
 const ATTACH_MAX_RETRIES = 8;
+
+interface BrowserUrlDisplay {
+  text: string;
+  iconPath: Resource;
+  iconColor: string;
+}
+
+function browserUrlDisplay(rawUrl: string): BrowserUrlDisplay {
+  const trimmed = String(rawUrl ?? '').trim();
+  if (!trimmed) {
+    return {
+      text: '',
+      iconPath: $rawfile('icons/icon_lock.svg'),
+      iconColor: '#666666',
+    };
+  }
+  const fallback: BrowserUrlDisplay = {
+    text: 'Web page',
+    iconPath: $rawfile('icons/icon_warning.svg'),
+    iconColor: '#A15C00',
+  };
+  const schemeEnd = trimmed.indexOf(':');
+  if (schemeEnd <= 0) {
+    return fallback;
+  }
+  const scheme = trimmed.substring(0, schemeEnd).toLowerCase();
+  if (scheme === 'http' || scheme === 'https') {
+    const rest = trimmed.substring(schemeEnd + 1);
+    if (!rest.startsWith('//')) {
+      return fallback;
+    }
+    const authority = rest.substring(2).split(/[/?#]/)[0] ?? '';
+    const hostPort = authority.split('@').pop() ?? authority;
+    const host = hostPort.startsWith('[')
+      ? (hostPort.split(']')[0] + ']')
+      : hostPort.split(':')[0];
+    if (!host) {
+      return fallback;
+    }
+    if (scheme === 'http') {
+      return {
+        text: host,
+        iconPath: $rawfile('icons/icon_warning.svg'),
+        iconColor: '#A15C00',
+      };
+    }
+    return {
+      text: host,
+      iconPath: $rawfile('icons/icon_lock.svg'),
+      iconColor: '#666666',
+    };
+  }
+  return fallback;
+}
 
 /**
  * Browser overlay manager - single UI instance (no multi-open UI for now)
@@ -120,7 +173,8 @@ export struct BrowserOverlay {
   @State private canGoForward: boolean = false;
   @State private bottomSafeAreaHeight: number = 0;
   @State private topSafeAreaHeight: number = 0;
-  @State private isEditingAddress: boolean = false;
+  @State private addressIconPath: Resource = $rawfile('icons/icon_lock.svg');
+  @State private addressIconColor: string = '#666666';
 
   private controller: webview.WebviewController = new webview.WebviewController();
   private listener: (() => void) | null = null;
@@ -147,7 +201,7 @@ export struct BrowserOverlay {
         this.attachRetryCount = 0;
         this.tabId = nextTabId;
         this.url = nextInitialUrl;
-        this.addressText = nextInitialUrl;
+        this.updateAddressDisplay(nextInitialUrl);
         this.canGoBack = false;
         this.canGoForward = false;
         this.controllerReady = false;
@@ -157,7 +211,7 @@ export struct BrowserOverlay {
 
       if (nextInitialUrl && !this.url) {
         this.url = nextInitialUrl;
-        this.addressText = nextInitialUrl;
+        this.updateAddressDisplay(nextInitialUrl);
       }
 
       if (this.controllerReady) {
@@ -281,22 +335,8 @@ export struct BrowserOverlay {
     this.attachRetryCount = 0;
     this.controllerWebTag = '';
     this.controllerAcked = false;
-  }
-
-  private submitAddress(raw: string): void {
-    const result = submitBrowserAddress(raw, this.url);
-    if (!result) {
-      return;
-    }
-
-    this.addressText = result.displayText;
-    this.url = result.url;
-    this.isEditingAddress = false;
-    try {
-      this.controller.loadUrl(result.url);
-    } catch (error) {
-      hilog.warn(DOMAIN, TAG, `loadUrl failed: ${error}`);
-    }
+    this.addressIconPath = $rawfile('icons/icon_lock.svg');
+    this.addressIconColor = '#666666';
   }
 
   build() {
@@ -410,27 +450,18 @@ export struct BrowserOverlay {
               })
 
             Row() {
-              TextInput({ text: this.addressText, placeholder: 'Enter URL' })
+              Image(this.addressIconPath)
+                .width(16)
+                .height(16)
+                .fillColor(this.addressIconColor)
+                .margin({ right: 6 })
+
+              Text(this.addressText)
                 .layoutWeight(1)
                 .fontSize(14)
                 .fontColor('#333333')
-                .backgroundColor(Color.Transparent)
-                .border({ width: 0 })
-                .padding({ left: 0, right: 0, top: 0, bottom: 0 })
-                .caretColor('#333333')
-                .enterKeyType(EnterKeyType.Go)
-                .onChange((value: string) => {
-                  this.addressText = value;
-                })
-                .onFocus(() => {
-                  this.isEditingAddress = true;
-                })
-                .onBlur(() => {
-                  this.isEditingAddress = false;
-                })
-                .onSubmit((_enterKey) => {
-                  this.submitAddress(this.addressText);
-                })
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
 
               Image($rawfile('icons/icon_browser_refresh.svg'))
                 .width(18)
@@ -498,14 +529,19 @@ export struct BrowserOverlay {
       const currentUrl = this.controller.getUrl();
       if (currentUrl) {
         this.url = currentUrl;
-        if (!this.isEditingAddress) {
-          this.addressText = currentUrl;
-        }
+        this.updateAddressDisplay(currentUrl);
       }
       this.canGoBack = this.controller.accessBackward();
       this.canGoForward = this.controller.accessForward();
     } catch (error) {
       hilog.warn(DOMAIN, TAG, `updateState failed: ${error}`);
     }
+  }
+
+  private updateAddressDisplay(rawUrl: string): void {
+    const display = browserUrlDisplay(rawUrl);
+    this.addressText = display.text;
+    this.addressIconPath = display.iconPath;
+    this.addressIconColor = display.iconColor;
   }
 }

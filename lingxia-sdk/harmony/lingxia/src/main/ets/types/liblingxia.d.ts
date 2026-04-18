@@ -25,59 +25,7 @@ declare module 'liblingxia.so' {
     session_id: number;
   }
 
-  export type BrowserAddressInputTrigger = 'edit' | 'submit';
-  export type BrowserAddressAction = 'navigate' | 'suggest' | 'reject';
-  export type BrowserAddressValueKind = 'empty' | 'url' | 'search_query' | 'invalid';
-  export type BrowserNavigationTarget = 'current_tab' | 'new_tab';
   export type BrowserNavigationPolicyDecision = 'in_webview' | 'open_external' | 'deny';
-
-  export interface BrowserAddressInputContext {
-    preferred_scheme?: string | null;
-    current_url?: string | null;
-    tab_id?: string | null;
-    allow_search_fallback?: boolean;
-  }
-
-  export interface BrowserAddressInputRequest {
-    raw_input: string;
-    trigger?: BrowserAddressInputTrigger;
-    context?: BrowserAddressInputContext;
-  }
-
-  export interface BrowserAddressState {
-    raw_input: string;
-    normalized_input: string;
-    display_text: string;
-    value_kind: BrowserAddressValueKind;
-    canonical_url?: string | null;
-    inferred_scheme?: string | null;
-  }
-
-  export interface BrowserAddressNavigation {
-    url: string;
-    target: BrowserNavigationTarget;
-  }
-
-  export interface BrowserAddressSuggestion {
-    kind: string;
-    title: string;
-    subtitle?: string | null;
-    fill_text: string;
-    navigation?: BrowserAddressNavigation | null;
-  }
-
-  export interface BrowserAddressInputError {
-    code: string;
-    message: string;
-  }
-
-  export interface BrowserAddressInputResponse {
-    action: BrowserAddressAction;
-    state: BrowserAddressState;
-    navigation?: BrowserAddressNavigation | null;
-    suggestions?: BrowserAddressSuggestion[] | null;
-    error?: BrowserAddressInputError | null;
-  }
 
   export interface BrowserNavigationPolicyRequest {
     raw_url: string;
@@ -217,19 +165,31 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
-   * Run the shared browser address input handler.
-   *
-   * The input and output are JSON payloads so the schema can evolve without
-   * repeatedly changing the native ABI.
-   */
-  export function handleBrowserAddressInput(requestJson: string): string | null;
-
-  /**
    * Run the shared browser navigation policy classifier.
    *
    * Returns a decision: in_webview | open_external | deny.
    */
   export function handleBrowserNavigationPolicy(requestJson: string): string | null;
+
+  /**
+   * Open or navigate a managed internal browser tab and return tabId.
+   */
+  export function openBrowserTab(appid: string, sessionId: number, url: string): string | null;
+
+  /**
+   * Close a managed internal browser tab.
+   */
+  export function browserTabClose(tabId: string): boolean;
+
+  /**
+   * Get the built-in browser lxapp id.
+   */
+  export function getBuiltinBrowserAppId(): string;
+
+  /**
+   * Resolve managed browser tab path from tabId.
+   */
+  export function browserTabPathForId(tabId: string): string;
 
   /**
    * Get TabBar state for a specific LxApp with complete items array
