@@ -59,10 +59,14 @@ pub use provider::{
     ProviderErrorCode, ProviderErrorExt, PushNotificationProvider, UpdatePackageInfo,
     UpdateProvider, UpdateTarget, register_provider,
 };
-pub use startup::{LxAppStartupOptions, Scene, parse_env_release_type};
+pub use startup::{
+    LxAppStartupOptions, Scene, append_page_query, parse_env_release_type,
+    parse_optional_env_release_type,
+};
 pub use update::{
     DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_force_update_for_installed,
-    is_force_update_downloading, prepare_lxapp_open, schedule_lxapp_update_check,
+    ensure_target_version_ready, is_force_update_downloading, prepare_lxapp_open,
+    schedule_lxapp_update_check,
 };
 
 // Re-export for internal crate usage

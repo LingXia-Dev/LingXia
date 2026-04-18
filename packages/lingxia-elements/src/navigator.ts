@@ -16,6 +16,10 @@ export type NavigatorTarget =
   | 'lxapp'         // Open another lxapp
   | 'browser';      // Open in external browser
 
+export type NavigatorQueryValue = string | number | boolean | null | undefined;
+export type NavigatorQuery = Record<string, NavigatorQueryValue>;
+export type NavigatorEnvVersion = 'release' | 'preview' | 'develop';
+
 export interface LxNavigatorEventDetail {
   success?: boolean;
   errMsg?: string;
@@ -31,14 +35,18 @@ type LingXiaBridgeCall = {
 
 export type LxNavigatorAttributes = {
   // Navigation
-  url?: string;                    // Target URL or path
+  url?: string;                    // Browser URL for openUrl/browser target
+  page?: string;                   // Named page in lxapp.json
+  path?: string;                   // Raw page path, supports query string
+  query?: string;                  // JSON-encoded page query params
   'open-type'?: NavigatorOpenType; // Navigation type
   target?: NavigatorTarget;        // Navigation target (auto-inferred if not specified)
   delta?: number;                  // Pages to go back (for navigateBack)
 
   // Open external lxapp
   'app-id'?: string;              // Target lxapp ID
-  path?: string;                  // Path in target lxapp (supports query string)
+  'env-version'?: NavigatorEnvVersion; // Target lxapp envVersion
+  'target-version'?: string;      // Exact target lxapp version
 
   // Phone call
   'phone-number'?: string;        // Phone number for tel open-type
@@ -76,11 +84,15 @@ export class LxNavigatorElement extends HTMLElement {
   static get observedAttributes() {
     return [
       "url",
+      "page",
+      "path",
+      "query",
       "open-type",
       "target",
       "delta",
       "app-id",
-      "path",
+      "env-version",
+      "target-version",
       "phone-number",
       "hover-class",
       "hover-stop-propagation",
@@ -244,11 +256,15 @@ export class LxNavigatorElement extends HTMLElement {
     e.preventDefault();
 
     const url = this.getAttribute('url') || '';
+    const page = this.getAttribute('page');
+    const path = this.getAttribute('path');
+    const query = this.getAttribute('query');
     const openType = (this.getAttribute('open-type') || 'navigate') as NavigatorOpenType;
     const explicitTarget = this.getAttribute('target') as NavigatorTarget | null;
     const delta = parseInt(this.getAttribute('delta') || '1', 10);
     const appId = this.getAttribute('app-id');
-    const path = this.getAttribute('path');
+    const envVersion = this.getAttribute('env-version') as NavigatorEnvVersion | null;
+    const targetVersion = this.getAttribute('target-version');
     const phoneNumber = this.getAttribute('phone-number');
 
     // Auto-infer target if not explicitly specified
@@ -256,11 +272,15 @@ export class LxNavigatorElement extends HTMLElement {
 
     void this.navigate({
       url,
+      page,
+      path,
+      query,
       openType,
       target,
       delta,
       appId,
-      path,
+      envVersion,
+      targetVersion,
       phoneNumber
     });
   }
@@ -295,11 +315,15 @@ export class LxNavigatorElement extends HTMLElement {
 
   private async navigate(options: {
     url: string;
+    page?: string | null;
+    path?: string | null;
+    query?: string | null;
     openType: NavigatorOpenType;
     target: NavigatorTarget;
     delta: number;
     appId?: string | null;
-    path?: string | null;
+    envVersion?: NavigatorEnvVersion | null;
+    targetVersion?: string | null;
     phoneNumber?: string | null;
   }) {
     try {
@@ -384,11 +408,15 @@ export class LxNavigatorElement extends HTMLElement {
 
   private async performNavigation(options: {
     url: string;
+    page?: string | null;
+    path?: string | null;
+    query?: string | null;
     openType: NavigatorOpenType;
     target: NavigatorTarget;
     delta: number;
     appId?: string | null;
-    path?: string | null;
+    envVersion?: NavigatorEnvVersion | null;
+    targetVersion?: string | null;
     phoneNumber?: string | null;
   }) {
     const url = options.url || '';
@@ -431,8 +459,7 @@ export class LxNavigatorElement extends HTMLElement {
       if (!options.appId) {
         throw new Error('navigateToLxApp requires app-id');
       }
-      const lxappPath = options.path || '';
-      await this.callHost('navigator.navigateToLxApp', { appId: options.appId, path: lxappPath });
+      await this.callHost('navigator.navigateToLxApp', this.buildLxAppTarget(options));
       return;
     }
 
@@ -444,22 +471,23 @@ export class LxNavigatorElement extends HTMLElement {
       return;
     }
 
-    if (!url) {
-      throw new Error(`${options.openType} requires url`);
+    const target = this.buildPageTarget(options);
+    if (!target) {
+      throw new Error(`${options.openType} requires page or path`);
     }
 
     switch (options.openType) {
       case 'navigate':
-        await this.callHost('navigation.navigateTo', { url });
+        await this.callHost('navigation.navigateTo', target);
         break;
       case 'redirect':
-        await this.callHost('navigation.redirectTo', { url });
+        await this.callHost('navigation.redirectTo', target);
         break;
       case 'switchTab':
-        await this.callHost('navigation.switchTab', { url });
+        await this.callHost('navigation.switchTab', target);
         break;
       case 'reLaunch':
-        await this.callHost('navigation.reLaunch', { url });
+        await this.callHost('navigation.reLaunch', target);
         break;
       case 'openUrl':
         await this.callHost('device.openUrl', {
@@ -470,6 +498,49 @@ export class LxNavigatorElement extends HTMLElement {
       default:
         throw new Error(`Unsupported openType: ${options.openType}`);
     }
+  }
+
+  private readQuery(raw?: string | null): NavigatorQuery | undefined {
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('query must be an object');
+    }
+    return parsed as NavigatorQuery;
+  }
+
+  private buildPageTarget(options: {
+    page?: string | null;
+    path?: string | null;
+    query?: string | null;
+  }): { page?: string; path?: string; query?: NavigatorQuery } | null {
+    const page = options.page?.trim();
+    const path = options.path?.trim();
+    if (page && path) {
+      throw new Error('pass either page or path, not both');
+    }
+    if (!page && !path) return null;
+    const query = this.readQuery(options.query);
+    return {
+      ...(page ? { page } : { path: path! }),
+      ...(query ? { query } : {}),
+    };
+  }
+
+  private buildLxAppTarget(options: {
+    appId?: string | null;
+    page?: string | null;
+    path?: string | null;
+    query?: string | null;
+    envVersion?: NavigatorEnvVersion | null;
+    targetVersion?: string | null;
+  }): Record<string, unknown> {
+    const target: Record<string, unknown> = { appId: options.appId };
+    const pageTarget = this.buildPageTarget(options);
+    if (pageTarget) Object.assign(target, pageTarget);
+    if (options.envVersion) target.envVersion = options.envVersion;
+    if (options.targetVersion) target.targetVersion = options.targetVersion;
+    return target;
   }
 
 }

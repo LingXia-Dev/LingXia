@@ -869,7 +869,7 @@ mod tests {
             r#"
             Page({
               navigateToUIPage: async function (params) {
-                await lx.navigateTo({ url: "pages/ui/index?type=toast" });
+                await lx.navigateTo({ page: "ui", query: { type: "toast" } });
               }
             });
             "#,
@@ -931,7 +931,7 @@ mod tests {
         let actions = extract_action_modes(
             r#"
             async function navigateToUIPage() {
-              await lx.navigateTo({ url: "pages/ui/index?type=toast" });
+              await lx.navigateTo({ page: "ui", query: { type: "toast" } });
             }
 
             const chooseToastIcon = async () => {

@@ -45,18 +45,19 @@ Page({
   },
 
   navigateToStreamPage: async function() {
-    await lx.navigateTo({ url: 'pages/stream/index' });
+    await lx.navigateTo({ page: "stream" });
   },
 
   navigateToChannelPage: async function() {
-    await lx.navigateTo({ url: 'pages/channel/index' });
+    await lx.navigateTo({ page: "channel" });
   },
 
   // Navigate to UI API page with specific type parameter
   navigateToUIPage: async function(params) {
     const { type = "navigation" } = params || {};
     await lx.navigateTo({
-      url: `pages/ui/index?type=${type}`,
+      page: "ui",
+      query: { type },
     });
   },
 
@@ -64,14 +65,15 @@ Page({
   navigateToDevicePage: async function(params) {
     const { type = "device" } = params || {};
     await lx.navigateTo({
-      url: `pages/device/index?type=${type}`,
+      page: "device",
+      query: { type },
     });
   },
 
   // Navigate to WiFi API page
   navigateToWifiPage: async function() {
     await lx.navigateTo({
-      url: `pages/wifi/index`,
+      page: "wifi",
     });
   },
 
@@ -79,14 +81,15 @@ Page({
   navigateToSystemPage: async function(params) {
     const { type = "appBaseInfo" } = params || {};
     await lx.navigateTo({
-      url: `pages/system/index?type=${type}`,
+      page: "system",
+      query: { type },
     });
   },
 
   // Navigate to Location API page
   navigateToLocationPage: async function() {
     await lx.navigateTo({
-      url: `pages/location/index`,
+      page: "location",
     });
   },
 
@@ -94,19 +97,22 @@ Page({
   navigateToMediaPage: async function(params) {
     const { type = "Pictures" } = params || {};
     await lx.navigateTo({
-      url: `pages/media/index?type=${type}`,
+      page: "media",
+      query: { type },
     });
   },
 
   navigateToOpenFilePage: async function() {
     await lx.navigateTo({
-      url: `pages/file/index?section=openFile`,
+      page: "file",
+      query: { section: "openFile" },
     });
   },
 
   navigateToChooseFilePage: async function() {
     await lx.navigateTo({
-      url: `pages/file/index?section=chooseFile`,
+      page: "file",
+      query: { section: "chooseFile" },
     });
   },
 
@@ -114,6 +120,7 @@ Page({
     try {
       await lx.navigateToLxApp({
         appId: "lingxia-chat",
+        page: "chat",
       });
     } catch (err) {
       console.error("navigateToLxApp failed", err);
@@ -124,7 +131,8 @@ Page({
   navigateToCloudPage: async function(params) {
     const { type = "auth" } = params || {};
     await lx.navigateTo({
-      url: `pages/cloud/index?type=${type}`,
+      page: "cloud",
+      query: { type },
     });
   },
 
@@ -166,7 +174,7 @@ Page({
   // Navigate to PullDownRefresh API page
   navigateToPullDownRefreshPage: async function() {
     await lx.navigateTo({
-      url: `pages/pulltorefresh/index`,
+      page: "pullToRefresh",
     });
   },
 });

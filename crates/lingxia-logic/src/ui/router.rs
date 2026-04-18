@@ -4,38 +4,80 @@ use crate::i18n::{
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult};
-use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 
-#[derive(FromJSObj, Deserialize)]
-struct NavigateTo {
-    url: String,
+#[derive(FromJSObj)]
+struct PageTargetOptions {
+    page: Option<String>,
+    path: Option<String>,
+    query: Option<JSObject>,
 }
 
-#[derive(FromJSObj, Deserialize)]
+#[derive(FromJSObj)]
 struct NavigateBack {
     delta: u32,
-}
-
-#[derive(FromJSObj, Deserialize)]
-struct RedirectTo {
-    url: String,
-}
-
-#[derive(FromJSObj, Deserialize)]
-struct SwitchTab {
-    url: String,
-}
-
-#[derive(FromJSObj, Deserialize)]
-struct ReLaunch {
-    url: String,
 }
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
         .peek_current_page()
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+}
+
+fn resolve_page_target(lxapp: &LxApp, options: &PageTargetOptions) -> Result<String, LxAppError> {
+    let has_page = options
+        .page
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_path = options
+        .path
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    match (has_page, has_path) {
+        (true, true) => {
+            return Err(LxAppError::InvalidParameter(
+                "pass either page or path, not both".to_string(),
+            ));
+        }
+        (false, false) => {
+            return Err(LxAppError::InvalidParameter(
+                "page or path is required".to_string(),
+            ));
+        }
+        _ => {}
+    }
+
+    let path = if let Some(page) = options
+        .page
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        lxapp
+            .find_page_path_by_name(page)
+            .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
+    } else {
+        options
+            .path
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string()
+    };
+
+    append_query(path, options.query.as_ref())
+}
+
+fn append_query(path: String, query: Option<&JSObject>) -> Result<String, LxAppError> {
+    let Some(query) = query else {
+        return Ok(path);
+    };
+    let query_json = query.to_json_string().map_err(LxAppError::from)?;
+    let query: Value = serde_json::from_str(&query_json)?;
+    lxapp::append_page_query(path, &query).map_err(LxAppError::InvalidParameter)
 }
 
 fn ensure_page_exists_js(lxapp: &LxApp, url: &str) -> JSResult<()> {
@@ -108,18 +150,20 @@ fn navigate_back_impl(lxapp: &LxApp, delta: u32) -> Result<(), LxAppError> {
 }
 
 /// Navigate to a new page (forward navigation)
-async fn navigate_to(ctx: JSContext, options: NavigateTo) -> JSResult<JSObject> {
+async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let target_url =
+        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    ensure_page_exists_js(&lxapp, &options.url)?;
+    ensure_page_exists_js(&lxapp, &target_url)?;
 
     // Ensure PageSvc for target page exists in this JSContext
     let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
-    navigate_with_url(lxapp.clone(), options.url, NavigationType::Forward, false)
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
@@ -137,50 +181,56 @@ fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
 }
 
 /// Redirect to a new page (replace current page)
-async fn redirect_to(ctx: JSContext, options: RedirectTo) -> JSResult<()> {
+async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let target_url =
+        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    ensure_page_exists_js(&lxapp, &options.url)?;
-    if is_tabbar_page_url(&lxapp, &options.url) {
+    ensure_page_exists_js(&lxapp, &target_url)?;
+    if is_tabbar_page_url(&lxapp, &target_url) {
         return Err(js_error_from_business_code_with_detail(
             1002,
             "redirectTo cannot navigate to a tabBar page",
         ));
     }
 
-    navigate_with_url(lxapp.clone(), options.url, NavigationType::Replace, false)
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 /// Switch to a tab page
-async fn switch_tab(ctx: JSContext, options: SwitchTab) -> JSResult<()> {
+async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let target_url =
+        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    ensure_page_exists_js(&lxapp, &options.url)?;
+    ensure_page_exists_js(&lxapp, &target_url)?;
 
     let _page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
-    navigate_with_url(lxapp.clone(), options.url, NavigationType::SwitchTab, false)
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
 /// Relaunch to a new page (clear page stack)
-async fn re_launch(ctx: JSContext, options: ReLaunch) -> JSResult<()> {
+async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let target_url =
+        resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    ensure_page_exists_js(&lxapp, &options.url)?;
+    ensure_page_exists_js(&lxapp, &target_url)?;
 
     lxapp
-        .get_or_create_page_in_ctx(&ctx, &options.url)
+        .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
 
-    navigate_with_url(lxapp.clone(), options.url, NavigationType::Launch, false)
+    navigate_with_url(lxapp.clone(), target_url, NavigationType::Launch, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))
 }

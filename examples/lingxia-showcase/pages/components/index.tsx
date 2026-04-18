@@ -30,7 +30,7 @@ export default function ComponentsPage() {
           {/* Video */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/video/index' })}
+            onClick={() => navigateTo({ page: 'video' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
@@ -53,7 +53,7 @@ export default function ComponentsPage() {
           {/* Navigator */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/navigator/index' })}
+            onClick={() => navigateTo({ page: 'navigator' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
@@ -76,7 +76,7 @@ export default function ComponentsPage() {
           {/* Picker */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/picker/index' })}
+            onClick={() => navigateTo({ page: 'picker' })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
@@ -100,7 +100,7 @@ export default function ComponentsPage() {
           {/* Input */}
           <div
             className="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-            onClick={() => navigateTo({ url: 'pages/input/index?type=input' })}
+            onClick={() => navigateTo({ page: 'input', query: { type: 'input' } })}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">

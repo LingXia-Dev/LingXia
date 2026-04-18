@@ -1,6 +1,7 @@
 use crate::lxapp::ReleaseType;
 use lingxia_platform::traits::app_runtime::LxAppPresentation;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
+use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
 pub enum Scene {
@@ -92,13 +93,48 @@ pub fn split_path_query(url: &str) -> (String, Option<String>) {
     }
 }
 
-/// Parse envVersion tag (e.g., "develop", "trial") into a ReleaseType.
-pub fn parse_env_release_type(tag: &str) -> ReleaseType {
-    match tag {
-        "develop" => ReleaseType::Developer,
-        "trial" => ReleaseType::Preview,
-        _ => ReleaseType::Release,
+pub fn parse_env_release_type(tag: &str) -> Result<ReleaseType, String> {
+    match tag.trim() {
+        "release" => Ok(ReleaseType::Release),
+        "preview" => Ok(ReleaseType::Preview),
+        "develop" => Ok(ReleaseType::Developer),
+        value => Err(format!("invalid envVersion: {value}")),
     }
+}
+
+pub fn parse_optional_env_release_type(env_version: Option<&str>) -> Result<ReleaseType, String> {
+    match env_version.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => parse_env_release_type(value),
+        None => Ok(ReleaseType::Release),
+    }
+}
+
+pub fn append_page_query(path: String, query: &Value) -> Result<String, String> {
+    let Some(object) = query.as_object() else {
+        return Err("query must be an object".to_string());
+    };
+    let mut pairs = Vec::new();
+    for (key, value) in object {
+        if value.is_null() {
+            continue;
+        }
+        let value = match value {
+            Value::String(value) => value.clone(),
+            Value::Bool(value) => value.to_string(),
+            Value::Number(value) => value.to_string(),
+            other => other.to_string(),
+        };
+        pairs.push(format!(
+            "{}={}",
+            urlencoding::encode(key),
+            urlencoding::encode(&value)
+        ));
+    }
+    if pairs.is_empty() {
+        return Ok(path);
+    }
+    let separator = if path.contains('?') { '&' } else { '?' };
+    Ok(format!("{path}{separator}{}", pairs.join("&")))
 }
 
 impl LxAppStartupOptions {

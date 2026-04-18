@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'vue';
 import type { LxVideoAttributes } from '@lingxia/elements';
-import type { LxNavigatorEvent, NavigatorOpenType, NavigatorTarget } from '@lingxia/elements';
+import type {
+  LxNavigatorEvent,
+  NavigatorEnvVersion,
+  NavigatorOpenType,
+  NavigatorQuery,
+  NavigatorTarget,
+} from '@lingxia/elements';
 
 export interface LxVideoProps extends Omit<LxVideoAttributes, 'ref' | 'className' | 'style'> {
   class?: string;
@@ -31,11 +37,15 @@ export interface LxPickerProps {
 
 export interface LxNavigatorProps {
   url?: string;
+  page?: string;
   openType?: NavigatorOpenType;
   target?: NavigatorTarget;
   delta?: number;
+  query?: NavigatorQuery;
   appId?: string;
   path?: string;
+  envVersion?: NavigatorEnvVersion;
+  targetVersion?: string;
   phoneNumber?: string;
   hoverClass?: string;
   hoverStopPropagation?: boolean;

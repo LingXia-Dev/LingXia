@@ -4,7 +4,7 @@
 //! registry. External crates can define handlers and register them here.
 
 use crate::error::LxAppError;
-use crate::lxapp::{LxApp, ReleaseType};
+use crate::lxapp::LxApp;
 
 use futures::Stream;
 use serde::Serialize;
@@ -562,10 +562,4 @@ pub(crate) fn register_all() {
         navigation::register_all();
         navigator::register_all();
     });
-}
-
-fn parse_release_type(env_version: Option<&str>) -> ReleaseType {
-    env_version
-        .map(crate::startup::parse_env_release_type)
-        .unwrap_or(ReleaseType::Release)
 }

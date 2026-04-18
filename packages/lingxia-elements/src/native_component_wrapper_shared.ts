@@ -1,4 +1,5 @@
-import type { NavigatorOpenType, NavigatorTarget } from "./navigator.js";
+import type { NavigatorEnvVersion, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
+import type { NavigatorQuery } from "./navigator.js";
 import type { LxVideoQuality } from "./video.js";
 
 export function appendDataAttrs(
@@ -31,11 +32,15 @@ export function appendPassthroughAttrs(
 
 export interface NavigatorNativeAttrOptions {
   url?: string;
+  page?: string;
   openType?: NavigatorOpenType;
   target?: NavigatorTarget;
   delta?: number;
   appId?: string;
   path?: string;
+  query?: NavigatorQuery;
+  envVersion?: NavigatorEnvVersion;
+  targetVersion?: string;
   phoneNumber?: string;
   hoverClass?: string;
   hoverStopPropagation?: boolean;
@@ -57,9 +62,13 @@ export function buildNavigatorNativeAttrs(
   };
 
   if (options.url) result.url = options.url;
+  if (options.page) result.page = options.page;
   if (options.target) result.target = options.target;
   if (options.appId) result["app-id"] = options.appId;
   if (options.path) result.path = options.path;
+  if (options.query) result.query = JSON.stringify(options.query);
+  if (options.envVersion) result["env-version"] = options.envVersion;
+  if (options.targetVersion) result["target-version"] = options.targetVersion;
   if (options.phoneNumber) result["phone-number"] = options.phoneNumber;
 
   appendPassthroughAttrs(extraAttrs, result);

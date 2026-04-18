@@ -27,7 +27,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 
-pub(crate) use self::lxapp::{ensure_first_install, ensure_target_version_ready};
+pub(crate) use self::lxapp::ensure_first_install;
+pub use self::lxapp::ensure_target_version_ready;
 pub use self::lxapp::{
     ensure_force_update_for_installed, prepare_lxapp_open, schedule_lxapp_update_check,
 };

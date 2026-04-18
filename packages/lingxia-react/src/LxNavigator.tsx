@@ -1,7 +1,9 @@
 import React from 'react';
 import type {
   LxNavigatorAttributes,
+  NavigatorEnvVersion,
   LxNavigatorEvent,
+  NavigatorQuery,
   NavigatorOpenType,
   NavigatorTarget
 } from '@lingxia/elements';
@@ -10,16 +12,20 @@ import { buildNavigatorNativeAttrs } from '@lingxia/elements';
 // Import to ensure custom element is registered
 import '@lingxia/elements';
 
-export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete'> {
+export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete' | 'query'> {
   // Navigation
   url?: string;
+  page?: string;
   openType?: NavigatorOpenType;
   target?: NavigatorTarget; // Auto-inferred if not specified
   delta?: number;
+  query?: NavigatorQuery;
 
   // Open external lxapp
   appId?: string;
   path?: string; // Supports query string
+  envVersion?: NavigatorEnvVersion;
+  targetVersion?: string;
 
   // Phone call
   phoneNumber?: string;
@@ -47,11 +53,15 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
   (props, ref) => {
     const {
       url,
+      page,
       openType = 'navigate',
       target, // Auto-inferred, no default
       delta = 1,
+      query,
       appId,
       path,
+      envVersion,
+      targetVersion,
       phoneNumber,
       hoverClass = 'navigator-hover',
       hoverStopPropagation = false,
@@ -108,11 +118,15 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
 
     const navigatorProps = buildNavigatorNativeAttrs({
       url,
+      page,
       openType,
       target,
       delta,
+      query,
       appId,
       path,
+      envVersion,
+      targetVersion,
       phoneNumber,
       hoverClass,
       hoverStopPropagation,

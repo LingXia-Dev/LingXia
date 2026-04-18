@@ -23,7 +23,7 @@
         <!-- Video -->
         <div
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-          @click="navigateTo({ url: 'pages/video/index' })"
+          @click="navigateTo({ page: 'video' })"
         >
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
@@ -46,7 +46,7 @@
         <!-- Navigator -->
         <div
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-          @click="navigateTo({ url: 'pages/navigator/index' })"
+          @click="navigateTo({ page: 'navigator' })"
         >
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
@@ -69,7 +69,7 @@
         <!-- Picker -->
         <div
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-          @click="navigateTo({ url: 'pages/picker/index' })"
+          @click="navigateTo({ page: 'picker' })"
         >
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
@@ -93,7 +93,7 @@
         <!-- Input -->
         <div
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
-          @click="navigateTo({ url: 'pages/input/index?type=input' })"
+          @click="navigateTo({ page: 'input', query: { type: 'input' } })"
         >
           <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-lg flex items-center justify-center">
@@ -125,7 +125,7 @@ import '../../tailwind.css';
 import { useLxPage } from '@lingxia/vue';
 
 type PageActions = {
-  navigateTo(payload: { url: string }): void;
+  navigateTo(payload: { page: string; query?: Record<string, string> }): void;
 };
 
 const { actions } = useLxPage();

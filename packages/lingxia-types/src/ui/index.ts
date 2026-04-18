@@ -37,9 +37,22 @@ export interface ActionSheetResult {
   tapIndex: number;
 }
 
-export interface NavigateToOptions {
-  url: string;
-}
+export type PageQueryValue = string | number | boolean | null | undefined;
+export type PageQuery = Record<string, PageQueryValue>;
+
+export type PageTargetOptions =
+  | {
+      page: string;
+      path?: never;
+      query?: PageQuery;
+    }
+  | {
+      path: string;
+      page?: never;
+      query?: PageQuery;
+    };
+
+export type NavigateToOptions = PageTargetOptions;
 
 export interface NavigateToResult {
   eventEmitter: EventEmitter;
@@ -49,17 +62,11 @@ export interface NavigateBackOptions {
   delta: number;
 }
 
-export interface RedirectToOptions {
-  url: string;
-}
+export type RedirectToOptions = PageTargetOptions;
 
-export interface SwitchTabOptions {
-  url: string;
-}
+export type SwitchTabOptions = PageTargetOptions;
 
-export interface ReLaunchOptions {
-  url: string;
-}
+export type ReLaunchOptions = PageTargetOptions;
 
 export interface SetNavigationBarTitleOptions {
   title: string;

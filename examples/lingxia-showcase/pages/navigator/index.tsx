@@ -51,7 +51,8 @@ export default function NavigatorPage() {
               <div className="grid grid-cols-2 gap-3">
                 {/* Navigate */}
                 <LxNavigator
-                  url="pages/device/index?type=device"
+                  page="device"
+                  query={{ type: 'device' }}
                   openType="navigate"
                   onSuccess={() => addLog('✓ Navigate to home')}
                 >
@@ -64,7 +65,8 @@ export default function NavigatorPage() {
 
                 {/* Redirect */}
                 <LxNavigator
-                  url="pages/device/index?type=device"
+                  page="device"
+                  query={{ type: 'device' }}
                   openType="redirect"
                   onSuccess={() => addLog('✓ Redirect to home')}
                 >
@@ -90,7 +92,8 @@ export default function NavigatorPage() {
 
                 {/* ReLaunch */}
                 <LxNavigator
-                  url="pages/device/index?type=screen"
+                  page="device"
+                  query={{ type: 'screen' }}
                   openType="reLaunch"
                   onSuccess={() => addLog('✓ ReLaunch to home')}
                 >
@@ -113,7 +116,7 @@ export default function NavigatorPage() {
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <LxNavigator
-                  url="pages/home/index"
+                  page="home"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to Home tab')}
                 >
@@ -122,7 +125,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  url="pages/API/index"
+                  page="api"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to API tab')}
                 >
@@ -131,7 +134,7 @@ export default function NavigatorPage() {
                   </div>
                 </LxNavigator>
                 <LxNavigator
-                  url="pages/todo/index"
+                  page="todo"
                   openType="switchTab"
                   onSuccess={() => addLog('✓ Switch to Todo tab')}
                 >
@@ -155,6 +158,7 @@ export default function NavigatorPage() {
             <div className="p-4 space-y-3">
               <LxNavigator
                 appId="lingxia-chat"
+                page="chat"
                 onSuccess={() => addLog('✓ Opening other LxApp')}
                 onFail={onFailWithMessage('Failed to open LxApp')}
               >

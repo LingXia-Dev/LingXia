@@ -32,7 +32,8 @@
             <div class="grid grid-cols-2 gap-3">
               <!-- Navigate -->
               <LxNavigator
-                url="pages/device/index?type=device"
+                page="device"
+                :query="{ type: 'device' }"
                 open-type="navigate"
                 @success="addLog('✓ Navigate to home')"
               >
@@ -45,7 +46,8 @@
 
               <!-- Redirect -->
               <LxNavigator
-                url="pages/device/index?type=device"
+                page="device"
+                :query="{ type: 'device' }"
                 open-type="redirect"
                 @success="addLog('✓ Redirect to home')"
               >
@@ -71,7 +73,8 @@
 
               <!-- ReLaunch -->
               <LxNavigator
-                url="pages/device/index?type=screen"
+                page="device"
+                :query="{ type: 'screen' }"
                 open-type="reLaunch"
                 @success="addLog('✓ ReLaunch to home')"
               >
@@ -94,7 +97,7 @@
             </div>
             <div class="grid grid-cols-3 gap-2">
               <LxNavigator
-                url="pages/home/index"
+                page="home"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to Home tab')"
               >
@@ -103,7 +106,7 @@
                 </div>
               </LxNavigator>
               <LxNavigator
-                url="pages/API/index"
+                page="api"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to API tab')"
               >
@@ -112,7 +115,7 @@
                 </div>
               </LxNavigator>
               <LxNavigator
-                url="pages/todo/index"
+                page="todo"
                 open-type="switchTab"
                 @success="addLog('✓ Switch to Todo tab')"
               >
@@ -136,6 +139,7 @@
           <div class="p-4 space-y-3">
             <LxNavigator
               app-id="lingxia-chat"
+              page="chat"
               @success="addLog('✓ Opening other LxApp')"
               @fail="onFailWithMessage('Failed to open LxApp', $event)"
             >

@@ -17,7 +17,7 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const CACHE_VERSION: u32 = 2;
+const CACHE_VERSION: u32 = 3;
 const APP_UI_ICON_DIR: &str = "icons";
 const GENERATED_HOST_RESOURCE_FILES: &[&str] =
     &["app.json", "ui.json", "bridge-runtime.js", "splash.png"];

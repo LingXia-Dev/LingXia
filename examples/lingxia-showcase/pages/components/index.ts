@@ -6,10 +6,10 @@ Page({
   },
 
   navigateTo: async function (params = {}) {
-    const { url } = params;
-    if (!url) {
+    const { page, query } = params;
+    if (!page) {
       return;
     }
-    await lx.navigateTo({ url });
+    await lx.navigateTo({ page, query });
   },
 });

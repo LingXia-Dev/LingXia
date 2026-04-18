@@ -34,7 +34,10 @@ export {
   LxNavigatorElement,
   type LxNavigatorAttributes,
   type LxNavigatorEvent,
+  type NavigatorEnvVersion,
   type NavigatorOpenType,
+  type NavigatorQuery,
+  type NavigatorQueryValue,
   type NavigatorTarget,
 } from "./navigator.js";
 

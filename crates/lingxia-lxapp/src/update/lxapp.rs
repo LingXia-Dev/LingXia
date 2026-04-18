@@ -358,7 +358,7 @@ fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_app
 /// - Already installed with the same version: no-op.
 /// - Otherwise: resolve exact version metadata and ensure archive is downloaded.
 /// - Downloaded archive is applied when app instance is (re)opened.
-pub(crate) async fn ensure_target_version_ready(
+pub async fn ensure_target_version_ready(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
     release_type: ReleaseType,

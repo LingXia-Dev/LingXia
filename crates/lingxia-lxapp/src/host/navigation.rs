@@ -2,11 +2,14 @@ use super::{HostCancel, await_or_cancel};
 use crate::LxApp;
 use crate::{LxAppError, NavigationType};
 use serde::Deserialize;
+use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Deserialize)]
-struct NavigateToOptions {
-    url: String,
+struct PageTargetOptions {
+    page: Option<String>,
+    path: Option<String>,
+    query: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -14,25 +17,62 @@ struct NavigateBackOptions {
     delta: u32,
 }
 
-#[derive(Deserialize)]
-struct RedirectToOptions {
-    url: String,
-}
-
-#[derive(Deserialize)]
-struct SwitchTabOptions {
-    url: String,
-}
-
-#[derive(Deserialize)]
-struct ReLaunchOptions {
-    url: String,
-}
-
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
         .peek_current_page()
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
+}
+
+fn resolve_page_target(lxapp: &LxApp, options: &PageTargetOptions) -> Result<String, LxAppError> {
+    let has_page = options
+        .page
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_path = options
+        .path
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    match (has_page, has_path) {
+        (true, true) => {
+            return Err(LxAppError::InvalidParameter(
+                "pass either page or path, not both".to_string(),
+            ));
+        }
+        (false, false) => {
+            return Err(LxAppError::InvalidParameter(
+                "page or path is required".to_string(),
+            ));
+        }
+        _ => {}
+    }
+
+    let path = if let Some(page) = options
+        .page
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        lxapp
+            .find_page_path_by_name(page)
+            .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?
+    } else {
+        options
+            .path
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string()
+    };
+    append_query(path, options.query.as_ref())
+}
+
+fn append_query(path: String, query: Option<&Value>) -> Result<String, LxAppError> {
+    let Some(query) = query else {
+        return Ok(path);
+    };
+    crate::append_page_query(path, query).map_err(LxAppError::InvalidParameter)
 }
 
 fn normalize_tabbar_path(url: &str) -> String {
@@ -90,17 +130,11 @@ async fn navigate_with_url(
 
 host_api_async!(
     NavigateTo,
-    NavigateToOptions,
+    PageTargetOptions,
     (),
     |lxapp, options, cancel| async {
-        navigate_with_url(
-            lxapp,
-            options.url,
-            NavigationType::Forward,
-            true,
-            &mut cancel,
-        )
-        .await?;
+        let url = resolve_page_target(&lxapp, &options)?;
+        navigate_with_url(lxapp, url, NavigationType::Forward, true, &mut cancel).await?;
         Ok(())
     }
 );
@@ -135,56 +169,38 @@ host_api_async!(
 
 host_api_async!(
     RedirectTo,
-    RedirectToOptions,
+    PageTargetOptions,
     (),
     |lxapp, options, cancel| async {
-        if is_tabbar_page_url(&lxapp, &options.url) {
+        let url = resolve_page_target(&lxapp, &options)?;
+        if is_tabbar_page_url(&lxapp, &url) {
             return Err(LxAppError::UnsupportedOperation(
                 "redirectTo cannot navigate to a tabBar page".to_string(),
             ));
         }
-        navigate_with_url(
-            lxapp,
-            options.url,
-            NavigationType::Replace,
-            true,
-            &mut cancel,
-        )
-        .await?;
+        navigate_with_url(lxapp, url, NavigationType::Replace, true, &mut cancel).await?;
         Ok(())
     }
 );
 
 host_api_async!(
     SwitchTab,
-    SwitchTabOptions,
+    PageTargetOptions,
     (),
     |lxapp, options, cancel| async {
-        navigate_with_url(
-            lxapp,
-            options.url,
-            NavigationType::SwitchTab,
-            true,
-            &mut cancel,
-        )
-        .await?;
+        let url = resolve_page_target(&lxapp, &options)?;
+        navigate_with_url(lxapp, url, NavigationType::SwitchTab, true, &mut cancel).await?;
         Ok(())
     }
 );
 
 host_api_async!(
     ReLaunch,
-    ReLaunchOptions,
+    PageTargetOptions,
     (),
     |lxapp, options, cancel| async {
-        navigate_with_url(
-            lxapp,
-            options.url,
-            NavigationType::Launch,
-            true,
-            &mut cancel,
-        )
-        .await?;
+        let url = resolve_page_target(&lxapp, &options)?;
+        navigate_with_url(lxapp, url, NavigationType::Launch, true, &mut cancel).await?;
         Ok(())
     }
 );

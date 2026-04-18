@@ -20,6 +20,7 @@ lingxia-platform = { workspace = true }
 lingxia-messaging = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
+urlencoding = { workspace = true }
 rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream"] }
 rong_storage = { workspace = true }
 
