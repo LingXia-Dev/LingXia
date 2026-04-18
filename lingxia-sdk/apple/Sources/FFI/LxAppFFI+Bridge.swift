@@ -232,10 +232,6 @@ extension LxApp {
                 return false
             }
         }
-        #else
-        if openTarget == .selfTarget {
-            return false
-        }
         #endif
 
         guard let openedTab = openBrowserTab(ownerAppId, owner_session_id, urlString) else {

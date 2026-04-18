@@ -81,6 +81,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     let tabId: String
 
     private let addressPill = UIView()
+    private let addressIcon = UIImageView()
     private let addressField = UITextField()
     private let refreshButton = UIButton(type: .system)
     private let contentContainer = UIView()
@@ -234,6 +235,11 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         addressPill.clipsToBounds = true
         controlRow.addArrangedSubview(addressPill)
 
+        addressIcon.translatesAutoresizingMaskIntoConstraints = false
+        addressIcon.contentMode = .scaleAspectFit
+        addressIcon.tintColor = UIColor(white: 0.4, alpha: 1.0)
+        addressPill.addSubview(addressIcon)
+
         addressField.translatesAutoresizingMaskIntoConstraints = false
         addressField.font = UIFont.systemFont(ofSize: 13)
         addressField.textColor = UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
@@ -285,7 +291,12 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
             // Address pill (flexible width)
             addressPill.heightAnchor.constraint(equalToConstant: 36),
 
-            addressField.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 12),
+            addressIcon.leadingAnchor.constraint(equalTo: addressPill.leadingAnchor, constant: 12),
+            addressIcon.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
+            addressIcon.widthAnchor.constraint(equalToConstant: 16),
+            addressIcon.heightAnchor.constraint(equalToConstant: 16),
+
+            addressField.leadingAnchor.constraint(equalTo: addressIcon.trailingAnchor, constant: 6),
             addressField.trailingAnchor.constraint(equalTo: refreshButton.leadingAnchor, constant: -4),
             addressField.centerYAnchor.constraint(equalTo: addressPill.centerYAnchor),
 
@@ -378,7 +389,62 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
     }
 
     private func updateAddressBar(url: URL?) {
-        addressField.text = url?.absoluteString ?? ""
+        let display = browserUrlDisplay(url: url)
+        addressField.text = display.text
+        addressIcon.image = iconImage(named: display.iconName, size: 16)?.withRenderingMode(.alwaysTemplate)
+        addressIcon.tintColor = display.tintColor
+    }
+
+    private struct BrowserUrlDisplay {
+        let text: String
+        let iconName: String
+        let tintColor: UIColor
+    }
+
+    private func browserUrlDisplay(url: URL?) -> BrowserUrlDisplay {
+        guard let url else {
+            return BrowserUrlDisplay(text: "", iconName: "icon_lock", tintColor: UIColor(white: 0.4, alpha: 1.0))
+        }
+        switch url.scheme?.lowercased() {
+        case "https":
+            return BrowserUrlDisplay(
+                text: url.host?.isEmpty == false ? url.host! : "Web page",
+                iconName: "icon_lock",
+                tintColor: UIColor(white: 0.4, alpha: 1.0)
+            )
+        case "http":
+            return BrowserUrlDisplay(
+                text: url.host?.isEmpty == false ? url.host! : "Web page",
+                iconName: "icon_warning",
+                tintColor: UIColor(red: 0.63, green: 0.36, blue: 0.0, alpha: 1.0)
+            )
+        default:
+            return BrowserUrlDisplay(
+                text: "Web page",
+                iconName: "icon_warning",
+                tintColor: UIColor(red: 0.63, green: 0.36, blue: 0.0, alpha: 1.0)
+            )
+        }
+    }
+
+    private func iconImage(named iconName: String, size: CGFloat) -> UIImage? {
+        #if SWIFT_PACKAGE
+        let bundle = Bundle.module
+        #else
+        let bundle = Bundle(for: LxAppBrowserViewController.self)
+        #endif
+        guard let pdfURL = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
+              let provider = CGDataProvider(url: pdfURL as CFURL),
+              let document = CGPDFDocument(provider),
+              let page = document.page(at: 1) else { return nil }
+        let pageRect = page.getBoxRect(.mediaBox)
+        let targetSize = CGSize(width: size, height: size)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        return renderer.image { ctx in
+            ctx.cgContext.translateBy(x: 0, y: targetSize.height)
+            ctx.cgContext.scaleBy(x: targetSize.width / pageRect.width, y: -targetSize.height / pageRect.height)
+            ctx.cgContext.drawPDFPage(page)
+        }
     }
 
     private func updateNavigationButtons() {
@@ -402,26 +468,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         button.tintColor = tintColor
         button.addTarget(self, action: action, for: .touchUpInside)
 
-        #if SWIFT_PACKAGE
-        let bundle = Bundle.module
-        #else
-        let bundle = Bundle(for: LxAppBrowserViewController.self)
-        #endif
-        if let pdfURL = bundle.url(forResource: iconName, withExtension: "pdf", subdirectory: "icons"),
-           let provider = CGDataProvider(url: pdfURL as CFURL),
-           let document = CGPDFDocument(provider),
-           let page = document.page(at: 1) {
-            let pageRect = page.getBoxRect(.mediaBox)
-            let targetSize = CGSize(width: iconSize, height: iconSize)
-            let renderer = UIGraphicsImageRenderer(size: targetSize)
-            let image = renderer.image { ctx in
-                ctx.cgContext.translateBy(x: 0, y: targetSize.height)
-                ctx.cgContext.scaleBy(
-                    x: targetSize.width / pageRect.width,
-                    y: -targetSize.height / pageRect.height
-                )
-                ctx.cgContext.drawPDFPage(page)
-            }
+        if let image = iconImage(named: iconName, size: iconSize) {
             button.setImage(image.withRenderingMode(.alwaysTemplate), for: .normal)
         }
 
