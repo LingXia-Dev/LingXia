@@ -1,4 +1,4 @@
-use crate::{LxAppStartupOptions, ReleaseType, Scene};
+use crate::{LxAppStartupOptions, ReleaseType, Scene, parse_env_release_type};
 
 const LXAPP_PREFIX: &str = "/lxapp/";
 const OPEN_ACTION: &str = "open";
@@ -191,11 +191,7 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
         };
         let key = decode_component(raw_key)?;
         if key == "envVersion" {
-            release_type = parse_env_version(&decode_component(raw_value)?);
-            continue;
-        }
-        if key == "releaseType" {
-            release_type = parse_release_type(&decode_component(raw_value)?);
+            release_type = parse_env_release_type(&decode_component(raw_value)?)?;
             continue;
         }
         if include_routing && (key == "appId" || key == "appid") {
@@ -214,22 +210,6 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
         path,
         page_query: page_params.join("&"),
     })
-}
-
-fn parse_env_version(value: &str) -> ReleaseType {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "develop" | "developer" | "dev" => ReleaseType::Developer,
-        "trial" | "preview" => ReleaseType::Preview,
-        _ => ReleaseType::Release,
-    }
-}
-
-fn parse_release_type(value: &str) -> ReleaseType {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "developer" | "develop" | "dev" => ReleaseType::Developer,
-        "preview" | "trial" => ReleaseType::Preview,
-        _ => ReleaseType::Release,
-    }
 }
 
 fn decode_component(value: &str) -> Result<String, String> {
@@ -287,7 +267,7 @@ mod tests {
     #[test]
     fn parses_open_page_and_strips_routing_query() {
         let target = parse_applink(
-            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&envVersion=trial&id=42",
+            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42",
         )
         .unwrap()
         .unwrap();
@@ -312,10 +292,11 @@ mod tests {
 
     #[test]
     fn parses_path_form() {
-        let target =
-            parse_applink("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&envVersion=trial")
-                .unwrap()
-                .unwrap();
+        let target = parse_applink(
+            "https://www.lingxia.app/lxapp/shop/pages/detail?id=42&envVersion=preview",
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail");
         assert_eq!(target.query, "id=42");
@@ -335,13 +316,22 @@ mod tests {
     }
 
     #[test]
-    fn release_type_query_alias_overrides_env_version() {
+    fn release_type_query_is_forwarded_to_page() {
         let target = parse_applink(
-            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&envVersion=trial&releaseType=developer",
+            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&envVersion=preview&releaseType=developer",
         )
         .unwrap()
         .unwrap();
-        assert_eq!(target.release_type, ReleaseType::Developer);
+        assert_eq!(target.release_type, ReleaseType::Preview);
+        assert_eq!(target.query, "releaseType=developer");
+    }
+
+    #[test]
+    fn rejects_invalid_env_version() {
+        assert!(
+            parse_applink("https://www.lingxia.app/lxapp/open?appId=shop&envVersion=trial")
+                .is_err()
+        );
     }
 
     #[test]
