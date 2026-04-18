@@ -328,12 +328,8 @@ export class LxApp {
   }
 
   /**
-   * Internal applinkhandler - called by SDK infrastructure
-   * @param url The full applinkURL (e.g., "https://www.lingxia.app/12/3")
-   */
-  /**
    * Internal applink handler - called by SDK infrastructure
-   * @param url The full applink URL (e.g., "https://www.lingxia.app/12/3")
+   * @param url The full applink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")
    */
   private static handleAppLink(url: string): void {
     try {

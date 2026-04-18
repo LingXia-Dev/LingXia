@@ -245,9 +245,9 @@ internal object NativeApi {
     external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.lxapp.WebView?
 
     /**
-     * Handle AppLink URL by passing the full URL to native layer
-     * @param applinkUrl The full AppLink URL (e.g., "https://www.lingxia.app/12/3")
-     * @return Status code (0 = success)
+     * Handle AppLink URL by passing the full URL to native layer.
+     * @param applinkUrl The full AppLink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")
+     * @return 1 = handled, 0 = ignored, -1 = rejected
      */
     @JvmStatic
     external fun onAppLinkReceived(applinkUrl: String): Int

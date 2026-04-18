@@ -41,8 +41,20 @@ pub struct AppConfig {
     #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
 
+    #[serde(rename = "devWsUrl", default, skip_serializing_if = "Option::is_none")]
+    pub dev_ws_url: Option<String>,
+
+    #[serde(rename = "appLinks", default, skip_serializing_if = "Option::is_none")]
+    pub app_links: Option<AppLinksConfig>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AppLinksConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -267,6 +279,8 @@ mod tests {
             home_lxapp_version: "1.0.0".to_string(),
             cache_max_age_days: 7,
             cache_max_size_mb: 1024,
+            dev_ws_url: None,
+            app_links: None,
             panels: None,
         }
     }

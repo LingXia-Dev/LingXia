@@ -58,6 +58,8 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         .ok_or_else(|| js_internal_error("scanCode payload missing string `scanType`"))?
         .to_string();
 
+    let _ = lxapp::handle_applink(&scan_result);
+
     Ok(ScanResultObj {
         scan_result,
         scan_type,

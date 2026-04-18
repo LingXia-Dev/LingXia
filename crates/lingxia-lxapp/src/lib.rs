@@ -1,4 +1,5 @@
 mod app;
+mod applink;
 mod appservice;
 mod archive;
 pub(crate) mod bridge;
@@ -23,6 +24,7 @@ pub(crate) mod workers;
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use app::LxAppRuntimeConfig;
+pub use applink::handle_applink;
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{
     publish_app_event, publish_page_event, register_app_handler, register_page_handler,

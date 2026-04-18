@@ -737,8 +737,7 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
 
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
-    log::info!("[Apple] Universal Link received: {}", url);
-    0
+    lxapp::handle_applink(url)
 }
 
 /// Handle Push Notification Link with trigger context
@@ -755,16 +754,7 @@ pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i3
         trigger_name
     );
 
-    match trigger {
-        self::bridge::PushTrigger::Background => {
-            log::info!("[Apple] Background push link - silent processing");
-        }
-        self::bridge::PushTrigger::Tap | self::bridge::PushTrigger::Launch => {
-            log::info!("[Apple] User-initiated push link - navigate to page");
-        }
-    }
-
-    0
+    lxapp::handle_applink(url)
 }
 
 /// Handle push notification device token

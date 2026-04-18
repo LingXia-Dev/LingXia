@@ -234,7 +234,7 @@ declare module 'liblingxia.so' {
   /**
    * Handle AppLink (https) received by platform
    * @param applinkUrl - Full https URL
-   * @returns Status code (0 for success)
+   * @returns 1 = handled, 0 = ignored, -1 = rejected
    */
   export function onApplinkReceived(applinkUrl: string): number;
 

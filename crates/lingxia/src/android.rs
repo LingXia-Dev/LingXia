@@ -742,9 +742,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onAppLinkReceived(
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let url: String = applink_url.try_to_string(env)?;
-
-        log::info!("[Android] AppLink received: {}", url);
-        Ok(0)
+        Ok(lxapp::handle_applink(&url) as jint)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

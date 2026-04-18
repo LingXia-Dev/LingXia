@@ -158,6 +158,8 @@ fn build_host_app_config(
         home_lxapp_version: dev_config.identity.version.clone(),
         cache_max_age_days: 7,
         cache_max_size_mb: 1024,
+        dev_ws_url: None,
+        app_links: None,
         panels: None,
     }
 }
