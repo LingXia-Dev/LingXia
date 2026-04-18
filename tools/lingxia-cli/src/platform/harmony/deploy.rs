@@ -6,6 +6,8 @@ use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -13,6 +15,7 @@ impl HarmonyPlatform {
     pub(super) fn install_impl(&self, config: &InstallConfig) -> Result<()> {
         let hdc = ensure_command("hdc")?;
 
+        let explicit_artifact = config.artifact_path.is_some();
         let hap_path = if let Some(ref path) = config.artifact_path {
             path.clone()
         } else {
@@ -65,6 +68,12 @@ impl HarmonyPlatform {
                 stdout.trim(),
                 stderr.trim()
             ));
+        }
+
+        if let Some(package_id) =
+            install_verification_bundle(&hap_path, explicit_artifact, &config.project_root)?
+        {
+            verify_bundle_installed(&hdc, config.device_id.as_deref(), &package_id)?;
         }
 
         println!("{}", "  ✓ Installed".green());
@@ -379,6 +388,74 @@ fn infer_harmony_bundle_for_uninstall(project_root: &Path) -> Option<String> {
     read_bundle_name(&harmony_dir).ok()
 }
 
+fn install_verification_bundle(
+    hap_path: &Path,
+    explicit_artifact: bool,
+    project_root: &Path,
+) -> Result<Option<String>> {
+    match read_hap_bundle_name(hap_path) {
+        Ok(package_id) => Ok(Some(package_id)),
+        Err(err) if explicit_artifact => Err(err),
+        Err(_) => Ok(infer_harmony_bundle_for_uninstall(project_root)),
+    }
+}
+
+fn read_hap_bundle_name(hap_path: &Path) -> Result<String> {
+    let file = File::open(hap_path)
+        .with_context(|| format!("Failed to open HAP {}", hap_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("Failed to read HAP {}", hap_path.display()))?;
+    let mut module = archive
+        .by_name("module.json")
+        .with_context(|| format!("HAP {} is missing module.json", hap_path.display()))?;
+    let mut content = String::new();
+    module
+        .read_to_string(&mut content)
+        .with_context(|| format!("Failed to read module.json from {}", hap_path.display()))?;
+    let root: serde_json::Value = serde_json::from_str(&content)
+        .with_context(|| format!("Failed to parse module.json from {}", hap_path.display()))?;
+    root.get("app")
+        .and_then(|app| app.get("bundleName"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| {
+            anyhow!(
+                "HAP {} module.json missing app.bundleName",
+                hap_path.display()
+            )
+        })
+}
+
+fn verify_bundle_installed(hdc: &Path, device_id: Option<&str>, package_id: &str) -> Result<()> {
+    let mut cmd = Command::new(hdc);
+    if let Some(device_id) = device_id {
+        cmd.arg("-t").arg(device_id);
+    }
+    cmd.arg("shell")
+        .arg("bm")
+        .arg("dump")
+        .arg("-n")
+        .arg(package_id);
+
+    let output = cmd
+        .output()
+        .with_context(|| format!("Failed to verify installed Harmony bundle {package_id}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success()
+        || hdc_command_failed(&stdout, &stderr)
+        || stdout.contains("failed to get information")
+    {
+        return Err(anyhow!(
+            "Harmony install did not register bundle `{}`.\n{}\n{}",
+            package_id,
+            stdout.trim(),
+            stderr.trim()
+        ));
+    }
+    Ok(())
+}
+
 fn connected_devices() -> Result<Vec<String>> {
     let hdc = ensure_command("hdc")?;
     let output = Command::new(&hdc)
@@ -480,28 +557,106 @@ fn install_signed_output_path(input_hap: &Path) -> PathBuf {
 }
 
 fn preferred_resign_source(path: &Path) -> PathBuf {
-    let file_name = path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    if file_name.contains("unsigned") {
-        let signed_candidate = path.with_file_name(file_name.replace("unsigned", "signed"));
-        if signed_candidate.exists() {
-            return signed_candidate;
-        }
+    if let Some(unsigned) = sibling_unsigned_hap(path)
+        && unsigned.exists()
+    {
+        return unsigned;
     }
     path.to_path_buf()
 }
 
+fn sibling_unsigned_hap(path: &Path) -> Option<PathBuf> {
+    let file_name = path.file_name()?.to_string_lossy();
+    if file_name.contains("unsigned") {
+        return Some(path.to_path_buf());
+    }
+    if file_name.contains("install-signed") {
+        return Some(path.with_file_name(file_name.replace("install-signed", "unsigned")));
+    }
+    if file_name.contains("signed") {
+        return Some(path.with_file_name(file_name.replace("signed", "unsigned")));
+    }
+    None
+}
+
 fn hdc_install_failed(stdout: &str, stderr: &str) -> bool {
+    hdc_command_failed(stdout, stderr)
+}
+
+fn hdc_command_failed(stdout: &str, stderr: &str) -> bool {
     fn has_failure_marker(text: &str) -> bool {
         let lower = text.to_ascii_lowercase();
-        lower.contains("error:")
-            || lower.contains("failed to install")
-            || lower.contains("fail to install")
+        lower.contains("[fail]")
+            || lower.contains("error:")
+            || lower.contains("failed")
+            || lower.contains("fail to")
             || lower.contains("install failed")
     }
 
     has_failure_marker(stdout) || has_failure_marker(stderr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        hdc_install_failed, preferred_resign_source, read_hap_bundle_name, sibling_unsigned_hap,
+    };
+    use std::fs;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn preferred_resign_source_uses_unsigned_sibling_for_signed_hap() {
+        let temp = tempdir().unwrap();
+        let signed = temp.path().join("entry-default-signed.hap");
+        let unsigned = temp.path().join("entry-default-unsigned.hap");
+        fs::write(&signed, b"signed").unwrap();
+        fs::write(&unsigned, b"unsigned").unwrap();
+
+        assert_eq!(preferred_resign_source(&signed), unsigned);
+    }
+
+    #[test]
+    fn preferred_resign_source_keeps_signed_when_unsigned_missing() {
+        let temp = tempdir().unwrap();
+        let signed = temp.path().join("entry-default-signed.hap");
+        fs::write(&signed, b"signed").unwrap();
+
+        assert_eq!(preferred_resign_source(&signed), signed);
+    }
+
+    #[test]
+    fn sibling_unsigned_hap_maps_install_signed_to_unsigned() {
+        let path = std::path::Path::new("/tmp/entry-default-install-signed.hap");
+
+        assert_eq!(
+            sibling_unsigned_hap(path).unwrap(),
+            std::path::Path::new("/tmp/entry-default-unsigned.hap")
+        );
+    }
+
+    #[test]
+    fn hdc_install_failed_detects_fail_marker_with_success_exit() {
+        assert!(hdc_install_failed(
+            "[Fail][E001005] Device not found or connected",
+            ""
+        ));
+    }
+
+    #[test]
+    fn read_hap_bundle_name_uses_app_bundle_name() {
+        let temp = tempdir().unwrap();
+        let hap_path = temp.path().join("entry-default.hap");
+        let file = fs::File::create(&hap_path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("module.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(br#"{"app":{"bundleName":"app.lingxia.test"},"module":{"name":"entry"}}"#)
+            .unwrap();
+        archive.finish().unwrap();
+
+        assert_eq!(read_hap_bundle_name(&hap_path).unwrap(), "app.lingxia.test");
+    }
 }

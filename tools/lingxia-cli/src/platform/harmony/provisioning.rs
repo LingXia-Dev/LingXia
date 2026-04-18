@@ -654,12 +654,7 @@ fn reclaim_api_certificate_slot(
     certs: &[CertInfo],
     state: &mut SigningState,
 ) -> Result<bool> {
-    let Some(state_cert_id) = state.cert_id.as_deref() else {
-        return Ok(false);
-    };
-
-    let candidate = certs.iter().find(|cert| cert.id == state_cert_id);
-
+    let candidate = certificate_reclaim_candidate(certs, state.cert_id.as_deref());
     let Some(candidate) = candidate else {
         return Ok(false);
     };
@@ -677,4 +672,75 @@ fn reclaim_api_certificate_slot(
     state.profile_id = None;
 
     Ok(true)
+}
+
+fn certificate_reclaim_candidate<'a>(
+    certs: &'a [CertInfo],
+    state_cert_id: Option<&str>,
+) -> Option<&'a CertInfo> {
+    if let Some(state_cert_id) = state_cert_id
+        && let Some(cert) = certs.iter().find(|cert| cert.id == state_cert_id)
+    {
+        return Some(cert);
+    }
+
+    certs
+        .iter()
+        .filter(|cert| is_lingxia_managed_certificate_name(&cert.cert_name))
+        .min_by(|left, right| {
+            left.cert_name
+                .cmp(&right.cert_name)
+                .then_with(|| left.id.cmp(&right.id))
+        })
+}
+
+fn is_lingxia_managed_certificate_name(name: &str) -> bool {
+    (name.starts_with("lingxia_debug_") || name.starts_with("lingxia_release_"))
+        && name.ends_with(".cer")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cert(id: &str, name: &str) -> CertInfo {
+        CertInfo {
+            id: id.to_string(),
+            cert_name: name.to_string(),
+            cert_type: 1,
+            cert_download_url: format!("https://example.com/{id}.cer"),
+        }
+    }
+
+    #[test]
+    fn reclaim_candidate_prefers_state_certificate() {
+        let certs = vec![
+            cert("old", "lingxia_debug_20240101000000.cer"),
+            cert("state", "custom_user_cert.cer"),
+        ];
+
+        let candidate = certificate_reclaim_candidate(&certs, Some("state")).unwrap();
+
+        assert_eq!(candidate.id, "state");
+    }
+
+    #[test]
+    fn reclaim_candidate_uses_oldest_lingxia_managed_certificate() {
+        let certs = vec![
+            cert("user", "custom_user_cert.cer"),
+            cert("new", "lingxia_debug_20250101000000.cer"),
+            cert("old", "lingxia_debug_20240101000000.cer"),
+        ];
+
+        let candidate = certificate_reclaim_candidate(&certs, None).unwrap();
+
+        assert_eq!(candidate.id, "old");
+    }
+
+    #[test]
+    fn reclaim_candidate_ignores_user_certificates_without_state() {
+        let certs = vec![cert("user", "custom_user_cert.cer")];
+
+        assert!(certificate_reclaim_candidate(&certs, None).is_none());
+    }
 }
