@@ -45,9 +45,9 @@ sha2 = "0.11"
 sha1 = "0.11"
 hmac = "0.13"
 pbkdf2 = { version = "0.12", features = ["simple"] }
-aes = "0.8"
+aes = "0.9"
 aes-gcm = "0.10"
-cbc = "0.1"
+cbc = "0.2"
 num-bigint = "0.4"
 rand = "0.10"
 uuid = { version = "1.20", features = ["v4"] }
@@ -56,7 +56,7 @@ tungstenite = { version = "0.29", features = ["native-tls"] }
 x509-parser = "0.18"
 
 which = "8.0"
-adb_client = { git = "https://github.com/butterflyfish/adb_client", rev = "6ba0e8a97fc92c60f48625a232e8aee47d1d4069" }
+adb_client = { git = "https://github.com/butterflyfish/adb_client", rev = "80d4e050a6205dbe865292142d9f82f86e2567ad" }
 urlencoding = "2.1"
 
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
@@ -67,17 +67,17 @@ lingxia-devtool-protocol = { workspace = true }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
-oxc_parser = "0.124.0"
+oxc_parser = "0.126"
 oxc_resolver = "11.19.1"
-oxc_transformer = "0.124.0"
-oxc_codegen = "0.124.0"
-oxc_minifier = "0.124.0"
-oxc_allocator = "0.124.0"
-oxc_span = "0.124.0"
-oxc_ast = "0.124.0"
-oxc_ast_visit = "0.124.0"
-oxc_syntax = "0.124.0"
-oxc_semantic = "0.124.0"
+oxc_transformer = "0.126"
+oxc_codegen = "0.126"
+oxc_minifier = "0.126"
+oxc_allocator = "0.126"
+oxc_span = "0.126"
+oxc_ast = "0.126"
+oxc_ast_visit = "0.126.0"
+oxc_syntax = "0.126"
+oxc_semantic = "0.126"
 oxc_sourcemap = "6.1.1"
 sysinfo = "0.38.4"
 

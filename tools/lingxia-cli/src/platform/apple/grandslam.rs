@@ -734,8 +734,8 @@ impl GrandSlamClient {
         let ciphertext = &encrypted[19..encrypted.len() - 16];
 
         let decrypted = {
-            use aes::Aes256;
             use aes_gcm::aead::generic_array::GenericArray;
+            use aes_gcm::aes::Aes256;
             use aes_gcm::{AesGcm, KeyInit, aead::Aead};
 
             // Apple uses 16-byte nonce instead of the standard 12

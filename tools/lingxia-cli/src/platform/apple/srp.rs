@@ -2,8 +2,8 @@
 //!
 //! Implements SRP-6a with 2048-bit parameters as used by Apple's GrandSlam.
 
-use aes::cipher::{BlockDecryptMut, KeyIvInit};
 use anyhow::{Result, anyhow};
+use cbc::cipher::{BlockModeDecrypt, KeyIvInit};
 use hmac::{Hmac, KeyInit, Mac};
 use num_bigint::BigUint;
 use rand::Rng;
@@ -189,7 +189,7 @@ impl SrpClient {
 
         let mut buffer = encrypted.to_vec();
         let decrypted = cipher
-            .decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buffer)
+            .decrypt_padded::<cbc::cipher::block_padding::Pkcs7>(&mut buffer)
             .map_err(|e| anyhow!("Decryption failed: {}", e))?;
 
         Ok(decrypted.to_vec())
