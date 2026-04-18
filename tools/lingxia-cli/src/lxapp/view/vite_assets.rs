@@ -34,15 +34,7 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 .map(|page| (strip_ext(page), page.clone()))
                 .collect::<std::collections::HashMap<_, _>>();
 
-            if let Some(pages) = value.get_mut("pages").and_then(Value::as_array_mut) {
-                for page in pages.iter_mut() {
-                    if let Some(raw) = page.as_str()
-                        && let Some(resolved) = page_map.get(&strip_ext(raw))
-                    {
-                        *page = Value::String(resolved.clone());
-                    }
-                }
-            }
+            rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
 
             if let Some(list) = value
                 .get_mut("tabBar")
@@ -69,6 +61,43 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
             fs::copy(source, project.output_dir.join("lxplugin.json"))?;
         }
     }
+    Ok(())
+}
+
+fn rewrite_manifest_pages(
+    pages: Option<&mut Value>,
+    page_map: &std::collections::HashMap<String, String>,
+) -> Result<()> {
+    let Some(pages) = pages else {
+        bail!("lxapp.json pages is required");
+    };
+    match pages {
+        Value::Array(items) => {
+            for page in items {
+                rewrite_page_value(page, page_map)?;
+            }
+        }
+        Value::Object(items) => {
+            for page in items.values_mut() {
+                rewrite_page_value(page, page_map)?;
+            }
+        }
+        _ => bail!("lxapp.json pages must be an array or object"),
+    }
+    Ok(())
+}
+
+fn rewrite_page_value(
+    page: &mut Value,
+    page_map: &std::collections::HashMap<String, String>,
+) -> Result<()> {
+    let raw = page
+        .as_str()
+        .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
+    let Some(resolved) = page_map.get(&strip_ext(raw)) else {
+        bail!("Page file not found for {raw}");
+    };
+    *page = Value::String(resolved.clone());
     Ok(())
 }
 
@@ -427,6 +456,55 @@ mod tests {
             package_name: Some("demo".to_string()),
             version: "1.0.0".to_string(),
         }
+    }
+
+    #[test]
+    fn write_root_manifest_rewrites_named_pages() {
+        let temp = tempdir().unwrap();
+        let mut project = make_project(temp.path());
+        project.framework = ProjectFramework::React;
+        project.pages = vec![
+            "pages/home/index.tsx".to_string(),
+            "pages/settings/index.tsx".to_string(),
+        ];
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+  "appId": "demo",
+  "appName": "Demo",
+  "version": "1.0.0",
+  "pages": {
+    "home": "pages/home/index",
+    "settings": "pages/settings/index"
+  },
+  "tabBar": {
+    "list": [
+      { "pagePath": "pages/home/index", "text": "Home" }
+    ]
+  }
+}"#,
+        );
+        fs::create_dir_all(&project.output_dir).unwrap();
+
+        write_root_manifest(&project).unwrap();
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(project.output_dir.join("lxapp.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            manifest["pages"]["home"].as_str(),
+            Some("pages/home/index.tsx")
+        );
+        assert_eq!(
+            manifest["pages"]["settings"].as_str(),
+            Some("pages/settings/index.tsx")
+        );
+        assert_eq!(
+            manifest["tabBar"]["list"][0]["pagePath"].as_str(),
+            Some("pages/home/index.tsx")
+        );
     }
 
     #[test]

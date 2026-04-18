@@ -1513,6 +1513,10 @@ impl LxApp {
         find_matching_page_path(&pages, path).map(|s| s.to_string())
     }
 
+    pub fn find_page_path_by_name(&self, name: &str) -> Option<String> {
+        self.config.page_path_by_name(name)
+    }
+
     /// Validate that a page URL resolves to a configured page before navigation.
     pub fn ensure_page_exists(&self, url: &str) -> Result<(), LxAppError> {
         let resolved = crate::route::resolve_route(self, url)?;

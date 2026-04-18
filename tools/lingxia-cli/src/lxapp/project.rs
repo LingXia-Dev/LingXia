@@ -1,8 +1,9 @@
 use crate::lxapp::framework::{ProjectFramework, detect_project_framework, resolve_page_path};
 use anyhow::{Context, Result, anyhow};
+use semver::Version;
 use serde_json::Value;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectKind {
@@ -33,6 +34,7 @@ impl Project {
 
         if lxapp_path.exists() {
             let manifest = read_json(&lxapp_path)?;
+            validate_lxapp_manifest(&manifest)?;
             let framework = match framework_override {
                 Some(framework) => framework,
                 None => detect_project_framework(project_root)?,
@@ -95,6 +97,78 @@ impl Project {
             project_root.display()
         ))
     }
+}
+
+fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
+    non_empty_str(manifest.get("appId"), "appId in lxapp.json")?;
+    let version = non_empty_str(manifest.get("version"), "version in lxapp.json")?;
+    Version::parse(&version).map_err(|_| {
+        anyhow!("version in lxapp.json must be a semantic version (major.minor.patch)")
+    })?;
+    validate_lxapp_pages(manifest.get("pages"))?;
+    Ok(())
+}
+
+fn validate_lxapp_pages(pages: Option<&Value>) -> Result<()> {
+    match pages {
+        Some(Value::Array(entries)) => {
+            if entries.is_empty() {
+                return Err(anyhow!("lxapp.json pages must not be empty"));
+            }
+            for value in entries {
+                let page = value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
+                validate_page_path(page, "lxapp.json pages entry")?;
+            }
+            Ok(())
+        }
+        Some(Value::Object(entries)) => {
+            if entries.is_empty() {
+                return Err(anyhow!("lxapp.json pages must not be empty"));
+            }
+            for (name, value) in entries {
+                if !is_valid_page_name(name) {
+                    return Err(anyhow!(
+                        "lxapp.json page name must use letters, numbers, '_' or '-': {name:?}"
+                    ));
+                }
+                let page = value
+                    .as_str()
+                    .ok_or_else(|| anyhow!("lxapp.json named pages entries must be strings"))?;
+                validate_page_path(page, "lxapp.json named page path")?;
+            }
+            Ok(())
+        }
+        _ => Err(anyhow!("lxapp.json pages must be an array or object")),
+    }
+}
+
+fn is_valid_page_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn validate_page_path(path: &str, field: &str) -> Result<()> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err(anyhow!("{field} must not be empty"));
+    }
+    if path.contains('\\') || Path::new(path).is_absolute() {
+        return Err(anyhow!("{field} must be a relative package path: {path:?}"));
+    }
+    if !Path::new(path)
+        .components()
+        .all(|component| matches!(component, Component::Normal(_)))
+    {
+        return Err(anyhow!(
+            "{field} must stay inside the lxapp package: {path:?}"
+        ));
+    }
+    Ok(())
 }
 
 fn read_json(path: &Path) -> Result<Value> {
@@ -223,6 +297,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": false,
               "pages": ["pages/home/index"]
@@ -254,6 +329,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": false,
               "pages": {
@@ -293,6 +369,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": false,
               "pages": {
@@ -333,6 +410,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "appService": false,
               "pages": ["pages/home/index"]
@@ -348,6 +426,89 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("\"appService\" is no longer supported"));
+    }
+
+    #[test]
+    fn rejects_lxapp_without_appid() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "version": "1.0.0",
+              "logic": false,
+              "pages": ["pages/home/index"]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+
+        let error = Project::discover(temp.path(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Missing appId in lxapp.json"));
+    }
+
+    #[test]
+    fn rejects_empty_lxapp_pages() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "logic": false,
+              "pages": []
+            }"#,
+        );
+
+        let error = Project::discover(temp.path(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("lxapp.json pages must not be empty"));
+    }
+
+    #[test]
+    fn rejects_invalid_named_page_key() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "logic": false,
+              "pages": {
+                "home page": "pages/home/index"
+              }
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+
+        let error = Project::discover(temp.path(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("lxapp.json page name must use"));
+    }
+
+    #[test]
+    fn rejects_unsafe_lxapp_page_path() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "logic": false,
+              "pages": ["../outside"]
+            }"#,
+        );
+
+        let error = Project::discover(temp.path(), None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("lxapp.json pages entry must stay inside"));
     }
 
     #[test]
@@ -384,6 +545,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": "../logic.js",
               "pages": ["pages/home/index"]
@@ -404,6 +566,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": false,
               "pages": ["pages/home/index"]
@@ -429,6 +592,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "logic": false,
               "pages": ["pages/home/index"]
@@ -454,6 +618,7 @@ mod tests {
             temp.path(),
             "lxapp.json",
             r#"{
+              "appId": "demo",
               "version": "1.0.0",
               "framework": "react",
               "logic": false,

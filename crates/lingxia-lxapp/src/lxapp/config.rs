@@ -75,6 +75,13 @@ impl LxAppPages {
             Self::Named(pages) => pages.values().cloned().collect(),
         }
     }
+
+    pub fn page_path_by_name(&self, name: &str) -> Option<String> {
+        match self {
+            Self::Ordered(_) => None,
+            Self::Named(pages) => pages.get(name).cloned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -139,6 +146,10 @@ impl LxAppConfig {
 
     pub fn page_paths(&self) -> Vec<String> {
         self.pages.page_paths()
+    }
+
+    pub fn page_path_by_name(&self, name: &str) -> Option<String> {
+        self.pages.page_path_by_name(name)
     }
 
     pub fn logic_entry(&self) -> Option<String> {
