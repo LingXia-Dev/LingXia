@@ -52,7 +52,7 @@ export class LxApp {
     return LxApp.instance;
   }
 
-  public static initialize(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
+  public static initializeRuntime(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
     const instance = LxApp.getInstance();
     if (instance.homeLxAppId !== null) {
       hilog.info(DOMAIN, TAG, 'LxApp already successfully initialized');
@@ -65,7 +65,7 @@ export class LxApp {
       return;
     }
 
-    hilog.info(DOMAIN, TAG, `LxApp.initialize called with context: ${context ? 'provided' : 'null'}, windowStage: ${windowStage ? 'provided' : 'null'}`);
+    hilog.info(DOMAIN, TAG, `LxApp.initializeRuntime called with context: ${context ? 'provided' : 'null'}, windowStage: ${windowStage ? 'provided' : 'null'}`);
 
     // Store context and windowStage for window operations
     if (context) {

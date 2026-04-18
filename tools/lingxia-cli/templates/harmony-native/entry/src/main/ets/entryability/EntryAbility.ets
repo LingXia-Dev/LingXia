@@ -18,7 +18,7 @@ export default class EntryAbility extends LingxiaBaseAbility {
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
 
     // Initialize LingXia SDK with context and windowStage
-    Lingxia.initialize(this.context, windowStage);
+    Lingxia.quickStart(this.context, windowStage);
 
     // Enable WebView debugging
     LxApp.enableWebViewDebugging();

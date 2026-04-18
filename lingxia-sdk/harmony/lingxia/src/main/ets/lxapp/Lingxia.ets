@@ -8,14 +8,9 @@ import { LxApp } from './LxApp';
 export class Lingxia {
 
   /**
-   * Initialize the LingXia SDK and automatically open the Home LxApp.
-   *
-   * Call this once from `onWindowStageCreate`, before any LxApp UI is presented.
-   *
-   * @param context UIAbility context
-   * @param windowStage WindowStage from onWindowStageCreate
+   * Product-app entry point. Initializes the runtime for use with `LxAppNavigation`.
    */
-  public static initialize(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
-    LxApp.initialize(context, windowStage);
+  public static quickStart(context: common.UIAbilityContext, windowStage: window.WindowStage): void {
+    LxApp.initializeRuntime(context, windowStage);
   }
 }

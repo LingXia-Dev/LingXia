@@ -316,7 +316,7 @@ export struct LxAppNavigation {
         }
         this.openLxAppWithSession(homeAppId, "", sessionId);
       } else {
-        this.errorMessage = 'LxApp not initialized. Please call LxApp.initialize() in EntryAbility first.';
+        this.errorMessage = 'LxApp not initialized. Please call Lingxia.quickStart() in EntryAbility first.';
         hilog.error(DOMAIN, TAG, 'LxApp not initialized');
       }
     } catch (error) {

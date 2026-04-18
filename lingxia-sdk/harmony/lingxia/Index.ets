@@ -3,13 +3,13 @@
  * LingXia SDK for HarmonyOS
  *
  * PUBLIC API:
- * - Lingxia.initialize() - Initialize the SDK (call in onWindowStageCreate)
+ * - Lingxia.quickStart() - Initialize the SDK for product apps (call in onWindowStageCreate)
  * - LxAppNavigation - Navigation-based architecture with automatic home LxApp opening
  *
  * USAGE:
  * ```typescript
  * // In EntryAbility.ets onWindowStageCreate():
- * Lingxia.initialize(this.context, windowStage);
+ * Lingxia.quickStart(this.context, windowStage);
  *
  * // In your main page:
  * LxAppNavigation()  // Automatically opens home LxApp after initialization
