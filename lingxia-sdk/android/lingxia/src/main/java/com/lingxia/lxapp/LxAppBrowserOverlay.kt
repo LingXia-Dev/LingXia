@@ -3,19 +3,16 @@ package com.lingxia.lxapp
 import android.app.Activity
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.text.InputType
+import android.text.TextUtils
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
-import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 
@@ -29,7 +26,7 @@ internal object LxAppBrowserOverlay {
     private var currentTabId: String? = null
     private var pendingTabId: String? = null
     private var pendingAttachToken: Long = 0L
-    private var addressField: EditText? = null
+    private var addressField: TextView? = null
     private var backButton: ImageView? = null
     private var forwardButton: ImageView? = null
 
@@ -170,7 +167,7 @@ internal object LxAppBrowserOverlay {
             setPadding((12 * density).toInt(), 0, (4 * density).toInt(), 0)
         }
 
-        val addrField = EditText(activity).apply {
+        val addrField = TextView(activity).apply {
             layoutParams = LinearLayout.LayoutParams(
                 0,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -179,22 +176,12 @@ internal object LxAppBrowserOverlay {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
             setTextColor(Color.parseColor("#333333"))
             setSingleLine(true)
-            imeOptions = EditorInfo.IME_ACTION_GO
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             background = null
             setPadding(0, 0, 0, 0)
             maxLines = 1
-            setOnEditorActionListener { _, actionId, event ->
-                val isSubmit = actionId == EditorInfo.IME_ACTION_GO ||
-                    actionId == EditorInfo.IME_ACTION_DONE ||
-                    (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
-                if (isSubmit) {
-                    submitAddress()
-                    true
-                } else {
-                    false
-                }
-            }
+            ellipsize = TextUtils.TruncateAt.MIDDLE
+            isFocusable = false
+            isClickable = false
         }
         if (initialUrl.isNotEmpty()) {
             addrField.setText(initialUrl)
@@ -333,7 +320,6 @@ internal object LxAppBrowserOverlay {
     private fun updateAddressBar(url: String?) {
         if (url == null) return
         val field = addressField ?: return
-        if (field.hasFocus()) return
         field.setText(url)
     }
 
@@ -349,17 +335,6 @@ internal object LxAppBrowserOverlay {
             alpha = if (canGoForward) 1.0f else 0.3f
             isEnabled = canGoForward
         }
-    }
-
-    private fun submitAddress() {
-        val field = addressField ?: return
-        val result = handleBrowserAddressSubmission(field.text?.toString(), webView?.url) ?: return
-        field.setText(result.displayText)
-        field.clearFocus()
-        val imm = field.context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-        imm?.hideSoftInputFromWindow(field.windowToken, 0)
-        webView?.loadUrl(result.url)
-        updateAddressBar(result.url)
     }
 
     private fun findManagedWebView(tabId: String): com.lingxia.lxapp.WebView? {

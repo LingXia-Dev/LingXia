@@ -151,15 +151,6 @@ internal object NativeApi {
     ): Boolean
 
     /**
-     * Run the shared browser address input handler.
-     *
-     * The input and output are JSON payloads so the schema can evolve without
-     * repeatedly changing platform FFI signatures.
-     */
-    @JvmStatic
-    external fun handleBrowserAddressInput(requestJson: String): String?
-
-    /**
      * Run the shared browser navigation policy classifier.
      *
      * Returns JSON with decision: in_webview | open_external | deny.
