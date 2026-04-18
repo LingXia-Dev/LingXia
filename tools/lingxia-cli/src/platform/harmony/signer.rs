@@ -44,6 +44,27 @@ const HAP_SIG_BLOCK_MAGIC_V3: [u8; 16] = [
 const ZIP_CHUNK_SIZE: usize = 1024 * 1024;
 const ZIP_FIRST_LEVEL_CHUNK_PREFIX: u8 = 0x5a;
 const ZIP_SECOND_LEVEL_CHUNK_PREFIX: u8 = 0xa5;
+const CODE_SIGN_BLOCK_MAGIC: u64 = 0xe046_c8c6_5389_fccd;
+const CODE_SIGN_BLOCK_VERSION: u32 = 1;
+const CODE_SIGN_BLOCK_HEADER_SIZE: usize = 32;
+const CODE_SIGN_SEGMENT_HEADER_SIZE: usize = 12;
+const CODE_SIGN_SEGMENT_COUNT: usize = 3;
+const CODE_SIGN_FLAG_MERKLE_TREE_INLINED: u32 = 1;
+const CODE_SIGN_FLAG_NATIVE_LIB_INCLUDED: u32 = 2;
+const CODE_SIGN_FSVERITY_SEGMENT_TYPE: u32 = 1;
+const CODE_SIGN_HAP_SEGMENT_TYPE: u32 = 2;
+const CODE_SIGN_NATIVE_LIB_SEGMENT_TYPE: u32 = 3;
+const FSVERITY_INFO_MAGIC: u32 = 0x1e38_31ab;
+const HAP_INFO_MAGIC: u32 = 0xc1b5_cc66;
+const NATIVE_LIB_INFO_MAGIC: u32 = 0x0ed2_e720;
+const FSVERITY_HASH_ALGORITHM_SHA256: u8 = 1;
+const FSVERITY_VERSION: u8 = 1;
+const FSVERITY_LOG2_BLOCK_SIZE: u8 = 12;
+const FSVERITY_BLOCK_SIZE: usize = 4096;
+const FSVERITY_DIGEST_MAGIC: &[u8; 8] = b"FSVerity";
+const SIGN_INFO_BASE_SIZE: usize = 60;
+const MERKLE_TREE_EXTENSION_TYPE: u32 = 1;
+const MERKLE_TREE_EXTENSION_PAYLOAD_SIZE: u32 = 80;
 
 /// Configuration for HAP signing.
 #[derive(Debug, Clone)]
@@ -155,6 +176,8 @@ impl HarmonySigner {
         let mut optional_blocks = existing
             .map(|block| block.optional_blocks)
             .unwrap_or_default();
+        optional_blocks
+            .retain(|(typ, _)| *typ != HAP_PROPERTY_BLOCK_ID && *typ != HAP_CODE_SIGN_BLOCK_ID);
         let mut replaced_profile = false;
         for (typ, value) in &mut optional_blocks {
             if *typ == HAP_PROFILE_BLOCK_ID {
@@ -165,6 +188,22 @@ impl HarmonySigner {
         if !replaced_profile {
             optional_blocks.push((HAP_PROFILE_BLOCK_ID, profile_data));
         }
+
+        let (pkey, signer_cert, cert_chain) = load_private_key_and_signer_cert(config)
+            .context("Failed to load signing key/certificate for native signing")?;
+        let property_header_count = optional_blocks.len() + 2;
+        let code_sign_block_offset =
+            signing_block_offset + (property_header_count * 12) as u64 + 12;
+        let property_block = generate_code_sign_property_block(
+            input_path,
+            &zip_info,
+            signing_block_offset,
+            code_sign_block_offset,
+            &pkey,
+            &signer_cert,
+            &cert_chain,
+        )?;
+        optional_blocks.insert(0, (HAP_PROPERTY_BLOCK_ID, property_block));
 
         let md = message_digest_for(config.sign_algorithm);
         let algo_id = signature_algorithm_id(config.sign_algorithm);
@@ -178,22 +217,13 @@ impl HarmonySigner {
         )?;
         let encoded_digest_message = encode_digest_message(algo_id, &digest)?;
 
-        let (pkey, signer_cert, cert_chain) = load_private_key_and_signer_cert(config)
-            .context("Failed to load signing key/certificate for native signing")?;
-
-        let mut certs: Stack<X509> = Stack::new()?;
-        for cert in cert_chain {
-            certs.push(cert)?;
-        }
-        let pkcs7 = Pkcs7::sign(
-            &signer_cert,
-            &pkey,
-            &certs,
+        let signature_block = pkcs7_sign_der(
             &encoded_digest_message,
-            Pkcs7Flags::BINARY | Pkcs7Flags::NOVERIFY,
-        )
-        .context("Failed to generate PKCS7 signed data")?;
-        let signature_block = pkcs7.to_der().context("Failed to encode PKCS7")?;
+            &pkey,
+            &signer_cert,
+            &cert_chain,
+            false,
+        )?;
 
         let hap_signing_block = construct_hap_signing_block(
             optional_blocks,
@@ -209,6 +239,26 @@ impl HarmonySigner {
             &hap_signing_block,
         )
     }
+}
+
+fn pkcs7_sign_der(
+    data: &[u8],
+    pkey: &PKey<Private>,
+    signer_cert: &X509,
+    cert_chain: &[X509],
+    detached: bool,
+) -> Result<Vec<u8>> {
+    let mut certs: Stack<X509> = Stack::new()?;
+    for cert in cert_chain {
+        certs.push(cert.clone())?;
+    }
+    let mut flags = Pkcs7Flags::BINARY | Pkcs7Flags::NOVERIFY;
+    if detached {
+        flags |= Pkcs7Flags::DETACHED;
+    }
+    let pkcs7 = Pkcs7::sign(signer_cert, pkey, &certs, data, flags)
+        .context("Failed to generate PKCS7 signed data")?;
+    pkcs7.to_der().context("Failed to encode PKCS7")
 }
 
 fn load_private_key_and_signer_cert(
@@ -521,6 +571,453 @@ fn write_signed_hap(
     Ok(())
 }
 
+#[derive(Debug, Clone)]
+struct ZipLocalEntry {
+    name: String,
+    local_offset: u64,
+    data_offset: u64,
+    compressed_size: u64,
+    uncompressed_size: u64,
+    method: u16,
+}
+
+fn generate_code_sign_property_block(
+    input_path: &Path,
+    zip_info: &crate::platform::harmony::signer::zip::ZipInfo,
+    signing_block_offset: u64,
+    code_sign_block_offset: u64,
+    pkey: &PKey<Private>,
+    signer_cert: &X509,
+    cert_chain: &[X509],
+) -> Result<Vec<u8>> {
+    let entries = parse_local_zip_entries(input_path, zip_info.cd_offset)?;
+    let hap_data_size = compute_hap_code_sign_data_size(&entries)?;
+    if hap_data_size > signing_block_offset {
+        return Err(anyhow!(
+            "computed Harmony code signing data size {} exceeds signing block offset {}",
+            hap_data_size,
+            signing_block_offset
+        ));
+    }
+    let merkle_tree_offset = compute_code_sign_merkle_tree_offset(code_sign_block_offset);
+    let hap_bytes = read_file_prefix(input_path, hap_data_size)?;
+    let hap_fsverity = fsverity_for_bytes(&hap_bytes, true, merkle_tree_offset);
+    let hap_signature = pkcs7_sign_der(&hap_fsverity.digest, pkey, signer_cert, cert_chain, true)?;
+    let hap_sign_info = encode_sign_info(
+        hap_data_size,
+        true,
+        &hap_signature,
+        Some(encode_merkle_tree_extension(
+            hap_fsverity.tree.len() as u64,
+            merkle_tree_offset,
+            &hap_fsverity.root_hash,
+        )),
+    );
+
+    let mut native_entries = Vec::new();
+    for entry in &entries {
+        if !is_native_code_entry(entry) {
+            continue;
+        }
+        let bytes = read_zip_entry_bytes(input_path, entry)?;
+        let fsverity = fsverity_for_bytes(&bytes, false, 0);
+        let signature = pkcs7_sign_der(&fsverity.digest, pkey, signer_cert, cert_chain, true)?;
+        let sign_info = encode_sign_info(entry.uncompressed_size, false, &signature, None);
+        native_entries.push((entry.name.clone(), sign_info));
+    }
+
+    let native_segment = encode_native_lib_info_segment(&native_entries);
+    let fsverity_segment = encode_fsverity_info_segment();
+    let hap_segment = encode_hap_info_segment(&hap_sign_info);
+
+    let mut block = encode_code_sign_block(
+        code_sign_block_offset,
+        &hap_fsverity.tree,
+        &fsverity_segment,
+        &hap_segment,
+        &native_segment,
+    );
+
+    let mut property = Vec::with_capacity(12 + block.len());
+    property.extend_from_slice(&HAP_CODE_SIGN_BLOCK_ID.to_le_bytes());
+    property.extend_from_slice(
+        &(u32::try_from(block.len()).context("code sign block too large")?).to_le_bytes(),
+    );
+    property.extend_from_slice(
+        &(u32::try_from(code_sign_block_offset).context("code sign block offset too large")?)
+            .to_le_bytes(),
+    );
+    property.append(&mut block);
+    Ok(property)
+}
+
+fn parse_local_zip_entries(input_path: &Path, cd_offset: u64) -> Result<Vec<ZipLocalEntry>> {
+    let mut file = File::open(input_path)?;
+    let mut entries = Vec::new();
+    let mut offset = 0u64;
+    while offset < cd_offset {
+        file.seek(SeekFrom::Start(offset))?;
+        let mut header = [0u8; 30];
+        file.read_exact(&mut header)?;
+        if u32::from_le_bytes([header[0], header[1], header[2], header[3]]) != 0x0403_4b50 {
+            break;
+        }
+        let method = u16::from_le_bytes([header[8], header[9]]);
+        let compressed_size =
+            u32::from_le_bytes([header[18], header[19], header[20], header[21]]) as u64;
+        let uncompressed_size =
+            u32::from_le_bytes([header[22], header[23], header[24], header[25]]) as u64;
+        let name_len = u16::from_le_bytes([header[26], header[27]]) as usize;
+        let extra_len = u16::from_le_bytes([header[28], header[29]]) as usize;
+        let mut name = vec![0u8; name_len];
+        file.read_exact(&mut name)?;
+        let name = String::from_utf8_lossy(&name).into_owned();
+        let data_offset = offset + 30 + name_len as u64 + extra_len as u64;
+        entries.push(ZipLocalEntry {
+            name,
+            local_offset: offset,
+            data_offset,
+            compressed_size,
+            uncompressed_size,
+            method,
+        });
+        offset = data_offset + compressed_size;
+    }
+    Ok(entries)
+}
+
+fn compute_hap_code_sign_data_size(entries: &[ZipLocalEntry]) -> Result<u64> {
+    let mut data_size = 0;
+    for entry in entries {
+        if is_runnable_entry(entry) && entry.method == 0 {
+            continue;
+        }
+        if entry.name == ".pages.info" {
+            continue;
+        }
+        if entry.local_offset == 0 {
+            break;
+        }
+        data_size = entry.data_offset;
+        break;
+    }
+    if data_size % FSVERITY_BLOCK_SIZE as u64 != 0 {
+        return Err(anyhow!(
+            "Harmony code signing data size must be 4K aligned: {}",
+            data_size
+        ));
+    }
+    Ok(data_size)
+}
+
+fn is_runnable_entry(entry: &ZipLocalEntry) -> bool {
+    entry.name.ends_with(".abc") || entry.name.ends_with(".an") || entry.name.starts_with("libs/")
+}
+
+fn is_native_code_entry(entry: &ZipLocalEntry) -> bool {
+    entry.method == 0
+        && !entry.name.ends_with('/')
+        && (entry.name.starts_with("libs/") || entry.name.ends_with(".an"))
+}
+
+fn read_file_prefix(path: &Path, len: u64) -> Result<Vec<u8>> {
+    let mut file = File::open(path)?;
+    let mut out = vec![0u8; usize::try_from(len).context("file prefix too large")?];
+    file.read_exact(&mut out)?;
+    Ok(out)
+}
+
+fn read_zip_entry_bytes(path: &Path, entry: &ZipLocalEntry) -> Result<Vec<u8>> {
+    if entry.method != 0 || entry.compressed_size != entry.uncompressed_size {
+        return Err(anyhow!(
+            "code signing only supports stored native entries: {}",
+            entry.name
+        ));
+    }
+    let mut file = File::open(path)?;
+    file.seek(SeekFrom::Start(entry.data_offset))?;
+    let mut out = vec![0u8; usize::try_from(entry.uncompressed_size).context("entry too large")?];
+    file.read_exact(&mut out)?;
+    Ok(out)
+}
+
+struct FsVerityData {
+    digest: Vec<u8>,
+    root_hash: Vec<u8>,
+    tree: Vec<u8>,
+}
+
+fn fsverity_for_bytes(data: &[u8], include_tree: bool, merkle_tree_offset: u64) -> FsVerityData {
+    let (root_hash, tree) = fsverity_merkle_tree(data);
+    let descriptor = fsverity_descriptor(
+        data.len() as u64,
+        &root_hash,
+        if include_tree { 1 } else { 0 },
+        if include_tree { merkle_tree_offset } else { 0 },
+    );
+    let descriptor_digest = hash(MessageDigest::sha256(), &descriptor)
+        .expect("sha256 descriptor digest")
+        .to_vec();
+    let mut digest = Vec::with_capacity(12 + descriptor_digest.len());
+    digest.extend_from_slice(FSVERITY_DIGEST_MAGIC);
+    digest.extend_from_slice(&(FSVERITY_HASH_ALGORITHM_SHA256 as u16).to_le_bytes());
+    digest.extend_from_slice(&(descriptor_digest.len() as u16).to_le_bytes());
+    digest.extend_from_slice(&descriptor_digest);
+    FsVerityData {
+        digest,
+        root_hash,
+        tree,
+    }
+}
+
+fn fsverity_merkle_tree(data: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    let mut level = hash_4096_pages(data);
+    if data.len() <= FSVERITY_BLOCK_SIZE {
+        return (
+            level.into_iter().next().unwrap_or_else(|| vec![0u8; 32]),
+            Vec::new(),
+        );
+    }
+
+    let mut levels = Vec::new();
+    while level.len() > 1 {
+        let mut level_bytes = level.concat();
+        pad_to_4096(&mut level_bytes);
+        levels.push(level_bytes.clone());
+        level = hash_4096_pages(&level_bytes);
+    }
+
+    let mut tree = Vec::new();
+    for level_bytes in levels.iter().rev() {
+        tree.extend_from_slice(level_bytes);
+    }
+    (level.remove(0), tree)
+}
+
+fn hash_4096_pages(data: &[u8]) -> Vec<Vec<u8>> {
+    if data.is_empty() {
+        return vec![
+            hash(MessageDigest::sha256(), &[0u8; FSVERITY_BLOCK_SIZE])
+                .expect("sha256 empty fsverity page")
+                .to_vec(),
+        ];
+    }
+    let mut out = Vec::new();
+    for chunk in data.chunks(FSVERITY_BLOCK_SIZE) {
+        let mut page = Vec::with_capacity(FSVERITY_BLOCK_SIZE);
+        page.extend_from_slice(chunk);
+        page.resize(FSVERITY_BLOCK_SIZE, 0);
+        out.push(
+            hash(MessageDigest::sha256(), &page)
+                .expect("sha256 fsverity page")
+                .to_vec(),
+        );
+    }
+    out
+}
+
+fn pad_to_4096(bytes: &mut Vec<u8>) {
+    let rem = bytes.len() % FSVERITY_BLOCK_SIZE;
+    if rem != 0 {
+        bytes.resize(bytes.len() + FSVERITY_BLOCK_SIZE - rem, 0);
+    }
+}
+
+fn fsverity_descriptor(
+    file_size: u64,
+    root_hash: &[u8],
+    flags: u32,
+    merkle_tree_offset: u64,
+) -> Vec<u8> {
+    let mut out = Vec::with_capacity(256);
+    out.push(1);
+    out.push(FSVERITY_HASH_ALGORITHM_SHA256);
+    out.push(FSVERITY_LOG2_BLOCK_SIZE);
+    out.push(0);
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&file_size.to_le_bytes());
+    out.extend_from_slice(&fixed_bytes(root_hash, 64));
+    out.extend_from_slice(&[0u8; 32]);
+    out.extend_from_slice(&flags.to_le_bytes());
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&merkle_tree_offset.to_le_bytes());
+    out.resize(256, 0);
+    out
+}
+
+fn fixed_bytes(bytes: &[u8], len: usize) -> Vec<u8> {
+    let mut out = vec![0u8; len];
+    let copy_len = bytes.len().min(len);
+    out[..copy_len].copy_from_slice(&bytes[..copy_len]);
+    out
+}
+
+fn encode_sign_info(
+    data_size: u64,
+    include_tree: bool,
+    signature: &[u8],
+    extension: Option<Vec<u8>>,
+) -> Vec<u8> {
+    let zero_padding_len = (4 - signature.len() % 4) % 4;
+    let extension_num = usize::from(extension.is_some());
+    let extension_offset = SIGN_INFO_BASE_SIZE + signature.len() + zero_padding_len;
+    let mut out = Vec::with_capacity(extension_offset + extension.as_ref().map_or(0, Vec::len));
+    out.extend_from_slice(&0u32.to_le_bytes());
+    out.extend_from_slice(&(signature.len() as u32).to_le_bytes());
+    out.extend_from_slice(&(if include_tree { 1u32 } else { 0u32 }).to_le_bytes());
+    out.extend_from_slice(&data_size.to_le_bytes());
+    out.extend_from_slice(&[0u8; 32]);
+    out.extend_from_slice(&(extension_num as u32).to_le_bytes());
+    out.extend_from_slice(&(extension_offset as u32).to_le_bytes());
+    out.extend_from_slice(signature);
+    out.extend(std::iter::repeat(0).take(zero_padding_len));
+    if let Some(extension) = extension {
+        out.extend_from_slice(&extension);
+    }
+    out
+}
+
+fn encode_merkle_tree_extension(tree_size: u64, tree_offset: u64, root_hash: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(8 + MERKLE_TREE_EXTENSION_PAYLOAD_SIZE as usize);
+    out.extend_from_slice(&MERKLE_TREE_EXTENSION_TYPE.to_le_bytes());
+    out.extend_from_slice(&MERKLE_TREE_EXTENSION_PAYLOAD_SIZE.to_le_bytes());
+    out.extend_from_slice(&tree_size.to_le_bytes());
+    out.extend_from_slice(&tree_offset.to_le_bytes());
+    out.extend_from_slice(&fixed_bytes(root_hash, 64));
+    out.resize(8 + MERKLE_TREE_EXTENSION_PAYLOAD_SIZE as usize, 0);
+    out
+}
+
+fn encode_fsverity_info_segment() -> Vec<u8> {
+    let mut out = Vec::with_capacity(64);
+    out.extend_from_slice(&FSVERITY_INFO_MAGIC.to_le_bytes());
+    out.push(FSVERITY_HASH_ALGORITHM_SHA256);
+    out.push(FSVERITY_VERSION);
+    out.push(FSVERITY_LOG2_BLOCK_SIZE);
+    out.resize(64, 0);
+    out
+}
+
+fn encode_hap_info_segment(sign_info: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + sign_info.len());
+    out.extend_from_slice(&HAP_INFO_MAGIC.to_le_bytes());
+    out.extend_from_slice(sign_info);
+    out
+}
+
+fn encode_native_lib_info_segment(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+    let section_num = entries.len();
+    let header_len = 12 + section_num * 16;
+    let mut file_names = Vec::new();
+    let mut sign_infos = Vec::new();
+    let mut positions = Vec::new();
+
+    let mut name_offset = header_len;
+    let mut sign_offset = header_len
+        + entries
+            .iter()
+            .map(|(name, _)| name.as_bytes().len())
+            .sum::<usize>();
+    let sign_padding = (4 - sign_offset % 4) % 4;
+    sign_offset += sign_padding;
+
+    for (name, sign_info) in entries {
+        let name_bytes = name.as_bytes();
+        positions.push((name_offset, name_bytes.len(), sign_offset, sign_info.len()));
+        file_names.extend_from_slice(name_bytes);
+        name_offset += name_bytes.len();
+        sign_infos.extend_from_slice(sign_info);
+        sign_offset += sign_info.len();
+    }
+    file_names.extend(std::iter::repeat(0).take(sign_padding));
+
+    let segment_size = 12 + positions.len() * 16 + file_names.len() + sign_infos.len();
+    let mut out = Vec::with_capacity(segment_size);
+    out.extend_from_slice(&NATIVE_LIB_INFO_MAGIC.to_le_bytes());
+    out.extend_from_slice(&(segment_size as u32).to_le_bytes());
+    out.extend_from_slice(&(section_num as u32).to_le_bytes());
+    for (name_offset, name_size, sign_offset, sign_size) in positions {
+        out.extend_from_slice(&(name_offset as u32).to_le_bytes());
+        out.extend_from_slice(&(name_size as u32).to_le_bytes());
+        out.extend_from_slice(&(sign_offset as u32).to_le_bytes());
+        out.extend_from_slice(&(sign_size as u32).to_le_bytes());
+    }
+    out.extend_from_slice(&file_names);
+    out.extend_from_slice(&sign_infos);
+    out
+}
+
+fn compute_code_sign_merkle_tree_offset(code_sign_block_offset: u64) -> u64 {
+    let base =
+        CODE_SIGN_BLOCK_HEADER_SIZE + CODE_SIGN_SEGMENT_COUNT * CODE_SIGN_SEGMENT_HEADER_SIZE;
+    let residual = (code_sign_block_offset + base as u64) % FSVERITY_BLOCK_SIZE as u64;
+    let padding = if residual == 0 {
+        0
+    } else {
+        FSVERITY_BLOCK_SIZE as u64 - residual
+    };
+    code_sign_block_offset + base as u64 + padding
+}
+
+fn encode_code_sign_block(
+    code_sign_block_offset: u64,
+    hap_merkle_tree: &[u8],
+    fsverity_segment: &[u8],
+    hap_segment: &[u8],
+    native_segment: &[u8],
+) -> Vec<u8> {
+    let base =
+        CODE_SIGN_BLOCK_HEADER_SIZE + CODE_SIGN_SEGMENT_COUNT * CODE_SIGN_SEGMENT_HEADER_SIZE;
+    let residual = (code_sign_block_offset + base as u64) % FSVERITY_BLOCK_SIZE as u64;
+    let padding_len = if residual == 0 {
+        0
+    } else {
+        FSVERITY_BLOCK_SIZE - residual as usize
+    };
+
+    let fsverity_offset = base + padding_len + hap_merkle_tree.len();
+    let hap_offset = fsverity_offset + fsverity_segment.len();
+    let native_offset = hap_offset + hap_segment.len();
+    let block_size = native_offset + native_segment.len();
+
+    let mut out = Vec::with_capacity(block_size);
+    out.extend_from_slice(&CODE_SIGN_BLOCK_MAGIC.to_le_bytes());
+    out.extend_from_slice(&CODE_SIGN_BLOCK_VERSION.to_le_bytes());
+    out.extend_from_slice(&(block_size as u32).to_le_bytes());
+    out.extend_from_slice(&(CODE_SIGN_SEGMENT_COUNT as u32).to_le_bytes());
+    let flags = CODE_SIGN_FLAG_MERKLE_TREE_INLINED
+        | if native_segment.len() > 12 {
+            CODE_SIGN_FLAG_NATIVE_LIB_INCLUDED
+        } else {
+            0
+        };
+    out.extend_from_slice(&flags.to_le_bytes());
+    out.extend_from_slice(&0u64.to_le_bytes());
+    for (typ, offset, size) in [
+        (
+            CODE_SIGN_FSVERITY_SEGMENT_TYPE,
+            fsverity_offset,
+            fsverity_segment.len(),
+        ),
+        (CODE_SIGN_HAP_SEGMENT_TYPE, hap_offset, hap_segment.len()),
+        (
+            CODE_SIGN_NATIVE_LIB_SEGMENT_TYPE,
+            native_offset,
+            native_segment.len(),
+        ),
+    ] {
+        out.extend_from_slice(&typ.to_le_bytes());
+        out.extend_from_slice(&(offset as u32).to_le_bytes());
+        out.extend_from_slice(&(size as u32).to_le_bytes());
+    }
+    out.extend(std::iter::repeat(0).take(padding_len));
+    out.extend_from_slice(hap_merkle_tree);
+    out.extend_from_slice(fsverity_segment);
+    out.extend_from_slice(hap_segment);
+    out.extend_from_slice(native_segment);
+    out
+}
+
 fn read_existing_signing_block(
     path: &Path,
     zip_info: &crate::platform::harmony::signer::zip::ZipInfo,
@@ -613,4 +1110,46 @@ fn read_existing_signing_block(
         signing_block_offset: zip_info.cd_offset - block_size_u64,
         optional_blocks: out,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        FSVERITY_BLOCK_SIZE, ZipLocalEntry, compute_hap_code_sign_data_size, is_runnable_entry,
+    };
+
+    fn entry(name: &str, local_offset: u64, data_offset: u64, method: u16) -> ZipLocalEntry {
+        ZipLocalEntry {
+            name: name.to_string(),
+            local_offset,
+            data_offset,
+            compressed_size: 0,
+            uncompressed_size: 0,
+            method,
+        }
+    }
+
+    #[test]
+    fn hap_code_sign_data_size_matches_hapsigner_boundary() {
+        let entries = [
+            entry("libs/arm64-v8a/liblingxia.so", 0, 64, 0),
+            entry("ets/modules.abc", 4096, 4160, 0),
+            entry("module.json", 8192, 8192, 8),
+        ];
+
+        assert!(is_runnable_entry(&entries[0]));
+        assert_eq!(compute_hap_code_sign_data_size(&entries).unwrap(), 8192);
+    }
+
+    #[test]
+    fn hap_code_sign_data_size_rejects_unaligned_boundary() {
+        let entries = [entry(
+            "module.json",
+            FSVERITY_BLOCK_SIZE as u64,
+            FSVERITY_BLOCK_SIZE as u64 + 64,
+            8,
+        )];
+
+        assert!(compute_hap_code_sign_data_size(&entries).is_err());
+    }
 }
