@@ -10,6 +10,10 @@ Page({
     if (!page) {
       return;
     }
-    await lx.navigateTo({ page, query });
+    if (query && typeof query === "object") {
+      await lx.navigateTo({ page, query });
+      return;
+    }
+    await lx.navigateTo({ page });
   },
 });
