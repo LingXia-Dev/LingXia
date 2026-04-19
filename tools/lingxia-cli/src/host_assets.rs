@@ -804,6 +804,9 @@ fn build_app_json_from_config(
     if let Some(max_size_mb) = app.cache_max_size_mb {
         obj.insert("cacheMaxSizeMB".to_string(), serde_json::json!(max_size_mb));
     }
+    if let Some(storage) = config.storage.as_ref() {
+        obj.insert("storage".to_string(), serde_json::to_value(storage)?);
+    }
     if let Some(dev_ws_url) = dev_ws_url.map(str::trim).filter(|value| !value.is_empty()) {
         obj.insert("devWsUrl".to_string(), serde_json::json!(dev_ws_url));
     }
@@ -1371,6 +1374,7 @@ mod tests {
                 "activators": []
             })),
             app_links: None,
+            storage: None,
             resources: None,
         };
 
@@ -1402,6 +1406,7 @@ mod tests {
             harmony: None,
             ui: None,
             app_links: None,
+            storage: None,
             resources: None,
         };
 
@@ -1434,6 +1439,7 @@ mod tests {
             app_links: Some(crate::config::AppLinksConfig {
                 hosts: vec!["www.example.com".into()],
             }),
+            storage: None,
             resources: None,
         };
 
@@ -1462,6 +1468,7 @@ mod tests {
             harmony: None,
             ui: Some(ui.clone()),
             app_links: None,
+            storage: None,
             resources: None,
         };
 
@@ -1490,6 +1497,7 @@ mod tests {
             harmony: None,
             ui: Some(ui),
             app_links: None,
+            storage: None,
             resources: None,
         };
         let icons = vec![super::PreparedAppUiIcon {
@@ -1537,6 +1545,7 @@ mod tests {
                 }]
             })),
             app_links: None,
+            storage: None,
             resources: None,
         };
 

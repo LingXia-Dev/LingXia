@@ -145,7 +145,7 @@ pub fn execute(
     println!(
         "{}",
         format!(
-            "Note: in {} -> [app], set cacheMaxAgeDays=0 and/or cacheMaxSizeMB=0 to disable cache cleanup limits.",
+            "Note: in {} -> [storage], set cacheMaxAgeDays=0 and/or cacheMaxSizeMB=0 to disable cache cleanup limits.",
             crate::config::HOST_CONFIG_FILE
         )
         .yellow()

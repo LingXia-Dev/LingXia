@@ -5,6 +5,7 @@ use std::time::Duration;
 pub struct LxAppRuntimeConfig {
     pub home_appid: String,
     pub home_app_version: String,
+    pub temp_max_size_bytes: u64,
     pub cache_max_age: Duration,
     pub cache_max_size_bytes: u64,
 }
@@ -27,6 +28,12 @@ pub(crate) fn cache_max_age() -> Duration {
     runtime_config()
         .map(|config| config.cache_max_age)
         .unwrap_or_else(|| Duration::from_secs(7 * 86400))
+}
+
+pub(crate) fn temp_max_size_bytes() -> u64 {
+    runtime_config()
+        .map(|config| config.temp_max_size_bytes)
+        .unwrap_or(1024 * 1024 * 1024)
 }
 
 pub(crate) fn cache_max_size_bytes() -> u64 {

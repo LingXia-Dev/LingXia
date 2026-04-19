@@ -10,7 +10,7 @@ use std::path::Path;
 pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
 pub const DEFAULT_CACHE_MAX_AGE_DAYS: u64 = 7;
-pub const DEFAULT_CACHE_MAX_SIZE_MB: u64 = 1024;
+pub const DEFAULT_CACHE_MAX_SIZE_MB: u64 = 2048;
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +33,8 @@ pub struct LingXiaConfig {
     #[serde(rename = "appLinks", skip_serializing_if = "Option::is_none")]
     pub app_links: Option<AppLinksConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage: Option<StorageConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<ResourcesConfig>,
 }
 
@@ -41,6 +43,21 @@ pub struct LingXiaConfig {
 pub struct AppLinksConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temp_max_size_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_max_age_days: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_max_size_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_max_size_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub app_storage_max_size_mb: Option<u64>,
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -308,6 +325,7 @@ impl LingXiaConfig {
             harmony: None,
             ui: None,
             app_links: None,
+            storage: None,
             resources: Some(ResourcesConfig {
                 i18n: None,
                 icons: None,

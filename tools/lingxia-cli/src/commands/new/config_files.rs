@@ -1,9 +1,9 @@
 use super::types::{LxAppInfo, Platform, ProjectConfig};
 use super::validation::swift_target_name_from_project_name;
 use crate::config::{
-    AndroidConfig, AppLinksConfig, DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB,
-    HarmonyConfig, HostAppConfig, IosConfig, LingXiaConfig, MacosConfig, ResourceBundleConfig,
-    ResourceBundleDetail, ResourceBundleType, ResourcesConfig,
+    AndroidConfig, AppLinksConfig, DEFAULT_CACHE_MAX_AGE_DAYS, HarmonyConfig, HostAppConfig,
+    IosConfig, LingXiaConfig, MacosConfig, ResourceBundleConfig, ResourceBundleDetail,
+    ResourceBundleType, ResourcesConfig, StorageConfig,
 };
 use anyhow::Result;
 use serde_json::Value;
@@ -83,8 +83,8 @@ fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaCon
             lingxia_id: None,
             platforms: platforms.clone(),
             home_lxapp_id: Some(lxapp.app_id.clone()),
-            cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
-            cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
+            cache_max_age_days: None,
+            cache_max_size_mb: None,
         }),
         android,
         ios,
@@ -93,6 +93,13 @@ fn build_lingxia_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> LingXiaCon
         ui: default_ui_config(config, lxapp),
         app_links: (!config.app_link_hosts.is_empty()).then(|| AppLinksConfig {
             hosts: config.app_link_hosts.clone(),
+        }),
+        storage: Some(StorageConfig {
+            temp_max_size_mb: Some(1024),
+            cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
+            cache_max_size_mb: Some(2048),
+            data_max_size_mb: Some(4096),
+            app_storage_max_size_mb: Some(16384),
         }),
         resources: Some(ResourcesConfig {
             i18n: None,
@@ -120,11 +127,10 @@ fn default_ui_config(config: &ProjectConfig, lxapp: &LxAppInfo) -> Option<serde_
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DEFAULT_CACHE_MAX_AGE_DAYS, DEFAULT_CACHE_MAX_SIZE_MB};
     use std::path::PathBuf;
 
     #[test]
-    fn build_lingxia_config_sets_bundle_and_cache_defaults() {
+    fn build_lingxia_config_sets_bundle_and_storage_defaults() {
         let config = ProjectConfig {
             name: "demo".to_string(),
             product_name: "Demo".to_string(),
@@ -142,8 +148,17 @@ mod tests {
         let app = lingxia.app.expect("app config should exist");
         let resources = lingxia.resources.expect("resources config should exist");
 
-        assert_eq!(app.cache_max_age_days, Some(DEFAULT_CACHE_MAX_AGE_DAYS));
-        assert_eq!(app.cache_max_size_mb, Some(DEFAULT_CACHE_MAX_SIZE_MB));
+        assert_eq!(app.cache_max_age_days, None);
+        assert_eq!(app.cache_max_size_mb, None);
+        let storage = lingxia
+            .storage
+            .as_ref()
+            .expect("storage config should exist");
+        assert_eq!(storage.temp_max_size_mb, Some(1024));
+        assert_eq!(storage.cache_max_age_days, Some(7));
+        assert_eq!(storage.cache_max_size_mb, Some(2048));
+        assert_eq!(storage.data_max_size_mb, Some(4096));
+        assert_eq!(storage.app_storage_max_size_mb, Some(16384));
         assert_eq!(
             lingxia.app_links.as_ref().unwrap().hosts,
             vec!["demo.example.com"]

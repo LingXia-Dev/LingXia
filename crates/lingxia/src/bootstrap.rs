@@ -80,8 +80,11 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
         lxapp::LxAppRuntimeConfig {
             home_appid: app_config.home_lxapp_appid,
             home_app_version: app_config.home_lxapp_version,
-            cache_max_age: Duration::from_secs(app_config.cache_max_age_days.saturating_mul(86400)),
-            cache_max_size_bytes: app_config.cache_max_size_mb.saturating_mul(1024 * 1024),
+            temp_max_size_bytes: lingxia_app_context::temp_max_size_bytes(),
+            cache_max_age: Duration::from_secs(
+                lingxia_app_context::cache_max_age_days().saturating_mul(86400),
+            ),
+            cache_max_size_bytes: lingxia_app_context::cache_max_size_bytes(),
         },
     );
     crate::browser::register_builtin_assets();

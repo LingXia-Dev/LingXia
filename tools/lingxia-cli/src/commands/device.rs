@@ -206,6 +206,7 @@ mod tests {
             }),
             ui: None,
             app_links: None,
+            storage: None,
             resources: None,
         }
     }

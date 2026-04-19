@@ -41,6 +41,9 @@ pub struct AppConfig {
     #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
 
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<StorageConfig>,
+
     #[serde(rename = "devWsUrl", default, skip_serializing_if = "Option::is_none")]
     pub dev_ws_url: Option<String>,
 
@@ -55,6 +58,21 @@ pub struct AppConfig {
 pub struct AppLinksConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageConfig {
+    #[serde(default = "default_temp_max_size_mb")]
+    pub temp_max_size_mb: u64,
+    #[serde(default = "default_cache_max_age_days")]
+    pub cache_max_age_days: u64,
+    #[serde(default = "default_cache_max_size_mb")]
+    pub cache_max_size_mb: u64,
+    #[serde(default = "default_data_max_size_mb")]
+    pub data_max_size_mb: u64,
+    #[serde(default = "default_app_storage_max_size_mb")]
+    pub app_storage_max_size_mb: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -94,7 +112,19 @@ fn default_cache_max_age_days() -> u64 {
 }
 
 fn default_cache_max_size_mb() -> u64 {
+    2048
+}
+
+fn default_temp_max_size_mb() -> u64 {
     1024
+}
+
+fn default_data_max_size_mb() -> u64 {
+    4096
+}
+
+fn default_app_storage_max_size_mb() -> u64 {
+    16384
 }
 
 fn default_panel_position() -> PanelPosition {
@@ -187,16 +217,58 @@ pub fn lingxia_id() -> Option<&'static str> {
 pub fn cache_max_age_days() -> u64 {
     APP_CONFIG
         .get()
-        .map(|c| c.cache_max_age_days)
+        .map(|c| {
+            c.storage
+                .as_ref()
+                .map(|storage| storage.cache_max_age_days)
+                .unwrap_or(c.cache_max_age_days)
+        })
         .unwrap_or_else(default_cache_max_age_days)
+}
+
+pub fn temp_max_size_bytes() -> u64 {
+    const MIB: u64 = 1024 * 1024;
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.storage.as_ref().map(|storage| storage.temp_max_size_mb))
+        .unwrap_or_else(default_temp_max_size_mb)
+        .saturating_mul(MIB)
 }
 
 pub fn cache_max_size_bytes() -> u64 {
     const MIB: u64 = 1024 * 1024;
     APP_CONFIG
         .get()
-        .map(|c| c.cache_max_size_mb.saturating_mul(MIB))
-        .unwrap_or_else(|| default_cache_max_size_mb().saturating_mul(MIB))
+        .map(|c| {
+            c.storage
+                .as_ref()
+                .map(|storage| storage.cache_max_size_mb)
+                .unwrap_or(c.cache_max_size_mb)
+        })
+        .unwrap_or_else(default_cache_max_size_mb)
+        .saturating_mul(MIB)
+}
+
+pub fn data_max_size_bytes() -> u64 {
+    const MIB: u64 = 1024 * 1024;
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.storage.as_ref().map(|storage| storage.data_max_size_mb))
+        .unwrap_or_else(default_data_max_size_mb)
+        .saturating_mul(MIB)
+}
+
+pub fn app_storage_max_size_bytes() -> u64 {
+    const MIB: u64 = 1024 * 1024;
+    APP_CONFIG
+        .get()
+        .and_then(|c| {
+            c.storage
+                .as_ref()
+                .map(|storage| storage.app_storage_max_size_mb)
+        })
+        .unwrap_or_else(default_app_storage_max_size_mb)
+        .saturating_mul(MIB)
 }
 
 pub fn app_state_dir(app_data_dir: &Path) -> PathBuf {
@@ -279,6 +351,7 @@ mod tests {
             home_lxapp_version: "1.0.0".to_string(),
             cache_max_age_days: 7,
             cache_max_size_mb: 1024,
+            storage: None,
             dev_ws_url: None,
             app_links: None,
             panels: None,
