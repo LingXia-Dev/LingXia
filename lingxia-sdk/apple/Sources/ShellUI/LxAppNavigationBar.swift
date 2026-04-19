@@ -231,12 +231,10 @@ struct macOSNavigationBarView: View {
                         action: onHomeTapped
                     )
                 } else {
-                    // No button needed but show disabled placeholder for consistent layout
-                    NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: false, action: {})
+                    leadingButtonPlaceholder
                 }
             } else {
-                // Navbar hidden or no state - show disabled placeholder
-                NavigationButton(isBackButton: true, tintColor: textColor, isEnabled: false, action: {})
+                leadingButtonPlaceholder
             }
         }
         .frame(width: 44, height: 44)
@@ -244,6 +242,12 @@ struct macOSNavigationBarView: View {
         // macOS: navigation buttons live in the tab bar, no leading space needed
         EmptyView()
         #endif
+    }
+
+    private var leadingButtonPlaceholder: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .allowsHitTesting(false)
     }
 
     @ViewBuilder
