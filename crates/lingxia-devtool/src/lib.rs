@@ -53,9 +53,17 @@ fn dev_ws_url() -> Option<String> {
 }
 
 fn run_dev_bridge(ws_url: String) {
+    let mut connect_failures = 0u32;
     loop {
         match connect(ws_url.as_str()) {
             Ok((mut websocket, _)) => {
+                if connect_failures > 0 {
+                    log::info!(
+                        "Connected devtool websocket after {} failed attempts",
+                        connect_failures
+                    );
+                }
+                connect_failures = 0;
                 if let Err(err) = send_wire_message(
                     &mut websocket,
                     &DevtoolsWireMessage::Hello {
@@ -83,11 +91,42 @@ fn run_dev_bridge(ws_url: String) {
                 }
             }
             Err(err) => {
-                log::warn!("Failed to connect devtool websocket: {}", err);
+                connect_failures = connect_failures.saturating_add(1);
+                log_connect_failure(connect_failures, &err);
             }
         }
 
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(reconnect_delay(connect_failures));
+    }
+}
+
+fn reconnect_delay(connect_failures: u32) -> Duration {
+    match connect_failures {
+        0 => Duration::from_millis(500),
+        1 => Duration::from_secs(1),
+        2 => Duration::from_secs(2),
+        _ => Duration::from_secs(5),
+    }
+}
+
+fn log_connect_failure(attempt: u32, err: &WsError) {
+    if attempt == 1 {
+        log::warn!(
+            "Failed to connect devtool websocket; retrying in background: {}",
+            err
+        );
+    } else if attempt % 12 == 0 {
+        log::warn!(
+            "Still unable to connect devtool websocket after {} attempts: {}",
+            attempt,
+            err
+        );
+    } else {
+        log::debug!(
+            "Failed to connect devtool websocket attempt {}: {}",
+            attempt,
+            err
+        );
     }
 }
 
