@@ -27,7 +27,7 @@
         <div class="bg-white rounded-lg shadow-sm">
           <div class="px-4 py-4 border-b border-gray-100">
             <div class="text-base text-gray-900 font-medium">PDF via lx.downloadFile()</div>
-            <div class="text-xs text-gray-500 mt-1">Download to usercache with progress and pause/continue, then open with the native PDF viewer.</div>
+            <div class="text-xs text-gray-500 mt-1">Download to a temporary file with progress and pause/continue, then open with the native PDF viewer.</div>
           </div>
           <div class="px-4 py-4 space-y-3">
             <div>

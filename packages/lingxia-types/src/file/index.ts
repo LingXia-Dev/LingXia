@@ -51,3 +51,18 @@ export interface ChooseDirectoryResult {
   /** Native-consumable directory reference (path or URI). Undefined when canceled. */
   path?: string;
 }
+
+export interface SaveFileOptions {
+  /** Temporary source returned by downloadFile, chooseMedia, or media processing APIs. */
+  tempFilePath: string;
+  /** Durable destination. Relative paths resolve under user data. Defaults to the source file name. */
+  filePath?: string;
+  /** Defaults to true. */
+  overwrite?: boolean;
+}
+
+export interface SaveFileResult {
+  /** Durable user data path. */
+  filePath: string;
+  size: number;
+}

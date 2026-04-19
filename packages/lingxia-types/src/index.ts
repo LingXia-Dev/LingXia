@@ -58,6 +58,8 @@ import type {
   ChooseDirectoryResult,
   ChooseFileOptions,
   ChooseFileResult,
+  SaveFileOptions,
+  SaveFileResult,
 } from './file';
 
 import type {
@@ -163,6 +165,7 @@ export interface Lx {
    */
   openFile(options: OpenFileOptions): void;
   downloadFile(options: DownloadOptions): DownloadTask;
+  saveFile(options: SaveFileOptions): Promise<SaveFileResult>;
   uploadFile(options: UploadOptions): UploadTask;
 
   getStorage(): Storage;

@@ -50,6 +50,10 @@ function isCancelError(error) {
   return /cancel|abort/i.test(message);
 }
 
+function downloadResultPath(result) {
+  return result?.filePath || result?.tempFilePath || "";
+}
+
 function supportsDownloadProgress(task) {
   return !!(
     task &&
@@ -149,13 +153,14 @@ async function observePdfTask(page, task, sessionId) {
     }
 
     if (event.kind === "completed") {
+      const resultPath = downloadResultPath(event.result);
       page.setData({
         pdfDownloadState: "opening",
         pdfTransferButtonText: "Pause Download",
         pdfProgressKnown: true,
         pdfDownloadProgress: 95,
-        pdfProgressText: event.result?.filePath
-          ? `Downloaded to ${event.result.filePath}, opening...`
+        pdfProgressText: resultPath
+          ? `Downloaded to ${resultPath}, opening...`
           : "Download complete, opening...",
       });
     }
@@ -249,9 +254,7 @@ Page({
       pdfTransferButtonText: "Pause Download",
     });
     try {
-      const task = lx.downloadFile({
-        url,
-      });
+      const task = lx.downloadFile({ url });
       pdfDownloadTask = task;
       const sessionId = pdfDownloadSession + 1;
       pdfDownloadSession = sessionId;
@@ -274,14 +277,18 @@ Page({
       if (sessionId !== pdfDownloadSession) {
         return;
       }
+      const resultPath = downloadResultPath(result);
+      if (!resultPath) {
+        throw new Error("downloadFile did not return a file path");
+      }
       this.setData({
         pdfDownloadState: "opening",
         pdfProgressKnown: true,
         pdfDownloadProgress: 95,
-        pdfProgressText: `Downloaded to ${result.filePath}, opening...`,
+        pdfProgressText: `Downloaded to ${resultPath}, opening...`,
       });
       await lx.openFile({
-        filePath: result.filePath,
+        filePath: resultPath,
         fileType: "pdf",
         mode: "auto",
         showMenu: this.data.showMenu,
@@ -293,7 +300,7 @@ Page({
         pdfDownloadState: "completed",
         pdfProgressKnown: true,
         pdfDownloadProgress: 100,
-        pdfProgressText: `Opened ${result.filePath}`,
+        pdfProgressText: `Opened ${resultPath}`,
       });
     } catch (error) {
       this.setData({

@@ -12,7 +12,7 @@ export interface DownloadOptions {
   headers?: Record<string, string>;
   /** Request timeout in milliseconds. */
   timeout?: number;
-  /** Optional destination path. Relative paths resolve under user data. */
+  /** Optional durable destination. Relative paths resolve under user data; lx:// paths must target lx://userdata. Omit for a temporary download. */
   filePath?: string;
   /** Optional abort signal. */
   signal?: AbortSignal;
@@ -32,14 +32,21 @@ export interface DownloadIteratorResult {
   value?: DownloadProgressEvent;
 }
 
-export interface DownloadResult {
-  /** Final accessible file path or URI. */
-  filePath: string;
-  /** MIME type when available. */
-  mimeType?: string;
-  /** File size in bytes. */
-  size: number;
-}
+export type DownloadResult =
+  | {
+      /** Temporary result. Not durable; call saveFile to keep it. */
+      tempFilePath: string;
+      filePath?: never;
+      mimeType?: string;
+      size: number;
+    }
+  | {
+      /** Durable user data destination. */
+      filePath: string;
+      tempFilePath?: never;
+      mimeType?: string;
+      size: number;
+    };
 
 export interface DownloadTask extends PromiseLike<DownloadResult>, AsyncIterable<DownloadProgressEvent> {
   next(): Promise<DownloadIteratorResult>;
@@ -52,6 +59,8 @@ export interface DownloadTask extends PromiseLike<DownloadResult>, AsyncIterable
   pause(): Promise<void>;
   resume(): Promise<void>;
   cancel(): Promise<void>;
+  /** Alias for cancel(), matching browser/mini-program abort naming. */
+  abort(): Promise<void>;
   wait(): Promise<DownloadResult>;
 }
 

@@ -112,7 +112,7 @@ export default function FilePage() {
             <div className="bg-white rounded-lg shadow-sm">
               <div className="px-4 py-4 border-b border-gray-100">
                 <div className="text-base text-gray-900 font-medium">PDF via lx.downloadFile()</div>
-                <div className="text-xs text-gray-500 mt-1">Download to usercache with progress and pause/continue, then open with the native PDF viewer.</div>
+                <div className="text-xs text-gray-500 mt-1">Download to a temporary file with progress and pause/continue, then open with the native PDF viewer.</div>
               </div>
               <div className="px-4 py-4 space-y-3">
                 <div>
