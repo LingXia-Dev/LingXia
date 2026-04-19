@@ -215,7 +215,7 @@ fn resolve_thumbnail_output_path(
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
     resolve_output_path(lxapp, raw_output_path, || {
-        generate_thumbnail_output_path(&lxapp.user_cache_dir)
+        generate_thumbnail_output_path(&lxapp.temp_dir)
     })
 }
 
@@ -224,7 +224,7 @@ fn resolve_compress_video_output_path(
     raw_output_path: Option<&str>,
 ) -> JSResult<PathBuf> {
     resolve_output_path(lxapp, raw_output_path, || {
-        generate_compress_video_output_path(&lxapp.user_cache_dir)
+        generate_compress_video_output_path(&lxapp.temp_dir)
     })
 }
 

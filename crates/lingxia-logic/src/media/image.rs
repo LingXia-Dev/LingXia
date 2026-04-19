@@ -101,7 +101,7 @@ async fn compress_image_api(
         .map_err(|err| js_error_from_lxapp_error(&err))?;
     let source_uri = resolved_source.to_string_lossy().into_owned();
 
-    let output_path = generate_compress_output_path(&lxapp.user_cache_dir)?;
+    let output_path = generate_compress_output_path(&lxapp.temp_dir)?;
 
     let request = CompressImageRequest {
         source_uri,

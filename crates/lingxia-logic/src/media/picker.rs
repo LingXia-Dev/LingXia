@@ -6,7 +6,7 @@ mod types;
 #[cfg(not(target_os = "macos"))]
 use crate::i18n::js_invalid_parameter_error;
 use crate::i18n::{js_error_from_business_code, js_error_from_platform_error, js_internal_error};
-use cache::ensure_cached_media_path;
+use cache::ensure_temp_media_path;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[cfg(not(target_os = "macos"))]
 use lingxia_platform::traits::media_interaction::ChooseMediaMode;
@@ -140,7 +140,7 @@ async fn choose_media(
                     response_path_for_media(&lxapp, &path)?
                 }
                 _ if should_copy_local_media_file_to_cache() => {
-                    let cached_path = ensure_cached_media_path(
+                    let cached_path = ensure_temp_media_path(
                         lxapp.as_ref(),
                         &key,
                         &ext,
@@ -177,7 +177,7 @@ async fn choose_media(
                 "image" => MediaKind::Image,
                 _ => MediaKind::Image,
             };
-            ensure_cached_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
+            ensure_temp_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
                     .map_err(|err| js_error_from_platform_error(&err))
             })

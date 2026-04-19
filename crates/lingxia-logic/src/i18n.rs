@@ -173,6 +173,7 @@ fn business_code_from_lxapp_error(error: &LxAppError) -> u32 {
 
     match error {
         LxAppError::InvalidParameter(_) => 1002,
+        LxAppError::ResourceExhausted(_) => 1002,
         LxAppError::ResourceNotFound(_) | LxAppError::PluginNotConfigured(_) => 1003,
         LxAppError::UnsupportedOperation(_) => 6000,
         LxAppError::IoError(_) => 1001,
@@ -185,7 +186,6 @@ fn business_code_from_lxapp_error(error: &LxAppError) -> u32 {
         | LxAppError::InvalidJsonFile(_)
         | LxAppError::Runtime(_)
         | LxAppError::ChannelError(_)
-        | LxAppError::ResourceExhausted(_)
         | LxAppError::Bridge(_)
         | LxAppError::RongJS(_)
         | LxAppError::PluginDownloadFailed(_) => 1005,

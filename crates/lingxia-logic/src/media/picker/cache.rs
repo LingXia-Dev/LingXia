@@ -5,7 +5,7 @@ use rong::RongJSError;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub(super) fn ensure_cached_media_path<F>(
+pub(super) fn ensure_temp_media_path<F>(
     lxapp: &LxApp,
     key: &MediaKey,
     ext: &str,
@@ -14,24 +14,18 @@ pub(super) fn ensure_cached_media_path<F>(
 where
     F: FnOnce(&Path) -> Result<(), RongJSError>,
 {
-    let cache = lxapp
-        .cache()
-        .map_err(|e| js_internal_error(format!("cache unavailable: {}", e)))?;
-
-    match cache.resolve_path_with_ext(key, ext) {
-        lxapp::ResolveResult::Exists(path) => Ok(path),
-        lxapp::ResolveResult::NonExists(dest_path) => {
-            if let Some(parent) = dest_path.parent() {
-                fs::create_dir_all(parent).map_err(|e| {
-                    js_internal_error(format!(
-                        "chooseMedia failed to create cache directory {}: {}",
-                        parent.display(),
-                        e
-                    ))
-                })?;
-            }
-            write(&dest_path)?;
-            Ok(dest_path)
-        }
+    let dest_path = lxapp
+        .temp_output_path(&format!("media-{}", key.kind), Some(ext))
+        .map_err(|e| js_internal_error(format!("temp unavailable: {}", e)))?;
+    if let Some(parent) = dest_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| {
+            js_internal_error(format!(
+                "chooseMedia failed to create temp directory {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
     }
+    write(&dest_path)?;
+    Ok(dest_path)
 }

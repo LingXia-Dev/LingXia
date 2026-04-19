@@ -1,3 +1,4 @@
+use super::storage::{self, StorageQuotaError};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
     js_invalid_parameter_error,
@@ -10,13 +11,15 @@ use lingxia_transfer::user_cache::{
 };
 use lxapp::{LxApp, lx};
 use rong::{
-    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSRuntimeService, JSSymbol,
-    JSValue, Promise, function::Optional,
+    HostError, IntoJSObj, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
+    function::Optional,
 };
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex as StdMutex, OnceLock};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
 struct ParsedDownloadOptions {
@@ -29,8 +32,10 @@ struct ParsedDownloadOptions {
 
 #[derive(Debug, Clone, IntoJSObj)]
 struct JSDownloadResult {
+    #[rename = "tempFilePath"]
+    temp_file_path: Option<String>,
     #[rename = "filePath"]
-    file_path: String,
+    file_path: Option<String>,
     #[rename = "mimeType"]
     mime_type: Option<String>,
     size: u64,
@@ -83,19 +88,30 @@ enum RequestedStop {
 struct DownloadTaskConfig {
     task_id: String,
     app_data_dir: PathBuf,
+    user_data_dir: PathBuf,
     user_cache_dir: PathBuf,
+    temp_dir: PathBuf,
     owner: user_cache::DownloadOwner,
     request: user_cache::UserCacheDownloadRequest,
     user_agent: Option<String>,
     behavior: DownloadBehavior,
-    output_path: Option<PathBuf>,
+    staging_path: PathBuf,
+    output_path: Option<(PathBuf, DownloadPathKind)>,
+    reservation_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 struct DownloadCompletion {
     path: PathBuf,
+    path_kind: DownloadPathKind,
     mime_type: Option<String>,
     size: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DownloadPathKind {
+    Temp,
+    UserData,
 }
 
 struct DownloadIteratorState {
@@ -133,10 +149,35 @@ impl DownloadIteratorState {
     }
 }
 
+impl Drop for DownloadIteratorState {
+    fn drop(&mut self) {
+        release_output_reservation(self.config.reservation_key.take());
+    }
+}
+
 enum DownloadCompletionOutcome {
     Success(DownloadCompletion),
-    Failed(String),
+    Failed(DownloadFailureReason),
     Canceled,
+}
+
+#[derive(Debug, Clone)]
+enum DownloadFailureReason {
+    Quota(StorageQuotaError),
+    Internal(String),
+}
+
+impl DownloadFailureReason {
+    fn internal(message: impl Into<String>) -> Self {
+        Self::Internal(message.into())
+    }
+
+    fn to_js_error(&self) -> rong::RongJSError {
+        match self {
+            Self::Quota(error) => error.into_js_error(),
+            Self::Internal(message) => js_internal_error(format!("download failed: {message}")),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -149,24 +190,92 @@ enum DownloadIteratorMessage {
     Resumed,
     Canceled,
     Success(DownloadCompletion),
-    Error(String),
+    Error(DownloadFailureReason),
 }
 
 #[derive(Default)]
-struct DownloadIteratorRegistry {
-    seq: AtomicU64,
+struct Fnv64Hasher(u64);
+
+static TEMP_DOWNLOAD_SEQ: AtomicU64 = AtomicU64::new(1);
+static OUTPUT_RESERVATIONS: OnceLock<StdMutex<HashSet<String>>> = OnceLock::new();
+
+impl Fnv64Hasher {
+    fn new() -> Self {
+        Self(0xcbf29ce484222325)
+    }
 }
 
-impl JSRuntimeService for DownloadIteratorRegistry {}
+impl Hasher for Fnv64Hasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
 
-fn download_registry(ctx: &JSContext) -> &DownloadIteratorRegistry {
-    ctx.runtime()
-        .get_or_init_service::<DownloadIteratorRegistry>()
+    fn write(&mut self, bytes: &[u8]) {
+        const FNV_PRIME: u64 = 0x00000100000001B3;
+        for byte in bytes {
+            self.0 ^= u64::from(*byte);
+            self.0 = self.0.wrapping_mul(FNV_PRIME);
+        }
+    }
 }
 
-fn next_download_task_id(ctx: &JSContext) -> String {
-    let seq = download_registry(ctx).seq.fetch_add(1, Ordering::Relaxed) + 1;
-    format!("download_{seq}")
+fn stable_hash(value: impl Hash) -> String {
+    let mut hasher = Fnv64Hasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn stable_download_task_id(
+    request: &user_cache::UserCacheDownloadRequest,
+    output_path: Option<&(PathBuf, DownloadPathKind)>,
+) -> String {
+    let request_key = user_cache::download_request_task_id(request);
+    match output_path {
+        Some((path, kind)) => {
+            let target_key = format!("{kind:?}:{}", path.to_string_lossy());
+            format!("download_{}", stable_hash(target_key))
+        }
+        None => {
+            let seq = TEMP_DOWNLOAD_SEQ.fetch_add(1, Ordering::Relaxed);
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+            format!("download_{request_key}_temp_{nonce}_{seq}")
+        }
+    }
+}
+
+fn output_reservations() -> &'static StdMutex<HashSet<String>> {
+    OUTPUT_RESERVATIONS.get_or_init(|| StdMutex::new(HashSet::new()))
+}
+
+fn reserve_output_path(
+    output_path: Option<&(PathBuf, DownloadPathKind)>,
+) -> JSResult<Option<String>> {
+    let Some((path, _kind)) = output_path else {
+        return Ok(None);
+    };
+    let key = path.to_string_lossy().into_owned();
+    let mut guard = output_reservations()
+        .lock()
+        .map_err(|_| js_internal_error("download output reservation lock poisoned"))?;
+    if !guard.insert(key.clone()) {
+        return Err(js_error_from_business_code_with_detail(
+            1002,
+            "downloadFile filePath is already in use",
+        ));
+    }
+    Ok(Some(key))
+}
+
+fn release_output_reservation(key: Option<String>) {
+    let Some(key) = key else {
+        return;
+    };
+    if let Ok(mut guard) = output_reservations().lock() {
+        guard.remove(&key);
+    }
 }
 
 fn progress_value(
@@ -244,8 +353,13 @@ fn to_js_download_result(
 ) -> JSResult<JSDownloadResult> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let path = path_to_result_string(&lxapp, &result.path);
+    let (temp_file_path, file_path) = match result.path_kind {
+        DownloadPathKind::Temp => (Some(path), None),
+        DownloadPathKind::UserData => (None, Some(path)),
+    };
     Ok(JSDownloadResult {
-        file_path: path,
+        temp_file_path,
+        file_path,
         mime_type: result.mime_type.clone(),
         size: result.size,
     })
@@ -377,55 +491,167 @@ fn parse_download_options(options: JSValue) -> JSResult<ParsedDownloadOptions> {
     })
 }
 
-fn resolve_output_path(lxapp: &LxApp, file_path: Option<&str>) -> JSResult<Option<PathBuf>> {
+fn resolve_output_path(
+    lxapp: &LxApp,
+    file_path: Option<&str>,
+) -> JSResult<Option<(PathBuf, DownloadPathKind)>> {
     let Some(file_path) = file_path.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
 
-    let path = Path::new(file_path);
-    if file_path.starts_with("lx://") || path.is_absolute() || file_path.contains(':') {
-        return lxapp
+    if file_path.starts_with("lx://") {
+        let resolved = lxapp
             .resolve_accessible_path(file_path)
-            .map(Some)
-            .map_err(|err| js_error_from_lxapp_error(&err));
+            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        if !resolved.starts_with(&lxapp.user_data_dir) {
+            return Err(js_invalid_parameter_error(
+                "downloadFile filePath must target lx://userdata",
+            ));
+        }
+        return Ok(Some((resolved, DownloadPathKind::UserData)));
     }
 
-    if file_path.split('/').any(|segment| segment == "..") {
+    let path = Path::new(file_path);
+    if path.is_absolute() || file_path.contains(':') || file_path.contains('\\') {
         return Err(js_invalid_parameter_error(
-            "downloadFile filePath must not contain '..'",
+            "downloadFile filePath must be relative or lx://userdata",
         ));
     }
 
-    Ok(Some(
+    if file_path
+        .split('/')
+        .any(|segment| segment == "." || segment == "..")
+    {
+        return Err(js_invalid_parameter_error(
+            "downloadFile filePath must not contain '.' or '..'",
+        ));
+    }
+
+    Ok(Some((
         lxapp.user_data_dir.join(file_path.trim_start_matches('/')),
-    ))
+        DownloadPathKind::UserData,
+    )))
 }
 
 async fn finalize_download_result(
-    output_path: Option<&PathBuf>,
+    temp_dir: &Path,
+    user_data_dir: &Path,
+    user_cache_dir: &Path,
+    source_url: &str,
+    output_path: Option<&(PathBuf, DownloadPathKind)>,
     result: user_cache::UserCacheDownloadResult,
-) -> Result<DownloadCompletion, String> {
-    let Some(output_path) = output_path else {
+) -> Result<DownloadCompletion, DownloadFailureReason> {
+    let Some((output_path, path_kind)) = output_path else {
+        let download_temp_dir = temp_dir.join("download");
+        std::fs::create_dir_all(&download_temp_dir).map_err(|e| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::internal(format!("create temp dir failed: {e}"))
+        })?;
+        let ext = download_extension(source_url, result.mime_type.as_deref());
+        let mut filename = unique_temp_download_name(source_url, &result.temp_path, result.size);
+        if let Some(ext) = ext {
+            filename.push('.');
+            filename.push_str(&ext);
+        }
+        let temp_path = download_temp_dir.join(filename);
+        storage::move_file_atomic(&result.temp_path, &temp_path).map_err(|e| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::internal(format!("move download to temp failed: {e}"))
+        })?;
+        storage::ensure_temp_quota(temp_dir, &temp_path).map_err(DownloadFailureReason::Quota)?;
         return Ok(DownloadCompletion {
-            path: result.temp_path,
+            path: temp_path,
+            path_kind: DownloadPathKind::Temp,
             mime_type: result.mime_type,
             size: result.size,
         });
     };
 
+    match *path_kind {
+        DownloadPathKind::UserData => {
+            storage::ensure_userdata_quota(user_data_dir, output_path, result.size).map_err(
+                |err| {
+                    cleanup_staging_file(&result.temp_path);
+                    DownloadFailureReason::Quota(err)
+                },
+            )?;
+            storage::ensure_app_storage_quota(
+                user_data_dir,
+                user_cache_dir,
+                output_path,
+                result.size,
+                false,
+            )
+            .map_err(|err| {
+                cleanup_staging_file(&result.temp_path);
+                DownloadFailureReason::Quota(err)
+            })?;
+        }
+        DownloadPathKind::Temp => {}
+    }
+
     if let Some(parent) = output_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("create output dir failed: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::internal(format!("create output dir failed: {e}"))
+        })?;
     }
     if result.temp_path != *output_path {
-        std::fs::copy(&result.temp_path, output_path)
-            .map_err(|e| format!("copy download to filePath failed: {e}"))?;
+        storage::move_file_atomic(&result.temp_path, output_path).map_err(|e| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::internal(format!("move download to filePath failed: {e}"))
+        })?;
     }
 
     Ok(DownloadCompletion {
         path: output_path.clone(),
+        path_kind: *path_kind,
         mime_type: result.mime_type,
         size: result.size,
     })
+}
+
+fn cleanup_staging_file(path: &Path) {
+    let _ = std::fs::remove_file(path);
+    let _ = std::fs::remove_file(path.with_extension("part"));
+}
+
+fn unique_temp_download_name(source_url: &str, staging_path: &Path, size: u64) -> String {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let staging_path = staging_path.to_string_lossy();
+    stable_hash((source_url, staging_path.as_ref(), size, nonce))
+}
+
+fn download_extension(url: &str, mime_type: Option<&str>) -> Option<String> {
+    if let Some(ext) = Path::new(url.split(['?', '#']).next().unwrap_or(url))
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.trim().trim_start_matches('.').to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        && ext != "part"
+    {
+        return Some(ext);
+    }
+    let ext = match mime_type
+        .unwrap_or("")
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+    {
+        "image/jpeg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "video/mp4" => "mp4",
+        "audio/mpeg" => "mp3",
+        "application/pdf" => "pdf",
+        _ => return None,
+    };
+    Some(ext.to_string())
 }
 
 fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
@@ -437,12 +663,13 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
             }
             (guard.sender.clone(), guard.config.clone())
         };
+        let download_target = config.staging_path.clone();
 
         let persistence = user_cache::DownloadPersistence::new(
             config.app_data_dir.clone(),
             config.task_id.clone(),
             config.owner.clone(),
-            true,
+            false,
         );
         let mut event_tx = progress_tx.clone();
         let on_event = move |event| match event {
@@ -469,31 +696,29 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
             _ => {}
         };
 
-        let download_result = if let Some(output_path) = config.output_path.clone() {
-            user_cache::download_to_path_with_behavior(
-                Some(persistence),
-                output_path,
-                config.request.clone(),
-                config.user_agent.clone(),
-                config.behavior,
-                on_event,
-            )
-            .await
-        } else {
-            user_cache::download_to_user_cache_with_behavior(
-                Some(persistence),
-                &config.user_cache_dir,
-                config.request.clone(),
-                config.user_agent.clone(),
-                config.behavior,
-                on_event,
-            )
-            .await
-        };
+        let download_result = user_cache::download_to_path_with_behavior(
+            Some(persistence),
+            download_target,
+            config.request.clone(),
+            config.user_agent.clone(),
+            config.behavior,
+            on_event,
+        )
+        .await;
 
-        let result: Result<DownloadCompletion, String> = match download_result {
-            Ok(success) => finalize_download_result(config.output_path.as_ref(), success).await,
-            Err(error) => Err(error.error),
+        let result: Result<DownloadCompletion, DownloadFailureReason> = match download_result {
+            Ok(success) => {
+                finalize_download_result(
+                    &config.temp_dir,
+                    &config.user_data_dir,
+                    &config.user_cache_dir,
+                    &config.request.url,
+                    config.output_path.as_ref(),
+                    success,
+                )
+                .await
+            }
+            Err(error) => Err(DownloadFailureReason::internal(error.error)),
         };
 
         match result {
@@ -505,6 +730,7 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                         return;
                     }
                     guard.status = DownloadTaskStatus::Succeeded;
+                    release_output_reservation(guard.config.reservation_key.take());
                     guard.completion.take()
                 };
                 if let Some(completion) = completion {
@@ -526,12 +752,16 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                         Some(RequestedStop::Cancel) | None
                             if guard.status == DownloadTaskStatus::Canceled =>
                         {
+                            cleanup_staging_file(&guard.config.staging_path);
+                            release_output_reservation(guard.config.reservation_key.take());
                             guard.stop_requested = None;
                             return;
                         }
                         _ => {
                             guard.stop_requested = None;
                             guard.status = DownloadTaskStatus::Failed;
+                            cleanup_staging_file(&guard.config.staging_path);
+                            release_output_reservation(guard.config.reservation_key.take());
                             (Some(error.clone()), guard.completion.take(), None)
                         }
                     }
@@ -634,28 +864,43 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         ));
     }
 
-    let task_id = next_download_task_id(&ctx);
     let mut behavior = DownloadBehavior::default();
     if let Some(timeout_ms) = options.timeout_ms {
         behavior.request_timeout = Duration::from_millis(timeout_ms);
     }
 
     let output_path = resolve_output_path(&lxapp, options.file_path.as_deref())?;
+    let reservation_key = reserve_output_path(output_path.as_ref())?;
+    let request = user_cache::UserCacheDownloadRequest {
+        url,
+        headers: options.headers,
+    };
+    let task_id = stable_download_task_id(&request, output_path.as_ref());
+    let staging_dir = lxapp.temp_dir.join(".download-staging");
+    std::fs::create_dir_all(&staging_dir).map_err(|err| {
+        release_output_reservation(reservation_key.clone());
+        js_internal_error(format!("download staging dir failed: {err}"))
+    })?;
+    let staging_path = staging_dir.join(&task_id);
     let (tx, rx) = mpsc::channel::<DownloadIteratorMessage>(64);
     let (completion_tx, completion_rx) = oneshot::channel::<DownloadCompletionOutcome>();
     let promise_ctx = ctx.clone();
-    let final_promise = Promise::from_future(&ctx, None, async move {
+    let final_promise = match Promise::from_future(&ctx, None, async move {
         match completion_rx.await {
             Ok(DownloadCompletionOutcome::Success(result)) => {
                 to_js_download_result(&promise_ctx, &result)
             }
-            Ok(DownloadCompletionOutcome::Failed(error)) => {
-                Err(js_internal_error(format!("download failed: {error}")))
-            }
+            Ok(DownloadCompletionOutcome::Failed(error)) => Err(error.to_js_error()),
             Ok(DownloadCompletionOutcome::Canceled) => Err(js_abort_error("downloadFile canceled")),
             Err(_) => Err(js_abort_error("downloadFile canceled")),
         }
-    })?;
+    }) {
+        Ok(promise) => promise,
+        Err(err) => {
+            release_output_reservation(reservation_key.clone());
+            return Err(err);
+        }
+    };
 
     let state = Arc::new(Mutex::new(DownloadIteratorState::new(
         rx,
@@ -663,20 +908,21 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         DownloadTaskConfig {
             task_id: task_id.clone(),
             app_data_dir: lxapp.app_data_dir(),
+            user_data_dir: lxapp.user_data_dir.clone(),
             user_cache_dir: lxapp.user_cache_dir.clone(),
+            temp_dir: lxapp.temp_dir.clone(),
             owner: user_cache::DownloadOwner {
                 kind: user_cache::DownloadOwnerKind::LxApp,
                 appid: lxapp.appid.clone(),
                 page_path: None,
                 tab_id: None,
             },
-            request: user_cache::UserCacheDownloadRequest {
-                url,
-                headers: options.headers,
-            },
+            request,
             user_agent: Some(rong::get_user_agent()),
             behavior,
+            staging_path,
             output_path,
+            reservation_key,
         },
         completion_tx,
     )));
@@ -734,6 +980,15 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         async move { download_cancel_task(&state).await }
     })?;
     iterator.set("cancel", cancel_fn)?;
+
+    let abort_state = state.clone();
+    iterator.set(
+        "abort",
+        JSFunc::new(&ctx, move || {
+            let state = abort_state.clone();
+            async move { download_cancel_task(&state).await }
+        })?,
+    )?;
 
     install_promise_methods(&ctx, &iterator, final_promise)?;
     install_async_iterator(&ctx, &iterator)?;
@@ -845,10 +1100,10 @@ async fn handle_download_message(
                 }),
             })
         }
-        DownloadIteratorMessage::Error(message) => {
+        DownloadIteratorMessage::Error(error) => {
             state_guard.status = DownloadTaskStatus::Failed;
             state_guard.terminal_seen = true;
-            Err(js_internal_error(format!("download failed: {message}")))
+            Err(error.to_js_error())
         }
     }
 }
@@ -902,6 +1157,27 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
     let (app_data_dir, task_id) = {
         let mut guard = state.lock().await;
         if guard.status.is_terminal() {
+            return Ok(());
+        }
+        if guard.status == DownloadTaskStatus::Paused {
+            let completion = guard.completion.take();
+            let staging_path = guard.config.staging_path.clone();
+            guard.stop_requested = None;
+            guard.status = DownloadTaskStatus::Canceled;
+            guard.terminal_seen = false;
+            cleanup_staging_file(&staging_path);
+            release_output_reservation(guard.config.reservation_key.take());
+            if guard
+                .sender
+                .try_send(DownloadIteratorMessage::Canceled)
+                .is_err()
+            {
+                guard.pending_message = Some(DownloadIteratorMessage::Canceled);
+            }
+            drop(guard);
+            if let Some(completion) = completion {
+                let _ = completion.send(DownloadCompletionOutcome::Canceled);
+            }
             return Ok(());
         }
         guard.stop_requested = Some(RequestedStop::Cancel);

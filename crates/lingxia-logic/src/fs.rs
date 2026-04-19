@@ -1,14 +1,16 @@
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_platform_error, js_internal_error,
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
 use lingxia_platform::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileService, OpenFileRequest,
 };
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod download;
+mod storage;
 mod upload;
 
 #[derive(FromJSObj)]
@@ -155,6 +157,22 @@ struct JSChooseDirectoryOptions {
 struct ChooseDirectoryResultObj {
     canceled: bool,
     path: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSSaveFileOptions {
+    #[rename = "tempFilePath"]
+    temp_file_path: String,
+    #[rename = "filePath"]
+    file_path: Option<String>,
+    overwrite: Option<bool>,
+}
+
+#[derive(Debug, Clone, IntoJSObj)]
+struct JSSaveFileResult {
+    #[rename = "filePath"]
+    file_path: String,
+    size: u64,
 }
 
 fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
@@ -343,10 +361,117 @@ async fn choose_directory(
     })
 }
 
+fn default_save_file_name(source: &Path) -> String {
+    source
+        .file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("file")
+        .to_string()
+}
+
+fn resolve_save_destination(
+    lxapp: &LxApp,
+    source: &Path,
+    raw_file_path: Option<&str>,
+) -> JSResult<PathBuf> {
+    let Some(raw_file_path) = raw_file_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(lxapp.user_data_dir.join(default_save_file_name(source)));
+    };
+
+    if raw_file_path.starts_with("lx://") {
+        let resolved = lxapp
+            .resolve_accessible_path(raw_file_path)
+            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        if !resolved.starts_with(&lxapp.user_data_dir) {
+            return Err(js_invalid_parameter_error(
+                "saveFile filePath must target lx://userdata",
+            ));
+        }
+        return Ok(resolved);
+    }
+
+    let path = Path::new(raw_file_path);
+    if path.is_absolute() || raw_file_path.contains(':') || raw_file_path.contains('\\') {
+        return Err(js_invalid_parameter_error(
+            "saveFile filePath must be relative or lx://userdata",
+        ));
+    }
+    if raw_file_path
+        .split('/')
+        .any(|segment| segment == "." || segment == "..")
+    {
+        return Err(js_invalid_parameter_error(
+            "saveFile filePath must not contain '.' or '..'",
+        ));
+    }
+    Ok(lxapp
+        .user_data_dir
+        .join(raw_file_path.trim_start_matches('/')))
+}
+
+fn copy_file(source: &Path, destination: &Path, overwrite: bool) -> JSResult<u64> {
+    if destination.exists() && !overwrite {
+        return Err(js_error_from_business_code_with_detail(
+            1002,
+            "saveFile destination already exists",
+        ));
+    }
+    storage::copy_file_atomic(source, destination, overwrite)
+        .map_err(|err| js_internal_error(format!("saveFile copy failed: {err}")))
+}
+
+fn ensure_userdata_quota(lxapp: &LxApp, destination: &Path, incoming_bytes: u64) -> JSResult<()> {
+    storage::ensure_userdata_quota(&lxapp.user_data_dir, destination, incoming_bytes)
+        .and_then(|()| {
+            storage::ensure_app_storage_quota(
+                &lxapp.user_data_dir,
+                &lxapp.user_cache_dir,
+                destination,
+                incoming_bytes,
+                false,
+            )
+        })
+        .map_err(|err| err.into_js_error())?;
+    Ok(())
+}
+
+async fn save_file(ctx: JSContext, options: JSSaveFileOptions) -> JSResult<JSSaveFileResult> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    if !options.temp_file_path.trim().starts_with("lx://temp/") {
+        return Err(js_invalid_parameter_error(
+            "saveFile tempFilePath must be a lx://temp URI",
+        ));
+    }
+    let source = lxapp
+        .resolve_accessible_path(options.temp_file_path.trim())
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    if !source.is_file() {
+        return Err(js_invalid_parameter_error(
+            "saveFile tempFilePath must reference a file",
+        ));
+    }
+    let destination = resolve_save_destination(&lxapp, &source, options.file_path.as_deref())?;
+    let source_size = std::fs::metadata(&source)
+        .map_err(|err| js_internal_error(format!("saveFile metadata failed: {err}")))?
+        .len();
+    ensure_userdata_quota(&lxapp, &destination, source_size)?;
+    let size = copy_file(&source, &destination, options.overwrite.unwrap_or(true))?;
+    let file_path = lxapp
+        .to_uri(&destination)
+        .ok_or_else(|| js_internal_error("saveFile failed to convert output path to lx:// uri"))?
+        .into_string();
+    Ok(JSSaveFileResult { file_path, size })
+}
+
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     lx::register_js_api(ctx, "openFile", JSFunc::new(ctx, open_file)?)?;
     lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
     lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
+    lx::register_js_api(ctx, "saveFile", JSFunc::new(ctx, save_file)?)?;
     download::init(ctx)?;
     upload::init(ctx)?;
 
