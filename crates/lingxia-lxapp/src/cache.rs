@@ -15,14 +15,21 @@ struct CacheDownloadSink {
     final_path: PathBuf,
     key_id: String,
     lock_path: PathBuf,
+    capacity: Option<Arc<CacheCapacityManager>>,
 }
 
 impl CacheDownloadSink {
-    fn new(final_path: PathBuf, key_id: String, lock_path: PathBuf) -> Self {
+    fn new(
+        final_path: PathBuf,
+        key_id: String,
+        lock_path: PathBuf,
+        capacity: Option<Arc<CacheCapacityManager>>,
+    ) -> Self {
         Self {
             final_path,
             key_id,
             lock_path,
+            capacity,
         }
     }
 }
@@ -36,6 +43,9 @@ impl BodySink for CacheDownloadSink {
         match result {
             Ok(()) => {
                 let _ = fs::write(ok_marker_path(&self.final_path, &self.key_id), b"ok");
+                if let Some(capacity) = self.capacity.as_ref() {
+                    capacity.on_cache_access(&self.final_path);
+                }
             }
             Err(_) => {
                 let _ = fs::remove_file(ok_marker_path(&self.final_path, &self.key_id));
@@ -49,6 +59,7 @@ struct CacheDownloadSinkWithCallback<F: FnOnce(CacheResult) + Send> {
     final_path: PathBuf,
     key_id: String,
     lock_path: PathBuf,
+    capacity: Option<Arc<CacheCapacityManager>>,
     callback: Arc<Mutex<Option<F>>>,
 }
 
@@ -57,12 +68,14 @@ impl<F: FnOnce(CacheResult) + Send> CacheDownloadSinkWithCallback<F> {
         final_path: PathBuf,
         key_id: String,
         lock_path: PathBuf,
+        capacity: Option<Arc<CacheCapacityManager>>,
         callback: Arc<Mutex<Option<F>>>,
     ) -> Self {
         Self {
             final_path,
             key_id,
             lock_path,
+            capacity,
             callback,
         }
     }
@@ -77,6 +90,9 @@ impl<F: FnOnce(CacheResult) + Send> BodySink for CacheDownloadSinkWithCallback<F
         match result {
             Ok(()) => {
                 let _ = fs::write(ok_marker_path(&self.final_path, &self.key_id), b"ok");
+                if let Some(capacity) = self.capacity.as_ref() {
+                    capacity.on_cache_access(&self.final_path);
+                }
                 if let Some(cb) = self.callback.lock().unwrap().take() {
                     cb(CacheResult::Ready);
                 }
@@ -97,13 +113,31 @@ impl<F: FnOnce(CacheResult) + Send> BodySink for CacheDownloadSinkWithCallback<F
 /// Only tracks in-flight operations; completed files are discovered via the filesystem.
 pub struct LxAppCache {
     cache_dir: PathBuf,
+    capacity: Arc<CacheCapacityManager>,
 }
 
 impl LxAppCache {
     /// Create a cache rooted at `cache_dir`.
-    pub(crate) fn new(cache_dir: PathBuf) -> Result<Self, CacheError> {
+    pub(crate) fn new(
+        cache_dir: PathBuf,
+        max_bytes: u64,
+        max_age: Duration,
+        min_check_interval: Duration,
+    ) -> Result<Self, CacheError> {
         // Assume LxApp already prepared cache_dir; do not create extra directories here.
-        Ok(Self { cache_dir })
+        Ok(Self {
+            capacity: Arc::new(CacheCapacityManager::new(
+                cache_dir.clone(),
+                max_bytes,
+                max_age,
+                min_check_interval,
+            )),
+            cache_dir,
+        })
+    }
+
+    pub fn on_access(&self, path: &Path) {
+        self.capacity.on_cache_access(path);
     }
 
     /// Request a cached file; start download in background if missing.
@@ -119,6 +153,7 @@ impl LxAppCache {
 
         // If already completed and present, return immediately.
         if self.ok_marker_exists(&hash_id) && target_path.exists() {
+            self.capacity.on_cache_access(&target_path);
             return target_path;
         }
 
@@ -135,11 +170,13 @@ impl LxAppCache {
             let key_id = hash_id.clone();
             let lock_path_cloned = lock_path.clone();
             let url_owned = url.to_string();
+            let capacity = self.capacity.clone();
 
             let sink = CacheDownloadSink::new(
                 final_path.clone(),
                 key_id.clone(),
                 lock_path_cloned.clone(),
+                Some(capacity),
             );
             match net::request_download(url_owned, final_path.clone(), None, Some(Box::new(sink))) {
                 Ok(_rx) => {}
@@ -148,6 +185,7 @@ impl LxAppCache {
                 }
             }
         }
+        self.capacity.enqueue_access_check();
 
         target_path
     }
@@ -249,6 +287,7 @@ impl LxAppCache {
 
         // Already complete? Call callback immediately.
         if self.ok_marker_exists(&hash_id) && target_path.exists() {
+            self.capacity.on_cache_access(&target_path);
             on_complete(CacheResult::Ready);
             return target_path;
         }
@@ -265,6 +304,7 @@ impl LxAppCache {
             let key_id = hash_id.clone();
             let lock_path_cloned = lock_path.clone();
             let url_owned = url.to_string();
+            let capacity = self.capacity.clone();
 
             // Share callback so we can invoke it either from the net runtime or on immediate error
             let cb_shared: Arc<Mutex<Option<F>>> = Arc::new(Mutex::new(Some(on_complete)));
@@ -273,6 +313,7 @@ impl LxAppCache {
                 final_path.clone(),
                 key_id.clone(),
                 lock_path_cloned.clone(),
+                Some(capacity),
                 cb_shared.clone(),
             );
             match net::request_download(url_owned, final_path.clone(), None, Some(Box::new(sink))) {
@@ -310,6 +351,7 @@ impl LxAppCache {
             };
             let _ = crate::executor::spawn(task);
         }
+        self.capacity.enqueue_access_check();
 
         target_path
     }
@@ -452,7 +494,7 @@ impl CacheCapacityManager {
         }
     }
 
-    fn enqueue_access_check(&self) {
+    pub fn enqueue_access_check(&self) {
         if self.max_bytes == 0 && self.max_age.is_zero() {
             return;
         }
@@ -617,10 +659,108 @@ pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
     let outcome = enforce_cache_limits(cache_dir, max_bytes, max_age);
     if outcome.files_removed > 0 {
         crate::info!(
-            "Startup cache cleanup: removed {} files, freed {} bytes",
+            "Cache cleanup: removed {} files, freed {} bytes",
             outcome.files_removed,
             outcome.bytes_freed
         );
+    }
+}
+
+pub fn cleanup_all_cache_dirs(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
+    let Some(cache_parent) = cache_dir.parent() else {
+        cleanup_cache_dir(cache_dir, max_bytes, max_age);
+        return;
+    };
+    let Ok(entries) = fs::read_dir(cache_parent) else {
+        cleanup_cache_dir(cache_dir, max_bytes, max_age);
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            cleanup_cache_dir(&path, max_bytes, max_age);
+        }
+    }
+}
+
+pub fn cleanup_cache_for_storage_pressure(
+    cache_dir: &Path,
+    user_data_root: &Path,
+    user_cache_root: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    max_bytes: u64,
+) -> bool {
+    let Some(cache_parent) = cache_dir.parent() else {
+        return app_storage_fits(
+            user_data_root,
+            user_cache_root,
+            destination,
+            incoming_bytes,
+            max_bytes,
+        );
+    };
+    let mut files = Vec::new();
+    collect_all_cache_entries(cache_parent, &mut files);
+    files.sort_by_key(|entry| entry.last_access);
+
+    for entry in files {
+        if app_storage_fits(
+            user_data_root,
+            user_cache_root,
+            destination,
+            incoming_bytes,
+            max_bytes,
+        ) {
+            return true;
+        }
+        let cache_root = entry
+            .cache_root
+            .canonicalize()
+            .unwrap_or_else(|_| entry.cache_root.clone());
+        let _ = try_remove_cache_entry(&entry.cache_root, &cache_root, &entry.path);
+    }
+
+    app_storage_fits(
+        user_data_root,
+        user_cache_root,
+        destination,
+        incoming_bytes,
+        max_bytes,
+    )
+}
+
+fn app_storage_fits(
+    user_data_root: &Path,
+    user_cache_root: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    max_bytes: u64,
+) -> bool {
+    projected_size(
+        dir_size(user_data_root).saturating_add(dir_size(user_cache_root)),
+        incoming_bytes,
+        existing_file_size(destination),
+    ) <= max_bytes
+}
+
+fn collect_all_cache_entries(cache_parent: &Path, out: &mut Vec<PressureCacheEntry>) {
+    let Ok(entries) = fs::read_dir(cache_parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let cache_dir = entry.path();
+        if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let mut total_bytes = 0;
+        for entry in collect_cache_entries(&cache_dir, &mut total_bytes) {
+            out.push(PressureCacheEntry {
+                cache_root: cache_dir.clone(),
+                path: entry.path,
+                last_access: entry.last_access,
+            });
+        }
     }
 }
 
@@ -684,6 +824,46 @@ fn collect_cache_entries(cache_dir: &Path, total_bytes: &mut u64) -> Vec<CacheEn
     out
 }
 
+struct PressureCacheEntry {
+    cache_root: PathBuf,
+    path: PathBuf,
+    last_access: SystemTime,
+}
+
+fn dir_size(path: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .map(|entry| {
+            let path = entry.path();
+            let Ok(metadata) = entry.metadata() else {
+                return 0;
+            };
+            if metadata.is_dir() {
+                dir_size(&path)
+            } else if metadata.is_file() {
+                metadata.len()
+            } else {
+                0
+            }
+        })
+        .sum()
+}
+
+fn existing_file_size(path: &Path) -> u64 {
+    fs::metadata(path)
+        .ok()
+        .filter(|metadata| metadata.is_file())
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+}
+
+fn projected_size(current: u64, incoming: u64, replaced: u64) -> u64 {
+    current.saturating_sub(replaced).saturating_add(incoming)
+}
+
 fn remove_ok_marker_for(_cache_dir: &Path, data_path: &Path) {
     let Some(parent) = data_path.parent() else {
         return;
@@ -744,4 +924,53 @@ fn remove_empty_parent_dirs(cache_root: &Path, data_path: &Path) {
 
 fn should_skip_cleanup(filename: &str) -> bool {
     filename.ends_with(".lock") || filename.ends_with(".part")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_size_cleanup_removes_cache_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let cache_dir = temp.path();
+        let cache_file = cache_dir.join("cache.bin");
+        fs::write(&cache_file, vec![1; 8]).expect("cache file");
+
+        let mut total_bytes = 0;
+        let _ = collect_cache_entries(cache_dir, &mut total_bytes);
+        assert_eq!(total_bytes, 8);
+
+        cleanup_cache_dir(cache_dir, 1, Duration::ZERO);
+
+        assert!(!cache_file.exists());
+    }
+
+    #[test]
+    fn storage_pressure_cleanup_removes_usercache_until_storage_fits() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let lingxia_dir = temp.path().join("lingxia");
+        let cache_dir = lingxia_dir.join("usercache").join("app1");
+        let other_cache_dir = lingxia_dir.join("usercache").join("app2");
+        let destination = lingxia_dir.join("userdata").join("app1").join("saved.bin");
+        fs::create_dir_all(&cache_dir).expect("cache dir");
+        fs::create_dir_all(&other_cache_dir).expect("other cache dir");
+        fs::create_dir_all(destination.parent().unwrap()).expect("userdata dir");
+        let cache_file = cache_dir.join("cache.bin");
+        let other_cache_file = other_cache_dir.join("other-cache.bin");
+        fs::write(&cache_file, vec![1; 10]).expect("cache file");
+        fs::write(&other_cache_file, vec![1; 10]).expect("other cache file");
+
+        assert!(cleanup_cache_for_storage_pressure(
+            &cache_dir,
+            &lingxia_dir.join("userdata"),
+            &lingxia_dir.join("usercache"),
+            &destination,
+            0,
+            5,
+        ));
+
+        assert!(!cache_file.exists());
+        assert!(!other_cache_file.exists());
+    }
 }

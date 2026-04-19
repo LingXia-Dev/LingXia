@@ -31,7 +31,10 @@ pub use appservice::event_bus::{
     unregister_app_handler, unregister_page_handler,
 };
 pub use appservice::native_component::on_native_component_event;
-pub use cache::{LxAppCache, ResolveResult};
+pub use cache::{
+    LxAppCache, ResolveResult, cleanup_all_cache_dirs, cleanup_cache_dir,
+    cleanup_cache_for_storage_pressure,
+};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{

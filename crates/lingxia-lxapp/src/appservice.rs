@@ -756,7 +756,6 @@ pub(crate) fn terminate_app_svc(
 #[derive(Clone)]
 struct LxAppCtx {
     lxapp: Arc<LxApp>,
-    cache_capacity_manager: Arc<crate::cache::CacheCapacityManager>,
 }
 
 #[derive(Debug)]
@@ -785,16 +784,7 @@ impl http::NetworkAccessGuard for DenyAllNetworkAccessGuard {
 
 impl LxAppCtx {
     pub fn new(lxapp: Arc<LxApp>) -> Self {
-        let cache_capacity_manager = Arc::new(crate::cache::CacheCapacityManager::new(
-            lxapp.user_cache_dir.clone(),
-            crate::app::cache_max_size_bytes(),
-            crate::app::cache_max_age(),
-            Duration::from_secs(30),
-        ));
-        Self {
-            lxapp,
-            cache_capacity_manager,
-        }
+        Self { lxapp }
     }
 }
 
@@ -828,7 +818,9 @@ impl fs::FileAccessGuard for LxAppCtx {
             })?;
 
         if resolved.starts_with(&self.lxapp.user_cache_dir) {
-            self.cache_capacity_manager.on_cache_access(&resolved);
+            if let Ok(cache) = self.lxapp.cache() {
+                cache.on_access(&resolved);
+            }
         }
 
         Ok(resolved)

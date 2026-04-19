@@ -52,6 +52,7 @@ impl LxApp {
             }
             Some(lx_uri::HOST_LXAPP)
             | Some(lx_uri::HOST_PLUGIN)
+            | Some(lx_uri::HOST_TEMP)
             | Some(lx_uri::HOST_USER_CACHE)
             | Some(lx_uri::HOST_USER_DATA) => {}
             Some(other) => {
@@ -264,6 +265,12 @@ impl LxApp {
             }
             Some(lx_uri::HOST_PLUGIN) => self
                 .resolve_plugin_uri(page, uri)
+                .map(ResolvedLxAsset::FilePath),
+            Some(lx_uri::HOST_TEMP) => self
+                .resolve_lx_path_uri(
+                    &lx_uri::LxUri::from_str(&uri.to_string())
+                        .map_err(|_| LxAppError::ResourceNotFound(uri.to_string()))?,
+                )
                 .map(ResolvedLxAsset::FilePath),
             Some(lx_uri::HOST_USER_CACHE) => self
                 .resolve_user_dir_uri(uri, &self.user_cache_dir)
@@ -834,8 +841,11 @@ impl LxApp {
     }
 
     fn touch_user_cache_access_time(&self, path: &Path) {
-        if path.starts_with(&self.user_cache_dir) && path.exists() {
-            crate::cache::touch_access_time(path);
+        if path.starts_with(&self.user_cache_dir)
+            && path.exists()
+            && let Ok(cache) = self.cache()
+        {
+            cache.on_access(path);
         }
     }
 

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tokio::sync::oneshot;
 use tokio::time;
 use uuid::Uuid;
@@ -56,6 +56,7 @@ pub(crate) const PLUGINS_DIR: &str = "plugins";
 pub(crate) const STORAGE_DIR: &str = "storage";
 pub(crate) const USER_DATA_DIR: &str = "userdata";
 pub(crate) const USER_CACHE_DIR: &str = "usercache";
+pub(crate) const TEMP_DIR: &str = "temp";
 
 const LXAPPS_DB_FILE: &str = "lxapps.redb";
 const DEFAULT_VERSION: &str = "0.0.1";
@@ -92,6 +93,40 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         )));
     }
     Ok(normalized)
+}
+
+struct TempFileEntry {
+    path: PathBuf,
+    size: u64,
+    modified: SystemTime,
+}
+
+fn collect_temp_files(root: &Path, out: &mut Vec<TempFileEntry>) {
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if metadata.is_dir() {
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == ".download-staging")
+            {
+                continue;
+            }
+            collect_temp_files(&path, out);
+        } else if metadata.is_file() {
+            out.push(TempFileEntry {
+                path,
+                size: metadata.len(),
+                modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            });
+        }
+    }
 }
 
 /// Set the number of JS workers (and lxapp navigation stack capacity).
@@ -423,6 +458,7 @@ pub struct LxApp {
     pub storage_file_path: PathBuf,
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
+    pub temp_dir: PathBuf,
     pub fingermark: String,
     pub is_home_lxapp: bool,
     pub(crate) release_type: ReleaseType,
@@ -551,6 +587,40 @@ impl LxApp {
         self.grant_transient_path_access(path, TransientPathKind::File)
     }
 
+    pub fn register_temp_file(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
+        self.cleanup_temp_size(Some(path))?;
+        let uri = self.grant_transient_file_access(path)?;
+        Ok(uri)
+    }
+
+    pub fn temp_output_path(
+        &self,
+        category: &str,
+        ext: Option<&str>,
+    ) -> Result<PathBuf, LxAppError> {
+        let category = category
+            .chars()
+            .map(|ch| match ch {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' => ch,
+                _ => '_',
+            })
+            .collect::<String>();
+        let dir = self.temp_dir.join(category);
+        std::fs::create_dir_all(&dir).map_err(|e| {
+            LxAppError::IoError(format!("Failed to create temp output directory: {}", e))
+        })?;
+        let mut name = Uuid::new_v4().simple().to_string();
+        if let Some(ext) = ext
+            .map(str::trim)
+            .map(|value| value.trim_start_matches('.'))
+            .filter(|value| !value.is_empty())
+        {
+            name.push('.');
+            name.push_str(ext);
+        }
+        Ok(dir.join(name))
+    }
+
     pub fn grant_transient_directory_access(&self, path: &Path) -> Result<uri::LxUri, LxAppError> {
         self.grant_transient_path_access(path, TransientPathKind::Directory)
     }
@@ -588,6 +658,46 @@ impl LxApp {
         if let Some(grants) = TRANSIENT_FILE_GRANTS.get() {
             grants.retain(|key, _| key.0 != appid || key.1 != session_id);
         }
+        if !self.temp_dir.as_os_str().is_empty() {
+            let _ = std::fs::remove_dir_all(&self.temp_dir);
+        }
+    }
+
+    fn cleanup_temp_size(&self, keep: Option<&Path>) -> Result<(), LxAppError> {
+        let max_bytes = crate::app::temp_max_size_bytes();
+        if max_bytes == 0 || self.temp_dir.as_os_str().is_empty() {
+            return Ok(());
+        }
+        let keep = keep.map(Path::to_path_buf);
+        let mut files = Vec::new();
+        collect_temp_files(&self.temp_dir, &mut files);
+        let mut total = files.iter().map(|entry| entry.size).sum::<u64>();
+        if total <= max_bytes {
+            return Ok(());
+        }
+
+        files.sort_by_key(|entry| entry.modified);
+        let low_water = max_bytes.saturating_mul(8) / 10;
+        for entry in files {
+            if total <= low_water {
+                break;
+            }
+            if keep.as_ref().is_some_and(|keep| *keep == entry.path) {
+                continue;
+            }
+            if std::fs::remove_file(&entry.path).is_ok() {
+                total = total.saturating_sub(entry.size);
+            }
+        }
+        if total > max_bytes {
+            if let Some(keep) = keep.as_ref() {
+                let _ = std::fs::remove_file(keep);
+            }
+            return Err(LxAppError::ResourceExhausted(
+                "TEMP_QUOTA_EXCEEDED".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn status_name(&self) -> &'static str {
@@ -743,6 +853,7 @@ impl LxApp {
             storage_file_path: PathBuf::new(),
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
+            temp_dir: PathBuf::new(),
             fingermark: String::new(),
             is_home_lxapp: false,
             release_type,
@@ -844,18 +955,45 @@ impl LxApp {
             })?;
         }
 
-        // Set up cache directory
+        // Set up LingXia-managed user cache directory. This is intentionally under app data,
+        // not the OS cache directory, because LingXia owns usercache cleanup policy.
         let cache_base_dir = self
             .runtime
-            .app_cache_dir()
+            .app_data_dir()
             .join(LINGXIA_DIR)
-            .join(LXAPPS_DIR)
             .join(USER_CACHE_DIR);
 
         self.user_cache_dir = cache_base_dir.join(&dir_name);
         if !self.user_cache_dir.exists() {
             std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create cache directory: {}", e))
+            })?;
+        }
+
+        let temp_base_dir = self
+            .runtime
+            .app_cache_dir()
+            .join(LINGXIA_DIR)
+            .join(LXAPPS_DIR)
+            .join(TEMP_DIR)
+            .join(&dir_name);
+        let _ = std::fs::create_dir_all(&temp_base_dir);
+        if let Ok(entries) = std::fs::read_dir(&temp_base_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let stale = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name != self.session_id().to_string());
+                if stale && path.is_dir() {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+            }
+        }
+        self.temp_dir = temp_base_dir.join(self.session_id().to_string());
+        if !self.temp_dir.exists() {
+            std::fs::create_dir_all(&self.temp_dir).map_err(|e| {
+                LxAppError::IoError(format!("Failed to create temp directory: {}", e))
             })?;
         }
 
@@ -893,8 +1031,13 @@ impl LxApp {
         self.load_config()?;
         // Initialize per-app cache directly using the app's cache dir
         self.cache = Some(
-            LxAppCache::new(self.user_cache_dir.clone())
-                .map_err(|e| LxAppError::IoError(e.to_string()))?,
+            LxAppCache::new(
+                self.user_cache_dir.clone(),
+                crate::app::cache_max_size_bytes(),
+                crate::app::cache_max_age(),
+                Duration::from_secs(30),
+            )
+            .map_err(|e| LxAppError::IoError(e.to_string()))?,
         );
         Ok(())
     }
@@ -1077,6 +1220,7 @@ impl LxApp {
             (&self.lxapp_dir, "app bundle"),
             (&self.user_data_dir, "user data"),
             (&self.user_cache_dir, "user cache"),
+            (&self.temp_dir, "temp"),
         ];
 
         let resolved_target = std::fs::canonicalize(path_ref).ok();
@@ -1119,6 +1263,9 @@ impl LxApp {
     }
 
     pub fn to_uri(&self, path: &Path) -> Option<uri::LxUri> {
+        if !self.temp_dir.as_os_str().is_empty() && path.starts_with(&self.temp_dir) {
+            return self.register_temp_file(path).ok();
+        }
         uri::try_convert_path_to_uri(path, self)
     }
 
@@ -1138,7 +1285,7 @@ impl LxApp {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
                 let token = uri.path().trim_matches('/');
-                if token.len() != 32 || token.contains('/') {
+                if token.is_empty() || token.contains('/') || token.contains('\\') {
                     return Err(LxAppError::ResourceNotFound(lx_uri.as_str().to_string()));
                 }
                 self.resolve_transient_file(token).ok_or_else(|| {
@@ -1939,8 +2086,10 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
         data_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
         data_dir.join(LINGXIA_DIR).join(PLUGINS_DIR),
         data_dir.join(LINGXIA_DIR).join(USER_DATA_DIR),
+        data_dir.join(LINGXIA_DIR).join(USER_CACHE_DIR),
+        lingxia_transfer::dir(&runtime.app_data_dir()),
         data_dir.join(LINGXIA_DIR).join(STORAGE_DIR),
-        cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR),
+        cache_dir.join(LINGXIA_DIR).join(LXAPPS_DIR).join(TEMP_DIR),
     ];
 
     for dir in &dirs {
@@ -1961,23 +2110,25 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
 
     let _ = crate::executor::spawn(async move {
         let cache_base_dir = runtime
-            .app_cache_dir()
+            .app_data_dir()
             .join(LINGXIA_DIR)
-            .join(LXAPPS_DIR)
             .join(USER_CACHE_DIR);
+        cleanup_cache_base_dir(&cache_base_dir, max_bytes, max_age);
+    });
+}
 
-        if let Ok(entries) = fs::read_dir(&cache_base_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Ok(file_type) = entry.file_type() else {
-                    continue;
-                };
-                if file_type.is_dir() && !file_type.is_symlink() {
-                    crate::cache::cleanup_cache_dir(&path, max_bytes, max_age);
-                }
+fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64, max_age: Duration) {
+    if let Ok(entries) = fs::read_dir(cache_base_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() && !file_type.is_symlink() {
+                crate::cache::cleanup_cache_dir(&path, max_bytes, max_age);
             }
         }
-    });
+    }
 }
 
 fn installed_home_version(
