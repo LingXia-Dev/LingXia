@@ -5,6 +5,7 @@ use super::{
 use crate::platform::{BuildProfile, Device, DeviceType, InstallConfig, RunConfig};
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
+use indicatif::{ProgressBar, ProgressStyle};
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -51,15 +52,16 @@ impl HarmonyPlatform {
             }
         }
 
-        println!("  {} Installing HAP: {}", "→".dimmed(), hap_path.display());
-
         let mut cmd = Command::new(&hdc);
         if let Some(ref device_id) = config.device_id {
             cmd.arg("-t").arg(device_id);
         }
         cmd.arg("install").arg("-r").arg(&hap_path);
 
+        let install_progress = harmony_install_progress(&hap_path, config.quiet)?;
         let output = cmd.output().context("Failed to execute hdc install")?;
+        finish_harmony_install_progress(install_progress);
+
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         if !output.status.success() || hdc_install_failed(&stdout, &stderr) {
@@ -398,6 +400,34 @@ fn install_verification_bundle(
         Ok(package_id) => Ok(Some(package_id)),
         Err(err) if explicit_artifact => Err(err),
         Err(_) => Ok(infer_harmony_bundle_for_uninstall(project_root)),
+    }
+}
+
+fn harmony_install_progress(hap_path: &Path, quiet: bool) -> Result<Option<ProgressBar>> {
+    if quiet {
+        return Ok(None);
+    }
+    let size_mb = hap_path
+        .metadata()
+        .map(|metadata| metadata.len() as f64 / (1024.0 * 1024.0))
+        .unwrap_or(0.0);
+    let file_name = hap_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("HAP");
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::with_template("  {spinner:.cyan} {msg}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner()),
+    );
+    spinner.set_message(format!("Installing {file_name} ({size_mb:.1} MB)..."));
+    spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+    Ok(Some(spinner))
+}
+
+fn finish_harmony_install_progress(progress: Option<ProgressBar>) {
+    if let Some(progress) = progress {
+        progress.finish_and_clear();
     }
 }
 
