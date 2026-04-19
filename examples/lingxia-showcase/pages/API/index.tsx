@@ -1,11 +1,11 @@
+import { useState } from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function APIPage() {
   // Use LingXia hook to get data and functions
-  const { data, actions } = useLxPage();
+  const { actions } = useLxPage();
   const {
-    toggleSection,
     navigateToStreamPage,
     navigateToChannelPage,
     navigateToUIPage,
@@ -22,7 +22,22 @@ export default function APIPage() {
     exitApp,
     navigateToPullDownRefreshPage,
   } = actions;
-  const { expandedSections = { bridge: false, interface: false, device: false, system: false, cloud: false, navigation: false, media: false, file: false } } = data;
+  const [expandedSections, setExpandedSections] = useState({
+    bridge: false,
+    interface: false,
+    device: false,
+    system: false,
+    cloud: false,
+    navigation: false,
+    media: false,
+    file: false,
+  });
+  const toggleSection = ({ section }: { section: keyof typeof expandedSections }) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 overflow-y-auto">

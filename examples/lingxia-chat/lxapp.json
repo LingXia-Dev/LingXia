@@ -1,7 +1,6 @@
 {
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
-  "framework": "react",
   "version": "1.0.3",
   "pages": {
     "chat": "pages/chat/index"

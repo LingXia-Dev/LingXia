@@ -545,7 +545,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { reactive } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -561,8 +561,6 @@ type ExpandedSections = {
 };
 
 type PageActions = {
-  data: { expandedSections?: ExpandedSections };
-  toggleSection(payload: { section: string }): void;
   navigateToUIPage(payload: { type: string }): void;
   navigateToDevicePage(payload: { type: string }): void;
   navigateToWifiPage(): void;
@@ -580,9 +578,8 @@ type PageActions = {
   navigateToPullDownRefreshPage(): void;
 };
 
-const { data, actions } = useLxPage();
+const { actions } = useLxPage<Record<string, never>, PageActions>();
 const {
-  toggleSection,
   navigateToUIPage,
   navigateToDevicePage,
   navigateToWifiPage,
@@ -600,7 +597,7 @@ const {
   navigateToPullDownRefreshPage,
 } = actions;
 
-const expandedSections = computed(() => data.expandedSections ?? {
+const expandedSections = reactive<ExpandedSections>({
   bridge: false,
   cloud: false,
   interface: false,
@@ -610,4 +607,8 @@ const expandedSections = computed(() => data.expandedSections ?? {
   media: false,
   file: false,
 });
+
+const toggleSection = ({ section }: { section: keyof ExpandedSections }) => {
+  expandedSections[section] = !expandedSections[section];
+};
 </script>

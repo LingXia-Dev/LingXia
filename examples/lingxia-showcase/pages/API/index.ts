@@ -1,20 +1,6 @@
 const app = getApp();
 
 Page({
-  data: {
-    // Category expansion state
-    expandedSections: {
-      bridge: false,
-      interface: false,
-      device: false,
-      system: false,
-      cloud: false,
-      navigation: false,
-      media: false,
-      file: false,
-    },
-  },
-
   onLoad: function(options) {
     console.log("Options in onLoad: ", options);
   },
@@ -26,22 +12,6 @@ Page({
 
   onHide: function() {
     console.log("API page onHide");
-  },
-
-  // Toggle category expansion state
-  toggleSection: function(params = {}) {
-    const { section } = params;
-    if (
-      !section ||
-      !Object.prototype.hasOwnProperty.call(this.data.expandedSections, section)
-    ) {
-      return;
-    }
-    const currentState = this.data.expandedSections[section];
-
-    this.setData({
-      [`expandedSections.${section}`]: !currentState,
-    });
   },
 
   navigateToStreamPage: async function() {
