@@ -41,6 +41,27 @@ my-app/
 
 ---
 
+## SDK Startup APIs
+
+Use the product-app startup entry on each platform:
+
+| Platform | Entry |
+|---|---|
+| Apple | `Lingxia.quickStart()` |
+| Android | `Lingxia.quickStart(activity)` |
+| Harmony | `Lingxia.quickStart(context, windowStage)` |
+
+`quickStart` means the native app is a LingXia host product. It initializes the
+runtime and opens the configured home lxapp through the platform host shell or
+navigation container.
+
+Android and Harmony intentionally expose only `quickStart` as the public startup
+API today. Advanced embedding into an existing native app should stay internal
+until the host-view/session API is designed for those platforms. Do not add
+compatibility wrappers such as `Lingxia.initialize(...)`.
+
+---
+
 ## Minimal macOS Example
 
 ```yaml

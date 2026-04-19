@@ -166,7 +166,9 @@ lingxia dev [options]
 
 Behavior depends on the current project:
 
-- In an app project, `lingxia dev` builds, installs, and launches the host app.
+- In an app project, `lingxia dev` builds, installs, launches the host app, and starts a local dev websocket for `lxdev`.
+- Android and Harmony dev sessions set reverse port forwarding so the device app can reach the local dev server.
+- iOS dev sessions embed a LAN dev websocket URL into the dev build; the iOS device must be able to reach the host Mac on the local network.
 - In a standalone lxapp project, `lingxia dev` builds the lxapp and launches LingXia Runner on macOS.
 
 **Options:**
