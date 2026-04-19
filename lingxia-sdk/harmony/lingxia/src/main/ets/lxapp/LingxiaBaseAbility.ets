@@ -98,7 +98,7 @@ export class LingxiaBaseAbility extends UIAbility {
   /**
    * Override to install native host addon.
    */
-  protected installHostAddon(): void {
+  protected registerHostAddon(): void {
   }
 
   private handleBackPressInternal(): boolean {
@@ -325,9 +325,9 @@ export class LingxiaBaseAbility extends UIAbility {
   onWindowStageCreate(windowStage: window.WindowStage): void {
     super.onWindowStageCreate(windowStage);
 
-    // Install native host addon (once only)
+    // Register native host addon (once only)
     if (!LingxiaBaseAbility.hostAddonInstalled) {
-      this.installHostAddon();
+      this.registerHostAddon();
       LingxiaBaseAbility.hostAddonInstalled = true;
     }
     this.registerWindowBackInterceptor(windowStage);

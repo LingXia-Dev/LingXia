@@ -7,6 +7,6 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn lingxia_install_host_addon() {
-    lingxia::install_host_addon(Box::new(RunnerDevtoolAddon));
+pub extern "C" fn lingxia_register_host_addon() {
+    lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 }

@@ -18,19 +18,19 @@ object Lingxia {
     }
 
     /**
-     * Product-app entry point with an app-owned native addon installer.
+     * Product-app entry point with an app-owned native addon registrar.
      *
-     * The SDK loads liblingxia before invoking [installHostAddon], so host apps do not need to
+     * The SDK loads liblingxia before invoking [registerHostAddon], so host apps do not need to
      * call System.loadLibrary themselves.
      */
     @JvmStatic
-    fun quickStart(activity: AppCompatActivity, installHostAddon: (() -> Unit)?) {
+    fun quickStart(activity: AppCompatActivity, registerHostAddon: (() -> Unit)?) {
         if (!NativeApi.ensureLoaded()) {
             throw IllegalStateException("Failed to load native library 'lingxia'")
         }
-        if (installHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
+        if (registerHostAddon != null && hostAddonInstalled.compareAndSet(false, true)) {
             try {
-                installHostAddon()
+                registerHostAddon()
             } catch (error: Throwable) {
                 hostAddonInstalled.set(false)
                 throw error

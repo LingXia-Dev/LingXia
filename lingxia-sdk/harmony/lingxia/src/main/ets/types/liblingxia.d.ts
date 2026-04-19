@@ -440,10 +440,10 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
-   * Install native host addon (bootstrap hooks, services, JS APIs, etc.)
+   * Register native host addon (bootstrap hooks, services, JS APIs, etc.)
    * Must be called before lingxiaInit()
    */
-  export function lingxiaInstallHostAddon(): void;
+  export function lingxiaRegisterHostAddon(): void;
 
   /** Returns a bitmask of host app capabilities. */
   export function getAppCapabilities(): number;

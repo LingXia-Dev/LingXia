@@ -14,7 +14,7 @@ Platform entry crate for the LingXia framework. Provides cross-platform FFI bind
 ## Exports
 
 - `HostAddon` - Trait for host bootstrap, services, and JS API registration
-- `install_host_addon` - Install a host addon before runtime initialization
+- `register_host_addon` - Register a host addon before runtime initialization
 - `register_logic_extension` - Register custom JS logic extensions
 - `native` - Attribute macro for custom page-facing native APIs
 - `register_provider` - Register provider

@@ -44,7 +44,7 @@ enum OpenURLHandlerResult {
 /// Core LxApp management logic shared between platforms
 @MainActor
 final class LxAppCore {
-    private typealias NativeHostAddonInstaller = @convention(c) () -> Void
+    private typealias NativeHostAddonRegistrar = @convention(c) () -> Void
     private static let log = OSLog(subsystem: "LingXia", category: "LxAppCore")
     static var resourceBundle: Bundle {
 #if SWIFT_PACKAGE
@@ -172,7 +172,7 @@ final class LxAppCore {
 
         // Discover and invoke native host registration once before initialization.
         if !nativeRegistrationPerformed {
-            installNativeHostAddon()
+            registerNativeHostAddon()
             nativeRegistrationPerformed = true
         }
 
@@ -237,37 +237,37 @@ final class LxAppCore {
     }
 
     /// Called by `LxAppRuntime.initialize()` to ensure the native host addon
-    /// is installed exactly once. Safe to call multiple times.
-    internal static func installNativeHostAddonOnce() {
+    /// is registered exactly once. Safe to call multiple times.
+    internal static func registerNativeHostAddonOnce() {
         guard !nativeRegistrationPerformed else { return }
-        installNativeHostAddon()
+        registerNativeHostAddon()
         nativeRegistrationPerformed = true
     }
 
-    private static func installNativeHostAddon() {
-        guard let installer = resolveNativeHostAddonInstaller() else {
-            os_log("Native host addon installer not found", log: log, type: .info)
+    private static func registerNativeHostAddon() {
+        guard let registrar = resolveNativeHostAddonRegistrar() else {
+            os_log("Native host addon registrar not found", log: log, type: .info)
             return
         }
-        os_log("Installing native host addon", log: log, type: .info)
-        installer()
+        os_log("Registering native host addon", log: log, type: .info)
+        registrar()
     }
 
-    /// Discover the native host addon installer symbol via `dlsym(RTLD_DEFAULT, ...)`.
+    /// Discover the native host addon registrar symbol via `dlsym(RTLD_DEFAULT, ...)`.
     ///
     /// The host app (or its static Rust library) is expected to define:
     /// ```c
-    /// void lingxia_install_host_addon(void);
+    /// void lingxia_register_host_addon(void);
     /// ```
     /// The corresponding `-u` linker flag in Package.swift ensures the symbol is
     /// not stripped even when the only reference is this runtime lookup.
-    private static func resolveNativeHostAddonInstaller() -> NativeHostAddonInstaller? {
+    private static func resolveNativeHostAddonRegistrar() -> NativeHostAddonRegistrar? {
         // RTLD_DEFAULT (-2): search all loaded images in default order.
         let rtldDefault = UnsafeMutableRawPointer(bitPattern: -2)
-        guard let raw = dlsym(rtldDefault, "lingxia_install_host_addon") else {
+        guard let raw = dlsym(rtldDefault, "lingxia_register_host_addon") else {
             return nil
         }
-        return unsafeBitCast(raw, to: NativeHostAddonInstaller.self)
+        return unsafeBitCast(raw, to: NativeHostAddonRegistrar.self)
     }
 
     /// Called by `LxAppController.close()` to close an LxApp from the Swift side.

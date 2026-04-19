@@ -49,7 +49,7 @@ public final class LxAppRuntime {
         WebViewManager.registerRuntimeClasses()
 
         // 2. Native host addon (Rust FFI symbol discovery).
-        LxAppCore.installNativeHostAddonOnce()
+        LxAppCore.registerNativeHostAddonOnce()
 
         // 3. Resolve directories.
         let dirs = LxAppDirectoryFactory.createDirectoryConfig()

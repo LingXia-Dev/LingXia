@@ -132,8 +132,8 @@ let package = Package(
             linkerSettings: [
                 .unsafeFlags([iosLibraryPath], .when(platforms: [.iOS])),
                 .unsafeFlags([macosLibraryPath], .when(platforms: [.macOS])),
-                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_install_host_addon"], .when(platforms: [.iOS])),
-                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_install_host_addon"], .when(platforms: [.macOS])),
+                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_register_host_addon"], .when(platforms: [.iOS])),
+                .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_register_host_addon"], .when(platforms: [.macOS])),
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("WebKit"),
                 .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),

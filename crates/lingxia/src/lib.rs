@@ -1,7 +1,7 @@
 //! LingXia framework.
 
 extern crate self as lingxia;
-pub use host_addon::{HostAddon, install_host_addon};
+pub use host_addon::{HostAddon, register_host_addon};
 pub use lingxia_app_context::{
     AppConfig, app_config, app_state_dir, lingxia_id, product_name, product_version,
 };

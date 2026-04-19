@@ -14,7 +14,7 @@ fn host_addons() -> &'static Mutex<Vec<Arc<dyn HostAddon>>> {
     HOST_ADDONS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
-pub fn install_host_addon(addon: Box<dyn HostAddon>) {
+pub fn register_host_addon(addon: Box<dyn HostAddon>) {
     let mut installed = host_addons()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());

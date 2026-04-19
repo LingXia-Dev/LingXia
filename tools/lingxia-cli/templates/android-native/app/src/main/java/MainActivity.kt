@@ -9,13 +9,13 @@ import com.lingxia.lxapp.LxApp
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
 
-    private external fun nativeInstallHostAddon()
+    private external fun nativeRegisterHostAddon()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         LxApp.enableWebViewDebugging()
         Lingxia.quickStart(this) {
-            nativeInstallHostAddon()
+            nativeRegisterHostAddon()
         }
 
         Log.d(TAG, "LxApp is ready")
