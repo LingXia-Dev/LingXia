@@ -2,12 +2,23 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
+use base64::{Engine as _, engine::general_purpose};
+use futures::Stream;
 use lingxia_platform::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileService, OpenFileRequest,
 };
 use lxapp::{LxApp, lx};
-use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
+use rong::{
+    AnyJSTypedArray, Class, FromJSObj, HostError, IntoJSAsyncIteratorExt, IntoJSObj, IntoJSValue,
+    JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError, function::Optional,
+    js_class, js_export, js_method,
+};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::sync::{Arc, Weak};
+use std::task::{Context, Poll};
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::fs as tokio_fs;
 
 mod download;
 mod storage;
@@ -160,19 +171,246 @@ struct ChooseDirectoryResultObj {
 }
 
 #[derive(FromJSObj)]
-struct JSSaveFileOptions {
-    #[rename = "tempFilePath"]
-    temp_file_path: String,
+struct JSFsPathOptions {
+    path: String,
+}
+
+#[derive(FromJSObj)]
+struct JSFsDirPathOptions {
+    path: String,
+}
+
+#[derive(FromJSObj)]
+struct JSMkdirOptions {
+    path: String,
+    recursive: Option<bool>,
+}
+
+#[derive(FromJSObj)]
+struct JSReadFileOptions {
     #[rename = "filePath"]
-    file_path: Option<String>,
+    file_path: String,
+    encoding: Option<String>,
+}
+
+#[derive(FromJSObj)]
+struct JSWriteFileOptions {
+    #[rename = "filePath"]
+    file_path: String,
+    data: JSValue,
+    encoding: Option<String>,
     overwrite: Option<bool>,
 }
 
+#[derive(FromJSObj)]
+struct JSCopyFileOptions {
+    #[rename = "srcPath"]
+    src_path: String,
+    #[rename = "destPath"]
+    dest_path: String,
+    overwrite: Option<bool>,
+}
+
+#[derive(FromJSObj)]
+struct JSRenameOptions {
+    #[rename = "oldPath"]
+    old_path: String,
+    #[rename = "newPath"]
+    new_path: String,
+    overwrite: Option<bool>,
+}
+
+#[derive(FromJSObj)]
+struct JSRemoveOptions {
+    path: String,
+    recursive: Option<bool>,
+}
+
 #[derive(Debug, Clone, IntoJSObj)]
-struct JSSaveFileResult {
-    #[rename = "filePath"]
-    file_path: String,
+struct JSFileStats {
+    #[rename = "isFile"]
+    is_file: bool,
+    #[rename = "isDirectory"]
+    is_directory: bool,
+    #[rename = "isSymlink"]
+    is_symlink: bool,
     size: u64,
+    #[rename = "lastModifiedTime"]
+    last_modified_time: Option<u64>,
+    #[rename = "lastAccessedTime"]
+    last_accessed_time: Option<u64>,
+    #[rename = "createTime"]
+    create_time: Option<u64>,
+}
+
+#[js_export]
+struct JSFileManager {
+    lxapp: Weak<LxApp>,
+    user_data_dir: PathBuf,
+}
+
+impl JSFileManager {
+    fn new(lxapp: &Arc<LxApp>) -> Self {
+        Self {
+            lxapp: Arc::downgrade(lxapp),
+            user_data_dir: lxapp.user_data_dir.clone(),
+        }
+    }
+
+    fn lxapp(&self) -> JSResult<Arc<LxApp>> {
+        let lxapp = self
+            .lxapp
+            .upgrade()
+            .ok_or_else(|| js_internal_error("FileManager owner LxApp has been released"))?;
+        if lxapp.user_data_dir != self.user_data_dir {
+            return Err(js_internal_error("FileManager owner LxApp changed"));
+        }
+        Ok(lxapp)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ManagedPathKind {
+    Temp,
+    UserData,
+    UserCache,
+}
+
+#[derive(Clone, Debug)]
+struct ManagedPath {
+    path: PathBuf,
+    kind: ManagedPathKind,
+}
+
+impl ManagedPathKind {
+    fn is_app_storage(self) -> bool {
+        matches!(self, Self::UserData | Self::UserCache)
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Temp => "lx://temp",
+            Self::UserData => "lx://userdata",
+            Self::UserCache => "lx://usercache",
+        }
+    }
+}
+
+fn managed_root<'a>(lxapp: &'a LxApp, kind: ManagedPathKind) -> Option<&'a Path> {
+    match kind {
+        ManagedPathKind::Temp => None,
+        ManagedPathKind::UserData => Some(&lxapp.user_data_dir),
+        ManagedPathKind::UserCache => Some(&lxapp.user_cache_dir),
+    }
+}
+
+#[js_export]
+struct JSDirEntry {
+    name: String,
+    is_directory: bool,
+    is_symlink: bool,
+}
+
+#[js_class(rename = "DirEntry")]
+impl JSDirEntry {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(
+            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            "Use FileManager.readDir()",
+        )
+        .into())
+    }
+
+    #[js_method(getter)]
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[js_method(getter, rename = "isFile")]
+    fn is_file(&self) -> bool {
+        !self.is_directory && !self.is_symlink
+    }
+
+    #[js_method(getter, rename = "isDirectory")]
+    fn is_directory(&self) -> bool {
+        self.is_directory
+    }
+
+    #[js_method(getter, rename = "isSymlink")]
+    fn is_symlink(&self) -> bool {
+        self.is_symlink
+    }
+}
+
+type FileTypeFuture =
+    Pin<Box<dyn futures::Future<Output = Result<std::fs::FileType, std::io::Error>> + Send>>;
+
+struct DirEntryStream {
+    entries: tokio_fs::ReadDir,
+    current_entry: Option<tokio_fs::DirEntry>,
+    current_file_type_fut: Option<FileTypeFuture>,
+}
+
+impl DirEntryStream {
+    fn new(entries: tokio_fs::ReadDir) -> Self {
+        Self {
+            entries,
+            current_entry: None,
+            current_file_type_fut: None,
+        }
+    }
+}
+
+impl Stream for DirEntryStream {
+    type Item = Result<JSDirEntry, RongJSError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+
+        if let Some(file_type_fut) = this.current_file_type_fut.as_mut() {
+            match file_type_fut.as_mut().poll(cx) {
+                Poll::Ready(Ok(file_type)) => {
+                    this.current_file_type_fut.take();
+                    if let Some(entry) = this.current_entry.take() {
+                        let name = entry.file_name().to_string_lossy().into_owned();
+                        return Poll::Ready(Some(Ok(JSDirEntry {
+                            name,
+                            is_directory: file_type.is_dir(),
+                            is_symlink: file_type.is_symlink(),
+                        })));
+                    }
+                }
+                Poll::Ready(Err(err)) => {
+                    this.current_file_type_fut.take();
+                    this.current_entry.take();
+                    return Poll::Ready(Some(Err(js_internal_error(format!(
+                        "readDir file type failed: {err}"
+                    )))));
+                }
+                Poll::Pending => return Poll::Pending,
+            }
+        }
+
+        match this.entries.poll_next_entry(cx) {
+            Poll::Ready(Ok(Some(entry))) => {
+                let path = entry.path();
+                this.current_entry = Some(entry);
+                this.current_file_type_fut = Some(Box::pin(async move {
+                    tokio_fs::symlink_metadata(path)
+                        .await
+                        .map(|metadata| metadata.file_type())
+                }));
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            }
+            Poll::Ready(Ok(None)) => Poll::Ready(None),
+            Poll::Ready(Err(err)) => Poll::Ready(Some(Err(js_internal_error(format!(
+                "readDir entry failed: {err}"
+            ))))),
+            Poll::Pending => Poll::Pending,
+        }
+    }
 }
 
 fn normalize_extensions(raw: Option<Vec<String>>) -> Vec<String> {
@@ -361,117 +599,589 @@ async fn choose_directory(
     })
 }
 
-fn default_save_file_name(source: &Path) -> String {
-    source
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("file")
-        .to_string()
+fn system_time_millis(value: std::io::Result<SystemTime>) -> Option<u64> {
+    value
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .and_then(|duration| u64::try_from(duration.as_millis()).ok())
 }
 
-fn resolve_save_destination(
-    lxapp: &LxApp,
-    source: &Path,
-    raw_file_path: Option<&str>,
-) -> JSResult<PathBuf> {
-    let Some(raw_file_path) = raw_file_path
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(lxapp.user_data_dir.join(default_save_file_name(source)));
-    };
-
-    if raw_file_path.starts_with("lx://") {
-        let resolved = lxapp
-            .resolve_accessible_path(raw_file_path)
-            .map_err(|err| js_error_from_lxapp_error(&err))?;
-        if !resolved.starts_with(&lxapp.user_data_dir) {
-            return Err(js_invalid_parameter_error(
-                "saveFile filePath must target lx://userdata",
-            ));
-        }
-        return Ok(resolved);
+fn normalize_relative_path<'a>(
+    raw_path: &'a str,
+    api_name: &'static str,
+    field_name: &'static str,
+) -> JSResult<&'a str> {
+    let path = raw_path.trim();
+    if path.is_empty() {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} requires {field_name}"
+        )));
     }
-
-    let path = Path::new(raw_file_path);
-    if path.is_absolute() || raw_file_path.contains(':') || raw_file_path.contains('\\') {
-        return Err(js_invalid_parameter_error(
-            "saveFile filePath must be relative or lx://userdata",
-        ));
+    let path_ref = Path::new(path);
+    if path_ref.is_absolute() || path.contains(':') || path.contains('\\') {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} {field_name} must be a clean relative path or supported lx:// URI"
+        )));
     }
-    if raw_file_path
+    if path
         .split('/')
-        .any(|segment| segment == "." || segment == "..")
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
     {
-        return Err(js_invalid_parameter_error(
-            "saveFile filePath must not contain '.' or '..'",
-        ));
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} {field_name} must not contain empty, '.' or '..' segments"
+        )));
     }
-    Ok(lxapp
-        .user_data_dir
-        .join(raw_file_path.trim_start_matches('/')))
+    Ok(path)
 }
 
-fn copy_file(source: &Path, destination: &Path, overwrite: bool) -> JSResult<u64> {
-    if destination.exists() && !overwrite {
+fn classify_managed_path(lxapp: &LxApp, path: &Path) -> Option<ManagedPathKind> {
+    if !lxapp.temp_dir.as_os_str().is_empty() && path.starts_with(&lxapp.temp_dir) {
+        Some(ManagedPathKind::Temp)
+    } else if path.starts_with(&lxapp.user_data_dir) {
+        Some(ManagedPathKind::UserData)
+    } else if path.starts_with(&lxapp.user_cache_dir) {
+        Some(ManagedPathKind::UserCache)
+    } else {
+        None
+    }
+}
+
+fn is_storage_root(lxapp: &LxApp, path: &ManagedPath) -> bool {
+    match path.kind {
+        ManagedPathKind::Temp => false,
+        ManagedPathKind::UserData => path.path == lxapp.user_data_dir,
+        ManagedPathKind::UserCache => path.path == lxapp.user_cache_dir,
+    }
+}
+
+fn resolve_managed_path(
+    lxapp: &LxApp,
+    raw_path: &str,
+    api_name: &'static str,
+    field_name: &'static str,
+    allow_temp: bool,
+    allow_usercache: bool,
+    require_child: bool,
+) -> JSResult<ManagedPath> {
+    let path = raw_path.trim();
+    if path.starts_with("lx://") {
+        let resolved = lxapp
+            .resolve_accessible_path(path)
+            .map_err(|err| js_error_from_lxapp_error(&err))?;
+        let Some(kind) = classify_managed_path(lxapp, &resolved) else {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must target LingXia-managed storage"
+            )));
+        };
+        if kind == ManagedPathKind::Temp && !allow_temp {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must not target lx://temp"
+            )));
+        }
+        if kind == ManagedPathKind::UserCache && !allow_usercache {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must not target lx://usercache"
+            )));
+        }
+        let path = ManagedPath {
+            path: resolved,
+            kind,
+        };
+        if require_child && is_storage_root(lxapp, &path) {
+            return Err(js_invalid_parameter_error(format!(
+                "{api_name} {field_name} must reference a path under {}",
+                kind.label()
+            )));
+        }
+        return Ok(path);
+    }
+
+    let relative = normalize_relative_path(path, api_name, field_name)?;
+    Ok(ManagedPath {
+        path: lxapp.user_data_dir.join(relative),
+        kind: ManagedPathKind::UserData,
+    })
+}
+
+fn resolve_readable_path(
+    lxapp: &LxApp,
+    raw_path: &str,
+    api_name: &'static str,
+    field_name: &'static str,
+) -> JSResult<ManagedPath> {
+    let path = raw_path.trim();
+    if path.is_empty() {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} requires {field_name}"
+        )));
+    }
+    resolve_managed_path(lxapp, path, api_name, field_name, true, true, false)
+}
+
+fn resolve_writable_path(
+    lxapp: &LxApp,
+    raw_path: &str,
+    api_name: &'static str,
+    field_name: &'static str,
+) -> JSResult<ManagedPath> {
+    resolve_managed_path(lxapp, raw_path, api_name, field_name, false, true, true)
+}
+
+fn file_stats(metadata: std::fs::Metadata) -> JSFileStats {
+    let file_type = metadata.file_type();
+    JSFileStats {
+        is_file: file_type.is_file(),
+        is_directory: file_type.is_dir(),
+        is_symlink: file_type.is_symlink(),
+        size: metadata.len(),
+        last_modified_time: system_time_millis(metadata.modified()),
+        last_accessed_time: system_time_millis(metadata.accessed()),
+        create_time: system_time_millis(metadata.created()),
+    }
+}
+
+fn ensure_not_exists(path: &Path, api_name: &'static str) -> JSResult<()> {
+    if std::fs::symlink_metadata(path).is_ok() {
         return Err(js_error_from_business_code_with_detail(
             1002,
-            "saveFile destination already exists",
+            format!("{api_name} destination already exists"),
         ));
     }
-    storage::copy_file_atomic(source, destination, overwrite)
-        .map_err(|err| js_internal_error(format!("saveFile copy failed: {err}")))
-}
-
-fn ensure_userdata_quota(lxapp: &LxApp, destination: &Path, incoming_bytes: u64) -> JSResult<()> {
-    storage::ensure_userdata_quota(&lxapp.user_data_dir, destination, incoming_bytes)
-        .and_then(|()| {
-            storage::ensure_app_storage_quota(
-                &lxapp.user_data_dir,
-                &lxapp.user_cache_dir,
-                destination,
-                incoming_bytes,
-                false,
-            )
-        })
-        .map_err(|err| err.into_js_error())?;
     Ok(())
 }
 
-async fn save_file(ctx: JSContext, options: JSSaveFileOptions) -> JSResult<JSSaveFileResult> {
+fn ensure_no_symlink_ancestors(
+    lxapp: &LxApp,
+    managed: &ManagedPath,
+    api_name: &'static str,
+    field_name: &'static str,
+) -> JSResult<()> {
+    let Some(root) = managed_root(lxapp, managed.kind) else {
+        return Ok(());
+    };
+    let Ok(relative) = managed.path.strip_prefix(root) else {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} {field_name} must stay inside {}",
+            managed.kind.label()
+        )));
+    };
+    let mut current = root.to_path_buf();
+    let mut components = relative.components().peekable();
+    while let Some(component) = components.next() {
+        if components.peek().is_none() {
+            break;
+        }
+        current.push(component.as_os_str());
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(js_invalid_parameter_error(format!(
+                    "{api_name} {field_name} must not pass through a symlink"
+                )));
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    Ok(())
+}
+
+fn symlink_metadata(managed: &ManagedPath, api_name: &'static str) -> JSResult<std::fs::Metadata> {
+    std::fs::symlink_metadata(&managed.path)
+        .map_err(|err| js_internal_error(format!("{api_name} stat failed: {err}")))
+}
+
+fn mark_usercache_access(lxapp: &LxApp, path: &ManagedPath) {
+    if path.kind == ManagedPathKind::UserCache
+        && let Ok(cache) = lxapp.cache()
+    {
+        cache.on_access(&path.path);
+    }
+}
+
+fn cleanup_usercache_keep(lxapp: &LxApp, keep: Option<&Path>) {
+    lxapp::cleanup_cache_dir_keep(
+        &lxapp.user_cache_dir,
+        lingxia_app_context::cache_max_size_bytes(),
+        std::time::Duration::from_secs(
+            lingxia_app_context::cache_max_age_days().saturating_mul(86400),
+        ),
+        keep,
+    );
+}
+
+fn finish_write(lxapp: &LxApp, destination: &ManagedPath) {
+    if destination.kind == ManagedPathKind::UserCache {
+        mark_usercache_access(lxapp, destination);
+        cleanup_usercache_keep(lxapp, Some(&destination.path));
+    }
+}
+
+fn ensure_write_quota(
+    lxapp: &LxApp,
+    destination: &ManagedPath,
+    incoming_bytes: u64,
+    source: Option<&ManagedPath>,
+    is_move: bool,
+) -> JSResult<()> {
+    let same_storage_move = is_move && source.is_some_and(|source| source.kind == destination.kind);
+    let removed_source = if is_move {
+        source.map(|source| source.path.as_path())
+    } else {
+        None
+    };
+    if !same_storage_move {
+        match destination.kind {
+            ManagedPathKind::UserData => storage::ensure_userdata_quota_with_removed(
+                &lxapp.user_data_dir,
+                &destination.path,
+                incoming_bytes,
+                removed_source,
+            ),
+            ManagedPathKind::UserCache => storage::ensure_usercache_quota(
+                &lxapp.user_cache_dir,
+                &destination.path,
+                incoming_bytes,
+                removed_source,
+            ),
+            ManagedPathKind::Temp => Err(storage::StorageQuotaError::Temp),
+        }
+        .map_err(|err| err.into_js_error())?;
+    }
+
+    let app_storage_incoming = if is_move
+        && source.is_some_and(|source| source.kind.is_app_storage())
+        && destination.kind.is_app_storage()
+    {
+        0
+    } else {
+        incoming_bytes
+    };
+    if app_storage_incoming > 0 {
+        let keep_cache_path = source
+            .filter(|source| source.kind == ManagedPathKind::UserCache)
+            .map(|source| source.path.as_path());
+        storage::ensure_app_storage_quota_keep(
+            &lxapp.user_data_dir,
+            &lxapp.user_cache_dir,
+            &destination.path,
+            app_storage_incoming,
+            keep_cache_path,
+        )
+        .map_err(|err| err.into_js_error())?;
+    }
+    Ok(())
+}
+
+fn decode_encoding(raw: Option<&str>, api_name: &'static str) -> JSResult<Option<&'static str>> {
+    match raw.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok(None),
+        Some("utf8") | Some("utf-8") => Ok(Some("utf8")),
+        Some("base64") => Ok(Some("base64")),
+        Some(_) => Err(js_invalid_parameter_error(format!(
+            "{api_name} encoding must be utf8 or base64"
+        ))),
+    }
+}
+
+fn js_value_to_bytes(
+    value: JSValue,
+    encoding: Option<&str>,
+    api_name: &'static str,
+) -> JSResult<Vec<u8>> {
+    if value.is_string() {
+        let text = value
+            .to_rust::<String>()
+            .map_err(|_| js_invalid_parameter_error(format!("{api_name} data must be a string")))?;
+        return match decode_encoding(encoding, api_name)? {
+            Some("base64") => general_purpose::STANDARD.decode(text).map_err(|err| {
+                js_invalid_parameter_error(format!("{api_name} invalid base64 data: {err}"))
+            }),
+            _ => Ok(text.into_bytes()),
+        };
+    }
+    if encoding.is_some() {
+        return Err(js_invalid_parameter_error(format!(
+            "{api_name} encoding is only valid for string data"
+        )));
+    }
+    if value.is_array_buffer() {
+        let buffer = value.to_rust::<JSArrayBuffer>().map_err(|_| {
+            js_invalid_parameter_error(format!("{api_name} data must be ArrayBuffer"))
+        })?;
+        return Ok(buffer.as_bytes().to_vec());
+    }
+    if let Some(obj) = value.into_object()
+        && let Some(typed_array) = AnyJSTypedArray::from_object(obj)
+        && let Some(bytes) = typed_array.as_bytes()
+    {
+        return Ok(bytes.to_vec());
+    }
+    Err(js_invalid_parameter_error(format!(
+        "{api_name} data must be string, ArrayBuffer, or TypedArray"
+    )))
+}
+
+fn bytes_to_read_file_result(
+    ctx: &JSContext,
+    bytes: Vec<u8>,
+    encoding: Option<&str>,
+) -> JSResult<JSObject> {
+    let result = JSObject::new(ctx);
+    match decode_encoding(encoding, "readFile")? {
+        Some("base64") => {
+            result.set("data", general_purpose::STANDARD.encode(bytes))?;
+        }
+        Some("utf8") => {
+            let text = String::from_utf8(bytes).map_err(|err| {
+                js_invalid_parameter_error(format!("readFile invalid utf8 data: {err}"))
+            })?;
+            result.set("data", text)?;
+        }
+        None => {
+            let buffer = JSArrayBuffer::from_bytes_owned(ctx, bytes)?;
+            result.set("data", buffer.into_js_value(ctx))?;
+        }
+        _ => unreachable!(),
+    }
+    Ok(result)
+}
+
+#[js_class(rename = "FileManager")]
+impl JSFileManager {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(
+            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            "Use lx.getFileManager()",
+        )
+        .into())
+    }
+
+    #[js_method]
+    async fn exists(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<bool> {
+        let lxapp = self.lxapp()?;
+        match resolve_readable_path(&lxapp, &options.path, "exists", "path") {
+            Ok(path) => {
+                if ensure_no_symlink_ancestors(&lxapp, &path, "exists", "path").is_err() {
+                    return Ok(false);
+                }
+                let exists = std::fs::symlink_metadata(&path.path).is_ok();
+                if exists {
+                    mark_usercache_access(&lxapp, &path);
+                }
+                Ok(exists)
+            }
+            Err(_) => Ok(false),
+        }
+    }
+
+    #[js_method]
+    async fn stat(&self, _ctx: JSContext, options: JSFsPathOptions) -> JSResult<JSFileStats> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_readable_path(&lxapp, &options.path, "stat", "path")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "stat", "path")?;
+        let metadata = symlink_metadata(&path, "stat")?;
+        mark_usercache_access(&lxapp, &path);
+        Ok(file_stats(metadata))
+    }
+
+    #[js_method(rename = "readDir")]
+    async fn read_dir(&self, ctx: JSContext, options: JSFsDirPathOptions) -> JSResult<JSObject> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_readable_path(&lxapp, &options.path, "readDir", "path")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "readDir", "path")?;
+        if !symlink_metadata(&path, "readDir")?.file_type().is_dir() {
+            return Err(js_invalid_parameter_error(
+                "readDir path must reference a directory",
+            ));
+        }
+        mark_usercache_access(&lxapp, &path);
+        let entries = tokio_fs::read_dir(&path.path)
+            .await
+            .map_err(|err| js_internal_error(format!("readDir failed: {err}")))?;
+        DirEntryStream::new(entries).to_js_async_iter(&ctx)
+    }
+
+    #[js_method]
+    async fn mkdir(&self, _ctx: JSContext, options: JSMkdirOptions) -> JSResult<()> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_writable_path(&lxapp, &options.path, "mkdir", "path")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "mkdir", "path")?;
+        if std::fs::symlink_metadata(&path.path)
+            .map(|metadata| metadata.file_type().is_dir())
+            .unwrap_or(false)
+        {
+            finish_write(&lxapp, &path);
+            return Ok(());
+        }
+        if options.recursive.unwrap_or(false) {
+            std::fs::create_dir_all(&path.path)
+        } else {
+            std::fs::create_dir(&path.path)
+        }
+        .map_err(|err| js_internal_error(format!("mkdir failed: {err}")))?;
+        finish_write(&lxapp, &path);
+        Ok(())
+    }
+
+    #[js_method(rename = "readFile")]
+    async fn read_file(&self, ctx: JSContext, options: JSReadFileOptions) -> JSResult<JSObject> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_readable_path(&lxapp, &options.file_path, "readFile", "filePath")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "readFile", "filePath")?;
+        if !symlink_metadata(&path, "readFile")?.file_type().is_file() {
+            return Err(js_invalid_parameter_error(
+                "readFile filePath must reference a file",
+            ));
+        }
+        mark_usercache_access(&lxapp, &path);
+        let bytes = std::fs::read(&path.path)
+            .map_err(|err| js_internal_error(format!("readFile failed: {err}")))?;
+        bytes_to_read_file_result(&ctx, bytes, options.encoding.as_deref())
+    }
+
+    #[js_method(rename = "writeFile")]
+    async fn write_file(&self, _ctx: JSContext, options: JSWriteFileOptions) -> JSResult<()> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_writable_path(&lxapp, &options.file_path, "writeFile", "filePath")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "writeFile", "filePath")?;
+        let overwrite = options.overwrite.unwrap_or(false);
+        if !overwrite {
+            ensure_not_exists(&path.path, "writeFile")?;
+        }
+        let bytes = js_value_to_bytes(options.data, options.encoding.as_deref(), "writeFile")?;
+        ensure_write_quota(&lxapp, &path, bytes.len() as u64, None, false)?;
+        storage::write_file_atomic(&bytes, &path.path, overwrite)
+            .map(|_| ())
+            .map_err(|err| js_internal_error(format!("writeFile failed: {err}")))?;
+        finish_write(&lxapp, &path);
+        Ok(())
+    }
+
+    #[js_method(rename = "copyFile")]
+    async fn copy_file(&self, _ctx: JSContext, options: JSCopyFileOptions) -> JSResult<()> {
+        let lxapp = self.lxapp()?;
+        let source = resolve_readable_path(&lxapp, &options.src_path, "copyFile", "srcPath")?;
+        ensure_no_symlink_ancestors(&lxapp, &source, "copyFile", "srcPath")?;
+        if !symlink_metadata(&source, "copyFile")?.file_type().is_file() {
+            return Err(js_invalid_parameter_error(
+                "copyFile srcPath must reference a file",
+            ));
+        }
+        mark_usercache_access(&lxapp, &source);
+        let destination =
+            resolve_writable_path(&lxapp, &options.dest_path, "copyFile", "destPath")?;
+        ensure_no_symlink_ancestors(&lxapp, &destination, "copyFile", "destPath")?;
+        let overwrite = options.overwrite.unwrap_or(false);
+        if !overwrite {
+            ensure_not_exists(&destination.path, "copyFile")?;
+        }
+        let incoming = std::fs::symlink_metadata(&source.path)
+            .map_err(|err| js_internal_error(format!("copyFile metadata failed: {err}")))?
+            .len();
+        ensure_write_quota(&lxapp, &destination, incoming, Some(&source), false)?;
+        storage::copy_file_atomic_with_overwrite(&source.path, &destination.path, overwrite)
+            .map(|_| ())
+            .map_err(|err| js_internal_error(format!("copyFile failed: {err}")))?;
+        finish_write(&lxapp, &destination);
+        Ok(())
+    }
+
+    #[js_method]
+    async fn rename(&self, _ctx: JSContext, options: JSRenameOptions) -> JSResult<()> {
+        let lxapp = self.lxapp()?;
+        let old_path = resolve_managed_path(
+            &lxapp,
+            &options.old_path,
+            "rename",
+            "oldPath",
+            true,
+            true,
+            true,
+        )?;
+        let new_path = resolve_writable_path(&lxapp, &options.new_path, "rename", "newPath")?;
+        ensure_no_symlink_ancestors(&lxapp, &old_path, "rename", "oldPath")?;
+        ensure_no_symlink_ancestors(&lxapp, &new_path, "rename", "newPath")?;
+        let overwrite = options.overwrite.unwrap_or(false);
+        if old_path.path == new_path.path {
+            return Ok(());
+        }
+        if std::fs::symlink_metadata(&old_path.path).is_err() {
+            return Err(js_error_from_business_code_with_detail(
+                1003,
+                "rename oldPath not found",
+            ));
+        }
+        mark_usercache_access(&lxapp, &old_path);
+        let incoming = storage::path_size(&old_path.path);
+        ensure_write_quota(&lxapp, &new_path, incoming, Some(&old_path), true)?;
+        if std::fs::symlink_metadata(&new_path.path).is_ok() {
+            if !overwrite {
+                return Err(js_error_from_business_code_with_detail(
+                    1002,
+                    "rename destination already exists",
+                ));
+            }
+            if !(symlink_metadata(&old_path, "rename")?.file_type().is_file()
+                && symlink_metadata(&new_path, "rename")?.file_type().is_file())
+            {
+                return Err(js_invalid_parameter_error(
+                    "rename overwrite only supports file destinations",
+                ));
+            }
+            storage::move_file_atomic_with_overwrite(&old_path.path, &new_path.path, true)
+                .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
+            finish_write(&lxapp, &new_path);
+            return Ok(());
+        }
+        if let Some(parent) = new_path.path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| js_internal_error(format!("rename create dir failed: {err}")))?;
+        }
+        storage::move_file_atomic(&old_path.path, &new_path.path)
+            .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
+        finish_write(&lxapp, &new_path);
+        Ok(())
+    }
+
+    #[js_method]
+    async fn remove(&self, _ctx: JSContext, options: JSRemoveOptions) -> JSResult<()> {
+        let lxapp = self.lxapp()?;
+        let path = resolve_writable_path(&lxapp, &options.path, "remove", "path")?;
+        ensure_no_symlink_ancestors(&lxapp, &path, "remove", "path")?;
+        let metadata = symlink_metadata(&path, "remove")?;
+        if metadata.is_file() || metadata.file_type().is_symlink() {
+            std::fs::remove_file(&path.path)
+                .map_err(|err| js_internal_error(format!("remove file failed: {err}")))?;
+        } else if metadata.is_dir() {
+            if options.recursive.unwrap_or(false) {
+                std::fs::remove_dir_all(&path.path)
+            } else {
+                std::fs::remove_dir(&path.path)
+            }
+            .map_err(|err| js_internal_error(format!("remove directory failed: {err}")))?;
+        } else {
+            return Err(js_invalid_parameter_error(
+                "remove path must reference a file, symlink, or directory",
+            ));
+        }
+        Ok(())
+    }
+}
+
+fn get_file_manager(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    if !options.temp_file_path.trim().starts_with("lx://temp/") {
-        return Err(js_invalid_parameter_error(
-            "saveFile tempFilePath must be a lx://temp URI",
-        ));
-    }
-    let source = lxapp
-        .resolve_accessible_path(options.temp_file_path.trim())
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
-    if !source.is_file() {
-        return Err(js_invalid_parameter_error(
-            "saveFile tempFilePath must reference a file",
-        ));
-    }
-    let destination = resolve_save_destination(&lxapp, &source, options.file_path.as_deref())?;
-    let source_size = std::fs::metadata(&source)
-        .map_err(|err| js_internal_error(format!("saveFile metadata failed: {err}")))?
-        .len();
-    ensure_userdata_quota(&lxapp, &destination, source_size)?;
-    let size = copy_file(&source, &destination, options.overwrite.unwrap_or(true))?;
-    let file_path = lxapp
-        .to_uri(&destination)
-        .ok_or_else(|| js_internal_error("saveFile failed to convert output path to lx:// uri"))?
-        .into_string();
-    Ok(JSSaveFileResult { file_path, size })
+    let class = Class::lookup::<JSFileManager>(&ctx)?;
+    Ok(class.instance(JSFileManager::new(&lxapp)))
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    ctx.register_hidden_class::<JSDirEntry>()?;
+    ctx.register_hidden_class::<JSFileManager>()?;
     lx::register_js_api(ctx, "openFile", JSFunc::new(ctx, open_file)?)?;
     lx::register_js_api(ctx, "chooseFile", JSFunc::new(ctx, choose_file)?)?;
     lx::register_js_api(ctx, "chooseDirectory", JSFunc::new(ctx, choose_directory)?)?;
-    lx::register_js_api(ctx, "saveFile", JSFunc::new(ctx, save_file)?)?;
+    lx::register_js_api(ctx, "getFileManager", JSFunc::new(ctx, get_file_manager)?)?;
     download::init(ctx)?;
     upload::init(ctx)?;
 

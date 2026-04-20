@@ -11,16 +11,20 @@ static ATOMIC_WRITE_SEQ: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StorageQuotaError {
     Temp,
+    UserCache,
     UserData,
     AppStorage,
+    DestinationExists,
 }
 
 impl StorageQuotaError {
     pub(crate) fn detail(self) -> &'static str {
         match self {
             Self::Temp => "TEMP_QUOTA_EXCEEDED",
+            Self::UserCache => "USERCACHE_QUOTA_EXCEEDED",
             Self::UserData => "USERDATA_QUOTA_EXCEEDED",
             Self::AppStorage => "APP_STORAGE_QUOTA_EXCEEDED",
+            Self::DestinationExists => "DESTINATION_ALREADY_EXISTS",
         }
     }
 
@@ -43,7 +47,7 @@ pub(crate) fn dir_size(path: &Path) -> u64 {
         .flatten()
         .map(|entry| {
             let path = entry.path();
-            let Ok(metadata) = entry.metadata() else {
+            let Ok(metadata) = entry.path().symlink_metadata() else {
                 return 0;
             };
             if metadata.is_dir() {
@@ -58,23 +62,64 @@ pub(crate) fn dir_size(path: &Path) -> u64 {
 }
 
 pub(crate) fn existing_file_size(path: &Path) -> u64 {
-    std::fs::metadata(path)
+    std::fs::symlink_metadata(path)
         .ok()
         .filter(|metadata| metadata.is_file())
         .map(|metadata| metadata.len())
         .unwrap_or(0)
 }
 
+pub(crate) fn path_size(path: &Path) -> u64 {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if metadata.is_dir() {
+        dir_size(path)
+    } else if metadata.is_file() {
+        metadata.len()
+    } else {
+        0
+    }
+}
+
 pub(crate) fn projected_size(current: u64, incoming: u64, replaced: u64) -> u64 {
     current.saturating_sub(replaced).saturating_add(incoming)
 }
 
-pub(crate) fn copy_file_atomic(
+pub(crate) fn projected_size_with_removed(
+    current: u64,
+    incoming: u64,
+    replaced: u64,
+    removed: u64,
+) -> u64 {
+    current
+        .saturating_sub(replaced)
+        .saturating_sub(removed)
+        .saturating_add(incoming)
+}
+
+fn path_exists_no_follow(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+fn is_dir_no_follow(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_dir())
+        .unwrap_or(false)
+}
+
+pub(crate) fn copy_file_atomic_with_overwrite(
     source: &Path,
     destination: &Path,
     overwrite: bool,
 ) -> io::Result<u64> {
-    if destination.exists() && !overwrite {
+    if is_dir_no_follow(destination) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination is a directory",
+        ));
+    }
+    if path_exists_no_follow(destination) && !overwrite {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "destination already exists",
@@ -83,7 +128,7 @@ pub(crate) fn copy_file_atomic(
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let source_size = std::fs::metadata(source)?.len();
+    let source_size = std::fs::symlink_metadata(source)?.len();
     let temp_path = sibling_temp_path(destination);
     let cleanup = TempCleanup::new(temp_path.clone());
     std::fs::copy(source, &temp_path)?;
@@ -93,8 +138,40 @@ pub(crate) fn copy_file_atomic(
 }
 
 pub(crate) fn move_file_atomic(source: &Path, destination: &Path) -> io::Result<()> {
+    move_file_atomic_with_overwrite(source, destination, false)
+}
+
+pub(crate) fn move_file_atomic_with_overwrite(
+    source: &Path,
+    destination: &Path,
+    overwrite: bool,
+) -> io::Result<()> {
+    if source == destination {
+        return Ok(());
+    }
     if let Some(parent) = destination.parent() {
         std::fs::create_dir_all(parent)?;
+    }
+    if is_dir_no_follow(destination) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination is a directory",
+        ));
+    }
+    if path_exists_no_follow(destination) && !overwrite {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination already exists",
+        ));
+    }
+    if path_exists_no_follow(destination) {
+        let temp_path = sibling_temp_path(destination);
+        let cleanup = TempCleanup::new(temp_path.clone());
+        std::fs::copy(source, &temp_path)?;
+        replace_with_temp(&temp_path, destination, true)?;
+        cleanup.disarm();
+        let _ = std::fs::remove_file(source);
+        return Ok(());
     }
     match std::fs::rename(source, destination) {
         Ok(()) => Ok(()),
@@ -102,7 +179,7 @@ pub(crate) fn move_file_atomic(source: &Path, destination: &Path) -> io::Result<
             let temp_path = sibling_temp_path(destination);
             let cleanup = TempCleanup::new(temp_path.clone());
             match std::fs::copy(source, &temp_path)
-                .and_then(|_| replace_with_temp(&temp_path, destination, true))
+                .and_then(|_| replace_with_temp(&temp_path, destination, overwrite))
             {
                 Ok(()) => {
                     cleanup.disarm();
@@ -119,6 +196,34 @@ pub(crate) fn move_file_atomic(source: &Path, destination: &Path) -> io::Result<
             }
         }
     }
+}
+
+pub(crate) fn write_file_atomic(
+    data: &[u8],
+    destination: &Path,
+    overwrite: bool,
+) -> io::Result<u64> {
+    if is_dir_no_follow(destination) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination is a directory",
+        ));
+    }
+    if path_exists_no_follow(destination) && !overwrite {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination already exists",
+        ));
+    }
+    if let Some(parent) = destination.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let temp_path = sibling_temp_path(destination);
+    let cleanup = TempCleanup::new(temp_path.clone());
+    std::fs::write(&temp_path, data)?;
+    replace_with_temp(&temp_path, destination, overwrite)?;
+    cleanup.disarm();
+    Ok(data.len() as u64)
 }
 
 fn storage_class_root(path: &Path) -> &Path {
@@ -148,15 +253,64 @@ pub(crate) fn ensure_userdata_quota(
     destination: &Path,
     incoming_bytes: u64,
 ) -> Result<(), StorageQuotaError> {
+    ensure_userdata_quota_with_removed(user_data_dir, destination, incoming_bytes, None)
+}
+
+pub(crate) fn ensure_userdata_quota_with_removed(
+    user_data_dir: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    removed_source: Option<&Path>,
+) -> Result<(), StorageQuotaError> {
     let max = lingxia_app_context::data_max_size_bytes();
+    let removed = removed_source
+        .filter(|source| source.starts_with(user_data_dir) && *source != destination)
+        .map(path_size)
+        .unwrap_or(0);
     if max > 0
-        && projected_size(
+        && projected_size_with_removed(
             dir_size(user_data_dir),
             incoming_bytes,
             existing_file_size(destination),
+            removed,
         ) > max
     {
         return Err(StorageQuotaError::UserData);
+    }
+    Ok(())
+}
+
+pub(crate) fn ensure_usercache_quota(
+    user_cache_dir: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    removed_source: Option<&Path>,
+) -> Result<(), StorageQuotaError> {
+    let max = lingxia_app_context::cache_max_size_bytes();
+    let max_age = cache_max_age_duration();
+    if max == 0 && max_age.is_zero() {
+        return Ok(());
+    }
+
+    if max > 0 && incoming_bytes > max {
+        return Err(StorageQuotaError::UserCache);
+    }
+
+    lxapp::cleanup_cache_dir(user_cache_dir, max, max_age);
+
+    let removed = removed_source
+        .filter(|source| source.starts_with(user_cache_dir) && *source != destination)
+        .map(path_size)
+        .unwrap_or(0);
+    if max > 0
+        && projected_size_with_removed(
+            dir_size(user_cache_dir),
+            incoming_bytes,
+            existing_file_size(destination),
+            removed,
+        ) > max
+    {
+        return Err(StorageQuotaError::UserCache);
     }
     Ok(())
 }
@@ -166,42 +320,52 @@ pub(crate) fn ensure_app_storage_quota(
     user_cache_dir: &Path,
     destination: &Path,
     incoming_bytes: u64,
-    incoming_already_in_app_storage: bool,
+) -> Result<(), StorageQuotaError> {
+    ensure_app_storage_quota_keep(
+        user_data_dir,
+        user_cache_dir,
+        destination,
+        incoming_bytes,
+        None,
+    )
+}
+
+pub(crate) fn ensure_app_storage_quota_keep(
+    user_data_dir: &Path,
+    user_cache_dir: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    keep_cache_path: Option<&Path>,
 ) -> Result<(), StorageQuotaError> {
     let max = lingxia_app_context::app_storage_max_size_bytes();
     if max == 0 {
         return Ok(());
     }
 
-    let incoming_for_app = if incoming_already_in_app_storage {
-        0
-    } else {
-        incoming_bytes
-    };
-    if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_for_app)
-        <= max
+    if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_bytes) <= max
     {
         return Ok(());
     }
 
-    lxapp::cleanup_all_cache_dirs(
+    lxapp::cleanup_all_cache_dirs_keep(
         user_cache_dir,
         lingxia_app_context::cache_max_size_bytes(),
         cache_max_age_duration(),
+        keep_cache_path,
     );
-    if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_for_app)
-        <= max
+    if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_bytes) <= max
     {
         return Ok(());
     }
 
-    if lxapp::cleanup_cache_for_storage_pressure(
+    if lxapp::cleanup_cache_for_storage_pressure_keep(
         user_cache_dir,
         storage_class_root(user_data_dir),
         storage_class_root(user_cache_dir),
         destination,
-        incoming_for_app,
+        incoming_bytes,
         max,
+        keep_cache_path,
     ) {
         Ok(())
     } else {
@@ -282,19 +446,35 @@ fn sibling_temp_path(destination: &Path) -> PathBuf {
 }
 
 fn replace_with_temp(temp_path: &Path, destination: &Path, overwrite: bool) -> io::Result<()> {
-    if !overwrite && destination.exists() {
+    if is_dir_no_follow(destination) {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "destination is a directory",
+        ));
+    }
+    if path_exists_no_follow(destination) && !overwrite {
         return Err(io::Error::new(
             io::ErrorKind::AlreadyExists,
             "destination already exists",
         ));
     }
+    if !path_exists_no_follow(destination) {
+        return std::fs::rename(temp_path, destination);
+    }
+
+    let backup_path = sibling_temp_path(destination);
+    let backup = TempCleanup::new(backup_path.clone());
+    std::fs::rename(destination, &backup_path)?;
     match std::fs::rename(temp_path, destination) {
-        Ok(()) => Ok(()),
-        Err(err) if overwrite && destination.exists() => {
-            std::fs::remove_file(destination)?;
-            std::fs::rename(temp_path, destination).map_err(|_| err)
+        Ok(()) => {
+            let _ = std::fs::remove_file(&backup_path);
+            backup.disarm();
+            Ok(())
         }
-        Err(err) => Err(err),
+        Err(err) => {
+            let _ = std::fs::rename(&backup_path, destination);
+            Err(err)
+        }
     }
 }
 
@@ -304,7 +484,7 @@ fn collect_temp_files(root: &Path, out: &mut Vec<TempFileEntry>) {
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
+        let Ok(metadata) = entry.path().symlink_metadata() else {
             continue;
         };
         if metadata.is_dir() {
@@ -328,4 +508,31 @@ fn collect_temp_files(root: &Path, out: &mut Vec<TempFileEntry>) {
 
 fn cache_max_age_duration() -> Duration {
     Duration::from_secs(lingxia_app_context::cache_max_age_days().saturating_mul(86400))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn test_dir(name: &str) -> PathBuf {
+        let seq = ATOMIC_WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "lingxia-storage-{name}-{}-{seq}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn move_same_path_is_noop() {
+        let dir = test_dir("same-path");
+        fs::create_dir_all(&dir).expect("create test dir");
+        let file = dir.join("data.txt");
+        fs::write(&file, b"keep").expect("write source");
+
+        move_file_atomic_with_overwrite(&file, &file, false).expect("same path move");
+
+        assert_eq!(fs::read(&file).expect("read source"), b"keep");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

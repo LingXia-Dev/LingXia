@@ -32,8 +32,9 @@ pub use appservice::event_bus::{
 };
 pub use appservice::native_component::on_native_component_event;
 pub use cache::{
-    LxAppCache, ResolveResult, cleanup_all_cache_dirs, cleanup_cache_dir,
-    cleanup_cache_for_storage_pressure,
+    LxAppCache, ResolveResult, cleanup_all_cache_dirs, cleanup_all_cache_dirs_keep,
+    cleanup_cache_dir, cleanup_cache_dir_keep, cleanup_cache_for_storage_pressure,
+    cleanup_cache_for_storage_pressure_keep,
 };
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;

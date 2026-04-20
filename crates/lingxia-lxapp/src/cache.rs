@@ -600,6 +600,15 @@ fn enforce_cache_limits(
     max_bytes: u64,
     max_age: Duration,
 ) -> CapacityCleanupOutcome {
+    enforce_cache_limits_keep(cache_dir, max_bytes, max_age, None)
+}
+
+fn enforce_cache_limits_keep(
+    cache_dir: &Path,
+    max_bytes: u64,
+    max_age: Duration,
+    keep: Option<&Path>,
+) -> CapacityCleanupOutcome {
     let mut outcome = CapacityCleanupOutcome {
         files_removed: 0,
         bytes_freed: 0,
@@ -611,6 +620,7 @@ fn enforce_cache_limits(
 
     let mut total_bytes = 0u64;
     let mut entries = collect_cache_entries(cache_dir, &mut total_bytes);
+    let keep = keep.and_then(|path| path.canonicalize().ok());
 
     // First pass: remove files older than max_age
     if !max_age.is_zero() {
@@ -620,6 +630,12 @@ fn enforce_cache_limits(
                 .duration_since(entry.last_access)
                 .unwrap_or(Duration::ZERO);
             if age > max_age {
+                if keep
+                    .as_ref()
+                    .is_some_and(|keep| entry.path.canonicalize().is_ok_and(|path| path == *keep))
+                {
+                    return true;
+                }
                 if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
                     total_bytes = total_bytes.saturating_sub(entry.size);
                     outcome.files_removed += 1;
@@ -641,6 +657,12 @@ fn enforce_cache_limits(
                 break;
             }
 
+            if keep
+                .as_ref()
+                .is_some_and(|keep| entry.path.canonicalize().is_ok_and(|path| path == *keep))
+            {
+                continue;
+            }
             if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
                 total_bytes = total_bytes.saturating_sub(entry.size);
                 outcome.files_removed += 1;
@@ -653,10 +675,19 @@ fn enforce_cache_limits(
 }
 
 pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
+    cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, None)
+}
+
+pub fn cleanup_cache_dir_keep(
+    cache_dir: &Path,
+    max_bytes: u64,
+    max_age: Duration,
+    keep: Option<&Path>,
+) {
     if max_bytes == 0 && max_age.is_zero() {
         return;
     }
-    let outcome = enforce_cache_limits(cache_dir, max_bytes, max_age);
+    let outcome = enforce_cache_limits_keep(cache_dir, max_bytes, max_age, keep);
     if outcome.files_removed > 0 {
         crate::info!(
             "Cache cleanup: removed {} files, freed {} bytes",
@@ -667,18 +698,28 @@ pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
 }
 
 pub fn cleanup_all_cache_dirs(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
+    cleanup_all_cache_dirs_keep(cache_dir, max_bytes, max_age, None)
+}
+
+pub fn cleanup_all_cache_dirs_keep(
+    cache_dir: &Path,
+    max_bytes: u64,
+    max_age: Duration,
+    keep: Option<&Path>,
+) {
     let Some(cache_parent) = cache_dir.parent() else {
-        cleanup_cache_dir(cache_dir, max_bytes, max_age);
+        cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, keep);
         return;
     };
     let Ok(entries) = fs::read_dir(cache_parent) else {
-        cleanup_cache_dir(cache_dir, max_bytes, max_age);
+        cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, keep);
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            cleanup_cache_dir(&path, max_bytes, max_age);
+            let keep_for_dir = keep.filter(|keep| keep.starts_with(&path));
+            cleanup_cache_dir_keep(&path, max_bytes, max_age, keep_for_dir);
         }
     }
 }
@@ -690,6 +731,26 @@ pub fn cleanup_cache_for_storage_pressure(
     destination: &Path,
     incoming_bytes: u64,
     max_bytes: u64,
+) -> bool {
+    cleanup_cache_for_storage_pressure_keep(
+        cache_dir,
+        user_data_root,
+        user_cache_root,
+        destination,
+        incoming_bytes,
+        max_bytes,
+        None,
+    )
+}
+
+pub fn cleanup_cache_for_storage_pressure_keep(
+    cache_dir: &Path,
+    user_data_root: &Path,
+    user_cache_root: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    max_bytes: u64,
+    keep: Option<&Path>,
 ) -> bool {
     let Some(cache_parent) = cache_dir.parent() else {
         return app_storage_fits(
@@ -703,6 +764,7 @@ pub fn cleanup_cache_for_storage_pressure(
     let mut files = Vec::new();
     collect_all_cache_entries(cache_parent, &mut files);
     files.sort_by_key(|entry| entry.last_access);
+    let keep = keep.and_then(|path| path.canonicalize().ok());
 
     for entry in files {
         if app_storage_fits(
@@ -713,6 +775,12 @@ pub fn cleanup_cache_for_storage_pressure(
             max_bytes,
         ) {
             return true;
+        }
+        if keep
+            .as_ref()
+            .is_some_and(|keep| entry.path.canonicalize().is_ok_and(|path| path == *keep))
+        {
+            continue;
         }
         let cache_root = entry
             .cache_root
@@ -838,7 +906,7 @@ fn dir_size(path: &Path) -> u64 {
         .flatten()
         .map(|entry| {
             let path = entry.path();
-            let Ok(metadata) = entry.metadata() else {
+            let Ok(metadata) = entry.path().symlink_metadata() else {
                 return 0;
             };
             if metadata.is_dir() {
@@ -853,7 +921,7 @@ fn dir_size(path: &Path) -> u64 {
 }
 
 fn existing_file_size(path: &Path) -> u64 {
-    fs::metadata(path)
+    fs::symlink_metadata(path)
         .ok()
         .filter(|metadata| metadata.is_file())
         .map(|metadata| metadata.len())

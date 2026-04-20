@@ -21,7 +21,8 @@ lingxia-messaging = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 urlencoding = { workspace = true }
-rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream"] }
+base64 = { workspace = true }
+rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream"] }
 rong_storage = { workspace = true }
 
 # Target-specific JavaScript engine selection

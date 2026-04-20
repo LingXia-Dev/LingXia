@@ -1,4 +1,7 @@
-use super::storage::{self, StorageQuotaError};
+use super::{
+    normalize_relative_path,
+    storage::{self, StorageQuotaError},
+};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
     js_invalid_parameter_error,
@@ -508,29 +511,49 @@ fn resolve_output_path(
                 "downloadFile filePath must target lx://userdata",
             ));
         }
+        if resolved == lxapp.user_data_dir {
+            return Err(js_invalid_parameter_error(
+                "downloadFile filePath must reference a file under lx://userdata",
+            ));
+        }
         return Ok(Some((resolved, DownloadPathKind::UserData)));
     }
 
-    let path = Path::new(file_path);
-    if path.is_absolute() || file_path.contains(':') || file_path.contains('\\') {
-        return Err(js_invalid_parameter_error(
-            "downloadFile filePath must be relative or lx://userdata",
-        ));
-    }
-
-    if file_path
-        .split('/')
-        .any(|segment| segment == "." || segment == "..")
-    {
-        return Err(js_invalid_parameter_error(
-            "downloadFile filePath must not contain '.' or '..'",
-        ));
-    }
+    let relative = normalize_relative_path(file_path, "downloadFile", "filePath")?;
 
     Ok(Some((
-        lxapp.user_data_dir.join(file_path.trim_start_matches('/')),
+        lxapp.user_data_dir.join(relative),
         DownloadPathKind::UserData,
     )))
+}
+
+fn ensure_no_symlink_ancestors(
+    user_data_dir: &Path,
+    destination: &Path,
+) -> Result<(), DownloadFailureReason> {
+    let Ok(relative) = destination.strip_prefix(user_data_dir) else {
+        return Err(DownloadFailureReason::internal(
+            "download output must stay inside userdata",
+        ));
+    };
+    let mut current = user_data_dir.to_path_buf();
+    let mut components = relative.components().peekable();
+    while let Some(component) = components.next() {
+        if components.peek().is_none() {
+            break;
+        }
+        current.push(component.as_os_str());
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(DownloadFailureReason::internal(
+                    "download output must not pass through a symlink",
+                ));
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    Ok(())
 }
 
 async fn finalize_download_result(
@@ -569,6 +592,13 @@ async fn finalize_download_result(
 
     match *path_kind {
         DownloadPathKind::UserData => {
+            ensure_no_symlink_ancestors(user_data_dir, output_path)?;
+            if std::fs::symlink_metadata(output_path).is_ok() {
+                cleanup_staging_file(&result.temp_path);
+                return Err(DownloadFailureReason::Quota(
+                    StorageQuotaError::DestinationExists,
+                ));
+            }
             storage::ensure_userdata_quota(user_data_dir, output_path, result.size).map_err(
                 |err| {
                     cleanup_staging_file(&result.temp_path);
@@ -580,7 +610,6 @@ async fn finalize_download_result(
                 user_cache_dir,
                 output_path,
                 result.size,
-                false,
             )
             .map_err(|err| {
                 cleanup_staging_file(&result.temp_path);
@@ -870,6 +899,15 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     }
 
     let output_path = resolve_output_path(&lxapp, options.file_path.as_deref())?;
+    if let Some((path, DownloadPathKind::UserData)) = output_path.as_ref()
+        && std::fs::symlink_metadata(path).is_ok()
+    {
+        return Err(StorageQuotaError::DestinationExists.into_js_error());
+    }
+    if let Some((path, DownloadPathKind::UserData)) = output_path.as_ref() {
+        ensure_no_symlink_ancestors(&lxapp.user_data_dir, path)
+            .map_err(|reason| reason.to_js_error())?;
+    }
     let reservation_key = reserve_output_path(output_path.as_ref())?;
     let request = user_cache::UserCacheDownloadRequest {
         url,
