@@ -40,6 +40,19 @@ pub mod handlers {
         pub const RESTART: &str = "lxapp.restart";
         pub const UNINSTALL: &str = "lxapp.uninstall";
     }
+
+    pub mod lxapp_page {
+        pub const CURRENT: &str = "lxapp.page.current";
+        pub const LIST: &str = "lxapp.page.list";
+        pub const INFO: &str = "lxapp.page.info";
+        pub const EVAL: &str = "lxapp.page.eval";
+        pub const QUERY: &str = "lxapp.page.query";
+        pub const CLICK: &str = "lxapp.page.click";
+        pub const TYPE: &str = "lxapp.page.type";
+        pub const FILL: &str = "lxapp.page.fill";
+        pub const PRESS: &str = "lxapp.page.press";
+        pub const BACK: &str = "lxapp.page.back";
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

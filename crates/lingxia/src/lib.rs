@@ -8,7 +8,11 @@ pub use lingxia_app_context::{
 pub use lingxia_macro::native;
 pub use lingxia_platform as platform;
 pub use lxapp_dev::{
-    LxAppDevConfig, LxAppDevIdentity, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+    LxAppDevConfig, LxAppDevIdentity, LxAppDevPageInfo, install_lxapp_dev_config,
+    install_lxapp_dev_config_from_env, lxapp_dev_page_back, lxapp_dev_page_click,
+    lxapp_dev_page_current, lxapp_dev_page_eval, lxapp_dev_page_fill, lxapp_dev_page_info,
+    lxapp_dev_page_input_supported, lxapp_dev_page_list, lxapp_dev_page_press,
+    lxapp_dev_page_query, lxapp_dev_page_type,
 };
 
 pub use lingxia_media::{

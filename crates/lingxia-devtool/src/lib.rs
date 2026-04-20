@@ -13,6 +13,7 @@ use tungstenite::{Error as WsError, WebSocket, connect};
 
 mod browser;
 mod lxapp;
+mod lxapp_page;
 
 pub use lingxia_devtool_protocol::{
     DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource, DevtoolsPeerRole, DevtoolsWireMessage,
@@ -192,6 +193,21 @@ fn handle_incoming_message(
     };
 
     let result = if let Some(result) = browser::handle_browser_command(&handler, args.clone()) {
+        match result {
+            Ok(data) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: true,
+                data,
+                error: None,
+            },
+            Err(error) => DevtoolsWireMessage::Result {
+                command_id,
+                ok: false,
+                data: None,
+                error: Some(error),
+            },
+        }
+    } else if let Some(result) = lxapp_page::handle_lxapp_page_command(&handler, args.clone()) {
         match result {
             Ok(data) => DevtoolsWireMessage::Result {
                 command_id,

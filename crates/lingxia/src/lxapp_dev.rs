@@ -201,6 +201,362 @@ pub(crate) fn register_bundle_source_override() {
     lxapp::register_dev_bundle_source(dev_config.identity.appid.clone(), dev_config.root.clone());
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LxAppDevPageInfo {
+    pub appid: String,
+    pub name: String,
+    pub path: String,
+    pub current: bool,
+    pub in_stack: bool,
+    pub ready: bool,
+    pub input_supported: bool,
+}
+
+pub fn lxapp_dev_page_current(appid: Option<&str>) -> Result<LxAppDevPageInfo, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = resolve_dev_page(&app, None)?;
+    Ok(dev_page_info(&app, &page, name.as_deref()))
+}
+
+pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let info = app.runtime_info();
+    Ok(info
+        .page_entries
+        .iter()
+        .map(|entry| {
+            let active = app.require_page(&entry.path).ok();
+            LxAppDevPageInfo {
+                appid: info.appid.clone(),
+                name: entry.name.clone(),
+                path: entry.path.clone(),
+                current: info.current_page.as_deref() == Some(entry.path.as_str()),
+                in_stack: info
+                    .page_stack
+                    .iter()
+                    .any(|stack_page| stack_page == &entry.path),
+                ready: active.as_ref().is_some_and(|page| page.webview().is_some()),
+                input_supported: lxapp_dev_page_input_supported(),
+            }
+        })
+        .collect())
+}
+
+pub fn lxapp_dev_page_info(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+) -> Result<LxAppDevPageInfo, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, name) = resolve_dev_page(&app, page_name)?;
+    Ok(dev_page_info(&app, &page, name.as_deref()))
+}
+
+pub async fn lxapp_dev_page_eval(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    js: &str,
+) -> Result<serde_json::Value, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .evaluate_javascript(js)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub async fn lxapp_dev_page_query(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    all: bool,
+    max_text: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    let script = build_dev_page_query_script(selector, index, all, max_text)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .evaluate_javascript(&script)
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub async fn lxapp_dev_page_click(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    let webview = page
+        .webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?;
+    webview
+        .click(selector, lingxia_webview::ClickOptions { index })
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub async fn lxapp_dev_page_type(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    text: &str,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    let webview = page
+        .webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?;
+    webview
+        .type_text(
+            selector,
+            text,
+            lingxia_webview::TypeOptions {
+                index,
+                replace: false,
+            },
+        )
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub async fn lxapp_dev_page_fill(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    text: &str,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    let webview = page
+        .webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?;
+    webview
+        .fill(selector, text, lingxia_webview::FillOptions { index })
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub async fn lxapp_dev_page_press(
+    appid: Option<&str>,
+    page_name: Option<&str>,
+    key: &str,
+) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    let (page, _) = resolve_dev_page(&app, page_name)?;
+    page.webview()
+        .ok_or_else(|| "page WebView is not ready".to_string())?
+        .press(key, lingxia_webview::PressOptions::default())
+        .await
+        .map_err(|err| err.to_string())
+}
+
+pub fn lxapp_dev_page_back(appid: Option<&str>, delta: u32) -> Result<(), String> {
+    let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
+    app.current_page()
+        .map_err(|err| err.to_string())?
+        .navigate_back(delta)
+        .map_err(|err| err.to_string())
+}
+
+fn resolve_dev_lxapp(raw: &str) -> Result<std::sync::Arc<lxapp::LxApp>, String> {
+    let appid = resolve_dev_appid(raw)?;
+    lxapp::try_get(&appid).ok_or_else(|| format!("lxapp is not active: {appid}"))
+}
+
+fn resolve_dev_appid(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.eq_ignore_ascii_case("current") {
+        let (appid, _, _) = lxapp::get_current_lxapp();
+        if appid.is_empty() {
+            Err("no current lxapp".to_string())
+        } else {
+            Ok(appid)
+        }
+    } else if trimmed.is_empty() {
+        Err("appid is required".to_string())
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn resolve_dev_page(
+    app: &std::sync::Arc<lxapp::LxApp>,
+    page_name: Option<&str>,
+) -> Result<(lxapp::Page, Option<String>), String> {
+    let Some(page_name) = page_name.map(str::trim).filter(|value| !value.is_empty()) else {
+        let page = app.current_page().map_err(|err| err.to_string())?;
+        let name = dev_page_name_for_path(app, &page.path());
+        return Ok((page, name));
+    };
+
+    if page_name.eq_ignore_ascii_case("current") {
+        let page = app.current_page().map_err(|err| err.to_string())?;
+        let name = dev_page_name_for_path(app, &page.path());
+        return Ok((page, name));
+    }
+
+    let path = app
+        .find_page_path_by_name(page_name)
+        .ok_or_else(|| format!("unknown page name: {page_name}"))?;
+    let page = app
+        .require_page(&path)
+        .map_err(|_| format!("page is not active: {page_name}"))?;
+    Ok((page, Some(page_name.to_string())))
+}
+
+fn dev_page_name_for_path(app: &std::sync::Arc<lxapp::LxApp>, path: &str) -> Option<String> {
+    app.runtime_info()
+        .page_entries
+        .into_iter()
+        .find(|entry| entry.path == path)
+        .map(|entry| entry.name)
+        .filter(|name| !name.is_empty())
+}
+
+fn dev_page_info(
+    app: &std::sync::Arc<lxapp::LxApp>,
+    page: &lxapp::Page,
+    name: Option<&str>,
+) -> LxAppDevPageInfo {
+    let info = app.runtime_info();
+    let path = page.path();
+    LxAppDevPageInfo {
+        appid: info.appid,
+        name: name.unwrap_or("").to_string(),
+        path: path.clone(),
+        current: info.current_page.as_deref() == Some(path.as_str()),
+        in_stack: info.page_stack.iter().any(|stack_page| stack_page == &path),
+        ready: page.webview().is_some(),
+        input_supported: lxapp_dev_page_input_supported(),
+    }
+}
+
+pub fn lxapp_dev_page_input_supported() -> bool {
+    cfg!(all(feature = "webview-input", target_os = "macos"))
+}
+
+fn build_dev_page_query_script(
+    selector: &str,
+    index: Option<usize>,
+    all: bool,
+    max_text_chars: Option<usize>,
+) -> Result<String, String> {
+    let selector_json =
+        serde_json::to_string(selector).map_err(|err| format!("invalid selector: {err}"))?;
+    let index_json =
+        serde_json::to_string(&index).map_err(|err| format!("invalid index: {err}"))?;
+    let max_text_json = serde_json::to_string(&max_text_chars)
+        .map_err(|err| format!("invalid query limit: {err}"))?;
+    Ok(format!(
+        r#"
+(() => {{
+  const selector = {selector_json};
+  const requestedIndex = {index_json};
+  const all = {};
+  const maxText = {max_text_json};
+  const truncate = (value) => {{
+    const text = String(value ?? "");
+    if (typeof maxText === "number" && maxText >= 0 && text.length > maxText) {{
+      return {{ value: text.slice(0, maxText), truncated: true }};
+    }}
+    return {{ value: text, truncated: false }};
+  }};
+  if (typeof selector !== "string" || selector.trim() === "") {{
+    throw new Error("selector must not be empty");
+  }}
+  let nodes;
+  try {{
+    nodes = Array.from(document.querySelectorAll(selector));
+  }} catch (err) {{
+    throw new Error("invalid selector: " + String(err && err.message ? err.message : err));
+  }}
+  const describe = (el, index, count) => {{
+    const rect = el.getBoundingClientRect();
+    const style = window.getComputedStyle(el);
+    const disabled = !!el.disabled || el.getAttribute("aria-disabled") === "true";
+    const tag = (el.tagName || "").toLowerCase();
+    const inputType = tag === "input" ? String(el.type || "text").toLowerCase() : "";
+    const blockedInputTypes = new Set([
+      "button", "checkbox", "color", "file", "hidden", "image", "radio",
+      "range", "reset", "submit"
+    ]);
+    const editable = !!el.isContentEditable ||
+      (tag === "textarea" && !disabled && !el.readOnly) ||
+      (tag === "input" && !disabled && !el.readOnly && !blockedInputTypes.has(inputType));
+    const visible = rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < window.innerHeight &&
+      rect.left < window.innerWidth &&
+      style.visibility !== "hidden" &&
+      style.display !== "none" &&
+      Number(style.opacity || "1") !== 0;
+    const hasValue = "value" in el;
+    const text = truncate(el.innerText || el.textContent || "");
+    const value = hasValue ? truncate(el.value ?? "") : null;
+    return {{
+      exists: true,
+      index,
+      count,
+      tag,
+      type: inputType || null,
+      id: el.id || null,
+      name: el.getAttribute("name"),
+      role: el.getAttribute("role"),
+      aria_label: el.getAttribute("aria-label"),
+      placeholder: el.getAttribute("placeholder"),
+      visible,
+      enabled: !disabled,
+      editable,
+      text: text.value,
+      text_truncated: text.truncated,
+      value: value ? value.value : null,
+      value_truncated: value ? value.truncated : false,
+      rect: {{
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        right: rect.right,
+        bottom: rect.bottom,
+        center_x: rect.left + (rect.width / 2),
+        center_y: rect.top + (rect.height / 2),
+        viewport_width: window.innerWidth,
+        viewport_height: window.innerHeight
+      }}
+    }};
+  }};
+  const count = nodes.length;
+  if (all) {{
+    return {{ count, items: nodes.map((el, index) => describe(el, index, count)) }};
+  }}
+  const index = typeof requestedIndex === "number" ? requestedIndex : 0;
+  const el = nodes[index];
+  if (!el) {{
+    return {{
+      exists: false,
+      index,
+      count,
+      visible: false,
+      enabled: false,
+      editable: false
+    }};
+  }}
+  return describe(el, index, count);
+}})()
+"#,
+        all
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

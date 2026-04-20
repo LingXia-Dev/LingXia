@@ -67,13 +67,14 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
             let app = resolve_app(&args.appid)?;
             let info = app.runtime_info();
             let pages = info
-                .pages
+                .page_entries
                 .iter()
                 .map(|page| {
                     json!({
-                        "path": page,
-                        "current": info.current_page.as_deref() == Some(page.as_str()),
-                        "in_stack": info.page_stack.iter().any(|stack_page| stack_page == page),
+                        "name": page.name,
+                        "path": page.path,
+                        "current": info.current_page.as_deref() == Some(page.path.as_str()),
+                        "in_stack": info.page_stack.iter().any(|stack_page| stack_page == &page.path),
                     })
                 })
                 .collect::<Vec<_>>();
@@ -138,6 +139,11 @@ fn lxapp_runtime_info_value(app: &Arc<lxapp::LxApp>) -> Result<Value, String> {
     let mut value = serde_json::to_value(app.runtime_info()).map_err(|err| err.to_string())?;
     if let Value::Object(map) = &mut value {
         map.remove("session_id");
+        map.remove("current_page");
+        map.remove("initial_route");
+        map.remove("pages_count");
+        map.remove("page_entries");
+        map.remove("page_stack");
     }
     Ok(value)
 }
