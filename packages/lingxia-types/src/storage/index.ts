@@ -1,11 +1,6 @@
 /**
- * Storage and environment path APIs.
+ * Key-value storage APIs.
  */
-
-export interface LxEnv {
-  USER_DATA_PATH: string;
-  USER_CACHE_PATH: string;
-}
 
 export interface Storage {
   get(key: string): unknown;

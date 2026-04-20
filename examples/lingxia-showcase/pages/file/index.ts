@@ -93,8 +93,8 @@ function sanitizeFileName(name) {
   return sanitized || `file-${Date.now()}`;
 }
 
-function userCacheFilePath(fileName) {
-  const base = (lx.env.USER_CACHE_PATH || "lx://usercache").replace(/\/+$/, "");
+function userDataFilePath(fileName) {
+  const base = (lx.env.USER_DATA_PATH || "lx://userdata").replace(/\/+$/, "");
   return `${base}/${sanitizeFileName(fileName)}`;
 }
 
@@ -193,7 +193,7 @@ Page({
     const requestedSection = options?.section === "chooseFile" ? "chooseFile" : "openFile";
     this.setData({
       activeDemo: requestedSection,
-      chooseFileDefaultPath: lx.env.USER_CACHE_PATH || "",
+      chooseFileDefaultPath: lx.env.USER_DATA_PATH || "",
       chooseFileStatusText: "Choose a file",
       isPdfDownloading: false,
       pdfDownloadState: "idle",
@@ -423,8 +423,12 @@ Page({
         response.url || url,
         fileType || detectFileType(response.url || url),
       );
-      const filePath = userCacheFilePath(fileName);
-      await Rong.write(filePath, buffer);
+      const filePath = userDataFilePath(fileName);
+      await lx.getFileManager().writeFile({
+        filePath,
+        data: buffer,
+        overwrite: true,
+      });
       this.setData({
         officeStatusText: `Fetched ${formatBytes(buffer.byteLength)}, opening...`,
       });

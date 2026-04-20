@@ -51,19 +51,19 @@ Page({
       console.error("[Home] Failed to get app version:", error);
     }
 
-    console.log(lx.env.USER_CACHE_PATH);
-    let testFile = `${lx.env.USER_CACHE_PATH}/testFile`;
-    const testContent = "Hello, World!";
-    await Rong.writeTextFile(testFile, testContent);
     try {
-      await Rong.mkdir(
-        `/data/storage/el2/base/cache/lingxia/usercache/testminiapp`,
-        {
-          recursive: true,
-        },
-      );
-    } catch (e) {
-      console.log(e);
+      const files = lx.getFileManager();
+      const testFile = "debug/testFile.txt";
+      await files.mkdir({ path: "debug", recursive: true });
+      await files.writeFile({
+        filePath: testFile,
+        data: "Hello, World!",
+        overwrite: true,
+      });
+      const { data } = await files.readFile({ filePath: testFile, encoding: "utf8" });
+      console.log("[Home] FileManager test content:", data);
+    } catch (error) {
+      console.warn("[Home] FileManager test failed:", error);
     }
   },
 

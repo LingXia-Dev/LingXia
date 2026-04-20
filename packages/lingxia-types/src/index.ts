@@ -9,6 +9,7 @@ export * from './lxapp';
 export * from './device';
 export * from './display';
 export * from './input';
+export * from './env';
 export * from './storage';
 export * from './file';
 export * from './transfer';
@@ -47,10 +48,9 @@ import type {
 
 import type { KeyEventCallback } from './input';
 
-import type {
-  LxEnv,
-  Storage,
-} from './storage';
+import type { LxEnv } from './env';
+
+import type { Storage } from './storage';
 
 import type {
   OpenFileOptions,
@@ -58,8 +58,7 @@ import type {
   ChooseDirectoryResult,
   ChooseFileOptions,
   ChooseFileResult,
-  SaveFileOptions,
-  SaveFileResult,
+  FileManager,
 } from './file';
 
 import type {
@@ -165,8 +164,8 @@ export interface Lx {
    */
   openFile(options: OpenFileOptions): void;
   downloadFile(options: DownloadOptions): DownloadTask;
-  saveFile(options: SaveFileOptions): Promise<SaveFileResult>;
   uploadFile(options: UploadOptions): UploadTask;
+  getFileManager(): FileManager;
 
   getStorage(): Storage;
 

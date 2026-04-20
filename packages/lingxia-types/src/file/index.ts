@@ -52,17 +52,111 @@ export interface ChooseDirectoryResult {
   path?: string;
 }
 
-export interface SaveFileOptions {
-  /** Temporary source returned by downloadFile, chooseMedia, or media processing APIs. */
-  tempFilePath: string;
-  /** Durable destination. Relative paths resolve under user data. Defaults to the source file name. */
-  filePath?: string;
-  /** Defaults to true. */
+export interface ExistsOptions {
+  path: string;
+}
+
+export interface StatOptions {
+  path: string;
+}
+
+export interface FileStats {
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  size: number;
+  lastModifiedTime?: number;
+  lastAccessedTime?: number;
+  createTime?: number;
+}
+
+export interface ReadDirOptions {
+  path: string;
+}
+
+export interface DirEntry {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+  isSymlink: boolean;
+}
+
+export interface MkdirOptions {
+  path: string;
+  recursive?: boolean;
+}
+
+export interface ReadTextFileOptions {
+  filePath: string;
+  encoding: 'utf8' | 'base64';
+}
+
+export interface ReadBinaryFileOptions {
+  filePath: string;
+  encoding?: undefined;
+}
+
+export type ReadFileOptions = ReadTextFileOptions | ReadBinaryFileOptions;
+
+export interface ReadTextFileResult {
+  data: string;
+}
+
+export interface ReadBinaryFileResult {
+  data: ArrayBuffer;
+}
+
+export type ReadFileResult = ReadTextFileResult | ReadBinaryFileResult;
+
+export type BinaryFileData = ArrayBuffer | ArrayBufferView;
+
+export interface WriteTextFileOptions {
+  filePath: string;
+  data: string;
+  encoding?: 'utf8' | 'base64';
+  /** Defaults to false. */
   overwrite?: boolean;
 }
 
-export interface SaveFileResult {
-  /** Durable user data path. */
+export interface WriteBinaryFileOptions {
   filePath: string;
-  size: number;
+  data: BinaryFileData;
+  encoding?: never;
+  /** Defaults to false. */
+  overwrite?: boolean;
+}
+
+export type WriteFileOptions = WriteTextFileOptions | WriteBinaryFileOptions;
+
+export interface CopyFileOptions {
+  srcPath: string;
+  destPath: string;
+  /** Defaults to false. */
+  overwrite?: boolean;
+}
+
+export interface RenameOptions {
+  oldPath: string;
+  newPath: string;
+  /** Defaults to false. */
+  overwrite?: boolean;
+}
+
+export interface RemoveOptions {
+  path: string;
+  recursive?: boolean;
+}
+
+export interface FileManager {
+  exists(options: ExistsOptions): Promise<boolean>;
+  stat(options: StatOptions): Promise<FileStats>;
+  readDir(options: ReadDirOptions): Promise<AsyncIterableIterator<DirEntry>>;
+  mkdir(options: MkdirOptions): Promise<void>;
+  readFile(options: ReadTextFileOptions): Promise<ReadTextFileResult>;
+  readFile(options: ReadBinaryFileOptions): Promise<ReadBinaryFileResult>;
+  readFile(options: ReadFileOptions): Promise<ReadFileResult>;
+  writeFile(options: WriteFileOptions): Promise<void>;
+  copyFile(options: CopyFileOptions): Promise<void>;
+  rename(options: RenameOptions): Promise<void>;
+  remove(options: RemoveOptions): Promise<void>;
 }

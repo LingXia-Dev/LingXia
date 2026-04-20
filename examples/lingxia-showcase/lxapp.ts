@@ -1,21 +1,17 @@
-/**
- * Test cache file access - verifies atime update for LRU cleanup
- */
-async function testCacheAccess() {
-  const cachePath = `${lx.env.USER_CACHE_PATH}/cache_test.txt`;
-  const testContent = `Cache test created at ${new Date().toISOString()}`;
-
+async function testFileManagerAccess() {
   try {
-    // Write a test file to cache directory
-    await Rong.writeTextFile(cachePath, testContent);
-    console.log("[Cache Test] Written test file:", cachePath);
-
-    // Read the file back - this should trigger atime update
-    const content = await Rong.readTextFile(cachePath);
-    console.log("[Cache Test] Read test file, atime should be updated");
-    console.log("[Cache Test] Content:", content);
+    const files = lx.getFileManager();
+    const filePath = "debug/app-launch.txt";
+    await files.mkdir({ path: "debug", recursive: true });
+    await files.writeFile({
+      filePath,
+      data: `FileManager test created at ${new Date().toISOString()}`,
+      overwrite: true,
+    });
+    const { data } = await files.readFile({ filePath, encoding: "utf8" });
+    console.log("[FileManager Test] Content:", data);
   } catch (error) {
-    console.warn("[Cache Test] Error:", (error as Error).message);
+    console.warn("[FileManager Test] Error:", (error as Error).message);
   }
 }
 
@@ -53,8 +49,7 @@ App({
       console.warn("Update failed", info);
     });
 
-    // Test cache file access time update
-    testCacheAccess();
+    testFileManagerAccess();
 
     try {
       const response = await fetch("https://api64.ipify.org?format=json");

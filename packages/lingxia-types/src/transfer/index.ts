@@ -34,7 +34,7 @@ export interface DownloadIteratorResult {
 
 export type DownloadResult =
   | {
-      /** Temporary result. Not durable; call saveFile to keep it. */
+      /** Temporary result. Not durable; use getFileManager().copyFile or rename to keep it. */
       tempFilePath: string;
       filePath?: never;
       mimeType?: string;
