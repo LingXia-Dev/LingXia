@@ -80,7 +80,6 @@ rong = { version = "0.3.0", default-features = false }
 rong_rt = { version = "0.3.0", default-features = false }
 rong_modules = { version = "0.3.0", default-features = false }
 rong_http = { version = "0.3.0", default-features = false }
-rong_fs = "0.3.0"
 rong_console = "0.3.0"
 rong_event = "0.3.0"
 rong_storage = "0.3.0"

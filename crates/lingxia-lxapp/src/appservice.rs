@@ -6,7 +6,6 @@ use crate::{error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
 use rong_console as console;
-use rong_fs as fs;
 use rong_http as http;
 
 use std::collections::{HashMap, VecDeque};
@@ -392,9 +391,6 @@ pub(crate) async fn lxapp_service_handler(
                 },
             );
 
-            // Set file access guard to prevent cross-app file access (Context-scoped)
-            fs::set_file_access_guard(Box::new(app_ctx.clone()));
-
             // Set network access guard to prevent unauthorized domain access
             http::set_network_access_guard(Box::new(app_ctx));
 
@@ -460,9 +456,7 @@ pub(crate) async fn lxapp_service_handler(
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
-            // Clear guards on app terminate so the previous LxAppCtx is dropped
-            // immediately (this shuts down its per-app cache capacity worker).
-            fs::set_file_access_guard(Box::new(DenyAllFileAccessGuard));
+            // Clear guards on app terminate so the previous LxAppCtx is dropped immediately.
             http::set_network_access_guard(Box::new(DenyAllNetworkAccessGuard));
             // Remove runtime context for this app so that all associated resources can be dropped.
             remove_app_ctx(&runtime, &lxapp.appid);
@@ -759,19 +753,7 @@ struct LxAppCtx {
 }
 
 #[derive(Debug)]
-struct DenyAllFileAccessGuard;
-
-#[derive(Debug)]
 struct DenyAllNetworkAccessGuard;
-
-impl fs::FileAccessGuard for DenyAllFileAccessGuard {
-    fn resolve_access(&self, _path: &str) -> JSResult<std::path::PathBuf> {
-        Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "Access denied",
-        )))
-    }
-}
 
 impl http::NetworkAccessGuard for DenyAllNetworkAccessGuard {
     fn check_access(&self, _domain: &str) -> JSResult<()> {
@@ -793,37 +775,6 @@ impl std::fmt::Debug for LxAppCtx {
         f.debug_struct("LxAppCtx")
             .field("appid", &self.lxapp.appid)
             .finish()
-    }
-}
-
-impl fs::FileAccessGuard for LxAppCtx {
-    /// Check if the mini app has access to the specified path and resolve it to a safe absolute path.
-    ///
-    /// This prevents one mini app from accessing another mini app's files.
-    /// Only allows access to absolute paths within:
-    /// - The app's own user data directory
-    /// - The app's own user cache directory
-    ///
-    /// Relative paths are also resolved relative to the allowed roots.
-    ///
-    /// For files in the user cache directory, this also updates access time and
-    /// enqueues an async capacity-based LRU eviction check.
-    fn resolve_access(&self, path: &str) -> JSResult<std::path::PathBuf> {
-        let resolved = self
-            .lxapp
-            .resolve_accessible_path(path)
-            // Mask absolute path details for security
-            .map_err(|_| {
-                RongJSError::from(HostError::new(rong::error::E_INTERNAL, "Access denied"))
-            })?;
-
-        if resolved.starts_with(&self.lxapp.user_cache_dir) {
-            if let Ok(cache) = self.lxapp.cache() {
-                cache.on_access(&resolved);
-            }
-        }
-
-        Ok(resolved)
     }
 }
 

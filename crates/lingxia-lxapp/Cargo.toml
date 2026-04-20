@@ -29,10 +29,9 @@ filetime = "0.2"
 uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
-rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "fs", "stream", "storage"] }
+rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "storage"] }
 rong_rt = { workspace = true, default-features = false }
 rong_http = { workspace = true, default-features = false }
-rong_fs = { workspace = true }
 rong_console = { workspace = true }
 rong_event = { workspace = true }
 lingxia-app-context = { workspace = true }
