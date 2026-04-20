@@ -2715,6 +2715,10 @@ struct InputHelperElementResult {
     ok: bool,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    count: usize,
+    #[serde(default)]
+    index: usize,
     #[serde(default, rename = "centerX")]
     center_x: f64,
     #[serde(default, rename = "centerY")]
@@ -2751,10 +2755,13 @@ impl WebViewInner {
     async fn query_helper_element(
         &self,
         selector: &str,
+        index: Option<usize>,
     ) -> Result<InputHelperElementResult, WebViewInputError> {
         let selector_json = serde_json::to_string(selector)
             .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
-        let expr = format!("window.__LingXiaInput.query_box({selector_json})");
+        let index_json = serde_json::to_string(&index)
+            .map_err(|err| WebViewInputError::Platform(format!("Invalid selector index: {err}")))?;
+        let expr = format!("window.__LingXiaInput.query_box({selector_json}, {index_json})");
         let script = format!("JSON.stringify({})", build_helper_invocation(&expr));
         let raw = self
             .eval_js_raw_string(&script)
@@ -2767,9 +2774,12 @@ impl WebViewInner {
         })?;
         if !result.ok {
             return Err(WebViewInputError::ElementNotFound(
-                result
-                    .error
-                    .unwrap_or_else(|| format!("Element not found: {selector}")),
+                result.error.unwrap_or_else(|| {
+                    format!(
+                        "selector matched {} element(s), index {} is unavailable: {}",
+                        result.count, result.index, selector
+                    )
+                }),
             ));
         }
         Ok(result)
@@ -3288,10 +3298,11 @@ impl WebViewInner {
     async fn ensure_element_visible(
         &self,
         selector: &str,
+        index: Option<usize>,
     ) -> Result<InputHelperElementResult, WebViewInputError> {
         let point = self.webview_center_screen_point().await?;
         for _ in 0..12 {
-            let result = self.query_helper_element(selector).await?;
+            let result = self.query_helper_element(selector, index).await?;
             if result.visible {
                 return Ok(result);
             }
@@ -3304,7 +3315,7 @@ impl WebViewInner {
             self.post_scroll_at(point, dx, dy).await?;
             tokio::time::sleep(Duration::from_millis(80)).await;
         }
-        let result = self.query_helper_element(selector).await?;
+        let result = self.query_helper_element(selector, index).await?;
         if result.visible {
             Ok(result)
         } else {
@@ -3317,9 +3328,9 @@ impl WebViewInner {
     pub(crate) async fn click_inner(
         &self,
         selector: &str,
-        _options: ClickOptions,
+        options: ClickOptions,
     ) -> Result<(), WebViewInputError> {
-        let result = self.ensure_element_visible(selector).await?;
+        let result = self.ensure_element_visible(selector, options.index).await?;
         self.focus_webview_for_input().await?;
         self.post_mouse_click_at(result.center_x, result.center_y)
             .await?;
@@ -3332,7 +3343,7 @@ impl WebViewInner {
         text: &str,
         options: TypeOptions,
     ) -> Result<(), WebViewInputError> {
-        let result = self.ensure_element_visible(selector).await?;
+        let result = self.ensure_element_visible(selector, options.index).await?;
         if !result.editable {
             return Err(WebViewInputError::ElementNotInteractable(format!(
                 "Element is not editable: {selector}"
@@ -3407,7 +3418,7 @@ impl WebViewInner {
         selector: &str,
         _options: ScrollOptions,
     ) -> Result<(), WebViewInputError> {
-        let _ = self.ensure_element_visible(selector).await?;
+        let _ = self.ensure_element_visible(selector, None).await?;
         Ok(())
     }
 }

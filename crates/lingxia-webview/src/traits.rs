@@ -292,16 +292,24 @@ pub trait WebViewController: Send + Sync {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ClickOptions;
+pub struct ClickOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TypeOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
     #[serde(default)]
     pub replace: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FillOptions;
+pub struct FillOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PressOptions;

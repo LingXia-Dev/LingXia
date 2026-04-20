@@ -1022,7 +1022,14 @@ impl WebViewInputController for WebView {
             let _ = _options;
             return self
                 .inner
-                .type_text_inner(_selector, _text, TypeOptions { replace: true })
+                .type_text_inner(
+                    _selector,
+                    _text,
+                    TypeOptions {
+                        index: _options.index,
+                        replace: true,
+                    },
+                )
                 .await;
         }
         #[allow(unreachable_code)]

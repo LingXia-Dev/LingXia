@@ -7,14 +7,16 @@ pub(crate) const INPUT_HELPER_BOOTSTRAP: &str = r#"
 (function() {
     if (window.__LingXiaInput) return;
 
-    function findElement(selector) {
+    function findElement(selector, index) {
         if (typeof selector !== 'string' || selector.trim() === '') {
-            return null;
+            return { el: null, count: 0 };
         }
         try {
-            return document.querySelector(selector);
+            const nodes = Array.from(document.querySelectorAll(selector));
+            const resolvedIndex = Number.isInteger(index) && index >= 0 ? index : 0;
+            return { el: nodes[resolvedIndex] || null, count: nodes.length, index: resolvedIndex };
         } catch (_err) {
-            return null;
+            return { el: null, count: 0 };
         }
     }
 
@@ -55,24 +57,25 @@ pub(crate) const INPUT_HELPER_BOOTSTRAP: &str = r#"
         };
     }
 
-    function elementResult(selector) {
-        const el = findElement(selector);
+    function elementResult(selector, index) {
+        const found = findElement(selector, index);
+        const el = found.el;
         if (!el) {
-            return { ok: false, error: `Element not found: ${selector}` };
+            return { ok: false, error: `Element not found: ${selector}`, count: found.count, index: found.index || 0 };
         }
-        return { ok: true, ...rectPayload(el) };
+        return { ok: true, count: found.count, index: found.index || 0, ...rectPayload(el) };
     }
 
     window.__LingXiaInput = {
-        query_box(selector) {
-            return elementResult(selector);
+        query_box(selector, index) {
+            return elementResult(selector, index);
         },
-        is_visible(selector) {
-            const result = elementResult(selector);
+        is_visible(selector, index) {
+            const result = elementResult(selector, index);
             return result.ok ? { ok: true, visible: result.visible } : result;
         },
-        is_editable(selector) {
-            const result = elementResult(selector);
+        is_editable(selector, index) {
+            const result = elementResult(selector, index);
             return result.ok ? { ok: true, editable: result.editable } : result;
         }
     };
