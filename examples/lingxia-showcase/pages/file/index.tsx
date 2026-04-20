@@ -66,6 +66,8 @@ export default function FilePage() {
   const pdfProgressText = data?.pdfProgressText || '';
   const pdfSupportsTransferControl = Boolean(data?.pdfSupportsTransferControl);
   const pdfTransferButtonText = data?.pdfTransferButtonText || 'Pause Download';
+  const canTogglePdfTransfer =
+    pdfSupportsTransferControl && (isPdfDownloading || pdfDownloadState === 'paused');
   const showPdfProgress =
     pdfDownloadState !== 'idle' || Boolean(data?.pdfProgressText);
   const pdfPrimaryButtonText =
@@ -158,9 +160,9 @@ export default function FilePage() {
                     <div className="mt-2 text-xs text-blue-900">{pdfProgressText}</div>
                     <button
                       onClick={togglePdfTransfer}
-                      disabled={!isPdfDownloading || !pdfSupportsTransferControl}
+                      disabled={!canTogglePdfTransfer}
                       className={`mt-3 w-full rounded-lg py-2 text-sm font-medium ${
-                        isPdfDownloading && pdfSupportsTransferControl
+                        canTogglePdfTransfer
                           ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
                           : 'bg-blue-100 text-blue-300 cursor-not-allowed'
                       }`}

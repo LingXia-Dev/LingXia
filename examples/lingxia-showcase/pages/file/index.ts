@@ -73,7 +73,10 @@ function supportsTransferControl(task) {
 }
 
 let pdfDownloadTask = null;
-let pdfDownloadSession = 0;
+let pdfDownloadObserver = null;
+let pdfDownloadUrl = "";
+let pdfDownloadPage = null;
+let pdfOpenRunId = 0;
 
 function guessFileNameFromUrl(url, fallbackExt = "") {
   const clean = String(url || "").split("#")[0].split("?")[0];
@@ -98,72 +101,84 @@ function userDataFilePath(fileName) {
   return `${base}/${sanitizeFileName(fileName)}`;
 }
 
-async function observePdfTask(page, task, sessionId) {
-  for await (const event of task) {
-    if (sessionId !== pdfDownloadSession) {
-      return;
-    }
+function updatePdfPage(data) {
+  if (pdfDownloadPage) {
+    pdfDownloadPage.setData(data);
+  }
+}
 
-    if (event.kind === "progress") {
-      const hasPreciseProgress =
-        typeof event.progress === "number" &&
-        Number.isFinite(event.progress) &&
-        !!event.totalBytes &&
-        event.totalBytes > 0;
-      page.setData({
-        pdfDownloadState: "running",
-        pdfTransferButtonText: "Pause Download",
-        pdfProgressKnown: hasPreciseProgress,
-        pdfDownloadProgress: hasPreciseProgress
-          ? Number((event.progress * 100).toFixed(1))
-          : 0,
-        pdfProgressText: formatProgressText(
-          event.progress,
-          event.downloadedBytes,
-          event.totalBytes,
-        ),
-      });
-      continue;
-    }
+async function observePdfTask(task) {
+  try {
+    for await (const event of task) {
+      if (event.kind === "progress") {
+        const hasPreciseProgress =
+          typeof event.progress === "number" &&
+          Number.isFinite(event.progress) &&
+          !!event.totalBytes &&
+          event.totalBytes > 0;
+        updatePdfPage({
+          pdfDownloadState: "running",
+          pdfTransferButtonText: "Pause Download",
+          pdfProgressKnown: hasPreciseProgress,
+          pdfDownloadProgress: hasPreciseProgress
+            ? Number((event.progress * 100).toFixed(1))
+            : 0,
+          pdfProgressText: formatProgressText(
+            event.progress,
+            event.downloadedBytes,
+            event.totalBytes,
+          ),
+        });
+        continue;
+      }
 
-    if (event.kind === "paused") {
-      page.setData({
-        pdfDownloadState: "paused",
-        pdfTransferButtonText: "Continue Download",
-      });
-      continue;
-    }
+      if (event.kind === "paused") {
+        updatePdfPage({
+          pdfDownloadState: "paused",
+          pdfTransferButtonText: "Continue Download",
+        });
+        continue;
+      }
 
-    if (event.kind === "resumed") {
-      page.setData({
-        pdfDownloadState: "running",
-        pdfTransferButtonText: "Pause Download",
-        pdfProgressText: page.data.pdfProgressText || "Resuming transfer...",
-      });
-      continue;
-    }
+      if (event.kind === "resumed") {
+        updatePdfPage({
+          pdfDownloadState: "running",
+          pdfTransferButtonText: "Pause Download",
+          pdfProgressText: pdfDownloadPage?.data?.pdfProgressText || "Resuming transfer...",
+        });
+        continue;
+      }
 
-    if (event.kind === "canceled") {
-      page.setData({
-        pdfDownloadState: "idle",
-        pdfTransferButtonText: "Pause Download",
-        pdfProgressText: "Download canceled",
-      });
-      continue;
-    }
+      if (event.kind === "canceled") {
+        updatePdfPage({
+          pdfDownloadState: "idle",
+          pdfTransferButtonText: "Pause Download",
+          pdfProgressText: "Download canceled",
+        });
+        continue;
+      }
 
-    if (event.kind === "completed") {
-      const resultPath = downloadResultPath(event.result);
-      page.setData({
-        pdfDownloadState: "opening",
-        pdfTransferButtonText: "Pause Download",
-        pdfProgressKnown: true,
-        pdfDownloadProgress: 95,
-        pdfProgressText: resultPath
-          ? `Downloaded to ${resultPath}, opening...`
-          : "Download complete, opening...",
-      });
+      if (event.kind === "completed") {
+        const resultPath = downloadResultPath(event.result);
+        updatePdfPage({
+          pdfDownloadState: "opening",
+          pdfTransferButtonText: "Pause Download",
+          pdfProgressKnown: true,
+          pdfDownloadProgress: 95,
+          pdfProgressText: resultPath
+            ? `Downloaded to ${resultPath}, opening...`
+            : "Download complete, opening...",
+        });
+      }
     }
+  } catch (error) {
+    updatePdfPage({
+      pdfDownloadState: "idle",
+      pdfTransferButtonText: "Pause Download",
+      pdfProgressText: error?.message || "Download failed",
+    });
+  } finally {
+    pdfDownloadObserver = null;
   }
 }
 
@@ -190,29 +205,31 @@ Page({
   },
 
   onLoad: async function (options = {}) {
+    pdfDownloadPage = this;
     const requestedSection = options?.section === "chooseFile" ? "chooseFile" : "openFile";
+    const hasPausedPdf = pdfDownloadTask && this.data.pdfUrl?.trim() === pdfDownloadUrl;
     this.setData({
       activeDemo: requestedSection,
       chooseFileDefaultPath: lx.env.USER_DATA_PATH || "",
       chooseFileStatusText: "Choose a file",
       isPdfDownloading: false,
-      pdfDownloadState: "idle",
+      pdfDownloadState: hasPausedPdf ? "paused" : "idle",
       pdfProgressKnown: false,
       pdfDownloadProgress: 0,
-      pdfProgressText: "",
-      pdfSupportsTransferControl: false,
-      pdfTransferButtonText: "Pause Download",
+      pdfProgressText: hasPausedPdf ? "Download paused, tap to continue" : "",
+      pdfSupportsTransferControl: Boolean(hasPausedPdf),
+      pdfTransferButtonText: hasPausedPdf ? "Continue Download" : "Pause Download",
       isOfficeFetching: false,
       officeStatusText: "",
     });
   },
 
   onUnload: function () {
-    pdfDownloadSession += 1;
+    pdfOpenRunId += 1;
+    pdfDownloadPage = null;
     const task = pdfDownloadTask;
-    pdfDownloadTask = null;
-    if (task) {
-      task.cancel().catch(() => {});
+    if (task && supportsTransferControl(task)) {
+      task.pause().catch(() => {});
     }
   },
 
@@ -244,20 +261,28 @@ Page({
       return;
     }
     if (this.data.isPdfDownloading) return;
+    let task = pdfDownloadTask;
+    const shouldResumeExisting = Boolean(task && pdfDownloadUrl === url);
     this.setData({
       isPdfDownloading: true,
       pdfDownloadState: "running",
       pdfProgressKnown: false,
       pdfDownloadProgress: 0,
-      pdfProgressText: "Starting transfer...",
+      pdfProgressText: shouldResumeExisting ? "Resuming transfer..." : "Starting transfer...",
       pdfSupportsTransferControl: false,
       pdfTransferButtonText: "Pause Download",
     });
     try {
-      const task = lx.downloadFile({ url });
-      pdfDownloadTask = task;
-      const sessionId = pdfDownloadSession + 1;
-      pdfDownloadSession = sessionId;
+      if (!shouldResumeExisting) {
+        if (task && typeof task.cancel === "function") {
+          task.cancel().catch(() => {});
+        }
+        task = lx.downloadFile({ url });
+        pdfDownloadTask = task;
+        pdfDownloadUrl = url;
+      }
+      const runId = pdfOpenRunId + 1;
+      pdfOpenRunId = runId;
       const canObserveProgress = supportsDownloadProgress(task);
       const canControlTransfer = supportsTransferControl(task);
       this.setData({
@@ -269,12 +294,14 @@ Page({
           ? "Starting transfer..."
           : "Downloading with promise-style result only...",
       });
-      const observer = canObserveProgress
-        ? observePdfTask(this, task, sessionId)
-        : Promise.resolve();
+      if (canObserveProgress && !pdfDownloadObserver) {
+        pdfDownloadObserver = observePdfTask(task);
+      }
+      if (canControlTransfer && shouldResumeExisting) {
+        await task.resume();
+      }
       const result = await task;
-      await observer;
-      if (sessionId !== pdfDownloadSession) {
+      if (runId !== pdfOpenRunId || pdfDownloadPage !== this) {
         return;
       }
       const resultPath = downloadResultPath(result);
@@ -293,7 +320,7 @@ Page({
         mode: "auto",
         showMenu: this.data.showMenu,
       });
-      if (sessionId !== pdfDownloadSession) {
+      if (runId !== pdfOpenRunId || pdfDownloadPage !== this) {
         return;
       }
       this.setData({
@@ -303,6 +330,9 @@ Page({
         pdfProgressText: `Opened ${resultPath}`,
       });
     } catch (error) {
+      if (pdfDownloadPage !== this) {
+        return;
+      }
       this.setData({
         pdfDownloadState: "idle",
         pdfSupportsTransferControl: false,
@@ -313,11 +343,16 @@ Page({
       });
       lx.showToast({ title: error?.message || "Open PDF failed", icon: "none" });
     } finally {
-      pdfDownloadTask = null;
-      this.setData({
-        isPdfDownloading: false,
-        pdfSupportsTransferControl: false,
-      });
+      if (pdfDownloadPage === this) {
+        if (pdfDownloadTask === task && this.data.pdfDownloadState !== "paused") {
+          pdfDownloadTask = null;
+          pdfDownloadUrl = "";
+        }
+        this.setData({
+          isPdfDownloading: false,
+          pdfSupportsTransferControl: Boolean(pdfDownloadTask),
+        });
+      }
     }
   },
 

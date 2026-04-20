@@ -68,10 +68,10 @@
               <div class="mt-2 text-xs text-blue-900">{{ pdfProgressText }}</div>
               <button
                 @click="togglePdfTransfer"
-                :disabled="!isPdfDownloading || !pdfSupportsTransferControl"
+                :disabled="!canTogglePdfTransfer"
                 :class="[
                   'mt-3 w-full rounded-lg py-2 text-sm font-medium',
-                  isPdfDownloading && pdfSupportsTransferControl
+                  canTogglePdfTransfer
                     ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
                     : 'bg-blue-100 text-blue-300 cursor-not-allowed'
                 ]"
@@ -237,6 +237,7 @@ const pdfDownloadProgress = computed(() => data.pdfDownloadProgress || 0);
 const pdfProgressText = computed(() => data.pdfProgressText || '');
 const pdfSupportsTransferControl = computed(() => Boolean(data.pdfSupportsTransferControl));
 const pdfTransferButtonText = computed(() => data.pdfTransferButtonText || 'Pause Download');
+const canTogglePdfTransfer = computed(() => pdfSupportsTransferControl.value && (isPdfDownloading.value || pdfDownloadState.value === 'paused'));
 const showPdfProgress = computed(() => pdfDownloadState.value !== 'idle' || !!data.pdfProgressText);
 const pdfPrimaryButtonText = computed(() => {
   if (pdfDownloadState.value === 'paused') return 'Download Paused';
