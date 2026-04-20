@@ -1,6 +1,6 @@
 # LingXia File Lifecycle
 
-This document defines LingXia-managed file lifetimes, storage locations, cleanup triggers, quota behavior, and the relationship between APIs such as `downloadFile`, `saveFile`, `chooseMedia`, `compressImage`, and `compressVideo`.
+This document defines LingXia-managed file lifetimes, storage locations, cleanup triggers, quota behavior, and the relationship between APIs such as `downloadFile`, `getFileManager()`, `chooseMedia`, `compressImage`, and `compressVideo`.
 
 The design goal is simple: a returned path should tell developers whether the file is temporary, cache-managed, or durable.
 
@@ -69,33 +69,58 @@ Rejected destinations:
 - host download directories
 - drive-style paths containing `:`
 - backslash paths
+- empty path segments
 - `.` or `..` segments
+- the `lx://userdata` root itself
 
-### `saveFile`
+### `getFileManager`
 
-`saveFile` copies a temp file into durable userdata.
+`getFileManager` returns the LingXia-managed file manager.
 
 ```ts
-const saved = await lx.saveFile({
-  tempFilePath: result.tempFilePath,
-  filePath: "downloads/video.mp4",
-  overwrite: true,
+const fs = lx.getFileManager();
+```
+
+Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and `lx.env.USER_CACHE_PATH` provide the explicit `lx://userdata` and `lx://usercache` roots. Read methods also accept `lx://temp/...`.
+
+### File Copy And Move
+
+```ts
+const fs = lx.getFileManager();
+await fs.copyFile({
+  srcPath: result.tempFilePath,
+  destPath: "downloads/video.mp4",
 });
-saved.filePath; // lx://userdata/downloads/video.mp4
+
+await fs.rename({
+  oldPath: result.tempFilePath,
+  newPath: `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
+});
 ```
 
 Rules:
 
-- source must be `lx://temp/...`
-- destination defaults to `userdata/<source file name>`
+- `copyFile` copies from temp, userdata, or usercache into userdata or usercache
+- `rename` moves from temp, userdata, or usercache into userdata or usercache
 - relative destinations resolve under userdata
-- explicit `lx://` destinations must target `lx://userdata`
+- explicit `lx://` destinations may target `lx://userdata` or `lx://usercache`
 - parent directories are created automatically
+- existing destination files are not overwritten
 - final writes use a sibling temp file and rename/replace, so failed writes do not leave final partial files
+
+### FileManager writes
+
+`writeFile`, `copyFile`, and `rename` are explicit file management APIs. They default to no overwrite and support `overwrite: true` only when requested. Overwrite applies to files only; directories are never replaced by file writes.
+
+`rename` is move semantics. It may move from temp, userdata, or usercache into userdata or usercache. Moving a temp download into usercache avoids a second durable copy and hands the file to cache cleanup.
+
+`readDir` resolves to an async iterator of directory entries with `name`, `isFile`, `isDirectory`, and `isSymlink`, matching the Rong fs shape while keeping LingXia path lifecycle rules.
+
+Userdata writes run userdata and appStorage quota checks. Usercache writes run usercache cleanup/quota checks and then appStorage checks.
 
 ### Media APIs
 
-`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs return temp outputs by default. Save the result with `saveFile` if the file must survive the current runtime session.
+`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs return temp outputs by default. Use `copyFile` to keep a copy, or `rename` to move it into userdata or usercache.
 
 ## `lingxia.yaml` Storage Configuration
 
@@ -133,7 +158,7 @@ Cleanup is triggered by runtime events, not by developers calling arbitrary clea
 | LxApp destroy | current runtime temp session | current temp session dir | userdata |
 | App startup maintenance | all LxApp usercache dirs | expired/LRU usercache | userdata, temp staging |
 | Usercache access/write | current LxApp usercache | expired/LRU files in that LxApp cache | other LxApp caches in normal per-LxApp cleanup |
-| `saveFile` / `downloadFile({ filePath })` under appStorage pressure | all LxApp usercache dirs | usercache across LxApps | userdata |
+| `downloadFile({ filePath })` / FileManager managed writes under appStorage pressure | all LxApp usercache dirs | usercache across LxApps | userdata |
 | LxApp uninstall | that LxApp storage | its userdata, usercache, KV storage, bundle | other LxApps |
 
 Global invariants:
@@ -162,7 +187,7 @@ Quota:
 
 ## User Cache Policy
 
-Usercache is for regenerable data only.
+Usercache is for regenerable data only. LxApps may explicitly place files there through FileManager when the file can be downloaded or generated again.
 
 Cleanup modes:
 
@@ -245,7 +270,9 @@ usercache     -> lx://usercache/<path>
 ## Rules for Developers
 
 - Use temp files for immediate preview, upload, transform, or save flows.
-- Use `saveFile` when a temp file must survive.
+- Use `fs.writeFile({ filePath: lx.env.USER_CACHE_PATH + "/..." })` for developer-generated regenerable files.
+- Use `fs.copyFile` when a temp file must be copied into userdata or usercache.
+- Use `fs.rename({ oldPath: tempFilePath, newPath: "lx://usercache/..." })` when a temp file should become auto-cleaned cache without a second copy.
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
