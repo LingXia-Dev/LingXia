@@ -43,37 +43,24 @@ const BROWSER_CONTEXT_MENU_ASSET_PATH: &str = "app.lingxia.browser/public/browse
 #[derive(Debug, Deserialize)]
 struct BrowserWebUiManifest {
     #[serde(default)]
-    pages: BrowserWebUiPages,
+    pages: Vec<BrowserWebUiPage>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum BrowserWebUiPages {
-    Ordered(Vec<String>),
-    Named(BTreeMap<String, String>),
-}
-
-impl Default for BrowserWebUiPages {
-    fn default() -> Self {
-        Self::Ordered(Vec::new())
-    }
-}
-
-impl BrowserWebUiPages {
-    fn named_pages(self) -> BTreeMap<String, String> {
-        match self {
-            Self::Ordered(pages) => {
-                let _ = pages.len();
-                BTreeMap::new()
-            }
-            Self::Named(pages) => pages,
-        }
-    }
+struct BrowserWebUiPage {
+    name: String,
+    path: String,
 }
 
 fn parse_internal_pages(manifest_json: &str) -> Result<BTreeMap<String, String>, LxAppError> {
     serde_json::from_str::<BrowserWebUiManifest>(manifest_json)
-        .map(|manifest| manifest.pages.named_pages())
+        .map(|manifest| {
+            manifest
+                .pages
+                .into_iter()
+                .map(|page| (page.name, page.path))
+                .collect()
+        })
         .map_err(|err| {
             LxAppError::InvalidJsonFile(format!("{}: {}", BROWSER_WEBUI_MANIFEST_ASSET_PATH, err))
         })
@@ -161,11 +148,11 @@ mod tests {
     fn parses_named_internal_pages_manifest() {
         let pages = parse_internal_pages(
             r#"{
-                "pages": {
-                    "newtab": "pages/newtab/index.html",
-                    "downloads": "pages/downloads/index.html",
-                    "settings": "pages/settings/index.html"
-                }
+                "pages": [
+                    { "name": "newtab", "path": "pages/newtab/index.html" },
+                    { "name": "downloads", "path": "pages/downloads/index.html" },
+                    { "name": "settings", "path": "pages/settings/index.html" }
+                ]
             }"#,
         )
         .expect("manifest should parse");
@@ -184,9 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn ordered_pages_manifest_does_not_register_internal_routes() {
-        let pages = parse_internal_pages(r#"{ "pages": ["pages/newtab/index.html"] }"#)
-            .expect("manifest should parse");
-        assert!(pages.is_empty());
+    fn rejects_legacy_ordered_pages_manifest() {
+        assert!(parse_internal_pages(r#"{ "pages": ["pages/newtab/index.html"] }"#).is_err());
     }
 }

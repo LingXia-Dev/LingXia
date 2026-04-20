@@ -2,6 +2,7 @@ use crate::lxapp::framework::{ProjectFramework, detect_project_framework, resolv
 use anyhow::{Context, Result, anyhow};
 use semver::Version;
 use serde_json::Value;
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -64,13 +65,33 @@ impl Project {
             };
             let pages_obj = manifest
                 .get("pages")
-                .and_then(Value::as_object)
-                .ok_or_else(|| anyhow!("lxplugin.json pages must be an object"))?;
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    anyhow!("lxplugin.json pages must be an array of objects with name/path")
+                })?;
             let mut pages = Vec::with_capacity(pages_obj.len());
-            for value in pages_obj.values() {
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxplugin.json pages entries must be strings"))?;
+            let mut page_names = BTreeSet::new();
+            for value in pages_obj {
+                let entry = value.as_object().ok_or_else(|| {
+                    anyhow!("lxplugin.json pages entries must be objects with name/path")
+                })?;
+                let name = entry
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("lxplugin.json pages entries must include name"))?;
+                if !is_valid_page_name(name) {
+                    return Err(anyhow!(
+                        "lxplugin.json page name must use letters, numbers, '_' or '-': {name:?}"
+                    ));
+                }
+                if !page_names.insert(name) {
+                    return Err(anyhow!("lxplugin.json page name must be unique: {name:?}"));
+                }
+                let page = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("lxplugin.json pages entries must include path"))?;
+                validate_page_path(page, "lxplugin.json pages entry")?;
                 let resolved = resolve_page_path(project_root, page, framework)
                     .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
                 pages.push(resolved);
@@ -115,32 +136,34 @@ fn validate_lxapp_pages(pages: Option<&Value>) -> Result<()> {
             if entries.is_empty() {
                 return Err(anyhow!("lxapp.json pages must not be empty"));
             }
+            let mut page_names = BTreeSet::new();
             for value in entries {
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
-                validate_page_path(page, "lxapp.json pages entry")?;
-            }
-            Ok(())
-        }
-        Some(Value::Object(entries)) => {
-            if entries.is_empty() {
-                return Err(anyhow!("lxapp.json pages must not be empty"));
-            }
-            for (name, value) in entries {
+                let entry = value.as_object().ok_or_else(|| {
+                    anyhow!("lxapp.json pages entries must be objects with name/path")
+                })?;
+                let name = entry
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("lxapp.json pages entries must include name"))?;
                 if !is_valid_page_name(name) {
                     return Err(anyhow!(
                         "lxapp.json page name must use letters, numbers, '_' or '-': {name:?}"
                     ));
                 }
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxapp.json named pages entries must be strings"))?;
-                validate_page_path(page, "lxapp.json named page path")?;
+                if !page_names.insert(name) {
+                    return Err(anyhow!("lxapp.json page name must be unique: {name:?}"));
+                }
+                let page = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("lxapp.json pages entries must include path"))?;
+                validate_page_path(page, "lxapp.json pages entry")?;
             }
             Ok(())
         }
-        _ => Err(anyhow!("lxapp.json pages must be an array or object")),
+        _ => Err(anyhow!(
+            "lxapp.json pages must be an array of objects with name/path"
+        )),
     }
 }
 
@@ -200,28 +223,22 @@ fn resolve_lxapp_pages(
         Some(Value::Array(raw_pages)) => {
             let mut pages = Vec::with_capacity(raw_pages.len());
             for value in raw_pages {
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
+                let entry = value.as_object().ok_or_else(|| {
+                    anyhow!("lxapp.json pages entries must be objects with name/path")
+                })?;
+                let page = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("lxapp.json pages entries must include path"))?;
                 let resolved = resolve_page_path(project_root, page, framework)
                     .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
                 pages.push(resolved);
             }
             Ok(pages)
         }
-        Some(Value::Object(raw_pages)) => {
-            let mut pages = Vec::with_capacity(raw_pages.len());
-            for value in raw_pages.values() {
-                let page = value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("lxapp.json named pages entries must be strings"))?;
-                let resolved = resolve_page_path(project_root, page, framework)
-                    .ok_or_else(|| anyhow!("Page file not found for {page}"))?;
-                pages.push(resolved);
-            }
-            Ok(pages)
-        }
-        _ => Err(anyhow!("lxapp.json pages must be an array or object")),
+        _ => Err(anyhow!(
+            "lxapp.json pages must be an array of objects with name/path"
+        )),
     }
 }
 
@@ -300,7 +317,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(
@@ -332,10 +349,10 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": {
-                "newtab": "pages/newtab/index.html",
-                "settings": "pages/settings/index.html"
-              }
+              "pages": [
+                { "name": "newtab", "path": "pages/newtab/index.html" },
+                { "name": "settings", "path": "pages/settings/index.html" }
+              ]
             }"#,
         );
         write_file(
@@ -372,10 +389,10 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": {
-                "newtab": "pages/newtab/index.html",
-                "settings": "pages/settings/index.html"
-              }
+              "pages": [
+                { "name": "newtab", "path": "pages/newtab/index.html" },
+                { "name": "settings", "path": "pages/settings/index.html" }
+              ]
             }"#,
         );
         write_file(
@@ -413,7 +430,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "appService": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(
@@ -437,7 +454,7 @@ mod tests {
             r#"{
               "version": "1.0.0",
               "logic": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
@@ -478,9 +495,9 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": {
-                "home page": "pages/home/index"
-              }
+              "pages": [
+                { "name": "home page", "path": "pages/home/index" }
+              ]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
@@ -489,6 +506,29 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("lxapp.json page name must use"));
+    }
+
+    #[test]
+    fn rejects_duplicate_lxapp_page_names() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "logic": false,
+              "pages": [
+                { "name": "home", "path": "pages/home/index" },
+                { "name": "home", "path": "pages/other/index" }
+              ]
+            }"#,
+        );
+
+        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("page name must be unique"));
     }
 
     #[test]
@@ -501,7 +541,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": ["../outside"]
+              "pages": [{"name":"home","path":"../outside"}]
             }"#,
         );
 
@@ -520,9 +560,9 @@ mod tests {
             r#"{
               "version": "2.0.0",
               "lxPluginId": "plugin.demo",
-              "pages": {
-                "home": "pages/home/index"
-              }
+              "pages": [
+                { "name": "home", "path": "pages/home/index" }
+              ]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
@@ -548,7 +588,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": "../logic.js",
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
@@ -569,7 +609,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.vue", "<template />");
@@ -595,7 +635,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.vue", "<template />");
@@ -622,7 +662,7 @@ mod tests {
               "version": "1.0.0",
               "framework": "react",
               "logic": false,
-              "pages": ["pages/home/index"]
+              "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
         write_file(temp.path(), "pages/home/index.vue", "<template />");

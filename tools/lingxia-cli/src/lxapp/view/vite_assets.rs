@@ -77,12 +77,7 @@ fn rewrite_manifest_pages(
                 rewrite_page_value(page, page_map)?;
             }
         }
-        Value::Object(items) => {
-            for page in items.values_mut() {
-                rewrite_page_value(page, page_map)?;
-            }
-        }
-        _ => bail!("lxapp.json pages must be an array or object"),
+        _ => bail!("lxapp.json pages must be an array of objects with name/path"),
     }
     Ok(())
 }
@@ -92,12 +87,15 @@ fn rewrite_page_value(
     page_map: &std::collections::HashMap<String, String>,
 ) -> Result<()> {
     let raw = page
-        .as_str()
-        .ok_or_else(|| anyhow!("lxapp.json pages entries must be strings"))?;
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("lxapp.json pages entries must include path"))?;
     let Some(resolved) = page_map.get(&strip_ext(raw)) else {
         bail!("Page file not found for {raw}");
     };
-    *page = Value::String(resolved.clone());
+    page.as_object_mut()
+        .ok_or_else(|| anyhow!("lxapp.json pages entries must be objects with name/path"))?
+        .insert("path".to_string(), Value::String(resolved.clone()));
     Ok(())
 }
 
@@ -474,10 +472,10 @@ mod tests {
   "appId": "demo",
   "appName": "Demo",
   "version": "1.0.0",
-  "pages": {
-    "home": "pages/home/index",
-    "settings": "pages/settings/index"
-  },
+  "pages": [
+    { "name": "home", "path": "pages/home/index" },
+    { "name": "settings", "path": "pages/settings/index" }
+  ],
   "tabBar": {
     "list": [
       { "pagePath": "pages/home/index", "text": "Home" }
@@ -494,11 +492,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            manifest["pages"]["home"].as_str(),
+            manifest["pages"][0]["path"].as_str(),
             Some("pages/home/index.tsx")
         );
         assert_eq!(
-            manifest["pages"]["settings"].as_str(),
+            manifest["pages"][1]["path"].as_str(),
             Some("pages/settings/index.tsx")
         );
         assert_eq!(

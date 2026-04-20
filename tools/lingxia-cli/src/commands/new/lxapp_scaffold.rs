@@ -248,7 +248,7 @@ mod tests {
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
-            r#"{"framework":"{{FRAMEWORK}}","pages":["pages/home/index.{{PAGE_EXT}}"]}"#,
+            r#"{"framework":"{{FRAMEWORK}}","pages":[{"name":"home","path":"pages/home/index.{{PAGE_EXT}}"}]}"#,
         )
         .unwrap();
         fs::write(
@@ -284,7 +284,7 @@ mod tests {
         .unwrap();
         fs::write(
             lxapp_html.join("lxapp.json"),
-            r#"{"framework":"html","pages":["pages/home/index.html"]}"#,
+            r#"{"framework":"html","pages":[{"name":"home","path":"pages/home/index.html"}]}"#,
         )
         .unwrap();
         fs::write(

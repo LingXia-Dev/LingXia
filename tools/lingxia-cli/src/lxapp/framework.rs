@@ -148,20 +148,14 @@ fn extract_first_manifest_page_entry(manifest: &Value) -> Result<Option<&str>> {
             .first()
             .map(|value| {
                 value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("manifest pages entries must be strings"))
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| anyhow!("manifest pages entries must include path"))
             })
             .transpose(),
-        Value::Object(entries) => entries
-            .values()
-            .next()
-            .map(|value| {
-                value
-                    .as_str()
-                    .ok_or_else(|| anyhow!("manifest named pages entries must be strings"))
-            })
-            .transpose(),
-        _ => Err(anyhow!("manifest pages must be an array or object")),
+        _ => Err(anyhow!(
+            "manifest pages must be an array of objects with name/path"
+        )),
     }
 }
 

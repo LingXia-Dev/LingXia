@@ -4,6 +4,9 @@
   "version": "0.0.1",
   "framework": "html",
   "pages": [
-    "pages/home/index.html"
+    {
+      "name": "home",
+      "path": "pages/home/index.html"
+    }
   ]
 }

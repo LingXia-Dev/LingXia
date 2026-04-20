@@ -4,6 +4,9 @@
   "version": "0.0.1",
   "framework": "{{FRAMEWORK}}",
   "pages": [
-    "pages/home/index.{{PAGE_EXT}}"
+    {
+      "name": "home",
+      "path": "pages/home/index.{{PAGE_EXT}}"
+    }
   ]
 }

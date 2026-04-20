@@ -3,9 +3,9 @@
   "name": "LingXia Browser",
   "version": "1.0.0",
   "logic": false,
-  "pages": {
-    "newtab": "pages/newtab/index.html",
-    "downloads": "pages/downloads/index.html",
-    "settings": "pages/settings/index.html"
-  }
+  "pages": [
+    { "name": "newtab", "path": "pages/newtab/index.html" },
+    { "name": "downloads", "path": "pages/downloads/index.html" },
+    { "name": "settings", "path": "pages/settings/index.html" }
+  ]
 }

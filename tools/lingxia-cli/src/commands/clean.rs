@@ -402,7 +402,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         write(
             &temp.path().join("lxapp.json"),
-            r#"{"version":"1.0.0","logic":false,"pages":["pages/home/index"]}"#,
+            r#"{"version":"1.0.0","logic":false,"pages":[{"name":"home","path":"pages/home/index"}]}"#,
         );
         write(&temp.path().join("pages/home/index.html"), "");
         write(&temp.path().join("dist/file.js"), "");

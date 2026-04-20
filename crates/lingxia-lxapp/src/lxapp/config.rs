@@ -3,7 +3,7 @@ use crate::lxapp::version::Version;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
 /// LxApp basic information
@@ -46,42 +46,9 @@ pub(crate) enum LxAppLogicEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum LxAppPages {
-    Ordered(Vec<String>),
-    Named(BTreeMap<String, String>),
-}
-
-impl Default for LxAppPages {
-    fn default() -> Self {
-        Self::Ordered(Vec::new())
-    }
-}
-
-impl LxAppPages {
-    pub fn initial_route(&self) -> Option<String> {
-        match self {
-            Self::Ordered(pages) => pages.first().cloned(),
-            Self::Named(pages) => ["index", "home", "newtab"]
-                .iter()
-                .find_map(|name| pages.get(*name).cloned())
-                .or_else(|| pages.values().next().cloned()),
-        }
-    }
-
-    pub fn page_paths(&self) -> Vec<String> {
-        match self {
-            Self::Ordered(pages) => pages.clone(),
-            Self::Named(pages) => pages.values().cloned().collect(),
-        }
-    }
-
-    pub fn page_path_by_name(&self, name: &str) -> Option<String> {
-        match self {
-            Self::Ordered(_) => None,
-            Self::Named(pages) => pages.get(name).cloned(),
-        }
-    }
+pub struct LxAppPageEntry {
+    pub name: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -110,7 +77,7 @@ pub(crate) struct LxAppConfig {
 
     /// List of page paths (relative to app root)
     #[serde(default)]
-    pub(crate) pages: LxAppPages,
+    pub(crate) pages: Vec<LxAppPageEntry>,
 
     /// Tab bar configuration
     pub(crate) tabBar: Option<TabBar>,
@@ -140,16 +107,24 @@ impl LxAppConfig {
     /// Get the initial route (first page in the pages array)
     pub fn get_initial_route(&self) -> String {
         self.pages
-            .initial_route()
+            .first()
+            .map(|page| page.path.clone())
             .unwrap_or("PagesEmpty".to_string())
     }
 
     pub fn page_paths(&self) -> Vec<String> {
-        self.pages.page_paths()
+        self.pages.iter().map(|page| page.path.clone()).collect()
+    }
+
+    pub fn page_entries(&self) -> Vec<LxAppPageEntry> {
+        self.pages.clone()
     }
 
     pub fn page_path_by_name(&self, name: &str) -> Option<String> {
-        self.pages.page_path_by_name(name)
+        self.pages
+            .iter()
+            .find(|page| page.name == name)
+            .map(|page| page.path.clone())
     }
 
     pub fn logic_entry(&self) -> Option<String> {
@@ -195,8 +170,52 @@ impl LxAppConfig {
             *entry = trimmed.to_string();
         }
 
+        if self.pages.is_empty() {
+            return Err(serde_json::Error::custom(r#""pages" must not be empty"#));
+        }
+
+        let mut page_names = BTreeSet::new();
+        for page in &self.pages {
+            if !is_valid_page_name(&page.name) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""pages" entry name must use letters, numbers, '_' or '-': {:?}"#,
+                    page.name
+                )));
+            }
+            if !page_names.insert(page.name.as_str()) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""pages" entry name must be unique: {:?}"#,
+                    page.name
+                )));
+            }
+            if !is_safe_page_path(&page.path) {
+                return Err(serde_json::Error::custom(format!(
+                    r#""pages" entry path must stay within the lxapp package: {:?}"#,
+                    page.path
+                )));
+            }
+        }
+
         Ok(())
     }
+}
+
+fn is_valid_page_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('-')
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn is_safe_page_path(path: &str) -> bool {
+    let path = path.trim();
+    !path.is_empty()
+        && !path.contains('\\')
+        && !Path::new(path).is_absolute()
+        && Path::new(path)
+            .components()
+            .all(|component| matches!(component, Component::Normal(_)))
 }
 
 fn is_safe_logic_entry(entry: &str) -> bool {

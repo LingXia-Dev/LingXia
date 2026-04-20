@@ -30,7 +30,7 @@ use crate::{error, info, warn};
 use security::NetworkSecurity;
 
 pub mod config;
-use config::LxAppConfig;
+use config::{LxAppConfig, LxAppPageEntry};
 mod content;
 pub(crate) mod metadata;
 pub mod navbar;
@@ -523,11 +523,17 @@ pub struct LxAppRuntimeInfo {
     pub current_page: Option<String>,
     pub initial_route: String,
     pub pages_count: usize,
-    pub pages: Vec<String>,
+    pub page_entries: Vec<LxAppRuntimePageInfo>,
     pub page_stack: Vec<String>,
     pub lxapp_dir: String,
     pub data_dir: String,
     pub cache_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimePageInfo {
+    pub name: String,
+    pub path: String,
 }
 
 impl LxAppSession {
@@ -712,13 +718,17 @@ impl LxApp {
         self.runtime.app_data_dir()
     }
 
-    fn page_paths(&self) -> Vec<String> {
-        self.config.page_paths()
+    pub fn page_entries(&self) -> Vec<LxAppRuntimePageInfo> {
+        self.config
+            .page_entries()
+            .into_iter()
+            .map(|LxAppPageEntry { name, path }| LxAppRuntimePageInfo { name, path })
+            .collect()
     }
 
     pub fn runtime_info(&self) -> LxAppRuntimeInfo {
         let info = self.get_lxapp_info();
-        let pages = self.page_paths();
+        let page_entries = self.page_entries();
         LxAppRuntimeInfo {
             appid: self.appid.clone(),
             app_name: info.app_name,
@@ -729,8 +739,8 @@ impl LxApp {
             is_home: self.is_home_lxapp,
             current_page: self.peek_current_page(),
             initial_route: self.initial_route(),
-            pages_count: pages.len(),
-            pages,
+            pages_count: page_entries.len(),
+            page_entries,
             page_stack: self.get_page_stack(),
             lxapp_dir: self.lxapp_dir.to_string_lossy().into_owned(),
             data_dir: self.user_data_dir.to_string_lossy().into_owned(),

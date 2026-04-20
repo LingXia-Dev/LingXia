@@ -223,12 +223,16 @@ pub fn load_plugin_manifest_pages(
     match std::fs::read_to_string(&manifest_path) {
         Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
             Ok(json) => {
-                if let Some(pages) = json.get("pages").and_then(|p| p.as_object()) {
+                if let Some(pages) = json.get("pages").and_then(|p| p.as_array()) {
                     let mut result = std::collections::BTreeMap::new();
-                    for (k, v) in pages {
-                        if let Some(path) = v.as_str() {
-                            result.insert(k.clone(), path.to_string());
-                        }
+                    for page in pages {
+                        let Some(name) = page.get("name").and_then(|value| value.as_str()) else {
+                            continue;
+                        };
+                        let Some(path) = page.get("path").and_then(|value| value.as_str()) else {
+                            continue;
+                        };
+                        result.insert(name.to_string(), path.to_string());
                     }
                     return Some(result);
                 }
