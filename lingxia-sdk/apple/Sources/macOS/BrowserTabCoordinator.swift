@@ -116,7 +116,7 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func syncToolbarLeading(collapsed: Bool, animated: Bool) {
-        let targetLeading = collapsed ? (host?.trafficLightClearance() ?? 80) : Layout.buttonLeading
+        let targetLeading = Layout.buttonLeading
         if animated {
             backButtonLeadingConstraint?.animator().constant = targetLeading
         } else {
@@ -830,8 +830,7 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     private func currentButtonLeading() -> CGFloat {
-        let collapsed = host?.isSidebarCollapsed() ?? false
-        return collapsed ? (host?.trafficLightClearance() ?? 80) : Layout.buttonLeading
+        Layout.buttonLeading
     }
 
     // MARK: - Data Helpers

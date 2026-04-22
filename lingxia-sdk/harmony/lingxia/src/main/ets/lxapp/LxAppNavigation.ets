@@ -299,15 +299,15 @@ export struct LxAppNavigation {
   private async initializeLxApp(): Promise<void> {
     try {
       const instance = LxApp.getInstance();
-      const homeAppId = instance.getHomeLxAppId();
+      const homeAppId = instance.getHomeAppId();
 
       if (homeAppId) {
         this.homeAppId = homeAppId;
         this.isReady = true;
         hilog.info(DOMAIN, TAG, `LxApp Navigation ready: ${this.homeAppId}`);
 
-        // Auto-open home lxapp now that navigation instance is ready.
-        hilog.info(DOMAIN, TAG, 'Auto-opening home lxapp');
+        // Auto-open home app now that navigation instance is ready.
+        hilog.info(DOMAIN, TAG, 'Auto-opening home app');
         const sessionId: number = LxApp.getRuntimeSessionId(homeAppId);
         if (!Number.isFinite(sessionId) || sessionId <= 0) {
           this.errorMessage = `Invalid home app session: ${homeAppId}`;
@@ -346,7 +346,7 @@ export struct LxAppNavigation {
 
       // UI layer distinction: Home LxApp vs Modal LxApp
       if (appId === this.homeAppId) {
-        hilog.info(DOMAIN, TAG, `Showing home LxApp: ${appId} with path: ${resolvedPath}`);
+        hilog.info(DOMAIN, TAG, `Showing home app: ${appId} with path: ${resolvedPath}`);
         this.modalAppVisible = false;
         this.homeAppPath = resolvedPath;
         // Trigger navigation to show the home app
@@ -389,7 +389,7 @@ export struct LxAppNavigation {
 
       // UI cleanup: hide the closed app
       if (appId === this.homeAppId) {
-        hilog.info(DOMAIN, TAG, `Hiding home LxApp: ${appId}`);
+        hilog.info(DOMAIN, TAG, `Hiding home app: ${appId}`);
         // Home app should never be closed, but if it happens, don't hide the container
       } else if (appId === this.currentModalAppId) {
         // For modal apps, only hide the container so that the underlying WebViews
@@ -526,7 +526,7 @@ export struct LxAppNavigation {
 
   build() {
     Stack() {
-      // Always show home LxApp container to preserve WebViews, but hide when modal is visible
+      // Always show home app container to preserve WebViews, but hide when modal is visible
       if (this.isReady && this.homeAppId && this.homeAppPath) {
         LxAppContainer({
           appId: this.homeAppId,
@@ -597,7 +597,7 @@ export struct LxAppNavigation {
 
   @Builder
   buildFixedCapsuleButton(appId: string): void {
-    if (appId !== LxApp.getInstance().getHomeLxAppId()) {
+    if (appId !== LxApp.getInstance().getHomeAppId()) {
       Stack() {
         Row() {
           Button() {

@@ -89,7 +89,7 @@ class SidebarView: NSView {
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
         /// Horizontal/vertical padding inside the dock.
-        static let footerInset: CGFloat = 10
+        static let footerInset: CGFloat = 6
     }
 
     private let headerView = NSView()
@@ -99,12 +99,11 @@ class SidebarView: NSView {
     private let resizeHandle = SidebarResizeHandle()
     private let footerView = NSView()
     private let footerSeparator = NSView()
-    /// Horizontal stack that holds all footer dock buttons.
-    private let footerStack = NSStackView()
+    /// Horizontal stack that holds trailing product/action buttons.
+    private let panelStack = NSStackView()
     private let hideButton = NSButton()
     private var hideButtonTrackingArea: NSTrackingArea?
     private var panelButtons: [NSButton] = []
-    private var panelSpacer: NSView?
     private var appUIOnlyMode = false
 
     /// Called when a panel icon button is clicked: (panelId)
@@ -237,12 +236,12 @@ class SidebarView: NSView {
         footerSeparator.layer?.backgroundColor = NSColor.separatorColor.cgColor
         footerView.addSubview(footerSeparator)
 
-        footerStack.translatesAutoresizingMaskIntoConstraints = false
-        footerStack.orientation = .horizontal
-        footerStack.spacing = 4
-        footerStack.alignment = .centerY
-        footerStack.distribution = .fill
-        footerView.addSubview(footerStack)
+        panelStack.translatesAutoresizingMaskIntoConstraints = false
+        panelStack.orientation = .horizontal
+        panelStack.spacing = 4
+        panelStack.alignment = .centerY
+        panelStack.distribution = .fill
+        footerView.addSubview(panelStack)
 
         hideButton.translatesAutoresizingMaskIntoConstraints = false
         hideButton.title = ""
@@ -257,7 +256,7 @@ class SidebarView: NSView {
         hideButton.toolTip = "Hide sidebar"
         hideButton.target = self
         hideButton.action = #selector(hideButtonClicked)
-        footerStack.addArrangedSubview(hideButton)
+        footerView.addSubview(hideButton)
 
         // Resize handle on right edge
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
@@ -294,12 +293,15 @@ class SidebarView: NSView {
             footerSeparator.trailingAnchor.constraint(equalTo: footerView.trailingAnchor),
             footerSeparator.heightAnchor.constraint(equalToConstant: 0.5),
 
-            footerStack.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
-            footerStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
-            footerStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            hideButton.leadingAnchor.constraint(equalTo: footerView.leadingAnchor, constant: Layout.footerInset),
+            hideButton.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
 
             hideButton.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
             hideButton.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
+
+            panelStack.trailingAnchor.constraint(equalTo: footerView.trailingAnchor, constant: -Layout.footerInset),
+            panelStack.centerYAnchor.constraint(equalTo: footerView.centerYAnchor),
+            panelStack.leadingAnchor.constraint(greaterThanOrEqualTo: hideButton.trailingAnchor, constant: 4),
 
             // Resize handle: right edge, full height
             resizeHandle.topAnchor.constraint(equalTo: topAnchor),
@@ -412,23 +414,16 @@ class SidebarView: NSView {
     /// `PanelIconItem` only carries what the UI needs — id, icon, label.
     /// Routing details (appId, path, position) stay in Panel.swift.
     func updatePanelItems(_ items: [PanelIconItem]) {
-        // Remove existing panel buttons and spacer
-        panelButtons.forEach { $0.removeFromSuperview() }
+        // Remove existing panel buttons.
+        panelButtons.forEach {
+            panelStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
         panelButtons.removeAll()
-        panelSpacer?.removeFromSuperview()
-        panelSpacer = nil
 
         guard !items.isEmpty else { return }
 
-        // Flexible spacer pushes panel buttons to trailing edge
-        let spacer = NSView()
-        spacer.translatesAutoresizingMaskIntoConstraints = false
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        footerStack.addArrangedSubview(spacer)
-        panelSpacer = spacer
-
-        for item in items.reversed() {
+        for item in items {
             let btn = NSButton()
             btn.translatesAutoresizingMaskIntoConstraints = false
             btn.isBordered = false
@@ -459,7 +454,7 @@ class SidebarView: NSView {
                 btn.widthAnchor.constraint(equalToConstant: Layout.footerButtonSize),
                 btn.heightAnchor.constraint(equalToConstant: Layout.footerButtonSize),
             ])
-            footerStack.addArrangedSubview(btn)
+            panelStack.addArrangedSubview(btn)
             panelButtons.append(btn)
         }
     }

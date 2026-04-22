@@ -96,7 +96,7 @@ export struct CloseIcon {
 
 /**
  * Capsule button component with more and close buttons
- * Used for non-home LxApps
+ * Used for non-home apps
  */
 @Component
 export struct CapsuleButton {

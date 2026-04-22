@@ -306,7 +306,7 @@ class LxAppActivity : AppCompatActivity() {
         requestedPath: String,
         requestedSessionId: Long
     ): Pair<String, Long>? {
-        if (LxApp.HomeLxAppId == null) {
+        if (LxApp.HomeAppId == null) {
             Log.e(TAG, "LxApp runtime is not initialized before LxAppActivity creation")
             return null
         }
@@ -341,7 +341,7 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) return false
         if (targetAppId.isBlank() || targetSessionId <= 0L) return false
 
-        val homeAppId = LxApp.HomeLxAppId ?: return false
+        val homeAppId = LxApp.HomeAppId ?: return false
         if (targetAppId == homeAppId) return false
 
         val current = NativeApi.getCurrentLxApp() ?: return false

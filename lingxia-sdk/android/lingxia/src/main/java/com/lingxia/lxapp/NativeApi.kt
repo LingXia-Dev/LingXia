@@ -209,8 +209,6 @@ internal object NativeApi {
     @JvmStatic
     external fun getPageOrientation(appId: String, path: String): Int
 
-    const val CAP_SHELL = 0x1
-
     const val ORIENTATION_AUTO = 0
     const val ORIENTATION_PORTRAIT = 1
     const val ORIENTATION_LANDSCAPE = 2
@@ -299,7 +297,7 @@ internal object NativeApi {
 
     /**
      * Returns a bitmask of host app capabilities.
-     * Check against CAP_SHELL (0x1) to determine if browser/shell is available.
+     * Check against LxApp.CAP_* constants to determine enabled host capabilities.
      */
     @JvmStatic
     external fun getAppCapabilities(): Int

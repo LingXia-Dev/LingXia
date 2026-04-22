@@ -51,9 +51,11 @@ internal data class CurrentLxApp(
 class LxApp private constructor(private val context: Context) {
     companion object {
         private const val TAG = "LingXia.LxApp"
+        const val CAP_SHELL: Int = 0x1
+        const val CAP_NOTIFICATIONS: Int = 0x2
         private var instance: LxApp? = null
         // Properties to store home app details from native
-        var HomeLxAppId: String? = null
+        var HomeAppId: String? = null
         @JvmField var capabilities: Int = 0
 
         // Reference to the current LxAppActivity instance
@@ -64,7 +66,7 @@ class LxApp private constructor(private val context: Context) {
         @JvmStatic
         internal fun initializeRuntime(context: Context) {
             synchronized(this) {
-                if (instance != null && HomeLxAppId != null) {
+                if (instance != null && HomeAppId != null) {
                     Log.d(TAG, "LxApp already successfully initialized, skipping")
                     return
                 }
@@ -95,10 +97,10 @@ class LxApp private constructor(private val context: Context) {
                 )
 
                 if (initResultString != null) {
-                    HomeLxAppId = initResultString
+                    HomeAppId = initResultString
                     capabilities = NativeApi.getAppCapabilities()
                 } else {
-                    Log.e(TAG, "Failed to get home LxApp details from native init.")
+                    Log.e(TAG, "Failed to get home app details from native init.")
                 }
 
                 // Configure transparent system bars if we're in an Activity context
@@ -310,7 +312,7 @@ class LxApp private constructor(private val context: Context) {
         }
 
         /**
-         * Opens the home LxApp
+         * Opens the home app
          * Its appId is provided by the native layer during initialization.
          * The initial route will be resolved by on_lxapp_opened.
          *
@@ -318,15 +320,15 @@ class LxApp private constructor(private val context: Context) {
          */
         @JvmStatic
         internal fun openHomeLxApp() {
-            if (HomeLxAppId != null) {
+            if (HomeAppId != null) {
                 val current = NativeApi.getCurrentLxApp()
-                val sessionId = current?.takeIf { it.appId == HomeLxAppId }?.sessionId
-                    ?: NativeApi.getLxAppSessionId(HomeLxAppId!!)
+                val sessionId = current?.takeIf { it.appId == HomeAppId }?.sessionId
+                    ?: NativeApi.getLxAppSessionId(HomeAppId!!)
                 if (sessionId <= 0L) {
-                    Log.e(TAG, "Missing valid session for home LxApp: ${HomeLxAppId}")
+                    Log.e(TAG, "Missing valid session for home app: ${HomeAppId}")
                     return
                 }
-                openLxAppWithSession(HomeLxAppId!!, "", sessionId)
+                openLxAppWithSession(HomeAppId!!, "", sessionId)
             } else {
                 Log.e(TAG, "Native home app details not available. Cannot open home mini app.")
             }

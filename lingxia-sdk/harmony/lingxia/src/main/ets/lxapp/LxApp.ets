@@ -32,6 +32,7 @@ export class LxApp {
   private static instance: LxApp | null = null;
   public static capabilities: number = 0;
   public static readonly CAP_SHELL: number = 0x1;
+  public static readonly CAP_NOTIFICATIONS: number = 0x2;
   public static managerInstance: LxAppManager | null = null;
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
@@ -39,7 +40,7 @@ export class LxApp {
   // Store navigation instance for Navigation-based architecture
   public static navigationInstance: NavigationInstance | null = null;
 
-  private homeLxAppId: string | null = null;
+  private homeAppId: string | null = null;
 
   private constructor() {
     hilog.info(DOMAIN, TAG, 'LxApp instance created');
@@ -54,13 +55,13 @@ export class LxApp {
 
   public static initializeRuntime(context?: common.UIAbilityContext, windowStage?: window.WindowStage): void {
     const instance = LxApp.getInstance();
-    if (instance.homeLxAppId !== null) {
+    if (instance.homeAppId !== null) {
       hilog.info(DOMAIN, TAG, 'LxApp already successfully initialized');
       return;
     }
 
-    // Check if native layer has already been initialized by checking homeLxAppId
-    if (instance.homeLxAppId !== null) {
+    // Check if native layer has already been initialized by checking homeAppId
+    if (instance.homeAppId !== null) {
       hilog.warn(DOMAIN, TAG, 'Native layer already initialized, skipping native_lxapp_init');
       return;
     }
@@ -120,18 +121,19 @@ export class LxApp {
 
     if (appId) {
       hilog.info(DOMAIN, TAG, `LxApp initialized successfully with home app: ${appId}`);
-      instance.homeLxAppId = appId;
+      instance.homeAppId = appId;
       LxApp.capabilities = getAppCapabilities();
     } else {
-      hilog.error(DOMAIN, TAG, 'Failed to get home LxApp details from native init.');
+      hilog.error(DOMAIN, TAG, 'Failed to get home app details from native init.');
     }
 
-    // Initialize push: request permission and fetch token once
-    try {
-      LxAppPush.requestEnableNotification();
-      LxAppPush.initToken();
-    } catch (e) {
-      hilog.error(DOMAIN, TAG, `Push init error: ${e}`);
+    if ((LxApp.capabilities & LxApp.CAP_NOTIFICATIONS) !== 0) {
+      try {
+        LxAppPush.requestEnableNotification();
+        LxAppPush.initToken();
+      } catch (e) {
+        hilog.error(DOMAIN, TAG, `Push init error: ${e}`);
+      }
     }
   }
 
@@ -139,11 +141,11 @@ export class LxApp {
     WebViewManager.enableDebugging();
   }
 
-  private static openHomeLxApp(): void {
-    hilog.info(DOMAIN, TAG, 'openHomeLxApp called');
+  private static openHomeApp(): void {
+    hilog.info(DOMAIN, TAG, 'openHomeApp called');
 
     const instance = LxApp.getInstance();
-    const homeAppId = instance.getHomeLxAppId();
+    const homeAppId = instance.getHomeAppId();
 
     if (homeAppId && LxApp.navigationInstance) {
       const sessionId: number = getLxappSessionId(homeAppId);
@@ -153,7 +155,7 @@ export class LxApp {
       }
       LxApp.openLxAppWithSession(homeAppId, '', sessionId);
     } else {
-      hilog.error(DOMAIN, TAG, 'openHomeLxApp failed: homeAppId or navigationInstance not available');
+      hilog.error(DOMAIN, TAG, 'openHomeApp failed: homeAppId or navigationInstance not available');
     }
   }
 
@@ -212,8 +214,8 @@ export class LxApp {
    * Get Home LxApp ID
    * @returns string | null - Home LxApp ID or null if not initialized
    */
-  public getHomeLxAppId(): string | null {
-    return this.homeLxAppId;
+  public getHomeAppId(): string | null {
+    return this.homeAppId;
   }
 
   /**
@@ -375,7 +377,7 @@ struct LxAppManager {
   @State modalLxAppVisible: boolean = false
   @State modalLxAppId: string = ''
   @State modalLxAppPath: string = ''
-  @State hideHomeLxApp: boolean = false
+  @State hideHomeApp: boolean = false
 
   // References to containers for direct method calls
   private homeContainerRef: LxAppContainer | null = null
@@ -387,13 +389,13 @@ struct LxAppManager {
     // Set static instance in LxApp for component compatibility
     LxApp.setManagerInstance(this);
 
-    // Manager is ready for openHomeLxApp() calls
-    hilog.info(DOMAIN, TAG, 'LxAppManager ready, waiting for openHomeLxApp() call');
+    // Manager is ready for openHomeApp() calls
+    hilog.info(DOMAIN, TAG, 'LxAppManager ready, waiting for openHomeApp() call');
   }
 
   build() {
     Stack() {
-      if (this.isReady && this.homeAppId && this.homeAppPath && !this.hideHomeLxApp) {
+      if (this.isReady && this.homeAppId && this.homeAppPath && !this.hideHomeApp) {
         // Display Home LxApp (hidden when modal lxapp is open)
         // Use current path if available, otherwise use initial path
         LxAppContainer({
@@ -453,12 +455,12 @@ struct LxAppManager {
   /**
    * Open LxApp (unified method for both home and other lxapps)
    */
-  public doOpenLxApp(appId: string, path: string, sessionId: number, isHomeLxApp: boolean = false): void {
+  public doOpenLxApp(appId: string, path: string, sessionId: number, isHomeApp: boolean = false): void {
     if (!Number.isFinite(sessionId) || sessionId <= 0) {
       hilog.error(DOMAIN, TAG, `doOpenLxApp requires valid sessionId for ${appId}`);
       return;
     }
-    hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeLxApp}`);
+    hilog.info(DOMAIN, TAG, `Opening LxApp: ${appId}:${path}, isHome: ${isHomeApp}`);
 
     try {
       const resolvedPath: string = onLxappOpened(appId, path, sessionId);
@@ -467,7 +469,7 @@ struct LxAppManager {
         return;
       }
 
-      if (isHomeLxApp) {
+      if (isHomeApp) {
         this.homeAppId = appId;
         this.homeAppPath = resolvedPath;
         this.homeAppCurrentPath = resolvedPath; // Initialize current page
@@ -477,9 +479,9 @@ struct LxAppManager {
         // Modal lxapp: create new LxAppContainer and display it
         hilog.info(DOMAIN, TAG, `Opening modal lxapp: ${appId}:${resolvedPath}`);
 
-        // Hide home lxapp when modal is open
-        this.hideHomeLxApp = true;
-        hilog.info(DOMAIN, TAG, `HIDING home lxapp - set to: ${this.hideHomeLxApp}`);
+        // Hide home app when modal is open
+        this.hideHomeApp = true;
+        hilog.info(DOMAIN, TAG, `HIDING home app - set to: ${this.hideHomeApp}`);
 
         // Update UI state immediately with priority
         this.modalLxAppId = appId;
@@ -488,7 +490,7 @@ struct LxAppManager {
       }
     } catch (error) {
       hilog.error(DOMAIN, TAG, `Failed to open LxApp ${appId}: ${error}`);
-      if (isHomeLxApp) {
+      if (isHomeApp) {
         this.errorMessage = `Failed to load Home LxApp: ${error}`;
       }
     }
@@ -499,14 +501,14 @@ struct LxAppManager {
    */
   private shouldExpandSafeArea(): boolean {
     // Always expand safe area for status bar transparency
-    // This applies to both home lxapp and modal lxapp
+    // This applies to both home app and modal lxapp
     return true;
   }
 
   /**
-   * Update home lxapp current path (called when user switches tabs)
+   * Update home app current path (called when user switches tabs)
    */
-  public updateHomeLxAppCurrentPath(path: string): void {
+  public updateHomeAppCurrentPath(path: string): void {
     if (this.homeAppId) {
       this.homeAppCurrentPath = path;
     }
@@ -523,8 +525,8 @@ struct LxAppManager {
     this.modalLxAppId = '';
     this.modalLxAppPath = '';
 
-    // Show home lxapp when modal is closed
-    this.hideHomeLxApp = false;
+    // Show home app when modal is closed
+    this.hideHomeApp = false;
   }
 
   /**

@@ -50,7 +50,9 @@ class iOSLxApp {
         instance = iOSLxApp(context: UIApplication.shared)
         LxAppCore.initializeCore(autoOpenHome: autoOpenHome)
         configureGlobalSystemBars()
-        iOSPushManager.shared.initialize()
+        if (LxAppCore.capabilities & LxAppCore.capNotifications) != 0 {
+            iOSPushManager.shared.initialize()
+        }
 
         // Setup lifecycle observers
         instance?.setupLifecycleObservers()

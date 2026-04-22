@@ -1037,5 +1037,5 @@ pub fn on_user_capture_screen(lxappid: String) {
 
 #[napi]
 pub fn get_app_capabilities() -> u32 {
-    crate::browser::app_capabilities()
+    crate::capabilities::app_capabilities()
 }

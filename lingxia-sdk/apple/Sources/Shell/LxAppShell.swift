@@ -126,8 +126,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         static let trafficLightClearanceFallback: CGFloat = 80
         static let contentPanelPadding: CGFloat = 6
         static let contentPanelCornerRadius: CGFloat = 10
-        static let sidebarRevealButtonSize = CGSize(width: 36, height: 36)
-        static let sidebarRevealButtonLeadingInset: CGFloat = 4
+        static let sidebarRevealButtonSize = CGSize(width: 20, height: 28)
+        static let sidebarRevealButtonLeadingInset: CGFloat = 0
         static let sidebarRevealButtonBottomInset: CGFloat = 4
     }
 
@@ -476,7 +476,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarWidthConstraint = sidebarWidth
 
         let p = Layout.contentPanelPadding
-        let contentLeading = shadowWrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor)
+        let contentLeading = shadowWrapper.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: Layout.sidebarWidth)
         contentLeadingConstraint = contentLeading
         let cardTrailing = shadowWrapper.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -p)
         cardTrailingConstraint = cardTrailing
@@ -588,7 +588,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         guard let constraint = sidebarWidthConstraint else { return }
         guard sidebarChromeEnabled else {
             constraint.constant = 0
-            contentLeadingConstraint?.constant = Layout.contentPanelPadding
+            contentLeadingConstraint?.constant = 0
             refreshSidebarVisibilityUI()
             return
         }
@@ -605,7 +605,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let targetWidth: CGFloat = visible ? lastExpandedSidebarWidth : 0
         let sidebarHidden = !visible
-        let targetContentLeading: CGFloat = visible ? 0 : Layout.contentPanelPadding
+        let targetContentLeading = targetWidth
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -635,7 +635,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         let sidebarHidden = width < Layout.sidebarHiddenThreshold
-        let targetContentLeading: CGFloat = sidebarHidden ? Layout.contentPanelPadding : 0
+        let targetContentLeading = max(0, width)
 
         if animated {
             NSAnimationContext.runAnimationGroup({ context in
@@ -660,7 +660,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private func refreshSidebarVisibilityUI() {
         sidebarView?.updateVisibilityState()
         let sidebarHidden = (sidebarWidthConstraint?.constant ?? 0) < Layout.sidebarHiddenThreshold
-        contentLeadingConstraint?.constant = sidebarHidden ? Layout.contentPanelPadding : 0
+        contentLeadingConstraint?.constant = sidebarHidden ? 0 : max(0, sidebarWidthConstraint?.constant ?? Layout.sidebarWidth)
         sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
@@ -794,8 +794,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func configureSidebarRevealButton() {
         sidebarRevealButton.translatesAutoresizingMaskIntoConstraints = false
-        sidebarRevealButton.isBordered = true
-        sidebarRevealButton.bezelStyle = .circular
+        sidebarRevealButton.isBordered = false
+        sidebarRevealButton.bezelStyle = .regularSquare
         sidebarRevealButton.imagePosition = .imageOnly
         sidebarRevealButton.imageScaling = .scaleProportionallyDown
         sidebarRevealButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Show sidebar")
@@ -1023,7 +1023,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         } else {
             constraint.constant = 0
-            contentLeadingConstraint?.constant = Layout.contentPanelPadding
+            contentLeadingConstraint?.constant = 0
         }
         refreshSidebarVisibilityUI()
     }

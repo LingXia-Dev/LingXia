@@ -1102,5 +1102,5 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_getAppCapabilities(
     _env: EnvUnowned,
     _class: JClass,
 ) -> jint {
-    crate::browser::app_capabilities() as jint
+    crate::capabilities::app_capabilities() as jint
 }

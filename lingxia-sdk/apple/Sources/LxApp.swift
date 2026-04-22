@@ -63,6 +63,7 @@ final class LxAppCore {
     /// Bitmask of host app capabilities, queried from Rust after init.
     static var capabilities: UInt32 = 0
     static let capShell: UInt32 = 0x1
+    static let capNotifications: UInt32 = 0x2
 
     /// Global current app state - shared across iOS and macOS
     internal private(set) static var currentAppId: String?

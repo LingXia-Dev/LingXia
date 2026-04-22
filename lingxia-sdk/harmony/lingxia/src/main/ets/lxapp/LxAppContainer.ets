@@ -157,7 +157,7 @@ export struct LxAppContainer {
     this.initStatusBarHeight();
 
     this.path = this.initialPath;
-    hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeLxApp()}`);
+    hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
     hilog.info(DOMAIN, TAG, `Layout info: statusBarHeight=${this.statusBarHeight}, showCapsule=${this.shouldShowCapsuleButton()}`);
 
     // Register this container for TabBar updates
@@ -686,9 +686,9 @@ export struct LxAppContainer {
     .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
   }
 
-  private isHomeLxApp(): boolean {
+  private isHomeApp(): boolean {
     const miniApp = LxApp.getInstance();
-    const homeAppId = miniApp.getHomeLxAppId();
+    const homeAppId = miniApp.getHomeAppId();
     return this.appId === homeAppId;
   }
 
@@ -911,7 +911,7 @@ export struct LxAppContainer {
    * Home app doesn't show capsule button, other apps do
    */
   private shouldShowCapsuleButton(): boolean {
-    return !this.isHomeLxApp();
+    return !this.isHomeApp();
   }
 
   /**
