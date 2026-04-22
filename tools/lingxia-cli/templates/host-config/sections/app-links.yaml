@@ -1,0 +1,6 @@
+
+# HTTPS App Links / associated domains. The CLI syncs platform manifest/entitlement files.
+appLinks:
+  # DNS hosts accepted as app links, without scheme or path.
+  hosts:
+{{APP_LINK_HOSTS}}

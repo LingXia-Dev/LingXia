@@ -1,0 +1,90 @@
+# LingXia host app configuration
+#
+# This file is the source of truth for the host app project.
+# The CLI reads it and generates runtime app.json and ui.json.
+# Edit this file, not generated runtime files.
+
+# Host app metadata. This section is required for native app projects.
+app:
+  # Technical project name. Used for native build paths and the generated Rust lib name.
+  projectName: {{PROJECT_NAME}}
+  # User-facing display name for the host app.
+  productName: {{PRODUCT_NAME}}
+  # Host app version. Must be semantic version major.minor.patch.
+  productVersion: 0.0.1
+  # Optional LingXia server base URL, paired with lingxiaId.
+  # lingxiaServer: https://api.example.com
+  # Optional logical publishing ID used by app publishing flows.
+  # lingxiaId: {{PROJECT_NAME_COMMENT}}
+  # Native platforms included in this project: android, ios, macos, harmony.
+  platforms:
+{{PLATFORMS}}
+  # Home app opened by default. Resource source is declared in resources.bundles.
+  homeAppId: {{HOME_APP_ID}}
+{{ANDROID_SECTION}}{{IOS_SECTION}}{{MACOS_SECTION}}{{HARMONY_SECTION}}{{UI_SECTION}}
+# Native compile-time features for the host Rust library.
+# If this section exists, the CLI builds native Rust with --no-default-features and adds only the enabled features below.
+features:
+  # Enable JS/TS AppService runtime support.
+  # true -> compile js-lxapp/lingxia-logic and support logic-enabled lxapps.
+  # false -> native-only host; bundled/home lxapps must use logic: false.
+  appService: {{APP_SERVICE}}
+  # Enable product shell/browser chrome: browser, downloads, settings, panels.
+  # Requires appService because shell surfaces are AppService-backed lxapps.
+  shell: false
+  # Compile devtools bridge/hooks into the host app.
+  # lingxia dev may temporarily enable this without changing this file.
+  devtools: false
+
+# Platform/runtime integrations that must be predeclared before the SDK auto-enables them.
+# Do not list ordinary SDK APIs like camera here; those request permission only when called.
+capabilities:
+  # Enable push/notification integration where supported.
+  # When true, iOS/Harmony SDK initialization may request notification permission and fetch a push token.
+  notifications: false
+
+# Resource bundle sources copied into native app assets.
+# app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package assets come from.
+resources:
+  bundles:
+    # Home lxapp bundled with the native app.
+    - type: lxapp
+      appId: {{HOME_APP_ID}}
+      path: {{HOME_APP_PATH}}
+    # Optional shell webui override. If omitted and features.shell is true, the CLI uses the SDK default.
+    # - type: lxapp
+    #   appId: app.lingxia.browser
+    #   package: '@lingxia/shell-webui'
+    #   version: '0.5.1'
+    # Optional product lxapp bundled for an App UI surface, for example an assistant panel.
+    # - type: lxapp
+    #   appId: assistant-lxapp
+    #   path: assistant-lxapp
+
+# Shell product UI resources. Used only when features.shell is true.
+# Optional shorthand/override for shell webui. Equivalent to a resources.bundles entry with appId app.lingxia.browser.
+# For normal apps, omit this and let the CLI use resources/default behavior.
+# For repo development, point to a local checkout:
+# shell:
+#   webui:
+#     path: ../crates/lingxia-shell/webui
+# External app package form:
+# shell:
+#   webui:
+#     package: '@lingxia/shell-webui'
+#     version: '0.5.1'
+{{SHELL_SECTION}}
+{{APP_LINKS_SECTION}}
+# Storage and cache limits. Values are MiB except cacheMaxAgeDays.
+# Set cacheMaxAgeDays or cacheMaxSizeMB to 0 to disable that cleanup limit.
+storage:
+  # Maximum host temp storage size in MiB.
+  tempMaxSizeMB: 1024
+  # Maximum lxapp cache age in days. 0 disables age cleanup.
+  cacheMaxAgeDays: 7
+  # Maximum lxapp cache size in MiB. 0 disables size cleanup.
+  cacheMaxSizeMB: 2048
+  # Maximum user data storage size in MiB.
+  dataMaxSizeMB: 4096
+  # Maximum app-scoped storage size in MiB.
+  appStorageMaxSizeMB: 16384

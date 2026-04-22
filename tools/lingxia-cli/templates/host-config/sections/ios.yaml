@@ -1,0 +1,9 @@
+
+# iOS host settings. Used for SwiftPM resources, signing, and packaging.
+ios:
+  # iOS bundle identifier.
+  bundleId: {{PACKAGE_ID}}
+  # Optional iOS deployment target, for example "17.0".
+  # deploymentTarget: "17.0"
+  # SwiftPM target name for resource lookup. Explicit values make builds reproducible.
+  targetName: {{SWIFT_TARGET_NAME}}

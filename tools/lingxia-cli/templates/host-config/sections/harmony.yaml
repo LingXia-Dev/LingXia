@@ -1,0 +1,5 @@
+
+# Harmony host settings used by hvigor, signing, and deployment.
+harmony:
+  # Harmony bundle name.
+  bundleName: {{PACKAGE_ID}}

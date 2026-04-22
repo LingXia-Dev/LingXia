@@ -9,8 +9,6 @@ use std::path::Path;
 
 pub const HOST_CONFIG_FILE: &str = "lingxia.yaml";
 pub const LXAPP_BUILD_CONFIG_FILE: &str = "lxapp.config.ts";
-pub const DEFAULT_CACHE_MAX_AGE_DAYS: u64 = 7;
-pub const DEFAULT_CACHE_MAX_SIZE_MB: u64 = 2048;
 
 /// Host project configuration (native app project)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +25,12 @@ pub struct LingXiaConfig {
     pub macos: Option<MacosConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub harmony: Option<HarmonyConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub features: Option<FeaturesConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<CapabilitiesConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shell: Option<ShellConfig>,
     /// App-level UI config used to generate `ui.json` at build time.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<Value>,
@@ -40,6 +44,56 @@ pub struct LingXiaConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct FeaturesConfig {
+    #[serde(default = "default_true")]
+    pub app_service: bool,
+    #[serde(default)]
+    pub shell: bool,
+    #[serde(default)]
+    pub devtools: bool,
+}
+
+impl Default for FeaturesConfig {
+    fn default() -> Self {
+        Self {
+            app_service: true,
+            shell: false,
+            devtools: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilitiesConfig {
+    #[serde(default)]
+    pub notifications: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webui: Option<ShellWebUiConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShellWebUiConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct AppLinksConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
@@ -48,16 +102,49 @@ pub struct AppLinksConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageConfig {
+    #[serde(rename = "tempMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temp_max_size_mb: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_max_age_days: Option<u64>,
+    #[serde(rename = "cacheMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_max_size_mb: Option<u64>,
+    #[serde(rename = "dataMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data_max_size_mb: Option<u64>,
+    #[serde(rename = "appStorageMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app_storage_max_size_mb: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourcesConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bundles: Vec<ResourceBundleConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ResourceBundleConfig {
+    #[serde(rename = "type", default)]
+    pub bundle_type: ResourceBundleType,
+    #[serde(rename = "appId")]
+    pub app_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ResourceBundleType {
+    #[default]
+    Lxapp,
 }
 
 /// Host app settings (checked into git via `lingxia.yaml`).
@@ -73,7 +160,7 @@ pub struct HostAppConfig {
 
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_server: Option<String>,
+    pub lingxia_server: Option<String>,
 
     #[serde(default)]
     #[serde(rename = "lingxiaId")]
@@ -83,23 +170,8 @@ pub struct HostAppConfig {
     /// Platforms to build for this app (e.g. ["android"]).
     pub platforms: Vec<String>,
 
-    // Keep explicit spelling for "ID" (not "Id") to match runtime `app.json` schema.
-    #[serde(rename = "homeLxAppID")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub home_lxapp_id: Option<String>,
-
-    /// Maximum age in days for cache files before cleanup (default: 7)
-    /// Set to 0 to disable automatic cache cleanup
-    #[serde(default)]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_max_age_days: Option<u64>,
-
-    /// Maximum cache size in MiB for each lxapp user cache directory (default: 1024)
-    /// Set to 0 to disable capacity-based cache cleanup.
-    #[serde(default)]
-    #[serde(rename = "cacheMaxSizeMB")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cache_max_size_mb: Option<u64>,
+    #[serde(rename = "homeAppId")]
+    pub home_app_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,57 +265,6 @@ pub struct HarmonyConfig {
     pub target_sdk_version: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResourcesConfig {
-    /// Path to i18n resources (relative to project root)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub i18n: Option<String>,
-    /// Path to icon resources (relative to project root)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icons: Option<String>,
-    /// Bundle project directories to build and copy into host resources.
-    ///
-    /// String entries use the directory path directly and default to copying `dist/`
-    /// into a target directory named after `lxapp.json.appId`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bundles: Option<Vec<ResourceBundleConfig>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum ResourceBundleConfig {
-    Path(String),
-    Detailed(ResourceBundleDetail),
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum ResourceBundleType {
-    #[default]
-    Lxapp,
-    Npm,
-}
-
-impl ResourceBundleType {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Lxapp => "lxapp",
-            Self::Npm => "npm",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResourceBundleDetail {
-    #[serde(rename = "type", default)]
-    pub bundle_type: ResourceBundleType,
-    pub path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<String>,
-}
-
 impl LingXiaConfig {
     /// Get the project name from config
     pub fn get_project_name(&self) -> Option<&str> {
@@ -253,6 +274,42 @@ impl LingXiaConfig {
     /// Get the Rust library directory name (e.g., "myproject-lib")
     pub fn get_rust_lib_name(&self) -> Option<String> {
         self.get_project_name().map(|name| format!("{}-lib", name))
+    }
+
+    pub fn app_service_enabled(&self) -> bool {
+        self.features
+            .as_ref()
+            .map(|features| features.app_service)
+            .unwrap_or(true)
+    }
+
+    pub fn shell_enabled(&self, _platform: &str) -> bool {
+        self.features
+            .as_ref()
+            .map(|features| features.shell)
+            .unwrap_or(false)
+    }
+
+    pub fn devtools_enabled(&self) -> bool {
+        self.features
+            .as_ref()
+            .map(|features| features.devtools)
+            .unwrap_or(false)
+    }
+
+    pub fn native_features_for_platform(&self, platform: &str) -> Vec<String> {
+        let mut features = Vec::new();
+        if self.app_service_enabled() {
+            features.push("js-lxapp".to_string());
+        }
+        if self.shell_enabled(platform) {
+            features.push("shell".to_string());
+            features.push("webview-input".to_string());
+        }
+        if self.devtools_enabled() {
+            features.push("devtools".to_string());
+        }
+        features
     }
 
     /// Load config from `lingxia.yaml` in the given directory.
@@ -289,28 +346,18 @@ impl LingXiaConfig {
         Ok(())
     }
 
-    pub fn save_with_comments(&self, project_root: &Path) -> Result<()> {
-        let config_path = project_root.join(HOST_CONFIG_FILE);
-        let content = self.render_with_comments()?;
-        fs::write(&config_path, content)
-            .with_context(|| format!("Failed to write {}", HOST_CONFIG_FILE))?;
-        Ok(())
-    }
-
     /// Create a default Android config
     #[allow(dead_code)] // Used in tests
-    pub fn new_android(project_name: &str, package_id: &str, home_lxapp_id: &str) -> Self {
+    pub fn new_android(project_name: &str, package_id: &str, home_app_id: &str) -> Self {
         Self {
             app: Some(HostAppConfig {
                 project_name: project_name.to_string(),
                 product_name: project_name.to_string(),
                 product_version: "0.0.1".to_string(),
-                api_server: None,
+                lingxia_server: None,
                 lingxia_id: None,
                 platforms: vec!["android".to_string()],
-                home_lxapp_id: Some(home_lxapp_id.to_string()),
-                cache_max_age_days: Some(DEFAULT_CACHE_MAX_AGE_DAYS),
-                cache_max_size_mb: Some(DEFAULT_CACHE_MAX_SIZE_MB),
+                home_app_id: home_app_id.to_string(),
             }),
             android: Some(AndroidConfig {
                 package_id: package_id.to_string(),
@@ -323,17 +370,20 @@ impl LingXiaConfig {
             ios: None,
             macos: None,
             harmony: None,
+            features: Some(FeaturesConfig::default()),
+            capabilities: Some(CapabilitiesConfig::default()),
+            shell: None,
             ui: None,
             app_links: None,
             storage: None,
             resources: Some(ResourcesConfig {
-                i18n: None,
-                icons: None,
-                bundles: Some(vec![ResourceBundleConfig::Detailed(ResourceBundleDetail {
+                bundles: vec![ResourceBundleConfig {
                     bundle_type: ResourceBundleType::Lxapp,
-                    path: project_name.to_string(),
-                    target: None,
-                })]),
+                    app_id: home_app_id.to_string(),
+                    path: Some(home_app_id.to_string()),
+                    package: None,
+                    version: None,
+                }],
             }),
         }
     }
@@ -363,6 +413,9 @@ impl LingXiaConfig {
             if app.platforms.is_empty() {
                 return Err(anyhow!("app.platforms must include at least one platform"));
             }
+            if app.home_app_id.trim().is_empty() {
+                return Err(anyhow!("app.homeAppId must not be empty"));
+            }
             let has_macos = app
                 .platforms
                 .iter()
@@ -381,30 +434,74 @@ impl LingXiaConfig {
                 validate_applink_host(host)?;
             }
         }
-        if let Some(resources) = &self.resources
-            && let Some(bundles) = &resources.bundles
-        {
-            for bundle in bundles {
-                let (path, bundle_type, target) = match bundle {
-                    ResourceBundleConfig::Path(path) => {
-                        (path.as_str(), ResourceBundleType::Lxapp, None)
-                    }
-                    ResourceBundleConfig::Detailed(detail) => (
-                        detail.path.as_str(),
-                        detail.bundle_type,
-                        detail.target.as_deref(),
-                    ),
-                };
-                if path.trim().is_empty() {
-                    return Err(anyhow!("resources.bundles path must not be empty"));
+        if let Some(resources) = &self.resources {
+            let mut app_ids = HashSet::new();
+            for bundle in &resources.bundles {
+                let app_id = bundle.app_id.trim();
+                if app_id.is_empty() {
+                    return Err(anyhow!("resources.bundles[].appId must not be empty"));
                 }
-                if matches!(bundle_type, ResourceBundleType::Npm)
-                    && target.map(str::trim).filter(|s| !s.is_empty()).is_none()
-                {
+                if !app_ids.insert(app_id.to_string()) {
+                    return Err(anyhow!("resources.bundles appId must be unique: {app_id}"));
+                }
+                let has_path = bundle
+                    .path
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty());
+                let has_package = bundle
+                    .package
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| !value.is_empty());
+                if has_path && has_package {
                     return Err(anyhow!(
-                        "resources.bundles target is required for bundles with type \"npm\""
+                        "resources.bundles[{app_id}] must not set both path and package"
                     ));
                 }
+                if bundle
+                    .version
+                    .as_deref()
+                    .map(str::trim)
+                    .is_some_and(|value| value.is_empty())
+                {
+                    return Err(anyhow!(
+                        "resources.bundles[{app_id}].version must not be empty"
+                    ));
+                }
+            }
+        }
+        if let Some(features) = &self.features
+            && features.shell
+            && !features.app_service
+        {
+            return Err(anyhow!(
+                "features.shell requires features.appService because shell uses AppService-backed lxapps"
+            ));
+        }
+        if let Some(webui) = self.shell.as_ref().and_then(|shell| shell.webui.as_ref()) {
+            let has_path = webui
+                .path
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty());
+            let has_package = webui
+                .package
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| !value.is_empty());
+            if has_path && has_package {
+                return Err(anyhow!(
+                    "shell.webui must use either path or package, not both"
+                ));
+            }
+            if webui
+                .version
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(|value| value.is_empty())
+            {
+                return Err(anyhow!("shell.webui.version must not be empty"));
             }
         }
         if let Some(ui) = &self.ui {
@@ -424,32 +521,13 @@ impl LingXiaConfig {
         }
         Ok(())
     }
-
-    fn render_with_comments(&self) -> Result<String> {
-        let mut lines = vec![
-            "# LingXia host app configuration",
-            "#",
-            "# This file is the source of truth for the host app project.",
-            "# The CLI reads it and generates runtime app.json and ui.json.",
-            "#",
-            "# Quick tips:",
-            "# - app.platforms must include at least one platform",
-            "# - edit this file, not generated runtime files",
-            "# - ui controls app-level windows, panels, and activators",
-            "",
-        ];
-
-        let body = yaml::to_string(self).context("Failed to serialize config")?;
-        lines.push(body.trim_end());
-        Ok(lines.join("\n") + "\n")
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MacosUiSurfaceStyle {
     Window,
     StatusPanel,
-    AttachedPanel,
+    AttachPanel,
 }
 
 #[derive(Debug, Clone)]
@@ -556,7 +634,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         let style = match style {
             "window" => MacosUiSurfaceStyle::Window,
             "statusPanel" => MacosUiSurfaceStyle::StatusPanel,
-            "attachedPanel" => MacosUiSurfaceStyle::AttachedPanel,
+            "attachPanel" => MacosUiSurfaceStyle::AttachPanel,
             "sheet" | "embedded" => {
                 return Err(anyhow!(
                     "ui surface '{id}' uses unsupported macOS presentation style '{style}'"
@@ -611,7 +689,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         initial.style,
         MacosUiSurfaceStyle::Window
             | MacosUiSurfaceStyle::StatusPanel
-            | MacosUiSurfaceStyle::AttachedPanel
+            | MacosUiSurfaceStyle::AttachPanel
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"
@@ -642,9 +720,9 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                     return Err(anyhow!("root ui surface '{id}' cannot set attachTo"));
                 }
             }
-            MacosUiSurfaceStyle::AttachedPanel => {
+            MacosUiSurfaceStyle::AttachPanel => {
                 let parent_id = surface.attach_to.as_deref().ok_or_else(|| {
-                    anyhow!("attachedPanel ui surface '{id}' requires presentation.attachTo")
+                    anyhow!("attachPanel ui surface '{id}' requires presentation.attachTo")
                 })?;
                 let parent = surface_by_id.get(parent_id).ok_or_else(|| {
                     anyhow!("ui surface '{id}' attaches to unknown surface '{parent_id}'")
@@ -654,7 +732,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                     MacosUiSurfaceStyle::Window | MacosUiSurfaceStyle::StatusPanel
                 ) {
                     return Err(anyhow!(
-                        "macOS app UI currently does not support attachedPanel -> attachedPanel; surface '{id}' attaches to '{parent_id}'"
+                        "macOS app UI currently does not support attachPanel -> attachPanel; surface '{id}' attaches to '{parent_id}'"
                     ));
                 }
                 if parent_id != root_id {
@@ -663,18 +741,18 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                     ));
                 }
                 let edge = surface.edge.as_deref().ok_or_else(|| {
-                    anyhow!("attachedPanel ui surface '{id}' requires presentation.edge")
+                    anyhow!("attachPanel ui surface '{id}' requires presentation.edge")
                 })?;
                 match edge {
                     "leading" | "trailing" | "bottom" => {}
                     "top" => {
                         return Err(anyhow!(
-                            "macOS app UI currently does not support attachedPanel.edge: top"
+                            "macOS app UI currently does not support attachPanel.edge: top"
                         ));
                     }
                     other => {
                         return Err(anyhow!(
-                            "attachedPanel ui surface '{id}' has unknown presentation.edge '{other}'"
+                            "attachPanel ui surface '{id}' has unknown presentation.edge '{other}'"
                         ));
                     }
                 }
@@ -789,14 +867,13 @@ mod tests {
         println!("{}", yaml);
 
         let parsed: LingXiaConfig = yaml::from_str(&yaml).unwrap();
-        assert_eq!(parsed.app.unwrap().product_name, "my-app");
+        let app = parsed.app.unwrap();
+        assert_eq!(app.product_name, "my-app");
+        assert_eq!(app.home_app_id, "my-app");
         assert_eq!(parsed.android.unwrap().package_id, "com.example.myapp");
-        assert!(matches!(
-            parsed.resources.unwrap().bundles.as_deref(),
-            Some([ResourceBundleConfig::Detailed(detail)])
-                if detail.bundle_type == ResourceBundleType::Lxapp
-                    && detail.path == "my-app"
-        ));
+        let resources = parsed.resources.unwrap();
+        assert_eq!(resources.bundles[0].app_id, "my-app");
+        assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
     }
 
     #[test]
@@ -842,7 +919,7 @@ mod tests {
             }, {
                 "id": "side",
                 "presentation": {
-                    "style": "attachedPanel",
+                    "style": "attachPanel",
                     "attachTo": "main",
                     "edge": "trailing"
                 },
@@ -1015,7 +1092,7 @@ mod tests {
             }, {
                 "id": "panel",
                 "presentation": {
-                    "style": "attachedPanel",
+                    "style": "attachPanel",
                     "attachTo": "main",
                     "edge": "trailing"
                 },
@@ -1052,7 +1129,7 @@ mod tests {
             }, {
                 "id": "panel",
                 "presentation": {
-                    "style": "attachedPanel",
+                    "style": "attachPanel",
                     "attachTo": "main",
                     "edge": "top"
                 },
@@ -1065,6 +1142,6 @@ mod tests {
         }));
 
         let err = config.validate().unwrap_err().to_string();
-        assert!(err.contains("attachedPanel.edge: top"));
+        assert!(err.contains("attachPanel.edge: top"));
     }
 }

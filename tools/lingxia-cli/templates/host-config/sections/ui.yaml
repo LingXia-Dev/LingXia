@@ -1,0 +1,105 @@
+
+# App UI model: windows, panels, menu bar items, toolbar/sidebar/titlebar actions.
+# Supported surface styles today: window, statusPanel, attachPanel.
+# Supported activators today: menuBarItem, appActivation, sidebarItem, toolbarItem, titlebarItem.
+# Use menuBarItem + statusPanel + launch.openOnLaunch: false for menu-bar apps.
+# Settings and Downloads are built-in shell entries; do not duplicate them here.
+ui:
+  # Startup behavior for App UI.
+  launch:
+    # Surface id opened first. Must reference ui.surfaces[].id.
+    initialSurface: main
+    # Set false for menu-bar style apps that open only from a menuBarItem.
+    # openOnLaunch: false
+  # Visible app containers. On macOS, exactly one root window/statusPanel is currently supported.
+  surfaces:
+  - id: main
+    presentation:
+      # window = normal window; statusPanel = menu-bar anchored panel; attachPanel = panel attached to root.
+      style: window
+      # Optional initial size. Omit to use native defaults.
+      # size:
+      #   width: 960
+      #   height: 640
+      # resizable: true
+      # showTrafficLights: true
+    content:
+      # Current supported content kind is lxapp.
+      kind: lxapp
+      # LxApp appId opened inside this surface.
+      appId: {{HOME_APP_ID}}
+      # Optional initial route/path.
+      # path: pages/home/index
+  #
+  # Optional attach panel example. The referenced lxapp must be provided by runtime/update flow.
+  # - id: assistant
+  #   presentation:
+  #     style: attachPanel
+  #     attachTo: main
+  #     edge: trailing # leading | trailing | bottom
+  #   content:
+  #     kind: lxapp
+  #     appId: assistant-lxapp
+  #
+  # Optional menu-bar/status-panel app shape:
+  # - set ui.launch.openOnLaunch: false
+  # - change the root surface presentation.style to statusPanel
+  # - add a menuBarItem activator below
+  #
+  # statusPanel presentation options:
+  # presentation:
+  #   style: statusPanel
+  #   resizable: false
+  #   showTrafficLights: false
+  #   size:
+  #     width: 360
+  #     height: 480
+  # Native entry points that act on surfaces.
+  # menuBarItem is app-level and must not set hostSurface.
+  # sidebarItem/toolbarItem/titlebarItem render inside the hostSurface chrome.
+  # Actions: toggleSurface, openSurface, closeSurface, focusSurface.
+  activators: []
+  #
+  # Optional menu bar item. Use with statusPanel or a window you want to toggle from the menu bar.
+  # - id: statusMenu
+  #   kind: menuBarItem
+  #   label: {{SWIFT_TARGET_LABEL}}
+  #   icon: icons/status.svg # host-root-relative SVG, converted to native PDF during build
+  #   action:
+  #     kind: toggleSurface
+  #     surface: main
+  #
+  # Optional Dock/app activation behavior.
+  # - id: activateMain
+  #   kind: appActivation
+  #   action:
+  #     kind: openSurface
+  #     surface: main
+  #
+  # Optional sidebar item shown inside a host surface.
+  # - id: assistantSidebar
+  #   kind: sidebarItem
+  #   hostSurface: main
+  #   label: Assistant
+  #   icon: assistant/icon.svg
+  #   action:
+  #     kind: toggleSurface
+  #     surface: assistant
+  #
+  # Optional toolbar/titlebar actions.
+  # - id: refreshToolbar
+  #   kind: toolbarItem
+  #   hostSurface: main
+  #   label: Refresh
+  #   icon: icons/refresh.svg
+  #   action:
+  #     kind: focusSurface
+  #     surface: main
+  # - id: compactTitlebar
+  #   kind: titlebarItem
+  #   hostSurface: main
+  #   label: Compact
+  #   icon: icons/compact.svg
+  #   action:
+  #     kind: toggleSurface
+  #     surface: main
