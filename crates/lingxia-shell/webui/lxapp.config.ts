@@ -1,8 +1,4 @@
 export default {
-  staticDirs: ["public", "__lingxia"],
+  staticDirs: ["public"],
   assetDir: "assets",
-  native: {
-    rustDir: "../src",
-    out: "__lingxia/native.js",
-  },
 };

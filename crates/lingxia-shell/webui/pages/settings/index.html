@@ -526,7 +526,6 @@
     </div>
   </div>
 
-  <script src="lingxia://lxapp/__lingxia/native.js"></script>
   <script>
     (function () {
       var navItems = document.querySelectorAll('.nav-item[data-panel]');
@@ -545,9 +544,42 @@
         serverSavedFeedback: false
       };
 
-      var appApi = function () { return window.native.app; };
-      var downloadsApi = function () { return window.native.downloads; };
-      var proxyApi = function () { return window.native.proxy; };
+      function bridge() {
+        var api = window.LingXiaBridge;
+        if (!api || typeof api.invoke !== 'function' || typeof api.stream !== 'function') {
+          throw new Error('LingXiaBridge is not available');
+        }
+        return api;
+      }
+
+      function callHost(route, input) {
+        return bridge().invoke(route, input);
+      }
+
+      function streamHost(route, input) {
+        return bridge().stream(route, input);
+      }
+
+      var appApi = function () {
+        return {
+          getInfo: function () { return callHost('app.getInfo'); }
+        };
+      };
+      var downloadsApi = function () {
+        return {
+          getSettings: function () { return callHost('downloads.getSettings'); },
+          chooseDirectory: function () { return callHost('downloads.chooseDirectory'); },
+          resetDirectory: function () { return callHost('downloads.resetDirectory'); }
+        };
+      };
+      var proxyApi = function () {
+        return {
+          getSettings: function () { return callHost('proxy.getSettings'); },
+          updateSettings: function (input) { return callHost('proxy.updateSettings', input); },
+          refreshGfwList: function () { return callHost('proxy.refreshGfwList'); },
+          watch: function () { return streamHost('proxy.watch'); }
+        };
+      };
 
       navItems.forEach(function (nav) {
         nav.addEventListener('click', function (e) {

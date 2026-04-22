@@ -12,7 +12,36 @@
   var progressAnimationFrame = 0;
   var lastProgressAnimationTs = 0;
 
-  var api = function () { return window.native.downloads; };
+  function bridge() {
+    var api = window.LingXiaBridge;
+    if (!api || typeof api.invoke !== 'function' || typeof api.stream !== 'function') {
+      throw new Error('LingXiaBridge is not available');
+    }
+    return api;
+  }
+
+  function callHost(route, input) {
+    return bridge().invoke(route, input);
+  }
+
+  function streamHost(route, input) {
+    return bridge().stream(route, input);
+  }
+
+  var api = function () {
+    return {
+      list: function () { return callHost('downloads.list'); },
+      clearCompleted: function () { return callHost('downloads.clearCompleted'); },
+      remove: function (input) { return callHost('downloads.remove', input); },
+      cancel: function (input) { return callHost('downloads.cancel', input); },
+      pause: function (input) { return callHost('downloads.pause', input); },
+      retry: function (input) { return callHost('downloads.retry', input); },
+      resume: function (input) { return callHost('downloads.resume', input); },
+      open: function (input) { return callHost('downloads.open', input); },
+      reveal: function (input) { return callHost('downloads.reveal', input); },
+      watch: function () { return streamHost('downloads.watch'); }
+    };
+  };
 
   function sortDownloads(arr) {
     function weight(d) {

@@ -1,9 +1,14 @@
 {
-  "name": "lingxia-shell",
-  "version": "1.0.0",
+  "name": "@lingxia/shell-webui",
+  "version": "0.5.1",
+  "private": false,
+  "description": "Prebuilt LingXia shell webui lxapp bundle",
   "type": "module",
-  "scripts": {
-    "build": "cargo run -p lingxia-cli -- package",
-    "dev": "cargo run -p lingxia-cli -- build"
+  "files": [
+    "dist",
+    "lxapp.json"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
