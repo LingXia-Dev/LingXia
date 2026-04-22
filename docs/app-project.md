@@ -85,7 +85,7 @@ ui:
   surfaces:
     - id: main
       presentation:
-        style: window
+        kind: window
       content:
         kind: lxapp
         appId: my-home
@@ -265,26 +265,30 @@ ui:
 | `openOnLaunch` | bool | No | Defaults to open-on-launch behavior. Set `false` for menu-bar style apps. |
 | `splash.path` | string | No | Optional PNG source path copied into native resources as `splash.png`; macOS App UI does not present it yet. |
 
-For menu-bar apps, use `openOnLaunch: false` and add a `menuBarItem` activator that toggles the status panel.
+For menu-bar apps, use `openOnLaunch: false` and add a `menuBarItem` activator that toggles a panel anchored to the activator.
 
 ### `surfaces`
 
 A surface is a visible macOS container.
 
-Current macOS supported styles:
+One sentence model: **a surface defines what can be shown, presentation defines
+how it is shown, and activators define who opens it.**
 
-| Style | Status | Description |
+Current macOS supported presentation kinds:
+
+| Kind | Status | Description |
 |---|---|---|
 | `window` | Supported | Normal app window. |
-| `statusPanel` | Supported | Menu-bar anchored floating panel. |
-| `attachPanel` | Supported | Panel attached to the single root window/status panel. |
+| `panel` | Supported | Floating panel. Use `anchor: activator` to position it from the entry point that opened it. |
+| `attachPanel` | Supported | Panel attached to the single root window/panel. |
 | `sheet` | Rejected | Not implemented in macOS runtime. |
 | `embedded` | Rejected | Not implemented in macOS runtime. |
 
 Current macOS rules:
 
 - Exactly one root surface is required.
-- The root surface must be `window` or `statusPanel`.
+- The root surface must be `window` or `panel`.
+- Menu-bar panels use `presentation.kind: panel` and `presentation.anchor: activator`; when opened by a `menuBarItem`, the activator is the menu-bar icon.
 - `attachPanel` must set `presentation.attachTo`.
 - `attachPanel.attachTo` must reference the root surface.
 - `attachPanel.edge` must be `leading`, `trailing`, or `bottom`.
@@ -296,11 +300,12 @@ Common presentation fields:
 
 | Field | Applies To | Description |
 |---|---|---|
-| `style` | all surfaces | `window`, `statusPanel`, or `attachPanel` on macOS. |
-| `size.width` | `window`, `statusPanel` | Optional initial width. Omit it to use the shell's native default. |
-| `size.height` | `window`, `statusPanel` | Optional initial height. Omit it to use the shell's native default. |
-| `resizable` | `window`, `statusPanel` | Whether the native window can resize. Defaults to `true`. |
-| `showTrafficLights` | `window`, `statusPanel` | Whether macOS traffic lights are shown. Defaults to `true` for `window` and `false` for `statusPanel`. |
+| `kind` | all surfaces | `window`, `panel`, or `attachPanel` in the product model. Current runtime may still map this to platform-specific styles internally. |
+| `anchor` | `panel` | Optional anchor. Use `activator` to position the panel from the native entry point that opened it. |
+| `size.width` | `window`, `panel` | Optional initial width. Omit it to use the shell's native default. |
+| `size.height` | `window`, `panel` | Optional initial height. Omit it to use the shell's native default. |
+| `resizable` | `window`, `panel` | Whether the native window can resize. Defaults to `true`. |
+| `showTrafficLights` | `window`, `panel` | Whether macOS traffic lights are shown. Defaults to `true` for `window` and `false` for menu-bar panels. |
 | `attachTo` | `attachPanel` | Parent/root surface id. |
 | `edge` | `attachPanel` | `leading`, `trailing`, or `bottom`. |
 
@@ -318,7 +323,7 @@ Example root window:
 surfaces:
   - id: main
     presentation:
-      style: window
+      kind: window
     content:
       kind: lxapp
       appId: my-home
@@ -400,13 +405,13 @@ ui:
   surfaces:
     - id: main
       presentation:
-        style: window
+        kind: window
       content:
         kind: lxapp
         appId: lingxia-showcase
     - id: assistant
       presentation:
-        style: attachPanel
+        kind: attachPanel
         attachTo: main
         edge: trailing
       content:
@@ -426,15 +431,26 @@ ui:
 
 ### Menu Bar Panel Example
 
+This example uses a single declarative `panel` surface opened by the native
+menu-bar icon. The current macOS runtime supports exactly one root
+`window`/`panel` surface, so this example does not also declare a separate main
+window.
+
+`menuBarItem` is the native entry point. `presentation.kind: panel` describes
+how the `menu` surface is displayed. `presentation.anchor: activator` means the
+panel is positioned from whichever native entry point opened it; in this example
+that entry point is the menu-bar icon.
+
 ```yaml
 ui:
   launch:
-    initialSurface: monitor
+    initialSurface: menu
     openOnLaunch: false
   surfaces:
-    - id: monitor
+    - id: menu
       presentation:
-        style: statusPanel
+        kind: panel
+        anchor: activator
         resizable: false
         showTrafficLights: false
         size:
@@ -443,6 +459,7 @@ ui:
       content:
         kind: lxapp
         appId: monitor-home
+        path: pages/menubar/index
   activators:
     - id: status
       kind: menuBarItem
@@ -450,14 +467,16 @@ ui:
       icon: icons/monitor.svg
       action:
         kind: toggleSurface
-        surface: monitor
+        surface: menu
 ```
 
 Runtime behavior:
 
 - If the app only has menu-bar activators and no app-activation activator, it can run as an accessory-style menu-bar app.
-- Clicking the status item triggers the configured action.
-- `statusPanel` is positioned from the source status item when opened by a menu-bar activator.
+- Clicking the menu-bar icon toggles the `menu` surface.
+- The `menu` surface renders `monitor-home/pages/menubar/index`.
+- The string `menu` is a surface ID, not a page path.
+- A menu-bar anchored panel is positioned from the source menu-bar item.
 
 ### App Activation Example
 

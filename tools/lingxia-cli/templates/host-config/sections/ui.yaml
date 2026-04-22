@@ -1,8 +1,8 @@
 
 # App UI model: windows, panels, menu bar items, toolbar/sidebar/titlebar actions.
-# Supported surface styles today: window, statusPanel, attachPanel.
+# Supported presentation kinds today: window, panel, attachPanel.
 # Supported activators today: menuBarItem, appActivation, sidebarItem, toolbarItem, titlebarItem.
-# Use menuBarItem + statusPanel + launch.openOnLaunch: false for menu-bar apps.
+# Use menuBarItem + panel + launch.openOnLaunch: false for menu-bar apps.
 # Settings and Downloads are built-in shell entries; do not duplicate them here.
 ui:
   # Startup behavior for App UI.
@@ -11,12 +11,12 @@ ui:
     initialSurface: main
     # Set false for menu-bar style apps that open only from a menuBarItem.
     # openOnLaunch: false
-  # Visible app containers. On macOS, exactly one root window/statusPanel is currently supported.
+  # Visible app containers. On macOS, exactly one root window/panel is currently supported.
   surfaces:
   - id: main
     presentation:
-      # window = normal window; statusPanel = menu-bar anchored panel; attachPanel = panel attached to root.
-      style: window
+      # window = normal window; panel = floating panel; attachPanel = panel attached to root.
+      kind: window
       # Optional initial size. Omit to use native defaults.
       # size:
       #   width: 960
@@ -34,7 +34,7 @@ ui:
   # Optional attach panel example. The referenced lxapp must be provided by runtime/update flow.
   # - id: assistant
   #   presentation:
-  #     style: attachPanel
+  #     kind: attachPanel
   #     attachTo: main
   #     edge: trailing # leading | trailing | bottom
   #   content:
@@ -43,12 +43,13 @@ ui:
   #
   # Optional menu-bar/status-panel app shape:
   # - set ui.launch.openOnLaunch: false
-  # - change the root surface presentation.style to statusPanel
+  # - change the root surface presentation.kind to panel
   # - add a menuBarItem activator below
   #
-  # statusPanel presentation options:
+  # panel presentation options:
   # presentation:
-  #   style: statusPanel
+  #   kind: panel
+  #   anchor: activator
   #   resizable: false
   #   showTrafficLights: false
   #   size:
@@ -60,7 +61,7 @@ ui:
   # Actions: toggleSurface, openSurface, closeSurface, focusSurface.
   activators: []
   #
-  # Optional menu bar item. Use with statusPanel or a window you want to toggle from the menu bar.
+  # Optional menu bar item. Use with panel or a window you want to toggle from the menu bar.
   # - id: statusMenu
   #   kind: menuBarItem
   #   label: {{SWIFT_TARGET_LABEL}}

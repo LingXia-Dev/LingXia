@@ -121,7 +121,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         panelId: String
     ) -> Bool {
         guard let surface = surfaceById[panelId],
-              surface.presentation.style == .attachPanel,
+              surface.presentation.kind == .attachPanel,
               let position = panelPosition(for: surface) else {
             return false
         }
@@ -190,13 +190,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             throw LxAppUIError.invalidConfig("unknown surface id \(id)")
         }
 
-        switch surface.presentation.style {
-        case .window, .statusPanel:
+        switch surface.presentation.kind {
+        case .window, .panel:
             try openWindowSurface(surface, sourceActivatorID: sourceActivatorID)
         case .attachPanel:
             try openAttachPanelSurface(surface)
         case .sheet, .embedded:
-            throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported style \(surface.presentation.style.rawValue) on macOS")
+            throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported presentation.kind \(surface.presentation.kind.rawValue) on macOS")
         }
     }
 
@@ -205,8 +205,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         sourceActivatorID: String? = nil
     ) throws {
         applyWindowPresentation(for: surface)
-        if surface.presentation.style == .statusPanel {
-            positionStatusPanelWindow(for: sourceActivatorID)
+        if surface.presentation.kind == .panel {
+            positionPanelWindow(for: sourceActivatorID)
         }
 
         if openedSurfaceIDs.contains(surface.id) {
@@ -240,7 +240,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func requestAttachPanelOpenThroughRuntime(_ surface: LxAppUIConfig.Surface) throws {
-        guard surface.presentation.style == .attachPanel else {
+        guard surface.presentation.kind == .attachPanel else {
             throw LxAppUIError.invalidConfig("surface \(surface.id) is not an attachPanel")
         }
         guard case .lxapp = surface.content.kind,
@@ -285,8 +285,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard visibleSurfaceIDs.contains(id),
               let surface = surfaceById[id] else { return }
 
-        switch surface.presentation.style {
-        case .window, .statusPanel:
+        switch surface.presentation.kind {
+        case .window, .panel:
             shell.show()
         case .attachPanel:
             shell.show()
@@ -303,8 +303,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             closeSurface(id: childID)
         }
 
-        switch surface.presentation.style {
-        case .window, .statusPanel:
+        switch surface.presentation.kind {
+        case .window, .panel:
             shell.hide()
             if !shell.hasOpenTabs {
                 discardOpenedSubtree(rootID: id)
@@ -447,17 +447,17 @@ final class LxAppMacAppUIRuntime: NSObject {
     private func applyWindowPresentation(for surface: LxAppUIConfig.Surface) {
         let size = resolvedWindowSize(for: surface)
         let isResizable = surface.presentation.resizable ?? true
-        let showTrafficLights = surface.presentation.showTrafficLights ?? (surface.presentation.style == .window)
+        let showTrafficLights = surface.presentation.showTrafficLights ?? (surface.presentation.kind == .window)
         shell.applyManagedWindowPresentation(
             title: appConfig.productName,
             size: size,
             resizable: isResizable,
-            style: surface.presentation.style,
+            kind: surface.presentation.kind,
             showTrafficLights: showTrafficLights
         )
     }
 
-    private func positionStatusPanelWindow(for activatorID: String?) {
+    private func positionPanelWindow(for activatorID: String?) {
         guard let window = shell.window else { return }
         let resolvedActivatorID = activatorID ?? defaultMenuBarActivatorID
         guard let resolvedActivatorID,
@@ -498,7 +498,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func panelPosition(for surface: LxAppUIConfig.Surface) -> PanelPosition? {
-        guard surface.presentation.style == .attachPanel else { return nil }
+        guard surface.presentation.kind == .attachPanel else { return nil }
         switch surface.presentation.edge {
         case .leading:
             return .left
@@ -544,20 +544,27 @@ final class LxAppMacAppUIRuntime: NSObject {
                 throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported terminal content on macOS")
             }
 
+            if surface.presentation.anchor != nil && surface.presentation.kind != .panel {
+                throw LxAppUIError.invalidConfig("surface \(surface.id) can set anchor only when presentation.kind is panel")
+            }
+            if surface.presentation.kind == .panel && surface.presentation.anchor != .activator {
+                throw LxAppUIError.invalidConfig("surface \(surface.id) with presentation.kind panel requires anchor: activator")
+            }
+
             surfaceById[surface.id] = surface
         }
 
         guard let initialSurface = surfaceById[ui.launch.initialSurface] else {
             throw LxAppUIError.invalidConfig("launch.initialSurface references unknown surface \(ui.launch.initialSurface)")
         }
-        guard initialSurface.presentation.style == .window
-            || initialSurface.presentation.style == .statusPanel
-            || initialSurface.presentation.style == .attachPanel else {
+        guard initialSurface.presentation.kind == .window
+            || initialSurface.presentation.kind == .panel
+            || initialSurface.presentation.kind == .attachPanel else {
             throw LxAppUIError.unsupported("launch.initialSurface must reference a supported macOS surface")
         }
 
         let windowSurfaces = ui.surfaces.filter {
-            $0.presentation.style == .window || $0.presentation.style == .statusPanel
+            $0.presentation.kind == .window || $0.presentation.kind == .panel
         }
         guard windowSurfaces.count == 1, let rootSurface = windowSurfaces.first else {
             throw LxAppUIError.unsupported("macOS app UI currently requires exactly one root window surface")
@@ -566,8 +573,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         var childrenByParentId: [String: [String]] = [:]
 
         for surface in ui.surfaces {
-            switch surface.presentation.style {
-            case .window, .statusPanel:
+            switch surface.presentation.kind {
+            case .window, .panel:
                 if surface.presentation.attachTo != nil {
                     throw LxAppUIError.invalidConfig("root window surface \(surface.id) cannot set attachTo")
                 }
@@ -578,7 +585,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 guard let parent = surfaceById[parentID] else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) attaches to unknown surface \(parentID)")
                 }
-                guard parent.presentation.style == .window || parent.presentation.style == .statusPanel else {
+                guard parent.presentation.kind == .window || parent.presentation.kind == .panel else {
                     throw LxAppUIError.unsupported("macOS v1 does not support attachPanel -> attachPanel; surface \(surface.id) attaches to \(parentID)")
                 }
                 guard parent.id == rootSurface.id else {
@@ -592,7 +599,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
                 childrenByParentId[parentID, default: []].append(surface.id)
             case .sheet, .embedded:
-                throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported style \(surface.presentation.style.rawValue) on macOS")
+                throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported presentation.kind \(surface.presentation.kind.rawValue) on macOS")
             }
         }
 

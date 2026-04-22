@@ -34,19 +34,24 @@ struct LxAppUIConfig: Decodable, Sendable {
     }
 
     struct Presentation: Decodable, Sendable {
-        let style: Style
+        let kind: Kind
+        let anchor: Anchor?
         let size: Size?
         let resizable: Bool?
         let attachTo: String?
         let edge: Edge?
         let showTrafficLights: Bool?
 
-        enum Style: String, Decodable, Sendable {
+        enum Kind: String, Decodable, Sendable {
             case window
-            case statusPanel
+            case panel
             case attachPanel
             case sheet
             case embedded
+        }
+
+        enum Anchor: String, Decodable, Sendable {
+            case activator
         }
 
         enum Edge: String, Decodable, Sendable {

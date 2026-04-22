@@ -524,15 +524,15 @@ impl LingXiaConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MacosUiSurfaceStyle {
+enum MacosUiSurfaceKind {
     Window,
-    StatusPanel,
+    Panel,
     AttachPanel,
 }
 
 #[derive(Debug, Clone)]
 struct MacosUiSurface {
-    style: MacosUiSurfaceStyle,
+    kind: MacosUiSurfaceKind,
     attach_to: Option<String>,
     edge: Option<String>,
 }
@@ -627,25 +627,45 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
             .get("presentation")
             .and_then(Value::as_object)
             .ok_or_else(|| anyhow!("ui.surfaces[{index}].presentation must be an object"))?;
-        let style = non_empty_str(
-            presentation.get("style"),
-            &format!("ui.surfaces[{index}].presentation.style"),
+        let presentation_kind = non_empty_str(
+            presentation.get("kind"),
+            &format!("ui.surfaces[{index}].presentation.kind"),
         )?;
-        let style = match style {
-            "window" => MacosUiSurfaceStyle::Window,
-            "statusPanel" => MacosUiSurfaceStyle::StatusPanel,
-            "attachPanel" => MacosUiSurfaceStyle::AttachPanel,
+        let presentation_kind = match presentation_kind {
+            "window" => MacosUiSurfaceKind::Window,
+            "panel" => MacosUiSurfaceKind::Panel,
+            "attachPanel" => MacosUiSurfaceKind::AttachPanel,
             "sheet" | "embedded" => {
                 return Err(anyhow!(
-                    "ui surface '{id}' uses unsupported macOS presentation style '{style}'"
+                    "ui surface '{id}' uses unsupported macOS presentation.kind '{presentation_kind}'"
                 ));
             }
             other => {
                 return Err(anyhow!(
-                    "ui surface '{id}' has unknown presentation style '{other}'"
+                    "ui surface '{id}' has unknown presentation.kind '{other}'"
                 ));
             }
         };
+        let anchor = optional_non_empty_str(presentation.get("anchor"));
+        if let Some(anchor) = anchor.as_deref()
+            && anchor != "activator"
+        {
+            return Err(anyhow!(
+                "ui surface '{id}' has unsupported presentation.anchor '{anchor}'"
+            ));
+        }
+        if anchor.is_some() && presentation_kind != MacosUiSurfaceKind::Panel {
+            return Err(anyhow!(
+                "ui surface '{id}' can set presentation.anchor only when presentation.kind is panel"
+            ));
+        }
+        if presentation_kind == MacosUiSurfaceKind::Panel
+            && anchor.as_deref() != Some("activator")
+        {
+            return Err(anyhow!(
+                "ui surface '{id}' with presentation.kind panel requires presentation.anchor: activator"
+            ));
+        }
 
         let content = obj
             .get("content")
@@ -673,7 +693,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         surface_by_id.insert(
             id.to_string(),
             MacosUiSurface {
-                style,
+                kind: presentation_kind,
                 attach_to: optional_non_empty_str(presentation.get("attachTo")),
                 edge: optional_non_empty_str(presentation.get("edge")),
             },
@@ -686,10 +706,10 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         ));
     };
     if !matches!(
-        initial.style,
-        MacosUiSurfaceStyle::Window
-            | MacosUiSurfaceStyle::StatusPanel
-            | MacosUiSurfaceStyle::AttachPanel
+        initial.kind,
+        MacosUiSurfaceKind::Window
+            | MacosUiSurfaceKind::Panel
+            | MacosUiSurfaceKind::AttachPanel
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"
@@ -700,27 +720,27 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
         .iter()
         .filter_map(|(id, surface)| {
             matches!(
-                surface.style,
-                MacosUiSurfaceStyle::Window | MacosUiSurfaceStyle::StatusPanel
+                surface.kind,
+                MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
             )
             .then_some(id.as_str())
         })
         .collect::<Vec<_>>();
     if root_ids.len() != 1 {
         return Err(anyhow!(
-            "macOS app UI currently requires exactly one root window or statusPanel surface"
+            "macOS app UI currently requires exactly one root window or panel surface"
         ));
     }
     let root_id = root_ids[0];
 
     for (id, surface) in &surface_by_id {
-        match surface.style {
-            MacosUiSurfaceStyle::Window | MacosUiSurfaceStyle::StatusPanel => {
+        match surface.kind {
+            MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel => {
                 if surface.attach_to.is_some() {
                     return Err(anyhow!("root ui surface '{id}' cannot set attachTo"));
                 }
             }
-            MacosUiSurfaceStyle::AttachPanel => {
+            MacosUiSurfaceKind::AttachPanel => {
                 let parent_id = surface.attach_to.as_deref().ok_or_else(|| {
                     anyhow!("attachPanel ui surface '{id}' requires presentation.attachTo")
                 })?;
@@ -728,8 +748,8 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                     anyhow!("ui surface '{id}' attaches to unknown surface '{parent_id}'")
                 })?;
                 if !matches!(
-                    parent.style,
-                    MacosUiSurfaceStyle::Window | MacosUiSurfaceStyle::StatusPanel
+                    parent.kind,
+                    MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel
                 ) {
                     return Err(anyhow!(
                         "macOS app UI currently does not support attachPanel -> attachPanel; surface '{id}' attaches to '{parent_id}'"
@@ -910,7 +930,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -919,7 +939,7 @@ mod tests {
             }, {
                 "id": "side",
                 "presentation": {
-                    "style": "attachPanel",
+                    "kind": "attachPanel",
                     "attachTo": "main",
                     "edge": "trailing"
                 },
@@ -954,7 +974,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -988,7 +1008,7 @@ mod tests {
                 "surfaces": [{
                     "id": "main",
                     "presentation": {
-                        "style": "window"
+                        "kind": "window"
                     },
                     "content": {
                         "kind": "lxapp",
@@ -1021,7 +1041,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -1050,7 +1070,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -1083,7 +1103,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -1092,7 +1112,7 @@ mod tests {
             }, {
                 "id": "panel",
                 "presentation": {
-                    "style": "attachPanel",
+                    "kind": "attachPanel",
                     "attachTo": "main",
                     "edge": "trailing"
                 },
@@ -1120,7 +1140,7 @@ mod tests {
             "surfaces": [{
                 "id": "main",
                 "presentation": {
-                    "style": "window"
+                    "kind": "window"
                 },
                 "content": {
                     "kind": "lxapp",
@@ -1129,7 +1149,7 @@ mod tests {
             }, {
                 "id": "panel",
                 "presentation": {
-                    "style": "attachPanel",
+                    "kind": "attachPanel",
                     "attachTo": "main",
                     "edge": "top"
                 },

@@ -169,7 +169,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var appUIRuntimeRef: AnyObject?
     private var titlebarActionStrip: MacTitlebarActionStrip?
     private var titlebarAccessoryController: NSTitlebarAccessoryViewController?
-    private var usesStatusPanelPresentation = false
+    private var usesPanelPresentation = false
     private var sidebarChromeEnabled = true
 
     var onManagedWindowCloseRequested: (() -> Void)?
@@ -958,7 +958,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         title: String?,
         size: CGSize?,
         resizable: Bool,
-        style: LxAppUIConfig.Presentation.Style,
+        kind: LxAppUIConfig.Presentation.Kind,
         showTrafficLights: Bool
     ) {
         guard let window else { return }
@@ -967,7 +967,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             window.title = title
         }
 
-        usesStatusPanelPresentation = style == .statusPanel
+        usesPanelPresentation = kind == .panel
 
         if let size {
             window.setContentSize(size)
@@ -977,7 +977,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        if resizable && style == .window {
+        if resizable && kind == .window {
             window.styleMask.insert(.resizable)
             window.maxSize = NSSize(
                 width: CGFloat.greatestFiniteMagnitude,
@@ -995,7 +995,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             }
         }
 
-        if style == .statusPanel {
+        if kind == .panel {
             window.level = .floating
             window.isMovableByWindowBackground = true
             window.collectionBehavior.insert(.transient)
