@@ -43,7 +43,7 @@ pub enum HostOutput {
 }
 
 /// Wire-level method kind, serialized into the handshake schema so the JS
-/// bridge can automatically choose `call` vs `callStream`.
+/// bridge can automatically choose `invoke` vs `stream`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostMethodKind {
     Call,
@@ -375,6 +375,18 @@ impl<TIn, TOut> ChannelContext<TIn, TOut> {
             .send(ChannelOutbound::Data(payload_json))
             .map_err(|_| LxAppError::Bridge("Channel closed".to_string()))
     }
+
+    #[doc(hidden)]
+    pub fn close_handle(&self) -> ChannelCloseHandle {
+        ChannelCloseHandle {
+            outbound_tx: self.outbound_tx.clone(),
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn disable_close_on_drop(&mut self) {
+        self.close_on_drop = false;
+    }
 }
 
 impl<TIn, TOut> ChannelContext<TIn, TOut>
@@ -437,6 +449,27 @@ impl<TIn, TOut> Drop for ChannelContext<TIn, TOut> {
         let _ = self.outbound_tx.send(ChannelOutbound::Close {
             code: None,
             reason: None,
+        });
+    }
+}
+
+#[doc(hidden)]
+pub struct ChannelCloseHandle {
+    outbound_tx: mpsc::UnboundedSender<ChannelOutbound>,
+}
+
+impl ChannelCloseHandle {
+    pub fn close(&self) {
+        let _ = self.outbound_tx.send(ChannelOutbound::Close {
+            code: None,
+            reason: None,
+        });
+    }
+
+    pub fn close_with(&self, code: impl Into<String>, reason: impl Into<String>) {
+        let _ = self.outbound_tx.send(ChannelOutbound::Close {
+            code: Some(code.into()),
+            reason: Some(reason.into()),
         });
     }
 }

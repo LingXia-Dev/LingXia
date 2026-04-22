@@ -169,7 +169,10 @@ fn expand_host(
                 __lingxia_cancel: ::lingxia::host::HostCancel,
             ) -> ::lingxia::host::HostFuture<'a> {
                 Box::pin(async move {
-                    let __lingxia_result = #call_expr;
+                    let __lingxia_result = {
+                        let __lingxia_result = #call_expr;
+                        __lingxia_result.map_err(::std::convert::Into::into)
+                    };
                     #serialize_expr
                 })
             }
@@ -567,13 +570,14 @@ fn expand_stream(
                         ::lingxia::host::new_stream_context::<#event_ty, #result_ty>(__lingxia_cancel);
                     let __lingxia_error_tx = __lingxia_stream.error_sender();
 
-                    ::lingxia::tokio::task::spawn(async move {
+                    ::lingxia::task::spawn(async move {
                         let __lingxia_result: ::lingxia::host::HostResult<()> = {
                             let __lingxia_lxapp = __lingxia_lxapp;
                             let __lingxia_input = __lingxia_input;
                             let __lingxia_stream = __lingxia_stream;
                             #call_expr
-                        };
+                        }
+                        .map_err(::std::convert::Into::into);
                         if let Err(err) = __lingxia_result {
                             let _ = __lingxia_error_tx.send(Err(err));
                         }
@@ -664,7 +668,12 @@ impl ChannelFnPlan {
         })
     }
 
-    fn call_expr(&self, fn_ident: &syn::Ident, is_async: bool) -> proc_macro2::TokenStream {
+    fn call_expr(
+        &self,
+        fn_ident: &syn::Ident,
+        is_async: bool,
+        channel_ident: &syn::Ident,
+    ) -> proc_macro2::TokenStream {
         let mut args: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut prelude: Vec<proc_macro2::TokenStream> = Vec::new();
 
@@ -678,7 +687,7 @@ impl ChannelFnPlan {
                     match ::lingxia::host::parse_input(__lingxia_input.as_deref()) {
                         Ok(v) => v,
                         Err(e) => {
-                            __lingxia_ctx.close_with("INVALID_PARAMS", e.to_string());
+                            __lingxia_close.close_with("INVALID_PARAMS", e.to_string());
                             return;
                         }
                     };
@@ -686,7 +695,7 @@ impl ChannelFnPlan {
             args.push(quote! { __lingxia_payload });
         }
 
-        args.push(quote! { __lingxia_ctx });
+        args.push(quote! { #channel_ident });
 
         if is_async {
             quote! {
@@ -723,7 +732,8 @@ fn expand_channel(
         Err(err) => return err.to_compile_error(),
     };
 
-    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
+    let channel_ident = format_ident!("__lingxia_channel");
+    let call_expr = plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some(), &channel_ident);
     let inbound_ty = &plan.inbound_ty;
     let outbound_ty = &plan.outbound_ty;
 
@@ -742,10 +752,20 @@ fn expand_channel(
                 __lingxia_ctx: ::lingxia::host::ChannelContext,
                 __lingxia_input: Option<String>,
             ) {
-                ::lingxia::tokio::task::spawn(async move {
-                    let __lingxia_ctx =
+                ::lingxia::task::spawn(async move {
+                    let mut __lingxia_ctx = __lingxia_ctx;
+                    let __lingxia_close = __lingxia_ctx.close_handle();
+                    __lingxia_ctx.disable_close_on_drop();
+                    let #channel_ident =
                         __lingxia_ctx.with_types::<#inbound_ty, #outbound_ty>();
-                    #call_expr
+                    let __lingxia_result: ::lingxia::host::HostResult<()> = {
+                        #call_expr
+                    }
+                    .map_err(::std::convert::Into::into);
+                    match __lingxia_result {
+                        Ok(()) => __lingxia_close.close(),
+                        Err(err) => __lingxia_close.close_with("HOST_ERROR", err.to_string()),
+                    }
                 });
             }
         }

@@ -10,23 +10,19 @@ name = "lingxia"
 crate-type = ["cdylib", "staticlib"]
 
 [features]
-default = []
-shell = ["lingxia/shell", "webview-input"]
+default = {{HOST_DEFAULT_FEATURES}}
+js-lxapp = ["lingxia/js-lxapp"]
+shell = ["lingxia/shell", "webview-input", "js-lxapp"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
 
 [dependencies]
-lingxia = { version = "{{LINGXIA_VERSION}}" }
-lingxia-macro = { version = "{{LINGXIA_VERSION}}" }
+lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false, features = {{LINGXIA_DEP_FEATURES}} }
 lingxia_devtool = { package = "lingxia-devtool", version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
 
 # Platform-specific dependencies for FFI
-[target.'cfg(target_os = "android")'.dependencies]
-jni = "0.22.1"
-
-[target.'cfg(target_env = "ohos")'.dependencies]
-napi-ohos = "1.1"
-napi-derive-ohos = "1.1"
+{{ANDROID_DEPS_BLOCK}}
+{{HARMONY_DEPS_BLOCK}}
 
 # Release profile: optimize for size
 [profile.release]

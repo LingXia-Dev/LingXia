@@ -1,0 +1,13 @@
+[package]
+name = "lingxia-service"
+version.workspace = true
+edition.workspace = true
+description = "Shared LingXia service APIs used by JS bindings, shell, and native facade"
+license = "MIT"
+repository = "https://github.com/LingXia-Dev/LingXia"
+
+[dependencies]
+lingxia-transfer = { workspace = true }
+lingxia-settings = { workspace = true }
+lingxia-platform = { workspace = true }
+tokio = { workspace = true }

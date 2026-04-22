@@ -22,7 +22,7 @@ CRATES=(
   "lingxia-logic"
 
   # Facade support crate required by lingxia.
-  "lingxia-macro"
+  "lingxia-native-macros"
   "lingxia-browser"
   "lingxia-shell"
 

@@ -1,8 +1,8 @@
 [package]
-name = "lingxia-macro"
+name = "lingxia-native-macros"
 version.workspace = true
 edition.workspace = true
-description = "Procedural macros for LingXia host extensions"
+description = "Procedural macros for LingXia native APIs"
 license = "MIT"
 readme = "README.md"
 

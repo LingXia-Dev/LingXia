@@ -6,9 +6,10 @@ members = [
     "crates/lingxia-media",
     "crates/lingxia-shell",
     "crates/lingxia-browser",
+    "crates/lingxia-service",
     "crates/lingxia-transfer",
     "crates/lingxia-settings",
-    "crates/lingxia-host-macros",
+    "crates/lingxia-native-macros",
     "crates/lingxia-lxapp",
     "crates/lingxia-log",
     "crates/lingxia-provider",
@@ -65,8 +66,9 @@ lingxia-logic = { path = "crates/lingxia-logic", version = "0.5.1" }
 lingxia = { path = "crates/lingxia", version = "0.5.1" }
 lingxia-gen = { path = "crates/lingxia-gen", version = "0.1.0" }
 lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.5.1" }
-lingxia-macro = { path = "crates/lingxia-host-macros", version = "0.5.1" }
+lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.5.1" }
 lingxia-browser = { path = "crates/lingxia-browser", version = "0.5.1" }
+lingxia-service = { path = "crates/lingxia-service", version = "0.5.1" }
 lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.5.1" }
 lingxia-settings = { path = "crates/lingxia-settings", version = "0.5.1" }
 lingxia-shell = { path = "crates/lingxia-shell", version = "0.5.1" }

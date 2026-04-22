@@ -1,4 +1,4 @@
-# lingxia-macro
+# lingxia-native-macros
 
 Procedural macros for registering LingXia native APIs.
 

@@ -9,8 +9,9 @@ keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [features]
-default = ["browser"]
+default = ["browser", "js-lxapp"]
 browser = ["dep:lingxia-browser"]
+js-lxapp = ["lxapp/js-lxapp", "dep:lingxia-logic"]
 shell = ["browser", "dep:lingxia-shell"]
 webview-input = ["lingxia-webview/webview-input"]
 
@@ -23,18 +24,18 @@ lingxia-provider = { workspace = true }
 lingxia-update = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-media = { workspace = true }
+lingxia-service = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
-lingxia-logic = { workspace = true }
-lingxia-transfer = { workspace = true }
-lingxia-settings = { workspace = true }
+lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }
 lingxia-platform = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-messaging = { workspace = true }
-lingxia-macro = { workspace = true }
+lingxia-native-macros = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
