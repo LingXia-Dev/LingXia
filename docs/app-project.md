@@ -37,7 +37,7 @@ my-app/
 - `lingxia.yaml` is the source of truth for host build metadata and macOS App UI.
 - `lingxia build` generates runtime `app.json` and `ui.json` from `lingxia.yaml`.
 - Do not edit generated `app.json` or `ui.json` directly.
-- `resources.bundles` controls lxapp/static bundles copied into native resources.
+- `app.homeAppId` controls the home app opened by default; `resources.bundles` controls bundled asset sources.
 
 ---
 
@@ -71,7 +71,7 @@ app:
   productVersion: 1.0.0
   platforms:
     - macos
-  homeLxAppID: my-home
+  homeAppId: my-home
 
 macos:
   bundleId: com.example.myapp
@@ -91,10 +91,6 @@ ui:
         appId: my-home
   activators: []
 
-resources:
-  bundles:
-    - type: lxapp
-      path: my-home
 ```
 
 ---
@@ -106,10 +102,14 @@ resources:
 | `app` | Yes | Required | Host metadata used to generate runtime `app.json` |
 | `macos` | For macOS | Required for macOS builds | macOS bundle and SwiftPM target settings |
 | `ui` | For macOS product hosts | Required | App UI model used to generate `ui.json` |
-| `resources` | No | Supported | Extra bundled lxapps and static resources |
 | `android` | For Android | Supported | Android host settings |
 | `ios` | For iOS | Supported | iOS host settings |
 | `harmony` | For Harmony | Supported | Harmony host settings |
+| `features` | Recommended | Supported | Native Rust compile-time feature switches |
+| `capabilities` | Recommended | Supported | Platform/runtime integrations that may initialize SDK capability flows |
+| `resources` | Recommended | Supported | Bundle asset sources copied into native app resources |
+| `shell` | When `features.shell` is true | Supported | Shell webui source configuration |
+| `storage` | Recommended | Supported | Explicit host temp/cache/data size limits |
 
 ---
 
@@ -121,13 +121,102 @@ resources:
 | `productName` | string | Yes | User-facing app name. |
 | `productVersion` | string | Yes | Host app version. |
 | `platforms` | string[] | Yes | Enabled platforms, for example `macos`, `android`, `ios`, `harmony`. |
-| `homeLxAppID` | string | No | Home lxapp appId opened by default. |
+| `homeAppId` | string | Yes | Home app id opened by default. |
 | `lingxiaId` | string | No | Logical publishing ID, used by app publishing flows. |
-| `apiServer` | string | No | Optional API server base URL written into runtime metadata. |
-| `cacheMaxAgeDays` | number | No | Cache TTL in days. `0` disables age-based cleanup. |
-| `cacheMaxSizeMB` | number | No | Per-lxapp cache capacity in MiB. `0` disables size-based cleanup. |
+| `lingxiaServer` | string | No | Optional LingXia server base URL paired with `lingxiaId`. |
 
-`homeLxAppVersion` is not configured in `lingxia.yaml`; the CLI derives it from built lxapp metadata.
+`homeAppVersion` is not configured in `lingxia.yaml`; the CLI derives it from the matching `resources.bundles` source.
+
+---
+
+## `features` Section
+
+`features` controls native Rust compile-time features. When this section exists, the CLI builds the host Rust library with `--no-default-features` and enables only the selected features.
+
+| Field | Type | Default | Description |
+|---|---|---:|---|
+| `appService` | bool | `true` | Enables JS/TS AppService runtime support. Set `false` for native-only hosts; logic-enabled lxapps will be rejected. |
+| `shell` | bool | `false` | Enables product shell/browser chrome: browser, downloads, settings, panels. Requires `appService: true`. |
+| `devtools` | bool | `false` | Compiles devtools hooks into the host. `lingxia dev` may temporarily enable it without editing YAML. |
+
+`-t lxapp` projects always require an AppService-capable host. `-t native-app` projects may set `appService: false` when they only need native-hosted UI and host APIs.
+
+---
+
+## `capabilities` Section
+
+`capabilities` is for platform/runtime integrations that must be predeclared before the SDK auto-enables them. Do not list ordinary SDK APIs such as camera here; those should request permission only when called.
+
+| Field | Type | Default | Description |
+|---|---|---:|---|
+| `notifications` | bool | `false` | Enables push/notification integration where supported. iOS/Harmony SDK startup may request notification permission and fetch a push token. |
+
+---
+
+## `shell` Section
+
+`shell` is used only when `features.shell: true`. Normal apps can omit it and use the SDK default shell webui. Repo development can point to a local checkout; external apps should use the package form.
+
+```yaml
+shell:
+  webui:
+    package: '@lingxia/shell-webui'
+    version: '0.5.1'
+```
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `webui.path` | string | One of path/package | Project-relative path to a shell webui lxapp source tree. The CLI builds it. |
+| `webui.package` | string | One of path/package | npm package containing prebuilt shell webui `lxapp.json` and `dist/`. |
+| `webui.version` | string | With package | npm package version. If omitted, the CLI version is used. |
+
+Do not use `app.homeAppId` for shell internals. `app.homeAppId` is the product home app; `shell.webui` is the shell/browser UI asset.
+
+---
+
+## `resources` Section
+
+`resources.bundles` declares lxapp asset sources bundled into the native host. It does not decide what the app opens; `app.homeAppId` and `ui.surfaces[].content.appId` do that.
+
+| Field | Type | Required | Description |
+|---|---|---:|---|
+| `bundles[].type` | string | Yes | Currently `lxapp`. |
+| `bundles[].appId` | string | Yes | App id provided by this bundle. Must match the bundle `lxapp.json.appId`. |
+| `bundles[].path` | string | No | Project-relative local lxapp source path. When set, the CLI builds and bundles it. |
+| `bundles[].package` | string | No | npm package containing prebuilt `lxapp.json` and `dist/`. When set, the CLI downloads and bundles it. |
+| `bundles[].version` | string | With package | npm package version. If omitted, the CLI version is used. |
+
+Example:
+
+```yaml
+resources:
+  bundles:
+    - type: lxapp
+      appId: lingxia-showcase
+      path: lingxia-showcase
+    - type: lxapp
+      appId: app.lingxia.browser
+      package: '@lingxia/shell-webui'
+      version: '0.5.1'
+    - type: lxapp
+      appId: lingxia-chat
+```
+
+If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available.
+
+---
+
+## `storage` Section
+
+`storage` makes storage policy visible instead of relying on hidden defaults. Values are MiB except `cacheMaxAgeDays`.
+
+| Field | Type | Default | Description |
+|---|---|---:|---|
+| `tempMaxSizeMB` | number | `1024` | Maximum host temp storage size. |
+| `cacheMaxAgeDays` | number | `7` | Maximum lxapp cache age. `0` disables age cleanup. |
+| `cacheMaxSizeMB` | number | `2048` | Maximum lxapp cache size. `0` disables size cleanup. |
+| `dataMaxSizeMB` | number | `4096` | Maximum user data storage size. |
+| `appStorageMaxSizeMB` | number | `16384` | Maximum app-scoped storage size. |
 
 ---
 
@@ -141,42 +230,6 @@ resources:
 | `executableName` | string | Recommended | SwiftPM executable product/binary name. |
 
 If `targetName` or `executableName` are omitted, the CLI tries reasonable defaults and then falls back to inference. Explicit names are preferred for reproducible builds.
-
----
-
-## `resources` Section
-
-`resources.bundles` copies lxapp/static bundles into native host resources.
-`resources.i18n` and `resources.icons` are optional project-relative resource
-directories used by platform host asset generation when present.
-
-```yaml
-resources:
-  bundles:
-    - type: lxapp
-      path: my-home
-    - type: lxapp
-      path: ../examples/lingxia-chat
-```
-
-Bundle entries can be short strings or objects:
-
-```yaml
-resources:
-  bundles:
-    - my-home
-    - type: lxapp
-      path: ../examples/lingxia-chat
-      target: app.lingxia.browser
-```
-
-| Field | Type | Description |
-|---|---|---|
-| `type` | `lxapp` or `npm` | Bundle build/copy strategy. Defaults to `lxapp`. |
-| `path` | string | Project-relative bundle path. |
-| `target` | string | Resource target directory override. Required for `npm` bundles; optional for `lxapp` bundles. |
-
-For the built-in browser/settings/downloads UI, include `../crates/lingxia-shell/webui` as an lxapp bundle when the host app exposes browser shell features.
 
 ---
 
@@ -224,7 +277,7 @@ Current macOS supported styles:
 |---|---|---|
 | `window` | Supported | Normal app window. |
 | `statusPanel` | Supported | Menu-bar anchored floating panel. |
-| `attachedPanel` | Supported | Panel attached to the single root window/status panel. |
+| `attachPanel` | Supported | Panel attached to the single root window/status panel. |
 | `sheet` | Rejected | Not implemented in macOS runtime. |
 | `embedded` | Rejected | Not implemented in macOS runtime. |
 
@@ -232,10 +285,10 @@ Current macOS rules:
 
 - Exactly one root surface is required.
 - The root surface must be `window` or `statusPanel`.
-- `attachedPanel` must set `presentation.attachTo`.
-- `attachedPanel.attachTo` must reference the root surface.
-- `attachedPanel.edge` must be `leading`, `trailing`, or `bottom`.
-- `attachedPanel.edge: top` is rejected.
+- `attachPanel` must set `presentation.attachTo`.
+- `attachPanel.attachTo` must reference the root surface.
+- `attachPanel.edge` must be `leading`, `trailing`, or `bottom`.
+- `attachPanel.edge: top` is rejected.
 - The stable `content.kind` today is `lxapp`.
 - Each `lxapp` surface must currently use a unique `content.appId`.
 
@@ -243,13 +296,13 @@ Common presentation fields:
 
 | Field | Applies To | Description |
 |---|---|---|
-| `style` | all surfaces | `window`, `statusPanel`, or `attachedPanel` on macOS. |
+| `style` | all surfaces | `window`, `statusPanel`, or `attachPanel` on macOS. |
 | `size.width` | `window`, `statusPanel` | Optional initial width. Omit it to use the shell's native default. |
 | `size.height` | `window`, `statusPanel` | Optional initial height. Omit it to use the shell's native default. |
 | `resizable` | `window`, `statusPanel` | Whether the native window can resize. Defaults to `true`. |
 | `showTrafficLights` | `window`, `statusPanel` | Whether macOS traffic lights are shown. Defaults to `true` for `window` and `false` for `statusPanel`. |
-| `attachTo` | `attachedPanel` | Parent/root surface id. |
-| `edge` | `attachedPanel` | `leading`, `trailing`, or `bottom`. |
+| `attachTo` | `attachPanel` | Parent/root surface id. |
+| `edge` | `attachPanel` | `leading`, `trailing`, or `bottom`. |
 
 Content fields:
 
@@ -271,19 +324,7 @@ surfaces:
       appId: my-home
 ```
 
-Example attached assistant panel:
-
-```yaml
-surfaces:
-  - id: assistant
-    presentation:
-      style: attachedPanel
-      attachTo: main
-      edge: trailing
-    content:
-      kind: lxapp
-      appId: lingxia-chat
-```
+`attachPanel` is supported by the macOS runtime. If the panel uses another lxapp, list it in `resources.bundles` for local bundling, or let the runtime/update provider fetch it.
 
 Do not define separate `settings` or `downloads` surfaces for the built-in browser app. Those pages are opened by built-in shell controls.
 
@@ -324,14 +365,14 @@ Examples:
 
 ```yaml
 activators:
-  - id: assistantSidebar
+  - id: homeSidebar
     kind: sidebarItem
     hostSurface: main
-    label: AI Chat
-    icon: lingxia-chat/chat.svg
+    label: Home
+    icon: icons/home.svg
     action:
-      kind: toggleSurface
-      surface: assistant
+      kind: focusSurface
+      surface: main
 ```
 
 
@@ -350,7 +391,7 @@ Surface-owned activators are visible only while their `hostSurface` is visible.
 
 ### Assistant Panel Example
 
-This is the current example shape: one main app window plus an attached AI Chat assistant panel. Settings and Downloads remain shell built-ins.
+This shape uses one main app window plus an attached AI assistant panel. Settings and Downloads remain shell built-ins. `lingxia-chat` can be bundled locally through `resources.bundles`, or omitted there and fetched by runtime/update flow.
 
 ```yaml
 ui:
@@ -365,7 +406,7 @@ ui:
         appId: lingxia-showcase
     - id: assistant
       presentation:
-        style: attachedPanel
+        style: attachPanel
         attachTo: main
         edge: trailing
       content:
@@ -381,12 +422,6 @@ ui:
         kind: toggleSurface
         surface: assistant
 
-resources:
-  bundles:
-    - type: lxapp
-      path: lingxia-showcase
-    - type: lxapp
-      path: lingxia-chat
 ```
 
 ### Menu Bar Panel Example
@@ -469,7 +504,7 @@ Generated macOS resource paths look like:
 icons/browser-<hash>.pdf
 ```
 
-Do not reference generated lxapp runtime assets such as `app.lingxia.browser/public/LingXia.png` for native chrome icons. Use a host-root-relative SVG source file instead; it is fine for that source file to live inside a bundled lxapp project such as `lingxia-chat/chat.svg`, because the CLI converts and copies it into native host resources.
+Do not reference generated lxapp runtime assets such as `app.lingxia.browser/public/LingXia.png` for native chrome icons. Use a host-root-relative SVG source file instead; it is fine for that source file to live inside the home lxapp project, because the CLI converts and copies it into native host resources.
 
 ---
 
@@ -482,6 +517,7 @@ During `lingxia build`, the CLI generates platform resources:
 - `icons/*.pdf`: generated macOS native chrome icons.
 - `splash.png`: optional copied splash image when `ui.launch.splash.path` is configured.
 - bundled lxapp directories from `resources.bundles`.
+- bundled shell webui directory when `features.shell: true`.
 - `bridge-runtime.js`.
 
 For macOS, these are copied into the SwiftPM target resource directory, usually `macos/Sources/<targetName>/Resources` unless the target declares a custom `path`.
@@ -500,7 +536,7 @@ lingxia build --platform macos --framework vue
 
 The macOS host build does the following:
 
-- Builds configured lxapp resource bundles.
+- Builds the configured home lxapp resource bundle.
 - Generates `app.json` and `ui.json`.
 - Builds the Rust host static library.
 - Enables the native `shell` feature for macOS builds by default.
@@ -522,9 +558,9 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 - Adding Settings or Downloads to `ui.activators`: these are built-in shell entries, not product UI activators.
 - Adding `trayItem` to macOS `ui.activators`: it is not a macOS App UI activator.
 - Defining multiple surfaces with the same `content.appId`: current macOS runtime rejects this.
-- Using `attachedPanel` without `attachTo` or `edge`.
+- Using `attachPanel` without `attachTo` or `edge`.
 - Attaching a panel to another panel instead of the root surface.
-- Using `attachedPanel.edge: top`, which is not supported yet.
+- Using `attachPanel.edge: top`, which is not supported yet.
 - Expecting `closeSurface` to destroy WebViews; it hides the surface.
 - Using PNG or generated lxapp runtime images for `ui.activators[].icon`; App UI icons must be host-root-relative SVG source files.
 - Editing generated `app.json` or `ui.json`.
@@ -539,7 +575,7 @@ This page intentionally does not define product behavior for:
 - splash presentation
 - multiple root windows
 - sheets and embedded native host surfaces
-- attached panels nested under other panels
-- top-attached panels
+- attach panels nested under other panels
+- top-attach panels
 - reusing one lxapp appId across multiple surfaces
 - page-owned App UI APIs for toggling or closing surfaces from lxapp content

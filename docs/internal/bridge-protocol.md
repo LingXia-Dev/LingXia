@@ -74,12 +74,12 @@ Routing rules:
 
 ### 3.1 View-initiated Families
 
-| Family | Initiator API | Frame pattern | Cardinality |
+| Family | Low-level API | Frame pattern | Cardinality |
 |---|---|---|---|
-| Notification | `notify()` | `notify` | one-way, no response |
-| Unary request | `call()` | `req -> res` | one terminal response |
-| Streaming request | `callStream()` | `req -> event* -> res` | zero or more events, one terminal response |
-| Channel | `channel.open()` | `ch.open -> ch.ack -> ch.data* / ch.close` | long-lived bidirectional session |
+| Notification | `raw.notify()` | `notify` | one-way, no response |
+| Unary request | `raw.call()` | `req -> res` | one terminal response |
+| Streaming request | `raw.stream()` | `req -> event* -> res` | zero or more events, one terminal response |
+| Channel | `raw.channel.open()` | `ch.open -> ch.ack -> ch.data* / ch.close` | long-lived bidirectional session |
 
 ### 3.2 Bridge-initiated Families
 
@@ -557,32 +557,46 @@ Bridge-level error codes are part of the protocol contract and MUST NOT be remov
 
 ## 9. API Surface Mapping
 
-### 9.1 View Runtime
+### 9.1 Low-level Protocol API
 
-The View runtime exposes:
+The low-level API maps directly to bridge frames. It is used by generated page
+action runtimes and other code that already owns full method names and
+capabilities.
 
 ```ts
-LingXiaBridge.call(method, params?, options?): Promise<result>
-LingXiaBridge.callStream(method, params?, options?): StreamHandle<data, result>
-LingXiaBridge.notify(method, params?, options?): void
-LingXiaBridge.channel.open(topic, params?, options?): Promise<Channel<data>>
+LingXiaBridge.raw.call(method, params?, options?): Promise<result>
+LingXiaBridge.raw.stream(method, params?, options?): StreamHandle<data, result>
+LingXiaBridge.raw.notify(method, params?, options?): void
+LingXiaBridge.raw.channel.open(topic, params?, options?): Promise<Channel<data>>
 LingXiaBridge.state.subscribe((data, info) => void): () => void
 ```
 
-### 9.2 Generated Page Actions
+### 9.2 Host Convenience API
+
+The host convenience API is not a protocol primitive. It prefixes routes with
+`host.`, sets `cap: "host"`, normalizes errors, and wraps stream/channel handles
+for app-facing code.
+
+```ts
+LingXiaBridge.invoke(route, input?, options?): Promise<result>
+LingXiaBridge.stream(route, input?, options?): NativeStream<data, result>
+LingXiaBridge.notify(route, input?, options?): void
+LingXiaBridge.channel(route, input?, options?): Promise<NativeChannel<in, out>>
+```
+
+### 9.3 Generated Page Actions
 
 The CLI maps JS method shape to View wrapper behavior:
 
 | JS method shape | Generated View behavior |
 |---|---|
-| `void` or `Promise<void>` | `notify()` |
-| non-void return | `call()` |
-| `async function*`, `AsyncIterable`, `AsyncIterator`, `AsyncGenerator` | `callStream()` |
+| `void` or `Promise<void>` | `raw.notify()` |
+| non-void return | `raw.call()` |
+| `async function*`, `AsyncIterable`, `AsyncIterator`, `AsyncGenerator` | `raw.stream()` |
 
-### 9.3 Backend Capabilities
+### 9.4 Backend Capabilities
 
 | Backend | `req` | `notify` | `ch.open` |
 |---|---|---|---|
 | Host | unary and streaming | yes | — |
 | Logic | unary and streaming | yes | yes |
-

@@ -16,7 +16,7 @@ Application Rust libraries, such as `examples/*/rust-lib`, should:
 
 - depend on `lingxia`
 - define host APIs through `lingxia`
-- register logic extensions through `lingxia`
+- register logic extensions through `lingxia::js` when `js-lxapp` is enabled
 - consume platform exports through `lingxia`
 
 They should not need to know about runtime-core crate boundaries.
@@ -53,12 +53,12 @@ The proc-macro implementation can stay in a separate crate, but that crate is an
 
 ### 3. Logic extension authoring surface
 
-App authors should register Logic-layer APIs through `lingxia`.
+App authors should register Logic-layer APIs through `lingxia::js`.
 
 This includes:
 
-- `lingxia::LxLogicExtension`
-- `lingxia::register_logic_extension(...)`
+- `lingxia::js::LxLogicExtension`
+- `lingxia::js::register_logic_extension(...)`
 - any stable `lx` helper facade intentionally exposed for extension authors
 
 App crates should not depend on `lxapp::lx` directly.
@@ -158,8 +158,7 @@ Those crates can exist internally during transition, but they should not define 
 
 Application crates should not directly depend on:
 
-- `lingxia-macro`
-- `lingxia-host-macros`
+- `lingxia-native-macros`
 
 These are implementation details behind `lingxia::native`.
 
@@ -177,8 +176,8 @@ lingxia::
   native
 
   LxApp
-  LxLogicExtension
-  register_logic_extension
+  js::LxLogicExtension
+  js::register_logic_extension
 
   downloads
   updates
@@ -202,7 +201,7 @@ Application Rust libraries should not directly depend on:
 
 - `lxapp`
 - `lingxia-browser`
-- `lingxia-macro`
+- `lingxia-native-macros`
 
 If an app crate currently needs one of those dependencies, that indicates the `lingxia` facade is still missing a required export or wrapper.
 

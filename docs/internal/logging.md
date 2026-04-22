@@ -15,10 +15,10 @@ This document does not define any specific backend transport or product integrat
 
 Related implementation files:
 
-- `crates/lingxia-observability/src/lib.rs`
-- `crates/lingxia-lxapp/src/log.rs`
-- `crates/lingxia-lxapp/src/provider.rs`
+- `crates/lingxia-log/src/lib.rs`
 - `crates/lingxia/src/logging.rs`
+- `crates/lingxia-lxapp/src/lib.rs`
+- `crates/lingxia-lxapp/src/page/mod.rs`
 
 ## Architecture
 
@@ -46,7 +46,7 @@ There are two separate capability paths:
 
 ## Core Data Model
 
-`lingxia-observability` defines the shared log domain model:
+`lingxia-log` defines the shared log domain model:
 
 - `LogMessage`
   - `timestamp_ms`
@@ -76,7 +76,8 @@ SDK bootstrap initializes logging in `crates/lingxia/src/logging.rs`:
 
 1. `LogManager::init(...)` installs the global runtime log manager.
 2. `log` crate integration is installed through `SdkLogger`.
-3. `lxapp::log::init_tracing()` installs the tracing subscriber bridge.
+3. `LogManager::init(...)` installs the tracing subscriber bridge through
+   `lingxia_log::tracing_layer()`.
 
 After initialization:
 
@@ -86,7 +87,8 @@ After initialization:
 
 ## Dispatch Flow
 
-Main dispatch logic is in `crates/lingxia-lxapp/src/log.rs`.
+Main dispatch logic is in `crates/lingxia-log/src/lib.rs`, inside
+`LogManager::dispatch(...)`.
 
 For each emitted `LogMessage`:
 
@@ -103,7 +105,7 @@ Important properties:
 
 ## Re-entrancy Rule
 
-`LogProvider::on_log(...)` has a strict re-entrancy constraint, documented in `crates/lingxia-observability/src/lib.rs`:
+`LogProvider::on_log(...)` has a strict re-entrancy constraint, documented in `crates/lingxia-log/src/lib.rs`:
 
 - provider implementations must not emit LingXia log events from inside `on_log`
 - same-thread re-entry is guarded
@@ -200,9 +202,48 @@ Behavior when no custom provider is registered:
 
 This separation is intentional:
 
-- `lingxia-observability` defines capability and shared types
-- `lingxia-lxapp` owns runtime dispatch and buffering
+- `lingxia-log` defines capability, shared types, dispatch, buffering, live stream, and archive collection
+- `lingxia` installs platform logging, the Rust `log` crate bridge, and SDK FFI log entry points
+- `lingxia-lxapp` emits runtime/page/appservice logs through `lingxia-log`
 - concrete hosts/providers decide whether and how to forward logs elsewhere
+
+## Rust `log` Bridge And Downstream Logger
+
+`crates/lingxia/src/logging.rs` installs `SdkLogger` as the global Rust `log`
+crate logger when platform runtime initialization starts.
+
+For every accepted `log` record:
+
+1. `SdkLogger` converts the record into a `LogMessage` with `LogTag::Native`.
+2. The message enters `lingxia-log` through `LogBuilder`.
+3. If a downstream Rust logger was registered through
+   `lingxia::log::register_downstream_logger(...)`, the original `log::Record`
+   is also forwarded to that logger.
+
+`register_downstream_logger(...)` is separate from `LogProvider`:
+
+- downstream logger is for Rust `log` compatibility
+- `LogProvider` is for LingXia structured realtime/collection integration
+- downstream logger receives only Rust `log` records, not every structured SDK log source
+
+## SDK FFI Log Entry Points
+
+Apple, Android, and Harmony SDK code can emit structured logs through Rust FFI:
+
+- Apple/Harmony bridge name: `emitSdkLog`
+- Android JNI entry: `NativeApi.emitSdkLog(...)`
+- Rust implementation: `crates/lingxia/src/logging.rs::emit_sdk_log(...)`
+
+The FFI level value is:
+
+- `0 = verbose`
+- `1 = debug`
+- `2 = info`
+- `3 = warn`
+- `4 = error`
+
+These events enter the same `LogManager` pipeline as Rust logs. The FFI `category`
+maps to `LogMessage.target`, and optional `appid` / `path` fields are preserved.
 
 ## Source Inputs
 
@@ -211,10 +252,26 @@ The runtime can normalize logs from multiple sources into the same model:
 - Rust `log` crate records
 - tracing events
 - view/appservice console events
-- direct `lxapp::log::log(...)` calls
+- direct `lingxia_log::log(...)` calls
 - `info!`, `warn!`, `error!`, `debug!`, `verbose!` helpers
+- platform SDK FFI logs via `emitSdkLog`
 
 All of these converge into `LogMessage`.
+
+## Platform Logger Output
+
+`crates/lingxia/src/logging.rs` mirrors every dispatched `LogMessage` into the
+platform logger:
+
+- Android: `android_logger`
+- Harmony: `ohos_hilog`
+- Apple: `oslog`
+
+`LogTag::as_str()` controls the display tag used in formatted platform output:
+
+- `LogTag::Native` -> `Native`
+- `LogTag::WebViewConsole` -> `JSView`
+- `LogTag::LxAppServiceConsole` -> `JSService`
 
 ## Invariants
 

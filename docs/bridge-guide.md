@@ -585,7 +585,7 @@ Logic (QuickJS)                  Bridge (Rust)                    View (WebView)
 
                                                            actions.onSend({ text })
                                                                    │
-                                                           bridge.callStream(
+                                                           bridge.stream(
                                                              "onSend", { text })
                                                                    │
                                                       ┌─ req ──────▼────────────┐

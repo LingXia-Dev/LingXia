@@ -285,7 +285,7 @@ lingxia publish --token <token> [options]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--token <token>` | Bearer token (`LINGXIA_AUTH_TOKEN` env var also accepted) | required |
-| `--api-server <url>` | API server URL (falls back to `app.apiServer` when available) | from config |
+| `--lingxia-server <url>` | LingXia server URL (falls back to `app.lingxiaServer` when available) | from config |
 | `--target <type>` | `lxapp`, `lxplugin`, or `app` (auto-detected from project files) | auto |
 | `--package-path <path>` | Path to the package file (`app` only) | auto |
 | `--release-type <type>` | Release channel: `release`, `preview`, `developer` (required for lxapp) | none |
@@ -313,7 +313,7 @@ lingxia publish --release-type developer
 lingxia publish --release-type preview
 
 # Publish lxplugin explicitly
-lingxia publish --target lxplugin --api-server http://localhost:8080
+lingxia publish --target lxplugin --lingxia-server http://localhost:8080
 ```
 
 > **Note:** `lxapp` and `lxplugin` publish always package the current project first. Only `app` publish supports `--package-path`.
@@ -450,8 +450,8 @@ This reference focuses on commands and flags. File schemas live in the dedicated
 Quick reminders:
 
 - `lingxia.yaml` is the source of truth for host app build metadata.
-- `homeLxAppVersion` is generated into runtime `app.json`; you do not set it manually.
-- `app.cacheMaxAgeDays` and `app.cacheMaxSizeMB` are optional; set either to `0` to disable that cleanup policy.
+- `homeAppVersion` is generated into runtime `app.json`; you do not set it manually.
+- Storage/cache limits live under `storage`; set `storage.cacheMaxAgeDays` or `storage.cacheMaxSizeMB` to `0` to disable that cleanup policy.
 - When `splash` is configured, CLI requires a PNG source image and writes `splashTimeout` into runtime `app.json`.
 
 ---
