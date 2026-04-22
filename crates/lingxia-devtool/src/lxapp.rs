@@ -91,7 +91,7 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                 u64::try_from(DEFAULT_EVAL_TIMEOUT.as_millis()).unwrap_or(5000)
             }));
             let value = run_async(async move {
-                lingxia::tokio::time::timeout(timeout, app.eval_logic(args.script))
+                lingxia::task::tokio::time::timeout(timeout, app.eval_logic(args.script))
                     .await
                     .map_err(|_| format!("lxapp eval timed out after {}ms", timeout.as_millis()))?
                     .map_err(|err| err.to_string())
@@ -214,7 +214,7 @@ fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> R
 where
     E: std::fmt::Display,
 {
-    lingxia::tokio::runtime::Builder::new_current_thread()
+    lingxia::task::tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|err| err.to_string())?

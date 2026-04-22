@@ -1,7 +1,7 @@
 use crate::host::{HostCancel, HostResult, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
-use lingxia_platform::traits::file::{ChooseDirectoryRequest, FileService};
+use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -24,8 +24,8 @@ struct DownloadSettingsResult {
 }
 
 fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
-    let effective = lingxia_transfer::dir(&app.app_data_dir());
-    let configured = lingxia_settings::get_download_dir(&app.app_data_dir())
+    let effective = lingxia_service::downloads::dir(&app.app_data_dir());
+    let configured = lingxia_service::settings::download_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     Ok(DownloadSettingsResult {
         download_dir: effective.to_string_lossy().to_string(),
@@ -57,26 +57,27 @@ async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
 ) -> HostResult<DownloadSettingsResult> {
-    let current_dir = lingxia_transfer::dir(&app.app_data_dir())
+    let current_dir = lingxia_service::downloads::dir(&app.app_data_dir())
         .to_string_lossy()
         .to_string();
     let app_for_picker = app.clone();
     let result = await_or_cancel(&mut cancel, async move {
-        app_for_picker
-            .runtime
-            .choose_directory(ChooseDirectoryRequest {
+        lingxia_service::file::choose_directory(
+            &*app_for_picker.runtime,
+            ChooseDirectoryRequest {
                 title: Some("Choose Download Folder".to_string()),
                 default_path: Some(current_dir),
-            })
-            .await
-            .map_err(|e| map_platform_error("downloads.chooseDirectory", e))
+            },
+        )
+        .await
+        .map_err(|e| map_platform_error("downloads.chooseDirectory", e))
     })
     .await?;
 
     if !result.canceled
         && let Some(path) = result.paths.first()
     {
-        lingxia_transfer::set_dir(&app.app_data_dir(), PathBuf::from(path))
+        lingxia_service::downloads::set_dir(&app.app_data_dir(), PathBuf::from(path))
             .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     }
 
@@ -85,7 +86,7 @@ async fn choose_download_directory(
 
 #[lingxia::native("downloads.resetDirectory")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
-    lingxia_transfer::reset_dir(&app.app_data_dir())
+    lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     download_settings_result(&app)
 }

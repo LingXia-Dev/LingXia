@@ -2,10 +2,10 @@ use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_platform::PlatformError;
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
-use lingxia_platform::traits::file::{FileService, OpenFileRequest, RevealInFileManagerRequest};
-use lingxia_transfer::{
+use lingxia_service::downloads::{
     DownloadEvent, DownloadRecord, DownloadStatus, DownloadsError, DownloadsSnapshot,
 };
+use lingxia_service::file::{OpenFileRequest, RevealInFileManagerRequest};
 use lxapp::LxApp;
 use lxapp::LxAppError;
 use serde::{Deserialize, Serialize};
@@ -92,9 +92,9 @@ fn download_fallback_dir(path: &Path) -> Result<PathBuf, LxAppError> {
 }
 
 async fn open_file_for_user(app: &LxApp, request: OpenFileRequest) -> Result<(), PlatformError> {
-    match app.runtime.review_file(request.clone()).await {
+    match lingxia_service::file::review_file(&*app.runtime, request.clone()).await {
         Ok(()) => Ok(()),
-        Err(_review_error) => app.runtime.open_external(request).await,
+        Err(_review_error) => lingxia_service::file::open_external(&*app.runtime, request).await,
     }
 }
 
@@ -112,13 +112,13 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
 
 #[lingxia::native("downloads.list")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
-    Ok(lingxia_transfer::snapshot(&app.app_data_dir()).map_err(map_downloads_error)?)
+    Ok(lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)?)
 }
 
 #[lingxia::native("downloads.clearCompleted")]
 fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
-    let removed =
-        lingxia_transfer::clear_completed(&app.app_data_dir()).map_err(map_downloads_error)?;
+    let removed = lingxia_service::downloads::clear_completed(&app.app_data_dir())
+        .map_err(map_downloads_error)?;
     Ok(ClearCompletedResult { removed })
 }
 
@@ -129,7 +129,8 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
             "downloads.remove requires taskId".to_string(),
         ));
     }
-    lingxia_transfer::remove(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)?;
+    lingxia_service::downloads::remove(&app.app_data_dir(), &input.task_id)
+        .map_err(map_downloads_error)?;
     Ok(())
 }
 
@@ -140,7 +141,8 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
             "downloads.cancel requires taskId".to_string(),
         ));
     }
-    lingxia_transfer::cancel(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+    lingxia_service::downloads::cancel(&app.app_data_dir(), &input.task_id)
+        .map_err(map_downloads_error)
 }
 
 #[lingxia::native("downloads.pause")]
@@ -150,7 +152,8 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
             "downloads.pause requires taskId".to_string(),
         ));
     }
-    lingxia_transfer::pause(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+    lingxia_service::downloads::pause(&app.app_data_dir(), &input.task_id)
+        .map_err(map_downloads_error)
 }
 
 #[lingxia::native("downloads.retry")]
@@ -160,7 +163,8 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
             "downloads.retry requires taskId".to_string(),
         ));
     }
-    lingxia_transfer::retry(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+    lingxia_service::downloads::retry(&app.app_data_dir(), &input.task_id)
+        .map_err(map_downloads_error)
 }
 
 #[lingxia::native("downloads.resume")]
@@ -170,7 +174,8 @@ fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
             "downloads.resume requires taskId".to_string(),
         ));
     }
-    lingxia_transfer::resume(&app.app_data_dir(), &input.task_id).map_err(map_downloads_error)
+    lingxia_service::downloads::resume(&app.app_data_dir(), &input.task_id)
+        .map_err(map_downloads_error)
 }
 
 #[lingxia::native("downloads.open")]
@@ -185,7 +190,7 @@ async fn open_download_route(
         ));
     }
 
-    let record = lingxia_transfer::record(&app.app_data_dir(), &input.task_id)
+    let record = lingxia_service::downloads::record(&app.app_data_dir(), &input.task_id)
         .map_err(map_downloads_error)?
         .ok_or_else(|| {
             LxAppError::ResourceNotFound(format!("download not found: {}", input.task_id))
@@ -223,7 +228,7 @@ async fn reveal_download_route(
         ));
     }
 
-    let record = lingxia_transfer::record(&app.app_data_dir(), &input.task_id)
+    let record = lingxia_service::downloads::record(&app.app_data_dir(), &input.task_id)
         .map_err(map_downloads_error)?
         .ok_or_else(|| {
             LxAppError::ResourceNotFound(format!("download not found: {}", input.task_id))
@@ -232,12 +237,13 @@ async fn reveal_download_route(
     let fallback_dir = download_fallback_dir(&reveal_path)?;
 
     await_or_cancel(&mut cancel, async move {
-        match app
-            .runtime
-            .reveal_in_file_manager(RevealInFileManagerRequest {
+        match lingxia_service::file::reveal_in_file_manager(
+            &*app.runtime,
+            RevealInFileManagerRequest {
                 path: reveal_path.to_string_lossy().to_string(),
-            })
-            .await
+            },
+        )
+        .await
         {
             Ok(()) => Ok(()),
             Err(PlatformError::NotSupported(_)) => app
@@ -261,7 +267,7 @@ async fn watch_downloads(
     mut stream: StreamContext<DownloadEvent>,
 ) -> HostResult<()> {
     let mut rx: broadcast::Receiver<DownloadEvent> =
-        lingxia_transfer::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
+        lingxia_service::downloads::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
 
     loop {
         tokio::select! {

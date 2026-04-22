@@ -1,6 +1,6 @@
 # lingxia
 
-Platform entry crate for the LingXia framework. Provides cross-platform FFI bindings, host addon lifecycle, and JS extension registration APIs.
+Platform entry crate for the LingXia framework. Provides cross-platform FFI bindings, host addon lifecycle, and explicit JS AppService APIs under `lingxia::js`.
 
 
 ## Platform Modules
@@ -15,13 +15,13 @@ Platform entry crate for the LingXia framework. Provides cross-platform FFI bind
 
 - `HostAddon` - Trait for host bootstrap, services, and JS API registration
 - `register_host_addon` - Register a host addon before runtime initialization
-- `register_logic_extension` - Register custom JS logic extensions
 - `native` - Attribute macro for custom page-facing native APIs
-- `register_provider` - Register provider
-- `register_log_provider` - Register optional log upload/sink provider
-- `LxLogicExtension` - Trait for JS extensions
-- `Provider` - Combined provider trait
-- `LogProvider` - Trait for realtime log sink and collected log upload
-- `UpdateProvider` - Trait for update checking
-- `FingerprintProvider` - Trait for device fingerprint
-- `UpdatePackageInfo`, `UpdateTarget`, `LxAppUpdateQuery` - Update contract types
+- `Result`, `Error` - Public native facade result and error types
+- `app` - App metadata and directory helpers
+- `task` - Runtime task helpers
+- `downloads`, `settings`, `file`, `media`, `push` - Native service facades
+- `provider` - Provider traits and registration APIs
+- `log` - Logging facade
+- `update` - Update provider contracts and version types
+- `js::register_logic_extension` - Register custom JS logic extensions when `js-lxapp` is enabled
+- `js::LxLogicExtension` - Trait for JS extensions when `js-lxapp` is enabled

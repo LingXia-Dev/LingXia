@@ -4,8 +4,8 @@ use crate::i18n::{
 };
 use base64::{Engine as _, engine::general_purpose};
 use futures::Stream;
-use lingxia_platform::traits::file::{
-    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, FileService, OpenFileRequest,
+use lingxia_service::file::{
+    ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, OpenFileRequest,
 };
 use lxapp::{LxApp, lx};
 use rong::{
@@ -106,8 +106,10 @@ async fn open_file_with_mode(
 ) -> JSResult<()> {
     match mode {
         OpenFileMode::Auto => {
-            if let Err(review_error) = lxapp.runtime.review_file(request.clone()).await {
-                match lxapp.runtime.open_external(request).await {
+            if let Err(review_error) =
+                lingxia_service::file::review_file(&*lxapp.runtime, request.clone()).await
+            {
+                match lingxia_service::file::open_external(&*lxapp.runtime, request).await {
                     Ok(()) => Ok(()),
                     Err(open_external_error) => {
                         let _ = review_error;
@@ -118,14 +120,10 @@ async fn open_file_with_mode(
                 Ok(())
             }
         }
-        OpenFileMode::Review => lxapp
-            .runtime
-            .review_file(request)
+        OpenFileMode::Review => lingxia_service::file::review_file(&*lxapp.runtime, request)
             .await
             .map_err(|e| js_error_from_platform_error(&e)),
-        OpenFileMode::External => lxapp
-            .runtime
-            .open_external(request)
+        OpenFileMode::External => lingxia_service::file::open_external(&*lxapp.runtime, request)
             .await
             .map_err(|e| js_error_from_platform_error(&e)),
     }
@@ -528,16 +526,17 @@ async fn choose_file(
         })
         .collect();
 
-    let result = lxapp
-        .runtime
-        .choose_file(ChooseFileRequest {
+    let result = lingxia_service::file::choose_file(
+        &*lxapp.runtime,
+        ChooseFileRequest {
             multiple: opts.multiple.unwrap_or(false),
             filters,
             title: None,
             default_path,
-        })
-        .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        },
+    )
+    .await
+    .map_err(|e| js_error_from_platform_error(&e))?;
 
     if !result.canceled && result.paths.is_empty() {
         return Err(js_internal_error(
@@ -571,14 +570,15 @@ async fn choose_directory(
         .transpose()?
         .filter(|path| !path.is_empty());
 
-    let result = lxapp
-        .runtime
-        .choose_directory(ChooseDirectoryRequest {
+    let result = lingxia_service::file::choose_directory(
+        &*lxapp.runtime,
+        ChooseDirectoryRequest {
             title: None,
             default_path,
-        })
-        .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+        },
+    )
+    .await
+    .map_err(|e| js_error_from_platform_error(&e))?;
 
     if !result.canceled && result.paths.len() != 1 {
         return Err(js_internal_error(

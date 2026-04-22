@@ -1159,7 +1159,7 @@ async fn download_pause_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRes
         )
     };
 
-    match lingxia_transfer::pause(&app_data_dir, &task_id) {
+    match lingxia_service::downloads::pause(&app_data_dir, &task_id) {
         Ok(()) => Ok(()),
         Err(err) => {
             let mut guard = state.lock().await;
@@ -1225,7 +1225,7 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
         )
     };
 
-    match lingxia_transfer::cancel(&app_data_dir, &task_id) {
+    match lingxia_service::downloads::cancel(&app_data_dir, &task_id) {
         Ok(()) => {
             let completion = {
                 let mut guard = state.lock().await;

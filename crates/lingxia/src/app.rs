@@ -1,0 +1,81 @@
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+pub use lingxia_app_context::{AppConfig, CapabilitiesConfig, StorageConfig};
+
+static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+pub(crate) fn set_data_dir(path: PathBuf) {
+    let _ = APP_DATA_DIR.set(path);
+}
+
+pub fn config() -> Option<&'static AppConfig> {
+    lingxia_app_context::app_config()
+}
+
+pub fn product_name() -> Option<&'static str> {
+    lingxia_app_context::product_name()
+}
+
+pub fn product_version() -> Option<&'static str> {
+    lingxia_app_context::product_version()
+}
+
+pub fn lingxia_id() -> Option<&'static str> {
+    lingxia_app_context::lingxia_id()
+}
+
+pub fn notifications_enabled() -> bool {
+    lingxia_app_context::notifications_enabled()
+}
+
+pub fn temp_max_size_bytes() -> u64 {
+    lingxia_app_context::temp_max_size_bytes()
+}
+
+pub fn cache_max_size_bytes() -> u64 {
+    lingxia_app_context::cache_max_size_bytes()
+}
+
+pub fn data_max_size_bytes() -> u64 {
+    lingxia_app_context::data_max_size_bytes()
+}
+
+pub fn app_storage_max_size_bytes() -> u64 {
+    lingxia_app_context::app_storage_max_size_bytes()
+}
+
+pub fn data_dir() -> crate::Result<PathBuf> {
+    APP_DATA_DIR
+        .get()
+        .cloned()
+        .ok_or_else(|| crate::Error::internal("app data directory is not initialized"))
+}
+
+pub fn state_dir() -> crate::Result<PathBuf> {
+    Ok(lingxia_app_context::app_state_dir(&data_dir()?))
+}
+
+pub fn state_file(name: &str) -> crate::Result<PathBuf> {
+    Ok(lingxia_app_context::app_state_file(&data_dir()?, name))
+}
+
+pub fn data_dir_for(app: &crate::LxApp) -> PathBuf {
+    app.app_data_dir()
+}
+
+pub fn state_dir_for(app: &crate::LxApp) -> PathBuf {
+    lingxia_app_context::app_state_dir(&app.app_data_dir())
+}
+
+pub fn state_file_for(app: &crate::LxApp, name: &str) -> PathBuf {
+    lingxia_app_context::app_state_file(&app.app_data_dir(), name)
+}
+
+pub fn state_dir_from(app_data_dir: &Path) -> PathBuf {
+    lingxia_app_context::app_state_dir(app_data_dir)
+}
+
+pub fn state_file_from(app_data_dir: &Path, name: &str) -> PathBuf {
+    lingxia_app_context::app_state_file(app_data_dir, name)
+}

@@ -1,5 +1,5 @@
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
-use lingxia_platform::traits::media_interaction::{MediaInteraction, ScanCodeRequest, ScanType};
+use lingxia_service::media::{ScanCodeRequest, ScanType};
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult, function::Optional};
 use serde_json::Value;
@@ -37,9 +37,7 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         only_from_camera,
     };
 
-    let data = lxapp
-        .runtime
-        .scan_code(request)
+    let data = lingxia_service::media::scan_code(&*lxapp.runtime, request)
         .await
         .map_err(|e| js_error_from_platform_error(&e))?;
 

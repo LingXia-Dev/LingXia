@@ -45,7 +45,7 @@ fn dev_ws_url() -> Option<String> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .or_else(|| {
-            lingxia::app_config()
+            lingxia::app::config()
                 .and_then(|config| config.dev_ws_url.as_deref())
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
@@ -145,12 +145,14 @@ fn bridge_loop(
         while batch.len() < 64 {
             match receiver.try_recv() {
                 Ok(message) => batch.push(message),
-                Err(lingxia::tokio::sync::broadcast::error::TryRecvError::Empty) => break,
-                Err(lingxia::tokio::sync::broadcast::error::TryRecvError::Lagged(skipped)) => {
+                Err(lingxia::task::tokio::sync::broadcast::error::TryRecvError::Empty) => break,
+                Err(lingxia::task::tokio::sync::broadcast::error::TryRecvError::Lagged(
+                    skipped,
+                )) => {
                     log::warn!("Devtool log stream lagged and skipped {} messages", skipped);
                     break;
                 }
-                Err(lingxia::tokio::sync::broadcast::error::TryRecvError::Closed) => {
+                Err(lingxia::task::tokio::sync::broadcast::error::TryRecvError::Closed) => {
                     return Err("log stream closed".to_string());
                 }
             }

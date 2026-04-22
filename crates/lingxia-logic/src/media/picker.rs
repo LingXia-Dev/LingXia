@@ -9,10 +9,8 @@ use crate::i18n::{js_error_from_business_code, js_error_from_platform_error, js_
 use cache::ensure_temp_media_path;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[cfg(not(target_os = "macos"))]
-use lingxia_platform::traits::media_interaction::ChooseMediaMode;
-use lingxia_platform::traits::media_interaction::{
-    ChooseMediaRequest, MediaInteraction, MediaKind, MediaSource,
-};
+use lingxia_service::media::ChooseMediaMode;
+use lingxia_service::media::{ChooseMediaRequest, MediaKind, MediaSource};
 use lxapp::{LxApp, lx};
 use parser::{parse_camera, parse_choose_mode, parse_sources};
 use rong::{JSContext, JSFunc, JSResult, JSValue, JsonToJSValue, function::Optional};
@@ -76,9 +74,7 @@ async fn choose_media(
         camera_facing: parse_camera(opts.camera),
     };
 
-    let data = lxapp
-        .runtime
-        .choose_media(request)
+    let data = lingxia_service::media::choose_media(&*lxapp.runtime, request)
         .await
         .map_err(|e| js_error_from_platform_error(&e))?;
 

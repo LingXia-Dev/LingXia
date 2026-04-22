@@ -5,9 +5,8 @@ use crate::i18n::{
 use futures::channel::oneshot;
 use futures::future::{Either, select};
 use lingxia_messaging::{CallbackResult, get_callback, remove_callback};
-use lingxia_platform::traits::media_interaction::{
-    MediaInteraction, MediaKind, MediaObjectFit, PreviewMediaAdvance, PreviewMediaItem,
-    PreviewMediaRequest,
+use lingxia_service::media::{
+    MediaKind, MediaObjectFit, PreviewMediaAdvance, PreviewMediaItem, PreviewMediaRequest,
 };
 use lxapp::{LxApp, lx};
 use rong::{
@@ -120,7 +119,7 @@ async fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<PreviewMedi
         callback_id,
     };
 
-    if let Err(err) = lxapp.runtime.preview_media(request) {
+    if let Err(err) = lingxia_service::media::preview_media(&*lxapp.runtime, request) {
         if let Some(listener) = abort_listener.take() {
             listener.detach();
         }
@@ -135,7 +134,7 @@ async fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<PreviewMedi
             }
             Either::Right((_aborted, _)) => {
                 let _ = remove_callback(callback_id);
-                let _ = lxapp.runtime.cancel_preview(callback_id);
+                let _ = lingxia_service::media::cancel_preview(&*lxapp.runtime, callback_id);
                 if let Some(listener) = abort_listener.take() {
                     listener.detach();
                 }

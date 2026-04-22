@@ -1,5 +1,5 @@
 use crate::i18n::{js_error_from_lxapp_error, js_error_from_platform_error};
-use lingxia_platform::traits::media_interaction::{MediaInteraction, SaveMediaRequest};
+use lingxia_service::media::SaveMediaRequest;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, JSContext, JSFunc, JSResult};
 
@@ -28,8 +28,6 @@ async fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions)
 
 async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let runtime = &lxapp.runtime;
-
     let resolved = lxapp
         .resolve_accessible_path(&options.file_path)
         .map_err(|err| js_error_from_lxapp_error(&err))?;
@@ -39,13 +37,11 @@ async fn save_media(ctx: JSContext, options: JSSaveMediaOptions, image: bool) ->
     };
 
     if image {
-        runtime
-            .save_image_to_photos_album(request)
+        lingxia_service::media::save_image_to_photos_album(&*lxapp.runtime, request)
             .await
             .map_err(|e| js_error_from_platform_error(&e))
     } else {
-        runtime
-            .save_video_to_photos_album(request)
+        lingxia_service::media::save_video_to_photos_album(&*lxapp.runtime, request)
             .await
             .map_err(|e| js_error_from_platform_error(&e))
     }

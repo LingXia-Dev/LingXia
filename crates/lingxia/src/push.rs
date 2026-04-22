@@ -1,20 +1,19 @@
 //! Unified push notification APIs for platform FFI layers.
 
-use lingxia_provider::ProviderError;
 use lxapp::provider;
 
-fn normalize_token(token: String) -> Result<String, ProviderError> {
+fn normalize_token(token: String) -> crate::Result<String> {
     let token = token.trim().to_string();
     if token.is_empty() {
-        return Err(ProviderError::invalid_request("push token is empty"));
+        return Err(crate::Error::invalid_request("push token is empty"));
     }
     Ok(token)
 }
 
 /// Bind push token through the registered provider.
-pub async fn bind_push_token(token: String) -> Result<(), ProviderError> {
+pub async fn bind_push_token(token: String) -> crate::Result<()> {
     let token = normalize_token(token)?;
-    provider::bind_push_token(token).await
+    provider::bind_push_token(token).await.map_err(Into::into)
 }
 
 /// FFI-friendly push token entrypoint.
