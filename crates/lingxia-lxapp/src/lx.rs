@@ -1,7 +1,11 @@
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
+#[cfg(feature = "js-lxapp")]
 pub mod extension;
+#[cfg(not(feature = "js-lxapp"))]
+pub(crate) mod extension;
 
+#[cfg(feature = "js-lxapp")]
 pub use extension::{LxLogicExtension, register_logic_extension};
 
 /// Register the global `lx` object in the JavaScript context.

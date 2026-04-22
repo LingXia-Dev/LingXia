@@ -76,6 +76,10 @@ pub use update::{
 // Re-export for internal crate usage
 pub(crate) use provider::get_provider;
 
+pub fn js_lxapp_supported() -> bool {
+    cfg!(feature = "js-lxapp")
+}
+
 #[doc(hidden)]
 pub mod __private {
     pub use lingxia_log::{LogBuilder, LogLevel, LogTag};

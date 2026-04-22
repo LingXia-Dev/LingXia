@@ -109,7 +109,7 @@ impl LxAppConfig {
         self.pages
             .first()
             .map(|page| page.path.clone())
-            .unwrap_or("PagesEmpty".to_string())
+            .unwrap_or_default()
     }
 
     pub fn page_paths(&self) -> Vec<String> {
@@ -197,6 +197,17 @@ impl LxAppConfig {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LxAppConfig;
+
+    #[test]
+    fn initial_route_is_empty_when_pages_are_empty() {
+        let config = LxAppConfig::default();
+        assert_eq!(config.get_initial_route(), "");
     }
 }
 

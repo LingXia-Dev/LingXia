@@ -26,14 +26,14 @@ pub struct AppConfig {
     #[serde(rename = "lingxiaId", default)]
     pub lingxia_id: Option<String>,
 
-    #[serde(rename = "apiServer", default)]
-    pub api_server: Option<String>,
+    #[serde(rename = "lingxiaServer", default)]
+    pub lingxia_server: Option<String>,
 
-    #[serde(rename = "homeLxAppID")]
-    pub home_lxapp_appid: String,
+    #[serde(rename = "homeAppId")]
+    pub home_app_id: String,
 
-    #[serde(rename = "homeLxAppVersion")]
-    pub home_lxapp_version: String,
+    #[serde(rename = "homeAppVersion")]
+    pub home_app_version: String,
 
     #[serde(rename = "cacheMaxAgeDays", default = "default_cache_max_age_days")]
     pub cache_max_age_days: u64,
@@ -51,7 +51,17 @@ pub struct AppConfig {
     pub app_links: Option<AppLinksConfig>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<CapabilitiesConfig>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CapabilitiesConfig {
+    #[serde(default)]
+    pub notifications: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -63,14 +73,18 @@ pub struct AppLinksConfig {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StorageConfig {
+    #[serde(rename = "tempMaxSizeMB")]
     #[serde(default = "default_temp_max_size_mb")]
     pub temp_max_size_mb: u64,
     #[serde(default = "default_cache_max_age_days")]
     pub cache_max_age_days: u64,
+    #[serde(rename = "cacheMaxSizeMB")]
     #[serde(default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
+    #[serde(rename = "dataMaxSizeMB")]
     #[serde(default = "default_data_max_size_mb")]
     pub data_max_size_mb: u64,
+    #[serde(rename = "appStorageMaxSizeMB")]
     #[serde(default = "default_app_storage_max_size_mb")]
     pub app_storage_max_size_mb: u64,
 }
@@ -156,19 +170,19 @@ impl AppConfig {
                 "productVersion must be a semantic version (major.minor.patch)".to_string(),
             )
         })?;
-        if self.home_lxapp_appid.is_empty() {
+        if self.home_app_id.is_empty() {
             return Err(AppContextError::InvalidConfig(
-                "homeLxAppID is mandatory and cannot be empty".to_string(),
+                "homeAppId is mandatory and cannot be empty".to_string(),
             ));
         }
-        if self.home_lxapp_version.is_empty() {
+        if self.home_app_version.is_empty() {
             return Err(AppContextError::InvalidConfig(
-                "homeLxAppVersion is mandatory and cannot be empty".to_string(),
+                "homeAppVersion is mandatory and cannot be empty".to_string(),
             ));
         }
-        Version::parse(&self.home_lxapp_version).map_err(|_| {
+        Version::parse(&self.home_app_version).map_err(|_| {
             AppContextError::InvalidConfig(
-                "homeLxAppVersion must be a semantic version (major.minor.patch)".to_string(),
+                "homeAppVersion must be a semantic version (major.minor.patch)".to_string(),
             )
         })?;
         validate_panels(self.panels.as_ref())
@@ -212,6 +226,14 @@ pub fn lingxia_id() -> Option<&'static str> {
         .get()
         .and_then(|c| c.lingxia_id.as_deref())
         .filter(|s| !s.is_empty())
+}
+
+pub fn notifications_enabled() -> bool {
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.capabilities.as_ref())
+        .map(|capabilities| capabilities.notifications)
+        .unwrap_or(false)
 }
 
 pub fn cache_max_age_days() -> u64 {
@@ -346,14 +368,15 @@ mod tests {
             product_name: product_name.to_string(),
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
-            api_server: None,
-            home_lxapp_appid: "home".to_string(),
-            home_lxapp_version: "1.0.0".to_string(),
+            lingxia_server: None,
+            home_app_id: "home".to_string(),
+            home_app_version: "1.0.0".to_string(),
             cache_max_age_days: 7,
             cache_max_size_mb: 1024,
             storage: None,
             dev_ws_url: None,
             app_links: None,
+            capabilities: None,
             panels: None,
         }
     }

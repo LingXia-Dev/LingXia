@@ -153,14 +153,15 @@ fn build_host_app_config(
         product_name,
         product_version: env!("CARGO_PKG_VERSION").to_string(),
         lingxia_id: None,
-        api_server: None,
-        home_lxapp_appid: dev_config.identity.appid.clone(),
-        home_lxapp_version: dev_config.identity.version.clone(),
+        lingxia_server: None,
+        home_app_id: dev_config.identity.appid.clone(),
+        home_app_version: dev_config.identity.version.clone(),
         cache_max_age_days: 7,
         cache_max_size_mb: 1024,
         storage: None,
         dev_ws_url: None,
         app_links: None,
+        capabilities: None,
         panels: None,
     }
 }
@@ -189,8 +190,8 @@ pub(crate) fn load_host_app_config(
             return None;
         }
     };
-    app_config.home_lxapp_appid = dev_config.identity.appid.clone();
-    app_config.home_lxapp_version = dev_config.identity.version.clone();
+    app_config.home_app_id = dev_config.identity.appid.clone();
+    app_config.home_app_version = dev_config.identity.version.clone();
     Some(app_config)
 }
 

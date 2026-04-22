@@ -270,6 +270,11 @@ impl LxAppWorkers {
                 .with_appid(lxapp.appid.clone());
             return Ok(());
         }
+        if !crate::js_lxapp_supported() {
+            return Err(LxAppError::UnsupportedOperation(
+                "host was built without js-lxapp support".to_string(),
+            ));
+        }
         crate::appservice::create_app_svc(
             lxapp,
             &self.sender,
@@ -300,6 +305,11 @@ impl LxAppWorkers {
         if !lxapp.logic_enabled() {
             let _ = ack_tx.send(());
             return Ok(());
+        }
+        if !crate::js_lxapp_supported() {
+            return Err(LxAppError::UnsupportedOperation(
+                "host was built without js-lxapp support".to_string(),
+            ));
         }
         self.sender.send(ServiceMessage::CreatePage {
             lxapp,

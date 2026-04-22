@@ -1476,6 +1476,12 @@ impl LxApp {
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        if self.logic_enabled() && !crate::js_lxapp_supported() {
+            return Err(LxAppError::UnsupportedOperation(
+                "this host app was built without js-lxapp support".to_string(),
+            ));
+        }
+
         let mut startup_options = options;
 
         // Record startup options on this instance
@@ -1507,7 +1513,8 @@ impl LxApp {
 
         self.state.lock().unwrap().startup_options = startup_options.clone();
 
-        // Ensure the target app's JS worker is created and mapped before creating pages
+        // Ensure the target app's JS worker is created and mapped before creating pages.
+        // View-only lxapps (`logic: false`) skip this path.
         if let Err(e) = self.executor.create_app_svc(self.clone_arc()) {
             error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
         }
@@ -2156,6 +2163,21 @@ fn installed_home_version(
         return Ok(None);
     }
 
+    let manifest = fs::read_to_string(&manifest_path).map_err(LxAppError::from)?;
+    let manifest_json: serde_json::Value = serde_json::from_str(&manifest)
+        .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))?;
+    let config = LxAppConfig::from_value(manifest_json)
+        .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))?;
+    if config.get_initial_route().trim().is_empty() {
+        warn!(
+            "Installed home lxapp manifest has no pages: {}; reinstalling bundled home app",
+            manifest_path.display()
+        )
+        .with_appid(appid.to_string());
+        let _ = metadata::remove(appid, release_type);
+        return Ok(None);
+    }
+
     Ok(Some(Version {
         major: record.version.major,
         minor: record.version.minor,
@@ -2202,29 +2224,28 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
         return None;
     }
 
-    let home_lxapp_appid = config.home_appid.clone();
-    let home_lxapp_version = &config.home_app_version;
+    let home_app_id = config.home_appid.clone();
+    let home_app_version = &config.home_app_version;
 
-    let bundled_home_version = match Version::parse(home_lxapp_version) {
+    let bundled_home_version = match Version::parse(home_app_version) {
         Ok(version) => version,
         Err(e) => {
             error!(
                 "Invalid bundled home lxapp version '{}': {}",
-                home_lxapp_version, e
+                home_app_version, e
             )
-            .with_appid(home_lxapp_appid.clone());
+            .with_appid(home_app_id.clone());
             return None;
         }
     };
-    let installed_home_version =
-        match installed_home_version(&home_lxapp_appid, ReleaseType::Release) {
-            Ok(version) => version,
-            Err(e) => {
-                warn!("Failed to inspect installed home lxapp version: {}", e)
-                    .with_appid(home_lxapp_appid.clone());
-                None
-            }
-        };
+    let installed_home_version = match installed_home_version(&home_app_id, ReleaseType::Release) {
+        Ok(version) => version,
+        Err(e) => {
+            warn!("Failed to inspect installed home lxapp version: {}", e)
+                .with_appid(home_app_id.clone());
+            None
+        }
+    };
 
     let should_reinstall_home = installed_home_version
         .as_ref()
@@ -2240,33 +2261,32 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
             ),
         };
         info!("Installing home lxapp from bundled assets: {}", reason)
-            .with_appid(home_lxapp_appid.clone());
+            .with_appid(home_app_id.clone());
         if let Err(e) = crate::update::UpdateManager::install_from_assets(
             runtime_arc.clone(),
-            &home_lxapp_appid,
-            home_lxapp_version,
+            &home_app_id,
+            home_app_version,
         ) {
             error!("Failed to install home LxApp: {}", e);
             return None;
         }
     } else {
-        let has_pending_home_update =
-            metadata::downloaded_get(&home_lxapp_appid, ReleaseType::Release)
-                .map(|record| record.is_some())
-                .unwrap_or(false);
+        let has_pending_home_update = metadata::downloaded_get(&home_app_id, ReleaseType::Release)
+            .map(|record| record.is_some())
+            .unwrap_or(false);
         if has_pending_home_update {
             match crate::update::UpdateManager::apply_downloaded_update(
                 runtime_arc.clone(),
-                &home_lxapp_appid,
+                &home_app_id,
                 ReleaseType::Release,
             ) {
                 Ok(()) => {
                     info!("Applied pending home lxapp update before startup")
-                        .with_appid(home_lxapp_appid.clone());
+                        .with_appid(home_app_id.clone());
                 }
                 Err(e) => {
                     warn!("Failed to apply pending home lxapp update: {}", e)
-                        .with_appid(home_lxapp_appid.clone());
+                        .with_appid(home_app_id.clone());
                 }
             }
         }
@@ -2285,34 +2305,27 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
     }
 
     // Create the home LxApp instance (loads lxapp.json once)
-    let home_lxapp = LxApp::new_as_home(
-        home_lxapp_appid.clone(),
-        runtime_arc.clone(),
-        executor.clone(),
-    );
+    let home_lxapp = LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone());
 
     let initial_route = home_lxapp.config.get_initial_route();
     home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
 
     // Add home lxapp to the manager
-    let home_lxapp_arc = Arc::new(home_lxapp);
+    let home_app = Arc::new(home_lxapp);
     lxapps_manager
         .lxapps
-        .insert(home_lxapp_appid.clone(), home_lxapp_arc.clone());
+        .insert(home_app_id.clone(), home_app.clone());
 
-    // Pre-create JS worker for home lxapp
-    if let Err(e) = home_lxapp_arc
-        .executor
-        .create_app_svc(home_lxapp_arc.clone())
-    {
-        error!("Failed to trigger home app service: {}", e).with_appid(home_lxapp_appid.clone());
+    // Pre-create JS worker for home lxapp when enabled. Native-only hosts skip this path.
+    if let Err(e) = home_app.executor.create_app_svc(home_app.clone()) {
+        error!("Failed to trigger home app service: {}", e).with_appid(home_app_id.clone());
     }
 
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
     UpdateManager::spawn_app_update_flow(runtime_arc.clone(), None);
-    Some(home_lxapp_appid)
+    Some(home_app_id)
 }
 
 /// Get access to the LxApps manager for navigation stack operations

@@ -1,3 +1,4 @@
+use crate::LxAppError;
 use crate::lxapp::LxApp;
 use crate::lxapp::navbar::{NavigationBarConfig, NavigationBarState};
 use crate::warn;
@@ -203,6 +204,10 @@ impl PageConfig {
     /// Create PageConfig from JSON config file path
     /// This is the single entry point for loading page configuration.
     pub fn from_json(lxapp: &LxApp, path: &str) -> Self {
+        if path.trim().is_empty() {
+            return Self::default();
+        }
+
         let json_path = path_to_json_path(path);
         match lxapp.read_json(&json_path) {
             Ok(mut json_value) => {
@@ -215,6 +220,7 @@ impl PageConfig {
                     }
                 }
             }
+            Err(LxAppError::ResourceNotFound(_)) => Self::default(),
             Err(e) => {
                 warn!(
                     "Page config read failed for {} ({}); falling back to default",

@@ -8,6 +8,10 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 keywords = ["lingxia", "lxapp", "lightweight-app", "webview"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = ["js-lxapp"]
+js-lxapp = []
+
 [dependencies]
 # Use workspace dependencies
 http = { workspace = true }

@@ -2,6 +2,7 @@
 //!
 //! This module provides a way for external crates to register custom functionality
 //! that will be automatically available in the JavaScript environment of an LxApp.
+//! This API is only available when the `js-lxapp` feature is enabled.
 //!
 //! ## Example
 //!
@@ -32,6 +33,7 @@
 //!
 
 use rong::{JSContext, JSResult};
+#[cfg(feature = "js-lxapp")]
 use std::sync::{Mutex, OnceLock};
 
 /// A trait for extensions that extend LxApp's JavaScript capabilities.
@@ -62,6 +64,7 @@ pub trait LxLogicExtension: Send + Sync {
 type BoxedExtension = Box<dyn LxLogicExtension>;
 
 // Global registry for LxApp extensions. Initialized only once.
+#[cfg(feature = "js-lxapp")]
 static EXTENSIONS: OnceLock<Mutex<Vec<BoxedExtension>>> = OnceLock::new();
 
 /// Registers an extension to be initialized for LxApp JavaScript contexts.
@@ -79,6 +82,7 @@ static EXTENSIONS: OnceLock<Mutex<Vec<BoxedExtension>>> = OnceLock::new();
 /// Panics if called after the extension registry has been read for the first time
 /// (i.e., after LxApp context creation has started). This is to prevent
 /// modifications during runtime which could lead to inconsistencies.
+#[cfg(feature = "js-lxapp")]
 pub fn register_logic_extension(extension: BoxedExtension) {
     // Get or initialize the Mutex<Vec>. `OnceLock::get_or_init` ensures
     // this happens only once and is thread-safe.
@@ -113,6 +117,7 @@ pub fn register_logic_extension(extension: BoxedExtension) {
 ///
 /// * `Some(R)` if extensions were registered and the closure was executed.
 /// * `None` if no extensions were registered.
+#[cfg(feature = "js-lxapp")]
 pub(crate) fn with_registered_extensions<F, R>(f: F) -> Option<R>
 where
     F: FnOnce(&Vec<BoxedExtension>) -> R,
@@ -123,4 +128,12 @@ where
             .expect("Extension registry mutex is poisoned");
         f(&extensions)
     })
+}
+
+#[cfg(not(feature = "js-lxapp"))]
+pub(crate) fn with_registered_extensions<F, R>(_f: F) -> Option<R>
+where
+    F: FnOnce(&Vec<BoxedExtension>) -> R,
+{
+    None
 }

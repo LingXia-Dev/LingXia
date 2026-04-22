@@ -3,15 +3,6 @@
 /// `browser` is a product/runtime capability. `shell` is one optional UI
 /// presentation for that capability.
 
-/// Returns a bitmask of host app capabilities.
-/// Bit 0 (0x1) = shell (browser, downloads, settings, panels).
-pub(crate) fn app_capabilities() -> u32 {
-    #[cfg(feature = "shell")]
-    return 0x1;
-    #[cfg(not(feature = "shell"))]
-    0
-}
-
 #[cfg(feature = "browser")]
 pub(crate) const APP_ID: &str = lingxia_browser::BUILTIN_BROWSER_APPID;
 #[cfg(not(feature = "browser"))]

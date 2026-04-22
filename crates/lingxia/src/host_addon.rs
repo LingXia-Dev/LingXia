@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 pub trait HostAddon: Send + Sync {
     fn before_init(&self) {}
+    #[cfg(feature = "js-lxapp")]
     fn install_logic_extensions(&self) {}
     fn install_host_apis(&self) {}
     fn after_init(&self) {}
@@ -36,9 +37,12 @@ pub(crate) fn run_before_init() {
 }
 
 pub(crate) fn run_install_logic_extensions() {
-    let installed = snapshot_host_addons();
-    for addon in installed.iter() {
-        addon.install_logic_extensions();
+    #[cfg(feature = "js-lxapp")]
+    {
+        let installed = snapshot_host_addons();
+        for addon in installed.iter() {
+            addon.install_logic_extensions();
+        }
     }
 }
 
