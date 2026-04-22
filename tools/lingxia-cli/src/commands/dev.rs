@@ -24,6 +24,14 @@ const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+fn dev_native_features(config: &LingXiaConfig, platform: &str) -> Vec<String> {
+    let mut features = config.native_features_for_platform(platform);
+    if !features.iter().any(|feature| feature == "devtools") {
+        features.push("devtools".to_string());
+    }
+    features
+}
+
 pub struct DevExecuteOptions {
     pub release: bool,
     pub build_native: bool,
@@ -184,7 +192,8 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             package: false,
             dmg: false,
             macos_arch: None,
-            native_features: vec!["devtools".to_string()],
+            native_features: dev_native_features(&ctx.config, "android"),
+            native_default_features: ctx.config.features.is_none(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -282,7 +291,8 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             package: false,
             dmg: false,
             macos_arch: None,
-            native_features: vec!["devtools".to_string()],
+            native_features: dev_native_features(&ctx.config, "ios"),
+            native_default_features: ctx.config.features.is_none(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -382,11 +392,8 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         package: false,
         dmg: false,
         macos_arch,
-        native_features: vec![
-            "shell".to_string(),
-            "devtools".to_string(),
-            "webview-input".to_string(),
-        ],
+        native_features: dev_native_features(&ctx.config, "macos"),
+        native_default_features: ctx.config.features.is_none(),
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -481,7 +488,8 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             package: false,
             dmg: false,
             macos_arch: None,
-            native_features: vec!["devtools".to_string()],
+            native_features: dev_native_features(&ctx.config, "harmony"),
+            native_default_features: ctx.config.features.is_none(),
         };
 
         let artifacts = harmony_platform.build(&build_config)?;

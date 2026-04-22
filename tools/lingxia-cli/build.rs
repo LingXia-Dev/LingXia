@@ -21,7 +21,7 @@ fn run() -> Result<(), String> {
     let package_json = bridge_dir.join("package.json");
     let expected_version = env::var("CARGO_PKG_VERSION").map_err(|e| e.to_string())?;
 
-    emit_rerun_markers(&bridge_dir)?;
+    emit_rerun_markers(&manifest_dir, &bridge_dir)?;
 
     let actual_version = read_bridge_version(&package_json)?;
     if actual_version != expected_version {
@@ -143,7 +143,13 @@ fn read_bridge_version(package_json: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("missing version in {}", package_json.display()))
 }
 
-fn emit_rerun_markers(bridge_dir: &Path) -> Result<(), String> {
+fn emit_rerun_markers(manifest_dir: &Path, bridge_dir: &Path) -> Result<(), String> {
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("build.rs").display()
+    );
+    emit_rerun_for_dir(&manifest_dir.join("templates"))?;
+
     for path in [
         bridge_dir.join("package.json"),
         bridge_dir.join("package-lock.json"),

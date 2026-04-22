@@ -1,4 +1,4 @@
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, ResourceBundleConfig, ResourceBundleType};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
 use crate::host_assets;
 use crate::lxapp::Project;
 use crate::platform::detector::PlatformType;
@@ -91,7 +91,7 @@ fn clean_host_project(project_root: &Path) -> Result<()> {
     remove_path(&project_root.join(".lingxia"), &mut removed)?;
     clean_cargo_target(project_root, &mut removed)?;
 
-    clean_configured_resource_bundles(project_root, &config, &mut removed)?;
+    clean_resource_bundles(project_root, &config, &mut removed)?;
     clean_host_platform_dirs(project_root, &config, &mut removed)?;
 
     print_done(removed.len());
@@ -134,7 +134,7 @@ fn clean_standalone_swift_package(project_root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn clean_configured_resource_bundles(
+fn clean_resource_bundles(
     project_root: &Path,
     config: &LingXiaConfig,
     removed: &mut Vec<PathBuf>,
@@ -142,22 +142,16 @@ fn clean_configured_resource_bundles(
     let Some(resources) = config.resources.as_ref() else {
         return Ok(());
     };
-    let Some(bundles) = resources.bundles.as_ref() else {
-        return Ok(());
-    };
-
-    for bundle in bundles {
-        let (path, bundle_type) = match bundle {
-            ResourceBundleConfig::Path(path) => (path.as_str(), ResourceBundleType::Lxapp),
-            ResourceBundleConfig::Detailed(detail) => (detail.path.as_str(), detail.bundle_type),
-        };
-        match bundle_type {
-            ResourceBundleType::Lxapp | ResourceBundleType::Npm => {
-                remove_path(&project_root.join(path).join("dist"), removed)?;
-            }
+    for bundle in &resources.bundles {
+        if let Some(path) = bundle
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            remove_path(&project_root.join(path).join("dist"), removed)?;
         }
     }
-
     Ok(())
 }
 
