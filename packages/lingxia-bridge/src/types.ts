@@ -157,16 +157,13 @@ declare global {
 }
 
 export interface LingXiaBridgeInterface {
-  call(method: string, params?: unknown, options?: CallOptions): Promise<unknown>;
-  call<M extends LxMethod>(method: M, params?: LxMethodParams<M>, options?: CallOptions): Promise<LxMethodResult<M>>;
-  stream(method: string, params?: unknown, options?: StreamCallOptions): LxStream<unknown, unknown>;
-  stream<M extends LxMethod>(method: M, params?: LxMethodParams<M>, options?: StreamCallOptions): LxStream<LxMethodStreamData<M>, LxMethodResult<M>>;
-  notify(method: string, params?: unknown, options?: NotifyOptions): void;
+  invoke<TResult = unknown, TInput = void>(route: string, input?: TInput, options?: InvokeOptions): Promise<TResult>;
+  stream<TEvent = unknown, TResult = void, TInput = void>(route: string, input?: TInput, options?: StreamOptions): NativeStream<TEvent, TResult>;
+  notify<TInput = void>(route: string, input?: TInput, options?: NotifyOptions): void;
+  channel<TIn = unknown, TOut = unknown>(route: string, input?: unknown, options?: ChannelOptions): Promise<NativeChannel<TIn, TOut>>;
+  raw: LingXiaBridgeRawInterface;
   state: {
     subscribe(callback: DataSubscriber): () => void;
-  };
-  channel: {
-    open<TIn = unknown, TOut = TIn>(topic: string, params?: unknown, options?: ChannelOpenOptions): Promise<LxChannel<TIn, TOut>>;
   };
   _connectWebMessagePort(port: MessagePort): void;
   _receiveEvaluateMessage(messageString: string): void;
@@ -190,6 +187,17 @@ export interface LingXiaBridgeInterface {
     unregister(id: string): void;
   };
   isReady(): boolean;
+}
+
+export interface LingXiaBridgeRawInterface {
+  call(method: string, params?: unknown, options?: CallOptions): Promise<unknown>;
+  call<M extends LxMethod>(method: M, params?: LxMethodParams<M>, options?: CallOptions): Promise<LxMethodResult<M>>;
+  stream(method: string, params?: unknown, options?: StreamCallOptions): LxStream<unknown, unknown>;
+  stream<M extends LxMethod>(method: M, params?: LxMethodParams<M>, options?: StreamCallOptions): LxStream<LxMethodStreamData<M>, LxMethodResult<M>>;
+  notify(method: string, params?: unknown, options?: NotifyOptions): void;
+  channel: {
+    open<TIn = unknown, TOut = TIn>(topic: string, params?: unknown, options?: ChannelOpenOptions): Promise<LxChannel<TIn, TOut>>;
+  };
 }
 
 export interface InvokeOptions extends CallOptions {}

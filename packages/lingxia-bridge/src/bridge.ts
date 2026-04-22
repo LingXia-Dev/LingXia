@@ -1138,7 +1138,7 @@ function subscribeState(callback: DataSubscriber): () => void {
 }
 
 function requestStateRecovery(scope?: string): void {
-  LingXiaBridge.call("state.getSnapshot", { scope }).catch(() => {});
+  rawBridge.call("state.getSnapshot", { scope }).catch(() => {});
 }
 
 function applySnapshotFromResult(result: unknown): boolean {
@@ -1462,8 +1462,8 @@ function attachAbortSignal(
   signal.addEventListener("abort", abortListener);
 }
 
-// Public interface
-export const LingXiaBridge: LingXiaBridgeInterface = {
+// Low-level protocol interface. Public consumers should use LingXiaBridge.invoke/stream/channel.
+const rawBridge = {
   call<M extends LxMethod>(
     method: M | string,
     params?: LxMethodParams<M> | unknown,
@@ -1633,6 +1633,58 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
         );
       });
     },
+  },
+};
+
+// Public interface
+export const LingXiaBridge: LingXiaBridgeInterface = {
+  invoke<TResult = unknown, TInput = void>(
+    route: string,
+    input?: TInput,
+    options?: InvokeOptions,
+  ): Promise<TResult> {
+    return rawBridge
+      .call(nativeRoute(route), input, nativeOptions(options))
+      .then((value) => value as TResult)
+      .catch((error) => Promise.reject(toNativeError(error)));
+  },
+
+  notify<TInput = void>(
+    route: string,
+    input?: TInput,
+    options?: NotifyOptions,
+  ): void {
+    rawBridge.notify(nativeRoute(route), input, nativeOptions(options));
+  },
+
+  stream<TEvent = unknown, TResult = void, TInput = void>(
+    route: string,
+    input?: TInput,
+    options?: StreamOptions,
+  ): NativeStream<TEvent, TResult> {
+    return wrapNativeStream<TEvent, TResult>(
+      rawBridge.stream(nativeRoute(route), input, nativeOptions(options)) as LxStream<
+        TEvent,
+        TResult
+      >,
+    );
+  },
+
+  channel<TIn = unknown, TOut = unknown>(
+    route: string,
+    input?: unknown,
+    options?: ChannelOptions,
+  ): Promise<NativeChannel<TIn, TOut>> {
+    return rawBridge.channel
+      .open<TOut, TIn>(nativeRoute(route), input, nativeOptions(options))
+      .then((handle) => wrapNativeChannel<TIn, TOut>(handle))
+      .catch((error) => Promise.reject(toNativeError(error)));
+  },
+
+  raw: rawBridge,
+
+  state: {
+    subscribe: subscribeState,
   },
 
   _connectWebMessagePort(port: MessagePort): void {
@@ -1820,9 +1872,7 @@ export function invoke<TResult = unknown, TInput = void>(
   input?: TInput,
   options?: InvokeOptions,
 ): Promise<TResult> {
-  return LingXiaBridge.call(nativeRoute(route), input, nativeOptions(options))
-    .then((value) => value as TResult)
-    .catch((error) => Promise.reject(toNativeError(error)));
+  return LingXiaBridge.invoke(route, input, options);
 }
 
 export function notify<TInput = void>(
@@ -1830,7 +1880,7 @@ export function notify<TInput = void>(
   input?: TInput,
   options?: NotifyOptions,
 ): void {
-  LingXiaBridge.notify(nativeRoute(route), input, nativeOptions(options));
+  rawBridge.notify(nativeRoute(route), input, nativeOptions(options));
 }
 
 export function stream<TEvent = unknown, TResult = void, TInput = void>(
@@ -1839,7 +1889,7 @@ export function stream<TEvent = unknown, TResult = void, TInput = void>(
   options?: StreamOptions,
 ): NativeStream<TEvent, TResult> {
   return wrapNativeStream<TEvent, TResult>(
-    LingXiaBridge.stream(nativeRoute(route), input, nativeOptions(options)) as LxStream<
+    rawBridge.stream(nativeRoute(route), input, nativeOptions(options)) as LxStream<
       TEvent,
       TResult
     >,
@@ -1851,10 +1901,7 @@ export function channel<TIn = unknown, TOut = unknown>(
   input?: unknown,
   options?: ChannelOptions,
 ): Promise<NativeChannel<TIn, TOut>> {
-  return LingXiaBridge.channel
-    .open<TOut, TIn>(nativeRoute(route), input, nativeOptions(options))
-    .then((handle) => wrapNativeChannel<TIn, TOut>(handle))
-    .catch((error) => Promise.reject(toNativeError(error)));
+  return LingXiaBridge.channel(route, input, options);
 }
 
 export function initBridge(): void {

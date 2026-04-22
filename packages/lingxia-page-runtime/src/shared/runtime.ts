@@ -44,10 +44,10 @@ function scheduleSubscribeRetry(): void {
 
 function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
   if (initialSnapshotResolved || snapshotRequestInFlight) return;
-  if (!bridge?.call) return;
+  if (!bridge?.raw?.call) return;
   snapshotRequestInFlight = true;
   bridge
-    .call("state.getSnapshot", { scope: "page" })
+    .raw.call("state.getSnapshot", { scope: "page" })
     .then(() => {
       initialSnapshotResolved = true;
     })
@@ -158,7 +158,7 @@ function definePageBridgeAction(
       throw new Error(`LingXiaBridge is not ready for page action '${name}'`);
     }
     if (mode === "stream") {
-      const handle = bridge.stream(name, payload);
+      const handle = bridge.raw.stream(name, payload);
       if (handle && handle.result && typeof handle.result.catch === "function") {
         handle.result.catch((err: unknown) => {
           console.warn(`[PageFunc] ${name} failed:`, err instanceof Error ? err.message : err);
@@ -167,7 +167,7 @@ function definePageBridgeAction(
       return handle;
     }
     if (mode === "call") {
-      const promise = bridge.call(name, payload);
+      const promise = bridge.raw.call(name, payload);
       if (promise && typeof promise.catch === "function") {
         promise.catch((err: unknown) => {
           console.warn(`[PageFunc] ${name} failed:`, err instanceof Error ? err.message : err);
@@ -175,7 +175,7 @@ function definePageBridgeAction(
       }
       return promise;
     }
-    bridge.notify(name, payload);
+    bridge.raw.notify(name, payload);
     return undefined;
   }
 

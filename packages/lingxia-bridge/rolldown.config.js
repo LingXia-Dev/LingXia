@@ -18,7 +18,7 @@ export default defineConfig({
   output: {
     file: outputPath,
     format: "iife",
-    name: "LingXiaBridgeRuntime",
+    name: "__LingXiaBridgeBundle",
     sourcemap: false,
     banner: `const __LX_RUNTIME_PLATFORM__ = ${JSON.stringify(targetPlatform)};`,
   },

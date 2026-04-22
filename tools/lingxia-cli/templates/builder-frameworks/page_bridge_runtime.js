@@ -16,8 +16,12 @@ export function __lx_filter_payload(name, args) {
 export function __lx_define_page_bridge(name, mode) {
   function fn(...args) {
     const payload = __lx_filter_payload(name, args);
+    const bridge = window.LingXiaBridge;
+    if (!bridge || !bridge.raw) {
+      throw new Error(`LingXiaBridge is not ready for page action '${name}'`);
+    }
     if (mode === 'stream') {
-      const handle = window.LingXiaBridge.stream(name, payload);
+      const handle = bridge.raw.stream(name, payload);
       if (handle && handle.result && typeof handle.result.catch === 'function') {
         handle.result.catch((err) => {
           console.warn(`[PageFunc] ${name} failed:`, err && err.message ? err.message : err);
@@ -26,7 +30,7 @@ export function __lx_define_page_bridge(name, mode) {
       return handle;
     }
     if (mode === 'call') {
-      const promise = window.LingXiaBridge.call(name, payload);
+      const promise = bridge.raw.call(name, payload);
       if (promise && typeof promise.catch === 'function') {
         promise.catch((err) => {
           console.warn(`[PageFunc] ${name} failed:`, err && err.message ? err.message : err);
@@ -34,7 +38,7 @@ export function __lx_define_page_bridge(name, mode) {
       }
       return promise;
     }
-    window.LingXiaBridge.notify(name, payload);
+    bridge.raw.notify(name, payload);
   }
   fn.__logicFunc = true;
   fn.__funcName = name;

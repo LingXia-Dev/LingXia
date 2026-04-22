@@ -114,17 +114,19 @@ interface TickerSnapshot {
 function openTickerSession(params: Record<string, unknown>) {
   const bridge = (window as typeof window & {
     LingXiaBridge?: {
-      channel?: {
-        open?: <TIn, TOut>(topic: string, payload: Record<string, unknown>) => Promise<unknown>;
+      raw?: {
+        channel?: {
+          open?: <TIn, TOut>(topic: string, payload: Record<string, unknown>) => Promise<unknown>;
+        };
       };
     };
   }).LingXiaBridge;
 
-  if (!bridge?.channel?.open) {
+  if (!bridge?.raw?.channel?.open) {
     return Promise.reject(new Error('LingXiaBridge channel API is not ready'));
   }
 
-  return bridge.channel.open<ServerMessage, ClientCommand>('tickerSession', params);
+  return bridge.raw.channel.open<ServerMessage, ClientCommand>('tickerSession', params);
 }
 
 const session = useLxChannel(openTickerSession, {

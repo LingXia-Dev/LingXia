@@ -30,7 +30,7 @@ export interface LxNavigatorEvent extends CustomEvent<LxNavigatorEventDetail> {
 }
 
 type LingXiaBridgeCall = {
-  call(method: string, params?: unknown, options?: { cap?: string }): Promise<unknown>;
+  invoke(route: string, params?: unknown): Promise<unknown>;
 };
 
 export type LxNavigatorAttributes = {
@@ -400,10 +400,10 @@ export class LxNavigatorElement extends HTMLElement {
 
   private callHost(route: string, params?: unknown): Promise<void> {
     const bridge = (window as unknown as { LingXiaBridge?: LingXiaBridgeCall }).LingXiaBridge;
-    if (!bridge || typeof bridge.call !== 'function') {
+    if (!bridge || typeof bridge.invoke !== 'function') {
       return Promise.reject(new Error('LingXiaBridge is not available'));
     }
-    return bridge.call(`host.${route}`, params, { cap: 'host' }).then(() => undefined);
+    return bridge.invoke(route, params).then(() => undefined);
   }
 
   private async performNavigation(options: {
