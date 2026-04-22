@@ -94,6 +94,7 @@ impl MacosPlatform {
             is_release,
             Some(deployment_target),
             &config.native_features,
+            config.native_default_features,
         )
     }
 

@@ -112,6 +112,9 @@ impl HarmonyPlatform {
             Some(&crate_name),
             config.profile,
             |cmd| {
+                if !config.native_default_features {
+                    cmd.arg("--no-default-features");
+                }
                 if !config.native_features.is_empty() {
                     cmd.arg("--features").arg(config.native_features.join(","));
                 }

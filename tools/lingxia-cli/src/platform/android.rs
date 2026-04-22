@@ -169,6 +169,9 @@ Supported Rust target triples:\n\
             None,
             config.profile,
             |cmd| {
+                if !config.native_default_features {
+                    cmd.arg("--no-default-features");
+                }
                 if !config.native_features.is_empty() {
                     cmd.arg("--features").arg(config.native_features.join(","));
                 }

@@ -5,6 +5,7 @@ mod appicon;
 mod commands;
 mod config;
 mod github;
+#[path = "assets.rs"]
 mod host_assets;
 mod http_client;
 mod i18n;
@@ -259,15 +260,15 @@ enum Commands {
         command: GenCommand,
     },
 
-    /// Publish a package to the API server
+    /// Publish a package to the LingXia server
     Publish {
         /// Bearer token for authentication (or set LINGXIA_AUTH_TOKEN env var)
         #[arg(long, env = "LINGXIA_AUTH_TOKEN")]
         token: String,
 
-        /// API server URL
+        /// LingXia server URL
         #[arg(long)]
-        api_server: Option<String>,
+        lingxia_server: Option<String>,
 
         /// Target type: lxapp, lxplugin, app (auto-detected from project files if not specified)
         #[arg(long, value_parser = ["lxapp", "lxplugin", "app"])]
@@ -562,7 +563,7 @@ fn main() -> Result<()> {
         },
         Commands::Publish {
             token,
-            api_server,
+            lingxia_server,
             target,
             package_path,
             release_type,
@@ -571,7 +572,7 @@ fn main() -> Result<()> {
         } => {
             commands::publish::execute(commands::publish::PublishOptions {
                 token,
-                api_server,
+                lingxia_server,
                 target,
                 package: package_path,
                 release_type,

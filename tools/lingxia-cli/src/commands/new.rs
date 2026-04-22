@@ -24,10 +24,10 @@ use self::config_files::generate_config_file;
 use self::lxapp_scaffold::{create_lxapp_from_template, create_lxapp_project};
 use self::native::{create_project, create_rust_library};
 use self::prompts::{
-    gather_lxapp_dir_name, gather_lxapp_framework, gather_native_project_info, gather_product_name,
-    gather_project_name, gather_project_type,
+    gather_lxapp_dir_name, gather_lxapp_framework, gather_native_app_service_mode,
+    gather_native_project_info, gather_product_name, gather_project_name, gather_project_type,
 };
-use self::types::ProjectType;
+use self::types::{AppServiceMode, ProjectType};
 
 /// Locate the extracted embedded template assets directory.
 pub(super) fn locate_templates_dir() -> Result<PathBuf> {
@@ -71,6 +71,8 @@ pub fn execute(
             &name,
             &product_name,
             &framework,
+            AppServiceMode::Enabled,
+            None,
             &versions,
             &scaffold_versions.bridge,
             &scaffold_versions.types,
@@ -90,23 +92,30 @@ pub fn execute(
         gather_native_project_info(name, product_name, project_type, platforms, package_id, yes)?;
     let theme = ColorfulTheme::default();
 
+    let lxapp_dir_name = gather_lxapp_dir_name(&config.name, yes)?;
+    let lxapp_framework = gather_lxapp_framework(yes)?;
+    let app_service = gather_native_app_service_mode(yes)?;
+
     println!();
     println!("{}", "Project Configuration:".bold());
-    println!("  Name:        {}", config.name.cyan());
+    println!("  Name:          {}", config.name.cyan());
     if config.product_name != config.name {
-        println!("  Product:     {}", config.product_name.cyan());
+        println!("  Product:       {}", config.product_name.cyan());
     }
-    println!("  Type:        {}", config.project_type.as_str().cyan());
+    println!("  Type:          {}", config.project_type.as_str().cyan());
     let platform_list = config
         .platforms
         .iter()
         .map(|p| p.as_str())
         .collect::<Vec<_>>()
         .join(", ");
-    println!("  Platforms:   {}", platform_list.cyan());
-    println!("  Package ID:  {}", config.package_id.cyan());
+    println!("  Platforms:     {}", platform_list.cyan());
+    println!("  Package ID:    {}", config.package_id.cyan());
+    println!("  LxApp Name:    {}", lxapp_dir_name.cyan());
+    println!("  LxApp View:    {}", lxapp_framework.cyan());
+    println!("  AppService:    {}", app_service.label().cyan());
     println!(
-        "  Directory:   {}",
+        "  Directory:     {}",
         config.target_dir.display().to_string().cyan()
     );
     println!();
@@ -124,20 +133,18 @@ pub fn execute(
     }
 
     create_project(&config, &versions)?;
-    create_rust_library(&config, &versions)?;
+    create_rust_library(&config, &versions, app_service)?;
     icons::configure_and_apply_icons(&config, icon, yes, &theme)?;
-
-    let lxapp_dir_name = gather_lxapp_dir_name(&config.name, yes)?;
-    let lxapp_framework = gather_lxapp_framework(yes)?;
     let lxapp_info = create_lxapp_project(
         &config,
         &lxapp_dir_name,
         &lxapp_framework,
+        app_service,
         &versions,
         &scaffold_versions.bridge,
         &scaffold_versions.types,
     )?;
-    generate_config_file(&config, &lxapp_info)?;
+    generate_config_file(&config, &lxapp_info, app_service)?;
 
     println!();
     println!("{}", "Project created successfully!".green().bold());

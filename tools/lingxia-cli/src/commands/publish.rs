@@ -11,7 +11,7 @@ use crate::lxapp;
 
 pub struct PublishOptions {
     pub token: String,
-    pub api_server: Option<String>,
+    pub lingxia_server: Option<String>,
     pub target: Option<String>,
     pub package: Option<String>,
     pub release_type: Option<String>,
@@ -43,8 +43,8 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
     let meta = resolve_meta(&cwd, opts.target, opts.release_type)?;
-    let api_server = resolve_api_server(&cwd, opts.api_server)?;
-    let api_server = api_server.trim_end_matches('/').to_string();
+    let lingxia_server = resolve_lingxia_server(&cwd, opts.lingxia_server)?;
+    let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
 
     let package =
         resolve_package_for_publish(&cwd, &meta, opts.package, opts.framework, opts.progress)?;
@@ -74,7 +74,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let sha256 = sha256_hex(&file_data);
     println!("   SHA256:  {sha256}");
 
-    let upload_url = format!("{api_server}/api/v1/package/upload");
+    let upload_url = format!("{lingxia_server}/api/v1/package/upload");
     println!("   Upload → {upload_url}");
 
     let mut fields: Vec<(&str, String)> = vec![
@@ -292,18 +292,18 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
     Ok(s)
 }
 
-fn resolve_api_server(cwd: &Path, api_server_arg: Option<String>) -> Result<String> {
-    if let Some(s) = api_server_arg {
+fn resolve_lingxia_server(cwd: &Path, lingxia_server_arg: Option<String>) -> Result<String> {
+    if let Some(s) = lingxia_server_arg {
         let trimmed = s.trim();
         if trimmed.is_empty() {
-            bail!("--api-server cannot be empty");
+            bail!("--lingxia-server cannot be empty");
         }
         return Ok(trimmed.to_string());
     }
     let config_path = cwd.join(HOST_CONFIG_FILE);
     if config_path.exists() {
         if let Ok(cfg) = LingXiaConfig::load(cwd) {
-            if let Some(url) = cfg.app.and_then(|a| a.api_server) {
+            if let Some(url) = cfg.app.and_then(|a| a.lingxia_server) {
                 let trimmed = url.trim();
                 if !trimmed.is_empty() {
                     return Ok(trimmed.to_string());
@@ -311,7 +311,7 @@ fn resolve_api_server(cwd: &Path, api_server_arg: Option<String>) -> Result<Stri
             }
         }
     }
-    bail!("Use --api-server to specify the package upload server URL.");
+    bail!("Use --lingxia-server to specify the package upload server URL.");
 }
 
 fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -> Result<PathBuf> {

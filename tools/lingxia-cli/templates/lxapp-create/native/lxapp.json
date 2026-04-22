@@ -1,0 +1,13 @@
+{
+  "appId": "__APP_ID__",
+  "appName": "__APP_DISPLAY_NAME__",
+  "version": "0.0.1",
+  "framework": "{{FRAMEWORK}}",
+  "logic": false,
+  "pages": [
+    {
+      "name": "home",
+      "path": "pages/home/index.{{PAGE_EXT}}"
+    }
+  ]
+}

@@ -70,3 +70,38 @@ impl Platform {
 pub(super) struct LxAppInfo {
     pub(super) app_id: String,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AppServiceMode {
+    Enabled,
+    Disabled,
+}
+
+impl AppServiceMode {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Enabled => "enabled",
+            Self::Disabled => "disabled",
+        }
+    }
+
+    pub(super) fn enabled(self) -> bool {
+        matches!(self, Self::Enabled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AppServiceMode;
+
+    #[test]
+    fn default_logic_mode_keeps_appservice_enabled() {
+        assert!(AppServiceMode::Enabled.enabled());
+    }
+
+    #[test]
+    fn app_service_labels_are_clear() {
+        assert_eq!(AppServiceMode::Enabled.label(), "enabled");
+        assert_eq!(AppServiceMode::Disabled.label(), "disabled");
+    }
+}

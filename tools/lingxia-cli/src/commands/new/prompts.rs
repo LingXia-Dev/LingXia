@@ -1,5 +1,5 @@
 use super::lxapp_scaffold;
-use super::types::{DEFAULT_PACKAGE_PREFIX, Platform, ProjectConfig, ProjectType};
+use super::types::{AppServiceMode, DEFAULT_PACKAGE_PREFIX, Platform, ProjectConfig, ProjectType};
 use super::validation::{validate_package_id, validate_product_name, validate_project_name};
 use anyhow::{Result, anyhow};
 use dialoguer::{Input, MultiSelect, Select, theme::ColorfulTheme};
@@ -201,6 +201,22 @@ pub(super) fn gather_lxapp_framework(yes: bool) -> Result<String> {
         .default(0)
         .interact()?;
     Ok(choices[selection].to_lowercase())
+}
+
+pub(super) fn gather_native_app_service_mode(yes: bool) -> Result<AppServiceMode> {
+    if yes {
+        return Ok(AppServiceMode::Enabled);
+    }
+
+    let enabled = dialoguer::Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt("Enable AppService for the native host?")
+        .default(true)
+        .interact()?;
+    Ok(if enabled {
+        AppServiceMode::Enabled
+    } else {
+        AppServiceMode::Disabled
+    })
 }
 
 fn normalize_platforms(input: Vec<String>) -> Result<Vec<Platform>> {

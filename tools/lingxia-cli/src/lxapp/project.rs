@@ -677,4 +677,47 @@ mod tests {
         assert_eq!(project.framework, ProjectFramework::React);
         assert_eq!(project.pages, vec!["pages/home/index.tsx".to_string()]);
     }
+
+    #[test]
+    fn discovers_logic_disabled_without_logic_entry() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "framework": "html",
+              "logic": false,
+              "pages": [{"name":"home","path":"pages/home/index"}]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+
+        let project = Project::discover(temp.path(), None).unwrap();
+
+        assert_eq!(project.framework, ProjectFramework::Html);
+        assert_eq!(project.logic_entry, None);
+        assert_eq!(project.pages, vec!["pages/home/index.html".to_string()]);
+    }
+
+    #[test]
+    fn rejects_false_logic_with_string_entry_conflict() {
+        let temp = tempdir().unwrap();
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{
+              "appId": "demo",
+              "version": "1.0.0",
+              "framework": "html",
+              "logic": false,
+              "pages": [{"name":"home","path":"pages/home/index"}]
+            }"#,
+        );
+        write_file(temp.path(), "pages/home/index.html", "<!doctype html>");
+
+        let project = Project::discover(temp.path(), None).unwrap();
+        assert_eq!(project.logic_entry, None);
+    }
 }

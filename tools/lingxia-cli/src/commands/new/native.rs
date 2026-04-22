@@ -4,7 +4,7 @@ use super::ios;
 use super::locate_templates_dir;
 use super::macos;
 use super::template::process_template_dir;
-use super::types::{Platform, ProjectConfig};
+use super::types::{AppServiceMode, Platform, ProjectConfig};
 use crate::versions::LingXiaVersions;
 use anyhow::{Result, anyhow};
 use colored::Colorize;
@@ -90,6 +90,7 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
 pub(super) fn create_rust_library(
     config: &ProjectConfig,
     versions: &LingXiaVersions,
+    app_service: AppServiceMode,
 ) -> Result<()> {
     let project_root = &config.target_dir;
     let lib_name = format!("{}-lib", config.name);
@@ -122,6 +123,76 @@ pub(super) fn create_rust_library(
     vars.insert(
         "LINGXIA_VERSION".to_string(),
         versions.lingxia_crate.clone(),
+    );
+    vars.insert(
+        "HOST_DEFAULT_FEATURES".to_string(),
+        match app_service {
+            AppServiceMode::Enabled => "[\"js-lxapp\"]".to_string(),
+            AppServiceMode::Disabled => "[]".to_string(),
+        },
+    );
+    vars.insert("LINGXIA_DEP_FEATURES".to_string(), "[]".to_string());
+    vars.insert(
+        "APPLE_REEXPORT".to_string(),
+        if config.platforms.contains(&Platform::Ios) || config.platforms.contains(&Platform::Macos)
+        {
+            "#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\npub use lingxia::apple::*;"
+                .to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "HARMONY_REEXPORT".to_string(),
+        if config.platforms.contains(&Platform::Harmony) {
+            "#[cfg(target_env = \"ohos\")]\npub use lingxia::harmony::*;".to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "ANDROID_EXPORT_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Android) {
+            format!(
+                "// Android: JNI export\n#[cfg(target_os = \"android\")]\nmod android {{\n    use jni::EnvUnowned;\n    use jni::objects::JClass;\n\n    #[unsafe(no_mangle)]\n    pub extern \"system\" fn Java_{}_MainActivity_nativeRegisterHostAddon(\n        _env: EnvUnowned,\n        _class: JClass,\n    ) {{\n        super::register_host_addons();\n    }}\n}}",
+                config.package_id.replace('.', "_")
+            )
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "HARMONY_EXPORT_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Harmony) {
+            "// Harmony: NAPI export\n#[cfg(target_env = \"ohos\")]\n#[napi_derive_ohos::napi]\npub fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "APPLE_EXPORT_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Ios) || config.platforms.contains(&Platform::Macos)
+        {
+            "// iOS/macOS: C export\n#[cfg(any(target_os = \"ios\", target_os = \"macos\"))]\n#[unsafe(no_mangle)]\npub extern \"C\" fn lingxia_register_host_addon() {\n    register_host_addons();\n}".to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "ANDROID_DEPS_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Android) {
+            "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22.1\"".to_string()
+        } else {
+            String::new()
+        },
+    );
+    vars.insert(
+        "HARMONY_DEPS_BLOCK".to_string(),
+        if config.platforms.contains(&Platform::Harmony) {
+            "[target.'cfg(target_env = \"ohos\")'.dependencies]\nnapi-ohos = \"1.1\"\nnapi-derive-ohos = \"1.1\"".to_string()
+        } else {
+            String::new()
+        },
     );
 
     // Process all template files into {project}-lib/ directory

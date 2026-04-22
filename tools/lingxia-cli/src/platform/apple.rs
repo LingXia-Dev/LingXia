@@ -372,6 +372,7 @@ pub fn build_rust_staticlib(
     release: bool,
     deployment_target: Option<&str>,
     features: &[String],
+    default_features: bool,
 ) -> Result<PathBuf> {
     println!("{}", "Compiling native static library...".cyan());
 
@@ -392,6 +393,9 @@ pub fn build_rust_staticlib(
         target,
         profile,
         |cmd| {
+            if !default_features {
+                cmd.arg("--no-default-features");
+            }
             if !features.is_empty() {
                 cmd.arg("--features").arg(features.join(","));
             }

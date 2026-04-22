@@ -1,7 +1,7 @@
 use super::icons;
 use super::locate_templates_dir;
 use super::template::process_template_dir;
-use super::types::{LxAppInfo, ProjectConfig};
+use super::types::{AppServiceMode, LxAppInfo, ProjectConfig};
 use crate::versions::LingXiaVersions;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
@@ -13,6 +13,8 @@ pub(super) fn create_lxapp_from_template(
     project_name: &str,
     product_name: &str,
     framework: &str,
+    app_service: AppServiceMode,
+    native_rust_dir: Option<&str>,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
     lingxia_types_version: &str,
@@ -45,6 +47,8 @@ pub(super) fn create_lxapp_from_template(
     )?;
 
     process_template_dir(&template_dir, target_dir, &vars)?;
+    remove_dir_if_exists(&target_dir.join("native"))?;
+    remove_dir_if_exists(&target_dir.join("html"))?;
     if framework.eq_ignore_ascii_case("html") {
         let html_template_dir = template_dir.join("html");
         if !html_template_dir.exists() {
@@ -54,6 +58,11 @@ pub(super) fn create_lxapp_from_template(
             ));
         }
         process_template_dir(&html_template_dir, target_dir, &vars)?;
+    }
+    if !app_service.enabled() {
+        let native_rust_dir = native_rust_dir
+            .ok_or_else(|| anyhow!("native logic mode requires a native Rust directory"))?;
+        configure_native_logic_shell(target_dir, framework, native_rust_dir, &vars)?;
     }
     icons::ensure_lxapp_public_icon(target_dir)?;
 
@@ -171,6 +180,7 @@ pub(super) fn create_lxapp_project(
     config: &ProjectConfig,
     lxapp_dir_name: &str,
     framework: &str,
+    app_service: AppServiceMode,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
     lingxia_types_version: &str,
@@ -183,6 +193,8 @@ pub(super) fn create_lxapp_project(
         lxapp_dir_name,
         &config.product_name,
         framework,
+        app_service,
+        Some(&format!("../{}-lib/src", config.name)),
         versions,
         lingxia_bridge_version,
         lingxia_types_version,
@@ -190,6 +202,45 @@ pub(super) fn create_lxapp_project(
     Ok(LxAppInfo {
         app_id: lxapp_dir_name.to_string(),
     })
+}
+
+fn configure_native_logic_shell(
+    target_dir: &Path,
+    framework: &str,
+    native_rust_dir: &str,
+    vars: &HashMap<String, String>,
+) -> Result<()> {
+    remove_if_exists(&target_dir.join("lxapp.ts"))?;
+    remove_if_exists(&target_dir.join("pages").join("home").join("index.ts"))?;
+    remove_if_exists(&target_dir.join("pages").join("home").join("index.json"))?;
+
+    let templates_base = locate_templates_dir()?;
+    let native_template_dir = templates_base.join("lxapp-create").join("native");
+    let mut native_vars = vars.clone();
+    native_vars.insert("NATIVE_RUST_DIR".to_string(), native_rust_dir.to_string());
+    process_template_dir(&native_template_dir, target_dir, &native_vars)?;
+    if framework.eq_ignore_ascii_case("html") {
+        let html_overlay = native_template_dir.join("html");
+        process_template_dir(&html_overlay, target_dir, &native_vars)?;
+    } else {
+        remove_dir_if_exists(&target_dir.join("html"))?;
+    }
+
+    Ok(())
+}
+
+fn remove_if_exists(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn remove_dir_if_exists(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_dir_all(path)?;
+    }
+    Ok(())
 }
 
 pub(super) fn slugify(value: &str) -> String {
