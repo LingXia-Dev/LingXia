@@ -4,9 +4,9 @@ struct LxAppGeneratedAppConfig: Decodable, Sendable {
     let productName: String
     let productVersion: String?
     let lingxiaId: String?
-    let apiServer: String?
-    let homeLxAppID: String?
-    let homeLxAppVersion: String?
+    let lingxiaServer: String?
+    let homeAppId: String?
+    let homeAppVersion: String?
     let cacheMaxAgeDays: Int?
     let cacheMaxSizeMB: Int?
 }
@@ -44,7 +44,7 @@ struct LxAppUIConfig: Decodable, Sendable {
         enum Style: String, Decodable, Sendable {
             case window
             case statusPanel
-            case attachedPanel
+            case attachPanel
             case sheet
             case embedded
         }

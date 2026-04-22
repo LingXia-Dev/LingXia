@@ -121,7 +121,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         panelId: String
     ) -> Bool {
         guard let surface = surfaceById[panelId],
-              surface.presentation.style == .attachedPanel,
+              surface.presentation.style == .attachPanel,
               let position = panelPosition(for: surface) else {
             return false
         }
@@ -193,8 +193,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         switch surface.presentation.style {
         case .window, .statusPanel:
             try openWindowSurface(surface, sourceActivatorID: sourceActivatorID)
-        case .attachedPanel:
-            try openAttachedPanelSurface(surface)
+        case .attachPanel:
+            try openAttachPanelSurface(surface)
         case .sheet, .embedded:
             throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported style \(surface.presentation.style.rawValue) on macOS")
         }
@@ -223,7 +223,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActivators()
     }
 
-    private func openAttachedPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
+    private func openAttachPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
         if let parentID = surface.presentation.attachTo, !visibleSurfaceIDs.contains(parentID) {
             try openSurface(id: parentID)
         }
@@ -236,12 +236,12 @@ final class LxAppMacAppUIRuntime: NSObject {
             return
         }
 
-        try requestAttachedPanelOpenThroughRuntime(surface)
+        try requestAttachPanelOpenThroughRuntime(surface)
     }
 
-    private func requestAttachedPanelOpenThroughRuntime(_ surface: LxAppUIConfig.Surface) throws {
-        guard surface.presentation.style == .attachedPanel else {
-            throw LxAppUIError.invalidConfig("surface \(surface.id) is not an attachedPanel")
+    private func requestAttachPanelOpenThroughRuntime(_ surface: LxAppUIConfig.Surface) throws {
+        guard surface.presentation.style == .attachPanel else {
+            throw LxAppUIError.invalidConfig("surface \(surface.id) is not an attachPanel")
         }
         guard case .lxapp = surface.content.kind,
               let appId = surface.content.appId,
@@ -288,7 +288,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         switch surface.presentation.style {
         case .window, .statusPanel:
             shell.show()
-        case .attachedPanel:
+        case .attachPanel:
             shell.show()
             shell.showPanel(id: id)
         case .sheet, .embedded:
@@ -309,7 +309,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             if !shell.hasOpenTabs {
                 discardOpenedSubtree(rootID: id)
             }
-        case .attachedPanel:
+        case .attachPanel:
             shell.hidePanel(id: id)
         case .sheet, .embedded:
             break
@@ -498,7 +498,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func panelPosition(for surface: LxAppUIConfig.Surface) -> PanelPosition? {
-        guard surface.presentation.style == .attachedPanel else { return nil }
+        guard surface.presentation.style == .attachPanel else { return nil }
         switch surface.presentation.edge {
         case .leading:
             return .left
@@ -552,7 +552,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
         guard initialSurface.presentation.style == .window
             || initialSurface.presentation.style == .statusPanel
-            || initialSurface.presentation.style == .attachedPanel else {
+            || initialSurface.presentation.style == .attachPanel else {
             throw LxAppUIError.unsupported("launch.initialSurface must reference a supported macOS surface")
         }
 
@@ -571,24 +571,24 @@ final class LxAppMacAppUIRuntime: NSObject {
                 if surface.presentation.attachTo != nil {
                     throw LxAppUIError.invalidConfig("root window surface \(surface.id) cannot set attachTo")
                 }
-            case .attachedPanel:
+            case .attachPanel:
                 guard let parentID = surface.presentation.attachTo, !parentID.isEmpty else {
-                    throw LxAppUIError.invalidConfig("attachedPanel surface \(surface.id) requires attachTo")
+                    throw LxAppUIError.invalidConfig("attachPanel surface \(surface.id) requires attachTo")
                 }
                 guard let parent = surfaceById[parentID] else {
                     throw LxAppUIError.invalidConfig("surface \(surface.id) attaches to unknown surface \(parentID)")
                 }
                 guard parent.presentation.style == .window || parent.presentation.style == .statusPanel else {
-                    throw LxAppUIError.unsupported("macOS v1 does not support attachedPanel -> attachedPanel; surface \(surface.id) attaches to \(parentID)")
+                    throw LxAppUIError.unsupported("macOS v1 does not support attachPanel -> attachPanel; surface \(surface.id) attaches to \(parentID)")
                 }
                 guard parent.id == rootSurface.id else {
                     throw LxAppUIError.unsupported("macOS v1 only supports panels attached to the root window surface")
                 }
                 guard surface.presentation.edge != .top else {
-                    throw LxAppUIError.unsupported("macOS v1 does not support top-attached panels")
+                    throw LxAppUIError.unsupported("macOS v1 does not support top-attach panels")
                 }
                 guard surface.presentation.edge != nil else {
-                    throw LxAppUIError.invalidConfig("attachedPanel surface \(surface.id) requires edge")
+                    throw LxAppUIError.invalidConfig("attachPanel surface \(surface.id) requires edge")
                 }
                 childrenByParentId[parentID, default: []].append(surface.id)
             case .sheet, .embedded:
