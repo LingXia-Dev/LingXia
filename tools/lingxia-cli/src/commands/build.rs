@@ -340,7 +340,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
                 None
             },
             native_features: config.native_features_for_platform(platform_type.as_str()),
-            native_default_features: config.features.is_none(),
+            native_default_features: config.native_default_features_enabled(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -443,7 +443,7 @@ fn build_standalone_apple_swift_package(
                 None
             },
             native_features: if matches!(platform_type, PlatformType::MacOs) {
-                vec!["shell".to_string(), "webview-input".to_string()]
+                vec!["shell-runtime".to_string(), "webview-input".to_string()]
             } else {
                 Vec::new()
             },

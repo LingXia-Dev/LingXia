@@ -127,7 +127,7 @@ pub(super) fn create_rust_library(
     vars.insert(
         "HOST_DEFAULT_FEATURES".to_string(),
         match app_service {
-            AppServiceMode::Enabled => "[\"js-lxapp\"]".to_string(),
+            AppServiceMode::Enabled => "[\"standard\"]".to_string(),
             AppServiceMode::Disabled => "[]".to_string(),
         },
     );

@@ -34,7 +34,7 @@ pub(crate) fn bind_push_token_for_ffi(token: String) -> i32 {
         }
     };
 
-    let _ = rong::RongExecutor::global().spawn(async move {
+    let _ = rong_rt::RongExecutor::global().spawn(async move {
         if let Err(err) = provider::bind_push_token(token).await {
             log::warn!("[Push] bind_push_token failed: {}", err);
         }

@@ -300,16 +300,20 @@ impl LingXiaConfig {
     pub fn native_features_for_platform(&self, platform: &str) -> Vec<String> {
         let mut features = Vec::new();
         if self.app_service_enabled() {
-            features.push("js-lxapp".to_string());
+            features.push("standard".to_string());
         }
         if self.shell_enabled(platform) {
-            features.push("shell".to_string());
+            features.push("shell-runtime".to_string());
             features.push("webview-input".to_string());
         }
         if self.devtools_enabled() {
             features.push("devtools".to_string());
         }
         features
+    }
+
+    pub fn native_default_features_enabled(&self) -> bool {
+        self.app_service_enabled()
     }
 
     /// Load config from `lingxia.yaml` in the given directory.
@@ -470,14 +474,6 @@ impl LingXiaConfig {
                     ));
                 }
             }
-        }
-        if let Some(features) = &self.features
-            && features.shell
-            && !features.app_service
-        {
-            return Err(anyhow!(
-                "features.shell requires features.appService because shell uses AppService-backed lxapps"
-            ));
         }
         if let Some(webui) = self.shell.as_ref().and_then(|shell| shell.webui.as_ref()) {
             let has_path = webui
@@ -659,8 +655,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                 "ui surface '{id}' can set presentation.anchor only when presentation.kind is panel"
             ));
         }
-        if presentation_kind == MacosUiSurfaceKind::Panel
-            && anchor.as_deref() != Some("activator")
+        if presentation_kind == MacosUiSurfaceKind::Panel && anchor.as_deref() != Some("activator")
         {
             return Err(anyhow!(
                 "ui surface '{id}' with presentation.kind panel requires presentation.anchor: activator"
@@ -707,9 +702,7 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
     };
     if !matches!(
         initial.kind,
-        MacosUiSurfaceKind::Window
-            | MacosUiSurfaceKind::Panel
-            | MacosUiSurfaceKind::AttachPanel
+        MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel | MacosUiSurfaceKind::AttachPanel
     ) {
         return Err(anyhow!(
             "ui.launch.initialSurface must reference a supported macOS surface"

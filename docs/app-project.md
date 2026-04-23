@@ -93,6 +93,10 @@ ui:
 
 ```
 
+For a native-only menu bar app, see `examples/menubar`. It uses
+`features.appService: false`, a `menuBarItem` activator, a panel root surface,
+and a `logic: false` HTML home lxapp.
+
 ---
 
 ## Root Sections
@@ -131,12 +135,12 @@ ui:
 
 ## `features` Section
 
-`features` controls native Rust compile-time features. When this section exists, the CLI builds the host Rust library with `--no-default-features` and enables only the selected features.
+`features` controls native Rust compile-time features. When `appService` is `false`, the CLI builds the host Rust library with `--no-default-features`. When `appService` is `true`, Cargo default features stay enabled and the CLI adds the selected features.
 
 | Field | Type | Default | Description |
 |---|---|---:|---|
 | `appService` | bool | `true` | Enables JS/TS AppService runtime support. Set `false` for native-only hosts; logic-enabled lxapps will be rejected. |
-| `shell` | bool | `false` | Enables product shell/browser chrome: browser, downloads, settings, panels. Requires `appService: true`. |
+| `shell` | bool | `false` | Enables product shell/browser chrome: browser, downloads, settings, panels. This can be used by native-only hosts. |
 | `devtools` | bool | `false` | Compiles devtools hooks into the host. `lingxia dev` may temporarily enable it without editing YAML. |
 
 `-t lxapp` projects always require an AppService-capable host. `-t native-app` projects may set `appService: false` when they only need native-hosted UI and host APIs.
@@ -281,7 +285,6 @@ Current macOS supported presentation kinds:
 | `window` | Supported | Normal app window. |
 | `panel` | Supported | Floating panel. Use `anchor: activator` to position it from the entry point that opened it. |
 | `attachPanel` | Supported | Panel attached to the single root window/panel. |
-| `sheet` | Rejected | Not implemented in macOS runtime. |
 | `embedded` | Rejected | Not implemented in macOS runtime. |
 
 Current macOS rules:
@@ -593,7 +596,7 @@ This page intentionally does not define product behavior for:
 
 - splash presentation
 - multiple root windows
-- sheets and embedded native host surfaces
+- embedded native host surfaces
 - attach panels nested under other panels
 - top-attach panels
 - reusing one lxapp appId across multiple surfaces

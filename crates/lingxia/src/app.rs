@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 pub use lingxia_app_context::{AppConfig, CapabilitiesConfig, StorageConfig};
+use lingxia_platform::traits::app_runtime::AppRuntime;
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -78,4 +79,10 @@ pub fn state_dir_from(app_data_dir: &Path) -> PathBuf {
 
 pub fn state_file_from(app_data_dir: &Path, name: &str) -> PathBuf {
     lingxia_app_context::app_state_file(app_data_dir, name)
+}
+
+pub fn exit() -> crate::Result<()> {
+    let runtime = lxapp::get_platform()
+        .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
+    runtime.exit().map_err(Into::into)
 }

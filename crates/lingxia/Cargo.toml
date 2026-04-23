@@ -9,16 +9,15 @@ keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [features]
-default = ["browser", "js-lxapp"]
-browser = ["dep:lingxia-browser"]
-js-lxapp = ["lxapp/js-lxapp", "dep:lingxia-logic"]
-shell = ["browser", "dep:lingxia-shell"]
+default = ["standard"]
+standard = ["lxapp/standard", "dep:lingxia-logic", "browser-runtime"]
+browser-runtime = ["dep:lingxia-browser"]
+shell-runtime = ["browser-runtime", "dep:lingxia-shell"]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
-rong = { workspace = true, default-features = false }
 rong_rt = { workspace = true, default-features = false }
-lxapp = { workspace = true }
+lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }
 lingxia-update = { workspace = true }

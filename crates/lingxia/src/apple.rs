@@ -1,6 +1,6 @@
 use lingxia_messaging::invoke_callback;
 use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
-#[cfg(all(target_os = "macos", feature = "shell"))]
+#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 use std::sync::Arc;
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into a u32 ARGB value.
@@ -259,10 +259,10 @@ mod bridge {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "shell"))]
+#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 struct AppleBrowserNativeInputHost;
 
-#[cfg(all(target_os = "macos", feature = "shell"))]
+#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
     fn prepare_for_input(&self, tab_id: &str) -> Result<(), String> {
         if self::bridge::prepare_internal_browser_tab_for_input(tab_id) {
@@ -273,12 +273,12 @@ impl lingxia_browser::BrowserNativeInputHost for AppleBrowserNativeInputHost {
     }
 }
 
-#[cfg(all(target_os = "macos", feature = "shell"))]
+#[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 fn install_browser_native_input_host() {
     let _ = lingxia_browser::register_native_input_host(Arc::new(AppleBrowserNativeInputHost));
 }
 
-#[cfg(not(all(target_os = "macos", feature = "shell")))]
+#[cfg(not(all(target_os = "macos", feature = "shell-runtime")))]
 fn install_browser_native_input_host() {}
 
 /// Initialize the Lingxia SDK for iOS/macOS

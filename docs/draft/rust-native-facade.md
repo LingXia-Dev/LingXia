@@ -25,7 +25,7 @@ modules:
 - `lingxia::log`
 - `lingxia::update`
 - `lingxia::host`
-- `lingxia::js` when `js-lxapp` is enabled
+- `lingxia::js` when `standard` is enabled
 
 Lower-level workspace crate names should not be part of normal native app
 authoring.
@@ -49,11 +49,11 @@ layers, and put only reusable service behavior in `lingxia-service`.
 ## JS AppService Boundary
 
 JS extension authoring stays under `lingxia::js` and is only available with the
-`js-lxapp` Cargo feature.
+`standard` Cargo feature.
 
 Root-level `register_logic_extension` and `LxLogicExtension` must not return.
 
-`features.appService` in `lingxia.yaml` maps to the Cargo `js-lxapp` feature.
+`features.appService` in `lingxia.yaml` maps to the Cargo `standard` feature.
 Lxapp manifests must use `logic`, not `appService`.
 
 ## Bridge Boundary

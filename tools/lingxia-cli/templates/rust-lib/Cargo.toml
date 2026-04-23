@@ -11,8 +11,8 @@ crate-type = ["cdylib", "staticlib"]
 
 [features]
 default = {{HOST_DEFAULT_FEATURES}}
-js-lxapp = ["lingxia/js-lxapp"]
-shell = ["lingxia/shell", "webview-input", "js-lxapp"]
+standard = ["lingxia/standard"]
+shell-runtime = ["lingxia/shell-runtime", "webview-input", "standard"]
 devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
 

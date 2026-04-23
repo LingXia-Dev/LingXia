@@ -23,14 +23,14 @@ app:
   homeAppId: {{HOME_APP_ID}}
 {{ANDROID_SECTION}}{{IOS_SECTION}}{{MACOS_SECTION}}{{HARMONY_SECTION}}{{UI_SECTION}}
 # Native compile-time features for the host Rust library.
-# If this section exists, the CLI builds native Rust with --no-default-features and adds only the enabled features below.
+# appService: false makes the CLI build native Rust with --no-default-features.
+# appService: true keeps native crate defaults and adds the enabled features below.
 features:
   # Enable JS/TS AppService runtime support.
-  # true -> compile js-lxapp/lingxia-logic and support logic-enabled lxapps.
+  # true -> compile the standard runtime/lingxia-logic and support logic-enabled lxapps.
   # false -> native-only host; bundled/home lxapps must use logic: false.
   appService: {{APP_SERVICE}}
   # Enable product shell/browser chrome: browser, downloads, settings, panels.
-  # Requires appService because shell surfaces are AppService-backed lxapps.
   shell: false
   # Compile devtools bridge/hooks into the host app.
   # lingxia dev may temporarily enable this without changing this file.

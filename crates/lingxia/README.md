@@ -23,5 +23,5 @@ Platform entry crate for the LingXia framework. Provides cross-platform FFI bind
 - `provider` - Provider traits and registration APIs
 - `log` - Logging facade
 - `update` - Update provider contracts and version types
-- `js::register_logic_extension` - Register custom JS logic extensions when `js-lxapp` is enabled
-- `js::LxLogicExtension` - Trait for JS extensions when `js-lxapp` is enabled
+- `js::register_logic_extension` - Register custom JS logic extensions in standard builds
+- `js::LxLogicExtension` - Trait for JS extensions in standard builds

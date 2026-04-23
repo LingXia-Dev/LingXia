@@ -10,6 +10,7 @@ pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 pub use lxapp::set_num_workers;
 
 pub mod app;
+pub use app::{config as app_config, lingxia_id, product_version};
 mod bootstrap;
 mod capabilities;
 pub mod dev {
@@ -25,7 +26,7 @@ pub mod downloads;
 mod error;
 pub mod file;
 mod host_addon;
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 pub mod js;
 mod logging;
 mod lxapp_dev;

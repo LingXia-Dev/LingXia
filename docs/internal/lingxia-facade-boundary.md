@@ -16,7 +16,7 @@ Application Rust libraries, such as `examples/*/rust-lib`, should:
 
 - depend on `lingxia`
 - define host APIs through `lingxia`
-- register logic extensions through `lingxia::js` when `js-lxapp` is enabled
+- register logic extensions through `lingxia::js` when `standard` is enabled
 - consume platform exports through `lingxia`
 
 They should not need to know about runtime-core crate boundaries.

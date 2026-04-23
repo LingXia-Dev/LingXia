@@ -28,7 +28,7 @@ impl lingxia::HostAddon for AppHostAddon {
         // registrations manually.
     }
 
-    #[cfg(feature = "js-lxapp")]
+    #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
     }
@@ -287,16 +287,16 @@ Media stream providers should import stream traits through `lingxia::media`.
 ## JS AppService Extensions
 
 JS AppService extensions are optional and are only available with the
-`js-lxapp` Cargo feature. They are scoped under `lingxia::js`.
+`standard` Cargo feature. They are scoped under `lingxia::js`.
 
 ```rust
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 use lingxia::js::LxLogicExtension;
 
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 struct WorkspaceDocsExtension;
 
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 impl LxLogicExtension for WorkspaceDocsExtension {
     fn init(&self, ctx: &rong::JSContext) -> rong::JSResult<()> {
         let lx = ctx.global().get::<_, rong::JSObject>("lx")?;
@@ -307,7 +307,7 @@ impl LxLogicExtension for WorkspaceDocsExtension {
     }
 }
 
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 fn load_document(_ctx: rong::JSContext, id: String) -> rong::JSResult<String> {
     Ok(format!("# {id}"))
 }
@@ -316,14 +316,14 @@ fn load_document(_ctx: rong::JSContext, id: String) -> rong::JSResult<String> {
 Register the extension from `HostAddon::install_logic_extensions`:
 
 ```rust
-#[cfg(feature = "js-lxapp")]
+#[cfg(feature = "standard")]
 fn install_logic_extensions(&self) {
     lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
 }
 ```
 
 When `features.appService: false` in `lingxia.yaml`, the generated host builds
-without `js-lxapp`; `lingxia::js` is not public, and logic-enabled lxapps are
+without `standard`; `lingxia::js` is not public, and logic-enabled lxapps are
 rejected at runtime. Lxapp manifests must use `logic`, not `appService`.
 
 ## Choosing The Surface

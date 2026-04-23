@@ -13,7 +13,7 @@ pub(crate) fn app_capabilities() -> u32 {
 }
 
 fn shell_enabled() -> bool {
-    cfg!(feature = "shell")
+    cfg!(feature = "shell-runtime")
 }
 
 fn notifications_supported() -> bool {
