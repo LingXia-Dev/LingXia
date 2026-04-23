@@ -735,14 +735,16 @@ fn rewrite_registration_call(
                 json_string_literal(&handler_json)
             )))
         }
-        "Page" => {
+        "Page" | "PageInstance" => {
             let ModuleRole::Page { page_path } = role else {
                 return Ok(None);
             };
-            let first_arg = call_expr
-                .arguments
-                .first()
-                .ok_or_else(|| anyhow!("Page() must be called with a configuration expression"))?;
+            let first_arg = call_expr.arguments.first().ok_or_else(|| {
+                anyhow!(
+                    "{}() must be called with a configuration expression",
+                    identifier.name.as_str()
+                )
+            })?;
             let config_expr = slice(source, first_arg.span())?;
             let binding_meta_json = match unwrap_expression(first_arg.to_expression()) {
                 Expression::ObjectExpression(object) => serde_json::to_string(&BindingMeta {

@@ -390,7 +390,7 @@ fn resolve_dev_appid(raw: &str) -> Result<String, String> {
 fn resolve_dev_page(
     app: &std::sync::Arc<lxapp::LxApp>,
     page_name: Option<&str>,
-) -> Result<(lxapp::Page, Option<String>), String> {
+) -> Result<(lxapp::PageInstance, Option<String>), String> {
     let Some(page_name) = page_name.map(str::trim).filter(|value| !value.is_empty()) else {
         let page = app.current_page().map_err(|err| err.to_string())?;
         let name = dev_page_name_for_path(app, &page.path());
@@ -423,7 +423,7 @@ fn dev_page_name_for_path(app: &std::sync::Arc<lxapp::LxApp>, path: &str) -> Opt
 
 fn dev_page_info(
     app: &std::sync::Arc<lxapp::LxApp>,
-    page: &lxapp::Page,
+    page: &lxapp::PageInstance,
     name: Option<&str>,
 ) -> LxAppDevPageInfo {
     let info = app.runtime_info();

@@ -19,10 +19,16 @@ extern crate self as lingxia;
 pub use host_addon::{HostAddon, register_host_addon};
 pub use lingxia_native_macros::native;
 
-pub use lxapp::LxApp;
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 pub use lxapp::set_num_workers;
+pub use lxapp::{
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, PageDefinition,
+    PageInstance, PageInstanceEvent, PageInstanceId, PageOwner, PageQueryInput, PageTarget,
+    PageWarmDisposePolicy, PresentationKind, ResolvedPage, SceneId, ViewCallOptions,
+    create_page_instance, dispose_page_instance, dispose_page_instance_by_id, notify_page_instance,
+    notify_page_instance_by_id, touch_page_instance_by_id,
+};
 
 pub mod app;
 pub use app::{config as app_config, lingxia_id, product_version};

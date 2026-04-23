@@ -13,7 +13,7 @@ use lingxia_webview::{
     WebViewCookie, WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError,
     WebViewScriptError, WebViewSession,
 };
-use lxapp::{LxApp, LxAppError, Page, publish_app_event};
+use lxapp::{LxApp, LxAppError, PageInstance, publish_app_event};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -911,9 +911,9 @@ fn publish_browser_file_chooser_failed_event(request: &FileChooserRequest, error
 
 /// WebView delegate for browser tab WebViews.
 ///
-/// All tab WebViews share a single headless startup Page (and its PageSvc).
+/// All tab WebViews share a single headless startup PageInstance (and its PageSvc).
 /// This delegate routes postMessage, page-started, and page-finished events
-/// from the currently active tab WebView to that shared startup Page.
+/// from the currently active tab WebView to that shared startup PageInstance.
 struct BrowserTabDelegate {
     tab_id: String,
     page_path: String,
@@ -982,12 +982,12 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 }
 
-/// Ensure the browser lxapp has a headless startup Page + a live PageSvc.
+/// Ensure the browser lxapp has a headless startup PageInstance + a live PageSvc.
 ///
 /// Idempotent: if the page already exists in the browser lxapp's page map, returns it directly.
-/// Otherwise creates a headless Page (nonce, no WebView), registers it, starts the AppSvc,
+/// Otherwise creates a headless PageInstance (nonce, no WebView), registers it, starts the AppSvc,
 /// and asynchronously awaits the PageSvc ack before signalling the page as "ready".
-fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError> {
+fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<PageInstance, LxAppError> {
     let startup_path = browser.initial_route();
 
     // Return existing page if already registered (idempotent).
@@ -1014,7 +1014,7 @@ fn ensure_browser_startup_page(browser: &Arc<LxApp>) -> Result<Page, LxAppError>
     browser.ensure_headless_page_service(&startup_path)
 }
 
-fn ensure_internal_tab_page(owner: &Arc<LxApp>, path: &str) -> Result<Page, LxAppError> {
+fn ensure_internal_tab_page(owner: &Arc<LxApp>, path: &str) -> Result<PageInstance, LxAppError> {
     owner.ensure_headless_page_service(path)
 }
 
@@ -1041,7 +1041,7 @@ fn ensure_internal_tab_page_for_target(
     browser: &Arc<LxApp>,
     tab_path: &str,
     target: &InternalPageTarget,
-) -> Result<(Arc<LxApp>, Page), LxAppError> {
+) -> Result<(Arc<LxApp>, PageInstance), LxAppError> {
     let owner = ensure_browser_lxapp()?;
     ensure_browser_startup_page(&owner)?;
     let page = ensure_internal_tab_page(&owner, tab_path)?;
@@ -1064,7 +1064,7 @@ fn bind_internal_tab_page(
     tab_path: &str,
     session_id: u64,
     target: &InternalPageTarget,
-) -> Result<Page, LxAppError> {
+) -> Result<PageInstance, LxAppError> {
     let (owner, page) = ensure_internal_tab_page_for_target(browser, tab_path, target)?;
     detach_internal_tab_pages_except(tab_path, &owner.appid);
     if let Ok(webview) = browser_find_webview(tab_path, session_id) {
@@ -1077,7 +1077,7 @@ fn browser_resolve_delegate_context(
     tab_id: &str,
     tab_path: &str,
     session_id: u64,
-) -> Result<(Arc<LxApp>, Page), LxAppError> {
+) -> Result<(Arc<LxApp>, PageInstance), LxAppError> {
     let browser = ensure_browser_lxapp()?;
     let target = current_internal_page_target_for_tab(&browser, tab_id);
     let page = bind_internal_tab_page(&browser, tab_path, session_id, &target)?;
@@ -1088,7 +1088,7 @@ fn browser_resolve_delegate_page(
     tab_id: &str,
     tab_path: &str,
     session_id: u64,
-) -> Result<Page, LxAppError> {
+) -> Result<PageInstance, LxAppError> {
     browser_resolve_delegate_context(tab_id, tab_path, session_id).map(|(_, page)| page)
 }
 
@@ -1464,7 +1464,7 @@ async fn browser_on_webview_ready(
                     }
                 }
             } else {
-                // Startup page: attach WebView to shared startup Page, then load with nonce.
+                // Startup page: attach WebView to shared startup PageInstance, then load with nonce.
                 if let Err(e) =
                     browser_attach_tab_page(webview.clone(), &path, session_id, &tab_id, None).await
                 {
@@ -1815,7 +1815,7 @@ pub(crate) fn warmup_builtin_browser_runtime() -> Result<(), LxAppError> {
 
     // Drain startup scripts registered before the browser LxApp existed
     // (e.g. shell's context-menu JS)
-    // into the LxApp's page_scripts so they are picked up by Page::handle_loaded().
+    // into the LxApp's page_scripts so they are picked up by PageInstance::handle_loaded().
     // take_ ensures idempotency — repeated warmup calls won't duplicate scripts.
     for js in take_browser_startup_page_scripts() {
         browser.add_page_script(js);

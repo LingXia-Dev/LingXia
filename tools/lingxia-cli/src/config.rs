@@ -661,7 +661,6 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
                 "ui surface '{id}' with presentation.kind panel requires presentation.anchor: activator"
             ));
         }
-
         let content = obj
             .get("content")
             .and_then(Value::as_object)
