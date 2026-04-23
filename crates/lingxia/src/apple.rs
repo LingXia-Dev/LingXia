@@ -1,5 +1,9 @@
 use lingxia_messaging::invoke_callback;
-use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
+use lxapp::{
+    CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
+    PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner, PageQueryInput, PageTarget,
+    PageWarmDisposePolicy, PresentationKind, SceneId,
+};
 #[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 use std::sync::Arc;
 
@@ -104,6 +108,22 @@ mod bridge {
         pub session_id: u64,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct CreatePageInstanceResult {
+        pub ok: bool,
+        pub page_instance_id: String,
+        pub appid: String,
+        pub resolved_path: String,
+        pub query: String,
+        pub error: String,
+    }
+
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct PageBindingResult {
+        pub page_instance_id: String,
+        pub webview_ptr: usize,
+    }
+
     extern "Rust" {
         #[swift_bridge(swift_name = "lingxiaInit")]
         fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> Option<String>;
@@ -144,11 +164,33 @@ mod bridge {
         #[swift_bridge(swift_name = "onAppEvent")]
         fn on_app_event(event_type: AppUiEventType, data: &str) -> bool;
 
-        #[swift_bridge(swift_name = "onLxappOpened")]
-        fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String;
+        #[swift_bridge(swift_name = "findWebViewByPageInstanceId")]
+        fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize;
 
-        #[swift_bridge(swift_name = "findWebView")]
-        fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize;
+        #[swift_bridge(swift_name = "resolvePageBinding")]
+        fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> PageBindingResult;
+
+        #[swift_bridge(swift_name = "createPageInstance")]
+        fn create_page_instance_for_open(
+            appid: &str,
+            path: &str,
+            session_id: u64,
+            presentation: i32,
+            owner_page_instance_id: &str,
+            warm_ttl_ms: i64,
+        ) -> CreatePageInstanceResult;
+
+        #[swift_bridge(swift_name = "notifyPageInstanceMounted")]
+        fn notify_page_instance_mounted(page_instance_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "notifyPageInstanceVisible")]
+        fn notify_page_instance_visible(page_instance_id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "notifyPageInstanceHidden")]
+        fn notify_page_instance_hidden(page_instance_id: &str, reason: &str) -> bool;
+
+        #[swift_bridge(swift_name = "disposePageInstance")]
+        fn dispose_page_instance(page_instance_id: &str, reason: &str) -> bool;
 
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
@@ -580,22 +622,22 @@ pub fn get_lxapp_session_id(appid: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// Notify that LxApp was opened
-pub fn on_lxapp_opened(appid: &str, path: &str, session_id: u64) -> String {
-    if session_id == 0 {
-        return String::new();
+pub fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize {
+    let page_instance_id = page_instance_id.trim();
+    if page_instance_id.is_empty() {
+        return 0;
     }
-    lxapp::try_get(appid)
-        .map(|lxapp| lxapp.on_lxapp_opened(path.to_string(), session_id))
-        .unwrap_or_default()
+    let _ = lxapp::touch_page_instance_by_id(page_instance_id);
+
+    lxapp::find_page_by_instance_id(page_instance_id)
+        .and_then(|page| page.webview())
+        .map(|webview| webview.get_swift_webview_ptr())
+        .unwrap_or(0)
 }
 
-/// Find a WebView for the specified app and path
-/// This is called from Swift to get a WebView instance pointer managed by Rust
-/// Returns the usize pointer to the WebView, or 0 if not found
-pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
+fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> String {
     if session_id == 0 {
-        return 0;
+        return String::new();
     }
 
     fn normalize_lookup_path(path: &str) -> &str {
@@ -603,28 +645,157 @@ pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
         path.split('#').next().unwrap_or(path)
     }
 
-    let session = Some(session_id);
-    let webtag = lingxia_webview::WebTag::new(appid, path, session);
-    if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
-        // WebView exists, return its pointer
-        return webview.get_swift_webview_ptr();
+    let Some(lxapp) = lxapp::try_get(appid) else {
+        return String::new();
+    };
+    if lxapp.session_id() != session_id {
+        return String::new();
     }
 
     let normalized_path = normalize_lookup_path(path);
-    if let Some(lxapp) = lxapp::try_get(appid) {
-        let resolved_path = lxapp
-            .find_page_path(normalized_path)
-            .unwrap_or_else(|| normalized_path.to_string());
+    let resolved_path = lxapp
+        .find_page_path(normalized_path)
+        .unwrap_or_else(|| normalized_path.to_string());
+    let page_instance_id = lxapp
+        .page_instance_id_for_path(&resolved_path)
+        .unwrap_or_default();
+    if !page_instance_id.is_empty() {
+        let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
+    }
+    page_instance_id
+}
 
-        if let Some(page) = lxapp.get_page(&resolved_path)
-            && let Some(webview) = page.webview()
-        {
-            return webview.get_swift_webview_ptr();
-        }
+pub fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> self::bridge::PageBindingResult {
+    let page_instance_id = resolve_page_instance_id(appid, path, session_id);
+    let webview_ptr = if page_instance_id.is_empty() {
+        0
+    } else {
+        find_webview_by_page_instance_id(&page_instance_id)
+    };
+    self::bridge::PageBindingResult {
+        page_instance_id,
+        webview_ptr,
+    }
+}
+
+fn parse_close_reason(reason: &str) -> CloseReason {
+    match reason.trim().to_ascii_lowercase().as_str() {
+        "user" => CloseReason::User,
+        "app_closed" | "appclose" | "close" => CloseReason::AppClosed,
+        "programmatic" => CloseReason::Programmatic,
+        _ => CloseReason::Unknown,
+    }
+}
+
+fn map_presentation_kind(presentation: i32) -> PresentationKind {
+    match presentation {
+        1 => PresentationKind::Panel,
+        _ => PresentationKind::Window,
+    }
+}
+
+fn map_warm_dispose_policy(warm_ttl_ms: i64) -> PageWarmDisposePolicy {
+    if warm_ttl_ms > 0 {
+        PageWarmDisposePolicy::TtlMs(warm_ttl_ms as u64)
+    } else {
+        PageWarmDisposePolicy::Auto
+    }
+}
+
+pub fn create_page_instance_for_open(
+    appid: &str,
+    path: &str,
+    session_id: u64,
+    presentation: i32,
+    owner_page_instance_id: &str,
+    warm_ttl_ms: i64,
+) -> self::bridge::CreatePageInstanceResult {
+    if session_id == 0 {
+        return self::bridge::CreatePageInstanceResult {
+            ok: false,
+            page_instance_id: String::new(),
+            appid: appid.to_string(),
+            resolved_path: String::new(),
+            query: String::new(),
+            error: "invalid session_id".to_string(),
+        };
     }
 
-    log::error!("WebView not found for appid: {}, path: {}", appid, path);
-    0
+    let Some(lxapp_instance) = lxapp::try_get(appid) else {
+        return self::bridge::CreatePageInstanceResult {
+            ok: false,
+            page_instance_id: String::new(),
+            appid: appid.to_string(),
+            resolved_path: String::new(),
+            query: String::new(),
+            error: "lxapp not found".to_string(),
+        };
+    };
+
+    if lxapp_instance.session_id() != session_id {
+        return self::bridge::CreatePageInstanceResult {
+            ok: false,
+            page_instance_id: String::new(),
+            appid: appid.to_string(),
+            resolved_path: String::new(),
+            query: String::new(),
+            error: "stale session".to_string(),
+        };
+    }
+
+    let owner = if let Some(owner_id) = PageInstanceId::parse(owner_page_instance_id.to_string()) {
+        PageOwner::Page(owner_id)
+    } else {
+        PageOwner::Scene(SceneId("system".to_string()))
+    };
+
+    match lxapp::create_page_instance(CreatePageInstanceRequest {
+        owner,
+        appid: appid.to_string(),
+        target: PageTarget::Path(path.to_string()),
+        query: None::<PageQueryInput>,
+        presentation: map_presentation_kind(presentation),
+        warm_dispose_policy: map_warm_dispose_policy(warm_ttl_ms),
+    }) {
+        Ok(created) => self::bridge::CreatePageInstanceResult {
+            ok: true,
+            page_instance_id: created.page_instance_id.to_string(),
+            appid: created.appid,
+            resolved_path: created.resolved_path,
+            query: created.query,
+            error: String::new(),
+        },
+        Err(err) => self::bridge::CreatePageInstanceResult {
+            ok: false,
+            page_instance_id: String::new(),
+            appid: appid.to_string(),
+            resolved_path: String::new(),
+            query: String::new(),
+            error: err.to_string(),
+        },
+    }
+}
+
+pub fn notify_page_instance_mounted(page_instance_id: &str) -> bool {
+    lxapp::notify_page_instance_by_id(page_instance_id, PageInstanceEvent::Mounted).is_ok()
+}
+
+pub fn notify_page_instance_visible(page_instance_id: &str) -> bool {
+    lxapp::notify_page_instance_by_id(page_instance_id, PageInstanceEvent::Visible).is_ok()
+}
+
+pub fn notify_page_instance_hidden(page_instance_id: &str, reason: &str) -> bool {
+    lxapp::notify_page_instance_by_id(
+        page_instance_id,
+        PageInstanceEvent::Hidden {
+            reason: parse_close_reason(reason),
+        },
+    )
+    .is_ok()
+}
+
+pub fn dispose_page_instance(page_instance_id: &str, reason: &str) -> bool {
+    lxapp::dispose_page_instance_by_id(page_instance_id, parse_close_reason(reason)).is_ok()
 }
 
 /// Get LxApp information
