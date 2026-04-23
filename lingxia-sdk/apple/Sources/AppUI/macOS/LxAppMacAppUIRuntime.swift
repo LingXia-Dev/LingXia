@@ -13,6 +13,10 @@ struct LxAppUIActionItem: Sendable {
 @MainActor
 final class LxAppMacAppUIRuntime: NSObject {
     private static let log = OSLog(subsystem: "LingXia", category: "MacAppUI")
+    private static let panelFirstPaintPollNs: UInt64 = 50_000_000
+    private static let panelFirstPaintMaxPolls = 24
+    private static let panelFirstPaintSettleNs: UInt64 = 16_000_000
+    private static let menuBarPanelWarmTtlMs: Int64 = 20_000
 
     nonisolated(unsafe) static weak var active: LxAppMacAppUIRuntime?
 
@@ -35,6 +39,13 @@ final class LxAppMacAppUIRuntime: NSObject {
     private var openedSurfaceIDs = Set<String>()
     private var statusItems: [String: NSStatusItem] = [:]
     private var defaultMenuBarActivatorID: String?
+    private var independentPanelWindows: [String: NSPanel] = [:]
+    private var independentPanelHostViews: [String: LxAppHostView] = [:]
+    private var independentPanelOpenTasks: [String: Task<Void, Never>] = [:]
+    private var independentPanelDisplayTasks: [String: Task<Void, Never>] = [:]
+    private var surfacePageInstanceIDs: [String: String] = [:]
+    nonisolated(unsafe) private var independentPanelOutsideClickGlobalMonitor: Any?
+    nonisolated(unsafe) private var independentPanelOutsideClickLocalMonitor: Any?
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
     private var handlingAppActivation = false
 
@@ -73,7 +84,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
-        shell.setSidebarChromeEnabled(true)
+        shell.setSidebarChromeEnabled(rootSurface.presentation.kind != .panel)
 
         Self.active = self
     }
@@ -93,6 +104,18 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     deinit {
+        for (_, task) in independentPanelOpenTasks {
+            task.cancel()
+        }
+        for (_, task) in independentPanelDisplayTasks {
+            task.cancel()
+        }
+        if let monitor = independentPanelOutsideClickGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = independentPanelOutsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
         if let appActivationObserver {
             NotificationCenter.default.removeObserver(appActivationObserver)
         }
@@ -120,8 +143,110 @@ final class LxAppMacAppUIRuntime: NSObject {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let surface = surfaceById[panelId],
-              surface.presentation.kind == .attachPanel,
+        guard let surface = surfaceById[panelId] else {
+            return false
+        }
+
+        if isIndependentPanelSurface(surface),
+           let hostView = independentPanelHostViews[panelId],
+           let panel = independentPanelWindows[panelId] {
+            let hasPendingOpenTask = independentPanelOpenTasks[panelId] != nil
+            if !hasPendingOpenTask && !openedSurfaceIDs.contains(panelId) {
+                if let pageInstanceId = resolveSurfacePageInstanceId(
+                    surface,
+                    appIdHint: appId,
+                    pathHint: path,
+                    sessionIdHint: sessionId
+                ) {
+                    _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+                }
+                os_log(
+                    "ignore stale panel-open callback panel=%{public}@ appId=%{public}@ path=%{public}@",
+                    log: Self.log,
+                    type: .info,
+                    panelId,
+                    appId,
+                    path
+                )
+                return true
+            }
+            guard let pageInstanceId = WebViewManager.resolvePageInstanceId(
+                appId: appId,
+                path: path,
+                sessionId: sessionId
+            ) else {
+                os_log(
+                    "independent panel missing page instance id panel=%{public}@ appId=%{public}@ path=%{public}@",
+                    log: Self.log,
+                    type: .error,
+                    panelId,
+                    appId,
+                    path
+                )
+                return false
+            }
+            surfacePageInstanceIDs[panelId] = pageInstanceId
+            shell.appSessions[appId] = sessionId
+            LxAppCore.setSessionId(sessionId, for: appId)
+            let session = LxAppSession(
+                id: LxAppSessionID(rawValue: sessionId),
+                appId: appId,
+                path: path,
+                presentation: .panel,
+                userInfo: [
+                    "appUISurfaceId": .string(panelId),
+                    "pageInstanceId": .string(pageInstanceId),
+                ],
+                openedAt: Date()
+            )
+            independentPanelDisplayTasks[panelId]?.cancel()
+            independentPanelDisplayTasks[panelId] = Task { @MainActor [weak hostView] in
+                defer {
+                    independentPanelDisplayTasks[panelId] = nil
+                }
+                do {
+                    try await hostView?.mount(session, notifyVisibleOnMount: false)
+                    if let hostView {
+                        for _ in 0..<Self.panelFirstPaintMaxPolls {
+                            if let webView = hostView.webView,
+                               !webView.isLoading,
+                               webView.url != nil {
+                                try await Task.sleep(nanoseconds: Self.panelFirstPaintSettleNs)
+                                break
+                            }
+                            try await Task.sleep(nanoseconds: Self.panelFirstPaintPollNs)
+                        }
+                    }
+                    try Task.checkCancellation()
+                    positionIndependentPanel(panel, for: defaultMenuBarActivatorID)
+                    panel.orderFrontRegardless()
+                    _ = notifyPageInstanceVisible(pageInstanceId)
+                    openedSurfaceIDs.insert(panelId)
+                    visibleSurfaceIDs.insert(panelId)
+                    installIndependentPanelOutsideClickMonitorsIfNeeded()
+                    refreshChromeActivators()
+                } catch is CancellationError {
+                    return
+                } catch {
+                    surfacePageInstanceIDs.removeValue(forKey: panelId)
+                    openedSurfaceIDs.remove(panelId)
+                    visibleSurfaceIDs.remove(panelId)
+                    updateIndependentPanelOutsideClickMonitors()
+                    os_log(
+                        "independent panel webview mount failed panel=%{public}@ appId=%{public}@ path=%{public}@ error=%{public}@",
+                        log: Self.log,
+                        type: .error,
+                        panelId,
+                        appId,
+                        path,
+                        String(describing: error)
+                    )
+                }
+            }
+            return true
+        }
+
+        guard surface.presentation.kind == .attachPanel,
               let position = panelPosition(for: surface) else {
             return false
         }
@@ -148,6 +273,12 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         switch activator.action.kind {
         case .toggleSurface:
+            if let surface = surfaceById[activator.action.surface],
+               isIndependentPanelSurface(surface),
+               independentPanelWindows[surface.id]?.isVisible == true {
+                closeSurface(id: surface.id)
+                return
+            }
             toggleSurface(id: activator.action.surface, sourceActivatorID: activator.id)
         case .openSurface:
             openSurfaceHandlingError(id: activator.action.surface, sourceActivatorID: activator.id)
@@ -192,7 +323,11 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         switch surface.presentation.kind {
         case .window, .panel:
-            try openWindowSurface(surface, sourceActivatorID: sourceActivatorID)
+            if isIndependentPanelSurface(surface) {
+                try openIndependentPanelSurface(surface, sourceActivatorID: sourceActivatorID)
+            } else {
+                try openWindowSurface(surface, sourceActivatorID: sourceActivatorID)
+            }
         case .attachPanel:
             try openAttachPanelSurface(surface)
         case .sheet, .embedded:
@@ -221,6 +356,98 @@ final class LxAppMacAppUIRuntime: NSObject {
         openedSurfaceIDs.insert(surface.id)
         visibleSurfaceIDs.insert(surface.id)
         refreshChromeActivators()
+    }
+
+    private func openIndependentPanelSurface(
+        _ surface: LxAppUIConfig.Surface,
+        sourceActivatorID: String? = nil
+    ) throws {
+        guard case .lxapp = surface.content.kind,
+              let appId = surface.content.appId,
+              !appId.isEmpty else {
+            throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
+        }
+
+        let panel = independentPanelWindows[surface.id] ?? makeIndependentPanel(for: surface)
+        independentPanelWindows[surface.id] = panel
+        applyIndependentPanelPresentation(panel, for: surface)
+
+        let hostView = independentPanelHostViews[surface.id] ?? LxAppHostView(controller: controller)
+        independentPanelHostViews[surface.id] = hostView
+        if hostView.superview == nil || hostView.window !== panel {
+            let container = NSView(frame: NSRect(origin: .zero, size: panel.contentView?.bounds.size ?? .zero))
+            container.wantsLayer = true
+            container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            container.layer?.cornerRadius = 10
+            container.layer?.masksToBounds = true
+            panel.contentView = container
+
+            hostView.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(hostView)
+            NSLayoutConstraint.activate([
+                hostView.topAnchor.constraint(equalTo: container.topAnchor),
+                hostView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hostView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                hostView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+        }
+
+        if openedSurfaceIDs.contains(surface.id) {
+            if let pageInstanceId = surfacePageInstanceIDs[surface.id],
+               WebViewManager.findWebView(pageInstanceId: pageInstanceId) != nil {
+                _ = notifyPageInstanceVisible(pageInstanceId)
+                positionIndependentPanel(panel, for: sourceActivatorID)
+                panel.orderFrontRegardless()
+                visibleSurfaceIDs.insert(surface.id)
+                installIndependentPanelOutsideClickMonitorsIfNeeded()
+                refreshChromeActivators()
+                return
+            }
+            surfacePageInstanceIDs.removeValue(forKey: surface.id)
+            openedSurfaceIDs.remove(surface.id)
+            visibleSurfaceIDs.remove(surface.id)
+            hostView.unmount()
+        }
+
+        let path = normalizedPath(surface.content.path)
+        let surfaceID = surface.id
+        independentPanelDisplayTasks[surface.id]?.cancel()
+        independentPanelOpenTasks[surface.id]?.cancel()
+        independentPanelOpenTasks[surface.id] = Task { @MainActor [weak self, weak panel] in
+            guard let self else { return }
+            defer {
+                independentPanelOpenTasks[surfaceID] = nil
+            }
+
+            do {
+                _ = try await controller.open(
+                    LxAppOpenRequest(
+                        appId: appId,
+                        path: path,
+                        presentation: .panel,
+                        panelId: surfaceID,
+                        pageWarmTtlMs: warmTtlMs(for: surface),
+                        userInfo: ["appUISurfaceId": .string(surfaceID)]
+                    )
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                surfacePageInstanceIDs.removeValue(forKey: surfaceID)
+                openedSurfaceIDs.remove(surfaceID)
+                os_log(
+                    "AppUI failed to open independent panel surface=%{public}@ error=%{public}@",
+                    log: Self.log,
+                    type: .error,
+                    surfaceID,
+                    String(describing: error)
+                )
+                panel?.orderOut(nil)
+                visibleSurfaceIDs.remove(surfaceID)
+                updateIndependentPanelOutsideClickMonitors()
+                refreshChromeActivators()
+            }
+        }
     }
 
     private func openAttachPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
@@ -273,7 +500,8 @@ final class LxAppMacAppUIRuntime: NSObject {
                     appId: appId,
                     path: path,
                     presentation: presentation,
-                    panelId: panelID
+                    panelId: panelID,
+                    pageWarmTtlMs: warmTtlMs(for: surface)
                 )
             )
         case .terminal:
@@ -287,7 +515,15 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         switch surface.presentation.kind {
         case .window, .panel:
-            shell.show()
+            if isIndependentPanelSurface(surface) {
+                if let panel = independentPanelWindows[id] {
+                    panel.orderFrontRegardless()
+                    visibleSurfaceIDs.insert(id)
+                    installIndependentPanelOutsideClickMonitorsIfNeeded()
+                }
+            } else {
+                shell.show()
+            }
         case .attachPanel:
             shell.show()
             shell.showPanel(id: id)
@@ -305,9 +541,22 @@ final class LxAppMacAppUIRuntime: NSObject {
 
         switch surface.presentation.kind {
         case .window, .panel:
-            shell.hide()
-            if !shell.hasOpenTabs {
-                discardOpenedSubtree(rootID: id)
+            if isIndependentPanelSurface(surface) {
+                independentPanelOpenTasks[id]?.cancel()
+                independentPanelOpenTasks[id] = nil
+                independentPanelDisplayTasks[id]?.cancel()
+                independentPanelDisplayTasks[id] = nil
+                if let pageInstanceId = surfacePageInstanceIDs[id]
+                    ?? resolveSurfacePageInstanceId(surface)
+                {
+                    _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+                }
+                independentPanelWindows[id]?.orderOut(nil)
+            } else {
+                shell.hide()
+                if !shell.hasOpenTabs {
+                    discardOpenedSubtree(rootID: id)
+                }
             }
         case .attachPanel:
             shell.hidePanel(id: id)
@@ -316,14 +565,21 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         visibleSurfaceIDs.remove(id)
+        updateIndependentPanelOutsideClickMonitors()
         refreshChromeActivators()
     }
 
     private func discardOpenedSubtree(rootID: String) {
+        independentPanelOpenTasks[rootID]?.cancel()
+        independentPanelOpenTasks[rootID] = nil
+        independentPanelDisplayTasks[rootID]?.cancel()
+        independentPanelDisplayTasks[rootID] = nil
         openedSurfaceIDs.remove(rootID)
+        surfacePageInstanceIDs.removeValue(forKey: rootID)
         for childID in childrenByParentId[rootID] ?? [] {
             discardOpenedSubtree(rootID: childID)
         }
+        updateIndependentPanelOutsideClickMonitors()
     }
 
     private func refreshChromeActivators() {
@@ -459,6 +715,14 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func positionPanelWindow(for activatorID: String?) {
         guard let window = shell.window else { return }
+        positionWindow(window, for: activatorID)
+    }
+
+    private func positionIndependentPanel(_ panel: NSPanel, for activatorID: String?) {
+        positionWindow(panel, for: activatorID)
+    }
+
+    private func positionWindow(_ window: NSWindow, for activatorID: String?) {
         let resolvedActivatorID = activatorID ?? defaultMenuBarActivatorID
         guard let resolvedActivatorID,
               let button = statusItems[resolvedActivatorID]?.button,
@@ -475,6 +739,174 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
 
         window.setFrame(frame, display: false)
+    }
+
+    private func visibleIndependentPanelIDs() -> [String] {
+        visibleSurfaceIDs.filter { id in
+            guard let surface = surfaceById[id], isIndependentPanelSurface(surface) else {
+                return false
+            }
+            return independentPanelWindows[id]?.isVisible == true
+        }
+    }
+
+    private func eventScreenPoint(_ event: NSEvent) -> NSPoint {
+        if let window = event.window {
+            return window.convertPoint(toScreen: event.locationInWindow)
+        }
+        return event.locationInWindow
+    }
+
+    private func pointInAnyStatusItemButton(_ point: NSPoint) -> Bool {
+        statusItems.values.contains { item in
+            guard let button = item.button, let window = button.window else {
+                return false
+            }
+            return window.convertToScreen(button.frame).contains(point)
+        }
+    }
+
+    private func dismissIndependentPanelsIfNeeded(for event: NSEvent) {
+        let visiblePanels = visibleIndependentPanelIDs()
+        guard !visiblePanels.isEmpty else { return }
+
+        let point = eventScreenPoint(event)
+        if pointInAnyStatusItemButton(point) {
+            return
+        }
+
+        for id in visiblePanels {
+            if let panel = independentPanelWindows[id], panel.frame.contains(point) {
+                return
+            }
+        }
+
+        for id in visiblePanels {
+            closeSurface(id: id)
+        }
+    }
+
+    private func installIndependentPanelOutsideClickMonitorsIfNeeded() {
+        if independentPanelOutsideClickGlobalMonitor == nil {
+            independentPanelOutsideClickGlobalMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]
+            ) { [weak self] event in
+                Task { @MainActor [weak self] in
+                    self?.dismissIndependentPanelsIfNeeded(for: event)
+                }
+            }
+        }
+
+        if independentPanelOutsideClickLocalMonitor == nil {
+            independentPanelOutsideClickLocalMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]
+            ) { [weak self] event in
+                self?.dismissIndependentPanelsIfNeeded(for: event)
+                return event
+            }
+        }
+    }
+
+    private func removeIndependentPanelOutsideClickMonitors() {
+        if let monitor = independentPanelOutsideClickGlobalMonitor {
+            NSEvent.removeMonitor(monitor)
+            independentPanelOutsideClickGlobalMonitor = nil
+        }
+        if let monitor = independentPanelOutsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+            independentPanelOutsideClickLocalMonitor = nil
+        }
+    }
+
+    private func updateIndependentPanelOutsideClickMonitors() {
+        if visibleIndependentPanelIDs().isEmpty {
+            removeIndependentPanelOutsideClickMonitors()
+        }
+    }
+
+    private func makeIndependentPanel(for surface: LxAppUIConfig.Surface) -> NSPanel {
+        let size = resolvedWindowSize(for: surface) ?? CGSize(width: 360, height: 420)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        applyIndependentPanelPresentation(panel, for: surface)
+        return panel
+    }
+
+    private func applyIndependentPanelPresentation(_ panel: NSPanel, for surface: LxAppUIConfig.Surface) {
+        let size = resolvedWindowSize(for: surface) ?? CGSize(width: 360, height: 420)
+        let resizable = surface.presentation.resizable ?? true
+        panel.styleMask = resizable
+            ? [.borderless, .nonactivatingPanel, .resizable]
+            : [.borderless, .nonactivatingPanel]
+        panel.title = appConfig.productName
+        panel.level = .statusBar
+        panel.collectionBehavior = [.transient, .moveToActiveSpace]
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.hasShadow = true
+        panel.backgroundColor = .windowBackgroundColor
+        panel.isOpaque = false
+        if resizable {
+            panel.contentMinSize = CGSize(width: 240, height: 180)
+            panel.contentMaxSize = CGSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+            panel.minSize = CGSize(width: 240, height: 180)
+            panel.maxSize = CGSize(
+                width: CGFloat.greatestFiniteMagnitude,
+                height: CGFloat.greatestFiniteMagnitude
+            )
+        } else {
+            panel.contentMinSize = size
+            panel.contentMaxSize = size
+            panel.minSize = size
+            panel.maxSize = size
+        }
+        panel.setContentSize(size)
+        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            panel.standardWindowButton(type)?.isHidden = true
+        }
+    }
+
+    private func isIndependentPanelSurface(_ surface: LxAppUIConfig.Surface) -> Bool {
+        surface.presentation.kind == .panel && surface.presentation.anchor == .activator
+    }
+
+    private func warmTtlMs(for surface: LxAppUIConfig.Surface) -> Int64? {
+        guard isIndependentPanelSurface(surface) else {
+            return nil
+        }
+        return Self.menuBarPanelWarmTtlMs
+    }
+
+    private func resolveSurfacePageInstanceId(
+        _ surface: LxAppUIConfig.Surface,
+        appIdHint: String? = nil,
+        pathHint: String? = nil,
+        sessionIdHint: UInt64? = nil
+    ) -> String? {
+        guard case .lxapp = surface.content.kind else { return nil }
+        let appId = (appIdHint ?? surface.content.appId ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appId.isEmpty else { return nil }
+
+        let normalized = normalizedPath(pathHint ?? surface.content.path)
+        let sessionId = sessionIdHint
+            ?? shell.appSessions[appId]
+            ?? LxAppCore.sessionId(for: appId)
+            ?? getLxAppSessionId(appId)
+        guard sessionId > 0 else { return nil }
+
+        return WebViewManager.resolvePageInstanceId(
+            appId: appId,
+            path: normalized,
+            sessionId: sessionId
+        )
     }
 
     private func resolvedWindowSize(for surface: LxAppUIConfig.Surface) -> CGSize? {
