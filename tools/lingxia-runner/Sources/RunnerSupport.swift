@@ -43,12 +43,12 @@ enum RunnerSupport {
             LingxiaRunnerSPI.WebView.removeCurrentFromSuperview()
         }
 
-        static func find(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-            LingxiaRunnerSPI.WebView.find(appId: appId, path: path, sessionId: sessionId)
+        static func resolve(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+            LingxiaRunnerSPI.WebView.resolve(appId: appId, path: path, sessionId: sessionId)
         }
 
-        static func find(appId: String, path: String) -> WKWebView? {
-            LingxiaRunnerSPI.WebView.find(appId: appId, path: path)
+        static func resolve(appId: String, path: String) -> WKWebView? {
+            LingxiaRunnerSPI.WebView.resolve(appId: appId, path: path)
         }
 
         static func attach(_ webView: WKWebView, to container: NSView) {

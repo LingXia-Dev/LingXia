@@ -43,16 +43,16 @@ import WebKit
             RunnerBridge.removeCurrentWebViewFromSuperview()
         }
 
-        public static func find(
+        public static func resolve(
             appId: String,
             path: String,
             sessionId: UInt64
         ) -> WKWebView? {
-            RunnerBridge.findWebView(appId: appId, path: path, sessionId: sessionId)
+            RunnerBridge.resolveWebView(appId: appId, path: path, sessionId: sessionId)
         }
 
-        public static func find(appId: String, path: String) -> WKWebView? {
-            RunnerBridge.findWebView(appId: appId, path: path)
+        public static func resolve(appId: String, path: String) -> WKWebView? {
+            RunnerBridge.resolveWebView(appId: appId, path: path)
         }
 
         public static func attach(_ webView: WKWebView, to container: NSView) {

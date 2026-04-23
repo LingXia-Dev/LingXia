@@ -198,7 +198,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
     }
     
     private func loadWebViewContent() {
-        if let webView = RunnerSupport.WebView.find(appId: appId, path: currentPath) {
+        if let webView = RunnerSupport.WebView.resolve(appId: appId, path: currentPath) {
             showWebViewToUser(webView, path: currentPath)
         }
     }
@@ -250,7 +250,7 @@ public class CapsuleViewController: NSViewController, WKNavigationDelegate {
         updateTabBar()
         
         // Show WebView
-        if let webView = RunnerSupport.WebView.find(appId: appId, path: path) {
+        if let webView = RunnerSupport.WebView.resolve(appId: appId, path: path) {
             showWebViewToUser(webView, path: path)
         }
         

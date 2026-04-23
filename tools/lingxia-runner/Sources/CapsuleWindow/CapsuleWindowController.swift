@@ -297,7 +297,7 @@ public class CapsuleWindowController: NSWindowController, NSWindowDelegate {
     private func currentInspectableWebView() -> WKWebView? {
         browserOverlay.activeWebView
             ?? RunnerSupport.WebView.current()
-            ?? RunnerSupport.WebView.find(appId: appId, path: currentPath)
+            ?? RunnerSupport.WebView.resolve(appId: appId, path: currentPath)
     }
     
     // MARK: - Phone Content Setup

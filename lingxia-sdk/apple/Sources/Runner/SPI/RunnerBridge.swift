@@ -57,12 +57,12 @@ enum RunnerBridge {
         LxAppCore.getHomeLxAppId()
     }
 
-    static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+    static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+        WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
-    static func findWebView(appId: String, path: String) -> WKWebView? {
-        WebViewManager.findWebView(appId: appId, path: path)
+    static func resolveWebView(appId: String, path: String) -> WKWebView? {
+        WebViewManager.resolveWebView(appId: appId, path: path)
     }
 
     static func attachWebView(_ webView: WKWebView, to container: NSView) {
@@ -93,7 +93,7 @@ enum RunnerBridge {
 
         let path = browserTabPathForId(normalized).toString()
         guard !path.isEmpty else { return nil }
-        return WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
     static func closeBrowserTab(tabId: String) -> Bool {

@@ -72,18 +72,21 @@ public class RunnerApp {
             return
         }
 
-        let resolvedPath = resolveOpenPath(appId: appId, requestedPath: path, sessionId: sessionId)
-        guard !resolvedPath.isEmpty else {
-            os_log("Runner openLxApp rejected by Rust for %@", log: Self.log, type: .info, appId)
+        // Check if window already exists
+        if let existingController = windowController, existingController.appId == appId {
+            let targetPath = path.isEmpty ? existingController.currentPath : path
+            RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
+            RunnerSupport.Runtime.setCurrentApp(appId: appId, path: targetPath)
+            existingController.window?.makeKeyAndOrderFront(nil)
+            if !targetPath.isEmpty {
+                existingController.navigate(to: targetPath)
+            }
             return
         }
 
-        // Check if window already exists
-        if let existingController = windowController, existingController.appId == appId {
-            RunnerSupport.Runtime.setSessionId(sessionId, for: appId)
-            RunnerSupport.Runtime.setCurrentApp(appId: appId, path: resolvedPath)
-            existingController.window?.makeKeyAndOrderFront(nil)
-            existingController.navigate(to: resolvedPath)
+        let resolvedPath = resolveOpenPath(appId: appId, requestedPath: path, sessionId: sessionId)
+        guard !resolvedPath.isEmpty else {
+            os_log("Runner openLxApp rejected by Rust for %@", log: Self.log, type: .info, appId)
             return
         }
 
@@ -100,10 +103,19 @@ public class RunnerApp {
     }
 
     private func resolveOpenPath(appId: String, requestedPath: String, sessionId: UInt64) -> String {
-        if !requestedPath.isEmpty {
-            return requestedPath
+        let created = createPageInstance(appId, requestedPath, sessionId, 0, "", -1)
+        guard created.ok else {
+            os_log(
+                "Runner createPageInstance rejected appId=%@ session=%{public}llu error=%@",
+                log: Self.log,
+                type: .info,
+                appId,
+                sessionId,
+                created.error.toString()
+            )
+            return ""
         }
-        return onLxappOpened(appId, "", sessionId).toString()
+        return created.resolved_path.toString()
     }
     
     /// Open home LxApp
