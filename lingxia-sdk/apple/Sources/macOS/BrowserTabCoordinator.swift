@@ -423,7 +423,7 @@ final class BrowserTabCoordinator: NSObject {
             return nil
         }
         let path = browserTabPathForId(tabIdString(id)).toString()
-        return WebViewManager.findWebView(
+        return WebViewManager.resolveWebView(
             appId: appId,
             path: path,
             sessionId: sessionId

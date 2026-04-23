@@ -342,7 +342,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             NativeBridge.notifyPageInactive(for: existingWebView)
         }
 
-        if let targetWebView = iOSLxApp.findWebView(appId: appId, path: path, sessionId: currentSessionId) {
+        if let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: currentSessionId) {
 
             // Handle navigation animations for all cases
             if let existingWebView = getCurrentWebView() {
@@ -397,7 +397,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 return
             }
 
-            guard let targetWebView = iOSLxApp.findWebView(appId: appId, path: path, sessionId: sessionId) else {
+            guard let targetWebView = iOSLxApp.resolveWebView(appId: appId, path: path, sessionId: sessionId) else {
                 self.retryShowWebView(
                     appId: appId,
                     path: path,

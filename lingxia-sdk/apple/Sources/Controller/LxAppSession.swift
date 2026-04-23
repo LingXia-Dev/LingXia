@@ -6,7 +6,7 @@ public struct LxAppSession: Hashable, Codable, Sendable, Identifiable {
     public let appId: String
     public internal(set) var path: String
     public let presentation: LxAppOpenPresentation
-    public let userInfo: [String: LxAppJSONValue]
+    public internal(set) var userInfo: [String: LxAppJSONValue]
     public let openedAt: Date
 
     public init(

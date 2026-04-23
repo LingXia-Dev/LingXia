@@ -81,18 +81,28 @@ final class LxAppCore {
         path: String,
         sessionId: UInt64,
         presentation: Int32 = 0,
-        panelId: String = ""
+        panelId: String = "",
+        pageWarmTtlMs: Int64 = -1
     ) -> Bool {
         guard sessionId > 0 else {
             os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
             return false
         }
 
-        // Call onLxappOpened to get the resolved path
-        let resolvedPath = onLxappOpened(appId, path, sessionId)
-        let finalPath = resolvedPath.toString()
-        guard !finalPath.isEmpty else {
-            os_log("executeOpenLxApp rejected by Rust (stale session?) for %@ session=%{public}llu", log: log, type: .info, appId, sessionId)
+        // owner_page_instance_id is for nested page ownership, not UI panel id.
+        let created = createPageInstance(appId, path, sessionId, presentation, "", pageWarmTtlMs)
+        let finalPath = created.resolved_path.toString()
+        let createError = created.error.toString()
+        guard created.ok, !finalPath.isEmpty else {
+            os_log(
+                "executeOpenLxApp rejected by Rust for %@ session=%{public}llu ok=%{public}@ error=%{public}@",
+                log: log,
+                type: .info,
+                appId,
+                sessionId,
+                created.ok ? "true" : "false",
+                createError
+            )
             return false
         }
         appSessions[appId] = sessionId
@@ -304,7 +314,7 @@ final class LxAppCore {
 
         // Update WebView cache when app/path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
-            currentWebView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+            currentWebView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
         } else {
             currentWebView = nil
         }
@@ -323,7 +333,7 @@ final class LxAppCore {
 
         // Update WebView cache when path changes
         if let sessionId = appSessions[appId], sessionId > 0 {
-            currentWebView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+            currentWebView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
         } else {
             currentWebView = nil
         }

@@ -101,7 +101,9 @@ public final class LxAppController {
             path: request.path,
             sessionId: sessionId,
             presentation: request.presentation,
-            panelId: request.panelId ?? ""
+            panelId: request.panelId ?? "",
+            pageWarmTtlMs: request.pageWarmTtlMs,
+            userInfo: request.userInfo
         ) else {
             throw LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -151,7 +153,8 @@ public final class LxAppController {
             path: request.path,
             sessionId: sessionId,
             presentation: request.presentation.ffiValue,
-            panelId: request.panelId ?? ""
+            panelId: request.panelId ?? "",
+            pageWarmTtlMs: request.pageWarmTtlMs ?? -1
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -166,7 +169,12 @@ public final class LxAppController {
             appId: request.appId,
             path: request.path,
             presentation: request.presentation,
-            userInfo: request.userInfo,
+            userInfo: userInfoWithPageInstanceId(
+                request.userInfo,
+                appId: request.appId,
+                path: request.path,
+                sessionId: sessionId
+            ),
             openedAt: Date()
         )
         sessions[session.id] = session
@@ -194,13 +202,17 @@ public final class LxAppController {
         path: String,
         sessionId: UInt64,
         presentation: LxAppOpenPresentation = .normal,
-        panelId: String = ""
+        panelId: String = "",
+        pageWarmTtlMs: Int64? = nil,
+        userInfo: [String: LxAppJSONValue] = [:]
     ) async -> LxAppSession? {
         let request = LxAppOpenRequest(
             appId: appId,
             path: path,
             presentation: presentation,
-            panelId: panelId.isEmpty ? nil : panelId
+            panelId: panelId.isEmpty ? nil : panelId,
+            pageWarmTtlMs: pageWarmTtlMs,
+            userInfo: userInfo
         )
         emit(.willOpen(request))
 
@@ -251,7 +263,8 @@ public final class LxAppController {
             path: path,
             sessionId: sessionId,
             presentation: presentation.ffiValue,
-            panelId: panelId
+            panelId: panelId,
+            pageWarmTtlMs: pageWarmTtlMs ?? -1
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -266,7 +279,12 @@ public final class LxAppController {
             appId: appId,
             path: path,
             presentation: presentation,
-            userInfo: request.userInfo,
+            userInfo: userInfoWithPageInstanceId(
+                request.userInfo,
+                appId: appId,
+                path: path,
+                sessionId: sessionId
+            ),
             openedAt: Date()
         )
         sessions[session.id] = session
@@ -312,21 +330,26 @@ public final class LxAppController {
 
     /// Navigate within a session.
     public func navigate(_ request: LxAppNavigateRequest) {
-        guard sessions[request.sessionId] != nil else {
+        guard var session = sessions[request.sessionId] else {
             os_log("navigate: unknown session %{public}@", log: Self.log, type: .error,
                    String(describing: request.sessionId))
             return
         }
 
-        if let appId = sessions[request.sessionId]?.appId {
-            LxAppCore.executeNavigation(
-                appId: appId,
-                path: request.path,
-                animationType: request.animation
-            )
-        }
+        LxAppCore.executeNavigation(
+            appId: session.appId,
+            path: request.path,
+            animationType: request.animation
+        )
 
-        sessions[request.sessionId]?.path = request.path
+        session.path = request.path
+        session.userInfo = userInfoWithPageInstanceId(
+            session.userInfo,
+            appId: session.appId,
+            path: request.path,
+            sessionId: request.sessionId.rawValue
+        )
+        sessions[request.sessionId] = session
         emit(.didNavigate(sessionId: request.sessionId, to: request.path))
     }
 
@@ -371,6 +394,25 @@ public final class LxAppController {
         }
     }
 
+    private func userInfoWithPageInstanceId(
+        _ userInfo: [String: LxAppJSONValue],
+        appId: String,
+        path: String,
+        sessionId: UInt64
+    ) -> [String: LxAppJSONValue] {
+        var result = userInfo
+        if let pageInstanceId = WebViewManager.resolvePageInstanceId(
+            appId: appId,
+            path: path,
+            sessionId: sessionId
+        ) {
+            result["pageInstanceId"] = .string(pageInstanceId)
+        } else {
+            result.removeValue(forKey: "pageInstanceId")
+        }
+        return result
+    }
+
     private func encodeRequest(_ request: LxAppOpenRequest) -> LxAppJSONValue {
         var dict: [String: LxAppJSONValue] = [
             "appId": .string(request.appId),
@@ -379,6 +421,9 @@ public final class LxAppController {
         ]
         if let panelId = request.panelId {
             dict["panelId"] = .string(panelId)
+        }
+        if let pageWarmTtlMs = request.pageWarmTtlMs {
+            dict["pageWarmTtlMs"] = .number(Double(pageWarmTtlMs))
         }
         if !request.userInfo.isEmpty {
             dict["userInfo"] = .object(request.userInfo)

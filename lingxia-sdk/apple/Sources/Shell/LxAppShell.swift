@@ -680,14 +680,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let resolvedPath = onLxappOpened(homeLxAppId, "", sessionId)
-        guard !resolvedPath.toString().isEmpty else {
-            os_log("setupInitialTab rejected by Rust (stale session?) for %@", log: Self.log, type: .info, homeLxAppId)
+        let created = createPageInstance(homeLxAppId, "", sessionId, 0, "", -1)
+        let resolvedPath = created.resolved_path.toString()
+        let createError = created.error.toString()
+        guard created.ok, !resolvedPath.isEmpty else {
+            os_log(
+                "setupInitialTab rejected by Rust for %@ error=%{public}@",
+                log: Self.log,
+                type: .info,
+                homeLxAppId,
+                createError
+            )
             return
         }
         appSessions[homeLxAppId] = sessionId
         LxAppCore.setSessionId(sessionId, for: homeLxAppId)
-        LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath.toString())
+        LxAppCore.setCurrentApp(appId: homeLxAppId, path: resolvedPath)
         tabManager.addTab(appId: homeLxAppId)
     }
 
@@ -719,9 +727,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath()
-            let resolved = onLxappOpened(appId, currentPath, sessionId).toString()
-            if resolved.isEmpty {
-                os_log("switchToTab rejected by Rust (stale session?) for %@", log: Self.log, type: .info, appId)
+            let created = createPageInstance(appId, currentPath, sessionId, 0, "", -1)
+            let resolvedPath = created.resolved_path.toString()
+            let createError = created.error.toString()
+            if !created.ok || resolvedPath.isEmpty {
+                os_log(
+                    "switchToTab rejected by Rust for %@ error=%{public}@",
+                    log: Self.log,
+                    type: .info,
+                    appId,
+                    createError
+                )
                 return
             }
         }
@@ -1186,7 +1202,7 @@ extension LxAppShell {
             return
         }
 
-        if let webView = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+        if let webView = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId) {
             WebViewManager.attachWebViewToContainer(webView, container: container)
             return
         }

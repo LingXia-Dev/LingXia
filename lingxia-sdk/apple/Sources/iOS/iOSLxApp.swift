@@ -195,9 +195,9 @@ class iOSLxApp {
         LxAppCore.executeNavigation(appId: appId, path: path, animationType: animationType)
     }
 
-    /// Find WebView for the given appId and path
-    internal static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        return WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId)
+    /// Resolve WebView for the given appId/path/session through pageInstanceId.
+    internal static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+        return WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
     private func openLxAppInManager(appId: String, path: String, sessionId: UInt64) {

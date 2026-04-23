@@ -168,9 +168,15 @@ public final class LxAppHostView: LxAppPlatformView {
     public func attach(_ wv: WKWebView, appId: String? = nil, path: String? = nil) {
         clearEventObservers()
         self.webView?.removeFromSuperview()
+        WebViewManager.configureWebViewTransparency(wv, transparent: false)
+        let resolvedAppId = appId ?? wv.appId
+        let resolvedPath = path ?? wv.currentPath
+        if let resolvedAppId, let resolvedPath {
+            wv.setup(appId: resolvedAppId, path: resolvedPath)
+        }
         self.webView = wv
-        self.appId = appId ?? wv.appId
-        self.currentPath = path ?? wv.currentPath
+        self.appId = resolvedAppId
+        self.currentPath = resolvedPath
         self.canGoBack = wv.canGoBack
         if let appId = self.appId,
            let path = self.currentPath,
@@ -189,22 +195,65 @@ public final class LxAppHostView: LxAppPlatformView {
     }
 
     /// Mount an existing controller session into this host view.
-    public func mount(sessionId: LxAppSessionID) async throws {
+    public func mount(
+        sessionId: LxAppSessionID,
+        notifyVisibleOnMount: Bool = true
+    ) async throws {
         guard let session = controller.sessions[sessionId] else {
             throw LxAppErrorPayload(
                 code: "session_not_found",
                 message: "No controller session exists for \(sessionId.rawValue)"
             )
         }
+        try await mount(session, notifyVisibleOnMount: notifyVisibleOnMount)
+    }
+
+    /// Mount an already opened session into this host view.
+    public func mount(
+        _ session: LxAppSession,
+        notifyVisibleOnMount: Bool = true
+    ) async throws {
+        if case .string(let pageInstanceId)? = session.userInfo["pageInstanceId"] {
+            for _ in 0..<Self.mountRetryCount {
+                if let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
+                    mountedSession = session
+                    attach(webView, appId: session.appId, path: session.path)
+                    _ = notifyPageInstanceMounted(pageInstanceId)
+                    if notifyVisibleOnMount {
+                        _ = notifyPageInstanceVisible(pageInstanceId)
+                    }
+                    return
+                }
+                try await Task.sleep(nanoseconds: Self.mountRetryDelayNs)
+            }
+
+            throw LxAppErrorPayload(
+                code: "webview_not_ready",
+                message: "Timed out waiting for the page instance webview to be ready",
+                details: .object([
+                    "appId": .string(session.appId),
+                    "path": .string(session.path),
+                    "sessionId": .number(Double(session.id.rawValue)),
+                    "pageInstanceId": .string(pageInstanceId),
+                ])
+            )
+        }
 
         for _ in 0..<Self.mountRetryCount {
-            if let webView = WebViewManager.findWebView(
+            let pageInstanceId = WebViewManager.resolvePageInstanceId(
                 appId: session.appId,
                 path: session.path,
                 sessionId: session.id.rawValue
-            ) {
+            )
+
+            if let pageInstanceId,
+               let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
                 mountedSession = session
                 attach(webView, appId: session.appId, path: session.path)
+                _ = notifyPageInstanceMounted(pageInstanceId)
+                if notifyVisibleOnMount {
+                    _ = notifyPageInstanceVisible(pageInstanceId)
+                }
                 return
             }
             try await Task.sleep(nanoseconds: Self.mountRetryDelayNs)
@@ -221,13 +270,19 @@ public final class LxAppHostView: LxAppPlatformView {
         )
     }
 
-    /// Mount an already opened session into this host view.
-    public func mount(_ session: LxAppSession) async throws {
-        try await mount(sessionId: session.id)
-    }
-
     /// Unmount the current session from this host view.
     public func unmount() {
+        if case .string(let pageInstanceId)? = mountedSession?.userInfo["pageInstanceId"] {
+            _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+        } else if let session = mountedSession {
+            if let pageInstanceId = WebViewManager.resolvePageInstanceId(
+                appId: session.appId,
+                path: session.path,
+                sessionId: session.id.rawValue
+            ) {
+                _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+            }
+        }
         clearEventObservers()
         webView?.removeFromSuperview()
         webView = nil

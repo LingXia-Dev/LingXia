@@ -53,7 +53,7 @@ final class LxAppPopup {
             return false
         }
 
-        guard let webView = WebViewManager.findWebView(appId: appId, path: path) else {
+        guard let webView = WebViewManager.resolveWebView(appId: appId, path: path) else {
             return false
         }
 
@@ -381,7 +381,7 @@ final class LxAppPopup {
             cleanupPopup()
         }
 
-        guard let webView = WebViewManager.findWebView(appId: appId, path: path) else {
+        guard let webView = WebViewManager.resolveWebView(appId: appId, path: path) else {
             os_log("showPopup failed: WebView not found for %{public}@:%{public}@", log: log, type: .error, appId, path)
             return false
         }

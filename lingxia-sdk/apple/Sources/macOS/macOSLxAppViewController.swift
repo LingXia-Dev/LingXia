@@ -202,13 +202,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     }
 
     private func findManagedWebView(path: String) -> WKWebView? {
-        if let exactMatch = WebViewManager.findWebView(appId: appId, path: path, sessionId: sessionId) {
+        if let exactMatch = WebViewManager.resolveWebView(appId: appId, path: path, sessionId: sessionId) {
             return exactMatch
         }
 
         let lookupPath = normalizePath(path)
         guard lookupPath != path else { return nil }
-        let fallback = WebViewManager.findWebView(appId: appId, path: lookupPath, sessionId: sessionId)
+        let fallback = WebViewManager.resolveWebView(appId: appId, path: lookupPath, sessionId: sessionId)
         return fallback
     }
 

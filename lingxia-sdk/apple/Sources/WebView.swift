@@ -100,45 +100,81 @@ final class WebViewManager {
         #endif
     }
 
-    /// Find WebView from Rust layer
-    static func findWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
-        guard sessionId > 0 else {
-            os_log("findWebView rejected invalid session for %@", log: log, type: .error, appId)
-            return nil
-        }
-        let webViewPtr = lingxia.findWebView(appId, path, sessionId)
+    static func findWebView(pageInstanceId: String) -> WKWebView? {
+        let trimmed = pageInstanceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let webViewPtr = lingxia.findWebViewByPageInstanceId(trimmed)
         guard webViewPtr != 0 else { return nil }
-
-        // Safely convert pointer to WebView with error handling
         guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
             os_log("Warning: Invalid WebView pointer received from Rust layer", log: log, type: .error)
             return nil
         }
-
         let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
-        webView.setup(appId: appId, path: path)
-
         if debuggingEnabled {
             if #available(iOS 16.4, macOS 13.3, *) {
                 webView.isInspectable = true
             }
         }
-
         #if os(iOS)
-        // Ensure native component bridge is installed before page load so JS can see window.webkit.messageHandlers.NativeComponent
         NativeBridge.attachIfNeeded(to: webView)
         #endif
-
         return webView
     }
 
-    /// Convenience lookup using stored runtime session for the app.
-    static func findWebView(appId: String, path: String) -> WKWebView? {
-        guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
-            os_log("findWebView missing session for %@", log: log, type: .error, appId)
+    private static func lookupBinding(
+        appId: String,
+        path: String,
+        sessionId: UInt64
+    ) -> (pageInstanceId: String, webViewPtr: UInt)? {
+        guard sessionId > 0 else {
+            os_log("lookupBinding rejected invalid session for %@", log: log, type: .error, appId)
             return nil
         }
-        return findWebView(appId: appId, path: path, sessionId: sessionId)
+        let binding = resolvePageBinding(appId, path, sessionId)
+        let pageInstanceId = binding.page_instance_id
+            .toString()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pageInstanceId.isEmpty else {
+            return nil
+        }
+        return (pageInstanceId: pageInstanceId, webViewPtr: binding.webview_ptr)
+    }
+
+    static func resolvePageInstanceId(appId: String, path: String, sessionId: UInt64) -> String? {
+        return lookupBinding(appId: appId, path: path, sessionId: sessionId)?.pageInstanceId
+    }
+
+    static func resolveWebView(appId: String, path: String, sessionId: UInt64) -> WKWebView? {
+        guard let binding = lookupBinding(appId: appId, path: path, sessionId: sessionId) else {
+            os_log("resolveWebView missing binding for %{public}@:%{public}@", log: log, type: .error, appId, path)
+            return nil
+        }
+        let webViewPtr = binding.webViewPtr
+        guard webViewPtr != 0 else { return nil }
+        guard let rawPointer = UnsafeRawPointer(bitPattern: webViewPtr) else {
+            os_log("Warning: Invalid WebView pointer received from Rust layer", log: log, type: .error)
+            return nil
+        }
+        let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        if debuggingEnabled {
+            if #available(iOS 16.4, macOS 13.3, *) {
+                webView.isInspectable = true
+            }
+        }
+        #if os(iOS)
+        NativeBridge.attachIfNeeded(to: webView)
+        #endif
+        webView.setup(appId: appId, path: path)
+        return webView
+    }
+
+    /// Convenience resolve using stored runtime session for the app.
+    static func resolveWebView(appId: String, path: String) -> WKWebView? {
+        guard let sessionId = LxAppCore.sessionId(for: appId), sessionId > 0 else {
+            os_log("resolveWebView missing session for %@", log: log, type: .error, appId)
+            return nil
+        }
+        return resolveWebView(appId: appId, path: path, sessionId: sessionId)
     }
 
     /// Switch between WebViews

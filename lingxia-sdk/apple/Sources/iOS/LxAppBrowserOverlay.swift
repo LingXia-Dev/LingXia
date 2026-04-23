@@ -352,7 +352,7 @@ private final class LxAppBrowserViewController: UIViewController, UIGestureRecog
         guard sessionId > 0 else {
             return nil
         }
-        return WebViewManager.findWebView(
+        return WebViewManager.resolveWebView(
             appId: appId,
             path: browserTabPathForId(tabId).toString(),
             sessionId: sessionId

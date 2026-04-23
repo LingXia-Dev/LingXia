@@ -7,6 +7,7 @@ public struct LxAppOpenRequest: Codable, Sendable {
     public var path: String
     public var presentation: LxAppOpenPresentation
     public var panelId: String?
+    public var pageWarmTtlMs: Int64?
     public var userInfo: [String: LxAppJSONValue]
 
     public init(
@@ -14,12 +15,14 @@ public struct LxAppOpenRequest: Codable, Sendable {
         path: String = "/",
         presentation: LxAppOpenPresentation = .normal,
         panelId: String? = nil,
+        pageWarmTtlMs: Int64? = nil,
         userInfo: [String: LxAppJSONValue] = [:]
     ) {
         self.appId = appId
         self.path = path
         self.presentation = presentation
         self.panelId = panelId
+        self.pageWarmTtlMs = pageWarmTtlMs
         self.userInfo = userInfo
     }
 }
