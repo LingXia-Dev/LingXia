@@ -260,6 +260,12 @@ declare module 'liblingxia.so' {
   export function getLxappSessionId(appid: string): number;
 
   /**
+   * Resolve runtime page instance id for app/path/session.
+   * Returns empty string when not available.
+   */
+  export function getPageInstanceId(appid: string, path: string, session_id: number): string;
+
+  /**
    * Get page orientation for a specific page.
    * Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape
    */

@@ -11,7 +11,8 @@ use lingxia_platform::CachedClass;
 use log::{error, info, warn};
 use lxapp::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
-    LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
+    CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
+    PageOwner, PageTarget, PresentationKind, SceneId,
 };
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
@@ -28,6 +29,27 @@ fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
     }
 
     default_color
+}
+
+fn normalize_lookup_path(path: &str) -> &str {
+    let path = path.split('?').next().unwrap_or(path);
+    path.split('#').next().unwrap_or(path)
+}
+
+fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> Option<String> {
+    let lxapp_instance = lxapp::try_get(appid)?;
+    if lxapp_instance.session_id() != session_id {
+        return None;
+    }
+
+    let resolved_path = lxapp_instance
+        .find_page_path(normalize_lookup_path(path))
+        .unwrap_or_else(|| normalize_lookup_path(path).to_string());
+    let id = lxapp_instance.page_instance_id_for_path(&resolved_path)?;
+    if !id.is_empty() {
+        let _ = lxapp::touch_page_instance_by_id(&id);
+    }
+    Some(id)
 }
 
 fn init_cached_java_class(env: &mut Env<'_>, class: CachedClass) {
@@ -198,7 +220,6 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
     env.with_env(|env| -> Result<JObject, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
-
         if session_id <= 0 {
             warn!(
                 "findWebView called without valid session_id for {}:{}",
@@ -206,27 +227,32 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
             );
             return Ok(JObject::null());
         }
-        let session = Some(session_id as u64);
-        let webtag = lingxia_webview::WebTag::new(&appid, &path, session);
-        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
-            // Get direct access to the WebView and create a new local reference to the Java WebView object
-            match env.new_local_ref(webview.get_java_webview()) {
-                Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
-                Err(e) => {
-                    error!("Failed to create local reference to WebView: {:?}", e);
-                    Ok(JObject::null())
-                }
-            }
-        } else {
-            // No WebView found for this appid/path
+
+        let Some(page_instance_id) = resolve_page_instance_id(&appid, &path, session_id as u64)
+        else {
             error!(
-                "💥 Not found webview for {}-{} (session={}, key={})",
-                appid,
-                path,
-                session_id,
-                webtag.key()
+                "WebView resolve failed for {}:{} (session={})",
+                appid, path, session_id
             );
-            Ok(JObject::null())
+            return Ok(JObject::null());
+        };
+        let Some(page) = lxapp::find_page_by_instance_id(&page_instance_id) else {
+            error!(
+                "Page instance not found for {}:{} (session={}, page_instance_id={})",
+                appid, path, session_id, page_instance_id
+            );
+            return Ok(JObject::null());
+        };
+        let Some(webview) = page.webview() else {
+            return Ok(JObject::null());
+        };
+
+        match env.new_local_ref(webview.get_java_webview()) {
+            Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
+            Err(e) => {
+                error!("Failed to create local reference to WebView: {:?}", e);
+                Ok(JObject::null())
+            }
         }
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -508,9 +534,23 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
             );
             return env.new_string("");
         }
-        let resolved_path = lxapp::try_get(&appid)
-            .map(|lxapp| lxapp.on_lxapp_opened(path, session_id as u64))
-            .unwrap_or_default();
+        let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+            return env.new_string("");
+        };
+        if lxapp_instance.session_id() != session_id as u64 {
+            return env.new_string("");
+        }
+
+        let resolved_path = lxapp::create_page_instance(CreatePageInstanceRequest {
+            owner: PageOwner::Scene(SceneId("system".to_string())),
+            appid: appid.clone(),
+            target: PageTarget::Path(path),
+            query: None,
+            presentation: PresentationKind::Window,
+            warm_dispose_policy: lxapp::PageWarmDisposePolicy::Auto,
+        })
+        .map(|created| created.resolved_path)
+        .unwrap_or_default();
 
         match env.new_string(&resolved_path) {
             Ok(jstring) => Ok(jstring),

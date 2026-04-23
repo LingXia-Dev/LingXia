@@ -2,7 +2,10 @@ use lingxia_messaging::invoke_callback;
 use lingxia_platform::harmony::camera;
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::platform::harmony as webview_harmony;
-use lxapp::{LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation};
+use lxapp::{
+    CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
+    PageOwner, PageTarget, PresentationKind, SceneId,
+};
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
 use napi_ohos::bindgen_prelude::*;
@@ -311,9 +314,54 @@ pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
         );
         return String::new();
     }
-    lxapp::try_get(&appid)
-        .map(|lxapp| lxapp.on_lxapp_opened(path, session_id as u64))
-        .unwrap_or_default()
+    let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+        return String::new();
+    };
+    if lxapp_instance.session_id() != session_id as u64 {
+        return String::new();
+    }
+
+    lxapp::create_page_instance(CreatePageInstanceRequest {
+        owner: PageOwner::Scene(SceneId("system".to_string())),
+        appid,
+        target: PageTarget::Path(path),
+        query: None,
+        presentation: PresentationKind::Window,
+        warm_dispose_policy: lxapp::PageWarmDisposePolicy::Auto,
+    })
+    .map(|created| created.resolved_path)
+    .unwrap_or_default()
+}
+
+#[napi]
+pub fn get_page_instance_id(appid: String, path: String, session_id: i64) -> String {
+    if session_id <= 0 {
+        return String::new();
+    }
+
+    fn normalize_lookup_path(path: &str) -> &str {
+        let path = path.split('?').next().unwrap_or(path);
+        path.split('#').next().unwrap_or(path)
+    }
+
+    let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+        return String::new();
+    };
+    if lxapp_instance.session_id() != session_id as u64 {
+        return String::new();
+    }
+
+    let normalized_path = normalize_lookup_path(&path);
+    let resolved_path = lxapp_instance
+        .find_page_path(normalized_path)
+        .unwrap_or_else(|| normalized_path.to_string());
+    let page_instance_id = lxapp_instance
+        .page_instance_id_for_path(&resolved_path)
+        .unwrap_or_default();
+    if !page_instance_id.is_empty() {
+        let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
+    }
+    page_instance_id
 }
 
 /// Notify that LxApp was closed

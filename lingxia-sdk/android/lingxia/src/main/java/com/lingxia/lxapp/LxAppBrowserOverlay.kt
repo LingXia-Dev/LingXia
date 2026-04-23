@@ -408,7 +408,6 @@ internal object LxAppBrowserOverlay {
             Log.w(TAG, "findManagedWebView failed: invalid tab path for tabId=$tabId")
             return null
         }
-
         return NativeApi.findWebView(browserAppId, path, sessionId)
     }
 

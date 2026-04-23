@@ -233,10 +233,7 @@ internal object NativeApi {
     external fun onPageShow(appId: String, path: String)
 
     /**
-     * Find an existing WebView instance for the given app and path
-     * @param appId The ID of the app
-     * @param path The page path
-     * @param sessionId Runtime session id
+     * Resolve and find an existing WebView instance for app/path/session in one call.
      * @return WebView instance or null if not found
      */
     @JvmStatic
