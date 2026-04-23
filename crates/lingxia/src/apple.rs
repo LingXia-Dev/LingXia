@@ -628,7 +628,9 @@ pub fn find_webview_ptr(appid: &str, path: &str, session_id: u64) -> usize {
 }
 
 /// Get LxApp information
-/// Returns default empty values if app not found (swift-bridge Option<struct with String> bug workaround)
+/// Returns default empty values if app not found.
+///
+/// This works around a swift-bridge `Option<struct with String>` limitation.
 pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
@@ -649,7 +651,9 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
 }
 
 /// Get NavigationBar state
-/// Returns default values if app not found (swift-bridge Option<struct with String> bug workaround)
+/// Returns default values if app not found.
+///
+/// This works around a swift-bridge `Option<struct with String>` limitation.
 pub fn get_navigation_bar_state(appid: &str, path: &str) -> self::bridge::NavigationBarState {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let nav_state = lxapp.get_navbar_state(path);
@@ -737,7 +741,7 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
 
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
-    lxapp::handle_applink(url)
+    lingxia_service::applink::handle(url)
 }
 
 /// Handle Push Notification Link with trigger context
@@ -754,7 +758,7 @@ pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i3
         trigger_name
     );
 
-    lxapp::handle_applink(url)
+    lingxia_service::applink::handle(url)
 }
 
 /// Handle push notification device token

@@ -1,4 +1,19 @@
-//! LingXia framework.
+//! LingXia host framework entry crate.
+//!
+//! Use this crate from native host apps and native Rust libraries. It provides:
+//!
+//! - platform bootstrap and FFI entry points for Android, Apple platforms, and
+//!   HarmonyOS;
+//! - the [`native`] macro for page-facing Rust APIs;
+//! - host addon registration through [`HostAddon`] and [`register_host_addon`];
+//! - native service facades such as [`app`], [`mod@file`], [`media`],
+//!   [`downloads`], [`settings`], [`push`], [`task`], and [`update`];
+//! - optional JS AppService extension APIs under [`js`] when the `standard`
+//!   feature is enabled.
+//!
+//! Most applications should depend on `lingxia` rather than lower-level crates
+//! such as `lingxia-lxapp`. Lower-level crates remain available for runtime
+//! internals and advanced integrations.
 
 extern crate self as lingxia;
 pub use host_addon::{HostAddon, register_host_addon};
@@ -11,6 +26,7 @@ pub use lxapp::set_num_workers;
 
 pub mod app;
 pub use app::{config as app_config, lingxia_id, product_version};
+mod applink;
 mod bootstrap;
 mod capabilities;
 pub mod dev {

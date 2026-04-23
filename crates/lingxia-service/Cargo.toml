@@ -10,4 +10,6 @@ repository = "https://github.com/LingXia-Dev/LingXia"
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }
+lingxia-app-context = { workspace = true }
+lingxia-update = { workspace = true }
 tokio = { workspace = true }

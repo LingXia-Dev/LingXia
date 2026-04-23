@@ -1,54 +1,52 @@
-use crate::{LxAppStartupOptions, ReleaseType, Scene, parse_env_release_type};
+use lingxia_update::ReleaseType;
+use std::sync::OnceLock;
 
 const LXAPP_PREFIX: &str = "/lxapp/";
 const OPEN_ACTION: &str = "open";
 
+/// Parsed LingXia AppLink target.
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AppLinkTarget {
-    appid: String,
-    path: String,
-    query: String,
-    release_type: ReleaseType,
+pub struct AppLinkTarget {
+    pub appid: String,
+    pub path: String,
+    pub query: String,
+    pub release_type: ReleaseType,
 }
 
-pub fn handle_applink(url: &str) -> i32 {
-    match parse_applink(url) {
+/// Host callback used to open an accepted AppLink.
+pub type AppLinkHandler = fn(AppLinkTarget) -> i32;
+
+static APP_LINK_HANDLER: OnceLock<AppLinkHandler> = OnceLock::new();
+
+/// Register the host AppLink opener.
+pub fn register_handler(handler: AppLinkHandler) {
+    let _ = APP_LINK_HANDLER.set(handler);
+}
+
+/// Handle a LingXia AppLink.
+///
+/// Returns:
+///
+/// - `1` when the link was accepted and the registered handler was called.
+/// - `0` when the URL is not a configured LingXia AppLink.
+/// - `-1` when the URL looks like a LingXia AppLink but is invalid, or when no
+///   handler has been registered.
+pub fn handle(url: &str) -> i32 {
+    match parse(url) {
         Ok(Some(target)) => {
-            crate::info!(
-                "AppLink accepted: appid={}, path={}, releaseType={}",
-                target.appid,
-                target.path,
-                target.release_type
-            );
-            let appid = target.appid.clone();
-            let options = LxAppStartupOptions::new(&target.path)
-                .set_query(target.query.clone())
-                .set_release_type(target.release_type)
-                .set_scene(Scene::AppLink);
-            let release_type = target.release_type;
-            let _ = rong_rt::RongExecutor::global().spawn(async move {
-                if let Err(err) = crate::prepare_lxapp_open(&appid, release_type).await {
-                    crate::warn!("AppLink prepare failed for {}: {}", appid, err);
-                    return;
-                }
-                if let Err(err) = crate::open_lxapp(&appid, options) {
-                    crate::warn!("AppLink open failed for {}: {}", appid, err);
-                }
-            });
-            1
+            if let Some(handler) = APP_LINK_HANDLER.get() {
+                handler(target)
+            } else {
+                -1
+            }
         }
-        Ok(None) => {
-            crate::debug!("AppLink ignored: {}", url);
-            0
-        }
-        Err(err) => {
-            crate::warn!("AppLink rejected: {} ({})", url, err);
-            -1
-        }
+        Ok(None) => 0,
+        Err(_) => -1,
     }
 }
 
-fn parse_applink(url: &str) -> Result<Option<AppLinkTarget>, String> {
+/// Parse a LingXia AppLink without opening it.
+pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
     let url = url.trim();
     let Some(rest) = url.strip_prefix("https://") else {
         return Ok(None);
@@ -191,7 +189,7 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
         };
         let key = decode_component(raw_key)?;
         if key == "envVersion" {
-            release_type = parse_env_release_type(&decode_component(raw_value)?)?;
+            release_type = parse_release_type(&decode_component(raw_value)?)?;
             continue;
         }
         if include_routing && (key == "appId" || key == "appid") {
@@ -210,6 +208,15 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
         path,
         page_query: page_params.join("&"),
     })
+}
+
+fn parse_release_type(tag: &str) -> Result<ReleaseType, String> {
+    match tag {
+        "release" => Ok(ReleaseType::Release),
+        "preview" => Ok(ReleaseType::Preview),
+        "develop" => Ok(ReleaseType::Developer),
+        other => Err(format!("invalid envVersion: {other}")),
+    }
 }
 
 fn decode_component(value: &str) -> Result<String, String> {
@@ -255,7 +262,7 @@ mod tests {
 
     #[test]
     fn parses_open_without_page_path() {
-        let target = parse_applink("https://www.lingxia.app/lxapp/open?appId=com.example.shop")
+        let target = parse("https://www.lingxia.app/lxapp/open?appId=com.example.shop")
             .unwrap()
             .unwrap();
         assert_eq!(target.appid, "com.example.shop");
@@ -266,7 +273,7 @@ mod tests {
 
     #[test]
     fn parses_open_page_and_strips_routing_query() {
-        let target = parse_applink(
+        let target = parse(
             "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42",
         )
         .unwrap()
@@ -279,7 +286,7 @@ mod tests {
 
     #[test]
     fn parses_open_query_form() {
-        let target = parse_applink(
+        let target = parse(
             "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=develop&id=42",
         )
         .unwrap()
@@ -292,11 +299,10 @@ mod tests {
 
     #[test]
     fn parses_path_form() {
-        let target = parse_applink(
-            "https://www.lingxia.app/lxapp/shop/pages/detail?id=42&envVersion=preview",
-        )
-        .unwrap()
-        .unwrap();
+        let target =
+            parse("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&envVersion=preview")
+                .unwrap()
+                .unwrap();
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail");
         assert_eq!(target.query, "id=42");
@@ -305,7 +311,7 @@ mod tests {
 
     #[test]
     fn path_form_keeps_appid_and_path_query_params() {
-        let target = parse_applink(
+        let target = parse(
             "https://www.lingxia.app/lxapp/shop/pages/detail?appId=cart&path=pages%2Fcheckout&id=42",
         )
         .unwrap()
@@ -317,7 +323,7 @@ mod tests {
 
     #[test]
     fn release_type_query_is_forwarded_to_page() {
-        let target = parse_applink(
+        let target = parse(
             "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&envVersion=preview&releaseType=developer",
         )
         .unwrap()
@@ -328,16 +334,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_env_version() {
-        assert!(
-            parse_applink("https://www.lingxia.app/lxapp/open?appId=shop&envVersion=trial")
-                .is_err()
-        );
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&envVersion=trial").is_err());
     }
 
     #[test]
     fn ignores_non_lxapp_paths() {
         assert!(
-            parse_applink("https://www.lingxia.app/oauth/callback")
+            parse("https://www.lingxia.app/oauth/callback")
                 .unwrap()
                 .is_none()
         );
@@ -345,6 +348,6 @@ mod tests {
 
     #[test]
     fn rejects_invalid_percent_encoding() {
-        assert!(parse_applink("https://www.lingxia.app/lxapp/open?appId=%GG").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=%GG").is_err());
     }
 }

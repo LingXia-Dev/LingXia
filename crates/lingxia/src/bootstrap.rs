@@ -75,6 +75,7 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::host_addon::run_install_host_apis();
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
+    crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     crate::lxapp_dev::register_bundle_source_override();

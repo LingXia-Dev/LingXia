@@ -1,7 +1,6 @@
 #![cfg_attr(not(feature = "js-appservice"), allow(dead_code, unused_imports))]
 
 mod app;
-mod applink;
 mod appservice;
 mod archive;
 pub(crate) mod bridge;
@@ -33,7 +32,6 @@ pub(crate) mod view_call;
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use app::LxAppRuntimeConfig;
-pub use applink::handle_applink;
 #[cfg(feature = "js-appservice")]
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{publish_app_event, publish_page_event};
