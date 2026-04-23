@@ -2,6 +2,7 @@ use super::*;
 use dashmap::DashMap;
 use redb::{ReadableDatabase, TableDefinition};
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::watch;
 
 pub(crate) const UPDATE_STATE_TABLE: TableDefinition<&str, &[u8]> =

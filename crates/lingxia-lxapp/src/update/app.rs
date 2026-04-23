@@ -38,8 +38,15 @@ impl UpdateManager {
     pub async fn check_app_update(
         current_version: Option<&str>,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
+        let current_version = resolve_required_app_version(current_version)?;
+        Self::check_app_update_with_resolved_version(current_version).await
+    }
+
+    async fn check_app_update_with_resolved_version(
+        current_version: &str,
+    ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
-        let target = UpdateTarget::app(current_version);
+        let target = UpdateTarget::app(Some(current_version));
 
         provider.check_update(target).await.map_err(|e| {
             crate::error!("check_app_update failed: {}", e);
@@ -63,11 +70,9 @@ impl UpdateManager {
         runtime: Arc<Platform>,
         current_version: Option<&str>,
     ) -> Result<(), LxAppError> {
-        crate::info!(
-            "App update flow start: current_version={:?}",
-            current_version
-        );
-        let update = UpdateManager::check_app_update(current_version).await?;
+        let current_version = resolve_required_app_version(current_version)?;
+        crate::info!("App update flow start: current_version={}", current_version);
+        let update = UpdateManager::check_app_update_with_resolved_version(current_version).await?;
         let Some(pkg) = update else {
             crate::info!("No app update available");
             return Ok(());
@@ -77,6 +82,7 @@ impl UpdateManager {
             pkg.version,
             pkg.url
         );
+        ensure_app_update_candidate_version(current_version, &pkg.version)?;
 
         let update_info_json = {
             let mut json_obj = serde_json::Map::new();
@@ -271,4 +277,74 @@ async fn get_content_length(url: &str) -> Result<u64, String> {
     } else {
         Err("No Content-Length header".to_string())
     }
+}
+
+fn normalize_version_input(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn resolve_required_app_version(current_version: Option<&str>) -> Result<&'static str, LxAppError> {
+    let product_version = lingxia_app_context::product_version()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            LxAppError::Runtime(
+                "app check-update requires productVersion, but app context is missing it"
+                    .to_string(),
+            )
+        })?;
+
+    if let Some(given) = normalize_version_input(current_version)
+        && given != product_version
+    {
+        crate::warn!(
+            "Ignore provided current_version={}, use productVersion={}",
+            given,
+            product_version
+        );
+    }
+
+    Version::parse(product_version).map_err(|_| {
+        LxAppError::Runtime(format!(
+            "app productVersion is not semantic version: {}",
+            product_version
+        ))
+    })?;
+
+    Ok(product_version)
+}
+
+fn ensure_app_update_candidate_version(
+    current_version: &str,
+    candidate_version: &str,
+) -> Result<(), LxAppError> {
+    let candidate_version = candidate_version.trim();
+    if candidate_version.is_empty() {
+        return Err(LxAppError::InvalidParameter(
+            "app update package version is empty".to_string(),
+        ));
+    }
+
+    let candidate = Version::parse(candidate_version).map_err(|_| {
+        LxAppError::InvalidParameter(format!(
+            "app update package version is not semantic version: {}",
+            candidate_version
+        ))
+    })?;
+
+    let current = Version::parse(current_version).map_err(|_| {
+        LxAppError::Runtime(format!(
+            "current app version is not semantic version: {}",
+            current_version
+        ))
+    })?;
+
+    if candidate < current {
+        return Err(LxAppError::UnsupportedOperation(format!(
+            "reject app downgrade: current={} candidate={}",
+            current_version, candidate_version
+        )));
+    }
+
+    Ok(())
 }
