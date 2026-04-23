@@ -9,7 +9,7 @@ use std::collections::HashMap;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Scope {
     App,
-    Page(String),
+    PageInstance(String),
 }
 
 /// Envelope for a native -> JS event.
@@ -53,7 +53,7 @@ pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
         .handlers
         .borrow_mut()
         .retain(|scope, _| match scope {
-            Scope::Page(path) => path != page_path,
+            Scope::PageInstance(path) => path != page_path,
             _ => true,
         });
 }
@@ -142,7 +142,7 @@ pub fn register_page_handler(
     registry
         .handlers
         .borrow_mut()
-        .entry(Scope::Page(page_path.to_string()))
+        .entry(Scope::PageInstance(page_path.to_string()))
         .or_default()
         .push(entry);
     Ok(())
@@ -155,7 +155,7 @@ pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &st
     }
     let registry = ctx.runtime().get_or_init_service::<EventBusRegistry>();
     registry.handlers.borrow_mut().retain(|scope, entries| {
-        if let Scope::Page(path) = scope {
+        if let Scope::PageInstance(path) = scope {
             if path == page_path {
                 entries.retain(|h| h.event_name != event_name);
                 return !entries.is_empty();
@@ -177,10 +177,10 @@ pub(crate) async fn dispatch_app_bus_event(ctx: &JSContext, event: &AppBusEvent)
             )
             .await
         }
-        Scope::Page(path) => {
+        Scope::PageInstance(path) => {
             emit_to_handlers(
                 ctx,
-                Scope::Page(path.clone()),
+                Scope::PageInstance(path.clone()),
                 &event.event_name,
                 event.payload_json.as_deref(),
             )
@@ -265,7 +265,7 @@ pub fn publish_page_event(
     };
 
     let event = AppBusEvent {
-        scope: Scope::Page(page_path.to_string()),
+        scope: Scope::PageInstance(page_path.to_string()),
         event_name: event_name.to_string(),
         payload_json,
     };

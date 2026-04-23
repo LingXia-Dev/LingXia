@@ -61,7 +61,7 @@ pub(crate) enum ServiceMessage {
         event: AppServiceEvent,
         args: Option<String>,
     },
-    // Call function of Page service with different sources
+    // Call function of PageInstance service with different sources
     CallPageSvc {
         lxapp: Arc<LxApp>,
         path: String,
@@ -86,7 +86,7 @@ pub(crate) enum ServiceMessage {
     },
 }
 
-/// Enum representing different sources of Page service calls
+/// Enum representing different sources of PageInstance service calls
 pub enum PageSvcSource {
     /// Call from view layer after the top-level bridge has parsed and routed it.
     Bridge {
@@ -315,7 +315,7 @@ async fn handle_bridge_source(
     }
 }
 
-// Handles a call from native code to a Page service function
+// Handles a call from native code to a PageInstance service function
 async fn handle_native_source(
     page_svc: &PageSvc,
     appid: String,
@@ -331,7 +331,7 @@ async fn handle_native_source(
             .call_or_event_from_native(&ctx, &name, args.as_deref())
             .await
         {
-            crate::error!("Page service call '{}' failed: {}", name_clone, e)
+            crate::error!("PageInstance service call '{}' failed: {}", name_clone, e)
                 .with_appid(appid)
                 .with_path(page_svc_clone.page.path());
         }
@@ -354,7 +354,7 @@ pub(crate) async fn lxapp_service_handler(
             // Register LxApp runtime context and bind identity to JSContext
             register_app_ctx(&runtime, &ctx, &lxapp);
 
-            // register Page, App and getApp function
+            // register PageInstance, App and getApp function
             if let Err(e) = app::init(&ctx) {
                 error!(
                     "[Worker {}] Failed to initialize App runtime: {}",
@@ -365,7 +365,7 @@ pub(crate) async fn lxapp_service_handler(
             }
             if let Err(e) = page::init(&ctx) {
                 error!(
-                    "[Worker {}] Failed to initialize Page runtime: {}",
+                    "[Worker {}] Failed to initialize PageInstance runtime: {}",
                     worker_id, e
                 )
                 .with_appid(lxapp.appid.clone());
@@ -595,7 +595,7 @@ pub(crate) async fn lxapp_service_handler(
                     // Enqueue page event via PageSvc API (non-blocking)
                     if let Err(e) = page_svc.call_page_event(ctx, event, args.as_deref()).await {
                         error!(
-                            "[Worker {}] Page event '{}' failed: {}",
+                            "[Worker {}] PageInstance event '{}' failed: {}",
                             worker_id, event, e
                         )
                         .with_appid(lxapp.appid.clone())

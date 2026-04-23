@@ -18,7 +18,7 @@ pub(crate) mod event_bus {
     #[derive(Clone, Debug)]
     pub(crate) enum Scope {
         App,
-        Page(String),
+        PageInstance(String),
     }
 
     #[derive(Clone, Debug)]
@@ -149,11 +149,24 @@ mod no_js_runtime {
     impl crate::bridge::AppServiceBackend for LxAppWorkers {
         fn forward(
             &self,
-            _lxapp: Arc<crate::lxapp::LxApp>,
+            lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
-            _message: crate::bridge::AppServiceCommand,
+            message: crate::bridge::AppServiceCommand,
         ) -> Result<(), LxAppError> {
-            Err(unsupported_js_runtime())
+            if lxapp.logic_enabled() {
+                return Err(unsupported_js_runtime());
+            }
+
+            match message {
+                // Keep bridge handshake/state plumbing alive for native-only pages.
+                crate::bridge::AppServiceCommand::Ready
+                | crate::bridge::AppServiceCommand::StateSnapshot { .. }
+                | crate::bridge::AppServiceCommand::StateAck { .. } => Ok(()),
+                // Real AppService traffic is unavailable in native-only mode.
+                _ => Err(LxAppError::UnsupportedOperation(
+                    "AppService is unavailable for logic:false page".to_string(),
+                )),
+            }
         }
     }
 

@@ -108,17 +108,25 @@
     });
   };
 
-  globalThis.Page = function () {
+  function pageRegistrationTransformError(symbolName) {
     throw new Error(
-      "Page() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.",
+      `${symbolName}() should be transformed at build time. Rebuild the logic bundle with the LingXia CLI.`,
     );
+  }
+
+  globalThis.Page = function () {
+    pageRegistrationTransformError("Page");
+  };
+
+  globalThis.PageInstance = function () {
+    pageRegistrationTransformError("PageInstance");
   };
 
   globalThis.__LX_CREATE_PAGE__ = function (pagePath, definitionPath) {
     const resolvedDefinitionPath = definitionPath || pagePath;
     const definition = pageDefinitions.get(resolvedDefinitionPath);
     if (!definition) {
-      throw new Error(`Page not found: ${resolvedDefinitionPath}`);
+      throw new Error(`PageInstance not found: ${resolvedDefinitionPath}`);
     }
     definition.config.route = pagePath;
     return createPageInstance(definition, pagePath);

@@ -1,6 +1,6 @@
 use crate::bridge::{BRIDGE_CANCELED, BRIDGE_TIMEOUT, RpcError, required_cap_for_name};
 use crate::error::LxAppError;
-use crate::page::Page;
+use crate::page::PageInstance;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -18,7 +18,7 @@ struct ViewCallRegistry {
 }
 
 struct PendingViewCallEntry {
-    page_path: String,
+    page_instance_id: String,
     tx: oneshot::Sender<Result<Value, RpcError>>,
 }
 
@@ -53,14 +53,14 @@ struct ViewReq {
 
 /// Send a request to the View (WebView) and return a receiver for the response.
 pub(crate) fn call_view(
-    page: &Page,
+    page: &PageInstance,
     method: &str,
     params: Option<Value>,
 ) -> Result<PendingViewCall, LxAppError> {
     let reg = registry();
     let seq = reg.counter.fetch_add(1, Ordering::Relaxed);
     let id = format!("lv_{}", seq);
-    let page_path = page.path();
+    let page_instance_id = page.instance_id_string();
 
     let cap = required_cap_for_name(method);
     let msg = ViewReq {
@@ -79,10 +79,13 @@ pub(crate) fn call_view(
         .ok_or_else(|| LxAppError::WebView("WebView not ready".to_string()))?;
 
     let (tx, rx) = oneshot::channel();
-    reg.pending
-        .lock()
-        .unwrap()
-        .insert(id.clone(), PendingViewCallEntry { page_path, tx });
+    reg.pending.lock().unwrap().insert(
+        id.clone(),
+        PendingViewCallEntry {
+            page_instance_id,
+            tx,
+        },
+    );
 
     if let Err(e) = controller.post_message(&json) {
         // Remove pending entry on send failure
@@ -125,15 +128,15 @@ pub(crate) async fn await_pending_view_call(
 /// Returns `true` if a matching pending call was found and resolved.
 pub(crate) fn resolve_view_call(
     id: &str,
-    source_page_path: Option<&str>,
+    source_page_instance_id: Option<&str>,
     result: Result<Value, RpcError>,
 ) -> bool {
     let reg = registry();
     let entry = {
         let mut pending = reg.pending.lock().unwrap();
-        if let Some(path) = source_page_path
+        if let Some(instance_id) = source_page_instance_id
             && let Some(existing) = pending.get(id)
-            && existing.page_path != path
+            && existing.page_instance_id != instance_id
         {
             return false;
         }
@@ -154,19 +157,19 @@ pub(crate) fn cancel_view_call(id: &str, message: Option<String>) {
     }
 }
 
-pub(crate) fn cancel_view_calls_for_pages(paths: &[String], reason: &str) {
-    if paths.is_empty() {
+pub(crate) fn cancel_view_calls_for_page_instances(instance_ids: &[String], reason: &str) {
+    if instance_ids.is_empty() {
         return;
     }
 
     let reg = registry();
-    let path_set: HashSet<&str> = paths.iter().map(String::as_str).collect();
+    let instance_set: HashSet<&str> = instance_ids.iter().map(String::as_str).collect();
 
     let entries = {
         let mut pending = reg.pending.lock().unwrap();
         let ids: Vec<String> = pending
             .iter()
-            .filter(|(_, entry)| path_set.contains(entry.page_path.as_str()))
+            .filter(|(_, entry)| instance_set.contains(entry.page_instance_id.as_str()))
             .map(|(id, _)| id.clone())
             .collect();
         ids.into_iter()

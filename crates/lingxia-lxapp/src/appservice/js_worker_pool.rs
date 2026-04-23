@@ -345,7 +345,7 @@ impl LxAppWorkers {
         Ok(())
     }
 
-    /// Call a function on a Page service from native code
+    /// Call a function on a PageInstance service from native code
     pub fn call_page_service(
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
@@ -361,7 +361,7 @@ impl LxAppWorkers {
         Ok(())
     }
 
-    /// Call a typed page event on a Page service
+    /// Call a typed page event on a PageInstance service
     pub fn call_page_service_event(
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,

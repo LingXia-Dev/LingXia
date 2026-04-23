@@ -200,7 +200,7 @@ impl LxApp {
 
     /// Show a popup with explicit mode control.
     ///
-    /// - `LxAppPage`: resolves an lxapp route, creates/reuses its Page, dispatches lifecycle.
+    /// - `LxAppPage`: resolves an lxapp route, creates/reuses its PageInstance, dispatches lifecycle.
     /// - `WebPage`: validates the URL is http/https, creates a browser-profile WebView popup.
     pub fn show_popup_with_mode(
         self: &Arc<Self>,

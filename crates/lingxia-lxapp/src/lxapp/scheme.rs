@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
-use crate::page::Page;
+use crate::page::PageInstance;
 
 enum ResolvedLxAsset {
     FilePath(PathBuf),
@@ -29,7 +29,7 @@ impl LxApp {
     /// HTML files are handled separately through generate_page_html and load_data
     pub fn handle_lingxia_request(
         &self,
-        page: &Page,
+        page: &PageInstance,
         req: Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
         let uri = req.uri();
@@ -249,7 +249,11 @@ impl LxApp {
         Uri::from_str(decoded_str).ok()
     }
 
-    fn resolve_lx_uri(&self, page: &Page, uri: &Uri) -> Result<ResolvedLxAsset, LxAppError> {
+    fn resolve_lx_uri(
+        &self,
+        page: &PageInstance,
+        uri: &Uri,
+    ) -> Result<ResolvedLxAsset, LxAppError> {
         match uri.host() {
             Some(lx_uri::HOST_LXAPP) => {
                 if matches!(
@@ -354,7 +358,7 @@ impl LxApp {
         self.resolve_accessible_path(absolute_str.as_ref())
     }
 
-    fn resolve_lxapp_uri(&self, page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_lxapp_uri(&self, page: &PageInstance, uri: &Uri) -> Result<PathBuf, LxAppError> {
         let relative = self.resolve_lxapp_relative_path(page, uri)?;
         if let Ok(local_path) = self.resolve_accessible_path(&relative) {
             return Ok(local_path);
@@ -368,7 +372,11 @@ impl LxApp {
         Err(LxAppError::ResourceNotFound(uri.to_string()))
     }
 
-    fn resolve_lxapp_relative_path(&self, _page: &Page, uri: &Uri) -> Result<String, LxAppError> {
+    fn resolve_lxapp_relative_path(
+        &self,
+        _page: &PageInstance,
+        uri: &Uri,
+    ) -> Result<String, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         if Path::new(&decoded_path).is_absolute() {
             if let Ok(local_path) = self.resolve_accessible_path(&decoded_path) {
@@ -403,7 +411,7 @@ impl LxApp {
         Ok(normalized)
     }
 
-    fn resolve_plugin_uri(&self, _page: &Page, uri: &Uri) -> Result<PathBuf, LxAppError> {
+    fn resolve_plugin_uri(&self, _page: &PageInstance, uri: &Uri) -> Result<PathBuf, LxAppError> {
         let decoded_path = lx_uri::decode_lx_path(uri.path());
         let raw_path = decoded_path.trim_start_matches('/');
         let (plugin_name, rest) = raw_path

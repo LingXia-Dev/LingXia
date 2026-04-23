@@ -55,17 +55,22 @@ pub use lingxia_update::{
 };
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    LxApp, LxAppRuntimeInfo, LxAppRuntimePageInfo, PopupMode, close_lxapp, config::LxAppInfo,
-    ensure_builtin_lxapp, ensure_lxapp, get_current_lxapp, get_locale, get_platform, init,
-    installed_lxapp_path, is_pull_down_refresh_enabled, list_lxapps, on_low_memory, open_lxapp,
-    page_config::OrientationConfig, page_config::PageOrientation, register_builtin_asset_bundle,
-    register_dev_bundle_source, restart_lxapp, tabbar, try_get, uninstall_lxapp,
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, LxAppRuntimeInfo,
+    LxAppRuntimePageInfo, PageDefinition, PageInstanceEvent, PageOwner, PageQueryInput, PageTarget,
+    PageWarmDisposePolicy, PopupMode, PresentationKind, ResolvedPage, SceneId, close_lxapp,
+    config::LxAppInfo, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
+    ensure_builtin_lxapp, ensure_lxapp, find_page_by_instance_id, get_current_lxapp, get_locale,
+    get_platform, init, installed_lxapp_path, is_pull_down_refresh_enabled, list_lxapps,
+    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp,
+    register_builtin_asset_bundle, register_dev_bundle_source, restart_lxapp, tabbar,
+    touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::on_native_component_event;
 pub use page::{
-    NavigationType, Page, ViewCallOptions, add_global_page_script, register_page_resolver,
-    resolve_page_path,
+    NavigationType, PageInstance, PageInstanceId, ViewCallOptions, add_global_page_script,
+    register_page_resolver, resolve_page_path,
 };
+pub use page::config::{OrientationConfig, PageOrientation};
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
     BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,

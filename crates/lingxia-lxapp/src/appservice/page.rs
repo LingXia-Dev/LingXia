@@ -6,7 +6,7 @@ use crate::bridge::{
 use crate::error;
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
-use crate::page::Page;
+use crate::page::PageInstance;
 use rong::{
     Class, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, JsonToJSValue, RongJSError,
     Source, error::HostError, function::Optional, js_class, js_export, js_method,
@@ -29,7 +29,7 @@ pub struct PageSvc {
     stream_handlers: HashSet<String>,
     this: JSObject,
 
-    pub(crate) page: Page,
+    pub(crate) page: PageInstance,
     event_emitter: EventEmitter,
 
     // state of PageSvc
@@ -458,7 +458,7 @@ impl PageSvc {
         let page = lxapp.get_page(&path).ok_or_else(|| {
             RongJSError::from(HostError::new(
                 rong::error::E_NOT_FOUND,
-                format!("Page not found: {}", path),
+                format!("PageInstance not found: {}", path),
             ))
         })?;
 
@@ -901,7 +901,7 @@ impl PageSvc {
             )
             .await
         } else {
-            // Page lifecycle handlers are optional by design.
+            // PageInstance lifecycle handlers are optional by design.
             Ok(())
         }
     }
@@ -963,7 +963,7 @@ impl PageSvc {
             })
     }
 
-    pub fn get_page(&self) -> Page {
+    pub fn get_page(&self) -> PageInstance {
         self.page.clone()
     }
 }
@@ -986,7 +986,7 @@ impl LxApp {
                 .ok_or_else(|| {
                     RongJSError::from(HostError::new(
                         rong::error::E_INTERNAL,
-                        "Page service not found",
+                        "PageInstance service not found",
                     ))
                 })
         })

@@ -203,7 +203,7 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
-        // WebPage popup has no Page object — nothing to notify.
+        // WebPage popup has no PageInstance object — nothing to notify.
         if path == crate::lxapp::WEB_POPUP_PATH {
             return;
         }
@@ -211,7 +211,7 @@ impl LxAppDelegate for LxApp {
         let page = match self.get_page(&path) {
             Some(page) => page,
             None => {
-                error!("Page not found when showing: {}", path)
+                error!("PageInstance not found when showing: {}", path)
                     .with_appid(self.appid.clone())
                     .with_path(path.clone());
                 return;
@@ -454,7 +454,8 @@ impl LxApp {
             page.dispatch_lifecycle_event(PageLifecycleEvent::OnPullDownRefresh);
             true
         } else {
-            error!("Page not found for pull-to-refresh: {}", path).with_appid(self.appid.clone());
+            error!("PageInstance not found for pull-to-refresh: {}", path)
+                .with_appid(self.appid.clone());
             if let Err(e) = self.runtime.stop_pull_down_refresh(&self.appid, &path) {
                 error!("Failed to stop pull-to-refresh: {}", e).with_appid(self.appid.clone());
             }

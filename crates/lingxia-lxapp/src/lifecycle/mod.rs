@@ -105,7 +105,7 @@ impl fmt::Display for LxAppLifecycleEvent {
     }
 }
 
-// Page-level service events
+// PageInstance-level service events
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PageServiceEvent {
     OnLoad,
@@ -147,7 +147,7 @@ impl fmt::Display for PageServiceEvent {
     }
 }
 
-// Page lifecycle events (internal state machine and logging)
+// PageInstance lifecycle events (internal state machine and logging)
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum PageLifecycleEvent {
     OnLoad,

@@ -20,7 +20,7 @@ use protocol::*;
 use crate::LxAppError;
 use crate::host::{self, HostOutput, HostStream, HostStreamItem};
 use crate::lxapp::LxApp;
-use crate::page::Page;
+use crate::page::PageInstance;
 use base64::Engine;
 use futures::StreamExt;
 use serde::Serialize;
@@ -93,7 +93,7 @@ pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
 }
 
-impl ViewTransport for Page {
+impl ViewTransport for PageInstance {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError> {
         if let Some(controller) = self.webview_controller() {
             controller
@@ -201,7 +201,7 @@ impl PageBridge {
 
     pub(crate) fn handle_incoming(
         &self,
-        page: &Page,
+        page: &PageInstance,
         message: Arc<IncomingMessage>,
     ) -> Result<(), LxAppError> {
         match &*message {
@@ -224,7 +224,8 @@ impl PageBridge {
                         data: err.and_then(|e| e.data.clone()),
                     })
                 };
-                crate::view_call::resolve_view_call(&msg.id, Some(&page.path()), result);
+                let page_instance_id = page.instance_id_string();
+                crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), result);
                 Ok(())
             }
             IncomingMessage::Notify(msg) => self.handle_notify(page, msg),
@@ -313,7 +314,7 @@ impl PageBridge {
         }
     }
 
-    fn handle_hello(&self, page: &Page, msg: &HelloMsg) -> Result<(), LxAppError> {
+    fn handle_hello(&self, page: &PageInstance, msg: &HelloMsg) -> Result<(), LxAppError> {
         if msg.v != 2 {
             return Err(LxAppError::Bridge(format!(
                 "Unsupported protocol: {}",
@@ -348,7 +349,7 @@ impl PageBridge {
         Ok(())
     }
 
-    fn handle_req(&self, page: &Page, msg: &ReqMsg) -> Result<(), LxAppError> {
+    fn handle_req(&self, page: &PageInstance, msg: &ReqMsg) -> Result<(), LxAppError> {
         if msg.v != 2 {
             let _ = self.send_res_err(
                 page,
@@ -438,7 +439,7 @@ impl PageBridge {
         )
     }
 
-    fn handle_notify(&self, page: &Page, msg: &NotifyMsg) -> Result<(), LxAppError> {
+    fn handle_notify(&self, page: &PageInstance, msg: &NotifyMsg) -> Result<(), LxAppError> {
         if msg.v != 2 || !self.is_ready() {
             return Ok(());
         }
@@ -462,7 +463,7 @@ impl PageBridge {
         )
     }
 
-    fn handle_ch_open(&self, page: &Page, msg: &ChOpenMsg) -> Result<(), LxAppError> {
+    fn handle_ch_open(&self, page: &PageInstance, msg: &ChOpenMsg) -> Result<(), LxAppError> {
         if msg.v != 2 {
             let _ = self.send_ch_ack_err(
                 page,
@@ -518,7 +519,7 @@ impl PageBridge {
 
     fn forward_js_message(
         &self,
-        page: &Page,
+        page: &PageInstance,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
         self.inner
@@ -528,7 +529,7 @@ impl PageBridge {
 
     fn forward_js_request(
         &self,
-        page: &Page,
+        page: &PageInstance,
         id: String,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
@@ -541,7 +542,7 @@ impl PageBridge {
 
     fn forward_js_channel_open(
         &self,
-        page: &Page,
+        page: &PageInstance,
         id: String,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
@@ -874,7 +875,7 @@ impl PageBridge {
 
     fn dispatch_host_ch_open(
         &self,
-        page: &Page,
+        page: &PageInstance,
         id: String,
         host_topic: &str,
         params_json: Option<String>,
@@ -934,7 +935,7 @@ impl PageBridge {
 
     fn dispatch_host_req(
         &self,
-        page: &Page,
+        page: &PageInstance,
         id: String,
         host_method: String,
         params_json: Option<String>,
@@ -1039,7 +1040,7 @@ impl PageBridge {
 
     fn dispatch_host_notify(
         &self,
-        page: &Page,
+        page: &PageInstance,
         host_method: String,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
@@ -1076,7 +1077,7 @@ impl PageBridge {
 
     async fn consume_host_stream(
         &self,
-        page: &Page,
+        page: &PageInstance,
         stream_id: &str,
         mut stream: HostStream,
         cancel_rx: &mut oneshot::Receiver<()>,

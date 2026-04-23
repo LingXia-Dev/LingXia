@@ -1,20 +1,19 @@
+pub(crate) mod config;
 pub(crate) mod definition;
+pub(crate) mod runtime;
 
 pub use definition::{register_page_resolver, resolve_page_path};
 
 use crate::bridge::{IncomingMessage, PageBridge};
 use crate::lifecycle::PageLifecycleEvent;
-use crate::lxapp::{
-    self,
-    navbar::NavigationBarState,
-    page_config::{OrientationOverride, PageConfig},
-};
+use crate::lxapp::{self, navbar::NavigationBarState};
+use crate::page::config::{OrientationOverride, PageConfig};
 use crate::plugin;
 use crate::startup::parse_query_string;
 use crate::{LxApp, LxAppError, error, info};
 use base64::Engine;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
@@ -62,7 +61,8 @@ const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Inner state of a page that can be shared across threads
 #[derive(Clone)]
-pub(crate) struct PageInner {
+pub(crate) struct PageInstanceInner {
+    id: PageInstanceId,
     appid: String,
     path: String,
 
@@ -72,7 +72,7 @@ pub(crate) struct PageInner {
     // Time when this page was last active
     last_active_time: Arc<Mutex<Instant>>,
 
-    // state of Page
+    // state of PageInstance
     state: Arc<Mutex<PageState>>,
 
     // Per-page bridge nonce (used to validate the View<->Logic wiring)
@@ -92,7 +92,7 @@ pub(crate) struct PageInner {
 
 #[derive(Clone, Debug)]
 pub struct PageState {
-    // Page(webview) reander status
+    // PageInstance(webview) reander status
     render_status: PageRenderStatus,
     // page lifecycle event
     event: PageLifecycleEvent,
@@ -108,7 +108,7 @@ pub struct PageState {
     pub(crate) navbar_state: NavigationBarState,
     // Pull-to-refresh enabled flag
     pub(crate) enable_pull_down_refresh: bool,
-    // Page orientation overrides
+    // PageInstance orientation overrides
     pub(crate) orientation_override: OrientationOverride,
     // Query parameters
     pub(crate) query: serde_json::Value,
@@ -150,9 +150,45 @@ impl NavigationType {
 
 /// Represents a single page in a mini app
 #[derive(Clone)]
-pub struct Page {
+pub struct PageInstance {
     // Use Arc to share the inner state across threads
-    inner: Arc<PageInner>,
+    inner: Arc<PageInstanceInner>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PageInstanceId(String);
+
+impl PageInstanceId {
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn parse(raw: impl Into<String>) -> Option<Self> {
+        let value = raw.into();
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        uuid::Uuid::parse_str(trimmed)
+            .ok()
+            .map(|id| Self(id.hyphenated().to_string()))
+    }
+}
+
+impl Default for PageInstanceId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for PageInstanceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
 }
 
 /// Options for Rust-side calls into `window.LingXiaBridge`.
@@ -210,9 +246,9 @@ where
     })
 }
 
-impl Page {
-    /// Reconstruct a Page from a shared inner (used by scheme handler closures).
-    pub(crate) fn from_inner(inner: Arc<PageInner>) -> Self {
+impl PageInstance {
+    /// Reconstruct a PageInstance from a shared inner (used by scheme handler closures).
+    pub(crate) fn from_inner(inner: Arc<PageInstanceInner>) -> Self {
         Self { inner }
     }
 
@@ -258,16 +294,18 @@ impl Page {
     /// Create a new page in pending state (WebView creation in progress)
     pub(crate) fn new<F, Fut>(appid: String, path: String, lxapp: &LxApp, setup_callback: F) -> Self
     where
-        F: Fn(&Page) -> Fut + Send + 'static,
+        F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
+        let id = PageInstanceId::new();
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
-        let inner = Arc::new(PageInner {
+        let inner = Arc::new(PageInstanceInner {
+            id,
             appid: appid.clone(),
             path: path.clone(),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
@@ -294,7 +332,7 @@ impl Page {
         let appid_for_lx = appid.clone();
         let appid_for_https = appid.clone();
 
-        // Captures for navigation handler (no PageInner ref → no circular ref)
+        // Captures for navigation handler (no PageInstanceInner ref → no circular ref)
         let runtime_for_nav = lxapp.runtime.clone();
         let appid_for_nav = appid.clone();
         let session_id_for_nav = lxapp.session_id();
@@ -314,7 +352,7 @@ impl Page {
                         return None.into();
                     };
                     let lxapp = lxapp::get(appid_for_lx);
-                    let page = Page::from_inner(inner);
+                    let page = PageInstance::from_inner(inner);
                     lxapp.handle_lingxia_request(&page, req).into()
                 }
             })
@@ -393,11 +431,13 @@ impl Page {
     /// managed WebViews one at a time.
     pub(crate) fn new_headless(appid: String, path: String, lxapp: &LxApp) -> Self {
         let page_state = Self::build_page_state(lxapp, &path);
+        let id = PageInstanceId::new();
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
-        let inner = Arc::new(PageInner {
+        let inner = Arc::new(PageInstanceInner {
+            id,
             appid,
             path,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
@@ -415,6 +455,14 @@ impl Page {
 
     pub fn bridge_nonce(&self) -> Option<String> {
         self.inner.bridge_nonce.lock().ok().and_then(|v| v.clone())
+    }
+
+    pub fn instance_id(&self) -> PageInstanceId {
+        self.inner.id.clone()
+    }
+
+    pub fn instance_id_string(&self) -> String {
+        self.inner.id.to_string()
     }
 
     pub(crate) fn bridge(&self) -> PageBridge {
@@ -447,7 +495,7 @@ impl Page {
     }
 
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
-        // Central lifecycle state machine for a single WebView-backed Page.
+        // Central lifecycle state machine for a single WebView-backed PageInstance.
         // Sources of events:
         // - First-time creation: WebView/LXPort ready triggers onLoad (AppService side)
         // - Re-navigation with new query (navigateTo): native manually triggers onLoad
@@ -676,7 +724,7 @@ impl Page {
     }
 
     /// Detach and drop the WebView held by this page.
-    /// This breaks Page -> WebView strong reference and triggers platform Drop when
+    /// This breaks PageInstance -> WebView strong reference and triggers platform Drop when
     /// combined with registry removal.
     pub fn detach_webview(&self) {
         if let Ok(mut webview_guard) = self.inner.webview.lock() {
@@ -765,9 +813,9 @@ impl Page {
 
     pub fn navigate_to(
         &self,
-        target_page: Page,
+        target_page: PageInstance,
         nav_type: NavigationType,
-    ) -> Result<Page, LxAppError> {
+    ) -> Result<PageInstance, LxAppError> {
         let lxapp = lxapp::get(self.appid());
 
         // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
@@ -778,10 +826,10 @@ impl Page {
     /// Internal navigation logic shared by regular and plugin navigation
     fn navigate_to_internal(
         &self,
-        target_page: Page,
+        target_page: PageInstance,
         nav_type: NavigationType,
         lxapp: &Arc<LxApp>,
-    ) -> Result<Page, LxAppError> {
+    ) -> Result<PageInstance, LxAppError> {
         let path = target_page.path();
         let mut target_page = target_page;
         let is_tabbar_page = lxapp
@@ -817,7 +865,7 @@ impl Page {
             }
             NavigationType::Forward => {
                 if lxapp.is_page_stack_full() {
-                    info!("Page stack is full, cannot navigate forward.");
+                    info!("PageInstance stack is full, cannot navigate forward.");
                     return Ok(target_page);
                 }
             }
@@ -930,7 +978,7 @@ impl Page {
             Ok(())
         } else {
             Err(LxAppError::UnsupportedOperation(
-                "Page stack is empty after pop".to_string(),
+                "PageInstance stack is empty after pop".to_string(),
             ))
         }
     }
@@ -1055,7 +1103,7 @@ impl Page {
     }
 }
 
-impl WebViewDelegate for Page {
+impl WebViewDelegate for PageInstance {
     /// Called when the page starts loading
     fn on_page_started(&self) {
         self.set_render_status(PageRenderStatus::Started);
@@ -1145,7 +1193,7 @@ mod tests {
     }
 }
 
-impl Drop for PageInner {
+impl Drop for PageInstanceInner {
     fn drop(&mut self) {
         // Destroy WebView if it exists
         if let Ok(mut webview) = self.webview.lock() {

@@ -23,8 +23,8 @@ use self::navbar::NavigationBarState;
 use crate::appservice::LxAppWorkers;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
-use crate::lxapp::page_config::OrientationConfig;
-use crate::page::{Page, ViewCallOptions};
+use crate::page::config::{OrientationConfig, PageConfig};
+use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
 use crate::{error, info, warn};
@@ -35,17 +35,24 @@ use config::{LxAppConfig, LxAppPageEntry};
 mod content;
 pub(crate) mod metadata;
 pub mod navbar;
-pub mod page_config;
 mod popup;
 mod scheme;
 mod security;
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
+use crate::page::runtime::{
+    PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
+};
 use crate::lifecycle::AppServiceEvent;
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
+pub use crate::page::runtime::{
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, PageDefinition, PageInstanceEvent,
+    PageOwner, PageQueryInput, PageTarget, PageWarmDisposePolicy, PresentationKind, ResolvedPage,
+    SceneId,
+};
 pub use popup::PopupMode;
 pub(crate) use popup::WEB_POPUP_PATH;
 use version::Version;
@@ -292,7 +299,7 @@ impl LxApps {
             info!("Evicting least recently used lxapp").with_appid(appid_to_destroy.clone());
 
             // Explicitly shutdown the app before removing it from the map so that
-            // UI/JSContext/Page/WebView/AppService are cleaned up deterministically.
+            // UI/JSContext/PageInstance/WebView/AppService are cleaned up deterministically.
             self.destroy_lxapp(&appid_to_destroy);
         }
     }
@@ -390,9 +397,18 @@ impl LxApps {
 pub(crate) struct LxAppState {
     /// Collection of pages in this app with their current states
     /// Manages page lifecycle (show/hide/destroy)
-    pub(crate) pages: Mutex<HashMap<String, Page>>,
+    pub(crate) pages: Mutex<HashMap<String, PageInstance>>,
 
-    /// Page navigation stack for tracking page navigation history within this app
+    /// Runtime page instances keyed by stable instance id.
+    pub(crate) pages_by_id: Mutex<HashMap<String, PageInstance>>,
+
+    /// Runtime metadata and lifecycle state keyed by page instance id.
+    page_instance_runtime: Mutex<HashMap<String, PageInstanceRuntimeRecord>>,
+
+    /// Delayed dispose timers for Hidden page instances (warm TTL).
+    page_instance_dispose_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
+
+    /// PageInstance navigation stack for tracking page navigation history within this app
     /// Stores all pages for navigation history
     pub(crate) page_stack: Mutex<VecDeque<String>>,
 
@@ -422,6 +438,9 @@ impl LxAppState {
     fn new() -> Self {
         Self {
             pages: Mutex::new(HashMap::new()),
+            pages_by_id: Mutex::new(HashMap::new()),
+            page_instance_runtime: Mutex::new(HashMap::new()),
+            page_instance_dispose_timers: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             network_security: NetworkSecurity::new(),
@@ -782,20 +801,120 @@ impl LxApp {
         self.pending_restart_request.load(Ordering::SeqCst)
     }
 
+    fn cancel_page_instance_dispose_timer(&self, id: &PageInstanceId) {
+        self.cancel_page_instance_dispose_timer_by_id(id.as_str());
+    }
+
+    fn cancel_page_instance_dispose_timer_by_id(&self, id: &str) {
+        if let Ok(state) = self.state.lock()
+            && let Some(cancel) = state
+                .page_instance_dispose_timers
+                .lock()
+                .unwrap()
+                .remove(id)
+        {
+            let _ = cancel.send(());
+        }
+    }
+
+    fn cancel_all_page_instance_dispose_timers(&self) {
+        if let Ok(state) = self.state.lock() {
+            let mut timers = state.page_instance_dispose_timers.lock().unwrap();
+            for (_id, cancel) in timers.drain() {
+                let _ = cancel.send(());
+            }
+        }
+    }
+
+    fn schedule_page_instance_dispose_timer(
+        &self,
+        id: &PageInstanceId,
+        warm_ttl: Duration,
+        reason: CloseReason,
+    ) -> Result<(), LxAppError> {
+        if warm_ttl.is_zero() {
+            return self.dispose_page_instance_internal(id, reason, false);
+        }
+
+        self.cancel_page_instance_dispose_timer(id);
+
+        let (tx, rx) = oneshot::channel();
+        if let Ok(state) = self.state.lock() {
+            state
+                .page_instance_dispose_timers
+                .lock()
+                .unwrap()
+                .insert(id.to_string(), tx);
+        }
+
+        let appid = self.appid.clone();
+        let page_instance_id = id.to_string();
+        let _ = crate::executor::spawn(async move {
+            let sleep = time::sleep(warm_ttl);
+            tokio::pin!(sleep);
+            tokio::pin!(rx);
+            tokio::select! {
+                _ = &mut sleep => {}
+                _ = &mut rx => return,
+            }
+
+            let Some(app) = crate::lxapp::try_get(&appid) else {
+                return;
+            };
+            let Some(id) = PageInstanceId::parse(page_instance_id.clone()) else {
+                return;
+            };
+            if let Err(err) = app.dispose_page_instance_internal(&id, reason, false) {
+                warn!(
+                    "Warm TTL dispose failed for page instance {}: {}",
+                    page_instance_id, err
+                )
+                .with_appid(appid);
+            }
+        });
+
+        Ok(())
+    }
+
+    fn refresh_page_instance_warm_ttl(&self, id: &PageInstanceId) -> Result<(), LxAppError> {
+        let (lifecycle, policy) = {
+            let state = self.state.lock().unwrap();
+            let records = state.page_instance_runtime.lock().unwrap();
+            let record = records.get(id.as_str()).ok_or_else(|| {
+                LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
+            })?;
+            (record.lifecycle, record.warm_dispose_policy)
+        };
+
+        if lifecycle != PageInstanceLifecycleState::Hidden {
+            self.cancel_page_instance_dispose_timer(id);
+            return Ok(());
+        }
+
+        if let Some(ttl) = policy.ttl() {
+            self.schedule_page_instance_dispose_timer(id, ttl, CloseReason::Programmatic)?;
+        } else {
+            self.cancel_page_instance_dispose_timer(id);
+        }
+
+        Ok(())
+    }
+
     // AppService state subscriptions removed for simplicity; rely on FIFO ordering.
     /// Shutdown this LxApp completely. Idempotent.
     ///
     /// Order:
     /// 1) Mark Closing to suppress page terminations
     /// 2) Close UI window
-    /// 3) Break Page↔WebView delegate links and clear pages
+    /// 3) Break PageInstance↔WebView delegate links and clear pages
     /// 4) Destroy platform WebViews
     /// 5) Clear page stack and popup
     /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
-        // Mark closing to suppress TerminatePage from Page drops
+        // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
         self.clear_transient_files();
+        self.cancel_all_page_instance_dispose_timers();
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
 
         // Close UI window
@@ -807,16 +926,23 @@ impl LxApp {
         }
 
         // Collect current pages
-        let page_paths: Vec<String> = {
+        let (page_paths, page_instance_ids): (Vec<String>, Vec<String>) = {
             let state = self.state.lock().unwrap();
-            state.pages.lock().unwrap().keys().cloned().collect()
+            let pages = state.pages.lock().unwrap();
+            (
+                pages.keys().cloned().collect(),
+                pages
+                    .values()
+                    .map(|page| page.instance_id_string())
+                    .collect(),
+            )
         };
-        crate::view_call::cancel_view_calls_for_pages(
-            &page_paths,
-            "Page removed while waiting for view response",
+        crate::view_call::cancel_view_calls_for_page_instances(
+            &page_instance_ids,
+            "PageInstance removed while waiting for view response",
         );
 
-        // Break Page <-> WebView links early and detach WebViews, then drop pages by clearing the map
+        // Break PageInstance <-> WebView links early and detach WebViews, then drop pages by clearing the map
         if let Ok(state) = self.state.lock() {
             for (_k, page) in state.pages.lock().unwrap().iter() {
                 page.detach_webview();
@@ -824,6 +950,8 @@ impl LxApp {
         }
         if let Ok(state) = self.state.lock() {
             state.pages.lock().unwrap().clear();
+            state.pages_by_id.lock().unwrap().clear();
+            state.page_instance_runtime.lock().unwrap().clear();
         }
         for p in &page_paths {
             destroy_webview(&WebTag::new(&self.appid, p, Some(self.session.id)));
@@ -1380,7 +1508,7 @@ impl LxApp {
         }
     }
 
-    /// Snapshot page scripts for a new Page: global scripts + this app's scripts.
+    /// Snapshot page scripts for a new PageInstance: global scripts + this app's scripts.
     pub(crate) fn page_scripts_snapshot(&self) -> Vec<Arc<str>> {
         let mut scripts = crate::page::global_page_scripts_snapshot();
         if let Ok(app_scripts) = self.page_scripts.lock() {
@@ -1399,7 +1527,7 @@ impl LxApp {
     }
 
     /// Get a page by path
-    pub fn get_page(&self, path: &str) -> Option<Page> {
+    pub fn get_page(&self, path: &str) -> Option<PageInstance> {
         self.state
             .lock()
             .unwrap()
@@ -1410,14 +1538,39 @@ impl LxApp {
             .cloned()
     }
 
+    pub fn get_page_by_instance_id(&self, id: &PageInstanceId) -> Option<PageInstance> {
+        self.get_page_by_instance_id_str(id.as_str())
+    }
+
+    pub fn get_page_by_instance_id_str(&self, id: &str) -> Option<PageInstance> {
+        self.state
+            .lock()
+            .unwrap()
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .get(id)
+            .cloned()
+    }
+
+    pub fn page_instance_id_for_path(&self, path: &str) -> Option<String> {
+        self.get_page(path).map(|page| page.instance_id_string())
+    }
+
     pub fn initial_route(&self) -> String {
         self.config.get_initial_route()
     }
 
     /// Register an externally created page owned by another runtime surface.
     /// Does not trigger eviction or route resolution; the caller owns the lifecycle.
-    pub(crate) fn register_page(&self, page: Page) {
+    pub(crate) fn register_page(&self, page: PageInstance) {
         let state = self.state.lock().unwrap();
+        state
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .entry(page.instance_id_string())
+            .or_insert_with(|| page.clone());
         state
             .pages
             .lock()
@@ -1430,12 +1583,12 @@ impl LxApp {
         self.executor.create_app_svc(self.clone_arc())
     }
 
-    pub fn ensure_headless_page_service(&self, path: &str) -> Result<Page, LxAppError> {
+    pub fn ensure_headless_page_service(&self, path: &str) -> Result<PageInstance, LxAppError> {
         if let Some(page) = self.get_page(path) {
             return Ok(page);
         }
 
-        let page = Page::new_headless(self.appid.clone(), path.to_string(), self);
+        let page = PageInstance::new_headless(self.appid.clone(), path.to_string(), self);
         self.register_page(page.clone());
 
         let (ack_tx, ack_rx) = oneshot::channel::<()>();
@@ -1521,7 +1674,7 @@ impl LxApp {
             error!("Failed to trigger app service: {}", e).with_appid(self.appid.clone());
         }
 
-        // Create native Page + WebView
+        // Create native PageInstance + WebView
         let page = self.get_or_create_page(&startup_options.path);
         page.set_query(startup_options.query.clone());
 
@@ -1750,9 +1903,345 @@ impl LxApp {
         true
     }
 
+    fn build_page_target_url(
+        &self,
+        target: &PageTarget,
+        query: Option<&PageQueryInput>,
+    ) -> Result<String, LxAppError> {
+        let base = match target {
+            PageTarget::Name(name) => self
+                .find_page_path_by_name(name.trim())
+                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {}", name)))?,
+            PageTarget::Path(path) => {
+                let trimmed = path.trim();
+                if trimmed.is_empty() {
+                    self.config.get_initial_route()
+                } else {
+                    trimmed.to_string()
+                }
+            }
+        };
+
+        if base.is_empty() {
+            return Err(LxAppError::InvalidParameter(
+                "page target path must not be empty".to_string(),
+            ));
+        }
+
+        let Some(query) = query else {
+            return Ok(base);
+        };
+        let query = query.to_query_string();
+        if query.is_empty() {
+            return Ok(base);
+        }
+        let separator = if base.contains('?') { '&' } else { '?' };
+        Ok(format!("{base}{separator}{query}"))
+    }
+
+    fn page_definition_for_resolved_path(&self, resolved_path: &str) -> PageDefinition {
+        let page_entries = self.config.page_entries();
+        let matched_entry = page_entries
+            .into_iter()
+            .find(|entry| normalize_page_path(&entry.path) == normalize_page_path(resolved_path));
+
+        let (name, config_path) = if let Some(entry) = matched_entry {
+            (Some(entry.name), entry.path)
+        } else {
+            (None, resolved_path.to_string())
+        };
+
+        let config = if self.logic_enabled() {
+            PageConfig::from_json(self, &config_path)
+        } else {
+            PageConfig::default()
+        };
+
+        PageDefinition {
+            name,
+            path: resolved_path.to_string(),
+            config,
+        }
+    }
+
+    fn fallback_runtime_record_for_page(&self, page: &PageInstance) -> PageInstanceRuntimeRecord {
+        let path = page.path();
+        PageInstanceRuntimeRecord {
+            owner: PageOwner::Host,
+            presentation: PresentationKind::Window,
+            warm_dispose_policy: PageWarmDisposePolicy::Auto,
+            page: ResolvedPage {
+                appid: self.appid.clone(),
+                path: path.clone(),
+                query: String::new(),
+                definition: self.page_definition_for_resolved_path(&path),
+            },
+            lifecycle: PageInstanceLifecycleState::Created,
+        }
+    }
+
+    fn upsert_page_instance_runtime_record(
+        &self,
+        page: &PageInstance,
+        owner: PageOwner,
+        presentation: PresentationKind,
+        warm_dispose_policy: PageWarmDisposePolicy,
+        resolved: ResolvedPage,
+    ) {
+        if let Ok(state) = self.state.lock() {
+            state.page_instance_runtime.lock().unwrap().insert(
+                page.instance_id_string(),
+                PageInstanceRuntimeRecord {
+                    owner,
+                    presentation,
+                    warm_dispose_policy,
+                    page: resolved,
+                    lifecycle: PageInstanceLifecycleState::Created,
+                },
+            );
+        }
+    }
+
+    pub fn resolve_page_target(
+        &self,
+        target: &PageTarget,
+        query: Option<&PageQueryInput>,
+    ) -> Result<ResolvedPage, LxAppError> {
+        let target_url = self.build_page_target_url(target, query)?;
+        let resolved = crate::route::resolve_route(self, &target_url)?;
+        self.ensure_resolved_route_exists(&resolved)?;
+        let resolved_path = resolved.internal_path();
+        let query = resolved.query.unwrap_or_default();
+
+        Ok(ResolvedPage {
+            appid: self.appid.clone(),
+            path: resolved_path.clone(),
+            query,
+            definition: self.page_definition_for_resolved_path(&resolved_path),
+        })
+    }
+
+    pub fn create_page_instance(
+        &self,
+        owner: PageOwner,
+        target: PageTarget,
+        query: Option<PageQueryInput>,
+        presentation: PresentationKind,
+        warm_dispose_policy: PageWarmDisposePolicy,
+    ) -> Result<CreatedPageInstance, LxAppError> {
+        let target_url = self.build_page_target_url(&target, query.as_ref())?;
+        let resolved = self.resolve_page_target(&target, query.as_ref())?;
+
+        // Keep AppService warm only for logic-enabled apps.
+        if self.logic_enabled()
+            && let Err(e) = self.executor.create_app_svc(self.clone_arc())
+        {
+            warn!(
+                "Failed to ensure app service while creating page instance: {}",
+                e
+            )
+            .with_appid(self.appid.clone());
+        }
+
+        let page = match &owner {
+            PageOwner::Page(_) => {
+                let page = self.get_or_create_page(&resolved.path);
+                if !resolved.query.is_empty() {
+                    page.set_query(resolved.query.clone());
+                }
+                page
+            }
+            _ => {
+                let resolved_path = crate::delegate::LxAppDelegate::on_lxapp_opened(
+                    self.clone_arc(),
+                    target_url,
+                    self.session.id,
+                );
+                if resolved_path.is_empty() {
+                    return Err(LxAppError::UnsupportedOperation(
+                        "failed to open page instance for current session".to_string(),
+                    ));
+                }
+
+                if let Some(page) = self.get_page(&resolved.path) {
+                    page
+                } else {
+                    let page = self.get_or_create_page(&resolved.path);
+                    if !resolved.query.is_empty() {
+                        page.set_query(resolved.query.clone());
+                    }
+                    page
+                }
+            }
+        };
+        self.cancel_page_instance_dispose_timer(&page.instance_id());
+
+        self.upsert_page_instance_runtime_record(
+            &page,
+            owner,
+            presentation,
+            warm_dispose_policy,
+            resolved.clone(),
+        );
+
+        Ok(CreatedPageInstance {
+            page_instance_id: page.instance_id(),
+            appid: self.appid.clone(),
+            resolved_path: resolved.path,
+            query: resolved.query,
+        })
+    }
+
+    pub fn notify_page_instance(
+        &self,
+        id: &PageInstanceId,
+        event: PageInstanceEvent,
+    ) -> Result<(), LxAppError> {
+        let page = self.get_page_by_instance_id(id).ok_or_else(|| {
+            LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
+        })?;
+        let (
+            owner_for_log,
+            presentation_for_log,
+            warm_dispose_policy,
+            resolved_path_for_log,
+            query_for_log,
+            definition_path_for_log,
+        ) = {
+            let state = self.state.lock().unwrap();
+            let mut records = state.page_instance_runtime.lock().unwrap();
+            let record = records
+                .entry(id.as_str().to_string())
+                .or_insert_with(|| self.fallback_runtime_record_for_page(&page));
+            record.lifecycle = transition_page_instance_lifecycle(record.lifecycle, &event)?;
+            (
+                record.owner.clone(),
+                record.presentation,
+                record.warm_dispose_policy,
+                record.page.path.clone(),
+                record.page.query.clone(),
+                record.page.definition.path.clone(),
+            )
+        };
+
+        info!(
+            "notify_page_instance id={} owner={:?} presentation={:?} path={} query={} definition={} event={:?}",
+            id,
+            owner_for_log,
+            presentation_for_log,
+            resolved_path_for_log,
+            query_for_log,
+            definition_path_for_log,
+            event
+        )
+        .with_appid(self.appid.clone())
+        .with_path(page.path());
+
+        match event {
+            PageInstanceEvent::Mounted => {
+                self.cancel_page_instance_dispose_timer(id);
+            }
+            PageInstanceEvent::Visible => {
+                self.cancel_page_instance_dispose_timer(id);
+                page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnShow);
+                page.mark_active();
+            }
+            PageInstanceEvent::Hidden { reason } => {
+                page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
+                if matches!(reason, CloseReason::AppClosed) {
+                    self.dispose_page_instance_internal(id, reason, false)?;
+                } else if let Some(warm_ttl) = warm_dispose_policy.ttl() {
+                    self.schedule_page_instance_dispose_timer(id, warm_ttl, reason)?;
+                } else {
+                    self.cancel_page_instance_dispose_timer(id);
+                }
+            }
+            PageInstanceEvent::Disposed { reason } => {
+                self.cancel_page_instance_dispose_timer(id);
+                self.dispose_page_instance(id, reason)?;
+            }
+            PageInstanceEvent::Resized { .. } => {}
+        }
+
+        Ok(())
+    }
+
+    pub fn dispose_page_instance(
+        &self,
+        id: &PageInstanceId,
+        reason: CloseReason,
+    ) -> Result<(), LxAppError> {
+        self.dispose_page_instance_internal(id, reason, true)
+    }
+
+    fn dispose_page_instance_internal(
+        &self,
+        id: &PageInstanceId,
+        reason: CloseReason,
+        dispatch_on_hide: bool,
+    ) -> Result<(), LxAppError> {
+        self.cancel_page_instance_dispose_timer(id);
+
+        let page = self.get_page_by_instance_id(id).ok_or_else(|| {
+            LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
+        })?;
+        let path = page.path();
+
+        if dispatch_on_hide {
+            page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
+        }
+        page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
+        page.detach_webview();
+
+        crate::view_call::cancel_view_calls_for_page_instances(
+            &[id.to_string()],
+            "PageInstance disposed while waiting for view response",
+        );
+
+        if let Ok(state) = self.state.lock() {
+            let mut pages = state.pages.lock().unwrap();
+            if let Some(existing) = pages.get(&path)
+                && existing.instance_id().as_str() == id.as_str()
+            {
+                pages.remove(&path);
+            }
+            state.pages_by_id.lock().unwrap().remove(id.as_str());
+            state
+                .page_instance_runtime
+                .lock()
+                .unwrap()
+                .remove(id.as_str());
+            state
+                .page_stack
+                .lock()
+                .unwrap()
+                .retain(|stack_path| stack_path != &path);
+        }
+
+        destroy_webview(&WebTag::new(&self.appid, &path, Some(self.session.id)));
+
+        if let Err(e) = self
+            .executor
+            .terminate_page_svc(self.clone_arc(), path.clone())
+        {
+            warn!(
+                "Failed to terminate page service while disposing instance {}: {}",
+                id, e
+            )
+            .with_appid(self.appid.clone())
+            .with_path(path.clone());
+        }
+
+        info!("Disposed page instance {} reason={}", id, reason.as_str())
+            .with_appid(self.appid.clone())
+            .with_path(path);
+
+        Ok(())
+    }
+
     /// Get existing page or create a new one.
-    /// PageSvc creation + HTML load are handled inside Page::new once WebView is ready.
-    pub fn get_or_create_page(&self, url: &str) -> Page {
+    /// PageSvc creation + HTML load are handled inside PageInstance::new once WebView is ready.
+    pub fn get_or_create_page(&self, url: &str) -> PageInstance {
         let resolved = crate::route::resolve_route(self, url).unwrap_or_else(|e| {
             error!("Failed to resolve page url '{}': {}", url, e).with_appid(self.appid.clone());
             let (path, query) = crate::startup::split_path_query(url);
@@ -1780,7 +2269,7 @@ impl LxApp {
 
         // Gate HTML load when create_page_svc is false; caller will unblock after creating PageSvc.
         let lxapp_arc = self.clone_arc();
-        let page = Page::new(appid.clone(), path.to_string(), self, move |page| {
+        let page = PageInstance::new(appid.clone(), path.to_string(), self, move |page| {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
@@ -1796,7 +2285,7 @@ impl LxApp {
 
                 ack_rx
                     .await
-                    .map_err(|e| format!("Page service creation ack failed: {}", e))?;
+                    .map_err(|e| format!("PageInstance service creation ack failed: {}", e))?;
 
                 page_clone
                     .load_html()
@@ -1807,6 +2296,11 @@ impl LxApp {
         // Insert the new page first to ensure it's protected
         {
             let state = self.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .insert(page.instance_id_string(), page.clone());
             state
                 .pages
                 .lock()
@@ -1885,7 +2379,29 @@ impl LxApp {
                 });
 
             // Then remove from native registry
-            if let Some(_removed_page) = pages.remove(&path) {
+            if let Some(removed_page) = pages.remove(&path) {
+                if let Some(cancel) = state
+                    .page_instance_dispose_timers
+                    .lock()
+                    .unwrap()
+                    .remove(removed_page.instance_id().as_str())
+                {
+                    let _ = cancel.send(());
+                }
+                crate::view_call::cancel_view_calls_for_page_instances(
+                    &[removed_page.instance_id_string()],
+                    "PageInstance evicted while waiting for view response",
+                );
+                state
+                    .pages_by_id
+                    .lock()
+                    .unwrap()
+                    .remove(removed_page.instance_id().as_str());
+                state
+                    .page_instance_runtime
+                    .lock()
+                    .unwrap()
+                    .remove(removed_page.instance_id().as_str());
                 info!("Evicted inactive page: {}", path).with_appid(self.appid.clone());
             } else {
                 warn!("Failed to evict page (not found): {}", path).with_appid(self.appid.clone());
@@ -1932,9 +2448,17 @@ impl LxApp {
 
     /// Remove specific pages from the page map and terminate their PageSvc.
     pub fn remove_pages(&self, paths: &[String]) {
-        crate::view_call::cancel_view_calls_for_pages(
-            paths,
-            "Page removed while waiting for view response",
+        let page_instance_ids = {
+            let state = self.state.lock().unwrap();
+            let pages = state.pages.lock().unwrap();
+            paths
+                .iter()
+                .filter_map(|path| pages.get(path).map(|page| page.instance_id_string()))
+                .collect::<Vec<_>>()
+        };
+        crate::view_call::cancel_view_calls_for_page_instances(
+            &page_instance_ids,
+            "PageInstance removed while waiting for view response",
         );
 
         let lxapp = self.clone_arc();
@@ -1952,7 +2476,26 @@ impl LxApp {
         if let Ok(state) = self.state.lock() {
             let mut pages = state.pages.lock().unwrap();
             for path in paths {
-                pages.remove(path);
+                if let Some(page) = pages.remove(path) {
+                    if let Some(cancel) = state
+                        .page_instance_dispose_timers
+                        .lock()
+                        .unwrap()
+                        .remove(page.instance_id().as_str())
+                    {
+                        let _ = cancel.send(());
+                    }
+                    state
+                        .pages_by_id
+                        .lock()
+                        .unwrap()
+                        .remove(page.instance_id().as_str());
+                    state
+                        .page_instance_runtime
+                        .lock()
+                        .unwrap()
+                        .remove(page.instance_id().as_str());
+                }
             }
         }
     }
@@ -2009,7 +2552,7 @@ pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> Stri
 
 impl LxApp {
     /// Return the current visible page or an error when the page stack is empty.
-    pub fn current_page(&self) -> Result<Page, LxAppError> {
+    pub fn current_page(&self) -> Result<PageInstance, LxAppError> {
         let path = self
             .peek_current_page()
             .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
@@ -2017,9 +2560,9 @@ impl LxApp {
     }
 
     /// Return a page by path or an error when that page is not currently alive.
-    pub fn require_page(&self, path: &str) -> Result<Page, LxAppError> {
+    pub fn require_page(&self, path: &str) -> Result<PageInstance, LxAppError> {
         self.get_page(path)
-            .ok_or_else(|| LxAppError::WebView(format!("Page not found: {}", path)))
+            .ok_or_else(|| LxAppError::WebView(format!("PageInstance not found: {}", path)))
     }
 
     /// Call the current page View method without a payload and deserialize the response.
@@ -2450,6 +2993,69 @@ pub fn try_get(appid: &str) -> Option<Arc<LxApp>> {
     LXAPPS_MANAGER
         .get()
         .and_then(|manager| manager.lxapps.get(appid).map(|lxapp| lxapp.clone()))
+}
+
+pub fn find_page_by_instance_id(id: &str) -> Option<PageInstance> {
+    LXAPPS_MANAGER.get().and_then(|manager| {
+        manager
+            .lxapps
+            .iter()
+            .find_map(|entry| entry.value().get_page_by_instance_id_str(id))
+    })
+}
+
+pub fn touch_page_instance_by_id(id: &str) -> Result<(), LxAppError> {
+    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
+        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
+    })?;
+    let page = find_page_by_instance_id(id.as_str())
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
+    let app = try_get(&page.appid()).ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
+    app.refresh_page_instance_warm_ttl(&id)
+}
+
+pub fn create_page_instance(
+    req: CreatePageInstanceRequest,
+) -> Result<CreatedPageInstance, LxAppError> {
+    let app = try_get(&req.appid).ok_or_else(|| LxAppError::ResourceNotFound(req.appid.clone()))?;
+    app.create_page_instance(
+        req.owner,
+        req.target,
+        req.query,
+        req.presentation,
+        req.warm_dispose_policy,
+    )
+}
+
+pub fn notify_page_instance(
+    id: &PageInstanceId,
+    event: PageInstanceEvent,
+) -> Result<(), LxAppError> {
+    let page = find_page_by_instance_id(id.as_str())
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
+    let app = try_get(&page.appid()).ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
+    app.notify_page_instance(id, event)
+}
+
+pub fn notify_page_instance_by_id(id: &str, event: PageInstanceEvent) -> Result<(), LxAppError> {
+    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
+        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
+    })?;
+    notify_page_instance(&id, event)
+}
+
+pub fn dispose_page_instance(id: &PageInstanceId, reason: CloseReason) -> Result<(), LxAppError> {
+    let page = find_page_by_instance_id(id.as_str())
+        .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
+    let app = try_get(&page.appid()).ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
+    app.dispose_page_instance(id, reason)
+}
+
+pub fn dispose_page_instance_by_id(id: &str, reason: CloseReason) -> Result<(), LxAppError> {
+    let id = PageInstanceId::parse(id.to_string()).ok_or_else(|| {
+        LxAppError::InvalidParameter("page instance id must not be empty".to_string())
+    })?;
+    dispose_page_instance(&id, reason)
 }
 
 /// Internal helper: get LxApp by appid, panics if not found.

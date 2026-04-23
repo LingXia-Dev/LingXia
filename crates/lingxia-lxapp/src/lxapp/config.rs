@@ -31,7 +31,7 @@ pub(crate) struct LxPlugin {
     /// If empty, defaults to `logic.js`.
     #[serde(default)]
     pub main: String,
-    /// Page alias mapping: { "alias": "pages/path" }
+    /// PageInstance alias mapping: { "alias": "pages/path" }
     /// e.g., { "home": "pages/home/index" }
     #[serde(default)]
     pub pages: BTreeMap<String, String>,

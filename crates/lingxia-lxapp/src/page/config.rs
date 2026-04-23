@@ -5,7 +5,7 @@ use crate::warn;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-/// Page orientation configuration
+/// PageInstance orientation configuration
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PageOrientation {
@@ -78,7 +78,7 @@ impl OrientationConfig {
     }
 }
 
-/// Page-level orientation overrides. Missing fields inherit from app defaults.
+/// PageInstance-level orientation overrides. Missing fields inherit from app defaults.
 #[derive(Debug, Clone, Copy, Serialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OrientationOverride {
@@ -154,7 +154,7 @@ impl<'de> Deserialize<'de> for OrientationOverride {
     }
 }
 
-/// Page configuration loaded from page.json (immutable)
+/// PageInstance configuration loaded from page.json (immutable)
 /// This is the single source of truth for page configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -167,7 +167,7 @@ pub struct PageConfig {
     #[serde(default)]
     pub enable_pull_down_refresh: bool,
 
-    /// Page orientation override
+    /// PageInstance orientation override
     #[serde(default)]
     pub page_orientation: Option<PageOrientation>,
 }
@@ -223,7 +223,7 @@ impl PageConfig {
             Err(LxAppError::ResourceNotFound(_)) => Self::default(),
             Err(e) => {
                 warn!(
-                    "Page config read failed for {} ({}); falling back to default",
+                    "PageInstance config read failed for {} ({}); falling back to default",
                     path, e
                 );
                 // No page config file or read error - use default (navbar enabled, no pull-to-refresh)
