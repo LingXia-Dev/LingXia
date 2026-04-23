@@ -224,11 +224,7 @@ impl PageBridge {
                         data: err.and_then(|e| e.data.clone()),
                     })
                 };
-                crate::appservice::view_call::resolve_view_call(
-                    &msg.id,
-                    Some(&page.path()),
-                    result,
-                );
+                crate::view_call::resolve_view_call(&msg.id, Some(&page.path()), result);
                 Ok(())
             }
             IncomingMessage::Notify(msg) => self.handle_notify(page, msg),

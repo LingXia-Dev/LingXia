@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "js-appservice"), allow(dead_code, unused_imports))]
+
 mod app;
 mod applink;
 mod appservice;
@@ -9,15 +11,22 @@ mod error;
 mod executor;
 pub mod host;
 pub mod lifecycle;
+pub mod log {
+    pub use lingxia_log::{
+        CollectedLogArchive, CollectedLogArchiveInfo, LogLevel, LogMessage, LogProvider,
+    };
+}
+#[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
+mod native_component;
 mod page;
 pub(crate) mod plugin;
 pub mod provider;
 mod route;
 pub mod startup;
 mod update;
-pub(crate) mod workers;
+pub(crate) mod view_call;
 
 /// SDK/runtime version of lingxia-lxapp.
 /// This is used for update compatibility checks and can be reported to update services.
@@ -25,12 +34,13 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use app::LxAppRuntimeConfig;
 pub use applink::handle_applink;
+#[cfg(feature = "js-appservice")]
 pub use appservice::PageSvc;
+pub use appservice::event_bus::{publish_app_event, publish_page_event};
+#[cfg(feature = "js-appservice")]
 pub use appservice::event_bus::{
-    publish_app_event, publish_page_event, register_app_handler, register_page_handler,
-    unregister_app_handler, unregister_page_handler,
+    register_app_handler, register_page_handler, unregister_app_handler, unregister_page_handler,
 };
-pub use appservice::native_component::on_native_component_event;
 pub use cache::{
     LxAppCache, ResolveResult, cleanup_all_cache_dirs, cleanup_all_cache_dirs_keep,
     cleanup_cache_dir, cleanup_cache_dir_keep, cleanup_cache_for_storage_pressure,
@@ -53,6 +63,7 @@ pub use lxapp::{
     page_config::OrientationConfig, page_config::PageOrientation, register_builtin_asset_bundle,
     register_dev_bundle_source, restart_lxapp, tabbar, try_get, uninstall_lxapp,
 };
+pub use native_component::on_native_component_event;
 pub use page::{
     NavigationType, Page, ViewCallOptions, add_global_page_script, register_page_resolver,
     resolve_page_path,
@@ -76,8 +87,12 @@ pub use update::{
 // Re-export for internal crate usage
 pub(crate) use provider::get_provider;
 
+pub fn js_appservice_supported() -> bool {
+    cfg!(feature = "js-appservice")
+}
+
 pub fn js_lxapp_supported() -> bool {
-    cfg!(feature = "js-lxapp")
+    js_appservice_supported()
 }
 
 #[doc(hidden)]

@@ -1050,8 +1050,8 @@ impl Page {
         params: Option<Value>,
         options: ViewCallOptions,
     ) -> Result<Value, LxAppError> {
-        let pending = crate::appservice::view_call::call_view(self, method, params)?;
-        crate::appservice::view_call::await_pending_view_call(pending, options.timeout()).await
+        let pending = crate::view_call::call_view(self, method, params)?;
+        crate::view_call::await_pending_view_call(pending, options.timeout()).await
     }
 }
 

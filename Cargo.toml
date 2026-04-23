@@ -50,8 +50,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 
 # Workspace-local crates
-lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1" }
-lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1", default-features = false }
 lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.5.1" }
 lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.5.1" }
 lingxia-log = { path = "crates/lingxia-log", version = "0.5.1" }

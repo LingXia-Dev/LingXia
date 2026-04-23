@@ -6,7 +6,7 @@
 //! registration, and conversion into `LxAppError`.
 
 use crate::error::LxAppError;
-use lingxia_log::LogProvider;
+pub use lingxia_log::LogProvider;
 use std::sync::OnceLock;
 
 pub use lingxia_provider::{

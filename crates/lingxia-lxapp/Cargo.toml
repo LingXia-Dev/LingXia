@@ -9,8 +9,15 @@ keywords = ["lingxia", "lxapp", "lightweight-app", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [features]
-default = ["js-lxapp"]
-js-lxapp = []
+default = ["standard"]
+standard = ["js-appservice"]
+js-appservice = [
+    "dep:rong",
+    "dep:rong_modules",
+    "dep:rong_http",
+    "dep:rong_console",
+    "dep:rong_event",
+]
 
 [dependencies]
 # Use workspace dependencies
@@ -33,11 +40,11 @@ filetime = "0.2"
 uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
-rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "storage"] }
+rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "storage"], optional = true }
 rong_rt = { workspace = true, default-features = false }
-rong_http = { workspace = true, default-features = false }
-rong_console = { workspace = true }
-rong_event = { workspace = true }
+rong_http = { workspace = true, default-features = false, optional = true }
+rong_console = { workspace = true, optional = true }
+rong_event = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true }
 lingxia-log = { workspace = true }
 lingxia-provider = { workspace = true }
@@ -52,32 +59,32 @@ lingxia-messaging = { workspace = true }
 # Target-specific JavaScript engine selection
 # Apple platforms use JavaScriptCore.
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
-rong = { workspace = true, features = ["jscore"] }
-rong_modules = { workspace = true, default-features = false, features = ["jscore"] }
+rong = { workspace = true, features = ["jscore"], optional = true }
+rong_modules = { workspace = true, default-features = false, features = ["jscore"], optional = true }
 
 # Android currently uses QuickJS.
 [target.'cfg(target_os = "android")'.dependencies]
-rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
+rong = { workspace = true, features = ["quickjs"], optional = true }
+rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
 
 # HarmonyOS uses ArkJS.
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
-rong = { workspace = true, features = ["arkjs"] }
-rong_modules = { workspace = true, default-features = false, features = ["arkjs"] }
+rong = { workspace = true, features = ["arkjs"], optional = true }
+rong_modules = { workspace = true, default-features = false, features = ["arkjs"], optional = true }
 
 # Fallback for other targets.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
-rong = { workspace = true, features = ["quickjs"] }
-rong_modules = { workspace = true, default-features = false, features = ["quickjs"] }
+rong = { workspace = true, features = ["quickjs"], optional = true }
+rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]
-rong_modules = { workspace = true, default-features = false, features = ["tls-ring"] }
-rong_http = { workspace = true, default-features = false, features = ["tls-ring"] }
+rong_modules = { workspace = true, default-features = false, features = ["tls-ring"], optional = true }
+rong_http = { workspace = true, default-features = false, features = ["tls-ring"], optional = true }
 rong_rt = { workspace = true, default-features = false, features = ["tls-ring"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
-rong_modules = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
-rong_http = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
+rong_modules = { workspace = true, default-features = false, features = ["tls-aws-lc"], optional = true }
+rong_http = { workspace = true, default-features = false, features = ["tls-aws-lc"], optional = true }
 rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
 
 [dev-dependencies]

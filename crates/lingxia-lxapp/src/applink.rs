@@ -26,7 +26,7 @@ pub fn handle_applink(url: &str) -> i32 {
                 .set_release_type(target.release_type)
                 .set_scene(Scene::AppLink);
             let release_type = target.release_type;
-            let _ = rong::RongExecutor::global().spawn(async move {
+            let _ = rong_rt::RongExecutor::global().spawn(async move {
                 if let Err(err) = crate::prepare_lxapp_open(&appid, release_type).await {
                     crate::warn!("AppLink prepare failed for {}: {}", appid, err);
                     return;

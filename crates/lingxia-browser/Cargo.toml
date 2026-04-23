@@ -12,7 +12,7 @@ keywords = ["lingxia", "browser", "lxapp", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [dependencies]
-lxapp = { workspace = true }
+lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
 lingxia-transfer = { workspace = true }
 lingxia-settings = { workspace = true }

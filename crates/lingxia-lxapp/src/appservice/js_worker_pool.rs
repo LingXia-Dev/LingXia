@@ -1,5 +1,8 @@
 use crate::appservice::event_bus::AppBusEvent;
-use crate::appservice::{ServiceMessage, WorkerService, lxapp_service_handler};
+use crate::appservice::js_runtime::{
+    PageSvcSource, ServiceMessage, WorkerService, create_app_svc, lxapp_service_handler,
+    terminate_app_svc,
+};
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageServiceEvent;
 use crate::{LxAppError, error, info};
@@ -270,12 +273,12 @@ impl LxAppWorkers {
                 .with_appid(lxapp.appid.clone());
             return Ok(());
         }
-        if !crate::js_lxapp_supported() {
+        if !crate::js_appservice_supported() {
             return Err(LxAppError::UnsupportedOperation(
-                "host was built without js-lxapp support".to_string(),
+                "host was built without JS AppService runtime".to_string(),
             ));
         }
-        crate::appservice::create_app_svc(
+        create_app_svc(
             lxapp,
             &self.sender,
             &self.instance_assignments,
@@ -285,7 +288,7 @@ impl LxAppWorkers {
 
     /// Terminate a lxapp service for a specific instance.
     pub fn terminate_app_svc(&self, lxapp: Arc<crate::lxapp::LxApp>) -> Result<(), LxAppError> {
-        crate::appservice::terminate_app_svc(
+        terminate_app_svc(
             lxapp,
             &self.sender,
             &self.instance_assignments,
@@ -306,9 +309,9 @@ impl LxAppWorkers {
             let _ = ack_tx.send(());
             return Ok(());
         }
-        if !crate::js_lxapp_supported() {
+        if !crate::js_appservice_supported() {
             return Err(LxAppError::UnsupportedOperation(
-                "host was built without js-lxapp support".to_string(),
+                "host was built without JS AppService runtime".to_string(),
             ));
         }
         self.sender.send(ServiceMessage::CreatePage {
@@ -353,7 +356,7 @@ impl LxAppWorkers {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,
-            source: crate::appservice::PageSvcSource::Native { name, args },
+            source: PageSvcSource::Native { name, args },
         })?;
         Ok(())
     }
@@ -409,7 +412,7 @@ impl crate::bridge::AppServiceBackend for LxAppWorkers {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,
-            source: crate::appservice::PageSvcSource::Bridge { message },
+            source: PageSvcSource::Bridge { message },
         })?;
         Ok(())
     }

@@ -1,5 +1,7 @@
 use lingxia_platform::PlatformError;
+#[cfg(feature = "js-appservice")]
 use rong::RongJSError;
+#[cfg(feature = "js-appservice")]
 use rong::error::{ErrorData, ErrorNumber};
 use serde_json::Value;
 use std::io;
@@ -84,6 +86,7 @@ impl From<serde_json::Error> for LxAppError {
     }
 }
 
+#[cfg(feature = "js-appservice")]
 impl From<RongJSError> for LxAppError {
     fn from(error: RongJSError) -> Self {
         if let Some(host) = error.as_host_error() {
@@ -110,6 +113,7 @@ impl From<lingxia_settings::SettingsError> for LxAppError {
     }
 }
 
+#[cfg(feature = "js-appservice")]
 fn error_data_to_json(data: &ErrorData) -> Value {
     match data {
         ErrorData::Null => Value::Null,

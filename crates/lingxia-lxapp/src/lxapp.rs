@@ -2,6 +2,7 @@ use dashmap::DashMap;
 use http::Uri as HttpUri;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+#[cfg(feature = "js-appservice")]
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -19,13 +20,13 @@ use tokio::time;
 use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
+use crate::appservice::LxAppWorkers;
 use crate::cache::LxAppCache;
 use crate::error::LxAppError;
 use crate::lxapp::page_config::OrientationConfig;
 use crate::page::{Page, ViewCallOptions};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
-use crate::workers::LxAppWorkers;
 use crate::{error, info, warn};
 use security::NetworkSecurity;
 
@@ -810,7 +811,7 @@ impl LxApp {
             let state = self.state.lock().unwrap();
             state.pages.lock().unwrap().keys().cloned().collect()
         };
-        crate::appservice::view_call::cancel_view_calls_for_pages(
+        crate::view_call::cancel_view_calls_for_pages(
             &page_paths,
             "Page removed while waiting for view response",
         );
@@ -1072,6 +1073,7 @@ impl LxApp {
         self.config.logic_entry().is_some()
     }
 
+    #[cfg(feature = "js-appservice")]
     pub async fn logic_entry_source(&self, ctx: &JSContext) -> JSResult<Option<Source>> {
         let Some(entry) = self.config.logic_entry() else {
             return Ok(None);
@@ -1476,9 +1478,9 @@ impl LxApp {
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
-        if self.logic_enabled() && !crate::js_lxapp_supported() {
+        if self.logic_enabled() && !crate::js_appservice_supported() {
             return Err(LxAppError::UnsupportedOperation(
-                "this host app was built without js-lxapp support".to_string(),
+                "this host app was built without JS AppService runtime".to_string(),
             ));
         }
 
@@ -1930,7 +1932,7 @@ impl LxApp {
 
     /// Remove specific pages from the page map and terminate their PageSvc.
     pub fn remove_pages(&self, paths: &[String]) {
-        crate::appservice::view_call::cancel_view_calls_for_pages(
+        crate::view_call::cancel_view_calls_for_pages(
             paths,
             "Page removed while waiting for view response",
         );
