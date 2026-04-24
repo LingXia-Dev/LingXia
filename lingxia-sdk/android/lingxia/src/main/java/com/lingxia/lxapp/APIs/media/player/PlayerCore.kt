@@ -245,6 +245,7 @@ internal class PlayerCore(
             }
             is EngineEvent.FirstFrameRendered -> {
                 hasFirstFrame = true
+                emit(PlayerEvent.FirstFrameRendered)
                 maybeEmitPlaying()
             }
             is EngineEvent.PlayingChanged -> {

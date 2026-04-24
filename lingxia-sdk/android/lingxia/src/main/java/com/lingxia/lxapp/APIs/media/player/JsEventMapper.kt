@@ -12,6 +12,7 @@ internal object JsEventMapper {
         return when (event) {
             PlayerEvent.PlayRequest,
             PlayerEvent.Play,
+            PlayerEvent.FirstFrameRendered,
             is PlayerEvent.Playing -> emptyMap()
             is PlayerEvent.Pause -> buildMap {
                 put("reason", "user")

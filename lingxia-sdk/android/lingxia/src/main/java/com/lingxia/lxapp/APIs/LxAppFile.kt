@@ -322,7 +322,6 @@ internal object LxAppFile {
                         PreviewMediaPayload(
                             path = file.absolutePath,
                             type = 0,
-                            coverPath = null,
                             rotate = null,
                             objectFit = null,
                             durationMs = null,

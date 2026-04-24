@@ -1829,6 +1829,13 @@ internal class LxMediaPlayer(
                 updatePosterVisibility()
                 controlsOverlay?.updatePlayPauseButton()
             }
+            CorePlayerEvent.FirstFrameRendered -> {
+                isBufferingForUi = false
+                hideLoadingIndicator()
+                firstFrameDisplayed = true
+                hasEverRenderedFrame = true
+                updatePosterVisibility()
+            }
             is CorePlayerEvent.Pause -> {
                 isBufferingForUi = false
                 hideLoadingIndicator()
@@ -1911,6 +1918,7 @@ internal class LxMediaPlayer(
             CorePlayerEvent.PlayRequest,
             CorePlayerEvent.Play,
             is CorePlayerEvent.Playing -> LxMediaEvent.Play
+            CorePlayerEvent.FirstFrameRendered -> null
             is CorePlayerEvent.Pause -> LxMediaEvent.Pause
             is CorePlayerEvent.Waiting -> LxMediaEvent.Waiting
             is CorePlayerEvent.Seeking -> null

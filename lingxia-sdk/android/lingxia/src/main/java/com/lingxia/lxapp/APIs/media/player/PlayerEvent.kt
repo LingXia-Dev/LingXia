@@ -8,6 +8,8 @@ internal sealed class PlayerEvent(val name: String) {
 
     data class Playing(val currentTimeMs: Long? = null) : PlayerEvent("playing")
 
+    data object FirstFrameRendered : PlayerEvent("firstframerendered")
+
     data class Pause(val currentTimeMs: Long? = null) : PlayerEvent("pause")
 
     data class Waiting(
