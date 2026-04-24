@@ -18,7 +18,6 @@ use serde::Deserialize;
 struct RawPreviewMediaSource {
     path: Option<String>,
     kind: Option<String>,
-    cover_path: Option<String>,
     rotate: Option<u16>,
     object_fit: Option<String>,
     duration_ms: Option<f64>,
@@ -165,7 +164,6 @@ fn parse_preview_request(lxapp: &LxApp, options: JSValue) -> JSResult<ParsedPrev
             RawPreviewMediaSource {
                 path: Some(path),
                 kind: None,
-                cover_path: None,
                 rotate: None,
                 object_fit: None,
                 duration_ms: None,
@@ -274,7 +272,6 @@ fn parse_raw_source_object(
     Ok(RawPreviewMediaSource {
         path: read_optional_string_field(obj, "path", context)?,
         kind: read_optional_string_field(obj, "type", context)?,
-        cover_path: read_optional_string_field(obj, "coverPath", context)?,
         rotate: read_optional_u16_field(obj, "rotate", context)?,
         object_fit: read_optional_string_field(obj, "objectFit", context)?,
         duration_ms: read_optional_number_field(obj, "durationMs", context)?,
@@ -405,17 +402,9 @@ fn parse_media_source(lxapp: &LxApp, item: RawPreviewMediaSource) -> JSResult<Pr
         .ok_or_else(|| js_invalid_parameter_error("previewMedia item requires path"))?;
     let normalized_path = resolve_preview_path(lxapp, raw_path.as_str())?;
 
-    let cover_path = item
-        .cover_path
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .map(|cover| -> Result<String, RongJSError> { resolve_preview_path(lxapp, cover.as_str()) })
-        .transpose()?;
-
     Ok(PreviewMediaItem {
         media_type: parse_media_kind(item.kind, normalized_path.as_str())?,
         path: normalized_path,
-        cover_path,
         rotate: parse_rotation(item.rotate)?,
         object_fit: parse_object_fit(item.object_fit)?,
         duration_ms: normalize_duration_ms(item.duration_ms, "previewMedia durationMs")?,
