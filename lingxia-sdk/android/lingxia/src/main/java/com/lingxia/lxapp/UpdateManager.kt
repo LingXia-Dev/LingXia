@@ -357,9 +357,11 @@ internal object UpdateManager {
         titleContainer.addView(versionView)
 
         header.addView(titleContainer)
+        var closeButton: ImageView? = null
         if (!isForceUpdate) {
             // Non-forced updates can be dismissed by user choice.
-            val closeButton = ImageView(activity).apply {
+            closeButton = ImageView(activity).apply {
+                id = View.generateViewId()
                 layoutParams = LinearLayout.LayoutParams(
                     dp(activity, 36),
                     dp(activity, 36)
@@ -371,6 +373,7 @@ internal object UpdateManager {
                 contentDescription = activity.getString(R.string.lx_common_close)
                 isClickable = true
                 isFocusable = true
+                isFocusableInTouchMode = true
                 setOnClickListener {
                     dialog.dismiss()
                     NativeApi.onCallback(callbackId, false, "2000")
@@ -455,11 +458,14 @@ internal object UpdateManager {
 
         // Confirm button
         val confirmButton = Button(activity).apply {
+            id = View.generateViewId()
             text = activity.getString(R.string.lx_update_confirm)
             setTextColor(Color.WHITE)
             textSize = 16f
             setTypeface(null, android.graphics.Typeface.BOLD)
             isAllCaps = false
+            isFocusable = true
+            isFocusableInTouchMode = true
 
             val buttonBg = GradientDrawable().apply {
                 setColor(Color.parseColor("#3B82F6"))
@@ -483,8 +489,17 @@ internal object UpdateManager {
             }
         }
 
+        closeButton?.let { close ->
+            close.nextFocusDownId = confirmButton.id
+            close.nextFocusForwardId = confirmButton.id
+            confirmButton.nextFocusUpId = close.id
+        }
+
         container.addView(confirmButton)
         dialog.setContentView(container)
+        dialog.setOnShowListener {
+            confirmButton.requestFocus()
+        }
 
         return dialog
     }
