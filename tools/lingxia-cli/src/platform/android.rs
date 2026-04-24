@@ -3,7 +3,6 @@ use super::{
     resolve_cargo_target_dir,
 };
 use crate::commands::rust::run_cargo_build_for_target;
-use adb_client::{ADBDeviceExt, server::ADBServer};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -345,19 +344,7 @@ impl Platform for AndroidPlatform {
         let file_size = std::fs::metadata(&apk_path).map(|m| m.len()).unwrap_or(0);
         let size_mb = file_size as f64 / 1024.0 / 1024.0;
 
-        // Create ADB server connection
-        let mut server = ADBServer::default();
-
-        // Get device
-        let mut device = if let Some(ref device_id) = config.device_id {
-            server
-                .get_device_by_name(device_id)
-                .context(format!("Failed to get device: {}", device_id))?
-        } else {
-            server.get_device().context(
-                "Failed to get device. Use --device to specify a device if multiple are connected",
-            )?
-        };
+        let device_id = resolve_adb_device_id(config.device_id.as_deref())?;
 
         if config.reinstall {
             let spinner = (!config.quiet).then(|| {
@@ -376,7 +363,7 @@ impl Platform for AndroidPlatform {
                 if let Some(spinner) = spinner.as_ref() {
                     spinner.set_message(format!("Uninstalling {package_id}..."));
                 }
-                if let Err(err) = device.uninstall(&package_id, None) {
+                if let Err(err) = adb_uninstall_package(Some(device_id.as_str()), &package_id) {
                     eprintln!(
                         "{} failed to uninstall {} before install: {}",
                         "Warning:".yellow(),
@@ -396,29 +383,16 @@ impl Platform for AndroidPlatform {
         }
 
         if !config.quiet {
-            println!("Installing ({:.1} MB) with rust adb...", size_mb);
+            println!("Installing ({:.1} MB) with adb...", size_mb);
         }
-        install_with_rust_adb(&mut device, &apk_path, file_size, config.quiet)?;
+        install_with_adb(Some(device_id.as_str()), &apk_path, file_size, config.quiet)?;
         println!("{}", "✓ Installed".green());
         Ok(())
     }
 
     fn uninstall(&self, package_id: &str, device_id: Option<&str>) -> Result<()> {
-        let mut server = ADBServer::default();
-
-        let mut device = if let Some(id) = device_id {
-            server
-                .get_device_by_name(id)
-                .context(format!("Failed to get device: {}", id))?
-        } else {
-            server.get_device().context(
-                "Failed to get device. Use --device to specify a device if multiple are connected",
-            )?
-        };
-
-        device
-            .uninstall(package_id, None)
-            .context(format!("Failed to uninstall {}", package_id))?;
+        let device_id = resolve_adb_device_id(device_id)?;
+        adb_uninstall_package(Some(device_id.as_str()), package_id)?;
 
         Ok(())
     }
@@ -442,83 +416,47 @@ impl Platform for AndroidPlatform {
     }
 
     fn list_devices(&self) -> Result<Vec<Device>> {
-        let mut server = ADBServer::default();
-
-        let adb_devices = server
-            .devices_long()
-            .context("Failed to get devices from ADB server")?;
-
-        let devices = adb_devices
-            .into_iter()
-            .map(|d| {
-                let name = if d.model.is_empty() {
-                    None
-                } else {
-                    Some(d.model.replace('_', " "))
-                };
-                Device {
-                    id: d.identifier.clone(),
-                    name,
-                    device_type: if d.identifier.contains("emulator") {
-                        DeviceType::Emulator
-                    } else {
-                        DeviceType::Physical
-                    },
-                    online: true,
-                }
-            })
-            .collect();
-
-        Ok(devices)
+        list_adb_devices()
     }
 }
 
-fn install_with_rust_adb(
-    device: &mut dyn ADBDeviceExt,
+fn install_with_adb(
+    device_id: Option<&str>,
     apk_path: &Path,
     file_size: u64,
     quiet: bool,
 ) -> Result<()> {
-    let install_bar = (!quiet).then(|| {
-        let bar = ProgressBar::new(file_size.max(1));
-        bar.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.cyan} [{bar:30.cyan/blue}] {percent:>3}% {msg}",
-            )
-            .unwrap()
-            .progress_chars("=>-"),
-        );
-        bar.enable_steady_tick(std::time::Duration::from_millis(80));
-        bar
-    });
-    let progress_bar = install_bar.clone();
-    let mut on_progress = move |uploaded: u64, total: u64| {
-        if let Some(progress_bar) = progress_bar.as_ref() {
-            let bounded_total = total.max(1);
-            progress_bar.set_length(bounded_total);
-            progress_bar.set_position(uploaded.min(bounded_total));
-            progress_bar.set_message(format_install_progress(uploaded, total));
-        }
-    };
-    let result = device.install_with_progress(&apk_path, None, Some(&mut on_progress));
-    if let Some(install_bar) = install_bar {
-        install_bar.finish_and_clear();
-    }
-    result.map_err(|err| anyhow!("rust adb install failed: {}", err))
-}
+    let remote_apk_path = remote_install_apk_path(apk_path);
 
-fn format_install_progress(uploaded: u64, total: u64) -> String {
-    let uploaded_mb = uploaded as f64 / 1024.0 / 1024.0;
-    let total_mb = total as f64 / 1024.0 / 1024.0;
-    let percent = if total > 0 {
-        (uploaded as f64 / total as f64) * 100.0
-    } else {
-        0.0
-    };
-    format!(
-        "Installing {:.1}% ({:.1}/{:.1} MB)...",
-        percent, uploaded_mb, total_mb
-    )
+    let upload_spinner = (!quiet).then(|| {
+        status_spinner(&format!(
+            "Uploading APK ({})...",
+            format_transfer_size(file_size)
+        ))
+    });
+    let upload_result = adb_push_file(device_id, apk_path, &remote_apk_path);
+    finish_spinner(upload_spinner);
+    upload_result?;
+
+    let install_spinner = (!quiet).then(|| status_spinner("Installing package on device..."));
+    let install_result = adb_pm_install(device_id, &remote_apk_path);
+    finish_spinner(install_spinner);
+
+    let cleanup_spinner = (!quiet).then(|| status_spinner("Cleaning temporary files..."));
+    let cleanup_result = adb_cleanup_remote_file(device_id, &remote_apk_path);
+    finish_spinner(cleanup_spinner);
+
+    install_result?;
+    if let Err(err) = cleanup_result {
+        eprintln!(
+            "{} failed to remove temporary APK {}: {}",
+            "Warning:".yellow(),
+            remote_apk_path,
+            err
+        );
+    }
+
+    Ok(())
 }
 
 fn adb_command(device_id: Option<&str>) -> Command {
@@ -545,6 +483,165 @@ fn run_adb_shell_checked(device_id: Option<&str>, args: &[&str], label: &str) ->
         stdout.trim(),
         stderr.trim()
     ))
+}
+
+fn run_adb_checked(device_id: Option<&str>, args: &[&str], label: &str) -> Result<String> {
+    let output = adb_command(device_id)
+        .args(args)
+        .output()
+        .with_context(|| format!("Failed to execute {label}"))?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+    Err(anyhow!(
+        "{label} failed\nstdout: {}\nstderr: {}",
+        stdout,
+        stderr
+    ))
+}
+
+fn list_adb_devices() -> Result<Vec<Device>> {
+    let output = run_adb_checked(None, &["devices", "-l"], "adb devices -l")?;
+    let mut devices = Vec::new();
+
+    for line in output.lines().skip(1) {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let mut parts = line.split_whitespace();
+        let Some(id) = parts.next() else {
+            continue;
+        };
+        let Some(state) = parts.next() else {
+            continue;
+        };
+
+        let name = line
+            .split_whitespace()
+            .find_map(|part| part.strip_prefix("model:"))
+            .filter(|value| !value.is_empty())
+            .map(|value| value.replace('_', " "));
+
+        devices.push(Device {
+            id: id.to_string(),
+            name,
+            device_type: if id.starts_with("emulator-") {
+                DeviceType::Emulator
+            } else {
+                DeviceType::Physical
+            },
+            online: state == "device",
+        });
+    }
+
+    Ok(devices)
+}
+
+fn resolve_adb_device_id(device_id: Option<&str>) -> Result<String> {
+    if let Some(device_id) = device_id {
+        return Ok(device_id.to_string());
+    }
+
+    let online_devices = list_adb_devices()?
+        .into_iter()
+        .filter(|device| device.online)
+        .collect::<Vec<_>>();
+
+    match online_devices.as_slice() {
+        [] => Err(anyhow!("No Android devices connected")),
+        [device] => Ok(device.id.clone()),
+        _ => Err(anyhow!(
+            "Multiple Android devices connected. Use --device to specify a target device"
+        )),
+    }
+}
+
+fn remote_install_apk_path(apk_path: &Path) -> String {
+    let file_name = apk_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("app.apk")
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!(
+        "/data/local/tmp/lingxia-install-{}-{file_name}",
+        std::process::id()
+    )
+}
+
+fn adb_push_file(device_id: Option<&str>, local_path: &Path, remote_path: &str) -> Result<()> {
+    run_adb_checked(
+        device_id,
+        &["push", local_path.to_string_lossy().as_ref(), remote_path],
+        "adb push",
+    )
+    .map(|_| ())
+}
+
+fn status_spinner(message: &str) -> ProgressBar {
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"),
+    );
+    spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+    spinner.set_message(message.to_string());
+    spinner
+}
+
+fn finish_spinner(spinner: Option<ProgressBar>) {
+    if let Some(spinner) = spinner {
+        spinner.finish_and_clear();
+    }
+}
+
+fn format_transfer_size(bytes: u64) -> String {
+    let mb = bytes as f64 / 1024.0 / 1024.0;
+    format!("{mb:.1} MB")
+}
+
+fn adb_pm_install(device_id: Option<&str>, remote_path: &str) -> Result<()> {
+    let output = run_adb_checked(
+        device_id,
+        &["shell", "pm", "install", "-r", remote_path],
+        "adb shell pm install",
+    )?;
+
+    if output.lines().any(|line| line.trim() == "Success") {
+        return Ok(());
+    }
+
+    Err(anyhow!("adb shell pm install failed: {}", output.trim()))
+}
+
+fn adb_cleanup_remote_file(device_id: Option<&str>, remote_path: &str) -> Result<()> {
+    run_adb_checked(
+        device_id,
+        &["shell", "rm", "-f", remote_path],
+        "adb shell rm -f",
+    )
+    .map(|_| ())
+}
+
+fn adb_uninstall_package(device_id: Option<&str>, package_id: &str) -> Result<()> {
+    let output = run_adb_checked(device_id, &["uninstall", package_id], "adb uninstall")?;
+    if output.lines().any(|line| line.trim() == "Success") {
+        return Ok(());
+    }
+    Err(anyhow!("adb uninstall failed: {}", output.trim()))
 }
 
 const APPLINKS_BEGIN: &str = "            <!-- LingXia AppLinks BEGIN -->";

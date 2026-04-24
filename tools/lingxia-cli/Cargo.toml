@@ -56,7 +56,6 @@ tungstenite = { version = "0.29", features = ["native-tls"] }
 x509-parser = "0.18"
 
 which = "8.0"
-adb_client = { git = "https://github.com/butterflyfish/adb_client", rev = "80d4e050a6205dbe865292142d9f82f86e2567ad" }
 urlencoding = "2.1"
 
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
