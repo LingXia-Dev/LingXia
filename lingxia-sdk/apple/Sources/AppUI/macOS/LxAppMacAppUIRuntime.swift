@@ -37,8 +37,12 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private var visibleSurfaceIDs = Set<String>()
     private var openedSurfaceIDs = Set<String>()
-    private var statusItems: [String: NSStatusItem] = [:]
-    private var defaultMenuBarActivatorID: String?
+    private lazy var trayController = LxAppMacTrayController(
+        appConfig: appConfig,
+        uiConfigURL: uiConfigURL
+    ) { [weak self] actionID in
+        self?.performActivator(id: actionID)
+    }
     private var independentPanelWindows: [String: NSPanel] = [:]
     private var independentPanelHostViews: [String: LxAppHostView] = [:]
     private var independentPanelOpenTasks: [String: Task<Void, Never>] = [:]
@@ -95,7 +99,7 @@ final class LxAppMacAppUIRuntime: NSObject {
         } else {
             NSApp.setActivationPolicy(.accessory)
         }
-        installMenuBarActivators()
+        trayController.installMenuBarActivators(menuBarActivators)
         installAppActivationActivators()
         refreshChromeActivators()
         if uiConfig.launch.openOnLaunch ?? true {
@@ -218,7 +222,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                         }
                     }
                     try Task.checkCancellation()
-                    positionIndependentPanel(panel, for: defaultMenuBarActivatorID)
+                    positionIndependentPanel(panel, for: trayController.defaultActivatorID)
                     panel.orderFrontRegardless()
                     _ = notifyPageInstanceVisible(pageInstanceId)
                     openedSurfaceIDs.insert(panelId)
@@ -609,47 +613,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.updateTitlebarHostActions(titlebarItems)
     }
 
-    private func installMenuBarActivators() {
-        for activator in menuBarActivators {
-            let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-            statusItems[activator.id] = statusItem
-            if defaultMenuBarActivatorID == nil {
-                defaultMenuBarActivatorID = activator.id
-            }
-
-            guard let button = statusItem.button else { continue }
-            button.identifier = NSUserInterfaceItemIdentifier(activator.id)
-            button.target = self
-            button.action = #selector(statusItemClicked(_:))
-            button.toolTip = activator.label ?? activator.id
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp, .otherMouseUp])
-
-            if let iconURL = resolvedIconURL(for: activator),
-               let image = NSImage(contentsOf: iconURL) {
-                image.size = NSSize(width: 18, height: 18)
-                image.isTemplate = iconURL.pathExtension.lowercased() == "pdf"
-                button.image = image
-                button.imagePosition = .imageOnly
-            } else {
-                os_log(
-                    "AppUI menubar icon unavailable or unsuitable for activator=%{public}@ icon=%{public}@; using system fallback",
-                    log: Self.log,
-                    type: .info,
-                    activator.id,
-                    activator.icon ?? "nil"
-                )
-                if let fallbackImage = NSImage(systemSymbolName: "app.fill", accessibilityDescription: activator.label) {
-                    fallbackImage.isTemplate = true
-                    fallbackImage.size = NSSize(width: 16, height: 16)
-                    button.image = fallbackImage
-                    button.imagePosition = .imageOnly
-                } else {
-                    button.title = shortMenuBarTitle(for: activator)
-                }
-            }
-        }
-    }
-
     private func installAppActivationActivators() {
         guard !appActivationActivators.isEmpty else { return }
         appActivationObserver = NotificationCenter.default.addObserver(
@@ -670,21 +633,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         for activator in appActivationActivators {
             performActivator(id: activator.id)
         }
-    }
-
-    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
-        guard let actionID = sender.identifier?.rawValue else { return }
-        performActivator(id: actionID)
-    }
-
-    private func shortMenuBarTitle(for activator: LxAppUIConfig.Activator) -> String {
-        if let label = activator.label, let first = label.first {
-            return String(first)
-        }
-        if let first = appConfig.productName.first {
-            return String(first)
-        }
-        return "L"
     }
 
     private func makeChromeActionItem(_ activator: LxAppUIConfig.Activator) -> LxAppUIActionItem {
@@ -723,9 +671,9 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func positionWindow(_ window: NSWindow, for activatorID: String?) {
-        let resolvedActivatorID = activatorID ?? defaultMenuBarActivatorID
+        let resolvedActivatorID = activatorID ?? trayController.defaultActivatorID
         guard let resolvedActivatorID,
-              let button = statusItems[resolvedActivatorID]?.button,
+              let button = trayController.button(for: resolvedActivatorID),
               let statusWindow = button.window else { return }
 
         let buttonFrameInScreen = statusWindow.convertToScreen(button.frame)
@@ -758,12 +706,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }
 
     private func pointInAnyStatusItemButton(_ point: NSPoint) -> Bool {
-        statusItems.values.contains { item in
-            guard let button = item.button, let window = button.window else {
-                return false
-            }
-            return window.convertToScreen(button.frame).contains(point)
-        }
+        trayController.anyButtonContains(screenPoint: point)
     }
 
     private func dismissIndependentPanelsIfNeeded(for event: NSEvent) {
