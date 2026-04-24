@@ -135,8 +135,6 @@ ICONS_SVG_DIR="$ROOT_DIR/lingxia-sdk/resources/icons/svg"
 ANDROID_SDK_DIR="$ROOT_DIR/lingxia-sdk/android"
 ANDROID_RES_DIR="$ANDROID_SDK_DIR/lingxia/src/main/res"
 ANDROID_DRAWABLE_DIR="$ANDROID_RES_DIR/drawable"
-ANDROID_WEBVIEW_JAR_DIR="$ANDROID_SDK_DIR/lingxia/build/generated/lingxia-webview"
-ANDROID_WEBVIEW_JAR="$ANDROID_WEBVIEW_JAR_DIR/lingxia-webview.jar"
 LINGXIA_CRATES_DIR="$ROOT_DIR/crates"
 LINGXIA_CORE_CRATE_DIR="$LINGXIA_CRATES_DIR/lingxia"
 LINGXIA_WEBVIEW_CRATE_DIR="$LINGXIA_CRATES_DIR/lingxia-webview"
@@ -276,17 +274,14 @@ generate_resources() {
 
 }
 
-ensure_android_webview_jar() {
-  mkdir -p "$ANDROID_WEBVIEW_JAR_DIR"
+ensure_android_webview_sources() {
   [[ -d "$ANDROID_WEBVIEW_JAVA_SRC" ]] || die "Missing Android webview java src: $ANDROID_WEBVIEW_JAVA_SRC"
-  log "==> Building lingxia-webview.jar (Makefile)"
-  (cd "$ANDROID_WEBVIEW_JAVA_SRC" && TARGET_DIR="$ANDROID_WEBVIEW_JAR_DIR" make 1>&2)
-  [[ -f "$ANDROID_WEBVIEW_JAR" ]] || die "Failed to build: $ANDROID_WEBVIEW_JAR"
+  log "==> Android WebView Java sources are compiled by Gradle sourceSets"
 }
 
 build_android() {
   log "==> Building Android SDK (maven zip)"
-  ensure_android_webview_jar
+  ensure_android_webview_sources
 
   local maven_dir="${ANDROID_MAVEN_DIR:-}"
   if [[ -z "$maven_dir" ]]; then
@@ -302,9 +297,7 @@ build_android() {
   gradle_props+=("-Pversion=$VERSION")
 
   log "+ (cd $ANDROID_SDK_DIR && ./gradlew :lingxia:publish ${gradle_props[*]})"
-  (cd "$ANDROID_SDK_DIR" && \
-    LINGXIA_JAR_OUTPUT_DIR="$ANDROID_WEBVIEW_JAR_DIR" \
-    ./gradlew :lingxia:publish "${gradle_props[@]}" 1>&2)
+  (cd "$ANDROID_SDK_DIR" && ./gradlew :lingxia:publish "${gradle_props[@]}" 1>&2)
 
   local aar="$maven_dir/com/lingxia/lingxia/$VERSION/lingxia-$VERSION.aar"
   [[ -f "$aar" ]] || die "AAR not found after publish: $aar"
