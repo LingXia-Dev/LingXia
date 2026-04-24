@@ -187,14 +187,9 @@ export interface PreviewMediaSource {
    * Media source path.
    * Recommended: `lx://` path (for example `lx://usercache/...`) or a sandbox-local path
    * that can be resolved by runtime access rules.
-   */
+  */
   path: string;
   type?: 'image' | 'video';
-  /**
-   * Optional poster image path for video preview.
-   * Uses the same path contract as `path`.
-   */
-  coverPath?: string;
   /**
    * Optional clockwise rotation in degrees (`0 | 90 | 180 | 270`).
    * Default: when omitted, runtime resolves orientation from media metadata.
@@ -206,8 +201,8 @@ export interface PreviewMediaSource {
    */
   objectFit?: MediaObjectFit;
   /**
-   * Image display duration in milliseconds.
-   * Effective only for image items and only when preview `advance` is not `manual`.
+   * Display duration in milliseconds.
+   * Effective when preview `advance` is not `manual`.
    */
   durationMs?: number;
 }
