@@ -14,7 +14,6 @@ extension LxAppMedia {
     struct PreviewMediaPayload: Decodable {
         let path: String
         let media_type: Int32
-        let cover_path: String?
         let rotate: Int?
         let object_fit: String?
         let durationMs: UInt64?
@@ -186,7 +185,6 @@ private struct PreviewMediaItem {
 
     let url: URL
     let type: MediaType
-    let coverURL: URL?
     let rotate: Int?
     let objectFit: LxMediaObjectFit?
     let durationMs: UInt64?
@@ -199,14 +197,6 @@ private struct PreviewMediaItem {
             self.url = URL(fileURLWithPath: pathString)
         }
 
-        let coverString = payload.cover_path ?? ""
-        if coverString.isEmpty {
-            self.coverURL = nil
-        } else if let cover = URL(string: coverString), cover.scheme != nil {
-            self.coverURL = cover
-        } else {
-            self.coverURL = URL(fileURLWithPath: coverString)
-        }
         self.type = MediaType(rawValue: payload.media_type)
         self.rotate = {
             guard let value = payload.rotate else { return nil }
@@ -863,7 +853,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private func embedPlayerInline() {
         let config = LxMediaPlayerConfig(
             src: item.url,
-            poster: item.coverURL,
+            poster: nil,
             autoplay: true,
             loop: loopPlayback,
             controls: true,  // Show all controls

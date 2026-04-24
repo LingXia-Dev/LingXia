@@ -114,14 +114,6 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
                 MediaKind::Unknown => -1,
             } as jint;
 
-            let cover_obj = match item.cover_path.as_deref().filter(|s| !s.is_empty()) {
-                Some(url) => {
-                    let cover_java: JString = env.new_string(url)?;
-                    cover_java.into()
-                }
-                None => JObject::null(),
-            };
-
             let rotate_obj = match item.rotate {
                 Some(rotate) => env.new_object(
                     jni_str!("java/lang/Integer"),
@@ -157,12 +149,11 @@ fn preview_media_impl(request: PreviewMediaRequest) -> Result<(), Box<dyn std::e
             let payload_obj = env.new_object(
                 payload_class,
                 jni_sig!(
-                    "(Ljava/lang/String;ILjava/lang/String;Ljava/lang/Integer;Ljava/lang/String;Ljava/lang/Long;)V"
+                    "(Ljava/lang/String;ILjava/lang/Integer;Ljava/lang/String;Ljava/lang/Long;)V"
                 ),
                 &[
                     JValue::Object(&path_obj),
                     JValue::Int(media_type_value),
-                    JValue::Object(&cover_obj),
                     JValue::Object(&rotate_obj),
                     JValue::Object(&object_fit_obj),
                     JValue::Object(&duration_obj),

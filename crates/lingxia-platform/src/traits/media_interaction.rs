@@ -6,7 +6,6 @@ use crate::error::PlatformError;
 pub struct PreviewMediaItem {
     pub path: String,
     pub media_type: MediaKind,
-    pub cover_path: Option<String>,
     pub rotate: Option<u16>,
     pub object_fit: Option<MediaObjectFit>,
     pub duration_ms: Option<u64>,

@@ -43,7 +43,6 @@ extension LxAppMedia {
     struct PreviewMediaPayload: Codable {
         let path: String
         let media_type: Int32
-        let cover_path: String?
         let duration_ms: UInt64?
     }
 

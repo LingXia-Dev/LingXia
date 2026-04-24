@@ -22,7 +22,6 @@ const TRANSCODER_VIDEO_HEIGHT_MAX = 2160;
 interface PreviewMediaPayload {
   path: string;
   media_type: number;
-  cover_path?: string;
   rotate?: number;
   object_fit?: string;
   durationMs?: number;

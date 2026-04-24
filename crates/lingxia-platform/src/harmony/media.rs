@@ -18,7 +18,6 @@ const MEDIA_LIBRARY_VIDEO_RESOURCE: i32 = 2;
 struct PreviewMediaPayload<'a> {
     path: &'a str,
     media_type: i32,
-    cover_path: &'a str,
     rotate: Option<u16>,
     object_fit: Option<&'static str>,
     #[serde(rename = "durationMs")]
@@ -65,7 +64,6 @@ impl MediaInteraction for Platform {
                     MediaKind::Video => 1,
                     MediaKind::Unknown => -1,
                 },
-                cover_path: item.cover_path.as_deref().unwrap_or_default(),
                 rotate: item.rotate,
                 object_fit: item.object_fit.map(|fit| match fit {
                     MediaObjectFit::Cover => "cover",

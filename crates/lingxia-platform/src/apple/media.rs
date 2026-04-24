@@ -19,7 +19,6 @@ use std::path::{Path, PathBuf};
 struct PreviewMediaPayload {
     path: String,
     media_type: i32,
-    cover_path: String,
     rotate: Option<u16>,
     object_fit: Option<String>,
     #[serde(rename = "durationMs")]
@@ -54,7 +53,6 @@ impl MediaInteraction for Platform {
                     MediaKind::Video => 1,
                     MediaKind::Unknown => -1,
                 },
-                cover_path: item.cover_path.unwrap_or_default(),
                 rotate: item.rotate,
                 object_fit: item.object_fit.map(|fit| match fit {
                     MediaObjectFit::Cover => "cover".to_string(),
