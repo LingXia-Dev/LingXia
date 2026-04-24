@@ -220,6 +220,7 @@ lingxia install [options]
 |--------|-------------|---------|
 | `-a, --artifact <path>` | Path to artifact file (APK/HAP) | auto-detected |
 | `-d, --device <id>` | Target device ID | auto-detect |
+| `--reinstall` | Reinstall app by uninstalling existing one first (best effort) | false |
 
 **Examples:**
 
@@ -232,7 +233,43 @@ lingxia install -a ./build/app-debug.apk
 
 # Install to specific device
 lingxia install -d emulator-5554
+
+# Reinstall cleanly before install
+lingxia install --reinstall
 ```
+
+---
+
+### `lingxia launch`
+
+Launch the installed app on a device.
+
+```bash
+lingxia launch [bundle_id] [options]
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-d, --device <id>` | Target device ID | auto-detect |
+| `-p, --platform <platform>` | Target platform | auto-detect |
+| `--restart` | Restart app by terminating an existing instance before launch (best effort) | false |
+
+**Examples:**
+
+```bash
+# Launch inferred app on default device
+lingxia launch
+
+# Launch specific app on a specific device
+lingxia launch com.example.app -d emulator-5554 -p android
+
+# Restart the app before launching
+lingxia launch --restart
+```
+
+> **Note:** `--restart` is currently supported for Android and iOS. HarmonyOS currently supports plain `launch` only.
 
 ---
 

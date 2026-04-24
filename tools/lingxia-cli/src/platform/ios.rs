@@ -398,7 +398,11 @@ impl Platform for IosPlatform {
     }
 
     fn run(&self, config: &RunConfig) -> Result<()> {
-        apple::devicectl::launch_app(&config.package_id, config.device_id.as_deref())
+        apple::devicectl::launch_app(
+            &config.package_id,
+            config.device_id.as_deref(),
+            config.restart,
+        )
     }
 
     fn list_devices(&self) -> Result<Vec<Device>> {

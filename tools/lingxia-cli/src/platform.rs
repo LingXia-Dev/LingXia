@@ -96,6 +96,8 @@ pub struct RunConfig {
     pub package_id: String,
     pub main_activity: Option<String>,
     pub device_id: Option<String>,
+    /// Restart the app by terminating an existing instance before launch.
+    pub restart: bool,
 }
 
 /// Platform trait for build, install, and run operations

@@ -101,6 +101,12 @@ impl HarmonyPlatform {
     }
 
     pub(super) fn run_impl(&self, config: &RunConfig) -> Result<()> {
+        if config.restart {
+            bail!(
+                "Restart is not supported for HarmonyOS yet. Use 'lingxia uninstall' + 'lingxia launch', or plain 'lingxia launch'."
+            );
+        }
+
         let hdc = ensure_command("hdc")?;
 
         let ability = config

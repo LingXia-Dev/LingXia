@@ -404,11 +404,14 @@ impl Platform for AndroidPlatform {
             .map(|activity| format!("{}/{}", config.package_id, activity))
             .unwrap_or_else(|| format!("{}/{}.MainActivity", config.package_id, config.package_id));
 
-        run_adb_shell_checked(
-            config.device_id.as_deref(),
-            &["am", "start", "-n", &activity],
-            "adb shell am start",
-        )?;
+        let device_id = resolve_adb_device_id(config.device_id.as_deref())?;
+        let args = if config.restart {
+            vec!["am", "start", "-S", "-n", activity.as_str()]
+        } else {
+            vec!["am", "start", "-n", activity.as_str()]
+        };
+
+        run_adb_shell_checked(Some(device_id.as_str()), &args, "adb shell am start")?;
 
         println!("{}", "✓ App launched".green());
 

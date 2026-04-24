@@ -114,21 +114,24 @@ impl DeviceCtl {
     }
 
     /// Launch an installed app on a device
-    pub fn launch_app(bundle_id: &str, device_identifier: &str) -> Result<()> {
+    pub fn launch_app(bundle_id: &str, device_identifier: &str, restart: bool) -> Result<()> {
         println!("{}", "Launching app...".cyan());
 
-        let output = Command::new("xcrun")
-            .args([
-                "devicectl",
-                "device",
-                "process",
-                "launch",
-                "--device",
-                device_identifier,
-                bundle_id,
-            ])
-            .output()
-            .context("Failed to launch app")?;
+        let mut cmd = Command::new("xcrun");
+        cmd.args([
+            "devicectl",
+            "device",
+            "process",
+            "launch",
+            "--device",
+            device_identifier,
+        ]);
+        if restart {
+            cmd.arg("--terminate-existing");
+        }
+        cmd.arg(bundle_id);
+
+        let output = cmd.output().context("Failed to launch app")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -325,7 +328,7 @@ pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
 /// Launch an app on a connected iOS device.
 ///
 /// Requires Xcode 15+ (uses devicectl).
-pub fn launch_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
+pub fn launch_app(bundle_id: &str, device_id: Option<&str>, restart: bool) -> Result<()> {
     if !DeviceCtl::is_available() {
         return Err(anyhow!(
             "devicectl not found. Please install Xcode 15 or later."
@@ -337,7 +340,7 @@ pub fn launch_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
     } else {
         DeviceCtl::wait_for_device(30)?.identifier
     };
-    DeviceCtl::launch_app(bundle_id, &device_identifier)
+    DeviceCtl::launch_app(bundle_id, &device_identifier, restart)
 }
 
 /// List connected iOS devices.

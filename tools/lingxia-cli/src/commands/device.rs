@@ -76,6 +76,7 @@ pub fn launch(
     bundle_id: Option<&str>,
     device: Option<String>,
     platform_arg: Option<String>,
+    restart: bool,
 ) -> Result<()> {
     let platform_type = resolve_single_platform(platform_arg.clone())?;
     let bundle_id = resolve_package_id(bundle_id, &platform_type, "launch")?;
@@ -85,6 +86,7 @@ pub fn launch(
         package_id: bundle_id,
         main_activity: None,
         device_id: device,
+        restart,
     };
 
     p.run(&run_config)?;

@@ -237,6 +237,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             device_id: ctx.device,
             package_id,
             main_activity: None,
+            restart: false,
         };
 
         platform.run(&run_config)?;
@@ -326,6 +327,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             package_id: bundle_id.clone(),
             main_activity: None,
             device_id: ctx.device,
+            restart: false,
         };
         platform.run(&run_config)?;
 
@@ -532,6 +534,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             package_id: bundle_name.clone(),
             main_activity: None, // defaults to "EntryAbility" in harmony platform
             device_id: ctx.device,
+            restart: false,
         };
 
         harmony_platform.run(&run_config)?;

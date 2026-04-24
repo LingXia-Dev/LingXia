@@ -226,6 +226,10 @@ enum Commands {
         /// Target platform (android, ios, harmony). Auto-detected if not specified.
         #[arg(short = 'p', long)]
         platform: Option<String>,
+
+        /// Restart the app by terminating an existing instance before launch (best effort)
+        #[arg(long)]
+        restart: bool,
     },
 
     /// Development mode for app and lxapp projects
@@ -479,8 +483,9 @@ fn main() -> Result<()> {
             bundle_id,
             device,
             platform,
+            restart,
         } => {
-            commands::device::launch(bundle_id.as_deref(), device, platform)?;
+            commands::device::launch(bundle_id.as_deref(), device, platform, restart)?;
         }
         Commands::Dev { dev_options } => {
             commands::dev::execute(commands::dev::DevExecuteOptions {
