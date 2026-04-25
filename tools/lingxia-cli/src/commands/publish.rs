@@ -8,12 +8,13 @@ use std::path::{Path, PathBuf};
 use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::http_client;
 use crate::lxapp;
+use crate::platform::detector::PlatformType;
 
 pub struct PublishOptions {
     pub token: String,
     pub lingxia_server: Option<String>,
-    pub target: Option<String>,
     pub package: Option<String>,
+    pub platform: Option<String>,
     pub release_type: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
@@ -28,6 +29,7 @@ struct PackageMeta {
 
 struct ResolvedPackage {
     path: PathBuf,
+    platform: Option<String>,
     cleanup_after_publish: bool,
 }
 
@@ -42,12 +44,18 @@ impl Drop for ResolvedPackage {
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let meta = resolve_meta(&cwd, opts.target, opts.release_type)?;
+    let meta = resolve_meta(&cwd, opts.release_type)?;
     let lingxia_server = resolve_lingxia_server(&cwd, opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
 
-    let package =
-        resolve_package_for_publish(&cwd, &meta, opts.package, opts.framework, opts.progress)?;
+    let package = resolve_package_for_publish(
+        &cwd,
+        &meta,
+        opts.package,
+        opts.platform,
+        opts.framework,
+        opts.progress,
+    )?;
     let package_path = &package.path;
     let file_name = package_path
         .file_name()
@@ -86,6 +94,9 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     if let Some(rt) = &meta.release_type {
         fields.push(("releaseType", rt.clone()));
     }
+    if let Some(platform) = package.platform.as_deref() {
+        fields.push(("platform", platform.to_string()));
+    }
     let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let boundary = format!("----LingXiaBoundary{}", rand_hex());
     let body = build_multipart(&boundary, &field_refs, &file_name, &file_data);
@@ -97,7 +108,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .header("Authorization", &format!("Bearer {}", opts.token))
         .header("Content-Type", &content_type)
         .send(body.as_slice())
-        .with_context(|| format!("HTTP request failed: {upload_url}"))?;
+        .map_err(|err| upload_transport_error(&upload_url, file_data.len(), err))?;
 
     let status = resp.status().as_u16();
     let body_str = resp
@@ -117,11 +128,15 @@ fn resolve_package_for_publish(
     cwd: &Path,
     meta: &PackageMeta,
     explicit: Option<String>,
+    platform: Option<String>,
     framework: Option<String>,
     progress: Option<String>,
 ) -> Result<ResolvedPackage> {
     match meta.target.as_str() {
         "lxapp" | "lxplugin" => {
+            if platform.is_some() {
+                bail!("--platform is only supported when publishing target=app.");
+            }
             if explicit.is_some() {
                 bail!(
                     "--package-path is not supported for {}. lingxia publish always packages the current project first.",
@@ -130,10 +145,14 @@ fn resolve_package_for_publish(
             }
             package_current_project(cwd, framework, progress)
         }
-        _ => Ok(ResolvedPackage {
-            path: find_or_resolve_package(cwd, &meta.target, explicit)?,
-            cleanup_after_publish: false,
-        }),
+        _ => {
+            let platform = resolve_publish_platform(cwd, &meta.target, platform.as_deref())?;
+            Ok(ResolvedPackage {
+                path: find_or_resolve_package(cwd, &meta.target, explicit, platform.as_deref())?,
+                platform,
+                cleanup_after_publish: false,
+            })
+        }
     }
 }
 
@@ -154,19 +173,13 @@ fn package_current_project(
     lxapp::run_in_dir(&args, cwd)?;
     Ok(ResolvedPackage {
         path: lxapp::package_in_dir(cwd, framework.as_deref())?,
+        platform: None,
         cleanup_after_publish: true,
     })
 }
 
-fn resolve_meta(
-    cwd: &Path,
-    target_arg: Option<String>,
-    release_type_arg: Option<String>,
-) -> Result<PackageMeta> {
-    let target = match target_arg.as_deref() {
-        Some(t) => normalize_target(t)?,
-        None => detect_target(cwd)?,
-    };
+fn resolve_meta(cwd: &Path, release_type_arg: Option<String>) -> Result<PackageMeta> {
+    let target = detect_target(cwd)?;
 
     match target.as_str() {
         "lxapp" => {
@@ -219,18 +232,9 @@ fn detect_target(cwd: &Path) -> Result<String> {
         return Ok("app".to_string());
     }
     bail!(
-        "Could not detect project type. No lxapp.json, lxplugin.json, or {} found.\nUse --target to specify: lxapp, lxplugin, or app.",
+        "Could not detect project type. No lxapp.json, lxplugin.json, or {} found.\nRun publish from an lxapp, lxplugin, or host app project root.",
         HOST_CONFIG_FILE
     );
-}
-
-fn normalize_target(s: &str) -> Result<String> {
-    match s.to_lowercase().as_str() {
-        "lxapp" => Ok("lxapp".to_string()),
-        "lxplugin" | "plugin" => Ok("lxplugin".to_string()),
-        "app" => Ok("app".to_string()),
-        _ => bail!("Invalid --target '{s}'. Must be one of: lxapp, lxplugin, app"),
-    }
 }
 
 fn normalize_release_type(s: &str) -> Result<String> {
@@ -314,7 +318,12 @@ fn resolve_lingxia_server(cwd: &Path, lingxia_server_arg: Option<String>) -> Res
     bail!("Use --lingxia-server to specify the package upload server URL.");
 }
 
-fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -> Result<PathBuf> {
+fn find_or_resolve_package(
+    cwd: &Path,
+    target: &str,
+    explicit: Option<String>,
+    platform: Option<&str>,
+) -> Result<PathBuf> {
     if let Some(p) = explicit {
         let path = if Path::new(&p).is_absolute() {
             PathBuf::from(p)
@@ -332,21 +341,23 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
 
     let mut candidates = Vec::new();
     let dist_dir = cwd.join("dist");
-    collect_matching_packages(cwd, &dist_dir, target, &mut candidates, 0);
+    collect_matching_packages(cwd, &dist_dir, target, platform, &mut candidates, 0);
     collect_matching_packages(
         &dist_dir,
         &dist_dir,
         target,
+        platform,
         &mut candidates,
         MAX_PACKAGE_SEARCH_DEPTH,
     );
+    if candidates.is_empty() {
+        collect_common_build_packages(cwd, target, platform, &mut candidates);
+    }
     candidates.sort();
     candidates.dedup();
 
     match candidates.len() {
-        0 => bail!(
-            "No package found for target '{target}'. Run 'lingxia package' first, or use --package-path <PATH>."
-        ),
+        0 => bail!("{}", missing_package_message(target, platform)),
         1 => Ok(candidates.remove(0)),
         _ => {
             let list = candidates
@@ -354,17 +365,133 @@ fn find_or_resolve_package(cwd: &Path, target: &str, explicit: Option<String>) -
                 .map(|p| format!("  {}", p.display()))
                 .collect::<Vec<_>>()
                 .join("\n");
-            bail!("Multiple packages found. Use --package-path <PATH> to specify one:\n{list}")
+            bail!(
+                "Multiple packages found. Use --platform <platform> or --package-path <PATH> to specify one:\n{list}"
+            )
         }
     }
 }
 
 const MAX_PACKAGE_SEARCH_DEPTH: u32 = 3;
 
+fn resolve_publish_platform(
+    cwd: &Path,
+    target: &str,
+    platform: Option<&str>,
+) -> Result<Option<String>> {
+    if target != "app" {
+        if platform.is_some() {
+            bail!("--platform is only supported when publishing target=app.");
+        }
+        return Ok(None);
+    }
+
+    if let Some(platform) = platform {
+        return normalize_platform(platform).map(Some);
+    }
+
+    let Ok(config) = LingXiaConfig::load(cwd) else {
+        return Ok(None);
+    };
+    let Some(app) = config.app.as_ref() else {
+        return Ok(None);
+    };
+
+    let mut platforms = app
+        .platforms
+        .iter()
+        .map(|platform| normalize_config_platform(platform))
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    platforms.sort();
+    platforms.dedup();
+
+    match platforms.as_slice() {
+        [only] => Ok(Some(only.clone())),
+        [] => bail!(
+            "Host app publishing supports Android and macOS. iOS uses App Store; Harmony uses app marketplace."
+        ),
+        _ => {
+            let list = platforms.join(", ");
+            bail!(
+                "Multiple app platforms are configured: {list}\n\
+                 Pass `--platform <platform>` when publishing, or use `--package-path <PATH>`."
+            )
+        }
+    }
+}
+
+fn normalize_platform(value: &str) -> Result<String> {
+    let platform: PlatformType = value.parse()?;
+    match platform {
+        PlatformType::Android | PlatformType::MacOs => Ok(platform.as_str().to_string()),
+        PlatformType::Ios => bail!("iOS host app publishing uses App Store."),
+        PlatformType::Harmony => bail!("Harmony host app publishing uses app marketplace."),
+    }
+}
+
+fn normalize_config_platform(value: &str) -> Result<Option<String>> {
+    let platform: PlatformType = value.parse()?;
+    Ok(match platform {
+        PlatformType::Android | PlatformType::MacOs => Some(platform.as_str().to_string()),
+        PlatformType::Ios | PlatformType::Harmony => None,
+    })
+}
+
+fn collect_common_build_packages(
+    cwd: &Path,
+    target: &str,
+    platform: Option<&str>,
+    out: &mut Vec<PathBuf>,
+) {
+    if target != "app" {
+        return;
+    }
+
+    let rels: &[(&str, &str)] = &[
+        (
+            "android",
+            "android/app/build/outputs/apk/release/app-release.apk",
+        ),
+        ("android", "app/build/outputs/apk/release/app-release.apk"),
+    ];
+
+    for (candidate_platform, rel) in rels {
+        if platform.is_some_and(|platform| platform != *candidate_platform) {
+            continue;
+        }
+        let path = cwd.join(rel);
+        if path.is_file() {
+            out.push(path);
+        }
+    }
+}
+
+fn missing_package_message(target: &str, platform: Option<&str>) -> String {
+    if target == "app" {
+        let platform_suffix = platform
+            .map(|platform| format!(" for platform '{platform}'"))
+            .unwrap_or_default();
+        return format!(
+            "No package found for target '{target}'{platform_suffix}.\n\
+             Run `lingxia package --platform <platform>` first, then retry `lingxia publish`.\n\
+             Searched ./dist for Android APKs and macOS update zips, plus common Android release outputs.\n\
+             If the package is elsewhere, pass `--package-path <PATH>`."
+        );
+    }
+
+    format!(
+        "No package found for target '{target}'. Run `lingxia package` first, or use --package-path <PATH>."
+    )
+}
+
 fn collect_matching_packages(
     dir: &Path,
     dist_dir: &Path,
     target: &str,
+    platform: Option<&str>,
     out: &mut Vec<PathBuf>,
     max_depth: u32,
 ) {
@@ -376,7 +503,7 @@ fn collect_matching_packages(
         let path = entry.path();
         if path.is_dir() {
             if max_depth > 0 {
-                collect_matching_packages(&path, dist_dir, target, out, max_depth - 1);
+                collect_matching_packages(&path, dist_dir, target, platform, out, max_depth - 1);
             }
             continue;
         }
@@ -384,35 +511,60 @@ fn collect_matching_packages(
             continue;
         }
 
-        if package_matches(target, &path, dist_dir) {
+        if package_matches(target, &path, dist_dir, platform) {
             out.push(path);
         }
     }
 }
 
-fn package_matches(target: &str, path: &Path, dist_dir: &Path) -> bool {
+fn package_matches(target: &str, path: &Path, dist_dir: &Path, platform: Option<&str>) -> bool {
     let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
 
     match target {
-        "app" => {
-            if file_name.ends_with(".apk")
-                || file_name.ends_with(".ipa")
-                || file_name.ends_with(".hap")
-            {
-                return true;
-            }
-
-            file_name.ends_with("-macos.zip") && path.starts_with(dist_dir.join("macos"))
-        }
+        "app" => package_platform(file_name, path, dist_dir).is_some_and(|candidate| {
+            platform
+                .map(|platform| candidate == platform)
+                .unwrap_or(true)
+        }),
         _ => false,
     }
+}
+
+fn package_platform(file_name: &str, path: &Path, dist_dir: &Path) -> Option<&'static str> {
+    if file_name.ends_with(".apk") {
+        return Some("android");
+    }
+    if file_name.ends_with("-macos.zip") && path.starts_with(dist_dir.join("macos")) {
+        return Some("macos");
+    }
+    None
 }
 
 fn sha256_hex(data: &[u8]) -> String {
     let hash = Sha256::digest(data);
     hash.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> anyhow::Error {
+    let message = err.to_string();
+    let lower = message.to_ascii_lowercase();
+    let size_mib = package_bytes as f64 / 1024.0 / 1024.0;
+
+    if lower.contains("broken pipe")
+        || lower.contains("connection reset")
+        || lower.contains("connection reset by peer")
+    {
+        return anyhow::anyhow!(
+            "HTTP request failed: {url}\n\
+             Transport error: {message}\n\
+             The server closed the connection while receiving a {size_mib:.1} MiB package.\n\
+             Check the upload server or gateway request-body limit, then retry. For cloud-mockd, restart the updated mock server."
+        );
+    }
+
+    anyhow::anyhow!("HTTP request failed: {url}\nTransport error: {message}")
 }
 
 fn rand_hex() -> String {
@@ -450,7 +602,10 @@ fn build_multipart(
 
 #[cfg(test)]
 mod tests {
-    use super::{find_or_resolve_package, package_matches};
+    use super::{
+        build_multipart, find_or_resolve_package, normalize_platform, package_matches,
+        resolve_publish_platform,
+    };
     use std::fs;
     use tempfile::TempDir;
 
@@ -465,8 +620,8 @@ mod tests {
         fs::write(&allowed, b"zip").unwrap();
         fs::write(&rejected, b"zip").unwrap();
 
-        assert!(package_matches("app", &allowed, &dist_dir));
-        assert!(!package_matches("app", &rejected, &dist_dir));
+        assert!(package_matches("app", &allowed, &dist_dir, None));
+        assert!(!package_matches("app", &rejected, &dist_dir, None));
     }
 
     #[test]
@@ -479,7 +634,139 @@ mod tests {
         let expected = dist_macos.join("Demo-1.0.0-macos.zip");
         fs::write(&expected, b"zip").unwrap();
 
-        let resolved = find_or_resolve_package(temp.path(), "app", None).unwrap();
+        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
         assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn find_or_resolve_package_falls_back_to_android_release_output() {
+        let temp = TempDir::new().unwrap();
+        let expected = temp
+            .path()
+            .join("android/app/build/outputs/apk/release/app-release.apk");
+        fs::create_dir_all(expected.parent().unwrap()).unwrap();
+        fs::write(&expected, b"apk").unwrap();
+
+        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
+        assert_eq!(resolved, expected);
+    }
+
+    #[test]
+    fn find_or_resolve_package_prefers_dist_over_common_build_output() {
+        let temp = TempDir::new().unwrap();
+        let dist = temp.path().join("dist/android/app-release.apk");
+        let build = temp
+            .path()
+            .join("android/app/build/outputs/apk/release/app-release.apk");
+        fs::create_dir_all(dist.parent().unwrap()).unwrap();
+        fs::create_dir_all(build.parent().unwrap()).unwrap();
+        fs::write(&dist, b"dist-apk").unwrap();
+        fs::write(&build, b"build-apk").unwrap();
+
+        let resolved = find_or_resolve_package(temp.path(), "app", None, None).unwrap();
+        assert_eq!(resolved, dist);
+    }
+
+    #[test]
+    fn find_or_resolve_package_filters_by_platform() {
+        let temp = TempDir::new().unwrap();
+        let android = temp.path().join("dist/android/app-release.apk");
+        let macos = temp.path().join("dist/macos/Demo-1.0.0-macos.zip");
+        fs::create_dir_all(android.parent().unwrap()).unwrap();
+        fs::create_dir_all(macos.parent().unwrap()).unwrap();
+        fs::write(&android, b"apk").unwrap();
+        fs::write(&macos, b"zip").unwrap();
+
+        let resolved = find_or_resolve_package(temp.path(), "app", None, Some("android")).unwrap();
+        assert_eq!(resolved, android);
+    }
+
+    #[test]
+    fn resolve_publish_platform_requires_platform_for_multi_platform_config() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 1.0.0
+  lingxiaId: demo
+  platforms:
+    - android
+    - macos
+  homeAppId: demo.home
+ui:
+  launch:
+    initialSurface: main
+  surfaces:
+    - id: main
+      presentation:
+        kind: window
+      content:
+        kind: lxapp
+        appId: demo.home
+  activators:
+    - id: main
+      kind: titlebarItem
+      hostSurface: main
+      action:
+        kind: focusSurface
+        surface: main
+"#,
+        )
+        .unwrap();
+
+        let error = resolve_publish_platform(temp.path(), "app", None).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Multiple app platforms are configured")
+        );
+    }
+
+    #[test]
+    fn resolve_publish_platform_rejects_harmony_host_publish() {
+        let error = normalize_platform("harmony").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Harmony host app publishing uses app marketplace")
+        );
+    }
+
+    #[test]
+    fn resolve_publish_platform_ignores_store_only_config_platforms() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 1.0.0
+  lingxiaId: demo
+  platforms:
+    - android
+    - harmony
+  homeAppId: demo.home
+"#,
+        )
+        .unwrap();
+
+        let platform = resolve_publish_platform(temp.path(), "app", None).unwrap();
+        assert_eq!(platform.as_deref(), Some("android"));
+    }
+
+    #[test]
+    fn build_multipart_includes_app_platform_field() {
+        let body = build_multipart(
+            "boundary",
+            &[("target", "app"), ("platform", "android")],
+            "app-release.apk",
+            b"apk",
+        );
+        let body = String::from_utf8(body).unwrap();
+        assert!(body.contains("name=\"platform\"\r\n\r\nandroid"));
     }
 }

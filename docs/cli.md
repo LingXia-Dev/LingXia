@@ -132,6 +132,9 @@ lingxia package [options]
 
 `lingxia package` always performs a release package build.
 
+For native host projects, publishable Android artifacts are staged under
+`dist/android/`; macOS update zips are written under `dist/macos/`.
+
 **Options:**
 
 | Option | Description | Default |
@@ -323,8 +326,8 @@ lingxia publish --token <token> [options]
 |--------|-------------|---------|
 | `--token <token>` | Bearer token (`LINGXIA_AUTH_TOKEN` env var also accepted) | required |
 | `--lingxia-server <url>` | LingXia server URL (falls back to `app.lingxiaServer` when available) | from config |
-| `--target <type>` | `lxapp`, `lxplugin`, or `app` (auto-detected from project files) | auto |
 | `--package-path <path>` | Path to the package file (`app` only) | auto |
+| `--platform <platform>` | App platform to publish: `android`, `macos` | required for multi-platform app projects |
 | `--release-type <type>` | Release channel: `release`, `preview`, `developer` (required for lxapp) | none |
 | `--framework <framework>` | Override lxapp view framework detection: `react`, `vue`, `html` | auto-detect |
 | `--progress <mode>` | LxApp progress output mode: `task`, `plain` | default CLI output |
@@ -349,8 +352,11 @@ lingxia publish --release-type developer
 # Publish preview build
 lingxia publish --release-type preview
 
-# Publish lxplugin explicitly
-lingxia publish --target lxplugin --lingxia-server http://localhost:8080
+# Publish lxplugin (auto-detected from lxplugin.json)
+lingxia publish --lingxia-server http://localhost:8080
+
+# Publish Android host app package
+lingxia publish --platform android --token <token>
 ```
 
 > **Note:** `lxapp` and `lxplugin` publish always package the current project first. Only `app` publish supports `--package-path`.

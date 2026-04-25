@@ -4,10 +4,11 @@ use crate::host_assets::prepare_configured_host_assets;
 use crate::lxapp;
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
-use crate::platform::{self, BuildConfig};
+use crate::platform::{self, BuildArtifacts, BuildConfig};
 use anyhow::{Result, anyhow};
 use colored::Colorize;
-use std::env;
+use std::path::{Path, PathBuf};
+use std::{env, fs};
 
 pub struct BuildExecuteOptions {
     pub release: bool,
@@ -344,6 +345,9 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         };
 
         let artifacts = platform.build(&build_config)?;
+        if package {
+            stage_package_artifact(&project_root, &platform_type, &artifacts)?;
+        }
         all_artifacts.push((platform_type, artifacts));
     }
 
@@ -365,6 +369,42 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     Ok(())
 }
 
+fn stage_package_artifact(
+    project_root: &Path,
+    platform_type: &PlatformType,
+    artifacts: &BuildArtifacts,
+) -> Result<Option<PathBuf>> {
+    if !matches!(platform_type, PlatformType::Android | PlatformType::Harmony) {
+        return Ok(None);
+    }
+
+    let source = artifacts.path();
+    if !source.is_file() {
+        return Ok(None);
+    }
+
+    let file_name = source
+        .file_name()
+        .ok_or_else(|| anyhow!("Invalid artifact path: {}", source.display()))?;
+    let dist_dir = project_root.join("dist").join(platform_type.as_str());
+    fs::create_dir_all(&dist_dir)?;
+    let dest = dist_dir.join(file_name);
+
+    if source != dest {
+        fs::copy(source, &dest).map_err(|err| {
+            anyhow!(
+                "Failed to stage package artifact {} -> {}: {}",
+                source.display(),
+                dest.display(),
+                err
+            )
+        })?;
+    }
+
+    println!("{} package → {}", "✓".green(), dest.display());
+    Ok(Some(dest))
+}
+
 fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
     match value {
         "react" => Ok(ProjectFramework::React),
@@ -373,6 +413,55 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
         _ => Err(anyhow!(
             "Unsupported framework {value:?}; expected react, vue, or html"
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stage_package_artifact;
+    use crate::platform::BuildArtifacts;
+    use crate::platform::detector::PlatformType;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn package_stages_android_apk_under_dist_android() {
+        let temp = TempDir::new().unwrap();
+        let source = temp
+            .path()
+            .join("android/app/build/outputs/apk/release/app-release.apk");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"apk").unwrap();
+
+        let artifacts = BuildArtifacts::Android {
+            apk_path: source.clone(),
+        };
+        let staged = stage_package_artifact(temp.path(), &PlatformType::Android, &artifacts)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(staged, temp.path().join("dist/android/app-release.apk"));
+        assert_eq!(fs::read(staged).unwrap(), b"apk");
+    }
+
+    #[test]
+    fn package_does_not_restage_macos_artifact() {
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("dist/macos/Demo-1.0.0-macos.zip");
+        fs::create_dir_all(source.parent().unwrap()).unwrap();
+        fs::write(&source, b"zip").unwrap();
+
+        let artifacts = BuildArtifacts::MacOs {
+            app_path: temp.path().join("macos/.build/Demo.app"),
+            update_zip_path: Some(source),
+            dmg_path: None,
+        };
+
+        assert!(
+            stage_package_artifact(temp.path(), &PlatformType::MacOs, &artifacts)
+                .unwrap()
+                .is_none()
+        );
     }
 }
 

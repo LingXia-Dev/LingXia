@@ -274,13 +274,13 @@ enum Commands {
         #[arg(long)]
         lingxia_server: Option<String>,
 
-        /// Target type: lxapp, lxplugin, app (auto-detected from project files if not specified)
-        #[arg(long, value_parser = ["lxapp", "lxplugin", "app"])]
-        target: Option<String>,
-
         /// Path to the package archive (app only)
         #[arg(long = "package-path")]
         package_path: Option<String>,
+
+        /// App platform to publish: android, macos
+        #[arg(long, value_parser = ["android", "macos"])]
+        platform: Option<String>,
 
         /// Release channel (required for lxapp): release, preview, developer
         #[arg(long, value_parser = ["release", "preview", "developer"])]
@@ -569,8 +569,8 @@ fn main() -> Result<()> {
         Commands::Publish {
             token,
             lingxia_server,
-            target,
             package_path,
+            platform,
             release_type,
             framework,
             progress,
@@ -578,8 +578,8 @@ fn main() -> Result<()> {
             commands::publish::execute(commands::publish::PublishOptions {
                 token,
                 lingxia_server,
-                target,
                 package: package_path,
+                platform,
                 release_type,
                 framework,
                 progress,
