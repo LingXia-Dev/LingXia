@@ -6,28 +6,28 @@ use tokio::task::yield_now;
 
 fn emit_update_ready_event(
     target_appid: &str,
-    release_type: ReleaseType,
+    channel: ReleaseType,
     version: &str,
     is_force_update: bool,
 ) {
     let payload = serde_json::json!({
         "version": version,
         "isForceUpdate": is_force_update,
-        "releaseType": release_type.as_str(),
+        "channel": channel.as_str(),
     });
     let _ = publish_app_event(target_appid, "UpdateReady", Some(payload.to_string()));
 }
 
 fn emit_update_failed_event(
     target_appid: &str,
-    release_type: ReleaseType,
+    channel: ReleaseType,
     pkg: &UpdatePackageInfo,
     error: &str,
 ) {
     let payload = serde_json::json!({
         "version": pkg.version,
         "isForceUpdate": pkg.is_force_update,
-        "releaseType": release_type.as_str(),
+        "channel": channel.as_str(),
         "minRuntimeVersion": pkg.required_runtime_version,
         "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
         "error": error,
@@ -72,7 +72,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         &self.target_appid
     }
 
-    fn release_type(&self) -> ReleaseType {
+    fn channel(&self) -> ReleaseType {
         self.release_type
     }
 

@@ -15,7 +15,7 @@ const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>);
     fn target_appid(&self) -> &str;
-    fn release_type(&self) -> ReleaseType;
+    fn channel(&self) -> ReleaseType;
     fn runtime_version(&self) -> &str;
     fn current_version_hint(&self) -> Option<String>;
     fn installed_version<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>>;
@@ -125,7 +125,7 @@ fn ensure_runtime_version_compatible<H: LxAppUpdateHost>(
 pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_version: Option<String>) {
     let runner = host.clone();
     host.spawn_detached(Box::pin(async move {
-        let scope = lxapp_update_scope_key(runner.target_appid(), runner.release_type());
+        let scope = lxapp_update_scope_key(runner.target_appid(), runner.channel());
         let Some(_active_check) = try_begin_lxapp_update_check(scope) else {
             return;
         };
@@ -196,7 +196,7 @@ pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_versio
 }
 
 pub async fn ensure_first_install<H: LxAppUpdateHost>(host: &H) -> Result<(), UpdateError> {
-    if host.release_type() != ReleaseType::Release {
+    if host.channel() != ReleaseType::Release {
         return Ok(());
     }
 
@@ -225,7 +225,7 @@ pub async fn ensure_first_install<H: LxAppUpdateHost>(host: &H) -> Result<(), Up
         UpdateError::not_found(format!(
             "lxapp '{}' package not found ({})",
             host.target_appid(),
-            host.release_type().as_str()
+            host.channel().as_str()
         ))
     })?;
 
@@ -258,7 +258,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         None
     };
 
-    if host.release_type() == ReleaseType::Release && update_config().force_update_gate {
+    if host.channel() == ReleaseType::Release && update_config().force_update_gate {
         match with_foreground_update_timeout(
             host.check_latest_update(current_version.as_deref()),
             &format!("force-update gate check for {}", host.target_appid()),
@@ -279,7 +279,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
                         target_version,
                         pkg.version,
                         host.target_appid(),
-                        host.release_type().as_str()
+                        host.channel().as_str()
                     )));
                 }
             }
@@ -312,7 +312,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
             "No package available for {}@{} ({})",
             host.target_appid(),
             target_version,
-            host.release_type().as_str()
+            host.channel().as_str()
         ))
     })?;
 
@@ -328,7 +328,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
 pub async fn ensure_force_update_for_installed<H: LxAppUpdateHost>(
     host: &H,
 ) -> Result<(), UpdateError> {
-    if host.release_type() != ReleaseType::Release {
+    if host.channel() != ReleaseType::Release {
         return Ok(());
     }
 

@@ -176,7 +176,7 @@ pub enum UpdateTarget {
     },
     LxApp {
         id: String,
-        release_type: ReleaseType,
+        channel: ReleaseType,
         query: LxAppUpdateQuery,
     },
     Plugin {
@@ -192,14 +192,10 @@ impl UpdateTarget {
         }
     }
 
-    pub fn lxapp(
-        id: impl Into<String>,
-        release_type: ReleaseType,
-        query: LxAppUpdateQuery,
-    ) -> Self {
+    pub fn lxapp(id: impl Into<String>, channel: ReleaseType, query: LxAppUpdateQuery) -> Self {
         Self::LxApp {
             id: id.into(),
-            release_type,
+            channel,
             query,
         }
     }
@@ -215,9 +211,7 @@ impl UpdateTarget {
     pub fn scope_key(&self) -> String {
         match self {
             Self::App { .. } => "app".to_string(),
-            Self::LxApp {
-                id, release_type, ..
-            } => format!("lxapp:{id}@{}", release_type.as_str()),
+            Self::LxApp { id, channel, .. } => format!("lxapp:{id}@{}", channel.as_str()),
             Self::Plugin { id, version } => format!("plugin:{id}@{version}"),
         }
     }

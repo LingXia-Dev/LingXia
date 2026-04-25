@@ -11,7 +11,7 @@ export interface UpdateManager {
 export interface UpdateReadyInfo {
   version?: string;
   isForceUpdate?: boolean;
-  releaseType?: "release" | "preview" | "developer" | string;
+  channel?: "release" | "preview" | "developer" | string;
 }
 
 export interface UpdateFailedInfo extends UpdateReadyInfo {
