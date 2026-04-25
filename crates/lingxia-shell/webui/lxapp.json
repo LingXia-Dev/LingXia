@@ -3,6 +3,15 @@
   "name": "LingXia Browser",
   "version": "1.0.0",
   "logic": false,
+  "security": {
+    "network": {
+      "trustedDomains": [
+        "cn.bing.com",
+        "raw.githubusercontent.com"
+      ]
+    },
+    "privileges": []
+  },
   "pages": [
     { "name": "newtab", "path": "pages/newtab/index.html" },
     { "name": "downloads", "path": "pages/downloads/index.html" },

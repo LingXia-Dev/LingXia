@@ -36,7 +36,7 @@ my-lxapp/
 
 Key files:
 
-- `lxapp.json`: Runtime metadata (`appId`, `appName` or `name`, `version`, `pages`).
+- `lxapp.json`: Runtime metadata (`appId`, `appName` or `name`, `version`, `pages`) and lxapp security policy.
 - `lxapp.config.ts`: Build config for view tooling, aliases, and static asset directories.
 - `pages/<name>/index.tsx` (or `.vue`): View layer — UI rendering in WebView.
 - `pages/<name>/index.ts`: Logic layer — page lifecycle and business operations.
@@ -59,6 +59,46 @@ Rules:
 - Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
 - Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
 - LingXia does not scan HTML, manifest files, or arbitrary source strings to discover static assets.
+
+### Security Policy
+
+`lxapp.json` must declare the lxapp security policy. New projects include an explicit deny-by-default policy:
+
+```json
+{
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  }
+}
+```
+
+Rules:
+
+- `security.network.trustedDomains: []` denies all remote hosts.
+- Use exact host names, for example `api.example.com` or `cdn.example.com`.
+- Do not include scheme, path, or port. `https://api.example.com`, `api.example.com/path`, and `api.example.com:443` are invalid.
+- Use `"*"` only when the lxapp intentionally allows all remote hosts, for example during local experiments.
+- Do not combine `"*"` with host names. It is an explicit allow-all policy.
+- Domain matching is host-only and normalized to lowercase.
+- The policy is a host allowlist. It does not distinguish `http` and `https`; prefer HTTPS in production.
+- The policy applies to Logic network requests, `lx.downloadFile`, `lx.uploadFile`, and WebView HTTPS resources resolved by LingXia.
+- `security.privileges` is for high-risk host-defined capabilities such as automation or devtools. Ordinary APIs like media, camera, or location remain guarded by host and platform permission flows.
+
+Example:
+
+```json
+{
+  "security": {
+    "network": {
+      "trustedDomains": ["api.example.com", "cdn.example.com"]
+    },
+    "privileges": ["agent.automation"]
+  }
+}
+```
 
 ### Native client
 

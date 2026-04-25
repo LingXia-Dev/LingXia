@@ -3,6 +3,12 @@
   "appName": "__APP_DISPLAY_NAME__",
   "version": "0.0.1",
   "framework": "html",
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  },
   "pages": [
     {
       "name": "home",

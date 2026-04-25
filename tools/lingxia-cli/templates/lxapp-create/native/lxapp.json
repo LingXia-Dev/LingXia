@@ -4,6 +4,12 @@
   "version": "0.0.1",
   "framework": "{{FRAMEWORK}}",
   "logic": false,
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  },
   "pages": [
     {
       "name": "home",
