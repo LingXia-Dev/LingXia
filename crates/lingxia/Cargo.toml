@@ -25,6 +25,7 @@ lingxia-update = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-media = { workspace = true }
 lingxia-service = { workspace = true }
+lingxia-transfer = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }
