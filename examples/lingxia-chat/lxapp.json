@@ -1,8 +1,12 @@
 {
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
-  "version": "1.0.3",
-  "pages": [
-    { "name": "chat", "path": "pages/chat/index" }
-  ]
+  "version": "1.0.4",
+  "security": {
+    "network": {
+      "trustedDomains": []
+    },
+    "privileges": []
+  },
+  "pages": [{ "name": "chat", "path": "pages/chat/index" }]
 }

@@ -1,28 +1,101 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.1.0",
+  "version": "1.1.1",
+  "security": {
+    "network": {
+      "trustedDomains": [
+        "api64.ipify.org",
+        "cdn.plyr.io",
+        "cn.bing.com",
+        "example-files.online-convert.com",
+        "opensource.adobe.com",
+        "www.deepseek.com"
+      ]
+    },
+    "privileges": []
+  },
   "pages": [
-    { "name": "home", "path": "pages/home/index" },
-    { "name": "popup", "path": "pages/popup/index" },
-    { "name": "api", "path": "pages/API/index" },
-    { "name": "cloud", "path": "pages/cloud/index" },
-    { "name": "video", "path": "pages/video/index" },
-    { "name": "media", "path": "pages/media/index" },
-    { "name": "ui", "path": "pages/ui/index" },
-    { "name": "device", "path": "pages/device/index" },
-    { "name": "wifi", "path": "pages/wifi/index" },
-    { "name": "system", "path": "pages/system/index" },
-    { "name": "location", "path": "pages/location/index" },
-    { "name": "file", "path": "pages/file/index" },
-    { "name": "components", "path": "pages/components/index" },
-    { "name": "pullToRefresh", "path": "pages/pulltorefresh/index" },
-    { "name": "todo", "path": "pages/todo/index" },
-    { "name": "picker", "path": "pages/picker/index" },
-    { "name": "navigator", "path": "pages/navigator/index" },
-    { "name": "input", "path": "pages/input/index" },
-    { "name": "stream", "path": "pages/stream/index" },
-    { "name": "channel", "path": "pages/channel/index" }
+    {
+      "name": "home",
+      "path": "pages/home/index"
+    },
+    {
+      "name": "popup",
+      "path": "pages/popup/index"
+    },
+    {
+      "name": "api",
+      "path": "pages/API/index"
+    },
+    {
+      "name": "cloud",
+      "path": "pages/cloud/index"
+    },
+    {
+      "name": "video",
+      "path": "pages/video/index"
+    },
+    {
+      "name": "media",
+      "path": "pages/media/index"
+    },
+    {
+      "name": "ui",
+      "path": "pages/ui/index"
+    },
+    {
+      "name": "device",
+      "path": "pages/device/index"
+    },
+    {
+      "name": "wifi",
+      "path": "pages/wifi/index"
+    },
+    {
+      "name": "system",
+      "path": "pages/system/index"
+    },
+    {
+      "name": "location",
+      "path": "pages/location/index"
+    },
+    {
+      "name": "file",
+      "path": "pages/file/index"
+    },
+    {
+      "name": "components",
+      "path": "pages/components/index"
+    },
+    {
+      "name": "pullToRefresh",
+      "path": "pages/pulltorefresh/index"
+    },
+    {
+      "name": "todo",
+      "path": "pages/todo/index"
+    },
+    {
+      "name": "picker",
+      "path": "pages/picker/index"
+    },
+    {
+      "name": "navigator",
+      "path": "pages/navigator/index"
+    },
+    {
+      "name": "input",
+      "path": "pages/input/index"
+    },
+    {
+      "name": "stream",
+      "path": "pages/stream/index"
+    },
+    {
+      "name": "channel",
+      "path": "pages/channel/index"
+    }
   ],
   "tabBar": {
     "color": "#999999",

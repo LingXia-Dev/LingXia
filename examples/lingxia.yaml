@@ -1,6 +1,6 @@
 app:
   projectName: lingxia
-  lingxiaId: lingxia
+  lingxiaId: lingxia-showcase
   productName: LingXia App Demo
   productVersion: 0.2.0
   platforms:
@@ -8,11 +8,10 @@ app:
     - ios
     - macos
     - harmony
-  homeLxAppID: lingxia-showcase
-  cacheMaxAgeDays: 7
+  homeAppId: lingxia-showcase
 
 android:
-  packageId: com.lingxia.example
+  packageId: com.lingxia.example.lxapp
   minSdk: 29
   targetSdk: 35
   compileSdk: 35
@@ -31,19 +30,38 @@ macos:
 harmony:
   bundleName: app.lingxia.lxapp.example
 
+features:
+  appService: true
+  shell: true
+  devtools: false
+
+capabilities:
+  notifications: true
+
+resources:
+  bundles:
+    - type: lxapp
+      appId: lingxia-showcase
+      path: lingxia-showcase
+    - type: lxapp
+      appId: app.lingxia.browser
+      path: ../crates/lingxia-shell/webui
+    - type: lxapp
+      appId: lingxia-chat
+
 ui:
   launch:
     initialSurface: main
   surfaces:
     - id: main
       presentation:
-        style: window
+        kind: window
       content:
         kind: lxapp
         appId: lingxia-showcase
     - id: assistant
       presentation:
-        style: attachedPanel
+        kind: attachPanel
         attachTo: main
         edge: trailing
       content:
@@ -59,9 +77,13 @@ ui:
         kind: toggleSurface
         surface: assistant
 
-resources:
-  bundles:
-    - type: lxapp
-      path: lingxia-showcase
-    - type: lxapp
-      path: ../crates/lingxia-shell/webui
+appLinks:
+  hosts:
+    - applink.lingxia.app
+
+storage:
+  tempMaxSizeMB: 1024
+  cacheMaxAgeDays: 7
+  cacheMaxSizeMB: 2048
+  dataMaxSizeMB: 4096
+  appStorageMaxSizeMB: 16384
