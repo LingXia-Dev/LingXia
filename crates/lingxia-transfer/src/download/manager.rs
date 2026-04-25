@@ -166,12 +166,45 @@ struct DownloadSuccess {
 }
 
 /// Terminal failure result for a download task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadFailureKind {
+    InvalidRequest,
+    Conflict,
+    Timeout,
+    NetworkUnavailable,
+    Server,
+    Connection,
+    Canceled,
+    Internal,
+}
+
 #[derive(Debug, Clone)]
 pub struct DownloadFailure {
+    pub kind: DownloadFailureKind,
     pub url: String,
     pub error: String,
     pub downloaded_bytes: u64,
     pub total_bytes: Option<u64>,
+}
+
+impl DownloadFailure {
+    fn new(
+        kind: DownloadFailureKind,
+        url: impl Into<String>,
+        error: impl Into<String>,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    ) -> Self {
+        let url = url.into();
+        let error = error.into();
+        Self {
+            kind,
+            url,
+            error,
+            downloaded_bytes,
+            total_bytes,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -227,10 +260,44 @@ struct DownloadProgress {
 
 #[derive(Debug, Clone)]
 struct DownloadAttemptFailure {
+    kind: DownloadFailureKind,
     error: String,
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
     retryable: bool,
+}
+
+fn classify_transport_download_failure(error: &str) -> DownloadFailureKind {
+    let lower = error.trim().to_ascii_lowercase();
+    if lower == DOWNLOAD_CANCELED_ERROR.to_ascii_lowercase()
+        || lower == DOWNLOAD_PAUSED_ERROR.to_ascii_lowercase()
+        || lower.contains("download canceled")
+        || lower.contains("download paused")
+        || lower.contains("operation canceled")
+        || lower.contains("operation cancelled")
+    {
+        return DownloadFailureKind::Canceled;
+    }
+    if lower.contains("timeout") {
+        return DownloadFailureKind::Timeout;
+    }
+    if lower.contains("dns")
+        || lower.contains("unreachable")
+        || lower.contains("no route")
+        || lower.contains("network unavailable")
+    {
+        return DownloadFailureKind::NetworkUnavailable;
+    }
+    if lower.contains("connection")
+        || lower.contains("connect")
+        || lower.contains("broken pipe")
+        || lower.contains("tls")
+        || lower.contains("unexpected eof")
+        || lower.contains("early eof")
+    {
+        return DownloadFailureKind::Connection;
+    }
+    DownloadFailureKind::Internal
 }
 
 fn resolve_download_root(app_data_dir: &Path, default_root: impl Into<PathBuf>) -> PathBuf {
@@ -862,17 +929,19 @@ fn record_failed_for_persistence(
 
 fn emit_failed(
     on_event: &mut impl FnMut(DownloadEvent),
+    kind: DownloadFailureKind,
     url: String,
     error: String,
     downloaded_bytes: u64,
     total_bytes: Option<u64>,
 ) -> DownloadFailure {
-    let failure = DownloadFailure {
-        url: url.clone(),
-        error: error.clone(),
+    let failure = DownloadFailure::new(
+        kind,
+        url.clone(),
+        error.clone(),
         downloaded_bytes,
         total_bytes,
-    };
+    );
     on_event(DownloadEvent::Failed {
         url,
         error,
@@ -1031,6 +1100,7 @@ async fn run_download_attempt(
         Ok(req) => req,
         Err(e) => {
             return Err(DownloadAttemptFailure {
+                kind: DownloadFailureKind::Internal,
                 error: format!("build request failed: {}", e),
                 downloaded_bytes: resume_offset,
                 total_bytes: None,
@@ -1050,6 +1120,7 @@ async fn run_download_attempt(
         Err(e) => {
             let error = e.to_string();
             return Err(DownloadAttemptFailure {
+                kind: classify_transport_download_failure(&error),
                 retryable: is_retryable_transport_error(&error),
                 error,
                 downloaded_bytes: resume_offset,
@@ -1061,6 +1132,7 @@ async fn run_download_attempt(
     if !response.status.is_success() {
         let status = response.status.as_u16();
         return Err(DownloadAttemptFailure {
+            kind: DownloadFailureKind::Server,
             error: format!("http status {status}"),
             downloaded_bytes: resume_offset,
             total_bytes: None,
@@ -1084,6 +1156,7 @@ async fn run_download_attempt(
         Ok(file) => file,
         Err(e) => {
             return Err(DownloadAttemptFailure {
+                kind: DownloadFailureKind::Internal,
                 error: format!("open temp file failed: {}", e),
                 downloaded_bytes: resume_offset,
                 total_bytes: None,
@@ -1256,6 +1329,7 @@ async fn run_download_attempt(
         let _ = file.flush().await;
         save_resume_metadata(task, &resume_meta).await;
         return Err(DownloadAttemptFailure {
+            kind: classify_transport_download_failure(&error),
             retryable: error != DOWNLOAD_CANCELED_ERROR
                 && error != DOWNLOAD_PAUSED_ERROR
                 && is_retryable_transport_error(&error),
@@ -1268,6 +1342,7 @@ async fn run_download_attempt(
     if let Err(e) = file.flush().await {
         save_resume_metadata(task, &resume_meta).await;
         return Err(DownloadAttemptFailure {
+            kind: DownloadFailureKind::Internal,
             error: format!("flush failed: {}", e),
             downloaded_bytes: progress.downloaded,
             total_bytes,
@@ -1283,6 +1358,7 @@ async fn run_download_attempt(
     {
         save_resume_metadata(task, &resume_meta).await;
         return Err(DownloadAttemptFailure {
+            kind: DownloadFailureKind::Internal,
             error: format!("remove existing target failed: {}", e),
             downloaded_bytes: progress.downloaded,
             total_bytes,
@@ -1293,6 +1369,7 @@ async fn run_download_attempt(
     if let Err(e) = fs::rename(part_path, target_path).await {
         save_resume_metadata(task, &resume_meta).await;
         return Err(DownloadAttemptFailure {
+            kind: DownloadFailureKind::Internal,
             error: format!("rename failed: {}", e),
             downloaded_bytes: progress.downloaded,
             total_bytes,
@@ -1334,6 +1411,7 @@ async fn run_download_task(
     if let Err(e) = fs::create_dir_all(&task.root_dir).await {
         return Err(emit_failed(
             &mut on_event,
+            DownloadFailureKind::Internal,
             url,
             format!("create download dir failed: {}", e),
             0,
@@ -1385,12 +1463,13 @@ async fn run_download_task(
                         downloaded_bytes: failure.downloaded_bytes,
                         total_bytes: failure.total_bytes,
                     });
-                    return Err(DownloadFailure {
-                        url: request.url.clone(),
-                        error: failure.error,
-                        downloaded_bytes: failure.downloaded_bytes,
-                        total_bytes: failure.total_bytes,
-                    });
+                    return Err(DownloadFailure::new(
+                        DownloadFailureKind::Canceled,
+                        request.url.clone(),
+                        failure.error,
+                        failure.downloaded_bytes,
+                        failure.total_bytes,
+                    ));
                 }
 
                 let should_retry = failure.retryable && attempt < task.behavior.max_retries;
@@ -1416,12 +1495,13 @@ async fn run_download_task(
                                 downloaded_bytes: failure.downloaded_bytes,
                                 total_bytes: failure.total_bytes,
                             });
-                            return Err(DownloadFailure {
-                                url: request.url.clone(),
+                            return Err(DownloadFailure::new(
+                                DownloadFailureKind::Canceled,
+                                request.url.clone(),
                                 error,
-                                downloaded_bytes: failure.downloaded_bytes,
-                                total_bytes: failure.total_bytes,
-                            });
+                                failure.downloaded_bytes,
+                                failure.total_bytes,
+                            ));
                         }
                         record_failed_for_persistence(
                             &task,
@@ -1431,6 +1511,7 @@ async fn run_download_task(
                         );
                         return Err(emit_failed(
                             &mut on_event,
+                            classify_transport_download_failure(&error),
                             request.url.clone(),
                             error,
                             failure.downloaded_bytes,
@@ -1448,6 +1529,7 @@ async fn run_download_task(
                 );
                 return Err(emit_failed(
                     &mut on_event,
+                    failure.kind,
                     request.url.clone(),
                     failure.error,
                     failure.downloaded_bytes,
@@ -1577,12 +1659,13 @@ pub async fn run_browser_download_task(
 }
 
 fn wait_shared_download_error(url: &str) -> DownloadFailure {
-    DownloadFailure {
-        url: url.to_string(),
-        error: "download channel closed unexpectedly".to_string(),
-        downloaded_bytes: 0,
-        total_bytes: None,
-    }
+    DownloadFailure::new(
+        DownloadFailureKind::Conflict,
+        url.to_string(),
+        "download channel closed unexpectedly",
+        0,
+        None,
+    )
 }
 
 async fn wait_shared_download(
@@ -1682,12 +1765,13 @@ pub async fn download_to_user_cache_with_behavior(
 ) -> Result<UserCacheDownloadResult, DownloadFailure> {
     let url = user_request.url.trim().to_string();
     if url.is_empty() {
-        return Err(DownloadFailure {
+        return Err(DownloadFailure::new(
+            DownloadFailureKind::InvalidRequest,
             url,
-            error: "download url cannot be empty".to_string(),
-            downloaded_bytes: 0,
-            total_bytes: None,
-        });
+            "download url cannot be empty",
+            0,
+            None,
+        ));
     }
 
     let key = user_cache_download_key(&user_request);
@@ -1719,20 +1803,22 @@ pub async fn download_to_user_cache_with_behavior(
     let rx = match tracker.entry(key.clone()) {
         DashEntry::Occupied(entry) => {
             if !should_share {
-                return Err(DownloadFailure {
+                return Err(DownloadFailure::new(
+                    DownloadFailureKind::Conflict,
                     url,
-                    error: "download is already active".to_string(),
-                    downloaded_bytes: 0,
-                    total_bytes: None,
-                });
+                    "download is already active",
+                    0,
+                    None,
+                ));
             }
             if entry.get().signature != share_signature {
-                return Err(DownloadFailure {
+                return Err(DownloadFailure::new(
+                    DownloadFailureKind::Conflict,
                     url,
-                    error: "download is already active with different behavior".to_string(),
-                    downloaded_bytes: 0,
-                    total_bytes: None,
-                });
+                    "download is already active with different behavior",
+                    0,
+                    None,
+                ));
             }
             Some(entry.get().tx.subscribe())
         }
@@ -1819,12 +1905,13 @@ pub async fn download_to_path_with_behavior(
 ) -> Result<UserCacheDownloadResult, DownloadFailure> {
     let url = user_request.url.trim().to_string();
     if url.is_empty() {
-        return Err(DownloadFailure {
+        return Err(DownloadFailure::new(
+            DownloadFailureKind::InvalidRequest,
             url,
-            error: "download url cannot be empty".to_string(),
-            downloaded_bytes: 0,
-            total_bytes: None,
-        });
+            "download url cannot be empty",
+            0,
+            None,
+        ));
     }
 
     let root_dir = target_path
@@ -1839,15 +1926,16 @@ pub async fn download_to_path_with_behavior(
     let rx = match tracker.entry(path_key.clone()) {
         DashEntry::Occupied(entry) => {
             if !should_share || entry.get().signature != share_signature {
-                return Err(DownloadFailure {
+                return Err(DownloadFailure::new(
+                    DownloadFailureKind::Conflict,
                     url,
-                    error: format!(
+                    format!(
                         "download target path is already in use: {}",
                         target_path.display()
                     ),
-                    downloaded_bytes: 0,
-                    total_bytes: None,
-                });
+                    0,
+                    None,
+                ));
             }
             Some(entry.get().tx.subscribe())
         }

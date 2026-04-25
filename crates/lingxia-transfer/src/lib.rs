@@ -5,8 +5,8 @@ pub use download::{
     DownloadEvent, DownloadEventKind, DownloadRecord, DownloadStatus, DownloadsSnapshot,
 };
 pub use upload::{
-    UploadBehavior, UploadEvent, UploadFailure, UploadMethod, UploadRequest, UploadResult,
-    resolve_upload_file_name, upload_file_with_behavior,
+    UploadBehavior, UploadEvent, UploadFailure, UploadFailureKind, UploadMethod, UploadRequest,
+    UploadResult, resolve_upload_file_name, upload_file_with_behavior,
 };
 
 use std::path::{Path, PathBuf};
@@ -30,9 +30,9 @@ pub mod runtime {
 /// Resumable user-cache download primitives used by lxapp logic/runtime.
 pub mod user_cache {
     pub use crate::download::manager::{
-        DownloadBehavior, DownloadEvent, DownloadOwner, DownloadOwnerKind, DownloadPersistence,
-        UserCacheDownloadRequest, UserCacheDownloadResult, download_request_task_id,
-        download_to_path_with_behavior, download_to_user_cache,
+        DownloadBehavior, DownloadEvent, DownloadFailure, DownloadFailureKind, DownloadOwner,
+        DownloadOwnerKind, DownloadPersistence, UserCacheDownloadRequest, UserCacheDownloadResult,
+        download_request_task_id, download_to_path_with_behavior, download_to_user_cache,
         download_to_user_cache_with_behavior,
     };
 }

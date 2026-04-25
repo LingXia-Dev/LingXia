@@ -10,7 +10,8 @@ use futures::channel::{mpsc, oneshot};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 use lingxia_transfer::user_cache::{
-    self, DownloadBehavior, DownloadEvent as TransferDownloadEvent,
+    self, DownloadBehavior, DownloadEvent as TransferDownloadEvent, DownloadFailure,
+    DownloadFailureKind,
 };
 use lxapp::{LxApp, lx};
 use rong::{
@@ -167,6 +168,7 @@ enum DownloadCompletionOutcome {
 #[derive(Debug, Clone)]
 enum DownloadFailureReason {
     Quota(StorageQuotaError),
+    Network { code: u32, message: String },
     Internal(String),
 }
 
@@ -177,9 +179,34 @@ impl DownloadFailureReason {
 
     fn to_js_error(&self) -> rong::RongJSError {
         match self {
-            Self::Quota(error) => error.into_js_error(),
+            Self::Quota(error) => storage::quota_error_to_js(*error),
+            Self::Network { code, message } => {
+                js_error_from_business_code_with_detail(*code, message)
+            }
             Self::Internal(message) => js_internal_error(format!("download failed: {message}")),
         }
+    }
+}
+
+fn download_failure_to_reason(error: DownloadFailure) -> DownloadFailureReason {
+    let code = match error.kind {
+        DownloadFailureKind::Timeout => Some(5002),
+        DownloadFailureKind::NetworkUnavailable => Some(5001),
+        DownloadFailureKind::Server => Some(5003),
+        DownloadFailureKind::Connection => Some(5004),
+        DownloadFailureKind::Canceled
+        | DownloadFailureKind::InvalidRequest
+        | DownloadFailureKind::Conflict
+        | DownloadFailureKind::Internal => None,
+    };
+
+    if let Some(code) = code {
+        DownloadFailureReason::Network {
+            code,
+            message: error.error,
+        }
+    } else {
+        DownloadFailureReason::internal(error.error)
     }
 }
 
@@ -506,9 +533,14 @@ fn resolve_output_path(
         let resolved = lxapp
             .resolve_accessible_path(file_path)
             .map_err(|err| js_error_from_lxapp_error(&err))?;
+        if resolved.starts_with(&lxapp.user_cache_dir) {
+            return Err(js_invalid_parameter_error(
+                "downloadFile filePath must use lx://userdata or be omitted",
+            ));
+        }
         if !resolved.starts_with(&lxapp.user_data_dir) {
             return Err(js_invalid_parameter_error(
-                "downloadFile filePath must target lx://userdata",
+                "downloadFile filePath must use lx://userdata or be omitted",
             ));
         }
         if resolved == lxapp.user_data_dir {
@@ -570,18 +602,26 @@ async fn finalize_download_result(
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::internal(format!("create temp dir failed: {e}"))
         })?;
-        let ext = download_extension(source_url, result.mime_type.as_deref());
+        let ext = download_extension(source_url, result.mime_type.as_deref()).ok_or_else(|| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::Network {
+                code: 5003,
+                message: "download response requires Content-Type or a URL file extension"
+                    .to_string(),
+            }
+        })?;
         let mut filename = unique_temp_download_name(source_url, &result.temp_path, result.size);
-        if let Some(ext) = ext {
-            filename.push('.');
-            filename.push_str(&ext);
-        }
+        filename.push('.');
+        filename.push_str(&ext);
         let temp_path = download_temp_dir.join(filename);
+        storage::ensure_temp_quota(temp_dir, &temp_path, result.size).map_err(|err| {
+            cleanup_staging_file(&result.temp_path);
+            DownloadFailureReason::Quota(err)
+        })?;
         storage::move_file_atomic(&result.temp_path, &temp_path).map_err(|e| {
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::internal(format!("move download to temp failed: {e}"))
         })?;
-        storage::ensure_temp_quota(temp_dir, &temp_path).map_err(DownloadFailureReason::Quota)?;
         return Ok(DownloadCompletion {
             path: temp_path,
             path_kind: DownloadPathKind::Temp,
@@ -747,7 +787,7 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
                 )
                 .await
             }
-            Err(error) => Err(DownloadFailureReason::internal(error.error)),
+            Err(error) => Err(download_failure_to_reason(error)),
         };
 
         match result {
@@ -902,7 +942,9 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     if let Some((path, DownloadPathKind::UserData)) = output_path.as_ref()
         && std::fs::symlink_metadata(path).is_ok()
     {
-        return Err(StorageQuotaError::DestinationExists.into_js_error());
+        return Err(storage::quota_error_to_js(
+            StorageQuotaError::DestinationExists,
+        ));
     }
     if let Some((path, DownloadPathKind::UserData)) = output_path.as_ref() {
         ensure_no_symlink_ancestors(&lxapp.user_data_dir, path)

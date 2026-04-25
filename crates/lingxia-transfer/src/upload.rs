@@ -102,12 +102,74 @@ pub enum UploadEvent {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UploadFailureKind {
+    InvalidRequest,
+    InvalidFile,
+    Timeout,
+    NetworkUnavailable,
+    Server,
+    Connection,
+    Canceled,
+    Internal,
+}
+
 #[derive(Debug, Clone)]
 pub struct UploadFailure {
+    pub kind: UploadFailureKind,
     pub url: String,
     pub error: String,
     pub uploaded_bytes: u64,
     pub total_bytes: u64,
+}
+
+impl UploadFailure {
+    fn new(
+        kind: UploadFailureKind,
+        url: String,
+        error: impl Into<String>,
+        uploaded_bytes: u64,
+        total_bytes: u64,
+    ) -> Self {
+        let error = error.into();
+        Self {
+            kind,
+            url,
+            error,
+            uploaded_bytes,
+            total_bytes,
+        }
+    }
+}
+
+fn classify_transport_upload_failure(error: &str) -> UploadFailureKind {
+    let lower = error.trim().to_ascii_lowercase();
+    if lower == "aborted" || lower == UPLOAD_CANCELED_ERROR.to_ascii_lowercase() {
+        return UploadFailureKind::Canceled;
+    }
+    if lower.contains("timeout") {
+        return UploadFailureKind::Timeout;
+    }
+    if lower.contains("dns")
+        || lower.contains("unreachable")
+        || lower.contains("network unavailable")
+        || lower.contains("no route")
+    {
+        return UploadFailureKind::NetworkUnavailable;
+    }
+    if lower.contains("connection")
+        || lower.contains("connect")
+        || lower.contains("broken pipe")
+        || lower.contains("tls")
+        || lower.contains("unexpected eof")
+        || lower.contains("early eof")
+    {
+        return UploadFailureKind::Connection;
+    }
+    if lower.starts_with("http status ") {
+        return UploadFailureKind::Server;
+    }
+    UploadFailureKind::Internal
 }
 
 fn upload_request_options(
@@ -224,11 +286,15 @@ async fn collect_response_body(body: rong_rt::http::HttpBody) -> Result<Vec<u8>,
     host_http::collect_body(body)
         .await
         .map(|bytes| bytes.to_vec())
-        .map_err(|err| UploadFailure {
-            url: String::new(),
-            error: err.to_string(),
-            uploaded_bytes: 0,
-            total_bytes: 0,
+        .map_err(|err| {
+            let error = err.to_string();
+            UploadFailure::new(
+                classify_transport_upload_failure(&error),
+                String::new(),
+                error,
+                0,
+                0,
+            )
         })
 }
 
@@ -240,29 +306,34 @@ pub async fn upload_file_with_behavior(
 ) -> Result<UploadResult, UploadFailure> {
     let url = request.url.trim().to_string();
     if url.is_empty() {
-        return Err(UploadFailure {
+        return Err(UploadFailure::new(
+            UploadFailureKind::InvalidRequest,
             url,
-            error: "upload url cannot be empty".to_string(),
-            uploaded_bytes: 0,
-            total_bytes: 0,
-        });
+            "upload url cannot be empty",
+            0,
+            0,
+        ));
     }
 
     let file_meta = tokio::fs::metadata(&request.file_path)
         .await
-        .map_err(|err| UploadFailure {
-            url: url.clone(),
-            error: format!("read upload file metadata failed: {err}"),
-            uploaded_bytes: 0,
-            total_bytes: 0,
+        .map_err(|err| {
+            UploadFailure::new(
+                UploadFailureKind::InvalidFile,
+                url.clone(),
+                format!("read upload file metadata failed: {err}"),
+                0,
+                0,
+            )
         })?;
     if !file_meta.is_file() {
-        return Err(UploadFailure {
-            url: url.clone(),
-            error: "upload filePath must point to a regular file".to_string(),
-            uploaded_bytes: 0,
-            total_bytes: 0,
-        });
+        return Err(UploadFailure::new(
+            UploadFailureKind::InvalidFile,
+            url.clone(),
+            "upload filePath must point to a regular file",
+            0,
+            0,
+        ));
     }
 
     let file_name = file_name_for_request(&request);
@@ -310,14 +381,15 @@ pub async fn upload_file_with_behavior(
         }
     }
 
-    let request_obj = request_builder
-        .body(body.boxed())
-        .map_err(|err| UploadFailure {
-            url: url.clone(),
-            error: format!("build upload request failed: {err}"),
-            uploaded_bytes: 0,
+    let request_obj = request_builder.body(body.boxed()).map_err(|err| {
+        UploadFailure::new(
+            UploadFailureKind::Internal,
+            url.clone(),
+            format!("build upload request failed: {err}"),
+            0,
             total_bytes,
-        })?;
+        )
+    })?;
 
     let file_path = request.file_path.clone();
     let url_for_writer = url.clone();
@@ -333,15 +405,15 @@ pub async fn upload_file_with_behavior(
         });
 
         if !prefix.is_empty() {
-            body_tx
-                .send_data(Bytes::from(prefix))
-                .await
-                .map_err(|_| UploadFailure {
-                    url: url_for_writer.clone(),
-                    error: "upload request body closed before prefix was sent".to_string(),
+            body_tx.send_data(Bytes::from(prefix)).await.map_err(|_| {
+                UploadFailure::new(
+                    UploadFailureKind::Connection,
+                    url_for_writer.clone(),
+                    "upload request body closed before prefix was sent",
                     uploaded_bytes,
                     total_bytes,
-                })?;
+                )
+            })?;
             uploaded_bytes += (total_bytes - file_size - suffix.len() as u64)
                 .min(total_bytes.saturating_sub(uploaded_bytes));
             let _ = event_tx_for_writer.send(UploadEvent::Progress {
@@ -351,22 +423,28 @@ pub async fn upload_file_with_behavior(
             });
         }
 
-        let mut file = File::open(&file_path).await.map_err(|err| UploadFailure {
-            url: url_for_writer.clone(),
-            error: format!("open upload file failed: {err}"),
-            uploaded_bytes,
-            total_bytes,
+        let mut file = File::open(&file_path).await.map_err(|err| {
+            UploadFailure::new(
+                UploadFailureKind::InvalidFile,
+                url_for_writer.clone(),
+                format!("open upload file failed: {err}"),
+                uploaded_bytes,
+                total_bytes,
+            )
         })?;
         let mut buffer = vec![0u8; chunk_size];
         let mut last_emitted = uploaded_bytes;
         let mut last_emit_at = Instant::now();
 
         loop {
-            let read = file.read(&mut buffer).await.map_err(|err| UploadFailure {
-                url: url_for_writer.clone(),
-                error: format!("read upload file failed: {err}"),
-                uploaded_bytes,
-                total_bytes,
+            let read = file.read(&mut buffer).await.map_err(|err| {
+                UploadFailure::new(
+                    UploadFailureKind::InvalidFile,
+                    url_for_writer.clone(),
+                    format!("read upload file failed: {err}"),
+                    uploaded_bytes,
+                    total_bytes,
+                )
             })?;
             if read == 0 {
                 break;
@@ -374,11 +452,14 @@ pub async fn upload_file_with_behavior(
             body_tx
                 .send_data(Bytes::copy_from_slice(&buffer[..read]))
                 .await
-                .map_err(|_| UploadFailure {
-                    url: url_for_writer.clone(),
-                    error: "upload request body closed during file transfer".to_string(),
-                    uploaded_bytes,
-                    total_bytes,
+                .map_err(|_| {
+                    UploadFailure::new(
+                        UploadFailureKind::Connection,
+                        url_for_writer.clone(),
+                        "upload request body closed during file transfer",
+                        uploaded_bytes,
+                        total_bytes,
+                    )
                 })?;
             uploaded_bytes += read as u64;
             let should_emit = uploaded_bytes.saturating_sub(last_emitted)
@@ -396,15 +477,15 @@ pub async fn upload_file_with_behavior(
         }
 
         if !suffix.is_empty() {
-            body_tx
-                .send_data(Bytes::from(suffix))
-                .await
-                .map_err(|_| UploadFailure {
-                    url: url_for_writer.clone(),
-                    error: "upload request body closed before trailer was sent".to_string(),
+            body_tx.send_data(Bytes::from(suffix)).await.map_err(|_| {
+                UploadFailure::new(
+                    UploadFailureKind::Connection,
+                    url_for_writer.clone(),
+                    "upload request body closed before trailer was sent",
                     uploaded_bytes,
                     total_bytes,
-                })?;
+                )
+            })?;
             uploaded_bytes = total_bytes;
         }
 
@@ -433,16 +514,17 @@ pub async fn upload_file_with_behavior(
                             .await
                             .unwrap_or_default();
                         let error = String::from_utf8_lossy(&body).trim().to_string();
-                        let failure = UploadFailure {
-                            url: request.url.clone(),
-                            error: if error.is_empty() {
+                        let failure = UploadFailure::new(
+                            UploadFailureKind::Server,
+                            request.url.clone(),
+                            if error.is_empty() {
                                 format!("http status {status_code}")
                             } else {
                                 format!("http status {status_code}: {error}")
                             },
-                            uploaded_bytes: err.uploaded_bytes,
+                            err.uploaded_bytes,
                             total_bytes,
-                        };
+                        );
                         let _ = event_tx.send(UploadEvent::Failed {
                             url: request.url.clone(),
                             error: failure.error.clone(),
@@ -475,12 +557,13 @@ pub async fn upload_file_with_behavior(
             return Err(err);
         }
         Err(err) => {
-            let failure = UploadFailure {
-                url: request.url.clone(),
-                error: format!("upload writer task failed: {err}"),
-                uploaded_bytes: 0,
+            let failure = UploadFailure::new(
+                UploadFailureKind::Internal,
+                request.url.clone(),
+                format!("upload writer task failed: {err}"),
+                0,
                 total_bytes,
-            };
+            );
             let _ = event_tx.send(UploadEvent::Failed {
                 url: request.url.clone(),
                 error: failure.error.clone(),
@@ -507,16 +590,17 @@ pub async fn upload_file_with_behavior(
 
             if !(200..300).contains(&status_code) {
                 let error = String::from_utf8_lossy(&body).trim().to_string();
-                let failure = UploadFailure {
-                    url: request.url.clone(),
-                    error: if error.is_empty() {
+                let failure = UploadFailure::new(
+                    UploadFailureKind::Server,
+                    request.url.clone(),
+                    if error.is_empty() {
                         format!("http status {status_code}")
                     } else {
                         format!("http status {status_code}: {error}")
                     },
                     uploaded_bytes,
                     total_bytes,
-                };
+                );
                 let _ = event_tx.send(UploadEvent::Failed {
                     url: request.url.clone(),
                     error: failure.error.clone(),
@@ -540,12 +624,13 @@ pub async fn upload_file_with_behavior(
         }
         Err(err) => {
             let message = err.to_string();
-            let failure = UploadFailure {
-                url: request.url.clone(),
-                error: message.clone(),
+            let failure = UploadFailure::new(
+                classify_transport_upload_failure(&message),
+                request.url.clone(),
+                message.clone(),
                 uploaded_bytes,
                 total_bytes,
-            };
+            );
             let event = if message == "aborted" {
                 UploadEvent::Canceled {
                     url: request.url.clone(),

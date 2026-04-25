@@ -6,8 +6,8 @@ use futures::channel::{mpsc, oneshot};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 use lingxia_transfer::{
-    UploadBehavior, UploadEvent as TransferUploadEvent, UploadMethod, UploadRequest,
-    resolve_upload_file_name, upload_file_with_behavior,
+    UploadBehavior, UploadEvent as TransferUploadEvent, UploadFailure, UploadFailureKind,
+    UploadMethod, UploadRequest, resolve_upload_file_name, upload_file_with_behavior,
 };
 use lxapp::{LxApp, lx};
 use rong::{
@@ -128,7 +128,7 @@ impl UploadIteratorState {
 
 enum UploadCompletionOutcome {
     Success(UploadCompletion),
-    Failed(String),
+    Failed(UploadFailure),
     Canceled,
 }
 
@@ -144,18 +144,27 @@ enum UploadIteratorMessage {
     },
     Canceled,
     Success(UploadCompletion),
-    Error(String),
+    Error(UploadFailure),
 }
 
 fn js_abort_error(detail: impl AsRef<str>) -> rong::RongJSError {
     HostError::new(rong::error::E_ABORT, detail.as_ref()).into()
 }
 
-fn js_upload_failed_error(detail: impl AsRef<str>) -> rong::RongJSError {
-    let detail = detail.as_ref();
-    HostError::new(rong::error::E_NETWORK, detail)
-        .with_data(rong::err_data!({ bizCode: (1001), detail: (detail) }))
-        .into()
+fn upload_failure_to_js_error(error: UploadFailure) -> rong::RongJSError {
+    match error.kind {
+        UploadFailureKind::Timeout => js_error_from_business_code_with_detail(5002, error.error),
+        UploadFailureKind::NetworkUnavailable => {
+            js_error_from_business_code_with_detail(5001, error.error)
+        }
+        UploadFailureKind::Server => js_error_from_business_code_with_detail(5003, error.error),
+        UploadFailureKind::Connection => js_error_from_business_code_with_detail(5004, error.error),
+        UploadFailureKind::Canceled => js_abort_error(error.error),
+        UploadFailureKind::InvalidRequest | UploadFailureKind::InvalidFile => {
+            js_invalid_parameter_error(error.error)
+        }
+        UploadFailureKind::Internal => js_internal_error(format!("upload failed: {}", error.error)),
+    }
 }
 
 fn progress_value(
@@ -522,11 +531,9 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
                     guard.completion.take()
                 };
                 if let Some(completion) = completion {
-                    let _ = completion.send(UploadCompletionOutcome::Failed(error.error.clone()));
+                    let _ = completion.send(UploadCompletionOutcome::Failed(error.clone()));
                 }
-                let _ = progress_tx
-                    .send(UploadIteratorMessage::Error(error.error))
-                    .await;
+                let _ = progress_tx.send(UploadIteratorMessage::Error(error)).await;
             }
         }
     });
@@ -559,7 +566,7 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 status_code: result.status_code,
                 data: result.data,
             }),
-            Ok(UploadCompletionOutcome::Failed(error)) => Err(js_upload_failed_error(error)),
+            Ok(UploadCompletionOutcome::Failed(error)) => Err(upload_failure_to_js_error(error)),
             Ok(UploadCompletionOutcome::Canceled) => Err(js_abort_error("uploadFile canceled")),
             Err(_) => Err(js_abort_error("uploadFile canceled")),
         }
@@ -759,10 +766,10 @@ async fn handle_upload_message(
                 }),
             })
         }
-        UploadIteratorMessage::Error(message) => {
+        UploadIteratorMessage::Error(error) => {
             state_guard.status = UploadTaskStatus::Failed;
             state_guard.terminal_seen = true;
-            Err(js_upload_failed_error(message))
+            Err(upload_failure_to_js_error(error))
         }
     }
 }
