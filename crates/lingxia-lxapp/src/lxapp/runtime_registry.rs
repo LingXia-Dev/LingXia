@@ -13,7 +13,9 @@ pub(crate) fn set_runtime(runtime: Arc<Platform>) {
 
 pub(crate) fn set_lxapps_manager(manager: Arc<LxApps>) -> Result<(), LxAppError> {
     LXAPPS_MANAGER.set(manager).map_err(|_| {
-        LxAppError::Runtime("LxApps manager singleton had been initialized by another instance".to_string())
+        LxAppError::Runtime(
+            "LxApps manager singleton had been initialized by another instance".to_string(),
+        )
     })
 }
 

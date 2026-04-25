@@ -1,6 +1,6 @@
 use crate::error::LxAppError;
-use crate::page::config::PageConfig;
 use crate::page::PageInstanceId;
+use crate::page::config::PageConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::Duration;

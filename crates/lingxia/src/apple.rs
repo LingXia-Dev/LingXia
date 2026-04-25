@@ -665,7 +665,11 @@ fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> String 
     page_instance_id
 }
 
-pub fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> self::bridge::PageBindingResult {
+pub fn resolve_page_binding(
+    appid: &str,
+    path: &str,
+    session_id: u64,
+) -> self::bridge::PageBindingResult {
     let page_instance_id = resolve_page_instance_id(appid, path, session_id);
     let webview_ptr = if page_instance_id.is_empty() {
         0

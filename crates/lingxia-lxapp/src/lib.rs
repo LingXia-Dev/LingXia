@@ -1,6 +1,5 @@
 #![cfg_attr(not(feature = "js-appservice"), allow(dead_code, unused_imports))]
 
-mod app;
 mod appservice;
 mod archive;
 pub(crate) mod bridge;
@@ -31,7 +30,6 @@ pub(crate) mod view_call;
 /// This is used for update compatibility checks and can be reported to update services.
 pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub use app::LxAppRuntimeConfig;
 #[cfg(feature = "js-appservice")]
 pub use appservice::PageSvc;
 pub use appservice::event_bus::{publish_app_event, publish_page_event};
@@ -66,11 +64,11 @@ pub use lxapp::{
     touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::on_native_component_event;
+pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
     NavigationType, PageInstance, PageInstanceId, ViewCallOptions, add_global_page_script,
     register_page_resolver, resolve_page_path,
 };
-pub use page::config::{OrientationConfig, PageOrientation};
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
     BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,

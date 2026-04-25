@@ -27,8 +27,9 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
 }
 
 fn spawn_cache_cleanup(runtime: Arc<Platform>) {
-    let max_bytes = crate::app::cache_max_size_bytes();
-    let max_age = crate::app::cache_max_age();
+    let max_bytes = lingxia_app_context::cache_max_size_bytes();
+    let max_age =
+        Duration::from_secs(lingxia_app_context::cache_max_age_days().saturating_mul(86400));
     if max_bytes == 0 && max_age.is_zero() {
         info!("Cache cleanup disabled (cacheMaxSizeMB=0 and cacheMaxAgeDays=0)");
         return;
@@ -51,7 +52,7 @@ fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64, max_age: Durati
                 continue;
             };
             if file_type.is_dir() && !file_type.is_symlink() {
-                crate::cache::cleanup_cache_dir(&path, max_bytes, max_age);
+                lingxia_service::storage::cleanup_cache_dir(&path, max_bytes, max_age);
             }
         }
     }
@@ -94,10 +95,8 @@ fn installed_home_version(
     }))
 }
 
-/// Initialize the LxApps singleton using explicit runtime config prepared by the facade layer.
-pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option<String> {
-    crate::app::set_runtime_config(config.clone());
-
+/// Initialize the LxApps singleton using the host app configuration from app-context.
+pub fn init(runtime: Platform) -> Option<String> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -128,8 +127,20 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
         return None;
     }
 
-    let home_app_id = config.home_appid.clone();
-    let home_app_version = &config.home_app_version;
+    let home_app_id = match lingxia_app_context::home_app_id() {
+        Some(appid) => appid.to_string(),
+        None => {
+            error!("Host app configuration is not initialized");
+            return None;
+        }
+    };
+    let home_app_version = match lingxia_app_context::home_app_version() {
+        Some(version) => version,
+        None => {
+            error!("Host app configuration is not initialized");
+            return None;
+        }
+    };
 
     let bundled_home_version = match Version::parse(home_app_version) {
         Ok(version) => version,
@@ -228,6 +239,5 @@ pub fn init(runtime: Platform, config: crate::app::LxAppRuntimeConfig) -> Option
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
-    UpdateManager::spawn_app_update_flow(runtime_arc.clone(), None);
     Some(home_app_id)
 }

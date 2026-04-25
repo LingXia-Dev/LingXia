@@ -217,6 +217,14 @@ pub fn product_name() -> Option<&'static str> {
     APP_CONFIG.get().map(|c| c.product_name.as_str())
 }
 
+pub fn home_app_id() -> Option<&'static str> {
+    APP_CONFIG.get().map(|c| c.home_app_id.as_str())
+}
+
+pub fn home_app_version() -> Option<&'static str> {
+    APP_CONFIG.get().map(|c| c.home_app_version.as_str())
+}
+
 pub fn product_version() -> Option<&'static str> {
     APP_CONFIG.get().map(|c| c.product_version.as_str())
 }
