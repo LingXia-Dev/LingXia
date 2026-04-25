@@ -153,7 +153,7 @@ pub(crate) fn apply_http_proxy(
 
 #[derive(Debug)]
 pub struct WebViewInner {
-    java_webview: Global<JObject<'static>>,
+    java_webview: Option<Global<JObject<'static>>>,
     pub(crate) webtag: WebTag,
 }
 
@@ -245,26 +245,27 @@ impl WebViewInner {
     /// Create WebViewInner from existing Java WebView object (called from onWebViewReady)
     pub(crate) fn from_java_object(java_webview: Global<JObject<'static>>, webtag: WebTag) -> Self {
         WebViewInner {
-            java_webview,
+            java_webview: Some(java_webview),
             webtag,
         }
     }
 
     pub fn get_java_webview(&self) -> &Global<JObject<'static>> {
-        &self.java_webview
+        self.java_webview
+            .as_ref()
+            .expect("Android WebView global reference is missing")
     }
 }
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         fail_pending_eval_requests_for_webtag(&self.webtag);
-        let _ = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            let _ = env.call_method(
-                &*self.java_webview,
-                jni_str!("destroy"),
-                jni_sig!("()V"),
-                &[],
-            );
+        let Some(java_webview) = self.java_webview.take() else {
+            return;
+        };
+        let _ = with_env(move |env| -> Result<(), Box<dyn std::error::Error>> {
+            let _ = env.call_method(&*java_webview, jni_str!("destroy"), jni_sig!("()V"), &[]);
+            drop(java_webview);
             Ok(())
         });
         log::info!(
@@ -280,7 +281,7 @@ impl WebViewController for WebViewInner {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let url_string = env.new_string(&url)?;
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("loadUrl"),
                 jni_sig!("(Ljava/lang/String;)V"),
                 &[(&url_string).into()],
@@ -300,7 +301,7 @@ impl WebViewController for WebViewInner {
             };
 
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("loadHtmlData"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"),
                 &[
@@ -318,7 +319,7 @@ impl WebViewController for WebViewInner {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             let script_string = env.new_string(js)?;
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("evaluateJavascript"),
                 jni_sig!("(Ljava/lang/String;Landroid/webkit/ValueCallback;)V"),
                 &[(&script_string).into(), (&JObject::null()).into()],
@@ -350,7 +351,7 @@ impl WebViewController for WebViewInner {
             let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
                 let script_string = env.new_string(&wrapped)?;
                 env.call_method(
-                    &*self.java_webview,
+                    &*self.get_java_webview(),
                     jni_str!("evaluateJavascriptWithResult"),
                     jni_sig!("(Ljava/lang/String;J)V"),
                     &[(&script_string).into(), (request_id as i64).into()],
@@ -391,7 +392,7 @@ impl WebViewController for WebViewInner {
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("clearBrowsingData"),
                 jni_sig!("()V"),
                 &[],
@@ -406,7 +407,7 @@ impl WebViewController for WebViewInner {
             let msg_string = env.new_string(&message)?;
 
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("postMessageToWebView"),
                 jni_sig!("(Ljava/lang/String;)V"),
                 &[(&msg_string).into()],
@@ -421,7 +422,7 @@ impl WebViewController for WebViewInner {
             let ua_string = env.new_string(&ua)?;
 
             env.call_method(
-                &*self.java_webview,
+                &*self.get_java_webview(),
                 jni_str!("setUserAgent"),
                 jni_sig!("(Ljava/lang/String;)V"),
                 &[(&ua_string).into()],
