@@ -635,11 +635,24 @@ fn normalize_relative_path<'a>(
 }
 
 fn classify_managed_path(lxapp: &LxApp, path: &Path) -> Option<ManagedPathKind> {
-    if !lxapp.temp_dir.as_os_str().is_empty() && path.starts_with(&lxapp.temp_dir) {
+    fn path_starts_with_root(path: &Path, root: &Path) -> bool {
+        if root.as_os_str().is_empty() {
+            return false;
+        }
+        if path.starts_with(root) {
+            return true;
+        }
+        if let Ok(canonical_root) = std::fs::canonicalize(root) {
+            return path.starts_with(canonical_root);
+        }
+        false
+    }
+
+    if path_starts_with_root(path, &lxapp.temp_dir) {
         Some(ManagedPathKind::Temp)
-    } else if path.starts_with(&lxapp.user_data_dir) {
+    } else if path_starts_with_root(path, &lxapp.user_data_dir) {
         Some(ManagedPathKind::UserData)
-    } else if path.starts_with(&lxapp.user_cache_dir) {
+    } else if path_starts_with_root(path, &lxapp.user_cache_dir) {
         Some(ManagedPathKind::UserCache)
     } else {
         None
@@ -798,21 +811,14 @@ fn mark_usercache_access(lxapp: &LxApp, path: &ManagedPath) {
     }
 }
 
-fn cleanup_usercache_keep(lxapp: &LxApp, keep: Option<&Path>) {
-    lxapp::cleanup_cache_dir_keep(
-        &lxapp.user_cache_dir,
-        lingxia_app_context::cache_max_size_bytes(),
-        std::time::Duration::from_secs(
-            lingxia_app_context::cache_max_age_days().saturating_mul(86400),
-        ),
-        keep,
-    );
+fn cleanup_usercache_preserving(lxapp: &LxApp, preserve: Option<&Path>) {
+    lingxia_service::storage::cleanup_usercache_preserving(&lxapp.user_cache_dir, preserve);
 }
 
 fn finish_write(lxapp: &LxApp, destination: &ManagedPath) {
     if destination.kind == ManagedPathKind::UserCache {
         mark_usercache_access(lxapp, destination);
-        cleanup_usercache_keep(lxapp, Some(&destination.path));
+        cleanup_usercache_preserving(lxapp, Some(&destination.path));
     }
 }
 
@@ -845,7 +851,7 @@ fn ensure_write_quota(
             ),
             ManagedPathKind::Temp => Err(storage::StorageQuotaError::Temp),
         }
-        .map_err(|err| err.into_js_error())?;
+        .map_err(storage::quota_error_to_js)?;
     }
 
     let app_storage_incoming = if is_move
@@ -860,14 +866,14 @@ fn ensure_write_quota(
         let keep_cache_path = source
             .filter(|source| source.kind == ManagedPathKind::UserCache)
             .map(|source| source.path.as_path());
-        storage::ensure_app_storage_quota_keep(
+        storage::ensure_app_storage_quota_preserving(
             &lxapp.user_data_dir,
             &lxapp.user_cache_dir,
             &destination.path,
             app_storage_incoming,
             keep_cache_path,
         )
-        .map_err(|err| err.into_js_error())?;
+        .map_err(storage::quota_error_to_js)?;
     }
     Ok(())
 }

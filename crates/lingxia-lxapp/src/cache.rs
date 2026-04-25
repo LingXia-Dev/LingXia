@@ -11,6 +11,8 @@ use tokio::sync::mpsc;
 
 type HashId = String;
 
+pub(crate) const LXAPP_WEBVIEW_CACHE_DIR: &str = ".webview-cache";
+
 struct CacheDownloadSink {
     final_path: PathBuf,
     key_id: String,
@@ -137,6 +139,9 @@ impl LxAppCache {
     }
 
     pub fn on_access(&self, path: &Path) {
+        if !path.starts_with(&self.cache_dir) {
+            return;
+        }
         self.capacity.on_cache_access(path);
     }
 
@@ -675,7 +680,7 @@ fn enforce_cache_limits_keep(
 }
 
 pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
-    cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, None)
+    lingxia_service::storage::cleanup_cache_dir(cache_dir, max_bytes, max_age);
 }
 
 pub fn cleanup_cache_dir_keep(
@@ -684,21 +689,11 @@ pub fn cleanup_cache_dir_keep(
     max_age: Duration,
     keep: Option<&Path>,
 ) {
-    if max_bytes == 0 && max_age.is_zero() {
-        return;
-    }
-    let outcome = enforce_cache_limits_keep(cache_dir, max_bytes, max_age, keep);
-    if outcome.files_removed > 0 {
-        crate::info!(
-            "Cache cleanup: removed {} files, freed {} bytes",
-            outcome.files_removed,
-            outcome.bytes_freed
-        );
-    }
+    lingxia_service::storage::cleanup_cache_dir_preserving(cache_dir, max_bytes, max_age, keep);
 }
 
 pub fn cleanup_all_cache_dirs(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
-    cleanup_all_cache_dirs_keep(cache_dir, max_bytes, max_age, None)
+    lingxia_service::storage::cleanup_all_cache_dirs(cache_dir, max_bytes, max_age);
 }
 
 pub fn cleanup_all_cache_dirs_keep(
@@ -707,21 +702,9 @@ pub fn cleanup_all_cache_dirs_keep(
     max_age: Duration,
     keep: Option<&Path>,
 ) {
-    let Some(cache_parent) = cache_dir.parent() else {
-        cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, keep);
-        return;
-    };
-    let Ok(entries) = fs::read_dir(cache_parent) else {
-        cleanup_cache_dir_keep(cache_dir, max_bytes, max_age, keep);
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            let keep_for_dir = keep.filter(|keep| keep.starts_with(&path));
-            cleanup_cache_dir_keep(&path, max_bytes, max_age, keep_for_dir);
-        }
-    }
+    lingxia_service::storage::cleanup_all_cache_dirs_preserving(
+        cache_dir, max_bytes, max_age, keep,
+    );
 }
 
 pub fn cleanup_cache_for_storage_pressure(
@@ -732,14 +715,13 @@ pub fn cleanup_cache_for_storage_pressure(
     incoming_bytes: u64,
     max_bytes: u64,
 ) -> bool {
-    cleanup_cache_for_storage_pressure_keep(
+    lingxia_service::storage::cleanup_cache_for_storage_pressure(
         cache_dir,
         user_data_root,
         user_cache_root,
         destination,
         incoming_bytes,
         max_bytes,
-        None,
     )
 }
 
@@ -752,84 +734,15 @@ pub fn cleanup_cache_for_storage_pressure_keep(
     max_bytes: u64,
     keep: Option<&Path>,
 ) -> bool {
-    let Some(cache_parent) = cache_dir.parent() else {
-        return app_storage_fits(
-            user_data_root,
-            user_cache_root,
-            destination,
-            incoming_bytes,
-            max_bytes,
-        );
-    };
-    let mut files = Vec::new();
-    collect_all_cache_entries(cache_parent, &mut files);
-    files.sort_by_key(|entry| entry.last_access);
-    let keep = keep.and_then(|path| path.canonicalize().ok());
-
-    for entry in files {
-        if app_storage_fits(
-            user_data_root,
-            user_cache_root,
-            destination,
-            incoming_bytes,
-            max_bytes,
-        ) {
-            return true;
-        }
-        if keep
-            .as_ref()
-            .is_some_and(|keep| entry.path.canonicalize().is_ok_and(|path| path == *keep))
-        {
-            continue;
-        }
-        let cache_root = entry
-            .cache_root
-            .canonicalize()
-            .unwrap_or_else(|_| entry.cache_root.clone());
-        let _ = try_remove_cache_entry(&entry.cache_root, &cache_root, &entry.path);
-    }
-
-    app_storage_fits(
+    lingxia_service::storage::cleanup_cache_for_storage_pressure_preserving(
+        cache_dir,
         user_data_root,
         user_cache_root,
         destination,
         incoming_bytes,
         max_bytes,
+        keep,
     )
-}
-
-fn app_storage_fits(
-    user_data_root: &Path,
-    user_cache_root: &Path,
-    destination: &Path,
-    incoming_bytes: u64,
-    max_bytes: u64,
-) -> bool {
-    projected_size(
-        dir_size(user_data_root).saturating_add(dir_size(user_cache_root)),
-        incoming_bytes,
-        existing_file_size(destination),
-    ) <= max_bytes
-}
-
-fn collect_all_cache_entries(cache_parent: &Path, out: &mut Vec<PressureCacheEntry>) {
-    let Ok(entries) = fs::read_dir(cache_parent) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let cache_dir = entry.path();
-        if !entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let mut total_bytes = 0;
-        for entry in collect_cache_entries(&cache_dir, &mut total_bytes) {
-            out.push(PressureCacheEntry {
-                cache_root: cache_dir.clone(),
-                path: entry.path,
-                last_access: entry.last_access,
-            });
-        }
-    }
 }
 
 fn collect_cache_entries(cache_dir: &Path, total_bytes: &mut u64) -> Vec<CacheEntry> {
@@ -890,46 +803,6 @@ fn collect_cache_entries(cache_dir: &Path, total_bytes: &mut u64) -> Vec<CacheEn
     }
 
     out
-}
-
-struct PressureCacheEntry {
-    cache_root: PathBuf,
-    path: PathBuf,
-    last_access: SystemTime,
-}
-
-fn dir_size(path: &Path) -> u64 {
-    let Ok(entries) = fs::read_dir(path) else {
-        return 0;
-    };
-    entries
-        .flatten()
-        .map(|entry| {
-            let path = entry.path();
-            let Ok(metadata) = entry.path().symlink_metadata() else {
-                return 0;
-            };
-            if metadata.is_dir() {
-                dir_size(&path)
-            } else if metadata.is_file() {
-                metadata.len()
-            } else {
-                0
-            }
-        })
-        .sum()
-}
-
-fn existing_file_size(path: &Path) -> u64 {
-    fs::symlink_metadata(path)
-        .ok()
-        .filter(|metadata| metadata.is_file())
-        .map(|metadata| metadata.len())
-        .unwrap_or(0)
-}
-
-fn projected_size(current: u64, incoming: u64, replaced: u64) -> u64 {
-    current.saturating_sub(replaced).saturating_add(incoming)
 }
 
 fn remove_ok_marker_for(_cache_dir: &Path, data_path: &Path) {

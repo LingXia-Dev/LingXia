@@ -14,14 +14,14 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use tokio::sync::oneshot;
 use tokio::time;
 use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
 use crate::appservice::LxAppWorkers;
-use crate::cache::LxAppCache;
+use crate::cache::{LXAPP_WEBVIEW_CACHE_DIR, LxAppCache};
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
@@ -45,11 +45,20 @@ mod security;
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
+use crate::lifecycle::AppServiceEvent;
+pub use crate::page::runtime::{
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, PageDefinition, PageInstanceEvent,
+    PageOwner, PageQueryInput, PageTarget, PageWarmDisposePolicy, PresentationKind, ResolvedPage,
+    SceneId,
+};
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
-use crate::lifecycle::AppServiceEvent;
-pub(crate) use runtime_registry::{get, get_lxapps_manager};
+pub use lingxia_update::ReleaseType;
+use lingxia_webview::WebTag;
+use lingxia_webview::runtime::destroy_webview;
+pub use popup::PopupMode;
+pub(crate) use popup::WEB_POPUP_PATH;
 pub use runtime_bootstrap::init;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
@@ -58,16 +67,7 @@ pub use runtime_ops::{
     on_low_memory, open_lxapp, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, try_get};
-pub use lingxia_update::ReleaseType;
-use lingxia_webview::WebTag;
-use lingxia_webview::runtime::destroy_webview;
-pub use crate::page::runtime::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, PageDefinition, PageInstanceEvent,
-    PageOwner, PageQueryInput, PageTarget, PageWarmDisposePolicy, PresentationKind, ResolvedPage,
-    SceneId,
-};
-pub use popup::PopupMode;
-pub(crate) use popup::WEB_POPUP_PATH;
+pub(crate) use runtime_registry::{get, get_lxapps_manager};
 use version::Version;
 
 /// Constants for lxapp storage layout
@@ -114,40 +114,6 @@ fn normalize_transient_path(path: &Path, kind: TransientPathKind) -> Result<Path
         )));
     }
     Ok(normalized)
-}
-
-struct TempFileEntry {
-    path: PathBuf,
-    size: u64,
-    modified: SystemTime,
-}
-
-fn collect_temp_files(root: &Path, out: &mut Vec<TempFileEntry>) {
-    let Ok(entries) = fs::read_dir(root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Ok(metadata) = entry.metadata() else {
-            continue;
-        };
-        if metadata.is_dir() {
-            if path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name == ".download-staging")
-            {
-                continue;
-            }
-            collect_temp_files(&path, out);
-        } else if metadata.is_file() {
-            out.push(TempFileEntry {
-                path,
-                size: metadata.len(),
-                modified: metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-            });
-        }
-    }
 }
 
 /// Set the number of JS workers (and lxapp navigation stack capacity).
@@ -703,40 +669,15 @@ impl LxApp {
     }
 
     fn cleanup_temp_size(&self, keep: Option<&Path>) -> Result<(), LxAppError> {
-        let max_bytes = crate::app::temp_max_size_bytes();
-        if max_bytes == 0 || self.temp_dir.as_os_str().is_empty() {
+        if self.temp_dir.as_os_str().is_empty() {
             return Ok(());
         }
-        let keep = keep.map(Path::to_path_buf);
-        let mut files = Vec::new();
-        collect_temp_files(&self.temp_dir, &mut files);
-        let mut total = files.iter().map(|entry| entry.size).sum::<u64>();
-        if total <= max_bytes {
+        let Some(keep) = keep else {
             return Ok(());
-        }
-
-        files.sort_by_key(|entry| entry.modified);
-        let low_water = max_bytes.saturating_mul(8) / 10;
-        for entry in files {
-            if total <= low_water {
-                break;
-            }
-            if keep.as_ref().is_some_and(|keep| *keep == entry.path) {
-                continue;
-            }
-            if std::fs::remove_file(&entry.path).is_ok() {
-                total = total.saturating_sub(entry.size);
-            }
-        }
-        if total > max_bytes {
-            if let Some(keep) = keep.as_ref() {
-                let _ = std::fs::remove_file(keep);
-            }
-            return Err(LxAppError::ResourceExhausted(
-                "TEMP_QUOTA_EXCEEDED".to_string(),
-            ));
-        }
-        Ok(())
+        };
+        let incoming = lingxia_service::storage::path_size(keep);
+        lingxia_service::storage::ensure_temp_quota(&self.temp_dir, keep, incoming)
+            .map_err(|err| LxAppError::ResourceExhausted(err.detail().to_string()))
     }
 
     fn status_name(&self) -> &'static str {
@@ -1181,12 +1122,19 @@ impl LxApp {
     fn setup(&mut self) -> Result<(), LxAppError> {
         self.initialize_paths()?;
         self.load_config()?;
-        // Initialize per-app cache directly using the app's cache dir
+        let lxapp_webview_cache_dir = self.user_cache_dir.join(LXAPP_WEBVIEW_CACHE_DIR);
+        std::fs::create_dir_all(&lxapp_webview_cache_dir).map_err(|e| {
+            LxAppError::IoError(format!("Failed to create WebView cache directory: {}", e))
+        })?;
+
+        // Keep WebView resource cache isolated per lxapp while still under usercache cleanup.
         self.cache = Some(
             LxAppCache::new(
-                self.user_cache_dir.clone(),
-                crate::app::cache_max_size_bytes(),
-                crate::app::cache_max_age(),
+                lxapp_webview_cache_dir,
+                lingxia_app_context::cache_max_size_bytes(),
+                Duration::from_secs(
+                    lingxia_app_context::cache_max_age_days().saturating_mul(86400),
+                ),
                 Duration::from_secs(30),
             )
             .map_err(|e| LxAppError::IoError(e.to_string()))?,

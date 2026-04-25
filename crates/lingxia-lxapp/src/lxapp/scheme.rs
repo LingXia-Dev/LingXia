@@ -849,11 +849,11 @@ impl LxApp {
     }
 
     fn touch_user_cache_access_time(&self, path: &Path) {
-        if path.starts_with(&self.user_cache_dir)
-            && path.exists()
-            && let Ok(cache) = self.cache()
-        {
-            cache.on_access(path);
+        if path.starts_with(&self.user_cache_dir) && path.exists() {
+            crate::cache::touch_access_time(path);
+            if let Ok(cache) = self.cache() {
+                cache.on_access(path);
+            }
         }
     }
 

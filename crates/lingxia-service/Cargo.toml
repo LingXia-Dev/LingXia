@@ -12,4 +12,13 @@ lingxia-settings = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-app-context = { workspace = true }
 lingxia-update = { workspace = true }
+lingxia-provider = { workspace = true }
+lingxia-messaging = { workspace = true }
+rong_rt = { workspace = true, default-features = false }
+http = { workspace = true }
+http-body-util = { workspace = true }
+bytes = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
 tokio = { workspace = true }
+sha2 = "0.11"
