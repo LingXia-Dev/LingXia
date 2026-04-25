@@ -24,6 +24,7 @@ tokio = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
 rong_modules = { workspace = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream"] }
+rong_rt = { workspace = true }
 rong_storage = { workspace = true }
 
 # Target-specific JavaScript engine selection

@@ -110,6 +110,7 @@ pub enum UploadFailureKind {
     NetworkUnavailable,
     Server,
     Connection,
+    AccessDenied,
     Canceled,
     Internal,
 }
@@ -168,6 +169,9 @@ fn classify_transport_upload_failure(error: &str) -> UploadFailureKind {
     }
     if lower.starts_with("http status ") {
         return UploadFailureKind::Server;
+    }
+    if lower.contains("access denied") || lower.contains("not allowed") {
+        return UploadFailureKind::AccessDenied;
     }
     UploadFailureKind::Internal
 }
@@ -624,8 +628,13 @@ pub async fn upload_file_with_behavior(
         }
         Err(err) => {
             let message = err.to_string();
+            let kind = if err.kind() == host_http::HttpErrorKind::AccessDenied {
+                UploadFailureKind::AccessDenied
+            } else {
+                classify_transport_upload_failure(&message)
+            };
             let failure = UploadFailure::new(
-                classify_transport_upload_failure(&message),
+                kind,
                 request.url.clone(),
                 message.clone(),
                 uploaded_bytes,

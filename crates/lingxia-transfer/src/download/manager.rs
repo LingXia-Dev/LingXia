@@ -174,6 +174,7 @@ pub enum DownloadFailureKind {
     NetworkUnavailable,
     Server,
     Connection,
+    AccessDenied,
     Canceled,
     Internal,
 }
@@ -296,6 +297,9 @@ fn classify_transport_download_failure(error: &str) -> DownloadFailureKind {
         || lower.contains("early eof")
     {
         return DownloadFailureKind::Connection;
+    }
+    if lower.contains("access denied") || lower.contains("not allowed") {
+        return DownloadFailureKind::AccessDenied;
     }
     DownloadFailureKind::Internal
 }
@@ -1119,9 +1123,15 @@ async fn run_download_attempt(
         Ok(response) => response,
         Err(e) => {
             let error = e.to_string();
+            let kind = if e.kind() == host_http::HttpErrorKind::AccessDenied {
+                DownloadFailureKind::AccessDenied
+            } else {
+                classify_transport_download_failure(&error)
+            };
             return Err(DownloadAttemptFailure {
-                kind: classify_transport_download_failure(&error),
-                retryable: is_retryable_transport_error(&error),
+                kind,
+                retryable: kind != DownloadFailureKind::AccessDenied
+                    && is_retryable_transport_error(&error),
                 error,
                 downloaded_bytes: resume_offset,
                 total_bytes: None,

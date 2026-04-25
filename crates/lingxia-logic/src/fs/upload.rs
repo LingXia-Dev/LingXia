@@ -1,3 +1,4 @@
+use super::network_security;
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
     js_invalid_parameter_error,
@@ -73,8 +74,9 @@ impl UploadTaskStatus {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct UploadTaskConfig {
+    lxapp: Arc<LxApp>,
     request: UploadRequest,
     behavior: UploadBehavior,
 }
@@ -159,6 +161,9 @@ fn upload_failure_to_js_error(error: UploadFailure) -> rong::RongJSError {
         }
         UploadFailureKind::Server => js_error_from_business_code_with_detail(5003, error.error),
         UploadFailureKind::Connection => js_error_from_business_code_with_detail(5004, error.error),
+        UploadFailureKind::AccessDenied => {
+            js_error_from_business_code_with_detail(3000, error.error)
+        }
         UploadFailureKind::Canceled => js_abort_error(error.error),
         UploadFailureKind::InvalidRequest | UploadFailureKind::InvalidFile => {
             js_invalid_parameter_error(error.error)
@@ -450,33 +455,36 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
         };
 
         let mut event_tx = progress_tx.clone();
-        let result = upload_file_with_behavior(
-            config.request.clone(),
-            config.behavior,
-            abort_rx,
-            move |event| match event {
-                TransferUploadEvent::Started {
-                    uploaded_bytes,
-                    total_bytes,
-                    ..
-                } => {
-                    let _ = event_tx.try_send(UploadIteratorMessage::Started {
+        let result = network_security::scope_lxapp_network_access(
+            config.lxapp.clone(),
+            upload_file_with_behavior(
+                config.request.clone(),
+                config.behavior,
+                abort_rx,
+                move |event| match event {
+                    TransferUploadEvent::Started {
                         uploaded_bytes,
                         total_bytes,
-                    });
-                }
-                TransferUploadEvent::Progress {
-                    uploaded_bytes,
-                    total_bytes,
-                    ..
-                } => {
-                    let _ = event_tx.try_send(UploadIteratorMessage::Progress {
+                        ..
+                    } => {
+                        let _ = event_tx.try_send(UploadIteratorMessage::Started {
+                            uploaded_bytes,
+                            total_bytes,
+                        });
+                    }
+                    TransferUploadEvent::Progress {
                         uploaded_bytes,
                         total_bytes,
-                    });
-                }
-                _ => {}
-            },
+                        ..
+                    } => {
+                        let _ = event_tx.try_send(UploadIteratorMessage::Progress {
+                            uploaded_bytes,
+                            total_bytes,
+                        });
+                    }
+                    _ => {}
+                },
+            ),
         )
         .await;
 
@@ -576,6 +584,7 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         rx,
         tx.clone(),
         UploadTaskConfig {
+            lxapp: lxapp.clone(),
             request: UploadRequest {
                 url,
                 method: UploadMethod::Post,

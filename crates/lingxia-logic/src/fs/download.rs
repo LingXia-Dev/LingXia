@@ -1,5 +1,5 @@
 use super::{
-    normalize_relative_path,
+    network_security, normalize_relative_path,
     storage::{self, StorageQuotaError},
 };
 use crate::i18n::{
@@ -88,8 +88,9 @@ enum RequestedStop {
     Cancel,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct DownloadTaskConfig {
+    lxapp: Arc<LxApp>,
     task_id: String,
     app_data_dir: PathBuf,
     user_data_dir: PathBuf,
@@ -194,6 +195,7 @@ fn download_failure_to_reason(error: DownloadFailure) -> DownloadFailureReason {
         DownloadFailureKind::NetworkUnavailable => Some(5001),
         DownloadFailureKind::Server => Some(5003),
         DownloadFailureKind::Connection => Some(5004),
+        DownloadFailureKind::AccessDenied => Some(3000),
         DownloadFailureKind::Canceled
         | DownloadFailureKind::InvalidRequest
         | DownloadFailureKind::Conflict
@@ -765,13 +767,16 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
             _ => {}
         };
 
-        let download_result = user_cache::download_to_path_with_behavior(
-            Some(persistence),
-            download_target,
-            config.request.clone(),
-            config.user_agent.clone(),
-            config.behavior,
-            on_event,
+        let download_result = network_security::scope_lxapp_network_access(
+            config.lxapp.clone(),
+            user_cache::download_to_path_with_behavior(
+                Some(persistence),
+                download_target,
+                config.request.clone(),
+                config.user_agent.clone(),
+                config.behavior,
+                on_event,
+            ),
         )
         .await;
 
@@ -986,6 +991,7 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         rx,
         tx.clone(),
         DownloadTaskConfig {
+            lxapp: lxapp.clone(),
             task_id: task_id.clone(),
             app_data_dir: lxapp.app_data_dir(),
             user_data_dir: lxapp.user_data_dir.clone(),

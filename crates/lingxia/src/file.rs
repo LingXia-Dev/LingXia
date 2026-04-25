@@ -344,6 +344,9 @@ fn map_download_error(failure: lingxia_transfer::user_cache::DownloadFailure) ->
         | lingxia_transfer::user_cache::DownloadFailureKind::Canceled => {
             crate::Error::platform(failure.error)
         }
+        lingxia_transfer::user_cache::DownloadFailureKind::AccessDenied => {
+            crate::Error::permission_denied(failure.error)
+        }
         lingxia_transfer::user_cache::DownloadFailureKind::Internal => {
             crate::Error::internal(failure.error)
         }
@@ -361,6 +364,9 @@ fn map_upload_error(failure: lingxia_transfer::UploadFailure) -> crate::Error {
         | lingxia_transfer::UploadFailureKind::Server
         | lingxia_transfer::UploadFailureKind::Connection
         | lingxia_transfer::UploadFailureKind::Canceled => crate::Error::platform(failure.error),
+        lingxia_transfer::UploadFailureKind::AccessDenied => {
+            crate::Error::permission_denied(failure.error)
+        }
         lingxia_transfer::UploadFailureKind::Internal => crate::Error::internal(failure.error),
     }
 }
