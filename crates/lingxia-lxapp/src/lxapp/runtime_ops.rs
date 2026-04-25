@@ -5,7 +5,7 @@ use super::*;
 pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
-    Ok(manager.ensure_lxapp(appid.to_string(), release_type))
+    manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
 pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
@@ -28,7 +28,7 @@ pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
         manager.runtime.clone(),
         manager.executor.clone(),
         ReleaseType::Release,
-    ));
+    )?);
     manager.lxapps.insert(appid.to_string(), app.clone());
     Ok(app)
 }
@@ -37,7 +37,7 @@ pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
 
-    let app = manager.ensure_lxapp(appid.to_string(), options.release_type);
+    let app = manager.ensure_lxapp(appid.to_string(), options.release_type)?;
     app.open(options)?;
     Ok(app)
 }

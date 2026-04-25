@@ -23,7 +23,7 @@ pub use lingxia_native_macros::native;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
-pub use lxapp::{LxApp, LxAppSecurityPrivilege, register_security_privilege};
+pub use lxapp::{LxApp, LxAppSecurityPrivilege};
 
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;

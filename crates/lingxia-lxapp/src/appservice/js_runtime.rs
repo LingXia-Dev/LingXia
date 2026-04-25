@@ -757,10 +757,7 @@ struct DenyAllNetworkAccessGuard;
 
 impl http::NetworkAccessGuard for DenyAllNetworkAccessGuard {
     fn check_access(&self, _domain: &str) -> JSResult<()> {
-        Err(RongJSError::from(HostError::new(
-            rong::error::E_INTERNAL,
-            "Access denied",
-        )))
+        Err(network_access_denied_error("network access is denied"))
     }
 }
 
@@ -785,10 +782,15 @@ impl http::NetworkAccessGuard for LxAppCtx {
         if self.lxapp.is_domain_allowed(domain) {
             Ok(())
         } else {
-            Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                format!("Access denied: domain '{}' is not allowed", domain),
+            Err(network_access_denied_error(format!(
+                "domain '{domain}' is not allowed by lxapp security policy"
             )))
         }
     }
+}
+
+fn network_access_denied_error(detail: impl AsRef<str>) -> RongJSError {
+    HostError::new(rong::error::E_PERMISSION_DENIED, "Permission denied")
+        .with_data(rong::err_data!({ bizCode: (3000), detail: (detail.as_ref()) }))
+        .into()
 }

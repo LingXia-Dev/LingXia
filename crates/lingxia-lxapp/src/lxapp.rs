@@ -42,6 +42,7 @@ mod runtime_ops;
 mod runtime_registry;
 mod scheme;
 mod security;
+pub use security::LxAppSecurityPrivilege;
 pub mod tabbar;
 pub mod uri;
 pub(crate) mod version;
@@ -196,7 +197,11 @@ impl LxApps {
     }
 
     /// Ensure an LxApp instance exists for the given appid.
-    pub(crate) fn ensure_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
+    pub(crate) fn ensure_lxapp(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
             .map(|opt| opt.is_some())
             .unwrap_or(false);
@@ -214,7 +219,7 @@ impl LxApps {
                 .with_appid(appid.clone());
             }
         } else if let Some(app_arc) = self.lxapps.get(&appid) {
-            return app_arc.clone();
+            return Ok(app_arc.clone());
         }
 
         // Create new LxApp
@@ -223,11 +228,11 @@ impl LxApps {
             self.runtime.clone(),
             self.executor.clone(),
             release_type,
-        ));
+        )?);
 
         // Insert into collection and return
         self.lxapps.insert(appid, new_lxapp.clone());
-        new_lxapp
+        Ok(new_lxapp)
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -246,7 +251,11 @@ impl LxApps {
 
     /// Recreate the LxApp instance for a given appid with a brand new instance.
     /// Used by restart to force a fresh session and runtime state.
-    fn recreate_lxapp(&self, appid: String, release_type: ReleaseType) -> Arc<LxApp> {
+    fn recreate_lxapp(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
         // Close handshake is handled by restart state machine; avoid a second hide while recreating.
         self.destroy_lxapp_with_options(&appid, true);
 
@@ -967,27 +976,29 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
-    ) -> Self {
+    ) -> Result<Self, LxAppError> {
         let mut app = Self::_new(appid, runtime, executor, release_type);
-        if let Err(e) = app.setup() {
+        app.setup().inspect_err(|e| {
             error!("Setup failed: {}", e).with_appid(&app.appid);
-        }
-
-        app
+        })?;
+        Ok(app)
     }
 
     /// Create a new LxApp instance marked as the home lxapp
-    fn new_as_home(appid: String, runtime: Arc<Platform>, executor: Arc<LxAppWorkers>) -> Self {
+    fn new_as_home(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppWorkers>,
+    ) -> Result<Self, LxAppError> {
         let mut app = Self::_new(appid, runtime, executor, ReleaseType::Release);
 
         // Mark as home lxapp
         app.is_home_lxapp = true;
 
-        if let Err(e) = app.setup() {
+        app.setup().inspect_err(|e| {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
-        }
-
-        app
+        })?;
+        Ok(app)
     }
 
     /// Initialize paths and directories for the lxapp
@@ -998,9 +1009,7 @@ impl LxApp {
             .as_ref()
             .map(|record| record.fingermark.clone())
             .unwrap_or_else(|| lxapp_fingermark(&self.appid, self.release_type));
-        // Determine directory name from fingerprint
         let dir_name = self.fingermark.clone();
-
         // Set up app directory (default path)
         let base_dir = self
             .runtime
@@ -1106,6 +1115,13 @@ impl LxApp {
         self.read_json("lxapp.json").map(|app_json| {
             self.config = LxAppConfig::from_value(app_json)
                 .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
+
+            {
+                let mut state = self.state.lock().unwrap();
+                state
+                    .network_security
+                    .set_domains(self.config.trusted_domains());
+            }
 
             // Initialize TabBar state if config has TabBar
             if let Some(tabbar_config) = &self.config.tabBar {
@@ -1487,6 +1503,15 @@ impl LxApp {
             .is_domain_allowed(domain)
     }
 
+    /// Check whether this lxapp declares a high-risk security privilege.
+    ///
+    /// Intended for privileged host APIs such as automation/devtools. Ordinary
+    /// host capabilities such as camera/media/location should continue to rely
+    /// on the host app and platform permission flow.
+    pub fn has_security_privilege(&self, privilege: &LxAppSecurityPrivilege) -> bool {
+        self.config.has_security_privilege(privilege)
+    }
+
     /// Get a page by path
     pub fn get_page(&self, path: &str) -> Option<PageInstance> {
         self.state
@@ -1681,7 +1706,7 @@ impl LxApp {
                 return Ok(());
             }
 
-            let app = manager.ensure_lxapp(appid.clone(), options.release_type);
+            let app = manager.ensure_lxapp(appid.clone(), options.release_type)?;
             app.open(options)?;
         }
         Ok(())
@@ -1768,7 +1793,14 @@ impl LxApp {
 
             // 1) Replace LxApp instance in manager with a brand new one for this appid.
             if let Some(manager) = get_lxapps_manager() {
-                let new_app = manager.recreate_lxapp(appid.clone(), release_type);
+                let new_app = match manager.recreate_lxapp(appid.clone(), release_type) {
+                    Ok(app) => app,
+                    Err(e) => {
+                        error!("Failed to recreate lxapp after restart: {}", e)
+                            .with_appid(appid.clone());
+                        return;
+                    }
+                };
 
                 // 2) Initialize startup options for the new app session and open it.
                 let options =

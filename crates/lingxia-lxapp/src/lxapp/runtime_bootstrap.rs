@@ -220,7 +220,14 @@ pub fn init(runtime: Platform) -> Option<String> {
     }
 
     // Create the home LxApp instance (loads lxapp.json once)
-    let home_lxapp = LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone());
+    let home_lxapp =
+        match LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone()) {
+            Ok(app) => app,
+            Err(e) => {
+                error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
+                return None;
+            }
+        };
 
     let initial_route = home_lxapp.config.get_initial_route();
     home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
