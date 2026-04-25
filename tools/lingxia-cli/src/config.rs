@@ -283,11 +283,13 @@ impl LingXiaConfig {
             .unwrap_or(true)
     }
 
-    pub fn shell_enabled(&self, _platform: &str) -> bool {
-        self.features
+    pub fn shell_enabled(&self, platform: &str) -> bool {
+        let requested = self
+            .features
             .as_ref()
             .map(|features| features.shell)
-            .unwrap_or(false)
+            .unwrap_or(false);
+        requested && platform == "macos"
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -886,6 +888,30 @@ mod tests {
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn shell_feature_is_only_effective_on_macos() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.features.as_mut().unwrap().shell = true;
+
+        assert!(config.shell_enabled("macos"));
+        assert!(!config.shell_enabled("android"));
+        assert!(!config.shell_enabled("ios"));
+        assert!(!config.shell_enabled("harmony"));
+
+        assert_eq!(
+            config.native_features_for_platform("macos"),
+            vec![
+                "standard".to_string(),
+                "shell-runtime".to_string(),
+                "webview-input".to_string(),
+            ]
+        );
+        assert_eq!(
+            config.native_features_for_platform("harmony"),
+            vec!["standard".to_string()]
+        );
     }
 
     #[test]

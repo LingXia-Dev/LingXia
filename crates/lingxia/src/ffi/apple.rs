@@ -672,7 +672,10 @@ pub fn resolve_page_binding(
 ) -> self::bridge::PageBindingResult {
     let page_instance_id = resolve_page_instance_id(appid, path, session_id);
     let webview_ptr = if page_instance_id.is_empty() {
-        0
+        let webtag = lingxia_webview::WebTag::new(appid, path, Some(session_id));
+        lingxia_webview::runtime::find_webview(&webtag)
+            .map(|webview| webview.get_swift_webview_ptr())
+            .unwrap_or(0)
     } else {
         find_webview_by_page_instance_id(&page_instance_id)
     };
