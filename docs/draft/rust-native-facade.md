@@ -16,12 +16,9 @@ modules:
 - `lingxia::Error`
 - `lingxia::app`
 - `lingxia::task`
-- `lingxia::downloads`
-- `lingxia::settings`
 - `lingxia::file`
 - `lingxia::media`
 - `lingxia::provider`
-- `lingxia::push`
 - `lingxia::log`
 - `lingxia::update`
 - `lingxia::host`
@@ -41,6 +38,12 @@ Current service modules:
 - `settings`
 - `file`
 - `media`
+
+`downloads` and `settings` are service modules, not public `lingxia` facade
+modules. Native app code should use `lingxia::file::download` for explicit
+business downloads. Download history, retry, pause, and directory settings stay
+behind shell/logic product APIs until there is a clear host-app authoring use
+case.
 
 Do not move whole domain/runtime crates into `lingxia-service`. Keep
 implementation crates such as `lingxia-media` and `lingxia-transfer` as lower

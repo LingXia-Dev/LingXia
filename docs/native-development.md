@@ -7,8 +7,8 @@ Use this guide when you want to:
 - expose Rust host APIs to pages with `#[lingxia::native]`
 - add optional JS AppService extensions under `lingxia::js`
 - call shared LingXia SDK services from Rust through facade modules such as
-  `lingxia::app`, `lingxia::task`, `lingxia::downloads`, `lingxia::settings`,
-  `lingxia::file`, `lingxia::media`, and `lingxia::update`
+  `lingxia::app`, `lingxia::task`, `lingxia::file`, `lingxia::media`, and
+  `lingxia::update`
 
 For lxapp page development, see [LxApp Development Guide](./lxapp-guide.md).
 For host project configuration, see [App Project](./app-project.md).
@@ -89,9 +89,7 @@ async fn pick_document(
     app: Arc<lingxia::LxApp>,
     input: PickDocumentInput,
 ) -> lingxia::Result<String> {
-    let state_dir = lingxia::app::state_dir_for(&app);
-    Ok(state_dir
-        .join(format!("{}.md", input.title))
+    Ok(lingxia::app::state_file_for(&app, &format!("{}.md", input.title))?
         .to_string_lossy()
         .into_owned())
 }
@@ -124,7 +122,7 @@ async fn load_document(
     mut cancel: lingxia::host::HostCancel,
 ) -> lingxia::Result<String> {
     let work = async move {
-        lingxia::task::tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
         Ok(format!("# {}", input.title))
     };
 
@@ -149,9 +147,9 @@ async fn export_pdf(
     mut stream: lingxia::host::StreamContext<ExportProgress, String>,
 ) -> lingxia::Result<()> {
     for progress in [25, 60, 100] {
-        lingxia::task::tokio::select! {
+        tokio::select! {
             _ = stream.canceled() => return Ok(()),
-            _ = lingxia::task::tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
+            _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
         }
 
         if progress < 100 {
@@ -264,10 +262,8 @@ wrap stream/channel handles themselves.
 Native route handlers should use facade modules instead of internal crates:
 
 ```rust
-let config = lingxia::app::config();
-let state_dir = lingxia::app::state_dir_for(&app);
-let downloads = lingxia::downloads::snapshot(&app)?;
-let download_dir = lingxia::settings::effective_download_dir(&app);
+let state_file = lingxia::app::state_file_for(&app, "editor.json")?;
+let downloaded = lingxia::file::download(&app, "https://example.com/report.pdf").await?;
 let media = lingxia::media::choose_media(&app, request).await?;
 let files = lingxia::file::choose_file(&app, request).await?;
 ```
@@ -280,6 +276,30 @@ lingxia::task::spawn(async move {
     // background work
 });
 ```
+
+Host app update defaults to LingXia's built-in UX. Native apps that need full
+custom UI should opt into custom mode and drive the returned update task:
+
+```rust
+lingxia::update::use_custom_host_app_update();
+
+if let Some(update) = lingxia::update::check_host_app_update().await? {
+    let info = update.info();
+    println!(
+        "update {} size {:?}",
+        info.version(),
+        info.package_size_bytes()
+    );
+
+    let mut apply = update.apply();
+    while let Some(event) = apply.next().await {
+        println!("update event: {event:?}");
+    }
+}
+```
+
+The checked update owns the package metadata. App code should not pass versions,
+package paths, or raw provider results back into the update API.
 
 Provider authors should import provider traits through `lingxia::provider`.
 Media stream providers should import stream traits through `lingxia::media`.

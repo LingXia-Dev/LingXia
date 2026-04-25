@@ -191,7 +191,7 @@ It has two hooks:
 
 Registration happens through:
 
-- `register_log_provider(...)`
+- `lingxia_log::register_log_provider(...)`
 
 Behavior when no custom provider is registered:
 
@@ -225,6 +225,9 @@ For every accepted `log` record:
 - downstream logger is for Rust `log` compatibility
 - `LogProvider` is for LingXia structured realtime/collection integration
 - downstream logger receives only Rust `log` records, not every structured SDK log source
+- infrastructure crates such as device-cloud should depend on `lingxia-log`
+  directly for structured log integration instead of depending on the `lingxia`
+  app-authoring facade
 
 ## SDK FFI Log Entry Points
 

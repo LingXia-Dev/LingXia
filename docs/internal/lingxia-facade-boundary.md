@@ -31,7 +31,7 @@ It should export:
 
 - platform FFI modules such as `lingxia::android`, `lingxia::apple`, and `lingxia::harmony`
 - the unified initialization path used by host apps
-- built-in product registration needed for browser, settings, downloads, and other first-party surfaces
+- built-in product registration needed for browser and other first-party surfaces
 
 Application crates should not call `lxapp::init` or wire runtime internals directly.
 
@@ -71,7 +71,7 @@ Today that includes types such as:
 
 - `lingxia::LxApp`
 - provider traits intended for app integration
-- stable download and update surface types
+- stable file transfer and update surface types
 
 The rule is:
 
@@ -84,14 +84,28 @@ If an app crate can reasonably use a capability, it should come from `lingxia`, 
 
 Examples:
 
-- downloads
 - app info
-- preferences/settings
+- file transfer
 - update providers
 - notification providers
 - fingerprint providers
 
 These should be organized around product domains, not around internal crate ownership.
+
+Host app update should expose a checked update handle, not raw package data:
+
+```rust
+if let Some(update) = lingxia::update::check_host_app_update().await? {
+    let info = update.info();
+    let mut apply = update.apply();
+    while let Some(event) = apply.next().await {
+        // Render native UI from event.
+    }
+}
+```
+
+The facade should not expose package paths, caller-supplied current versions,
+global config mutation, or separate download/install steps.
 
 ## What `lingxia` May Export Carefully
 
@@ -106,22 +120,23 @@ Examples of acceptable facade shapes:
 
 App crates should not need a direct dependency on `lingxia-browser`.
 
-### 2. Settings and internal product actions
+### 2. Internal product actions
 
-If app authors need to open first-party product surfaces such as Settings or Downloads, that should also go through `lingxia`.
+If app authors need to open first-party product surfaces, that should go
+through a narrow `lingxia` action API instead of raw routes or service internals.
 
 Examples:
 
-- `lingxia::open_settings(...)`
-- `lingxia::open_downloads(...)`
+- `lingxia::open_product_surface(...)`
 
 App code should not need to know internal routes such as `lingxia://settings`.
 
-### 3. Preferences facade
+### 3. Download management
 
-If app authors need direct configuration access, expose a stable preferences/settings facade from `lingxia`.
-
-Do not make app crates reach into shell or browser implementation modules.
+Download history, pause, retry, and directory overrides are shell/logic product
+concerns today. They should stay in `lingxia-service`/`lingxia-transfer` until a
+clear host-app authoring use case exists. Native app code that simply needs to
+fetch a file should use `lingxia::file::download`.
 
 ## What Must Stay Internal
 
@@ -179,11 +194,10 @@ lingxia::
   js::LxLogicExtension
   js::register_logic_extension
 
-  downloads
-  updates
-  preferences
-  browser
-  settings
+  file
+  media
+  update
+  provider
 ```
 
 The important rule is:
