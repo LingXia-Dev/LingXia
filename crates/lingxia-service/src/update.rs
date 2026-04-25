@@ -1,0 +1,459 @@
+use bytes::Bytes;
+use http::Request;
+use http_body_util::{BodyExt, Empty};
+use lingxia_platform::Platform;
+use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::update::UpdateService;
+use lingxia_provider::BoxFuture;
+use lingxia_update::AppUpdateHost;
+use rong_rt::download::{self as service_executor, BodySink};
+use rong_rt::http as host_http;
+use std::fs;
+use std::io::{Error as IoError, Read};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+pub use lingxia_update::{
+    AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
+    AppUpdateStage, UpdateConfig, UpdateError, UpdatePackageInfo, UpdateProvider, UpdateTarget,
+    UpdateUiMode, Version, VersionError, configure_update, subscribe_app_update_events,
+    update_config,
+};
+
+#[derive(Clone)]
+pub struct HostAppUpdateService {
+    runtime: Arc<Platform>,
+    provider: &'static dyn UpdateProvider,
+}
+
+impl HostAppUpdateService {
+    pub fn new(runtime: Arc<Platform>, provider: &'static dyn UpdateProvider) -> Self {
+        Self { runtime, provider }
+    }
+
+    pub async fn check(&self) -> Result<Option<UpdatePackageInfo>, UpdateError> {
+        lingxia_update::check_app_update(self).await
+    }
+
+    pub fn apply(&self, update: UpdatePackageInfo) -> AppUpdateApply {
+        let (apply, sender) = AppUpdateApply::channel();
+        let runner = self.clone();
+        let _ = rong_rt::RongExecutor::global().spawn(async move {
+            let result = async {
+                let current_version = runner
+                    .current_app_version()
+                    .map_err(|error| (AppUpdateStage::Download, error))?;
+                lingxia_update::ensure_app_update_candidate_version(
+                    &current_version,
+                    &update.version,
+                )
+                .map_err(|error| (AppUpdateStage::Download, error))?;
+                lingxia_update::send_app_update_event(
+                    &sender,
+                    AppUpdateEvent::DownloadStarted {
+                        version: update.version.clone(),
+                    },
+                );
+
+                let path = runner
+                    .download_app_update(
+                        &update,
+                        AppUpdateProgressReporter::scoped(&update.version, sender.clone()),
+                    )
+                    .await
+                    .map_err(|error| (AppUpdateStage::Download, error))?;
+                lingxia_update::send_app_update_event(
+                    &sender,
+                    AppUpdateEvent::Downloaded {
+                        version: update.version.clone(),
+                    },
+                );
+
+                let current_version = runner
+                    .current_app_version()
+                    .map_err(|error| (AppUpdateStage::Install, error))?;
+                lingxia_update::ensure_app_update_candidate_version(
+                    &current_version,
+                    &update.version,
+                )
+                .map_err(|error| (AppUpdateStage::Install, error))?;
+                runner
+                    .install_app_update(&path)
+                    .map_err(|error| (AppUpdateStage::Install, error))?;
+                lingxia_update::send_app_update_event(
+                    &sender,
+                    AppUpdateEvent::InstallRequested {
+                        version: update.version.clone(),
+                    },
+                );
+                Ok::<(), (AppUpdateStage, UpdateError)>(())
+            }
+            .await;
+            if let Err((stage, error)) = result {
+                log::warn!("Host app update apply failed: {error}");
+                lingxia_update::send_app_update_failed(&sender, stage, &error);
+            }
+        });
+        apply
+    }
+
+    pub fn spawn_builtin_flow(&self) {
+        lingxia_update::spawn_app_update_flow(
+            self.clone(),
+            lingxia_update::APP_UPDATE_START_DELAY,
+            false,
+        );
+    }
+}
+
+impl lingxia_update::AppUpdateHost for HostAppUpdateService {
+    fn spawn_detached(&self, task: BoxFuture<'static, ()>) {
+        let _ = rong_rt::RongExecutor::global().spawn(task);
+    }
+
+    fn current_app_version(&self) -> Result<String, UpdateError> {
+        resolve_required_app_version()
+            .map(str::to_string)
+            .map_err(|error| UpdateError::runtime(error.to_string()))
+    }
+
+    fn check_app_update<'a>(
+        &'a self,
+        current_version: &'a str,
+    ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>> {
+        Box::pin(async move {
+            let target = UpdateTarget::app(Some(current_version));
+            self.provider
+                .check_update(target)
+                .await
+                .map_err(UpdateError::from)
+        })
+    }
+
+    fn show_builtin_update_prompt<'a>(
+        &'a self,
+        update: &'a UpdatePackageInfo,
+    ) -> BoxFuture<'a, Result<bool, UpdateError>> {
+        Box::pin(async move { show_builtin_update_prompt(self.runtime.clone(), update).await })
+    }
+
+    fn download_app_update<'a>(
+        &'a self,
+        update: &'a UpdatePackageInfo,
+        progress: AppUpdateProgressReporter,
+    ) -> BoxFuture<'a, Result<PathBuf, UpdateError>> {
+        Box::pin(async move {
+            download_host_app_update_package(
+                self.runtime.clone(),
+                &update.url,
+                &update.checksum_sha256,
+                &update.version,
+                progress,
+            )
+            .await
+        })
+    }
+
+    fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError> {
+        self.runtime.install_update(package_path).map_err(|error| {
+            UpdateError::runtime(format!("failed to request app update install: {error}"))
+        })
+    }
+
+    fn log_app_update_warning(&self, detail: &str) {
+        log::warn!("{detail}");
+    }
+
+    fn notify_app_update_available(&self, _update: &UpdatePackageInfo) -> Result<(), UpdateError> {
+        Ok(())
+    }
+}
+
+struct ProgressSink {
+    total_bytes: Option<u64>,
+    downloaded_bytes: u64,
+    last_reported_progress: i32,
+    runtime: Option<Arc<Platform>>,
+    reporter: AppUpdateProgressReporter,
+}
+
+impl ProgressSink {
+    fn new(
+        total_bytes: Option<u64>,
+        runtime: Option<Arc<Platform>>,
+        reporter: AppUpdateProgressReporter,
+    ) -> Self {
+        Self {
+            total_bytes,
+            downloaded_bytes: 0,
+            last_reported_progress: 0,
+            runtime,
+            reporter,
+        }
+    }
+}
+
+impl BodySink for ProgressSink {
+    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
+        self.downloaded_bytes += chunk.len() as u64;
+        self.reporter
+            .report(self.downloaded_bytes, self.total_bytes);
+
+        if let Some(total_bytes) = self.total_bytes.filter(|total| *total > 0) {
+            let progress = ((self.downloaded_bytes as f64 / total_bytes as f64) * 100.0) as i32;
+            let progress = progress.min(100);
+
+            if progress > self.last_reported_progress {
+                self.last_reported_progress = progress;
+                if let Some(runtime) = &self.runtime {
+                    let _ = runtime.update_download_progress(progress);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn close(&mut self, result: &Result<(), String>) {
+        if result.is_ok() {
+            self.reporter.report(
+                self.downloaded_bytes,
+                self.total_bytes.or(Some(self.downloaded_bytes)),
+            );
+        }
+        if result.is_ok()
+            && let Some(runtime) = &self.runtime
+        {
+            let _ = runtime.update_download_progress(100);
+        }
+    }
+}
+
+async fn download_host_app_update_package(
+    runtime: Arc<Platform>,
+    url: &str,
+    checksum_sha256: &str,
+    version: &str,
+    progress: AppUpdateProgressReporter,
+) -> Result<PathBuf, UpdateError> {
+    log::info!("App update download start: url={url} version={version}");
+    let dest_dir = runtime.app_cache_dir().join("lingxia").join("app_updates");
+    let _ = fs::create_dir_all(&dest_dir);
+
+    let dest = dest_dir.join(app_update_filename(url, version));
+    log::info!("App update download dest: {}", dest.display());
+
+    if dest.exists() {
+        if checksum_sha256.is_empty() {
+            if dest.metadata().map(|m| m.len()).unwrap_or(0) > 0 {
+                log::info!("App update package already downloaded: {}", dest.display());
+                progress.report(dest.metadata().map(|m| m.len()).unwrap_or(0), None);
+                return Ok(dest);
+            }
+            let _ = fs::remove_file(&dest);
+        }
+        if verify_sha256(&dest, checksum_sha256).is_ok() {
+            log::info!(
+                "App update package already downloaded and verified: {}",
+                dest.display()
+            );
+            progress.report(dest.metadata().map(|m| m.len()).unwrap_or(0), None);
+            return Ok(dest);
+        }
+        let _ = fs::remove_file(&dest);
+    }
+
+    let file_size = get_content_length(url).await.unwrap_or(0);
+    let use_builtin_progress = update_config().ui_mode == UpdateUiMode::Builtin;
+    if use_builtin_progress && let Err(error) = runtime.show_download_progress() {
+        log::warn!("Failed to show download progress: {error}");
+    }
+
+    progress.report(0, (file_size > 0).then_some(file_size));
+    let sink: Option<Box<dyn BodySink>> = Some(Box::new(ProgressSink::new(
+        (file_size > 0).then_some(file_size),
+        use_builtin_progress.then_some(runtime.clone()),
+        progress,
+    )));
+
+    let receiver =
+        match service_executor::request_download(url.to_string(), dest.clone(), None, sink) {
+            Ok(receiver) => receiver,
+            Err(error) => {
+                if use_builtin_progress {
+                    let _ = runtime.dismiss_download_progress();
+                }
+                return Err(UpdateError::runtime(format!(
+                    "failed to start download: {error}"
+                )));
+            }
+        };
+
+    let result = match receiver
+        .await
+        .map_err(|_| UpdateError::runtime("download task cancelled"))?
+    {
+        Ok(()) => {
+            if !checksum_sha256.is_empty() {
+                if let Err(error) = verify_sha256(&dest, checksum_sha256) {
+                    let _ = fs::remove_file(&dest);
+                    Err(error)
+                } else {
+                    Ok(dest)
+                }
+            } else {
+                Ok(dest)
+            }
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&dest);
+            Err(UpdateError::runtime(format!("download failed: {error}")))
+        }
+    };
+
+    if use_builtin_progress {
+        let _ = runtime.dismiss_download_progress();
+    }
+    result
+}
+
+async fn show_builtin_update_prompt(
+    runtime: Arc<Platform>,
+    pkg: &UpdatePackageInfo,
+) -> Result<bool, UpdateError> {
+    let update_info_json = {
+        let mut json_obj = serde_json::Map::new();
+        json_obj.insert("version".to_string(), serde_json::json!(&pkg.version));
+        json_obj.insert(
+            "isForceUpdate".to_string(),
+            serde_json::json!(pkg.is_force_update),
+        );
+        if let Some(size) = pkg.size {
+            json_obj.insert("size".to_string(), serde_json::json!(size));
+        }
+        if let Some(notes) = &pkg.release_notes {
+            json_obj.insert("releaseNotes".to_string(), serde_json::json!(notes));
+        }
+        Some(serde_json::to_string(&json_obj).unwrap_or_default())
+    };
+
+    let (callback_id, receiver) = lingxia_messaging::get_callback();
+    if let Err(error) = runtime.show_update_prompt(callback_id, update_info_json.as_deref()) {
+        let _ = lingxia_messaging::remove_callback(callback_id);
+        return Err(UpdateError::runtime(format!(
+            "failed to show update prompt: {error}"
+        )));
+    }
+
+    let confirmed = match receiver.await {
+        Ok(lingxia_messaging::CallbackResult::Success(data)) => {
+            serde_json::from_str::<serde_json::Value>(&data)
+                .ok()
+                .and_then(|json| json.get("confirm").and_then(|value| value.as_bool()))
+                .unwrap_or(false)
+        }
+        Ok(lingxia_messaging::CallbackResult::Error(_)) => false,
+        Err(_) => false,
+    };
+
+    Ok(confirmed)
+}
+
+fn app_update_filename(url: &str, version: &str) -> String {
+    let safe_version = version.replace(['/', '\\'], "_");
+    let main = url.split(&['?', '#'][..]).next().unwrap_or(url);
+    let seg = main.rsplit('/').next().unwrap_or(main);
+    if !seg.is_empty() && seg.contains('.') {
+        format!("app_{safe_version}_{seg}")
+    } else {
+        format!("app_{}_{}.apk", safe_version, hash_url(url))
+    }
+}
+
+async fn get_content_length(url: &str) -> Result<u64, String> {
+    let request = Request::builder()
+        .method("HEAD")
+        .uri(url)
+        .body(
+            Empty::<Bytes>::new()
+                .map_err(|_| IoError::other("body error"))
+                .boxed(),
+        )
+        .map_err(|error| format!("failed to build HEAD request: {error}"))?;
+
+    let response =
+        host_http::send_with_small_body_limit(request, 1024, host_http::RequestOptions::new())
+            .await
+            .map_err(|error| format!("HEAD request failed: {error}"))?;
+
+    response
+        .headers
+        .get(http::header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| "No Content-Length header".to_string())
+}
+
+fn resolve_required_app_version() -> Result<&'static str, UpdateError> {
+    let product_version = lingxia_app_context::product_version()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            UpdateError::runtime(
+                "app check-update requires productVersion, but app context is missing it",
+            )
+        })?;
+
+    Version::parse(product_version).map_err(|_| {
+        UpdateError::runtime(format!(
+            "app productVersion is not semantic version: {product_version}"
+        ))
+    })?;
+
+    Ok(product_version)
+}
+
+fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), UpdateError> {
+    if expected_hex.is_empty() {
+        return Ok(());
+    }
+    let actual = compute_sha256_hex(path)?;
+    if actual.eq_ignore_ascii_case(expected_hex) {
+        Ok(())
+    } else {
+        Err(UpdateError::runtime(format!(
+            "checksum mismatch: expected {expected_hex}, got {actual}"
+        )))
+    }
+}
+
+fn compute_sha256_hex(path: &Path) -> Result<String, UpdateError> {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write;
+
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        let _ = write!(hex, "{b:02x}");
+    }
+    Ok(hex)
+}
+
+fn hash_url(url: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    url.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}

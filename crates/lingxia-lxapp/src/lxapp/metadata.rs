@@ -73,9 +73,6 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         let _downloaded = write_txn
             .open_table(DOWNLOADED_TABLE)
             .map_err(|e| metadata_error("open downloaded table", e))?;
-        let _update_state = write_txn
-            .open_table(crate::update::state::UPDATE_STATE_TABLE)
-            .map_err(|e| metadata_error("open update state table", e))?;
     }
     write_txn
         .commit()

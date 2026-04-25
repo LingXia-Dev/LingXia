@@ -1,4 +1,7 @@
 use super::*;
+use crate::update::error_bridge::lxapp_error_to_update_error;
+use lingxia_provider::BoxFuture;
+use lingxia_update::{LxAppUpdateHost, UpdateError};
 use tokio::task::yield_now;
 
 fn emit_update_ready_event(
@@ -32,16 +35,255 @@ fn emit_update_failed_event(
     let _ = publish_app_event(target_appid, "UpdateFailed", Some(payload.to_string()));
 }
 
-fn is_same_downloaded_update(
-    manager: &UpdateManager,
-    target_appid: &str,
+#[derive(Clone)]
+struct BoundLxAppUpdateHost {
+    context_lxapp: Arc<lxapp_runtime::LxApp>,
+    target_appid: String,
     release_type: ReleaseType,
-    version: &str,
-) -> bool {
-    matches!(
-        manager.has_downloaded_update(target_appid, release_type),
-        Ok(Some(info)) if info.version == version && info.archive_path.exists()
-    )
+    current_version_hint: Option<String>,
+}
+
+impl BoundLxAppUpdateHost {
+    fn new(
+        context_lxapp: Arc<lxapp_runtime::LxApp>,
+        target_appid: String,
+        release_type: ReleaseType,
+        current_version_hint: Option<String>,
+    ) -> Self {
+        Self {
+            context_lxapp,
+            target_appid,
+            release_type,
+            current_version_hint,
+        }
+    }
+
+    fn manager(&self) -> UpdateManager {
+        UpdateManager::new(self.context_lxapp.clone())
+    }
+}
+
+impl LxAppUpdateHost for BoundLxAppUpdateHost {
+    fn spawn_detached(&self, task: BoxFuture<'static, ()>) {
+        let _ = crate::executor::spawn(task);
+    }
+
+    fn target_appid(&self) -> &str {
+        &self.target_appid
+    }
+
+    fn release_type(&self) -> ReleaseType {
+        self.release_type
+    }
+
+    fn runtime_version(&self) -> &str {
+        crate::SDK_RUNTIME_VERSION
+    }
+
+    fn current_version_hint(&self) -> Option<String> {
+        self.current_version_hint.clone()
+    }
+
+    fn installed_version<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .installed_version(&self.target_appid, self.release_type)
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
+    fn is_installed<'a>(&'a self) -> BoxFuture<'a, Result<bool, UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .is_installed(&self.target_appid, self.release_type)
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
+    fn check_latest_update<'a>(
+        &'a self,
+        current_version: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .check_latest_update(&self.target_appid, self.release_type, current_version)
+                .await
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
+    fn check_exact_update<'a>(
+        &'a self,
+        target_version: &'a str,
+    ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .check_exact_update(&self.target_appid, self.release_type, target_version)
+                .await
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
+    fn has_downloaded_update<'a>(
+        &'a self,
+        version: &'a str,
+    ) -> BoxFuture<'a, Result<bool, UpdateError>> {
+        Box::pin(async move {
+            Ok(matches!(
+                self.manager().has_downloaded_update(&self.target_appid, self.release_type),
+                Ok(Some(info)) if info.version == version && info.archive_path.exists()
+            ))
+        })
+    }
+
+    fn download_update<'a>(
+        &'a self,
+        update: &'a UpdatePackageInfo,
+    ) -> BoxFuture<'a, Result<(), UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .download_archive_with_checksum(
+                    &self.target_appid,
+                    self.release_type,
+                    &update.url,
+                    &update.checksum_sha256,
+                    &update.version,
+                )
+                .await
+                .map(|_| ())
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
+    fn wait_for_or_start_force_download<'a>(
+        &'a self,
+        update: &'a UpdatePackageInfo,
+    ) -> BoxFuture<'a, Result<(), UpdateError>> {
+        Box::pin(async move {
+            let manager = self.manager();
+            let key = state::force_update_download_key(&self.target_appid, self.release_type);
+
+            loop {
+                if let Some(mut rx) =
+                    state::force_update_tracker().try_start_download(&key, &update.version)
+                {
+                    let manager_bg = manager.clone();
+                    let key_bg = key.clone();
+                    let target_appid_bg = self.target_appid.clone();
+                    let url_bg = update.url.clone();
+                    let checksum_bg = update.checksum_sha256.clone();
+                    let version_bg = update.version.clone();
+                    let release_type = self.release_type;
+
+                    let _ = crate::executor::spawn(async move {
+                        let result = manager_bg
+                            .download_archive_with_checksum(
+                                &target_appid_bg,
+                                release_type,
+                                &url_bg,
+                                &checksum_bg,
+                                &version_bg,
+                            )
+                            .await;
+
+                        match result {
+                            Ok(_) => state::force_update_tracker().mark_completed(&key_bg),
+                            Err(err) => {
+                                state::force_update_tracker().mark_failed(&key_bg, err.to_string())
+                            }
+                        }
+                    });
+
+                    loop {
+                        let state = { rx.borrow().clone() };
+                        match state {
+                            state::ForceUpdateDownloadState::Downloading { .. } => {
+                                if rx.changed().await.is_err() {
+                                    break;
+                                }
+                            }
+                            state::ForceUpdateDownloadState::Completed => return Ok(()),
+                            state::ForceUpdateDownloadState::Failed(error) => {
+                                return Err(UpdateError::io(format!(
+                                    "forced update package download failed: {}",
+                                    error
+                                )));
+                            }
+                        }
+                    }
+                }
+
+                if let Some(mut rx) = state::force_update_tracker().wait_for_download(&key) {
+                    loop {
+                        let state = { rx.borrow().clone() };
+                        match state {
+                            state::ForceUpdateDownloadState::Downloading { .. } => {
+                                if rx.changed().await.is_err() {
+                                    break;
+                                }
+                            }
+                            state::ForceUpdateDownloadState::Completed => return Ok(()),
+                            state::ForceUpdateDownloadState::Failed(error) => {
+                                return Err(UpdateError::io(format!(
+                                    "forced update package download failed: {}",
+                                    error
+                                )));
+                            }
+                        }
+                    }
+                }
+
+                let prepared = matches!(
+                    manager.has_downloaded_update(&self.target_appid, self.release_type),
+                    Ok(Some(info)) if info.version == update.version && info.archive_path.exists()
+                );
+                if prepared {
+                    return Ok(());
+                }
+
+                yield_now().await;
+            }
+        })
+    }
+
+    fn emit_update_ready(&self, version: &str, is_force_update: bool) -> Result<(), UpdateError> {
+        emit_update_ready_event(
+            &self.target_appid,
+            self.release_type,
+            version,
+            is_force_update,
+        );
+        Ok(())
+    }
+
+    fn emit_update_failed(
+        &self,
+        update: &UpdatePackageInfo,
+        error: &str,
+    ) -> Result<(), UpdateError> {
+        emit_update_failed_event(&self.target_appid, self.release_type, update, error);
+        Ok(())
+    }
+
+    fn is_bundled_available(&self) -> bool {
+        bundled_lxapp_available(&self.context_lxapp, &self.target_appid)
+    }
+
+    fn register_builtin_bundle(&self) -> Result<(), UpdateError> {
+        lxapp_runtime::register_builtin_asset_bundle(
+            self.target_appid.clone(),
+            self.target_appid.clone(),
+        );
+        Ok(())
+    }
+
+    fn has_update_provider(&self) -> bool {
+        crate::provider::has_update_provider()
+    }
+
+    fn log_warning(&self, detail: &str) {
+        crate::warn!("{}", detail).with_appid(self.target_appid.clone());
+    }
 }
 
 impl UpdateManager {
@@ -50,97 +292,16 @@ impl UpdateManager {
         target_appid: String,
         release_type: ReleaseType,
         current_version: Option<String>,
-        bypass_cooldown: bool,
     ) {
-        let update_check_target = UpdateTarget::lxapp(
-            target_appid.clone(),
-            release_type,
-            LxAppUpdateQuery::latest(None::<String>),
-        )
-        .scope_key();
-        let _ = crate::executor::spawn(async move {
-            if !bypass_cooldown && !state::try_acquire_update_check_window(&update_check_target) {
-                return;
-            }
-
-            let manager = UpdateManager::new(context_lxapp);
-            let current_version = current_version.or_else(|| {
-                manager
-                    .installed_version(&target_appid, release_type)
-                    .ok()
-                    .flatten()
-            });
-
-            match manager
-                .check_latest_update(&target_appid, release_type, current_version.as_deref())
-                .await
-            {
-                Ok(Some(pkg)) => {
-                    if !manager.should_update(&target_appid, release_type, &pkg.version) {
-                        return;
-                    }
-
-                    if let Err(err) = ensure_runtime_version_compatible(&target_appid, &pkg) {
-                        emit_update_failed_event(
-                            &target_appid,
-                            release_type,
-                            &pkg,
-                            &err.to_string(),
-                        );
-                        return;
-                    }
-
-                    let already_downloaded_same = is_same_downloaded_update(
-                        &manager,
-                        &target_appid,
-                        release_type,
-                        &pkg.version,
-                    );
-
-                    if already_downloaded_same {
-                        crate::info!(
-                            "Update package already downloaded; emitting UpdateReady directly (version={})",
-                            pkg.version
-                        )
-                        .with_appid(target_appid.clone());
-                        emit_update_ready_event(
-                            &target_appid,
-                            release_type,
-                            &pkg.version,
-                            pkg.is_force_update,
-                        );
-                        return;
-                    }
-
-                    let download_res = manager
-                        .download_archive_with_checksum(
-                            &target_appid,
-                            release_type,
-                            &pkg.url,
-                            &pkg.checksum_sha256,
-                            &pkg.version,
-                        )
-                        .await;
-
-                    if download_res.is_ok() {
-                        emit_update_ready_event(
-                            &target_appid,
-                            release_type,
-                            &pkg.version,
-                            pkg.is_force_update,
-                        );
-                    } else {
-                        let error = download_res
-                            .err()
-                            .map(|e| e.to_string())
-                            .unwrap_or_else(|| "download failed".to_string());
-                        emit_update_failed_event(&target_appid, release_type, &pkg, &error);
-                    }
-                }
-                Ok(None) => {}
-                Err(_) => {}
-            }
-        });
+        lingxia_update::spawn_lxapp_background_update_check(
+            BoundLxAppUpdateHost::new(
+                context_lxapp,
+                target_appid,
+                release_type,
+                current_version.clone(),
+            ),
+            current_version,
+        );
     }
 
     /// Check for updates using the registered Provider.
@@ -208,7 +369,6 @@ impl UpdateManager {
             target_appid,
             release_type,
             Some(lxapp.current_version()),
-            false,
         );
     }
 
@@ -225,7 +385,6 @@ impl UpdateManager {
             target_appid,
             release_type,
             Some(lxapp.current_version()),
-            false,
         );
     }
 
@@ -282,69 +441,14 @@ pub(crate) async fn ensure_first_install(
     target_appid: &str,
     release_type: ReleaseType,
 ) -> Result<(), LxAppError> {
-    if release_type != ReleaseType::Release {
-        return Ok(());
-    }
-
-    let manager = UpdateManager::new(current_lxapp.clone());
-    if manager.is_installed(target_appid, release_type)? {
-        return Ok(());
-    }
-
-    if bundled_lxapp_available(current_lxapp, target_appid) {
-        lxapp_runtime::register_builtin_asset_bundle(
-            target_appid.to_string(),
-            target_appid.to_string(),
-        );
-        return Ok(());
-    }
-
-    if !crate::provider::has_update_provider() {
-        crate::warn!(
-            "Cannot first-install lxapp '{target_appid}': not installed, no bundled manifest, and no UpdateProvider"
-        );
-        return Err(LxAppError::UnsupportedOperation(format!(
-            "lxapp '{target_appid}' is not installed; remote install unavailable"
-        )));
-    }
-
-    let pkg = match with_foreground_update_timeout(
-        manager.check_latest_update(target_appid, release_type, None),
-        &format!("first install update check for {}", target_appid),
-    )
+    lingxia_update::ensure_lxapp_first_install(&BoundLxAppUpdateHost::new(
+        current_lxapp.clone(),
+        target_appid.to_string(),
+        release_type,
+        None,
+    ))
     .await
-    {
-        Ok(Some(pkg)) => pkg,
-        Ok(None) => {
-            crate::warn!(
-                "Cannot first-install lxapp '{target_appid}': UpdateProvider returned no package for {}",
-                release_type.as_str()
-            );
-            return Err(LxAppError::ResourceNotFound(format!(
-                "lxapp '{target_appid}' package not found ({})",
-                release_type.as_str()
-            )));
-        }
-        Err(err) => {
-            return Err(LxAppError::Runtime(format!(
-                "failed to query UpdateProvider for first install of '{target_appid}': {err}"
-            )));
-        }
-    };
-
-    ensure_runtime_version_compatible(target_appid, &pkg)?;
-
-    let _archive = manager
-        .download_archive_with_checksum(
-            target_appid,
-            release_type,
-            &pkg.url,
-            &pkg.checksum_sha256,
-            &pkg.version,
-        )
-        .await?;
-
-    Ok(())
+    .map_err(Into::into)
 }
 
 fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_appid: &str) -> bool {
@@ -364,250 +468,33 @@ pub async fn ensure_target_version_ready(
     release_type: ReleaseType,
     target_version: &str,
 ) -> Result<(), LxAppError> {
-    let target_version = target_version.trim();
-    if target_version.is_empty() {
-        return Err(LxAppError::InvalidParameter(
-            "targetVersion cannot be empty".to_string(),
-        ));
-    }
-
-    let target_semver = Version::parse(target_version).map_err(|_| {
-        LxAppError::InvalidParameter(format!(
-            "targetVersion must be semantic version: {}",
-            target_version
-        ))
-    })?;
-
-    let manager = UpdateManager::new(current_lxapp.clone());
-    let is_installed = manager.is_installed(target_appid, release_type)?;
-    let current_version = if is_installed {
-        manager.installed_version(target_appid, release_type)?
-    } else {
-        None
-    };
-    if release_type == ReleaseType::Release {
-        match with_foreground_update_timeout(
-            manager.check_latest_update(target_appid, release_type, current_version.as_deref()),
-            &format!("force-update gate check for {}", target_appid),
-        )
-        .await
-        {
-            Ok(Some(pkg)) if pkg.is_force_update => {
-                let force_version = Version::parse(&pkg.version).map_err(|_| {
-                    LxAppError::UnsupportedOperation(format!(
-                        "invalid forced update version '{}' for {}",
-                        pkg.version, target_appid
-                    ))
-                })?;
-                if target_semver < force_version {
-                    return Err(LxAppError::UnsupportedOperation(format!(
-                        "targetVersion {} is lower than required forced version {} for {} ({})",
-                        target_version,
-                        pkg.version,
-                        target_appid,
-                        release_type.as_str()
-                    )));
-                }
-            }
-            Ok(_) => {}
-            Err(err) => {
-                crate::warn!(
-                    "targetVersion force-update check failed (fail-open): {}",
-                    err
-                )
-                .with_appid(target_appid.to_string());
-            }
-        }
-    }
-
-    if current_version.as_deref() == Some(target_version) {
-        return Ok(());
-    }
-
-    let pkg = with_foreground_update_timeout(
-        manager.check_exact_update(target_appid, release_type, target_version),
-        &format!(
-            "exact version update check for {}@{}",
-            target_appid, target_version
-        ),
-    )
-    .await?
-    .ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!(
-            "No package available for {}@{} ({})",
-            target_appid,
-            target_version,
-            release_type.as_str()
-        ))
-    })?;
-    ensure_runtime_version_compatible(target_appid, &pkg)?;
-
-    let already_downloaded_same = matches!(
-        manager.has_downloaded_update(target_appid, release_type),
-        Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
-    );
-    if already_downloaded_same {
-        return Ok(());
-    }
-
-    manager
-        .download_archive_with_checksum(
-            target_appid,
+    lingxia_update::ensure_lxapp_target_version_ready(
+        &BoundLxAppUpdateHost::new(
+            current_lxapp.clone(),
+            target_appid.to_string(),
             release_type,
-            &pkg.url,
-            &pkg.checksum_sha256,
-            &pkg.version,
-        )
-        .await?;
-
-    Ok(())
+            None,
+        ),
+        target_version,
+    )
+    .await
+    .map_err(Into::into)
 }
 
 /// Ensure forced update package is prepared before opening an already-installed lxapp.
-///
-/// Policy:
-/// - Not installed: no-op (handled by `ensure_first_install`).
-/// - Installed + no update or non-forced update: no-op.
-/// - Installed + forced update available: ensure target package is downloaded before opening.
-///
-/// Note: update-check network/provider failures are fail-open here to avoid blocking app open
-/// on transient backend issues. Only confirmed forced-package download failures block navigation.
 pub async fn ensure_force_update_for_installed(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
     release_type: ReleaseType,
 ) -> Result<(), LxAppError> {
-    if release_type != ReleaseType::Release {
-        return Ok(());
-    }
-
-    let manager = UpdateManager::new(current_lxapp.clone());
-    if !manager.is_installed(target_appid, release_type)? {
-        return Ok(());
-    }
-
-    let current_version = manager.installed_version(target_appid, release_type)?;
-    let Some(current_version) = current_version else {
-        crate::warn!("Installed lxapp has no recorded version; skip force-update gating")
-            .with_appid(target_appid.to_string());
-        return Ok(());
-    };
-
-    let update = match with_foreground_update_timeout(
-        manager.check_latest_update(target_appid, release_type, Some(current_version.as_str())),
-        &format!("installed app force-update check for {}", target_appid),
-    )
+    lingxia_update::ensure_lxapp_force_update_for_installed(&BoundLxAppUpdateHost::new(
+        current_lxapp.clone(),
+        target_appid.to_string(),
+        release_type,
+        None,
+    ))
     .await
-    {
-        Ok(update) => update,
-        Err(err) => {
-            crate::warn!("force-update check failed (fail-open): {}", err)
-                .with_appid(target_appid.to_string());
-            return Ok(());
-        }
-    };
-
-    let Some(pkg) = update else {
-        return Ok(());
-    };
-
-    if let Err(err) = ensure_runtime_version_compatible(target_appid, &pkg) {
-        if pkg.is_force_update {
-            return Err(err);
-        }
-        crate::warn!("optional update blocked by runtime version gate: {}", err)
-            .with_appid(target_appid.to_string());
-        return Ok(());
-    }
-
-    if !pkg.is_force_update || pkg.version == current_version {
-        return Ok(());
-    }
-
-    let already_downloaded_same = matches!(
-        manager.has_downloaded_update(target_appid, release_type),
-        Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
-    );
-    if already_downloaded_same {
-        return Ok(());
-    }
-
-    let key = state::force_update_download_key(target_appid, release_type);
-    loop {
-        if let Some(mut rx) = state::force_update_tracker().try_start_download(&key, &pkg.version) {
-            let manager_bg = manager.clone();
-            let key_bg = key.clone();
-            let target_appid_bg = target_appid.to_string();
-            let url_bg = pkg.url.clone();
-            let checksum_bg = pkg.checksum_sha256.clone();
-            let version_bg = pkg.version.clone();
-
-            let _ = crate::executor::spawn(async move {
-                let result = manager_bg
-                    .download_archive_with_checksum(
-                        &target_appid_bg,
-                        release_type,
-                        &url_bg,
-                        &checksum_bg,
-                        &version_bg,
-                    )
-                    .await;
-
-                match result {
-                    Ok(_) => state::force_update_tracker().mark_completed(&key_bg),
-                    Err(err) => state::force_update_tracker().mark_failed(&key_bg, err.to_string()),
-                }
-            });
-
-            loop {
-                let state = { rx.borrow().clone() };
-                match state {
-                    state::ForceUpdateDownloadState::Downloading { .. } => {
-                        if rx.changed().await.is_err() {
-                            break;
-                        }
-                    }
-                    state::ForceUpdateDownloadState::Completed => return Ok(()),
-                    state::ForceUpdateDownloadState::Failed(error) => {
-                        return Err(LxAppError::IoError(format!(
-                            "forced update package download failed: {}",
-                            error
-                        )));
-                    }
-                }
-            }
-        }
-
-        if let Some(mut rx) = state::force_update_tracker().wait_for_download(&key) {
-            loop {
-                let state = { rx.borrow().clone() };
-                match state {
-                    state::ForceUpdateDownloadState::Downloading { .. } => {
-                        if rx.changed().await.is_err() {
-                            break;
-                        }
-                    }
-                    state::ForceUpdateDownloadState::Completed => return Ok(()),
-                    state::ForceUpdateDownloadState::Failed(error) => {
-                        return Err(LxAppError::IoError(format!(
-                            "forced update package download failed: {}",
-                            error
-                        )));
-                    }
-                }
-            }
-        }
-
-        let prepared = matches!(
-            manager.has_downloaded_update(target_appid, release_type),
-            Ok(Some(info)) if info.version == pkg.version && info.archive_path.exists()
-        );
-        if prepared {
-            return Ok(());
-        }
-
-        yield_now().await;
-    }
+    .map_err(Into::into)
 }
 
 /// Prepare an lxapp package so shell surfaces can open it immediately.
@@ -615,9 +502,9 @@ pub async fn prepare_lxapp_open(
     target_appid: &str,
     release_type: ReleaseType,
 ) -> Result<(), LxAppError> {
-    let home_appid = crate::app::home_appid()
+    let home_appid = lingxia_app_context::home_app_id()
         .map(str::to_string)
-        .ok_or_else(|| LxAppError::ResourceNotFound("app not initialized".to_string()))?;
+        .ok_or_else(|| LxAppError::Runtime("host app config is not initialized".to_string()))?;
 
     let home_lxapp = lxapp_runtime::try_get(&home_appid).ok_or_else(|| {
         LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))

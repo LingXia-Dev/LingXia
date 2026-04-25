@@ -58,7 +58,6 @@ fn load_bundled_app_config(
 /// Registers built-in runtime and initializes the lxapp system.
 pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
-    use std::time::Duration;
 
     let _ = crate::lxapp_dev::install_lxapp_dev_config_from_env();
     crate::host_addon::run_before_init();
@@ -79,18 +78,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     crate::lxapp_dev::register_bundle_source_override();
-    let home_app_id = lxapp::init(
-        platform,
-        lxapp::LxAppRuntimeConfig {
-            home_appid: app_config.home_app_id,
-            home_app_version: app_config.home_app_version,
-            temp_max_size_bytes: lingxia_app_context::temp_max_size_bytes(),
-            cache_max_age: Duration::from_secs(
-                lingxia_app_context::cache_max_age_days().saturating_mul(86400),
-            ),
-            cache_max_size_bytes: lingxia_app_context::cache_max_size_bytes(),
-        },
-    );
+    let home_app_id = lxapp::init(platform);
+    crate::update::spawn_host_app_update_flow(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
     crate::browser::warmup();

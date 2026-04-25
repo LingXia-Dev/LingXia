@@ -107,6 +107,24 @@ impl From<PlatformError> for LxAppError {
     }
 }
 
+impl From<lingxia_update::UpdateError> for LxAppError {
+    fn from(error: lingxia_update::UpdateError) -> Self {
+        match error {
+            lingxia_update::UpdateError::InvalidParameter(detail) => {
+                LxAppError::InvalidParameter(detail)
+            }
+            lingxia_update::UpdateError::UnsupportedOperation(detail) => {
+                LxAppError::UnsupportedOperation(detail)
+            }
+            lingxia_update::UpdateError::ResourceNotFound(detail) => {
+                LxAppError::ResourceNotFound(detail)
+            }
+            lingxia_update::UpdateError::Io(detail) => LxAppError::IoError(detail),
+            lingxia_update::UpdateError::Runtime(detail) => LxAppError::Runtime(detail),
+        }
+    }
+}
+
 impl From<lingxia_settings::SettingsError> for LxAppError {
     fn from(error: lingxia_settings::SettingsError) -> Self {
         LxAppError::Runtime(error.to_string())

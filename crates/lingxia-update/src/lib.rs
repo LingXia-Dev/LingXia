@@ -1,8 +1,29 @@
+mod app;
+mod config;
+mod error;
+mod lxapp;
+
 use lingxia_provider::{BoxFuture, ProviderError};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
+
+pub use app::{
+    APP_UPDATE_START_DELAY, AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver,
+    AppUpdateEventSender, AppUpdateHost, AppUpdateProgressReporter, AppUpdateStage,
+    app_update_scope_key, check_and_install_app_update, check_app_update, download_app_update,
+    ensure_app_update_candidate_version, install_app_update, send_app_update_event,
+    send_app_update_failed, spawn_app_update_flow, subscribe_app_update_events,
+};
+pub use config::{UpdateConfig, UpdateUiMode, configure_update, update_config};
+pub use error::UpdateError;
+pub use lxapp::{
+    LxAppUpdateHost, ensure_first_install as ensure_lxapp_first_install,
+    ensure_force_update_for_installed as ensure_lxapp_force_update_for_installed,
+    ensure_target_version_ready as ensure_lxapp_target_version_ready, lxapp_update_scope_key,
+    spawn_background_update_check as spawn_lxapp_background_update_check,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -190,7 +211,7 @@ impl UpdateTarget {
         }
     }
 
-    /// Stable routing key for cooldowns, metrics, and diagnostics.
+    /// Stable routing key for dedupe, metrics, and diagnostics.
     pub fn scope_key(&self) -> String {
         match self {
             Self::App { .. } => "app".to_string(),

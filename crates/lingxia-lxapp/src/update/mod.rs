@@ -1,4 +1,4 @@
-mod app;
+mod error_bridge;
 mod lxapp;
 pub(crate) mod state;
 
@@ -13,19 +13,13 @@ use crate::provider::provider_error_to_lxapp_error;
 use crate::publish_app_event;
 use lingxia_platform::Platform;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::update::UpdateService;
-use lingxia_update::{
-    LxAppUpdateQuery, RuntimeCompatibilityError, SemanticVersion, UpdatePackageInfo, UpdateTarget,
-};
-use rong_rt::download::{self as service_executor, BodySink};
-use rong_rt::http as host_http;
-use serde_json::Value;
+use lingxia_update::{LxAppUpdateQuery, SemanticVersion, UpdatePackageInfo, UpdateTarget};
+use rong_rt::download as service_executor;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::time::timeout;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub(crate) use self::lxapp::ensure_first_install;
 pub use self::lxapp::ensure_target_version_ready;
@@ -34,54 +28,6 @@ pub use self::lxapp::{
 };
 pub use self::state::is_force_update_downloading;
 
-/// Tracks download progress and reports to the UI layer.
-struct ProgressSink {
-    total_bytes: u64,
-    downloaded_bytes: u64,
-    last_reported_progress: i32,
-    runtime: Option<Arc<Platform>>,
-}
-
-impl ProgressSink {
-    fn new(total_bytes: u64, runtime: Option<Arc<Platform>>) -> Self {
-        Self {
-            total_bytes,
-            downloaded_bytes: 0,
-            last_reported_progress: 0,
-            runtime,
-        }
-    }
-}
-
-impl BodySink for ProgressSink {
-    fn write(&mut self, chunk: &[u8]) -> Result<(), String> {
-        self.downloaded_bytes += chunk.len() as u64;
-
-        if self.total_bytes > 0 {
-            let progress =
-                ((self.downloaded_bytes as f64 / self.total_bytes as f64) * 100.0) as i32;
-            let progress = progress.min(100);
-
-            if progress > self.last_reported_progress {
-                self.last_reported_progress = progress;
-                if let Some(runtime) = &self.runtime {
-                    let _ = runtime.update_download_progress(progress);
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn close(&mut self, result: &Result<(), String>) {
-        if result.is_ok()
-            && let Some(runtime) = &self.runtime
-        {
-            let _ = runtime.update_download_progress(100);
-        }
-    }
-}
-
 /// Coordinates update preparation, download, and installation for LxApps.
 #[derive(Clone)]
 pub struct UpdateManager {
@@ -89,22 +35,6 @@ pub struct UpdateManager {
     lxapp: Arc<lxapp_runtime::LxApp>,
     /// Directory where archives are downloaded before installation.
     downloads_dir: PathBuf,
-}
-
-const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
-
-async fn with_foreground_update_timeout<T, F>(future: F, context: &str) -> Result<T, LxAppError>
-where
-    F: std::future::Future<Output = Result<T, LxAppError>>,
-{
-    match timeout(FOREGROUND_UPDATE_CHECK_TIMEOUT, future).await {
-        Ok(result) => result,
-        Err(_) => Err(LxAppError::Runtime(format!(
-            "{} timed out after {}s",
-            context,
-            FOREGROUND_UPDATE_CHECK_TIMEOUT.as_secs()
-        ))),
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,33 +46,7 @@ pub struct DownloadedUpdateInfo {
 /// OTA update target.
 #[derive(Clone)]
 pub enum OtaUpdateTarget {
-    App {
-        runtime: Arc<Platform>,
-        current_version: Option<String>,
-    },
-    LxApp {
-        target_appid: String,
-    },
-}
-
-fn ensure_runtime_version_compatible(
-    lxappid: &str,
-    pkg: &UpdatePackageInfo,
-) -> Result<(), LxAppError> {
-    pkg.ensure_runtime_compatible(crate::SDK_RUNTIME_VERSION, lxappid)
-        .map_err(runtime_compatibility_to_lxapp_error)
-}
-
-fn runtime_compatibility_to_lxapp_error(error: RuntimeCompatibilityError) -> LxAppError {
-    match error {
-        RuntimeCompatibilityError::InvalidCurrentRuntimeVersion { .. } => {
-            LxAppError::Runtime(error.to_string())
-        }
-        RuntimeCompatibilityError::InvalidRequiredRuntimeVersion { .. }
-        | RuntimeCompatibilityError::RequiresRuntimeUpgrade { .. } => {
-            LxAppError::UnsupportedOperation(error.to_string())
-        }
-    }
+    LxApp { target_appid: String },
 }
 
 fn filename_from_url_or_hash(url: &str) -> String {
@@ -158,16 +62,9 @@ fn filename_from_url_or_hash(url: &str) -> String {
 impl UpdateManager {
     /// Trigger OTA update flow.
     ///
-    /// - App: prompt/download/install flow, immediate and cooldown-bypassed.
-    /// - LxApp: immediate latest-package check flow, cooldown-bypassed.
+    /// - LxApp: immediate latest-package check flow, auto-check bypassed.
     pub fn trigger_ota_update(target: OtaUpdateTarget) {
         match target {
-            OtaUpdateTarget::App {
-                runtime,
-                current_version,
-            } => {
-                Self::spawn_app_update_flow_internal(runtime, current_version, Duration::ZERO, true)
-            }
             OtaUpdateTarget::LxApp { target_appid } => {
                 let release_type = ReleaseType::Release;
                 let context_lxapp = lxapp_runtime::try_get(&target_appid)
@@ -189,7 +86,6 @@ impl UpdateManager {
                     target_appid,
                     release_type,
                     Some(current_version),
-                    true,
                 );
             }
         }

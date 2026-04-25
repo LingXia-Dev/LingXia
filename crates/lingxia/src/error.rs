@@ -116,6 +116,20 @@ impl From<lingxia_provider::ProviderError> for Error {
     }
 }
 
+impl From<lingxia_update::UpdateError> for Error {
+    fn from(error: lingxia_update::UpdateError) -> Self {
+        match error {
+            lingxia_update::UpdateError::InvalidParameter(detail) => Self::InvalidRequest(detail),
+            lingxia_update::UpdateError::UnsupportedOperation(detail) => {
+                Self::InvalidRequest(detail)
+            }
+            lingxia_update::UpdateError::ResourceNotFound(detail) => Self::NotFound(detail),
+            lingxia_update::UpdateError::Io(detail)
+            | lingxia_update::UpdateError::Runtime(detail) => Self::Internal(detail),
+        }
+    }
+}
+
 impl From<lingxia_service::downloads::DownloadsError> for Error {
     fn from(error: lingxia_service::downloads::DownloadsError) -> Self {
         match error {

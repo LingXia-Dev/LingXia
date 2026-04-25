@@ -74,6 +74,14 @@ pub(crate) fn get_provider() -> &'static dyn Provider {
     PROVIDER.get().map(|b| b.as_ref()).unwrap_or(&NoOpProvider)
 }
 
+/// Returns the registered update provider for host-level integrations.
+///
+/// The provider registry is shared by host app, lxapp, and plugin update flows;
+/// update execution itself must live in the owning layer.
+pub fn update_provider() -> &'static dyn UpdateProvider {
+    get_provider()
+}
+
 pub(crate) fn has_update_provider() -> bool {
     PROVIDER.get().is_some()
 }
