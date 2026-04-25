@@ -1,11 +1,12 @@
 use crate::i18n::{
-    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error,
-    js_invalid_parameter_error,
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
 use lingxia_platform::traits::media_runtime::{
     CompressVideoRequest, CompressedVideo as PlatformCompressedVideo, ExtractVideoThumbnailRequest,
     MediaRuntime, VideoCompressQuality, VideoInfo as PlatformVideoInfo,
 };
+use lingxia_service::storage;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use std::fs;
@@ -151,6 +152,7 @@ async fn extract_video_thumbnail_api(
     let thumbnail = runtime
         .extract_video_thumbnail(&request)
         .map_err(|e| js_error_from_platform_error(&e))?;
+    ensure_output_quota(&lxapp, &thumbnail.path)?;
 
     let uri = lxapp
         .to_uri(&thumbnail.path)
@@ -206,6 +208,7 @@ async fn compress_video_api(
     let compressed = runtime
         .compress_video(&request)
         .map_err(|e| js_error_from_platform_error(&e))?;
+    ensure_output_quota(&lxapp, &compressed.path)?;
 
     compressed_video_to_js(&lxapp, compressed)
 }
@@ -371,4 +374,46 @@ fn generate_timestamped_output_path(
     let filename = format!("{}_{}_{}.{}", prefix, timestamp, nonce, ext);
 
     Ok(base_dir.join(filename))
+}
+
+fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
+    let size = storage::path_size(path);
+    let result = if path.starts_with(&lxapp.temp_dir) {
+        storage::ensure_temp_quota(&lxapp.temp_dir, path, size)
+    } else if path.starts_with(&lxapp.user_data_dir) {
+        storage::ensure_userdata_quota(&lxapp.user_data_dir, path, size).and_then(|()| {
+            storage::ensure_app_storage_quota(
+                &lxapp.user_data_dir,
+                &lxapp.user_cache_dir,
+                path,
+                size,
+            )
+        })
+    } else if path.starts_with(&lxapp.user_cache_dir) {
+        storage::ensure_usercache_quota(&lxapp.user_cache_dir, path, size, None).and_then(|()| {
+            storage::ensure_app_storage_quota(
+                &lxapp.user_data_dir,
+                &lxapp.user_cache_dir,
+                path,
+                size,
+            )
+        })
+    } else {
+        Ok(())
+    };
+
+    match result {
+        Ok(()) => {
+            if path.starts_with(&lxapp.user_cache_dir)
+                && let Ok(cache) = lxapp.cache()
+            {
+                cache.on_access(path);
+            }
+            Ok(())
+        }
+        Err(err) => {
+            let _ = std::fs::remove_file(path);
+            Err(js_error_from_business_code_with_detail(1002, err.detail()))
+        }
+    }
 }

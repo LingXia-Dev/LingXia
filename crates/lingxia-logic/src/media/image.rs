@@ -1,5 +1,9 @@
-use crate::i18n::{js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error};
+use crate::i18n::{
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error, js_internal_error,
+};
 use lingxia_platform::traits::media_runtime::{CompressImageRequest, MediaRuntime};
+use lingxia_service::storage;
 use lxapp::{LxApp, lx};
 use rong::{FromJSObj, IntoJSObj, JSContext, JSFunc, JSResult};
 use std::fs;
@@ -114,6 +118,7 @@ async fn compress_image_api(
     let path = runtime
         .compress_image(&request)
         .map_err(|e| js_error_from_platform_error(&e))?;
+    ensure_temp_output_quota(&lxapp, &path)?;
 
     let uri = lxapp
         .to_uri(&path)
@@ -165,6 +170,12 @@ fn generate_compress_output_path(cache_root: &Path) -> JSResult<PathBuf> {
     let filename = format!("lx_{}.jpg", timestamp);
 
     Ok(base_dir.join(filename))
+}
+
+fn ensure_temp_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
+    let size = storage::path_size(path);
+    storage::ensure_temp_quota(&lxapp.temp_dir, path, size)
+        .map_err(|err| js_error_from_business_code_with_detail(1002, err.detail()))
 }
 
 fn infer_mime_from_path(path: &str) -> &'static str {

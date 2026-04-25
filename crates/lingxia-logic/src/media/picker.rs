@@ -136,10 +136,12 @@ async fn choose_media(
                     response_path_for_media(&lxapp, &path)?
                 }
                 _ if should_copy_local_media_file_to_cache() => {
+                    let incoming_bytes = fs::metadata(&source_path).ok().map(|m| m.len());
                     let cached_path = ensure_temp_media_path(
                         lxapp.as_ref(),
                         &key,
                         &ext,
+                        incoming_bytes,
                         |dest_path| {
                             let result = fs::copy(&source_path, dest_path);
                             result.map(|_| ()).map_err(|e| {
@@ -173,7 +175,7 @@ async fn choose_media(
                 "image" => MediaKind::Image,
                 _ => MediaKind::Image,
             };
-            ensure_temp_media_path(lxapp.as_ref(), &key, &ext, |dest_path| {
+            ensure_temp_media_path(lxapp.as_ref(), &key, &ext, None, |dest_path| {
                 AppRuntime::copy_album_media_to_file(&*lxapp.runtime, uri, dest_path, media_kind)
                     .map_err(|err| js_error_from_platform_error(&err))
             })
