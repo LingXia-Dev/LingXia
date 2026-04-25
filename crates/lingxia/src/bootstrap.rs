@@ -59,11 +59,15 @@ fn load_bundled_app_config(
 pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option<String> {
     use lingxia_platform::traits::app_runtime::AppRuntime;
 
-    let _ = crate::lxapp_dev::install_lxapp_dev_config_from_env();
+    #[cfg(feature = "devtool")]
+    let _ = crate::devtool::install_lxapp_dev_config_from_env();
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
-    let app_config = crate::lxapp_dev::load_host_app_config(&runtime, load_bundled_app_config)?;
+    #[cfg(feature = "devtool")]
+    let app_config = crate::devtool::load_host_app_config(&runtime, load_bundled_app_config)?;
+    #[cfg(not(feature = "devtool"))]
+    let app_config = load_bundled_app_config(&runtime)?;
     crate::app::set_data_dir(runtime.app_data_dir());
     install_global_executor();
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
@@ -77,7 +81,8 @@ pub(crate) fn init_with_platform(platform: lingxia_platform::Platform) -> Option
     crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
-    crate::lxapp_dev::register_bundle_source_override();
+    #[cfg(feature = "devtool")]
+    crate::devtool::register_bundle_source_override();
     let home_app_id = lxapp::init(platform);
     crate::update::spawn_host_app_update_flow(runtime.clone());
     crate::browser::register_builtin_assets();

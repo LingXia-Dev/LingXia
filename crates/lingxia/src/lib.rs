@@ -9,7 +9,9 @@
 //! - native service facades such as [`app`], [`mod@file`], [`media`],
 //!   [`downloads`], [`settings`], [`push`], [`task`], and [`update`];
 //! - optional JS AppService extension APIs under [`js`] when the `standard`
-//!   feature is enabled.
+//!   feature is enabled;
+//! - optional devtool helpers under [`dev`] when the `devtool` feature is
+//!   enabled.
 //!
 //! Most applications should depend on `lingxia` rather than lower-level crates
 //! such as `lingxia-lxapp`. Lower-level crates remain available for runtime
@@ -35,8 +37,9 @@ pub use app::{config as app_config, lingxia_id, product_version};
 mod applink;
 mod bootstrap;
 mod capabilities;
+#[cfg(feature = "devtool")]
 pub mod dev {
-    pub use crate::lxapp_dev::{
+    pub use crate::devtool::{
         LxAppDevConfig, LxAppDevIdentity, LxAppDevPageInfo, install_lxapp_dev_config,
         install_lxapp_dev_config_from_env, lxapp_dev_page_back, lxapp_dev_page_click,
         lxapp_dev_page_current, lxapp_dev_page_eval, lxapp_dev_page_fill, lxapp_dev_page_info,
@@ -44,6 +47,8 @@ pub mod dev {
         lxapp_dev_page_query, lxapp_dev_page_type,
     };
 }
+#[cfg(feature = "devtool")]
+mod devtool;
 pub mod downloads;
 mod error;
 pub mod file;
@@ -51,7 +56,6 @@ mod host_addon;
 #[cfg(feature = "standard")]
 pub mod js;
 mod logging;
-mod lxapp_dev;
 pub mod media;
 pub mod provider;
 pub mod settings;
