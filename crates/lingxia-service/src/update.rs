@@ -148,6 +148,7 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
                 &update.url,
                 &update.checksum_sha256,
                 &update.version,
+                update.size,
                 progress,
             )
             .await
@@ -234,6 +235,7 @@ async fn download_host_app_update_package(
     url: &str,
     checksum_sha256: &str,
     version: &str,
+    expected_size: Option<u64>,
     progress: AppUpdateProgressReporter,
 ) -> Result<PathBuf, UpdateError> {
     log::info!("App update download start: url={url} version={version}");
@@ -245,9 +247,10 @@ async fn download_host_app_update_package(
 
     if dest.exists() {
         if checksum_sha256.is_empty() {
-            if dest.metadata().map(|m| m.len()).unwrap_or(0) > 0 {
+            let existing_size = dest.metadata().map(|m| m.len()).unwrap_or(0);
+            if existing_size > 0 {
                 log::info!("App update package already downloaded: {}", dest.display());
-                progress.report(dest.metadata().map(|m| m.len()).unwrap_or(0), None);
+                progress.report(existing_size, expected_size.or(Some(existing_size)));
                 return Ok(dest);
             }
             let _ = fs::remove_file(&dest);
@@ -257,21 +260,31 @@ async fn download_host_app_update_package(
                 "App update package already downloaded and verified: {}",
                 dest.display()
             );
-            progress.report(dest.metadata().map(|m| m.len()).unwrap_or(0), None);
+            let existing_size = dest.metadata().map(|m| m.len()).unwrap_or(0);
+            progress.report(existing_size, expected_size.or(Some(existing_size)));
             return Ok(dest);
         }
         let _ = fs::remove_file(&dest);
     }
 
-    let file_size = get_content_length(url).await.unwrap_or(0);
+    let file_size = match expected_size.filter(|size| *size > 0) {
+        Some(size) => Some(size),
+        None => match get_content_length(url).await {
+            Ok(size) => Some(size),
+            Err(error) => {
+                log::debug!("App update content length unavailable: {error}");
+                None
+            }
+        },
+    };
     let use_builtin_progress = update_config().ui_mode == UpdateUiMode::Builtin;
     if use_builtin_progress && let Err(error) = runtime.show_download_progress() {
         log::warn!("Failed to show download progress: {error}");
     }
 
-    progress.report(0, (file_size > 0).then_some(file_size));
+    progress.report(0, file_size);
     let sink: Option<Box<dyn BodySink>> = Some(Box::new(ProgressSink::new(
-        (file_size > 0).then_some(file_size),
+        file_size,
         use_builtin_progress.then_some(runtime.clone()),
         progress,
     )));
@@ -385,6 +398,10 @@ async fn get_content_length(url: &str) -> Result<u64, String> {
         host_http::send_with_small_body_limit(request, 1024, host_http::RequestOptions::new())
             .await
             .map_err(|error| format!("HEAD request failed: {error}"))?;
+
+    if !response.status.is_success() {
+        return Err(format!("HEAD request returned HTTP {}", response.status));
+    }
 
     response
         .headers

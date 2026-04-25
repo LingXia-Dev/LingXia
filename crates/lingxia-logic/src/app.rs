@@ -4,6 +4,8 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
 
+mod update;
+
 /// Host app base information.
 #[derive(Debug, Clone, IntoJSObj)]
 struct AppBaseInfo {
@@ -53,6 +55,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
     app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
     app.set("exit", JSFunc::new(ctx, exit_app)?)?;
+    update::init(ctx, &app)?;
 
     Ok(())
 }

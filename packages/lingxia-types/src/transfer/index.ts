@@ -12,7 +12,15 @@ export interface DownloadOptions {
   headers?: Record<string, string>;
   /** Request timeout in milliseconds. */
   timeout?: number;
-  /** Optional durable destination. Relative paths resolve under user data; lx:// paths must target lx://userdata. Omit for a temporary download. */
+  /**
+   * Optional durable destination.
+   *
+   * - Omit `filePath` to receive a temporary file in `tempFilePath`
+   * - Relative paths resolve under user data
+   * - `lx://` paths must target `lx://userdata`
+   *
+   * `lx://usercache` is not accepted here.
+   */
   filePath?: string;
   /** Optional abort signal. */
   signal?: AbortSignal;
@@ -34,14 +42,21 @@ export interface DownloadIteratorResult {
 
 export type DownloadResult =
   | {
-      /** Temporary result. Not durable; use getFileManager().copyFile or rename to keep it. */
+      /**
+       * Temporary result.
+       *
+       * Not durable; move or copy it to `lx://userdata` if you need to keep it.
+       *
+       * When `filePath` is omitted, the runtime must be able to infer a file
+       * type from the URL or the server's `Content-Type` header.
+       */
       tempFilePath: string;
       filePath?: never;
       mimeType?: string;
       size: number;
     }
   | {
-      /** Durable user data destination. */
+      /** Durable destination under `lx://userdata`. */
       filePath: string;
       tempFilePath?: never;
       mimeType?: string;
