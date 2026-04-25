@@ -1,3 +1,5 @@
+//! Host app update helpers built on LingXia's update service.
+
 pub use lingxia_service::update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateStage, UpdateError, UpdatePackageInfo,
 };

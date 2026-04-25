@@ -1,40 +1,53 @@
 use thiserror::Error;
 
+/// Crate-wide result type for LingXia host-facing APIs.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Error type returned by host-facing LingXia APIs.
 #[derive(Debug, Error)]
 pub enum Error {
+    /// The caller supplied an invalid input or request shape.
     #[error("invalid request: {0}")]
     InvalidRequest(String),
+    /// The current host or platform policy denied the requested operation.
     #[error("permission denied: {0}")]
     PermissionDenied(String),
+    /// The requested resource does not exist.
     #[error("not found: {0}")]
     NotFound(String),
+    /// An underlying I/O operation failed.
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    /// The platform runtime returned an error outside the request contract.
     #[error("platform error: {0}")]
     Platform(String),
+    /// An unexpected internal failure occurred.
     #[error("internal error: {0}")]
     Internal(String),
 }
 
 impl Error {
+    /// Builds an [`Error::InvalidRequest`].
     pub fn invalid_request(detail: impl Into<String>) -> Self {
         Self::InvalidRequest(detail.into())
     }
 
+    /// Builds an [`Error::PermissionDenied`].
     pub fn permission_denied(detail: impl Into<String>) -> Self {
         Self::PermissionDenied(detail.into())
     }
 
+    /// Builds an [`Error::NotFound`].
     pub fn not_found(detail: impl Into<String>) -> Self {
         Self::NotFound(detail.into())
     }
 
+    /// Builds an [`Error::Platform`].
     pub fn platform(detail: impl Into<String>) -> Self {
         Self::Platform(detail.into())
     }
 
+    /// Builds an [`Error::Internal`].
     pub fn internal(detail: impl Into<String>) -> Self {
         Self::Internal(detail.into())
     }

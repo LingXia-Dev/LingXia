@@ -12,20 +12,31 @@ struct LxAppManifest {
     version: String,
 }
 
+/// Identity of the LxApp currently exposed through host devtool helpers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LxAppDevIdentity {
+    /// LxApp id from `lxapp.json`.
     pub appid: String,
+    /// LxApp version from `lxapp.json`.
     pub version: String,
 }
 
+/// Explicit host devtool configuration for loading an unpacked LxApp bundle.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LxAppDevConfig {
+    /// Root directory that contains the runnable LxApp bundle.
     pub root: PathBuf,
+    /// LxApp identity advertised to the host runtime.
     pub identity: LxAppDevIdentity,
 }
 
 static LXAPP_DEV_CONFIG: OnceLock<LxAppDevConfig> = OnceLock::new();
 
+/// Installs an explicit devtool bundle override for the current process.
+///
+/// Returns `true` when the configuration is installed or when the same
+/// configuration had already been installed. Returns `false` when a conflicting
+/// config was already present.
 pub fn install_lxapp_dev_config(config: LxAppDevConfig) -> bool {
     if let Some(existing) = LXAPP_DEV_CONFIG.get() {
         if existing == &config {
@@ -94,6 +105,10 @@ fn read_lxapp_manifest(path: &std::path::Path) -> Result<LxAppManifest, String> 
     })
 }
 
+/// Installs devtool config from the `LINGXIA_LXAPP_PATH` environment variable.
+///
+/// The path may point either at a built `dist/` directory or at a project root
+/// that contains one.
 pub fn install_lxapp_dev_config_from_env() -> bool {
     let Ok(raw_path) = std::env::var(LXAPP_PATH_ENV) else {
         return false;
@@ -202,23 +217,33 @@ pub(crate) fn register_bundle_source_override() {
     lxapp::register_dev_bundle_source(dev_config.identity.appid.clone(), dev_config.root.clone());
 }
 
+/// Snapshot of a page exposed by the active devtool target.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LxAppDevPageInfo {
+    /// App id that owns the page.
     pub appid: String,
+    /// Declarative page name from the runtime manifest, when available.
     pub name: String,
+    /// Runtime page path.
     pub path: String,
+    /// Whether this page is the current foreground page.
     pub current: bool,
+    /// Whether this page still exists in the navigation stack.
     pub in_stack: bool,
+    /// Whether the page currently has an attached WebView.
     pub ready: bool,
+    /// Whether direct text-input actions are supported on this platform.
     pub input_supported: bool,
 }
 
+/// Returns information about the current page for the selected app.
 pub fn lxapp_dev_page_current(appid: Option<&str>) -> Result<LxAppDevPageInfo, String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     let (page, name) = resolve_dev_page(&app, None)?;
     Ok(dev_page_info(&app, &page, name.as_deref()))
 }
 
+/// Lists known pages for the selected app and marks current/stack state.
 pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>, String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     let info = app.runtime_info();
@@ -243,6 +268,7 @@ pub fn lxapp_dev_page_list(appid: Option<&str>) -> Result<Vec<LxAppDevPageInfo>,
         .collect())
 }
 
+/// Returns information for a specific page, or the current page if omitted.
 pub fn lxapp_dev_page_info(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -252,6 +278,7 @@ pub fn lxapp_dev_page_info(
     Ok(dev_page_info(&app, &page, name.as_deref()))
 }
 
+/// Evaluates JavaScript in the target page WebView and returns the raw JSON result.
 pub async fn lxapp_dev_page_eval(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -266,6 +293,7 @@ pub async fn lxapp_dev_page_eval(
         .map_err(|err| err.to_string())
 }
 
+/// Queries DOM nodes in the target page and returns a JSON description payload.
 pub async fn lxapp_dev_page_query(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -284,6 +312,7 @@ pub async fn lxapp_dev_page_query(
         .map_err(|err| err.to_string())
 }
 
+/// Clicks the matching DOM node in the target page.
 pub async fn lxapp_dev_page_click(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -301,6 +330,7 @@ pub async fn lxapp_dev_page_click(
         .map_err(|err| err.to_string())
 }
 
+/// Types text into the matching editable DOM node without clearing existing content.
 pub async fn lxapp_dev_page_type(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -326,6 +356,7 @@ pub async fn lxapp_dev_page_type(
         .map_err(|err| err.to_string())
 }
 
+/// Replaces the matching editable DOM node content with the provided text.
 pub async fn lxapp_dev_page_fill(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -344,6 +375,7 @@ pub async fn lxapp_dev_page_fill(
         .map_err(|err| err.to_string())
 }
 
+/// Sends a key press to the target page WebView.
 pub async fn lxapp_dev_page_press(
     appid: Option<&str>,
     page_name: Option<&str>,
@@ -358,6 +390,7 @@ pub async fn lxapp_dev_page_press(
         .map_err(|err| err.to_string())
 }
 
+/// Navigates back in the current page stack by the requested delta.
 pub fn lxapp_dev_page_back(appid: Option<&str>, delta: u32) -> Result<(), String> {
     let app = resolve_dev_lxapp(appid.unwrap_or("current"))?;
     app.current_page()
@@ -439,6 +472,7 @@ fn dev_page_info(
     }
 }
 
+/// Reports whether direct WebView input actions are supported on this platform build.
 pub fn lxapp_dev_page_input_supported() -> bool {
     cfg!(all(feature = "webview-input", target_os = "macos"))
 }

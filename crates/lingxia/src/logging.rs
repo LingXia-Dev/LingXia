@@ -12,8 +12,10 @@ const SDK_LOG_LEVEL_INFO: i32 = 2;
 const SDK_LOG_LEVEL_WARN: i32 = 3;
 const SDK_LOG_LEVEL_ERROR: i32 = 4;
 
+/// Error returned when installing a downstream logger fails.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DownstreamLoggerError {
+    /// A downstream logger has already been registered.
     AlreadyRegistered,
 }
 
@@ -43,6 +45,11 @@ pub(crate) fn init() {
     let _ = LOGGING_INIT.set(());
 }
 
+/// Registers an additional logger that receives every Rust log record emitted by LingXia.
+///
+/// LingXia still keeps its own platform logger and log manager. The downstream
+/// logger is an observer hook for host applications that want to mirror records
+/// into another sink.
 pub fn register_downstream_logger(
     logger: Box<dyn Log + Send + Sync>,
 ) -> Result<(), DownstreamLoggerError> {

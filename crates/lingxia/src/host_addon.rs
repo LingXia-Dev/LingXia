@@ -1,11 +1,17 @@
 use std::sync::{Arc, Mutex, OnceLock};
 
+/// Host lifecycle extension points that can register additional runtime behavior.
 pub trait HostAddon: Send + Sync {
+    /// Runs before LingXia initialization begins.
     fn before_init(&self) {}
+    /// Registers JS logic extensions when the `standard` feature is enabled.
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {}
+    /// Registers native host APIs before the runtime starts serving requests.
     fn install_host_apis(&self) {}
+    /// Runs after LingXia initialization succeeds.
     fn after_init(&self) {}
+    /// Starts long-lived services after the host runtime is warmed up.
     fn start_services(&self) {}
 }
 
@@ -15,6 +21,7 @@ fn host_addons() -> &'static Mutex<Vec<Arc<dyn HostAddon>>> {
     HOST_ADDONS.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// Registers a host addon for future LingXia initialization cycles.
 pub fn register_host_addon(addon: Box<dyn HostAddon>) {
     let mut installed = host_addons()
         .lock()

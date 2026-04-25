@@ -10,7 +10,7 @@
 //!   [`downloads`], [`settings`], [`push`], [`task`], and [`update`];
 //! - optional JS AppService extension APIs under [`js`] when the `standard`
 //!   feature is enabled;
-//! - optional devtool helpers under [`dev`] when the `devtool` feature is
+//! - optional devtool helpers under `dev` when the `devtool` feature is
 //!   enabled.
 //!
 //! Most applications should depend on `lingxia` rather than lower-level crates
@@ -32,11 +32,13 @@ pub use lxapp::{
     notify_page_instance_by_id, touch_page_instance_by_id,
 };
 
+/// Host app metadata, limits, and state-path helpers.
 pub mod app;
 pub use app::{config as app_config, lingxia_id, product_version};
 mod applink;
 mod bootstrap;
 mod capabilities;
+/// LxApp devtool helpers for host-side inspection and automation.
 #[cfg(feature = "devtool")]
 pub mod dev {
     pub use crate::devtool::{
@@ -49,21 +51,30 @@ pub mod dev {
 }
 #[cfg(feature = "devtool")]
 mod devtool;
+/// Download history and control helpers scoped to an [`LxApp`].
 pub mod downloads;
 mod error;
+/// File dialogs and host file-manager integrations.
 pub mod file;
 mod host_addon;
+/// JS AppService extension registration helpers.
 #[cfg(feature = "standard")]
 pub mod js;
 mod logging;
+/// Media, camera, scanner, and media-preview helpers.
 pub mod media;
+/// Provider traits and registration helpers.
 pub mod provider;
+/// Persisted host settings helpers.
 pub mod settings;
+/// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
+/// Host app update helpers and update event types.
 pub mod update;
 
 pub use error::{Error, Result};
 
+/// Logging types and logger registration helpers.
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
     pub use lingxia_log::{
@@ -74,15 +85,19 @@ pub mod log {
     };
 }
 
+/// Android platform bridge exports for the native host runtime.
 #[cfg(target_os = "android")]
 pub mod android;
 
+/// Apple platform bridge exports for iOS and macOS hosts.
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub mod apple;
 
+/// HarmonyOS platform bridge exports for the native host runtime.
 #[cfg(target_env = "ohos")]
 pub mod harmony;
 
 pub(crate) mod browser;
+/// Push-notification helpers and bridge entry points.
 pub mod push;
 pub(crate) use bootstrap::init_with_platform;
