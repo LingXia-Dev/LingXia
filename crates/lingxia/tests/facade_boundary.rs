@@ -74,6 +74,65 @@ fn root_js_extension_exports_stay_scoped_to_js_module() {
     assert!(!root_exports.contains("pub use lingxia_provider::{"));
     assert!(!root_exports.contains("pub use lingxia_media::{"));
     assert!(!root_exports.contains("pub use tokio;"));
+    assert!(!root_exports.contains("pub use lxapp::set_num_workers"));
+    assert!(!root_exports.contains("create_page_instance"));
+    assert!(!root_exports.contains("PageInstance"));
+    assert!(!root_exports.contains("PageOwner"));
+    assert!(!root_exports.contains("PageTarget"));
+    assert!(!root_exports.contains("pub mod browser;"));
+    assert!(!root_exports.contains("pub mod downloads;"));
+    assert!(!root_exports.contains("pub mod settings;"));
+    assert!(!root_exports.contains("app_config"));
+    assert!(!root_exports.contains("AppConfig"));
+}
+
+#[test]
+fn file_download_facade_stays_user_cache_scoped() {
+    let file = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/file.rs"))
+        .expect("read lingxia file.rs");
+
+    assert!(!file.contains("pub fn to_path("));
+    assert!(!file.contains("download_to_path_with_behavior"));
+    assert!(file.contains("download_to_user_cache"));
+}
+
+#[test]
+fn log_facade_exports_app_authoring_surface_only() {
+    let lib = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
+        .expect("read lingxia lib.rs");
+    let log_exports = lib
+        .split("pub mod log {")
+        .nth(1)
+        .and_then(|rest| rest.split("/// Android platform bridge exports").next())
+        .expect("log exports section");
+
+    assert!(log_exports.contains("register_downstream_logger"));
+    assert!(log_exports.contains("attach_log_stream"));
+    assert!(!log_exports.contains("LogManager"));
+    assert!(!log_exports.contains("LogBuffer"));
+    assert!(!log_exports.contains("register_log_provider"));
+    assert!(!log_exports.contains("tracing_layer"));
+    assert!(!log_exports.contains("upload_collected_logs"));
+    assert!(!log_exports.contains("CollectedLogArchive"));
+}
+
+#[test]
+fn update_facade_exposes_custom_ui_surface_only() {
+    let update = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/update.rs"))
+        .expect("read lingxia update.rs");
+
+    assert!(!update.contains("pub use lingxia_service::update"));
+    assert!(!update.contains("pub use lingxia_update"));
+    assert!(!update.contains("apply_host_app_update"));
+    assert!(!update.contains("download_and_install"));
+    assert!(!update.contains("pub fn configure"));
+    assert!(!update.contains("pub fn config"));
+    assert!(!update.contains("pub fn size("));
+    assert!(update.contains("pub fn use_custom_host_app_update()"));
+    assert!(update.contains("pub async fn check_host_app_update()"));
+    assert!(update.contains("pub struct HostAppUpdate"));
+    assert!(update.contains("pub fn apply(self) -> HostAppUpdateApply"));
+    assert!(update.contains("pub fn package_size_bytes(&self) -> Option<u64>"));
 }
 
 #[test]
