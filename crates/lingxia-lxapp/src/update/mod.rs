@@ -4,6 +4,7 @@ pub(crate) mod state;
 
 use crate::archive;
 use crate::error::LxAppError;
+use crate::lxapp::config::LxAppConfig;
 use crate::lxapp::metadata::LxAppRecord;
 use crate::lxapp::{
     self as lxapp_runtime, LINGXIA_DIR, LXAPPS_DIR, ReleaseType, STORAGE_DIR, USER_CACHE_DIR,
@@ -211,6 +212,11 @@ impl UpdateManager {
             fs::write(&target, buffer)?;
         }
 
+        if let Err(e) = Self::validate_installed_lxapp_manifest(&destination) {
+            let _ = fs::remove_dir_all(&destination);
+            return Err(e);
+        }
+
         Self::record_install_metadata(lxappid, ReleaseType::Release, version, &destination)?;
         Ok(destination)
     }
@@ -226,8 +232,25 @@ impl UpdateManager {
         let previous_path =
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
-        let install_path =
-            Self::install_archive_to_dir(&self.lxapp.runtime, lxappid, release_type, archive_path)?;
+        let install_path = Self::install_archive_to_dir(
+            &self.lxapp.runtime,
+            lxappid,
+            release_type,
+            version,
+            archive_path,
+        )?;
+
+        if let Err(e) = Self::validate_installed_lxapp_manifest(&install_path) {
+            if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
+                crate::error!(
+                    "Failed to rollback invalid installation at {}: {}",
+                    install_path.display(),
+                    cleanup_err
+                )
+                .with_appid(lxappid);
+            }
+            return Err(e);
+        }
 
         if let Err(e) = Self::record_install_metadata(lxappid, release_type, version, &install_path)
         {
@@ -273,9 +296,10 @@ impl UpdateManager {
         runtime: &Arc<Platform>,
         lxappid: &str,
         release_type: ReleaseType,
+        version: &str,
         archive_path: &Path,
     ) -> Result<PathBuf, LxAppError> {
-        let dir_name = lxapp_fingermark(lxappid, release_type);
+        let dir_name = Self::versioned_install_dir_name(lxappid, release_type, version)?;
         let destination = runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
@@ -284,6 +308,40 @@ impl UpdateManager {
 
         archive::extract_tar_zst(archive_path, &destination)?;
         Ok(destination)
+    }
+
+    fn versioned_install_dir_name(
+        lxappid: &str,
+        release_type: ReleaseType,
+        version: &str,
+    ) -> Result<String, LxAppError> {
+        let parsed_version = Version::parse(version).map_err(|_| {
+            LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
+        })?;
+        let installed_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default();
+        Ok(format!(
+            "{}-{}-{}",
+            lxapp_fingermark(lxappid, release_type),
+            parsed_version,
+            installed_at
+        ))
+    }
+
+    fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<(), LxAppError> {
+        let manifest_path = install_path.join("lxapp.json");
+        let manifest = fs::read_to_string(&manifest_path).map_err(|e| {
+            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
+        })?;
+        let manifest_json: serde_json::Value = serde_json::from_str(&manifest).map_err(|e| {
+            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
+        })?;
+        LxAppConfig::from_value(manifest_json).map_err(|e| {
+            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
+        })?;
+        Ok(())
     }
 
     /// Uninstall on-disk contents for a specific (lxappid, release_type) and clear metadata.
@@ -300,15 +358,20 @@ impl UpdateManager {
 
         if let Some(rec) = metadata::get(lxappid, release_type)? {
             let dir_name = rec.fingermark;
-            let pkg_dir = self
+            let pkg_dir = PathBuf::from(rec.install_path.trim());
+            if !pkg_dir.as_os_str().is_empty() && pkg_dir.exists() {
+                fs::remove_dir_all(&pkg_dir)?;
+            }
+
+            let legacy_pkg_dir = self
                 .lxapp
                 .runtime
                 .app_data_dir()
                 .join(LINGXIA_DIR)
                 .join(LXAPPS_DIR)
                 .join(&dir_name);
-            if pkg_dir.exists() {
-                fs::remove_dir_all(&pkg_dir)?;
+            if legacy_pkg_dir != pkg_dir && legacy_pkg_dir.exists() {
+                fs::remove_dir_all(&legacy_pkg_dir)?;
             }
 
             let data_dir = self

@@ -409,15 +409,36 @@ impl UpdateManager {
         let previous_path =
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
+        let version = downloaded.version.to_version_string();
         let install_path =
-            Self::install_archive_to_dir(&runtime, lxappid, release_type, &archive_path)?;
+            Self::install_archive_to_dir(&runtime, lxappid, release_type, &version, &archive_path)?;
 
-        Self::record_install_metadata(
-            lxappid,
-            release_type,
-            &downloaded.version.to_string(),
-            &install_path,
-        )?;
+        if let Err(e) = Self::validate_installed_lxapp_manifest(&install_path) {
+            if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
+                crate::error!(
+                    "Failed to rollback invalid downloaded update at {}: {}",
+                    install_path.display(),
+                    cleanup_err
+                )
+                .with_appid(lxappid);
+            }
+            let _ = metadata::downloaded_remove(lxappid, release_type);
+            return Err(e);
+        }
+
+        if let Err(e) =
+            Self::record_install_metadata(lxappid, release_type, &version, &install_path)
+        {
+            if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
+                crate::error!(
+                    "Failed to rollback downloaded update at {}: {}",
+                    install_path.display(),
+                    cleanup_err
+                )
+                .with_appid(lxappid);
+            }
+            return Err(e);
+        }
 
         if let Some(prev) = previous_path
             && prev.exists()

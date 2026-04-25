@@ -1019,7 +1019,15 @@ impl LxApp {
         self.lxapp_dir = base_dir.join(&dir_name);
 
         match &self.bundle_source {
-            LxAppBundleSource::Installed => {}
+            LxAppBundleSource::Installed => {
+                if let Some(install_path) = meta
+                    .as_ref()
+                    .map(|record| record.install_path.trim())
+                    .filter(|path| !path.is_empty())
+                {
+                    self.lxapp_dir = PathBuf::from(install_path);
+                }
+            }
             LxAppBundleSource::DevPath { root } => {
                 info!("Using dev path for lxapp bundle: {}", root.display())
                     .with_appid(self.appid.clone());
