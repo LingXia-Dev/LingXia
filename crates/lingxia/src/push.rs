@@ -10,12 +10,6 @@ fn normalize_token(token: String) -> crate::Result<String> {
     Ok(token)
 }
 
-/// Bind push token through the registered provider.
-pub async fn bind_push_token(token: String) -> crate::Result<()> {
-    let token = normalize_token(token)?;
-    provider::bind_push_token(token).await.map_err(Into::into)
-}
-
 /// FFI-friendly push token entrypoint.
 ///
 /// Returns:

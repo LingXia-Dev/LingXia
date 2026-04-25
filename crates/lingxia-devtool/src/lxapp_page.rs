@@ -56,7 +56,7 @@ fn handle_lxapp_page_command_impl(
                 u64::try_from(DEFAULT_EVAL_TIMEOUT.as_millis()).unwrap_or(5000)
             }));
             let value = run_async(async move {
-                lingxia::task::tokio::time::timeout(
+                tokio::time::timeout(
                     timeout,
                     lingxia::dev::lxapp_dev_page_eval(
                         args.appid.as_deref(),
@@ -146,7 +146,7 @@ fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> R
 where
     E: std::fmt::Display,
 {
-    lingxia::task::tokio::runtime::Builder::new_current_thread()
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|err| err.to_string())?

@@ -3,4 +3,5 @@
 pub use lingxia_provider::{
     BoxFuture, FingerprintProvider, ProviderError, ProviderErrorCode, PushNotificationProvider,
 };
-pub use lxapp::{NoOpProvider, Provider, ProviderErrorExt, register_provider};
+pub use lingxia_update::{LxAppUpdateQuery, UpdatePackageInfo, UpdateProvider, UpdateTarget};
+pub use lxapp::{Provider, register_provider};

@@ -2,10 +2,8 @@
 
 use rong_rt::RongExecutor;
 
-/// Re-export of `tokio` for consumers that want to share the same task types.
-pub use tokio;
-/// Re-exported task handle returned by LingXia task helpers.
-pub use tokio::task::JoinHandle;
+/// Task handle returned by LingXia task helpers.
+pub type JoinHandle<T> = tokio::task::JoinHandle<T>;
 
 /// Spawns an async task onto LingXia's global executor.
 pub fn spawn<F>(future: F) -> JoinHandle<F::Output>

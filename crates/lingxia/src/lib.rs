@@ -6,8 +6,8 @@
 //!   HarmonyOS;
 //! - the [`native`] macro for page-facing Rust APIs;
 //! - host addon registration through [`HostAddon`] and [`register_host_addon`];
-//! - native service facades such as [`app`], [`mod@file`], [`media`],
-//!   [`downloads`], [`settings`], [`push`], [`task`], and [`update`];
+//! - native service facades such as [`app`], [`mod@file`], [`media`], [`task`],
+//!   and [`update`];
 //! - optional JS AppService extension APIs under [`js`] when the `standard`
 //!   feature is enabled;
 //! - optional devtool helpers under `dev` when the `devtool` feature is
@@ -23,18 +23,11 @@ pub use lingxia_native_macros::native;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
-pub use lxapp::set_num_workers;
-pub use lxapp::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, LxApp, PageDefinition,
-    PageInstance, PageInstanceEvent, PageInstanceId, PageOwner, PageQueryInput, PageTarget,
-    PageWarmDisposePolicy, PresentationKind, ResolvedPage, SceneId, ViewCallOptions,
-    create_page_instance, dispose_page_instance, dispose_page_instance_by_id, notify_page_instance,
-    notify_page_instance_by_id, touch_page_instance_by_id,
-};
+pub use lxapp::{LxApp, LxAppSecurityPrivilege, register_security_privilege};
 
-/// Host app metadata, limits, and state-path helpers.
+/// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
-pub use app::{config as app_config, lingxia_id, product_version};
+pub use app::{lingxia_id, product_version};
 mod applink;
 mod bootstrap;
 mod capabilities;
@@ -51,8 +44,6 @@ pub mod dev {
 }
 #[cfg(feature = "devtool")]
 mod devtool;
-/// Download history and control helpers scoped to an [`LxApp`].
-pub mod downloads;
 mod error;
 /// File dialogs and host file-manager integrations.
 pub mod file;
@@ -65,8 +56,6 @@ mod logging;
 pub mod media;
 /// Provider traits and registration helpers.
 pub mod provider;
-/// Persisted host settings helpers.
-pub mod settings;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
 /// Host app update helpers and update event types.
@@ -78,26 +67,26 @@ pub use error::{Error, Result};
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
     pub use lingxia_log::{
-        AttachedLogStream, CollectedLogArchive, CollectedLogArchiveInfo,
-        DEFAULT_LOG_HISTORY_CAPACITY, DEFAULT_LOG_LIVE_CAPACITY, LogBuffer, LogBufferConfig,
-        LogLevel, LogManager, LogMessage, LogStreamError, LogTag, attach_log_stream,
-        attach_log_stream_default, register_log_provider, tracing_layer, upload_collected_logs,
+        AttachedLogStream, LogLevel, LogMessage, LogStreamError, LogTag, attach_log_stream,
+        attach_log_stream_default,
     };
 }
 
 /// Android platform bridge exports for the native host runtime.
 #[cfg(target_os = "android")]
+#[path = "ffi/android.rs"]
 pub mod android;
 
 /// Apple platform bridge exports for iOS and macOS hosts.
 #[cfg(any(target_os = "ios", target_os = "macos"))]
+#[path = "ffi/apple.rs"]
 pub mod apple;
 
 /// HarmonyOS platform bridge exports for the native host runtime.
 #[cfg(target_env = "ohos")]
+#[path = "ffi/harmony.rs"]
 pub mod harmony;
 
 pub(crate) mod browser;
-/// Push-notification helpers and bridge entry points.
-pub mod push;
+pub(crate) mod push;
 pub(crate) use bootstrap::init_with_platform;

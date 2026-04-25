@@ -348,7 +348,7 @@ fn run_async<T, E>(future: impl std::future::Future<Output = Result<T, E>>) -> R
 where
     E: std::fmt::Display,
 {
-    lingxia::task::tokio::runtime::Builder::new_current_thread()
+    tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|err| err.to_string())?

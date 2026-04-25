@@ -1,4 +1,4 @@
-//! Host app metadata, storage paths, and app-level lifecycle helpers.
+//! Host app metadata, state paths, and app-level lifecycle helpers.
 //!
 //! These APIs describe the native host application, not an individual LxApp
 //! page. They are intended for Rust native code built with LingXia, including
@@ -7,24 +7,18 @@
 //! Common uses:
 //!
 //! - read product metadata such as `product_version` and `lingxia_id`;
-//! - resolve host-owned data/state paths such as `data_dir` and `state_file`;
+//! - resolve host-owned state paths such as `state_dir` and `state_file`;
 //! - request host app termination with `exit`.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
-pub use lingxia_app_context::{AppConfig, CapabilitiesConfig, StorageConfig};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub(crate) fn set_data_dir(path: PathBuf) {
     let _ = APP_DATA_DIR.set(path);
-}
-
-/// Returns the validated host app configuration when LingXia has been initialized.
-pub fn config() -> Option<&'static AppConfig> {
-    lingxia_app_context::app_config()
 }
 
 /// Returns the host app's display name from the initialized app config.
@@ -47,70 +41,31 @@ pub fn notifications_enabled() -> bool {
     lingxia_app_context::notifications_enabled()
 }
 
-/// Returns the configured temporary-storage quota in bytes.
-pub fn temp_max_size_bytes() -> u64 {
-    lingxia_app_context::temp_max_size_bytes()
-}
-
-/// Returns the configured cache quota in bytes.
-pub fn cache_max_size_bytes() -> u64 {
-    lingxia_app_context::cache_max_size_bytes()
-}
-
-/// Returns the configured data-directory quota in bytes.
-pub fn data_max_size_bytes() -> u64 {
-    lingxia_app_context::data_max_size_bytes()
-}
-
-/// Returns the configured per-LxApp storage quota in bytes.
-pub fn app_storage_max_size_bytes() -> u64 {
-    lingxia_app_context::app_storage_max_size_bytes()
-}
-
-/// Returns the host app's writable data directory.
-///
-/// This is available only after LingXia initialization has recorded the
-/// platform-provided app data path.
-pub fn data_dir() -> crate::Result<PathBuf> {
+fn data_dir() -> crate::Result<PathBuf> {
     APP_DATA_DIR
         .get()
         .cloned()
         .ok_or_else(|| crate::Error::internal("app data directory is not initialized"))
 }
 
-/// Returns the host-owned state directory under [`data_dir`].
+/// Returns the host-owned state directory.
 pub fn state_dir() -> crate::Result<PathBuf> {
     Ok(lingxia_app_context::app_state_dir(&data_dir()?))
 }
 
 /// Returns the full path to a file inside the host-owned state directory.
 pub fn state_file(name: &str) -> crate::Result<PathBuf> {
-    Ok(lingxia_app_context::app_state_file(&data_dir()?, name))
-}
-
-/// Returns the data directory allocated to a specific running [`crate::LxApp`].
-pub fn data_dir_for(app: &crate::LxApp) -> PathBuf {
-    app.app_data_dir()
+    state_file_in(data_dir()?, name)
 }
 
 /// Returns the state directory for a specific running [`crate::LxApp`].
 pub fn state_dir_for(app: &crate::LxApp) -> PathBuf {
-    lingxia_app_context::app_state_dir(&app.app_data_dir())
+    lingxia_app_context::app_state_dir(&app.user_data_dir)
 }
 
 /// Returns a file path inside an [`crate::LxApp`]'s state directory.
-pub fn state_file_for(app: &crate::LxApp, name: &str) -> PathBuf {
-    lingxia_app_context::app_state_file(&app.app_data_dir(), name)
-}
-
-/// Derives the state directory path from a host or app data directory.
-pub fn state_dir_from(app_data_dir: &Path) -> PathBuf {
-    lingxia_app_context::app_state_dir(app_data_dir)
-}
-
-/// Derives a file path inside the state directory for a given data directory.
-pub fn state_file_from(app_data_dir: &Path, name: &str) -> PathBuf {
-    lingxia_app_context::app_state_file(app_data_dir, name)
+pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> {
+    state_file_in(&app.user_data_dir, name)
 }
 
 /// Requests host app termination through the active platform runtime.
@@ -118,4 +73,25 @@ pub fn exit() -> crate::Result<()> {
     let runtime = lxapp::get_platform()
         .ok_or_else(|| crate::Error::internal("platform is not initialized"))?;
     runtime.exit().map_err(Into::into)
+}
+
+fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {
+    validate_state_file_name(name)?;
+    Ok(lingxia_app_context::app_state_file(root.as_ref(), name))
+}
+
+fn validate_state_file_name(name: &str) -> crate::Result<()> {
+    let path = Path::new(name);
+    if name.trim().is_empty() {
+        return Err(crate::Error::invalid_request("state file name is empty"));
+    }
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(crate::Error::invalid_request(
+            "state file name must be relative and stay inside the state directory",
+        ));
+    }
+    Ok(())
 }

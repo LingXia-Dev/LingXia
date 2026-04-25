@@ -52,7 +52,7 @@ fn should_generate_swift_bridge(target: &str) -> bool {
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 fn generate_swift_bridge() {
-    println!("cargo:rerun-if-changed=src/apple.rs");
+    println!("cargo:rerun-if-changed=src/ffi/apple.rs");
     println!("cargo:rerun-if-changed=Cargo.toml");
     println!("cargo:rerun-if-changed=build.rs");
 
@@ -65,7 +65,7 @@ fn generate_swift_bridge() {
     fs::create_dir_all(&lib_dir).expect("Failed to create directory");
     fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
 
-    swift_bridge_build::parse_bridges(vec!["src/apple.rs"])
+    swift_bridge_build::parse_bridges(vec!["src/ffi/apple.rs"])
         .write_all_concatenated(&temp_dir, package_name);
 
     // Add imports to generated Swift files
