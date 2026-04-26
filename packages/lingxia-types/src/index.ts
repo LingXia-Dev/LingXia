@@ -27,8 +27,10 @@ import type {
   AppConfig,
   AppInstance,
   HostAppApi,
+  PageMessagePort,
   PageConfig,
   PageInstance,
+  Surface,
 } from './app';
 
 import type {
@@ -115,7 +117,6 @@ import type {
   ShowActionSheetOptions,
   ActionSheetResult,
   NavigateToOptions,
-  NavigateToResult,
   NavigateBackOptions,
   RedirectToOptions,
   SwitchTabOptions,
@@ -127,14 +128,24 @@ import type {
   RemoveTabBarBadgeOptions,
   SetTabBarStyleOptions,
   SetTabBarItemOptions,
-  ShowPopupOptions,
-  ShowPopupResult,
+  SurfaceOpenOptions,
   CapsuleRect,
 } from './ui';
+
+export interface SurfaceApi {
+  /**
+   * Dynamically opens a page or URL in a runtime-managed surface.
+   *
+   * `popup` is cross-platform. `window` is a desktop capability and rejects on
+   * mobile platforms.
+   */
+  open(options: SurfaceOpenOptions): Promise<Surface>;
+}
 
 export interface Lx {
   env: LxEnv;
   app: HostAppApi;
+  surface: SurfaceApi;
 
   getDeviceInfo(): DeviceInfo;
   getScreenInfo(): ScreenInfo;
@@ -216,7 +227,7 @@ export interface Lx {
 
   showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
 
-  navigateTo(options: NavigateToOptions): Promise<NavigateToResult>;
+  navigateTo(options: NavigateToOptions): Promise<PageMessagePort>;
   navigateBack(options: NavigateBackOptions): void;
   redirectTo(options: RedirectToOptions): Promise<void>;
   switchTab(options: SwitchTabOptions): Promise<void>;
@@ -234,9 +245,6 @@ export interface Lx {
   hideTabBar(): boolean;
   setTabBarStyle(options: SetTabBarStyleOptions): boolean;
   setTabBarItem(options: SetTabBarItemOptions): boolean;
-
-  showPopup(options: ShowPopupOptions): Promise<ShowPopupResult>;
-  hidePopup(): void;
 
   startPullDownRefresh(): void;
   stopPullDownRefresh(): void;

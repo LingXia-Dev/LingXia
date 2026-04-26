@@ -160,18 +160,52 @@ export interface PageConfig<TData extends Record<string, unknown> = Record<strin
   [key: string]: unknown;
 }
 
+export type SurfaceCloseReason =
+  | 'user'
+  | 'programmatic'
+  | 'owner_closed'
+  | 'app_closed'
+  | 'failed'
+  | 'unknown';
+
+export interface SurfaceClosedEvent {
+  id: string;
+  kind: 'popup' | 'window';
+  reason: SurfaceCloseReason;
+}
+
+export interface Surface {
+  readonly id: string;
+  readonly kind: 'popup' | 'window';
+  /**
+   * Sends a message to the other side of a page surface.
+   *
+   * For the opener this targets the opened page. For the opened page this
+   * targets the opener. URL surfaces have no page-side receiver.
+  */
+  postMessage(message: unknown): void;
+  onMessage(handler: (message: unknown) => void): () => void;
+  onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
+  close(): Promise<void>;
+}
+
+export interface PageMessagePort {
+  postMessage(message: unknown): void;
+  onMessage(handler: (message: unknown) => void): () => void;
+}
+
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
   data: TData;
   route: string;
+  /**
+   * Available when this page was opened by `lx.surface.open(...)`.
+   */
+  surface?: Surface;
+  /**
+   * Available when this page was opened by `lx.navigateTo(...)`.
+   */
+  opener?: PageMessagePort;
   setData(data: Partial<TData> | Record<string, unknown>, callback?: () => void): void;
-  getEventEmitter(): EventEmitter;
-}
-
-export interface EventEmitter {
-  on(event: string, handler: (...args: unknown[]) => void): void;
-  off(event: string, handler: (...args: unknown[]) => void): void;
-  emit(event: string, ...args: unknown[]): void;
-  once(event: string, handler: (...args: unknown[]) => void): void;
 }
 
 /**

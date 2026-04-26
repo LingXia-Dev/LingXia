@@ -1,6 +1,7 @@
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error, js_internal_error,
 };
+use crate::message_port;
 use lxapp::lx;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
 use rong::{FromJSObj, JSContext, JSFunc, JSObject, JSResult};
@@ -157,20 +158,20 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
 
     ensure_page_exists_js(&lxapp, &target_url)?;
 
-    // Ensure PageSvc for target page exists in this JSContext
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    let (opener_port, page_port) = message_port::pair(&ctx)?;
+    page_svc
+        .bind_opener(page_port)
+        .map_err(|e| js_internal_error(format!("Failed to bind page opener: {}", e)))?;
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Forward, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
-    let response = JSObject::new(&ctx);
-    response.set("eventEmitter", page_svc.get_event_emitter())?;
-
-    Ok(response)
+    Ok(opener_port)
 }
 
 /// Navigate back to previous page
@@ -194,6 +195,12 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         ));
     }
 
+    let page_svc = lxapp
+        .get_or_create_page_in_ctx(&ctx, &target_url)
+        .await
+        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    let _ = page_svc.clear_opener();
+
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)
         .await
         .map_err(|e| js_error_from_lxapp_error(&e))
@@ -207,10 +214,11 @@ async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> 
 
     ensure_page_exists_js(&lxapp, &target_url)?;
 
-    let _page_svc = lxapp
+    let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    let _ = page_svc.clear_opener();
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::SwitchTab, false)
         .await
@@ -225,10 +233,11 @@ async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
 
     ensure_page_exists_js(&lxapp, &target_url)?;
 
-    lxapp
+    let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    let _ = page_svc.clear_opener();
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Launch, false)
         .await

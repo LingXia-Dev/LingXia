@@ -4,7 +4,6 @@ mod action_sheet;
 mod capsule;
 mod modal;
 mod navbar;
-mod popup;
 mod pull_to_refresh;
 mod router;
 mod tabbar;
@@ -20,7 +19,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     navbar::init(ctx)?;
     tabbar::init(ctx)?;
     router::init(ctx)?;
-    popup::init(ctx)?;
     pull_to_refresh::init(ctx)?;
     capsule::init(ctx)?;
     Ok(())

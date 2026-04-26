@@ -11,8 +11,10 @@ mod input;
 mod location;
 mod lxapp;
 mod media;
+mod message_port;
 mod navigator;
 mod storage;
+mod surface;
 mod system;
 mod ui;
 mod update;
@@ -33,6 +35,8 @@ impl LxLogicExtension for LxLogicRuntime {
         location::init(ctx)?;
         navigator::init(ctx)?;
         update::init(ctx)?;
+        message_port::init(ctx)?;
+        surface::init(ctx)?;
         input::init(ctx)?;
         ui::init(ctx)?;
         system::init(ctx)?;
@@ -44,5 +48,10 @@ impl LxLogicExtension for LxLogicRuntime {
 }
 
 pub fn register_logic_runtime() {
+    ::lxapp::register_surface_close_observer(notify_surface_closed);
     register_logic_extension(Box::new(LxLogicRuntime));
+}
+
+pub fn notify_surface_closed(id: &str, reason: &str) -> bool {
+    surface::notify_surface_closed(id, reason)
 }

@@ -2,8 +2,6 @@
  * UI feedback, navigation, and surface control APIs.
  */
 
-import type { EventEmitter } from '../app';
-
 export interface ShowToastOptions {
   title: string;
   icon?: 'success' | 'error' | 'loading' | 'none';
@@ -54,10 +52,6 @@ export type PageTargetOptions =
 
 export type NavigateToOptions = PageTargetOptions;
 
-export interface NavigateToResult {
-  eventEmitter: EventEmitter;
-}
-
 export interface NavigateBackOptions {
   delta: number;
 }
@@ -104,16 +98,66 @@ export interface SetTabBarItemOptions {
   selectedIconPath?: string;
 }
 
-export interface ShowPopupOptions {
+export type SurfaceQueryValue = PageQueryValue;
+export type SurfaceQuery = PageQuery;
+
+export type SurfacePageTargetOptions =
+  | {
+      page: string;
+      path?: never;
+      url?: never;
+      query?: SurfaceQuery;
+    }
+  | {
+      path: string;
+      page?: never;
+      url?: never;
+      query?: SurfaceQuery;
+    };
+
+export type SurfaceUrlTargetOptions = {
   url: string;
-  widthRatio?: number;
-  heightRatio?: number;
-  position?: 'center' | 'bottom' | 'left' | 'right';
+  page?: never;
+  path?: never;
+  query?: never;
+};
+
+export type SurfaceTargetOptions = SurfacePageTargetOptions | SurfaceUrlTargetOptions;
+
+/**
+ * Popup size value.
+ *
+ * - number: absolute size, must be > 0
+ * - `${number}%`: percentage size, must be > 0% and <= 100%
+ */
+export type PopupSurfaceSizeValue = number | `${number}%`;
+
+export interface PopupSurfaceSize {
+  /** Width for popup surface. */
+  width?: PopupSurfaceSizeValue;
+  /** Height for popup surface. */
+  height?: PopupSurfaceSizeValue;
 }
 
-export interface ShowPopupResult {
-  eventEmitter: EventEmitter;
+export type PopupSurfaceOptions = SurfaceTargetOptions & {
+  kind: 'popup';
+  position?: 'center' | 'bottom' | 'left' | 'right' | 'top';
+  size?: PopupSurfaceSize;
+};
+
+export interface WindowSurfaceSize {
+  /** Window width, must be a positive number. */
+  width?: number;
+  /** Window height, must be a positive number. */
+  height?: number;
 }
+
+export type WindowSurfaceOptions = SurfaceTargetOptions & {
+  kind: 'window';
+  size?: WindowSurfaceSize;
+};
+
+export type SurfaceOpenOptions = PopupSurfaceOptions | WindowSurfaceOptions;
 
 export interface CapsuleRect {
   width?: number;
