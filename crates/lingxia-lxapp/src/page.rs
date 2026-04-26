@@ -65,6 +65,7 @@ pub(crate) struct PageInstanceInner {
     id: PageInstanceId,
     appid: String,
     path: String,
+    webtag: WebTag,
 
     // Reference to the WebView (optional, set when WebView is ready)
     webview: Arc<Mutex<Option<Arc<WebView>>>>,
@@ -297,9 +298,33 @@ impl PageInstance {
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
+        Self::new_with_webtag_instance(appid, path, lxapp, None, setup_callback)
+    }
+
+    pub(crate) fn new_with_webtag_instance<F, Fut>(
+        appid: String,
+        path: String,
+        lxapp: &LxApp,
+        webtag_instance_id: Option<String>,
+        setup_callback: F,
+    ) -> Self
+    where
+        F: Fn(&PageInstance) -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
+    {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
+        let webtag = webtag_instance_id
+            .as_deref()
+            .map(|instance_id| {
+                WebTag::new(
+                    &appid,
+                    &format!("{path}#{instance_id}"),
+                    Some(lxapp.session.id),
+                )
+            })
+            .unwrap_or_else(|| WebTag::new(&appid, &path, Some(lxapp.session.id)));
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
@@ -308,6 +333,7 @@ impl PageInstance {
             id,
             appid: appid.clone(),
             path: path.clone(),
+            webtag: webtag.clone(),
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
@@ -325,8 +351,6 @@ impl PageInstance {
         let page = Self { inner };
 
         // Initiate WebView creation with scheme handlers
-        let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
-
         // Register closure-based scheme handlers so lingxia-webview
         // doesn't need to know about lxapp business logic.
         let appid_for_lx = appid.clone();
@@ -433,6 +457,7 @@ impl PageInstance {
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
         let bridge_nonce = Self::generate_bridge_nonce();
+        let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
@@ -440,6 +465,7 @@ impl PageInstance {
             id,
             appid,
             path,
+            webtag,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
@@ -463,6 +489,10 @@ impl PageInstance {
 
     pub fn instance_id_string(&self) -> String {
         self.inner.id.to_string()
+    }
+
+    pub(crate) fn webtag(&self) -> WebTag {
+        self.inner.webtag.clone()
     }
 
     pub(crate) fn bridge(&self) -> PageBridge {
@@ -600,6 +630,7 @@ impl PageInstance {
                 if let Err(e) = lxapp.executor.call_page_service_event(
                     lxapp.clone(),
                     path.clone(),
+                    Some(self.instance_id_string()),
                     page_event,
                     query,
                 ) {
@@ -999,9 +1030,13 @@ impl PageInstance {
     /// `Ok(())` if successful, `Err(LxAppError)` if execution fails
     pub fn call_js(&self, name: String, arg: String) -> Result<(), LxAppError> {
         let lxapp = lxapp::get(self.appid());
-        lxapp
-            .executor
-            .call_page_service(lxapp.clone(), self.path(), name, Some(arg))
+        lxapp.executor.call_page_service(
+            lxapp.clone(),
+            self.path(),
+            Some(self.instance_id_string()),
+            name,
+            Some(arg),
+        )
     }
 
     /// Call a View method on this page without a payload and deserialize the response.

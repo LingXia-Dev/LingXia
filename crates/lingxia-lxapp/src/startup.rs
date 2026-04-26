@@ -1,5 +1,5 @@
 use crate::lxapp::ReleaseType;
-use lingxia_platform::traits::app_runtime::LxAppPresentation;
+use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use serde_json::Value;
 
@@ -31,7 +31,7 @@ pub struct LxAppStartupOptions {
     pub release_type: ReleaseType,
     pub scene: Scene,
     #[serde(skip)]
-    pub presentation: LxAppPresentation,
+    pub open_mode: LxAppOpenMode,
     #[serde(skip)]
     pub panel_id: String,
 }
@@ -151,7 +151,7 @@ impl LxAppStartupOptions {
             path: path.to_string(),
             query: query_str.to_string(),
             release_type: ReleaseType::Release,
-            presentation: LxAppPresentation::Normal,
+            open_mode: LxAppOpenMode::Normal,
             panel_id: String::new(),
             ..Default::default()
         }
@@ -175,13 +175,13 @@ impl LxAppStartupOptions {
         self
     }
 
-    /// Sets the presentation mode for the startup options.
-    pub fn set_presentation(mut self, presentation: LxAppPresentation) -> Self {
-        self.presentation = presentation;
+    /// Sets the open mode for the startup options.
+    pub fn set_open_mode(mut self, open_mode: LxAppOpenMode) -> Self {
+        self.open_mode = open_mode;
         self
     }
 
-    /// Sets panel slot id (only used when presentation is panel).
+    /// Sets panel slot id (only used when open_mode is panel).
     pub fn set_panel_id(mut self, panel_id: String) -> Self {
         self.panel_id = panel_id;
         self

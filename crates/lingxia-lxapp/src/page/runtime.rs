@@ -38,15 +38,7 @@ pub enum PageOwner {
 pub enum PresentationKind {
     Window,
     Panel,
-    Popover,
     Popup,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum PageWarmDisposePolicy {
-    #[default]
-    Auto,
-    TtlMs(u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,9 +55,7 @@ pub struct CreatePageInstanceRequest {
     pub appid: String,
     pub target: PageTarget,
     pub query: Option<PageQueryInput>,
-    pub presentation: PresentationKind,
-    #[serde(default)]
-    pub warm_dispose_policy: PageWarmDisposePolicy,
+    pub surface: PresentationKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,6 +70,7 @@ pub struct CreatedPageInstance {
 pub enum CloseReason {
     User,
     Programmatic,
+    OwnerClosed,
     AppClosed,
     Unknown,
 }
@@ -105,8 +96,8 @@ pub(crate) enum PageInstanceLifecycleState {
 #[derive(Debug, Clone)]
 pub(crate) struct PageInstanceRuntimeRecord {
     pub(crate) owner: PageOwner,
-    pub(crate) presentation: PresentationKind,
-    pub(crate) warm_dispose_policy: PageWarmDisposePolicy,
+    pub(crate) surface: PresentationKind,
+    pub(crate) dispose_ttl: Option<Duration>,
     pub(crate) page: ResolvedPage,
     pub(crate) lifecycle: PageInstanceLifecycleState,
 }
@@ -124,20 +115,12 @@ impl PageQueryInput {
     }
 }
 
-impl PageWarmDisposePolicy {
-    pub(crate) fn ttl(self) -> Option<Duration> {
-        match self {
-            Self::Auto => None,
-            Self::TtlMs(ms) => Some(Duration::from_millis(ms)),
-        }
-    }
-}
-
 impl CloseReason {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::User => "user",
             Self::Programmatic => "programmatic",
+            Self::OwnerClosed => "owner_closed",
             Self::AppClosed => "app_closed",
             Self::Unknown => "unknown",
         }

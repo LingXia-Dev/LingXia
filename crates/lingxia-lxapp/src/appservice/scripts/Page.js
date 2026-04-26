@@ -1,7 +1,7 @@
 (function () {
   const pageDefinitions = new Map();
 
-  function createPageInstance(definition, pagePath) {
+  function createPageInstance(definition, pagePath, pageInstanceId) {
     const pageConfig = definition && definition.config;
     if (!pageConfig || typeof pageConfig !== "object") {
       throw new Error("setData: Invalid page configuration");
@@ -11,6 +11,7 @@
       pageConfig,
       pagePath,
       definition.bindingMetaJson || '{"handlers":[]}',
+      pageInstanceId || "",
     );
 
     pageSvc.data = cloneJsonValue(pageConfig.data || {});
@@ -20,7 +21,9 @@
         continue;
       }
       if (typeof value === "function") {
-        pageSvc[key] = value.bind(pageSvc);
+        pageSvc[key] = function (...args) {
+          return value.apply(pageSvc, args);
+        };
       } else {
         pageSvc[key] = value;
       }
@@ -122,14 +125,18 @@
     pageRegistrationTransformError("PageInstance");
   };
 
-  globalThis.__LX_CREATE_PAGE__ = function (pagePath, definitionPath) {
+  globalThis.__LX_CREATE_PAGE__ = function (
+    pagePath,
+    definitionPath,
+    pageInstanceId,
+  ) {
     const resolvedDefinitionPath = definitionPath || pagePath;
     const definition = pageDefinitions.get(resolvedDefinitionPath);
     if (!definition) {
       throw new Error(`PageInstance not found: ${resolvedDefinitionPath}`);
     }
     definition.config.route = pagePath;
-    return createPageInstance(definition, pagePath);
+    return createPageInstance(definition, pagePath, pageInstanceId);
   };
 })();
 

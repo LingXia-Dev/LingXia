@@ -303,6 +303,7 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         ack_tx: Sender<()>,
     ) -> Result<(), LxAppError> {
         if !lxapp.logic_enabled() {
@@ -317,6 +318,7 @@ impl LxAppWorkers {
         self.sender.send(ServiceMessage::CreatePage {
             lxapp,
             path,
+            page_instance_id,
             ack_tx,
         })?;
         Ok(())
@@ -327,9 +329,13 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        page_instance_id: Option<String>,
     ) -> Result<(), LxAppError> {
-        self.sender
-            .send(ServiceMessage::TerminatePage { lxapp, path })?;
+        self.sender.send(ServiceMessage::TerminatePage {
+            lxapp,
+            path,
+            page_instance_id,
+        })?;
         Ok(())
     }
 
@@ -350,12 +356,14 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         name: String,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,
+            page_instance_id,
             source: PageSvcSource::Native { name, args },
         })?;
         Ok(())
@@ -366,12 +374,14 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         event: PageServiceEvent,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvcEvent {
             lxapp,
             path,
+            page_instance_id,
             event,
             args,
         })?;
@@ -407,11 +417,13 @@ impl crate::bridge::AppServiceBackend for LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         message: crate::bridge::AppServiceCommand,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvc {
             lxapp,
             path,
+            page_instance_id,
             source: PageSvcSource::Bridge { message },
         })?;
         Ok(())

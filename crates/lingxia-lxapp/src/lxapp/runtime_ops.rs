@@ -104,7 +104,7 @@ pub fn touch_page_instance_by_id(id: &str) -> Result<(), LxAppError> {
         .ok_or_else(|| LxAppError::ResourceNotFound(format!("page instance id: {}", id)))?;
     let app = super::runtime_registry::try_get(&page.appid())
         .ok_or_else(|| LxAppError::ResourceNotFound(page.appid()))?;
-    app.refresh_page_instance_warm_ttl(&id)
+    app.refresh_page_instance_dispose_ttl(&id)
 }
 
 pub fn create_page_instance(
@@ -112,13 +112,7 @@ pub fn create_page_instance(
 ) -> Result<CreatedPageInstance, LxAppError> {
     let app = super::runtime_registry::try_get(&req.appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(req.appid.clone()))?;
-    app.create_page_instance(
-        req.owner,
-        req.target,
-        req.query,
-        req.presentation,
-        req.warm_dispose_policy,
-    )
+    app.create_page_instance(req.owner, req.target, req.query, req.surface, None)
 }
 
 pub fn notify_page_instance(

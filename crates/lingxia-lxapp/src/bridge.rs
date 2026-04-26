@@ -74,6 +74,7 @@ pub(crate) trait AppServiceBackend: Send + Sync {
         &self,
         lxapp: Arc<LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError>;
 }
@@ -522,9 +523,12 @@ impl PageBridge {
         page: &PageInstance,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
-        self.inner
-            .js_backend
-            .forward(self.inner.lxapp.clone(), page.path(), message)
+        self.inner.js_backend.forward(
+            self.inner.lxapp.clone(),
+            page.path(),
+            Some(page.instance_id_string()),
+            message,
+        )
     }
 
     fn forward_js_request(

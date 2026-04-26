@@ -203,10 +203,6 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
-        // WebPage popup has no PageInstance object — nothing to notify.
-        if path == crate::lxapp::WEB_POPUP_PATH {
-            return;
-        }
         // Get the existing page - it should already exist when show is called
         let page = match self.get_page(&path) {
             Some(page) => page,

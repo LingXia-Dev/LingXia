@@ -36,12 +36,12 @@ mod content;
 pub(crate) mod metadata;
 pub mod navbar;
 mod page_instance_host;
-mod popup;
 mod runtime_bootstrap;
 mod runtime_ops;
 mod runtime_registry;
 mod scheme;
 mod security;
+mod surface;
 pub use security::LxAppSecurityPrivilege;
 pub mod tabbar;
 pub mod uri;
@@ -49,17 +49,15 @@ pub(crate) mod version;
 use crate::lifecycle::AppServiceEvent;
 pub use crate::page::runtime::{
     CloseReason, CreatePageInstanceRequest, CreatedPageInstance, PageDefinition, PageInstanceEvent,
-    PageOwner, PageQueryInput, PageTarget, PageWarmDisposePolicy, PresentationKind, ResolvedPage,
-    SceneId,
+    PageOwner, PageQueryInput, PageTarget, PresentationKind, ResolvedPage, SceneId,
 };
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
+pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::WebTag;
 use lingxia_webview::runtime::destroy_webview;
-pub use popup::PopupMode;
-pub(crate) use popup::WEB_POPUP_PATH;
 pub use runtime_bootstrap::init;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
@@ -69,6 +67,10 @@ pub use runtime_ops::{
 };
 pub use runtime_registry::{find_page_by_instance_id, get_locale, get_platform, try_get};
 pub(crate) use runtime_registry::{get, get_lxapps_manager};
+pub(crate) use surface::SurfaceRecords;
+pub use surface::{
+    PageSurface, PageSurfaceRequest, PageSurfaceTarget, register_surface_close_observer,
+};
 use version::Version;
 
 /// Constants for lxapp storage layout
@@ -393,7 +395,7 @@ pub(crate) struct LxAppState {
     /// Runtime metadata and lifecycle state keyed by page instance id.
     page_instance_runtime: Mutex<HashMap<String, PageInstanceRuntimeRecord>>,
 
-    /// Delayed dispose timers for Hidden page instances (warm TTL).
+    /// Delayed dispose timers for hidden page instances.
     page_instance_dispose_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
 
     /// PageInstance navigation stack for tracking page navigation history within this app
@@ -415,8 +417,8 @@ pub(crate) struct LxAppState {
     /// Startup options for the app
     pub(crate) startup_options: LxAppStartupOptions,
 
-    /// Currently displayed popup page (if any)
-    pub(crate) current_popup: Option<popup::ActivePopup>,
+    /// Dynamic page surfaces created by lx.surface.open.
+    pub(crate) surfaces: Mutex<SurfaceRecords>,
 
     /// App-level orientation override (runtime + persisted)
     pub(crate) orientation_override: Option<OrientationConfig>,
@@ -434,7 +436,7 @@ impl LxAppState {
             network_security: NetworkSecurity::new(),
             tabbar: None,
             startup_options: LxAppStartupOptions::default(),
-            current_popup: None,
+            surfaces: Mutex::new(SurfaceRecords::new()),
             orientation_override: None,
         }
     }
@@ -792,10 +794,10 @@ impl LxApp {
     fn schedule_page_instance_dispose_timer(
         &self,
         id: &PageInstanceId,
-        warm_ttl: Duration,
+        dispose_ttl: Duration,
         reason: CloseReason,
     ) -> Result<(), LxAppError> {
-        if warm_ttl.is_zero() {
+        if dispose_ttl.is_zero() {
             return self.dispose_page_instance_internal(id, reason, false);
         }
 
@@ -813,7 +815,7 @@ impl LxApp {
         let appid = self.appid.clone();
         let page_instance_id = id.to_string();
         let _ = crate::executor::spawn(async move {
-            let sleep = time::sleep(warm_ttl);
+            let sleep = time::sleep(dispose_ttl);
             tokio::pin!(sleep);
             tokio::pin!(rx);
             tokio::select! {
@@ -829,7 +831,7 @@ impl LxApp {
             };
             if let Err(err) = app.dispose_page_instance_internal(&id, reason, false) {
                 warn!(
-                    "Warm TTL dispose failed for page instance {}: {}",
+                    "Delayed dispose failed for page instance {}: {}",
                     page_instance_id, err
                 )
                 .with_appid(appid);
@@ -839,14 +841,14 @@ impl LxApp {
         Ok(())
     }
 
-    fn refresh_page_instance_warm_ttl(&self, id: &PageInstanceId) -> Result<(), LxAppError> {
-        let (lifecycle, policy) = {
+    fn refresh_page_instance_dispose_ttl(&self, id: &PageInstanceId) -> Result<(), LxAppError> {
+        let (lifecycle, dispose_ttl) = {
             let state = self.state.lock().unwrap();
             let records = state.page_instance_runtime.lock().unwrap();
             let record = records.get(id.as_str()).ok_or_else(|| {
                 LxAppError::ResourceNotFound(format!("page instance id: {}", id.as_str()))
             })?;
-            (record.lifecycle, record.warm_dispose_policy)
+            (record.lifecycle, record.dispose_ttl)
         };
 
         if lifecycle != PageInstanceLifecycleState::Hidden {
@@ -854,7 +856,7 @@ impl LxApp {
             return Ok(());
         }
 
-        if let Some(ttl) = policy.ttl() {
+        if let Some(ttl) = dispose_ttl {
             self.schedule_page_instance_dispose_timer(id, ttl, CloseReason::Programmatic)?;
         } else {
             self.cancel_page_instance_dispose_timer(id);
@@ -871,13 +873,14 @@ impl LxApp {
     /// 2) Close UI window
     /// 3) Break PageInstance↔WebView delegate links and clear pages
     /// 4) Destroy platform WebViews
-    /// 5) Clear page stack and popup
+    /// 5) Clear page stack and surfaces
     /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
         // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
         self.clear_transient_files();
         self.cancel_all_page_instance_dispose_timers();
+        self.close_all_surfaces(CloseReason::AppClosed);
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
 
         // Close UI window
@@ -889,12 +892,12 @@ impl LxApp {
         }
 
         // Collect current pages
-        let (page_paths, page_instance_ids): (Vec<String>, Vec<String>) = {
+        let (page_webtags, page_instance_ids): (Vec<WebTag>, Vec<String>) = {
             let state = self.state.lock().unwrap();
-            let pages = state.pages.lock().unwrap();
+            let pages_by_id = state.pages_by_id.lock().unwrap();
             (
-                pages.keys().cloned().collect(),
-                pages
+                pages_by_id.values().map(|page| page.webtag()).collect(),
+                pages_by_id
                     .values()
                     .map(|page| page.instance_id_string())
                     .collect(),
@@ -916,20 +919,10 @@ impl LxApp {
             state.pages_by_id.lock().unwrap().clear();
             state.page_instance_runtime.lock().unwrap().clear();
         }
-        for p in &page_paths {
-            destroy_webview(&WebTag::new(&self.appid, p, Some(self.session.id)));
+        for webtag in &page_webtags {
+            destroy_webview(webtag);
         }
         let _ = self.clear_page_stack();
-        if let Ok(mut state) = self.state.lock() {
-            if let Some(popup::ActivePopup::WebPage) = state.current_popup.take() {
-                destroy_webview(&WebTag::new(
-                    &self.appid,
-                    popup::WEB_POPUP_PATH,
-                    Some(self.session.id),
-                ));
-            }
-        }
-
         // Terminate AppService (receiver handles its own state)
         let _ = self.executor.terminate_app_svc(self.clone_arc());
         Ok(())
@@ -1587,7 +1580,7 @@ impl LxApp {
 
         let (ack_tx, ack_rx) = oneshot::channel::<()>();
         self.executor
-            .create_page_svc_with_ack(self.clone_arc(), path.to_string(), ack_tx)?;
+            .create_page_svc_with_ack(self.clone_arc(), path.to_string(), None, ack_tx)?;
 
         let page_clone = page.clone();
         crate::executor::spawn(async move {
@@ -1677,7 +1670,7 @@ impl LxApp {
             self.appid.clone(),
             startup_options.path,
             self.session.id,
-            startup_options.presentation,
+            startup_options.open_mode,
             startup_options.panel_id,
         )?;
         Ok(())

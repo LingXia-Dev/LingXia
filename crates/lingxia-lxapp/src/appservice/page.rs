@@ -452,15 +452,28 @@ impl PageSvc {
         config: JSObject,
         path: String,
         meta_json: Optional<String>,
+        page_instance_id: Optional<String>,
     ) -> JSResult<JSObject> {
         let lxapp = LxApp::from_ctx(&ctx)?;
 
-        let page = lxapp.get_page(&path).ok_or_else(|| {
-            RongJSError::from(HostError::new(
-                rong::error::E_NOT_FOUND,
-                format!("PageInstance not found: {}", path),
-            ))
-        })?;
+        let scoped_page_instance_id = page_instance_id
+            .0
+            .as_deref()
+            .filter(|id| !id.trim().is_empty());
+        let page = match scoped_page_instance_id {
+            Some(id) => lxapp.get_page_by_instance_id_str(id).ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_NOT_FOUND,
+                    format!("PageInstance not found: {}", id),
+                ))
+            })?,
+            None => lxapp.get_page(&path).ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_NOT_FOUND,
+                    format!("PageInstance not found: {}", path),
+                ))
+            })?,
+        };
 
         let init_data = JSObject::new(&ctx);
 
@@ -499,9 +512,13 @@ impl PageSvc {
         let binding = instance.clone();
         let mut page_svc = binding.borrow_mut::<PageSvc>().unwrap();
         page_svc.this = instance.clone();
-
+        let page_instance_id = page_svc.page.instance_id_string();
         super::with_page_svc_map(&ctx, |page_svc_map| {
-            page_svc_map.borrow_mut().insert(path, page_svc.clone());
+            let mut page_svc_map = page_svc_map.borrow_mut();
+            if scoped_page_instance_id.is_none() {
+                page_svc_map.insert(path, page_svc.clone());
+            }
+            page_svc_map.insert(page_instance_id, page_svc.clone());
             Ok(())
         })?;
 
@@ -549,7 +566,6 @@ impl PageSvc {
         Ok(())
     }
 
-    #[js_method(rename = "getEventEmitter")]
     pub fn get_event_emitter(&self) -> EventEmitter {
         self.event_emitter.clone()
     }
@@ -940,10 +956,34 @@ impl PageSvc {
     pub(crate) fn get_ctx(&self) -> JSContext {
         self.this.context()
     }
+
+    pub fn bind_surface(&self, surface: JSObject) -> JSResult<()> {
+        self.this.set("surface", surface)?;
+        Ok(())
+    }
+
+    pub fn clear_surface(&self) -> JSResult<()> {
+        self.this.delete("surface")?;
+        Ok(())
+    }
+
+    pub fn bind_opener(&self, opener: JSObject) -> JSResult<()> {
+        self.this.set("opener", opener)?;
+        Ok(())
+    }
+
+    pub fn clear_opener(&self) -> JSResult<()> {
+        self.this.delete("opener")?;
+        Ok(())
+    }
 }
 
 impl PageSvc {
-    pub async fn create_in_ctx(ctx: &JSContext, path: &str) -> JSResult<()> {
+    pub async fn create_in_ctx(
+        ctx: &JSContext,
+        path: &str,
+        page_instance_id: Option<&str>,
+    ) -> JSResult<()> {
         super::plugin::ensure_plugin_logic_loaded_for_page_path(ctx, path).await?;
         let lxapp = LxApp::from_ctx(ctx)?;
         let definition_path =
@@ -957,7 +997,14 @@ impl PageSvc {
             })?;
 
         create_page
-            .call::<_, ()>(None, (path.to_string(), definition_path))
+            .call::<_, ()>(
+                None,
+                (
+                    path.to_string(),
+                    definition_path,
+                    page_instance_id.unwrap_or_default().to_string(),
+                ),
+            )
             .map_err(|e: RongJSError| {
                 RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
             })
@@ -982,6 +1029,38 @@ impl LxApp {
             page_svc_map
                 .borrow()
                 .get(path.as_str())
+                .cloned()
+                .ok_or_else(|| {
+                    RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        "PageInstance service not found",
+                    ))
+                })
+        })
+    }
+
+    pub async fn get_page_in_ctx_by_instance_id(
+        &self,
+        ctx: &JSContext,
+        page_instance_id: &str,
+    ) -> JSResult<PageSvc> {
+        let page = self
+            .get_page_by_instance_id_str(page_instance_id)
+            .ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_NOT_FOUND,
+                    format!("PageInstance not found: {page_instance_id}"),
+                ))
+            })?;
+
+        page.wait_webview_ready()
+            .await
+            .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e)))?;
+
+        super::with_page_svc_map(ctx, |page_svc_map| {
+            page_svc_map
+                .borrow()
+                .get(page_instance_id)
                 .cloned()
                 .ok_or_else(|| {
                     RongJSError::from(HostError::new(

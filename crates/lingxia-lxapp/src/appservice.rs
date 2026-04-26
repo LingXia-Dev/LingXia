@@ -82,6 +82,7 @@ mod no_js_runtime {
             &self,
             lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
+            _page_instance_id: Option<String>,
             ack_tx: Sender<()>,
         ) -> Result<(), LxAppError> {
             if lxapp.logic_enabled() {
@@ -95,6 +96,7 @@ mod no_js_runtime {
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
+            _page_instance_id: Option<String>,
         ) -> Result<(), LxAppError> {
             Ok(())
         }
@@ -112,6 +114,7 @@ mod no_js_runtime {
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
+            _page_instance_id: Option<String>,
             _name: String,
             _args: Option<String>,
         ) -> Result<(), LxAppError> {
@@ -122,6 +125,7 @@ mod no_js_runtime {
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
+            _page_instance_id: Option<String>,
             _event: PageServiceEvent,
             _args: Option<String>,
         ) -> Result<(), LxAppError> {
@@ -151,6 +155,7 @@ mod no_js_runtime {
             &self,
             lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
+            _page_instance_id: Option<String>,
             message: crate::bridge::AppServiceCommand,
         ) -> Result<(), LxAppError> {
             if lxapp.logic_enabled() {

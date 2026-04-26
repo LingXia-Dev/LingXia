@@ -48,12 +48,14 @@ pub(crate) enum ServiceMessage {
     CreatePage {
         lxapp: Arc<LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         ack_tx: oneshot::Sender<()>,
     },
     // Delete a page service (object-identity safe)
     TerminatePage {
         lxapp: Arc<LxApp>,
         path: String,
+        page_instance_id: Option<String>,
     },
     // Call predefined AppService event (typed)
     CallAppSvcEvent {
@@ -65,12 +67,14 @@ pub(crate) enum ServiceMessage {
     CallPageSvc {
         lxapp: Arc<LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         source: PageSvcSource,
     },
     // Call typed page event
     CallPageSvcEvent {
         lxapp: Arc<LxApp>,
         path: String,
+        page_instance_id: Option<String>,
         event: PageServiceEvent,
         args: Option<String>,
     },
@@ -466,10 +470,11 @@ pub(crate) async fn lxapp_service_handler(
         ServiceMessage::CreatePage {
             lxapp,
             path,
+            page_instance_id,
             ack_tx,
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
-                match PageSvc::create_in_ctx(ctx, &path).await {
+                match PageSvc::create_in_ctx(ctx, &path, page_instance_id.as_deref()).await {
                     Ok(()) => {
                         let _ = ack_tx.send(());
                     }
@@ -481,7 +486,11 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
         }
-        ServiceMessage::TerminatePage { lxapp, path } => {
+        ServiceMessage::TerminatePage {
+            lxapp,
+            path,
+            page_instance_id,
+        } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 // Ensure this TerminatePage belongs to the same LxApp
                 let same_app = LxApp::from_ctx(ctx)
@@ -497,9 +506,24 @@ pub(crate) async fn lxapp_service_handler(
                     return;
                 }
 
-                // Remove page from page_svc map stored in registry
+                // Prefer page instance identity. Multiple active PageSvc objects can share a path.
                 let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                    Ok(page_svc_map.borrow_mut().remove(&path))
+                    let mut page_svc_map = page_svc_map.borrow_mut();
+                    let page_svc = match page_instance_id.as_deref() {
+                        Some(id) => page_svc_map.remove(id),
+                        None => page_svc_map.get(&path).cloned(),
+                    };
+
+                    if let Some(page_svc) = page_svc.as_ref() {
+                        let instance_id = page_svc.get_page().instance_id_string();
+                        page_svc_map.remove(instance_id.as_str());
+                        if page_svc_map.get(&path).is_some_and(|candidate| {
+                            candidate.get_page().instance_id_string() == instance_id
+                        }) {
+                            page_svc_map.remove(&path);
+                        }
+                    }
+                    Ok(page_svc)
                 })
                 .unwrap_or(None);
 
@@ -533,13 +557,18 @@ pub(crate) async fn lxapp_service_handler(
         ServiceMessage::CallPageSvc {
             lxapp,
             path,
+            page_instance_id,
             source,
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 match source {
                     PageSvcSource::Bridge { message } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            Ok(page_svc_map.borrow().get(&path).cloned())
+                            let page_svc_map = page_svc_map.borrow();
+                            Ok(page_instance_id
+                                .as_deref()
+                                .and_then(|id| page_svc_map.get(id).cloned())
+                                .or_else(|| page_svc_map.get(&path).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -560,7 +589,11 @@ pub(crate) async fn lxapp_service_handler(
                     }
                     PageSvcSource::Native { name, args } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            Ok(page_svc_map.borrow().get(&path).cloned())
+                            let page_svc_map = page_svc_map.borrow();
+                            Ok(page_instance_id
+                                .as_deref()
+                                .and_then(|id| page_svc_map.get(id).cloned())
+                                .or_else(|| page_svc_map.get(&path).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -581,13 +614,18 @@ pub(crate) async fn lxapp_service_handler(
         ServiceMessage::CallPageSvcEvent {
             lxapp,
             path,
+            page_instance_id,
             event,
             args,
         } => {
             if let Some(ctx) = current_ctx.as_ref() {
                 // Resolve PageSvc from registry
                 let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                    Ok(page_svc_map.borrow().get(&path).cloned())
+                    let page_svc_map = page_svc_map.borrow();
+                    Ok(page_instance_id
+                        .as_deref()
+                        .and_then(|id| page_svc_map.get(id).cloned())
+                        .or_else(|| page_svc_map.get(&path).cloned()))
                 })
                 .unwrap_or(None);
 
