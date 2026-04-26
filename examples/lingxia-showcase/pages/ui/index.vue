@@ -49,47 +49,71 @@
           </div>
         </template>
 
-        <!-- Popup Demo -->
-        <template v-if="currentType === 'popup'">
+        <!-- Surface Demo -->
+        <template v-if="currentType === 'surface'">
           <div class="mt-4 mb-6 px-4 text-center">
-            <h1 class="text-2xl font-light text-gray-800 mb-2">showPopup</h1>
+            <h1 class="text-2xl font-light text-gray-800 mb-2">lx.surface.open</h1>
             <div class="w-16 h-0.5 bg-gray-400 mx-auto"></div>
           </div>
           <div class="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div class="px-4 py-4 space-y-4">
               <div class="space-y-3">
-                <div>
-                  <div class="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
-                    <span>Width Ratio</span>
-                    <span class="text-gray-700 font-mono">{{ popupWidthRatio.toFixed(2) }}</span>
-                  </div>
-                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="popupWidthRatio" class="w-full mt-2" />
+                <div class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                  Popup is cross-platform. Window is shown only on desktop runtimes.
                 </div>
                 <div>
-                  <div class="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
-                    <span>Height Ratio</span>
-                    <span class="text-gray-700 font-mono">{{ popupHeightRatio.toFixed(2) }}</span>
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
+                  <div :class="['grid gap-2', supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1']">
+                    <button v-for="kind in surfaceKinds" :key="kind" type="button"
+                      :class="['py-2 text-sm rounded-lg transition-colors border', surfaceKind === kind ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      @click="surfaceKind = kind">
+                      {{ kind.charAt(0).toUpperCase() + kind.slice(1) }}
+                    </button>
                   </div>
-                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="popupHeightRatio" class="w-full mt-2" />
+                </div>
+                <template v-if="surfaceKind === 'popup'">
+                <div>
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Popup Size</div>
+                  <div class="flex items-center justify-between text-xs text-gray-500 tracking-wide">
+                    <span>Width</span>
+                    <span class="text-gray-700 font-mono">{{ surfaceWidthRatio.toFixed(2) }}</span>
+                  </div>
+                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="surfaceWidthRatio" class="w-full mt-2" />
                 </div>
                 <div>
-                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
+                  <div class="flex items-center justify-between text-xs text-gray-500 tracking-wide">
+                    <span>Height</span>
+                    <span class="text-gray-700 font-mono">{{ surfaceHeightRatio.toFixed(2) }}</span>
+                  </div>
+                  <input type="range" min="0.1" max="1" step="0.05" v-model.number="surfaceHeightRatio" class="w-full mt-2" />
+                </div>
+                </template>
+                <div v-else class="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                  Window demo uses a fixed 960 x 720 size. Percent sizes are intentionally not supported for window.
+                </div>
+                <div class="text-xs text-gray-500 leading-5">
+                  {{ surfaceDescription }}
+                </div>
+                <div v-if="surfaceKind === 'popup'">
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">
+                    Position
+                  </div>
                   <div class="grid grid-cols-2 gap-2">
-                    <button v-for="pos in popupPositions" :key="pos" type="button"
-                      :class="['py-2 text-sm rounded-lg transition-colors border', popupPosition === pos ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
-                      @click="popupPosition = pos">
+                    <button v-for="pos in surfacePositions" :key="pos" type="button"
+                      :class="['py-2 text-sm rounded-lg transition-colors border', surfacePosition === pos ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50']"
+                      @click="surfacePosition = pos">
                       {{ pos.charAt(0).toUpperCase() + pos.slice(1) }}
                     </button>
                   </div>
                 </div>
               </div>
-              <button type="button" @click="showPopupDemo({ widthRatio: popupWidthRatio, heightRatio: popupHeightRatio, position: popupPosition })"
+              <button type="button" @click="openSurfaceDemo({ kind: surfaceKind, widthRatio: surfaceWidthRatio, heightRatio: surfaceHeightRatio, position: surfacePosition, width: 960, height: 720 })"
                 class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors">
-                Open popup
+                Open {{ surfaceKind }}
               </button>
-              <div class="text-xs text-gray-500 uppercase tracking-wide">Message from popup demo page</div>
+              <div class="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
               <div class="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">
-                {{ popupMessage || 'No message received yet.' }}
+                {{ surfaceMessage || 'No message received yet.' }}
               </div>
             </div>
           </div>
@@ -347,7 +371,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
@@ -376,7 +400,7 @@ const {
   chooseToastIcon,
   chooseToastPosition,
   showDemoActionSheet,
-  showPopupDemo,
+  openSurfaceDemo,
 } = actions;
 
 const currentType = computed(() => data.currentType ?? 'navigation');
@@ -388,7 +412,11 @@ const toastIconOptions = computed(() => data.toastIconOptions ?? []);
 const toastPosition = computed(() => data.toastPosition ?? 'center');
 const toastPositionLabel = computed(() => data.toastPositionLabel ?? 'Center');
 const toastPositionOptions = computed(() => data.toastPositionOptions ?? []);
-const popupMessage = computed(() => data.popupDemo?.message ?? '');
+const surfaceMessage = computed(() => data.surfaceDemo?.message ?? '');
+const supportsSurfaceWindow = computed(() => {
+  const bridge = typeof window !== 'undefined' ? (window as any).LingXiaBridge : null;
+  return bridge?.platform?.isDesktop?.() === true || data.surfaceDemo?.supportsWindow === true;
+});
 
 const toastIconDisplay = computed(() => {
   const match = toastIconOptions.value.find((o: any) => o.value === toastIcon.value);
@@ -418,10 +446,21 @@ const tabColor = ref('#666666');
 const tabSelectedColor = ref('#007AFF');
 const tabBgColor = ref('#FFFFFF');
 const tabBorderStyle = ref('#EEEEEE');
-const popupWidthRatio = ref(1);
-const popupHeightRatio = ref(0.6);
-const popupPosition = ref<'center' | 'bottom' | 'left' | 'right'>('bottom');
-const popupPositions = ['bottom', 'center', 'left', 'right'] as const;
+const surfaceWidthRatio = ref(1);
+const surfaceHeightRatio = ref(0.6);
+const surfacePosition = ref<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
+const surfacePositions = ['bottom', 'center', 'left', 'right', 'top'] as const;
+const surfaceKind = ref<'popup' | 'window'>('popup');
+const surfaceKinds = computed(() => supportsSurfaceWindow.value ? ['popup', 'window'] as const : ['popup'] as const);
+const surfaceDescription = computed(() => surfaceKind.value === 'window'
+  ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
+  : 'Transient modal surface inside the current app. Use it for lightweight local UI.');
+
+watch(supportsSurfaceWindow, (supports) => {
+  if (!supports && surfaceKind.value === 'window') {
+    surfaceKind.value = 'popup';
+  }
+}, { immediate: true });
 
 function applyTheme(theme: { color: string; selectedColor: string; backgroundColor: string; borderStyle: string }) {
   tabColor.value = theme.color;

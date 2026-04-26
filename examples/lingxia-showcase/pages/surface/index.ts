@@ -18,7 +18,7 @@ Page({
     });
   },
 
-  sendPopupMessage: function (params) {
+  logSurfaceMessage: async function (params) {
     const raw =
       params && typeof params.message === "string" ? params.message : "";
     const message = raw.trim();
@@ -27,11 +27,9 @@ Page({
       return;
     }
 
-    this.getEventEmitter().emit("popupMessage", {
-      message,
-      timestamp: Date.now(),
-    });
-
-    lx.hidePopup();
+    const payload = { message, timestamp: Date.now() };
+    console.log("surface page message:", payload);
+    this.surface.postMessage(payload);
+    await this.surface.close();
   },
 });

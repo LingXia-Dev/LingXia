@@ -34,8 +34,9 @@ type PageData = {
 
 type PageActions = {
   loginInteractive: () => void | Promise<void>;
+  addTenant: () => void | Promise<void>;
   logoutCurrentTenant: () => void | Promise<void>;
-  switchTenant: (params: { tenantId: string }) => void | Promise<void>;
+  activateTenant: (params: { tenantId: string }) => void | Promise<void>;
   startMqttDemo: () => void | Promise<void>;
   stopMqttDemo: () => void | Promise<void>;
   callNamedFunction: (params: { name: string }) => void | Promise<void>;
@@ -88,15 +89,17 @@ function CloudAuthView({
   tenant,
   tenants,
   loginInteractive,
+  addTenant,
   logoutCurrentTenant,
-  switchTenant,
+  activateTenant,
 }: {
   status: string;
   tenant: TenantLike | null;
   tenants: TenantLike[];
   loginInteractive: () => void | Promise<void>;
+  addTenant: () => void | Promise<void>;
   logoutCurrentTenant: () => void | Promise<void>;
-  switchTenant: (params: { tenantId: string }) => void | Promise<void>;
+  activateTenant: (params: { tenantId: string }) => void | Promise<void>;
 }) {
   const activeTenantId = getTenantId(tenant);
 
@@ -111,7 +114,7 @@ function CloudAuthView({
             <div>
               <div className="text-sm text-gray-800 font-semibold">Cloud Authentication</div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  Any lxapp may start interactive login and inspect the shared auth state.
+                  Login returns the active identity; the home lxapp manages identity list, activation and logout.
                 </div>
             </div>
           </div>
@@ -121,6 +124,12 @@ function CloudAuthView({
               className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
             >
               Interactive Login
+            </button>
+            <button
+              onClick={addTenant}
+              className="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
+            >
+              Add Identity
             </button>
             <button
               onClick={logoutCurrentTenant}
@@ -178,7 +187,7 @@ function CloudAuthView({
           </div>
           <div className="flex-1">
             <div className="text-sm text-gray-800 font-semibold">Tenants</div>
-            <div className="text-xs text-gray-500 mt-0.5">Switch the active tenant after login</div>
+            <div className="text-xs text-gray-500 mt-0.5">Activate or remove identities returned by lx.auth.list()</div>
           </div>
           <div className="text-xs text-gray-500">{tenants.length}</div>
         </div>
@@ -194,7 +203,7 @@ function CloudAuthView({
                   <button
                     key={`${tenantId || 'tenant'}-${index}`}
                     disabled={!tenantId || isActive}
-                    onClick={() => tenantId && switchTenant({ tenantId })}
+                    onClick={() => tenantId && activateTenant({ tenantId })}
                     className={`w-full p-4 rounded-xl border text-left transition-colors ${
                       isActive
                         ? 'border-sky-200 bg-sky-50'
@@ -463,8 +472,9 @@ export default function CloudPage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
   const {
     loginInteractive,
+    addTenant,
     logoutCurrentTenant,
-    switchTenant,
+    activateTenant,
     startMqttDemo,
     stopMqttDemo,
     callNamedFunction,
@@ -520,8 +530,9 @@ export default function CloudPage() {
             tenant={tenant}
             tenants={tenants}
             loginInteractive={loginInteractive}
+            addTenant={addTenant}
             logoutCurrentTenant={logoutCurrentTenant}
-            switchTenant={switchTenant}
+            activateTenant={activateTenant}
           />
         )}
       </div>

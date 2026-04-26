@@ -285,10 +285,10 @@ export default function APIPage() {
               </div>
               <div
                 className="px-4 py-3 hover:bg-gray-100 cursor-pointer flex items-center justify-between border-t border-gray-200"
-                onClick={() => navigateToUIPage({ type: 'popup' })}
+                onClick={() => navigateToUIPage({ type: 'surface' })}
               >
                 <div>
-                  <div className="text-sm text-gray-700">Popup</div>
+                  <div className="text-sm text-gray-700">Surface</div>
                 </div>
                 <div className="w-4 h-4 text-gray-400">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">

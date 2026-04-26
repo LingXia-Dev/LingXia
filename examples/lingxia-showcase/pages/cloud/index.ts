@@ -20,6 +20,17 @@ type TenantLike = {
   logoUrl?: string;
 };
 
+type LxIdentityLike = {
+  tenant?: {
+    id?: string;
+    name?: string;
+    logoUrl?: string;
+  };
+  active?: boolean;
+  activate?: () => Promise<unknown>;
+  logout?: () => Promise<void>;
+};
+
 type FunctionCallParams = {
   name?: string;
   payload?: any;
@@ -74,17 +85,23 @@ function formatMqttPayload(payload: unknown): string {
   return formatJson(payload);
 }
 
-function normalizeTenant(tenant: any): TenantLike | null {
+function normalizeTenant(identityOrTenant: any): TenantLike | null {
+  const tenant = identityOrTenant?.tenant || identityOrTenant;
   if (!tenant || typeof tenant !== "object") {
     return null;
   }
   return {
-    tenantId:
-      typeof tenant.tenantId === "string" ? tenant.tenantId : "",
-    tenantName:
-      typeof tenant.tenantName === "string" ? tenant.tenantName : "",
-    logoUrl:
-      typeof tenant.logoUrl === "string" ? tenant.logoUrl : "",
+    tenantId: typeof tenant.id === "string"
+      ? tenant.id
+      : typeof tenant.tenantId === "string"
+        ? tenant.tenantId
+        : "",
+    tenantName: typeof tenant.name === "string"
+      ? tenant.name
+      : typeof tenant.tenantName === "string"
+        ? tenant.tenantName
+        : "",
+    logoUrl: typeof tenant.logoUrl === "string" ? tenant.logoUrl : "",
   };
 }
 
@@ -218,14 +235,14 @@ Page({
 
   _refreshSnapshot: async function () {
     try {
-      const tenants = await lx.auth.getTenants();
-      const currentTenant = lx.auth.tenant;
+      const identities = await lx.auth.list();
+      const identity = identities.find((item: LxIdentityLike) => item.active) || null;
       this.setData({
-        status: currentTenant
+        status: identity
           ? "Ready"
           : "Authentication required. Call lx.auth.login() first.",
-        tenant: normalizeTenant(currentTenant),
-        tenants: normalizeTenants(tenants),
+        tenant: normalizeTenant(identity),
+        tenants: normalizeTenants(identities),
       });
     } catch (error) {
       const message = getErrorMessage(error, "Load cloud state failed");
@@ -234,10 +251,16 @@ Page({
   },
 
   _refreshFunctionsDemo: async function () {
-    const currentTenant = lx.auth.tenant;
+    let identity: LxIdentityLike | null | undefined = null;
+    try {
+      const identities = await lx.auth.list();
+      identity = identities.find((item: LxIdentityLike) => item.active);
+    } catch (_error) {
+      identity = null;
+    }
     this.setData({
       functionsAvailable: [...DEMO_FUNCTIONS],
-      functionsStatus: currentTenant
+      functionsStatus: identity
         ? "Ready to invoke current lxapp cloud functions."
         : "Authentication required. Call lx.auth.login() first.",
     });
@@ -245,7 +268,7 @@ Page({
   },
 
   loginInteractive: async function () {
-    this.setData({ status: "Starting interactive login..." });
+    this.setData({ status: "Starting login..." });
     try {
       await lx.auth.login();
       this.setData({ status: "Login succeeded" });
@@ -256,11 +279,28 @@ Page({
     }
   },
 
+  addTenant: async function () {
+    this.setData({ status: "Adding identity..." });
+    try {
+      await lx.auth.add();
+      this.setData({ status: "Identity added" });
+      await this._refreshSnapshot();
+      await this._refreshFunctionsDemo();
+    } catch (error) {
+      this.setData({ status: getErrorMessage(error, "Add identity failed") });
+    }
+  },
+
   logoutCurrentTenant: async function () {
     this.setData({ status: "Logging out..." });
     try {
       await this.stopMqttDemo();
-      await lx.auth.logout();
+      const identities = await lx.auth.list();
+      const activeIdentity = identities.find((identity: LxIdentityLike) => identity.active);
+      if (!activeIdentity || typeof activeIdentity.logout !== "function") {
+        throw new Error("No active identity to logout");
+      }
+      await activeIdentity.logout();
       this.setData({ status: "Logged out" });
       this._refreshMqttStatusSnapshot();
       await this._refreshSnapshot();
@@ -270,17 +310,22 @@ Page({
     }
   },
 
-  switchTenant: async function (params = {}) {
+  activateTenant: async function (params = {}) {
     const { tenantId } = params as { tenantId?: string };
     if (!tenantId) return;
-    this.setData({ status: `Switching to ${tenantId}...` });
+    this.setData({ status: `Activating ${tenantId}...` });
     try {
-      await lx.auth.switchTenant(tenantId);
-      this.setData({ status: `Switched to ${tenantId}` });
+      const identities = await lx.auth.list();
+      const identity = identities.find((item: LxIdentityLike) => item.tenant?.id === tenantId);
+      if (!identity || typeof identity.activate !== "function") {
+        throw new Error(`Identity ${tenantId} not found`);
+      }
+      await identity.activate();
+      this.setData({ status: `Activated ${tenantId}` });
       await this._refreshSnapshot();
       await this._refreshFunctionsDemo();
     } catch (error) {
-      this.setData({ status: getErrorMessage(error, "Switch tenant failed") });
+      this.setData({ status: getErrorMessage(error, "Activate tenant failed") });
     }
   },
 

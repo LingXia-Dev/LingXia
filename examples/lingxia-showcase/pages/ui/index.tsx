@@ -27,7 +27,7 @@ export default function UIPage() {
     chooseToastIcon,
     chooseToastPosition,
     showDemoActionSheet,
-    showPopupDemo,
+    openSurfaceDemo,
   } = actions;
   const {
     currentType = 'navigation',
@@ -39,7 +39,7 @@ export default function UIPage() {
     toastPosition = 'center',
     toastPositionLabel = 'Center',
     toastPositionOptions = [],
-    popupDemo = {},
+    surfaceDemo = {},
   } = data;
 
   const toastIconDisplay = React.useMemo(() => {
@@ -52,11 +52,26 @@ export default function UIPage() {
     return match?.label || toastPositionLabel || toastPosition || 'Select position';
   }, [toastPositionOptions, toastPosition, toastPositionLabel]);
 
-  const popupMessage = (popupDemo && popupDemo.message) || '';
-  const [popupWidthRatio, setPopupWidthRatio] = React.useState(1);
-  const [popupHeightRatio, setPopupHeightRatio] = React.useState(0.6);
-  const [popupPosition, setPopupPosition] = React.useState<'center' | 'bottom' | 'left' | 'right'>('bottom');
-  const popupPositions: Array<'center' | 'bottom' | 'left' | 'right'> = ['bottom', 'center', 'left', 'right'];
+  const surfaceMessage = (surfaceDemo && surfaceDemo.message) || '';
+  const supportsSurfaceWindow =
+    (typeof window !== 'undefined' &&
+      (window as any).LingXiaBridge?.platform?.isDesktop?.() === true) ||
+    surfaceDemo?.supportsWindow === true;
+  const [surfaceKind, setSurfaceKind] = React.useState<'popup' | 'window'>('popup');
+  const [surfaceWidthRatio, setSurfaceWidthRatio] = React.useState(1);
+  const [surfaceHeightRatio, setSurfaceHeightRatio] = React.useState(0.6);
+  const [surfacePosition, setSurfacePosition] = React.useState<'center' | 'bottom' | 'left' | 'right' | 'top'>('bottom');
+  const surfacePositions: Array<'center' | 'bottom' | 'left' | 'right' | 'top'> = ['bottom', 'center', 'left', 'right', 'top'];
+  const surfaceKinds: Array<'popup' | 'window'> = supportsSurfaceWindow ? ['popup', 'window'] : ['popup'];
+  const surfaceDescription = surfaceKind === 'window'
+    ? 'Desktop-only independent window surface. Mobile runtimes reject this kind.'
+    : 'Transient modal surface inside the current app. Use it for lightweight local UI.';
+
+  React.useEffect(() => {
+    if (!supportsSurfaceWindow && surfaceKind === 'window') {
+      setSurfaceKind('popup');
+    }
+  }, [supportsSurfaceWindow, surfaceKind]);
 
   const clampRatio = React.useCallback((value: number, fallback: number) => {
     if (!Number.isFinite(value)) {
@@ -131,58 +146,101 @@ export default function UIPage() {
           </>
         )}
 
-        {/* Popup Demo Section */}
-        {currentType === 'popup' && (
+        {/* Surface Demo Section */}
+        {currentType === 'surface' && (
           <>
             <div className="mt-4 mb-6 px-4 text-center">
-              <h1 className="text-2xl font-light text-gray-800 mb-2">showPopup</h1>
+              <h1 className="text-2xl font-light text-gray-800 mb-2">lx.surface.open</h1>
               <div className="w-16 h-0.5 bg-gray-400 mx-auto"></div>
             </div>
 
             <div className="mx-1 mb-4 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-4 py-4 space-y-4">
                 <div className="space-y-3">
+                  <div className="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                    Popup is cross-platform. Window is shown only on desktop runtimes.
+                  </div>
+
                   <div>
-                    <div className="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
-                      <span>Width Ratio</span>
-                      <span className="text-gray-700 font-mono">{popupWidthRatio.toFixed(2)}</span>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Kind</div>
+                    <div className={`grid ${supportsSurfaceWindow ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                      {surfaceKinds.map((kind) => {
+                        const active = surfaceKind === kind;
+                        const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
+                        const className = active
+                          ? `${baseClass} bg-blue-500 border-blue-500 text-white`
+                          : `${baseClass} bg-white border-gray-200 text-gray-600 hover:bg-gray-50`;
+                        return (
+                          <button
+                            key={kind}
+                            type="button"
+                            className={className}
+                            onClick={() => setSurfaceKind(kind)}
+                          >
+                            {kind.charAt(0).toUpperCase() + kind.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {surfaceKind === 'popup' ? (
+                  <>
+                    <div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Popup Size</div>
+                    <div className="flex items-center justify-between text-xs text-gray-500 tracking-wide">
+                      <span>Width</span>
+                      <span className="text-gray-700 font-mono">{surfaceWidthRatio.toFixed(2)}</span>
                     </div>
                     <input
                       type="range"
                       min={0.1}
                       max={1}
                       step={0.05}
-                      value={popupWidthRatio}
+                      value={surfaceWidthRatio}
                       onChange={(event) =>
-                        setPopupWidthRatio(clampRatio(parseFloat(event.target.value), 0.9))
+                        setSurfaceWidthRatio(clampRatio(parseFloat(event.target.value), 0.9))
                       }
                       className="w-full mt-2"
                     />
-                  </div>
+                    </div>
 
-                  <div>
-                    <div className="flex items-center justify-between text-xs uppercase text-gray-500 tracking-wide">
-                      <span>Height Ratio</span>
-                      <span className="text-gray-700 font-mono">{popupHeightRatio.toFixed(2)}</span>
+                    <div>
+                    <div className="flex items-center justify-between text-xs text-gray-500 tracking-wide">
+                      <span>Height</span>
+                      <span className="text-gray-700 font-mono">{surfaceHeightRatio.toFixed(2)}</span>
                     </div>
                     <input
                       type="range"
                       min={0.1}
                       max={1}
                       step={0.05}
-                      value={popupHeightRatio}
+                      value={surfaceHeightRatio}
                       onChange={(event) =>
-                        setPopupHeightRatio(clampRatio(parseFloat(event.target.value), 0.6))
+                        setSurfaceHeightRatio(clampRatio(parseFloat(event.target.value), 0.6))
                       }
                       className="w-full mt-2"
                     />
+                    </div>
+                  </>
+                  ) : (
+                    <div className="text-xs text-gray-500 leading-5 bg-gray-50 rounded-lg px-3 py-2">
+                      Window demo uses a fixed 960 x 720 size. Percent sizes are intentionally not supported for window.
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500 leading-5">
+                    {surfaceDescription}
                   </div>
 
+                  {surfaceKind === 'popup' && (
                   <div>
-                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
+                    <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">
+                      Position
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
-                      {popupPositions.map((pos) => {
-                        const active = popupPosition === pos;
+                      {surfacePositions.map((pos) => {
+                        const active = surfacePosition === pos;
                         const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
                         const className = active
                           ? `${baseClass} bg-blue-500 border-blue-500 text-white`
@@ -192,7 +250,7 @@ export default function UIPage() {
                             key={pos}
                             type="button"
                             className={className}
-                            onClick={() => setPopupPosition(pos)}
+                            onClick={() => setSurfacePosition(pos)}
                           >
                             {pos.charAt(0).toUpperCase() + pos.slice(1)}
                           </button>
@@ -200,25 +258,29 @@ export default function UIPage() {
                       })}
                     </div>
                   </div>
+                  )}
                 </div>
 
                 <button
                   type="button"
                   onClick={() =>
-                    showPopupDemo({
-                      widthRatio: popupWidthRatio,
-                      heightRatio: popupHeightRatio,
-                      position: popupPosition,
+                    openSurfaceDemo({
+                      kind: surfaceKind,
+                      widthRatio: surfaceWidthRatio,
+                      heightRatio: surfaceHeightRatio,
+                      position: surfacePosition,
+                      width: 960,
+                      height: 720,
                     })
                   }
                   className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                 >
-                  Open popup
+                  Open {surfaceKind}
                 </button>
 
-                <div className="text-xs text-gray-500 uppercase tracking-wide">Message from popup demo page</div>
+                <div className="text-xs text-gray-500 uppercase tracking-wide">Surface status</div>
                 <div className="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 font-mono break-words">
-                  {popupMessage || 'No message received yet.'}
+                  {surfaceMessage || 'No message received yet.'}
                 </div>
               </div>
             </div>

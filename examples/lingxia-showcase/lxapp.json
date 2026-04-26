@@ -21,8 +21,8 @@
       "path": "pages/home/index"
     },
     {
-      "name": "popup",
-      "path": "pages/popup/index"
+      "name": "surface",
+      "path": "pages/surface/index"
     },
     {
       "name": "api",

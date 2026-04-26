@@ -2,9 +2,9 @@ import React from 'react';
 import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
-export default function PopupPage() {
+export default function SurfacePage() {
   const { data, actions } = useLxPage();
-  const { sendPopupMessage } = actions;
+  const { logSurfaceMessage } = actions;
   const queryString = data.queryString ?? '';
   const [message, setMessage] = React.useState('');
 
@@ -15,20 +15,20 @@ export default function PopupPage() {
     }
 
     try {
-      sendPopupMessage({ message: text });
+      logSurfaceMessage({ message: text });
       setMessage('');
     } catch (error) {
-      console.error('sendPopupMessage failed:', error);
+      console.error('logSurfaceMessage failed:', error);
     }
-  }, [message, sendPopupMessage]);
+  }, [message, logSurfaceMessage]);
 
   return (
     <div className="min-h-screen bg-gray-100 text-gray-900 flex flex-col items-center px-4 py-6">
       <div className="w-full max-w-md space-y-6">
         <header>
-          <h1 className="text-lg font-semibold tracking-wide text-gray-900">Popup Overlay</h1>
+          <h1 className="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Inspect the query string and send a message back to the opener.
+            Inspect the query string and send a message to the opener.
           </p>
         </header>
 
@@ -52,7 +52,7 @@ export default function PopupPage() {
             onClick={handleSend}
             className="w-full h-10 text-sm font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
           >
-            Send message
+            Send and close
           </button>
         </section>
       </div>

@@ -2,9 +2,9 @@
   <div class="min-h-screen bg-gray-100 text-gray-900 flex flex-col items-center px-4 py-6">
     <div class="w-full max-w-md space-y-6">
       <header>
-        <h1 class="text-lg font-semibold tracking-wide text-gray-900">Popup Overlay</h1>
+        <h1 class="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
         <p class="text-sm text-gray-500 mt-1">
-          Inspect the query string and send a message back to the opener.
+          Inspect the query string and send a message to the opener.
         </p>
       </header>
 
@@ -27,7 +27,7 @@
           @click="handleSend"
           class="w-full h-10 text-sm font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
         >
-          Send message
+          Send and close
         </button>
       </section>
     </div>
@@ -39,13 +39,8 @@ import { ref, computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
-type PageActions = {
-  data: { queryString?: string };
-  sendPopupMessage(payload: { message: string }): void;
-};
-
 const { data, actions } = useLxPage();
-const { sendPopupMessage } = actions;
+const { logSurfaceMessage } = actions;
 
 const inputRef = ref<HTMLInputElement | null>(null);
 
@@ -56,10 +51,10 @@ function handleSend() {
   if (!text) return;
 
   try {
-    sendPopupMessage({ message: text });
+    logSurfaceMessage({ message: text });
     if (inputRef.value) inputRef.value.value = '';
   } catch (error) {
-    console.error('sendPopupMessage failed:', error);
+    console.error('logSurfaceMessage failed:', error);
   }
 }
 </script>

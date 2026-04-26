@@ -165,7 +165,7 @@
               <div>
                 <div class="text-sm text-gray-800 font-semibold">Cloud Authentication</div>
                 <div class="text-xs text-gray-500 mt-0.5">
-                  Any lxapp may start interactive login and inspect the shared auth state.
+                  Login returns the active identity; the home lxapp manages identity list, activation and logout.
                 </div>
               </div>
             </div>
@@ -175,6 +175,12 @@
                 class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-sky-600 to-sky-500 hover:from-sky-500 hover:to-sky-600 text-white"
               >
                 Interactive Login
+              </button>
+              <button
+                @click="addTenant"
+                class="py-3 text-sm font-medium transition-all duration-200 rounded-xl shadow-sm active:scale-[0.98] bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-600 text-white"
+              >
+                Add Identity
               </button>
               <button
                 @click="logoutCurrentTenant"
@@ -233,7 +239,7 @@
             </div>
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Tenants</div>
-              <div class="text-xs text-gray-500 mt-0.5">Switch the active tenant after login</div>
+              <div class="text-xs text-gray-500 mt-0.5">Activate or remove identities returned by lx.auth.list()</div>
             </div>
             <div class="text-xs text-gray-500">{{ tenants.length }}</div>
           </div>
@@ -246,7 +252,7 @@
                 v-for="(item, index) in tenants"
                 :key="`${getTenantId(item) || 'tenant'}-${index}`"
                 :disabled="!getTenantId(item) || getTenantId(item) === activeTenantId"
-                @click="getTenantId(item) && switchTenant({ tenantId: getTenantId(item) })"
+                @click="getTenantId(item) && activateTenant({ tenantId: getTenantId(item) })"
                 class="w-full p-4 rounded-xl border text-left transition-colors"
                 :class="
                   getTenantId(item) !== '' && getTenantId(item) === activeTenantId
@@ -316,8 +322,9 @@ type PageData = {
 
 type PageActions = {
   loginInteractive: () => void | Promise<void>;
+  addTenant: () => void | Promise<void>;
   logoutCurrentTenant: () => void | Promise<void>;
-  switchTenant: (params: { tenantId: string }) => void | Promise<void>;
+  activateTenant: (params: { tenantId: string }) => void | Promise<void>;
   startMqttDemo: () => void | Promise<void>;
   stopMqttDemo: () => void | Promise<void>;
   callNamedFunction: (params: { name: string }) => void | Promise<void>;
@@ -326,8 +333,9 @@ type PageActions = {
 const { data, actions } = useLxPage<PageData, PageActions>();
 const {
   loginInteractive,
+  addTenant,
   logoutCurrentTenant,
-  switchTenant,
+  activateTenant,
   startMqttDemo,
   stopMqttDemo,
   callNamedFunction,

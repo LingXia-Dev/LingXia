@@ -7,7 +7,7 @@ const NAV_TITLE_MAP = {
   modal: "Modal Demo",
   navbar: "Navigation Bar Demo",
   tabbar: "Tab Bar Demo",
-  popup: "Popup Demo",
+  surface: "Surface Demo",
 };
 
 Page({
@@ -30,8 +30,9 @@ Page({
       { label: "Center", value: "center" },
       { label: "Bottom", value: "bottom" },
     ],
-    popupDemo: {
+    surfaceDemo: {
       message: "",
+      supportsWindow: false,
     },
   },
 
@@ -49,12 +50,31 @@ Page({
 
     // Update page stack immediately
     this._updatePageStack();
+    this._updateSurfaceCapabilities();
   },
 
   onShow: function () {
     console.log("UI page onShow");
     // Update page stack every time page shows
     this._updatePageStack();
+    this._updateSurfaceCapabilities();
+  },
+
+  _updateSurfaceCapabilities: function () {
+    let supportsWindow = false;
+    try {
+      const info = lx.getDeviceInfo();
+      const osName = String(info?.osName || "").toLowerCase();
+      supportsWindow =
+        osName.includes("mac") ||
+        osName.includes("windows") ||
+        osName.includes("linux");
+    } catch (error) {
+      console.warn("Failed to detect surface capabilities:", error);
+    }
+    this.setData({
+      "surfaceDemo.supportsWindow": supportsWindow,
+    });
   },
 
   // Update current page stack
@@ -164,45 +184,64 @@ Page({
     }
   },
 
-  showPopupDemo: async function (config) {
+  openSurfaceDemo: async function (config) {
     this.setData({
-      "popupDemo.message": "",
+      "surfaceDemo.message": "",
     });
 
     try {
       const cfg = config || {};
-      const popup = await lx.showPopup({
-        url: `pages/popup/index?source=ui-page&time=${Date.now()}`,
-        position: cfg.position || "bottom",
-        widthRatio: cfg.widthRatio || 0.9,
-        heightRatio: cfg.heightRatio || 0.6,
+      const supportsWindow = this.data.surfaceDemo?.supportsWindow === true;
+      const requestedKind = cfg.kind === "window" ? "window" : "popup";
+      const kind = requestedKind === "window" && supportsWindow ? "window" : "popup";
+      const isWindow = kind === "window";
+      const options = {
+        kind,
+        path: "pages/surface/index",
+        query: { source: "ui-page", kind, time: Date.now() },
+        size: isWindow
+          ? { width: cfg.width || 960, height: cfg.height || 720 }
+          : {
+              width: `${Math.round((cfg.widthRatio || 0.9) * 100)}%`,
+              height: `${Math.round((cfg.heightRatio || 0.6) * 100)}%`,
+            },
+      };
+      if (!isWindow) {
+        options.position = cfg.position || "bottom";
+      }
+      const surface = await lx.surface.open(options);
+
+      this.setData({
+        "surfaceDemo.message": `Opened ${kind}: ${surface.id}`,
       });
-
-      const handler = (payload) => {
-        console.log("popupMessage received:", payload);
-
+      let unsubscribe = null;
+      const handleMessage = (payload) => {
+        unsubscribe?.();
+        unsubscribe = null;
         const message =
           payload && typeof payload === "object"
-            ? (payload.message ?? JSON.stringify(payload))
+            ? payload.message || JSON.stringify(payload)
             : payload;
-
-        const readable = typeof message === "string" ? message : "";
-
         this.setData({
-          "popupDemo.message": readable,
+          "surfaceDemo.message": `Message: ${message}`,
         });
-
-        popup.eventEmitter.off("popupMessage", handler);
+        surface.close().catch((error) => {
+          console.warn("surface.close failed:", error);
+        });
       };
-
-      popup.eventEmitter.on("popupMessage", handler);
+      unsubscribe = surface.onMessage(handleMessage);
+      surface.onClose((event) => {
+        this.setData({
+          "surfaceDemo.message": `Closed ${event.id}: ${event.reason}`,
+        });
+      });
     } catch (error) {
-      console.error("showPopup failed:", error);
+      console.error("lx.surface.open failed:", error);
       this.setData({
-        "popupDemo.message": `Failed: ${error.message}`,
+        "surfaceDemo.message": `Failed: ${error.message}`,
       });
       lx.showToast({
-        title: `showPopup failed: ${error.message}`,
+        title: `open failed: ${error.message}`,
         icon: "none",
       });
     }
