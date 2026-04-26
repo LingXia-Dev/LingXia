@@ -1,4 +1,4 @@
-use lingxia_platform::traits::app_runtime::LxAppPresentation;
+use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lxapp::startup::LxAppStartupOptions;
 use lxapp::{LxAppError, ReleaseType};
 
@@ -38,7 +38,7 @@ async fn do_open_panel_lxapp(panel_id: &str, appid: &str, path: &str) -> Result<
     let _ = lxapp::open_lxapp(
         appid,
         LxAppStartupOptions::new(path)
-            .set_presentation(LxAppPresentation::Panel)
+            .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),
     )?;
 

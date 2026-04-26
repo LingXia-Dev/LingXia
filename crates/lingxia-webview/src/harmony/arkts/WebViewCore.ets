@@ -228,8 +228,7 @@ export class WebViewManager {
   private static uiCallbacks: Set<(action: string, info: WebViewInfo) => void> = new Set();
 
   private static resolveLogicalTag(webtag: string): string {
-    const extracted = extractWebTag(webtag);
-    return extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    return webtag;
   }
 
   /**
@@ -259,10 +258,7 @@ export class WebViewManager {
    * @returns true if created successfully, false if already exists or creation failed
    */
   static createWebview(webtag: string, optionsToken?: string): boolean {
-    // Normalize to logical tag for registry keys (appid-path)
-    // Normalize to logical tag for registry keys (appid:path)
-    const extracted = extractWebTag(webtag);
-    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    const logicalTag = webtag;
     const effectiveOptions = decodeOptionsToken(optionsToken);
 
     // Check if already exists for this logical page
@@ -357,9 +353,7 @@ export class WebViewManager {
    * @returns true if destroyed successfully, false if not found
    */
   static destroyWebview(webtag: string): boolean {
-    // Normalize to logical tag for registry keys (appid:path)
-    const extracted = extractWebTag(webtag);
-    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+    const logicalTag = webtag;
 
     const controller = WebViewManager.controllers.get(logicalTag);
     const webViewInfo = WebViewManager.webViewInfos.get(logicalTag);
@@ -484,26 +478,46 @@ export class WebViewManager {
   }
 
   /**
-   * Notify UI that a WebView is being reused by the popup overlay.
+   * Notify UI that a WebView is being reused by the surface.
    * When `active` is true the base container should hide the WebView; when false it should restore it.
    */
-  static notifyPopupState(appId: string, path: string, active: boolean) {
-    const webtag = toWebTag(appId, path);
-    const webViewInfo = WebViewManager.webViewInfos.get(webtag);
-    if (!webViewInfo) {
-      hilog.warn(DOMAIN, TAG, `notifyPopupState: WebView not found for ${webtag}`);
+  static notifySurfaceState(appId: string, path: string, active: boolean, pageInstanceId?: string) {
+    const logicalTag = toWebTag(appId, path);
+    const webViewInfos = WebViewManager.findSurfaceWebViewInfos(logicalTag, pageInstanceId);
+    if (webViewInfos.length === 0) {
+      hilog.warn(DOMAIN, TAG, `notifySurfaceState: WebView not found for ${logicalTag}`);
       return;
     }
 
-    WebViewManager.uiCallbacks.forEach(callback => {
-      try {
-        callback(active ? 'popup_show' : 'popup_hide', webViewInfo);
-      } catch (error) {
-        hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
-      }
+    webViewInfos.forEach((webViewInfo: WebViewInfo) => {
+      WebViewManager.uiCallbacks.forEach(callback => {
+        try {
+          callback(active ? 'surface_show' : 'surface_hide', webViewInfo);
+        } catch (error) {
+          hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+        }
+      });
     });
 
-    hilog.info(DOMAIN, TAG, `notifyPopupState -> ${active ? 'show' : 'hide'} for ${webtag}`);
+    hilog.info(DOMAIN, TAG, `notifySurfaceState for ${logicalTag}`);
+  }
+
+  private static findSurfaceWebViewInfos(logicalTag: string, pageInstanceId?: string): WebViewInfo[] {
+    const direct = WebViewManager.webViewInfos.get(logicalTag);
+    if (direct) {
+      return [direct];
+    }
+
+    const prefix = pageInstanceId && pageInstanceId.length > 0
+      ? `${logicalTag}#${pageInstanceId}`
+      : `${logicalTag}#`;
+    const matches: WebViewInfo[] = [];
+    WebViewManager.webViewInfos.forEach((info: WebViewInfo, tag: string) => {
+      if (tag === logicalTag || tag.startsWith(prefix)) {
+        matches.push(info);
+      }
+    });
+    return matches;
   }
 
   /**

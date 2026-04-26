@@ -11,8 +11,8 @@ use lingxia_platform::CachedClass;
 use log::{error, info, warn};
 use lxapp::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
-    CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
-    PageOwner, PageTarget, PresentationKind, SceneId,
+    CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
+    PageInstanceEvent, PageOrientation, PageOwner, PageTarget, PresentationKind, SceneId,
 };
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
@@ -52,6 +52,29 @@ fn resolve_page_instance_id(appid: &str, path: &str, session_id: u64) -> Option<
     Some(id)
 }
 
+fn parse_close_reason(reason: &str) -> CloseReason {
+    match reason.trim().to_ascii_lowercase().as_str() {
+        "user" => CloseReason::User,
+        "owner_closed" => CloseReason::OwnerClosed,
+        "app_closed" | "appclose" | "close" => CloseReason::AppClosed,
+        "programmatic" => CloseReason::Programmatic,
+        "failed" | "presentation_failed" => CloseReason::Unknown,
+        _ => CloseReason::Unknown,
+    }
+}
+
+fn notify_page_instance_event(
+    env: &mut EnvUnowned,
+    page_instance_id: JString,
+    event: PageInstanceEvent,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let page_instance_id: String = page_instance_id.try_to_string(env)?;
+        Ok(lxapp::notify_page_instance_by_id(&page_instance_id, event).is_ok() as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 fn init_cached_java_class(env: &mut Env<'_>, class: CachedClass) {
     match env.find_class(JNIString::new(class.class_path())) {
         Ok(local_class) => match env.new_global_ref(local_class) {
@@ -83,7 +106,7 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
         CachedClass::LxAppMedia,
         CachedClass::LxAppDevice,
         CachedClass::LxAppLocation,
-        CachedClass::LxAppPopup,
+        CachedClass::LxAppSurface,
         CachedClass::LxAppToast,
         CachedClass::LxAppModal,
         CachedClass::LxAppActionSheet,
@@ -253,6 +276,121 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebView<'a>(
                 error!("Failed to create local reference to WebView: {:?}", e);
                 Ok(JObject::null())
             }
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_findWebViewByPageInstanceId<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    page_instance_id: JString<'a>,
+) -> JObject<'a> {
+    env.with_env(|env| -> Result<JObject, jni::errors::Error> {
+        let page_instance_id: String = page_instance_id.try_to_string(env)?;
+        let page_instance_id = page_instance_id.trim();
+        if page_instance_id.is_empty() {
+            return Ok(JObject::null());
+        }
+        let _ = lxapp::touch_page_instance_by_id(page_instance_id);
+        let Some(page) = lxapp::find_page_by_instance_id(page_instance_id) else {
+            return Ok(JObject::null());
+        };
+        let Some(webview) = page.webview() else {
+            return Ok(JObject::null());
+        };
+
+        match env.new_local_ref(webview.get_java_webview()) {
+            Ok(local_ref) => Ok(unsafe { JObject::from_raw(env, local_ref.into_raw()) }),
+            Err(e) => {
+                error!("Failed to create local reference to WebView: {:?}", e);
+                Ok(JObject::null())
+            }
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceMounted(
+    mut env: EnvUnowned,
+    _class: JClass,
+    page_instance_id: JString,
+) -> jboolean {
+    notify_page_instance_event(&mut env, page_instance_id, PageInstanceEvent::Mounted)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceVisible(
+    mut env: EnvUnowned,
+    _class: JClass,
+    page_instance_id: JString,
+) -> jboolean {
+    notify_page_instance_event(&mut env, page_instance_id, PageInstanceEvent::Visible)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_notifyPageInstanceHidden(
+    mut env: EnvUnowned,
+    _class: JClass,
+    page_instance_id: JString,
+    reason: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let page_instance_id: String = page_instance_id.try_to_string(env)?;
+        let reason: String = reason.try_to_string(env)?;
+        Ok(lxapp::notify_page_instance_by_id(
+            &page_instance_id,
+            PageInstanceEvent::Hidden {
+                reason: parse_close_reason(&reason),
+            },
+        )
+        .is_ok() as jboolean)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_disposePageInstance(
+    mut env: EnvUnowned,
+    _class: JClass,
+    page_instance_id: JString,
+    reason: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let page_instance_id: String = page_instance_id.try_to_string(env)?;
+        let reason: String = reason.try_to_string(env)?;
+        Ok(
+            lxapp::dispose_page_instance_by_id(&page_instance_id, parse_close_reason(&reason))
+                .is_ok() as jboolean,
+        )
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onSurfaceClosed(
+    mut env: EnvUnowned,
+    _class: JClass,
+    appid: JString,
+    id: JString,
+    reason: JString,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let id: String = id.try_to_string(env)?;
+        let reason: String = reason.try_to_string(env)?;
+        if let Some(lxapp) = lxapp::try_get(&appid) {
+            let _ = lxapp.forget_surface(&id);
+        }
+        #[cfg(feature = "standard")]
+        {
+            Ok(lingxia_logic::notify_surface_closed(&id, &reason) as jboolean)
+        }
+        #[cfg(not(feature = "standard"))]
+        {
+            Ok(false as jboolean)
         }
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -546,8 +684,7 @@ pub extern "system" fn Java_com_lingxia_lxapp_NativeApi_onLxAppOpened<'a>(
             appid: appid.clone(),
             target: PageTarget::Path(path),
             query: None,
-            presentation: PresentationKind::Window,
-            warm_dispose_policy: lxapp::PageWarmDisposePolicy::Auto,
+            surface: PresentationKind::Window,
         })
         .map(|created| created.resolved_path)
         .unwrap_or_default();

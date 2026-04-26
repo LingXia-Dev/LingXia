@@ -2,7 +2,7 @@ use super::ffi;
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppPresentation;
+use crate::traits::app_runtime::LxAppOpenMode;
 use crate::traits::media_runtime::MediaRuntime;
 #[cfg(target_os = "macos")]
 use rfd::{MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
@@ -175,15 +175,15 @@ impl AppRuntime for Platform {
         appid: String,
         path: String,
         session_id: u64,
-        presentation: LxAppPresentation,
+        open_mode: LxAppOpenMode,
         panel_id: String,
     ) -> Result<(), PlatformError> {
-        if ffi::open_lxapp(&appid, &path, session_id, presentation as i32, &panel_id) {
+        if ffi::open_lxapp(&appid, &path, session_id, open_mode as i32, &panel_id) {
             Ok(())
         } else {
             Err(PlatformError::Platform(format!(
-                "Failed to show lxapp: appid={}, path={}, session_id={}, presentation={:?}, panel_id={}",
-                appid, path, session_id, presentation, panel_id
+                "Failed to show lxapp: appid={}, path={}, session_id={}, open_mode={:?}, panel_id={}",
+                appid, path, session_id, open_mode, panel_id
             )))
         }
     }

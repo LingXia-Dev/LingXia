@@ -23,7 +23,7 @@ pub mod prelude {
     pub use super::network::Network;
     pub use super::pull_to_refresh::PullToRefresh;
     pub use super::secure_store::SecureStore;
-    pub use super::ui::{PopupPresenter, UIUpdate, UserFeedback};
+    pub use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
     pub use super::update::UpdateService;
     pub use super::video_player::{VideoPlayerHandle, VideoPlayerManager};
     pub use super::wifi::Wifi;

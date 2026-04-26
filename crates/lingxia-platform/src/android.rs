@@ -7,8 +7,8 @@ mod file;
 mod location;
 mod media;
 mod network;
-mod popup;
 mod pull_to_refresh;
+mod surface;
 mod ui_update;
 mod update;
 mod user_feedback;
@@ -29,7 +29,7 @@ pub enum CachedClass {
     PreviewMediaPayload = 2,
     LxAppDevice = 3,
     LxAppLocation = 4,
-    LxAppPopup = 5,
+    LxAppSurface = 5,
     LxAppToast = 6,
     LxAppModal = 7,
     LxAppActionSheet = 8,
@@ -53,7 +53,7 @@ impl CachedClass {
             CachedClass::PreviewMediaPayload => "com/lingxia/lxapp/APIs/media/PreviewMediaPayload",
             CachedClass::LxAppDevice => "com/lingxia/lxapp/APIs/LxAppDevice",
             CachedClass::LxAppLocation => "com/lingxia/lxapp/APIs/LxAppLocation",
-            CachedClass::LxAppPopup => "com/lingxia/lxapp/APIs/LxAppPopup",
+            CachedClass::LxAppSurface => "com/lingxia/lxapp/APIs/LxAppSurface",
             CachedClass::LxAppToast => "com/lingxia/lxapp/APIs/LxAppToast",
             CachedClass::LxAppModal => "com/lingxia/lxapp/APIs/LxAppModal",
             CachedClass::LxAppActionSheet => "com/lingxia/lxapp/APIs/LxAppActionSheet",
@@ -90,9 +90,9 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppLocation"
             ),
-            CachedClass::LxAppPopup => concat!(
+            CachedClass::LxAppSurface => concat!(
                 "Global class reference not found: ",
-                "com/lingxia/lxapp/APIs/LxAppPopup"
+                "com/lingxia/lxapp/APIs/LxAppSurface"
             ),
             CachedClass::LxAppToast => concat!(
                 "Global class reference not found: ",

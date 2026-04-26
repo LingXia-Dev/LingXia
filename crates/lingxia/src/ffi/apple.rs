@@ -2,7 +2,7 @@ use lingxia_messaging::invoke_callback;
 use lxapp::{
     CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
     PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner, PageQueryInput, PageTarget,
-    PageWarmDisposePolicy, PresentationKind, SceneId,
+    PresentationKind, SceneId,
 };
 #[cfg(all(target_os = "macos", feature = "shell-runtime"))]
 use std::sync::Arc;
@@ -175,9 +175,8 @@ mod bridge {
             appid: &str,
             path: &str,
             session_id: u64,
-            presentation: i32,
+            surface: i32,
             owner_page_instance_id: &str,
-            warm_ttl_ms: i64,
         ) -> CreatePageInstanceResult;
 
         #[swift_bridge(swift_name = "notifyPageInstanceMounted")]
@@ -191,6 +190,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "disposePageInstance")]
         fn dispose_page_instance(page_instance_id: &str, reason: &str) -> bool;
+
+        #[swift_bridge(swift_name = "onSurfaceClosed")]
+        fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool;
 
         #[swift_bridge(swift_name = "openBrowserTab")]
         fn open_browser_tab(appid: &str, session_id: u64, url: &str) -> Option<String>;
@@ -672,10 +674,7 @@ pub fn resolve_page_binding(
 ) -> self::bridge::PageBindingResult {
     let page_instance_id = resolve_page_instance_id(appid, path, session_id);
     let webview_ptr = if page_instance_id.is_empty() {
-        let webtag = lingxia_webview::WebTag::new(appid, path, Some(session_id));
-        lingxia_webview::runtime::find_webview(&webtag)
-            .map(|webview| webview.get_swift_webview_ptr())
-            .unwrap_or(0)
+        0
     } else {
         find_webview_by_page_instance_id(&page_instance_id)
     };
@@ -688,24 +687,19 @@ pub fn resolve_page_binding(
 fn parse_close_reason(reason: &str) -> CloseReason {
     match reason.trim().to_ascii_lowercase().as_str() {
         "user" => CloseReason::User,
+        "owner_closed" => CloseReason::OwnerClosed,
         "app_closed" | "appclose" | "close" => CloseReason::AppClosed,
         "programmatic" => CloseReason::Programmatic,
+        "failed" | "presentation_failed" => CloseReason::Unknown,
         _ => CloseReason::Unknown,
     }
 }
 
-fn map_presentation_kind(presentation: i32) -> PresentationKind {
-    match presentation {
+fn map_presentation_kind(surface: i32) -> PresentationKind {
+    match surface {
         1 => PresentationKind::Panel,
+        3 => PresentationKind::Popup,
         _ => PresentationKind::Window,
-    }
-}
-
-fn map_warm_dispose_policy(warm_ttl_ms: i64) -> PageWarmDisposePolicy {
-    if warm_ttl_ms > 0 {
-        PageWarmDisposePolicy::TtlMs(warm_ttl_ms as u64)
-    } else {
-        PageWarmDisposePolicy::Auto
     }
 }
 
@@ -713,9 +707,8 @@ pub fn create_page_instance_for_open(
     appid: &str,
     path: &str,
     session_id: u64,
-    presentation: i32,
+    surface: i32,
     owner_page_instance_id: &str,
-    warm_ttl_ms: i64,
 ) -> self::bridge::CreatePageInstanceResult {
     if session_id == 0 {
         return self::bridge::CreatePageInstanceResult {
@@ -761,8 +754,7 @@ pub fn create_page_instance_for_open(
         appid: appid.to_string(),
         target: PageTarget::Path(path.to_string()),
         query: None::<PageQueryInput>,
-        presentation: map_presentation_kind(presentation),
-        warm_dispose_policy: map_warm_dispose_policy(warm_ttl_ms),
+        surface: map_presentation_kind(surface),
     }) {
         Ok(created) => self::bridge::CreatePageInstanceResult {
             ok: true,
@@ -803,6 +795,21 @@ pub fn notify_page_instance_hidden(page_instance_id: &str, reason: &str) -> bool
 
 pub fn dispose_page_instance(page_instance_id: &str, reason: &str) -> bool {
     lxapp::dispose_page_instance_by_id(page_instance_id, parse_close_reason(reason)).is_ok()
+}
+
+pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
+    if let Some(lxapp) = lxapp::try_get(appid) {
+        let _ = lxapp.forget_surface(id);
+    }
+    #[cfg(feature = "standard")]
+    {
+        return lingxia_logic::notify_surface_closed(id, reason);
+    }
+    #[cfg(not(feature = "standard"))]
+    {
+        let _ = reason;
+        false
+    }
 }
 
 /// Get LxApp information
@@ -1021,7 +1028,7 @@ pub fn get_panels_config_json() -> Option<String> {
 }
 
 /// Open a lxapp for a panel without pushing it to the navigation stack.
-/// panel_id is used by Rust as the panel slot context for presentation routing.
+/// panel_id is used by Rust as the panel slot context for surface routing.
 pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     crate::browser::open_panel_lxapp(panel_id, appid, path);
 }

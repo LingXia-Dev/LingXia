@@ -1,7 +1,7 @@
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppPresentation;
+use crate::traits::app_runtime::LxAppOpenMode;
 use crate::traits::media_interaction::MediaKind;
 use crate::traits::media_runtime::MediaRuntime;
 use libc::free;
@@ -541,7 +541,7 @@ impl AppRuntime for Platform {
         appid: String,
         path: String,
         session_id: u64,
-        _presentation: LxAppPresentation,
+        _open_mode: LxAppOpenMode,
         _panel_id: String,
     ) -> Result<(), PlatformError> {
         let session = session_id.to_string();

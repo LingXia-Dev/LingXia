@@ -11,7 +11,7 @@ use super::media_interaction::{MediaInteraction, MediaKind};
 use super::media_runtime::MediaRuntime;
 use super::network::Network;
 use super::secure_store::SecureStore;
-use super::ui::{PopupPresenter, UIUpdate, UserFeedback};
+use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
@@ -23,7 +23,7 @@ pub enum AnimationType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LxAppPresentation {
+pub enum LxAppOpenMode {
     #[default]
     Normal = 0,
     Panel = 1,
@@ -97,7 +97,7 @@ pub trait AppRuntime:
     + MediaInteraction
     + MediaRuntime
     + Network
-    + PopupPresenter
+    + SurfacePresenter
     + Device
     + DeviceHardware
     + SecureStore
@@ -146,7 +146,7 @@ pub trait AppRuntime:
         appid: String,
         path: String,
         session_id: u64,
-        presentation: LxAppPresentation,
+        open_mode: LxAppOpenMode,
         panel_id: String,
     ) -> Result<(), PlatformError>;
 

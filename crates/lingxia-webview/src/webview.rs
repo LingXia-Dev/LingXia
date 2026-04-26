@@ -1471,8 +1471,20 @@ impl WebTag {
     pub fn session_id(&self) -> Option<u64> {
         self.0
             .split('#')
-            .nth(1)
+            .next_back()
             .and_then(|raw| raw.parse::<u64>().ok())
+    }
+
+    fn key_path(&self) -> String {
+        let Some((_, path_with_suffix)) = self.0.split_once(':') else {
+            return self.0.clone();
+        };
+        if self.session_id().is_some()
+            && let Some((path, _)) = path_with_suffix.rsplit_once('#')
+        {
+            return path.to_string();
+        }
+        path_with_suffix.to_string()
     }
 }
 
@@ -1487,7 +1499,7 @@ fn request_create_webview(
     sender: WebViewCreateSender,
     options: WebViewCreateOptions,
 ) {
-    let (appid, path) = webtag.extract_parts();
+    let (appid, _) = webtag.extract_parts();
     let (effective_options, pending_callbacks) = match options.normalize() {
         Ok(value) => value,
         Err(error) => {
@@ -1562,7 +1574,7 @@ fn request_create_webview(
     // Delegate WebView creation to the platform-specific implementation
     WebViewInner::create(
         &appid,
-        &path,
+        &webtag.key_path(),
         webtag.session_id(),
         effective_options,
         sender,

@@ -53,13 +53,6 @@ mod bridge {
         pub cancel: bool,
     }
 
-    pub enum PopupPositionBridge {
-        Center,
-        Bottom,
-        Left,
-        Right,
-    }
-
     #[swift_bridge(swift_repr = "struct")]
     pub struct SwiftImageInfoResult {
         pub success: bool,
@@ -167,17 +160,24 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.showActionSheet")]
         fn show_action_sheet(options: ActionSheetOptions, callback_id: u64);
 
-        #[swift_bridge(swift_name = "LxApp.showPopup")]
-        fn show_popup(
+        #[swift_bridge(swift_name = "LxApp.presentSurface")]
+        fn present_surface(
+            id: &str,
             appid: &str,
             path: &str,
+            session_id: u64,
+            page_instance_id: &str,
+            content: i32,
+            kind: i32,
+            width: f64,
+            height: f64,
             width_ratio: f64,
             height_ratio: f64,
-            position: PopupPositionBridge,
+            position: i32,
         ) -> bool;
 
-        #[swift_bridge(swift_name = "LxApp.hidePopup")]
-        fn hide_popup(appid: &str) -> bool;
+        #[swift_bridge(swift_name = "LxApp.closeSurface")]
+        fn close_surface(id: &str, appid: &str, reason: &str) -> bool;
 
         #[swift_bridge(swift_name = "LxAppMedia.previewMedia")]
         fn preview_media(items_json: &str, callback_id: u64) -> bool;
@@ -342,11 +342,10 @@ mod bridge {
 #[cfg(target_os = "macos")]
 pub use bridge::reveal_in_file_manager;
 pub use bridge::{
-    ActionSheetOptions, ModalOptions, PopupPositionBridge, ToastIcon, ToastOptions, ToastPosition,
-    cancel_preview_media, close_lxapp, exit_app, hide_popup, hide_toast, navigate,
-    open_document_external, open_lxapp, open_url, preview_media, review_document,
-    show_action_sheet, show_modal, show_popup, show_toast, update_navbar_ui, update_orientation_ui,
-    update_tabbar_ui,
+    ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, cancel_preview_media,
+    close_lxapp, close_surface, exit_app, hide_toast, navigate, open_document_external, open_lxapp,
+    open_url, present_surface, preview_media, review_document, show_action_sheet, show_modal,
+    show_toast, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
 };
 
 #[cfg(target_os = "ios")]

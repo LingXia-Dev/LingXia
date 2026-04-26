@@ -1,7 +1,7 @@
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::AppRuntime;
-use crate::traits::app_runtime::LxAppPresentation;
+use crate::traits::app_runtime::LxAppOpenMode;
 use jni::objects::{Global, JClass, JObject, JString, JValue};
 use jni::sys::jobject;
 use jni::{Env, jni_sig, jni_str};
@@ -440,7 +440,7 @@ impl AppRuntime for Platform {
         appid: String,
         path: String,
         session_id: u64,
-        _presentation: LxAppPresentation,
+        _open_mode: LxAppOpenMode,
         _panel_id: String,
     ) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)

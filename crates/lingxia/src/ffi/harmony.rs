@@ -3,8 +3,8 @@ use lingxia_platform::harmony::camera;
 use lingxia_platform::traits::video_player::VideoPlayerCommand;
 use lingxia_webview::platform::harmony as webview_harmony;
 use lxapp::{
-    CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig, PageOrientation,
-    PageOwner, PageTarget, PresentationKind, SceneId,
+    CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
+    PageInstanceEvent, PageOrientation, PageOwner, PageTarget, PresentationKind, SceneId,
 };
 use napi_derive_ohos::napi;
 use napi_ohos::bindgen_prelude::Object;
@@ -326,8 +326,7 @@ pub fn on_lxapp_opened(appid: String, path: String, session_id: i64) -> String {
         appid,
         target: PageTarget::Path(path),
         query: None,
-        presentation: PresentationKind::Window,
-        warm_dispose_policy: lxapp::PageWarmDisposePolicy::Auto,
+        surface: PresentationKind::Window,
     })
     .map(|created| created.resolved_path)
     .unwrap_or_default()
@@ -362,6 +361,59 @@ pub fn get_page_instance_id(appid: String, path: String, session_id: i64) -> Str
         let _ = lxapp::touch_page_instance_by_id(&page_instance_id);
     }
     page_instance_id
+}
+
+#[napi]
+pub fn notify_page_instance_mounted(page_instance_id: String) -> bool {
+    lxapp::notify_page_instance_by_id(&page_instance_id, PageInstanceEvent::Mounted).is_ok()
+}
+
+#[napi]
+pub fn notify_page_instance_visible(page_instance_id: String) -> bool {
+    lxapp::notify_page_instance_by_id(&page_instance_id, PageInstanceEvent::Visible).is_ok()
+}
+
+#[napi]
+pub fn notify_page_instance_hidden(page_instance_id: String, reason: String) -> bool {
+    lxapp::notify_page_instance_by_id(
+        &page_instance_id,
+        PageInstanceEvent::Hidden {
+            reason: parse_close_reason(&reason),
+        },
+    )
+    .is_ok()
+}
+
+#[napi]
+pub fn dispose_page_instance(page_instance_id: String, reason: String) -> bool {
+    lxapp::dispose_page_instance_by_id(&page_instance_id, parse_close_reason(&reason)).is_ok()
+}
+
+#[napi]
+pub fn on_surface_closed(appid: String, id: String, reason: String) -> bool {
+    if let Some(lxapp) = lxapp::try_get(&appid) {
+        let _ = lxapp.forget_surface(&id);
+    }
+    #[cfg(feature = "standard")]
+    {
+        lingxia_logic::notify_surface_closed(&id, &reason)
+    }
+    #[cfg(not(feature = "standard"))]
+    {
+        let _ = reason;
+        false
+    }
+}
+
+fn parse_close_reason(reason: &str) -> CloseReason {
+    match reason.trim().to_ascii_lowercase().as_str() {
+        "user" => CloseReason::User,
+        "owner_closed" => CloseReason::OwnerClosed,
+        "app_closed" | "appclose" | "close" => CloseReason::AppClosed,
+        "programmatic" => CloseReason::Programmatic,
+        "failed" | "presentation_failed" => CloseReason::Unknown,
+        _ => CloseReason::Unknown,
+    }
 }
 
 /// Notify that LxApp was closed

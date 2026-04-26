@@ -39,39 +39,59 @@ pub struct ModalOptions {
 }
 
 #[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceKind {
+    Window = 0,
+    Popup = 1,
+}
+
+#[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PopupPosition {
-    Center = 0,
+pub enum SurfaceContent {
     #[default]
+    Page = 0,
+    Url = 1,
+}
+
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SurfacePosition {
+    #[default]
+    Center = 0,
     Bottom = 1,
     Left = 2,
     Right = 3,
+    Top = 4,
 }
 
 #[derive(Debug, Clone)]
-pub struct PopupRequest {
+pub struct SurfaceRequest {
+    pub id: String,
     pub app_id: String,
     pub path: String,
+    pub session_id: u64,
+    pub page_instance_id: String,
+    pub content: SurfaceContent,
+    pub kind: SurfaceKind,
+    pub width: f64,
+    pub height: f64,
     pub width_ratio: f64,
     pub height_ratio: f64,
-    pub position: PopupPosition,
+    pub position: SurfacePosition,
 }
 
-impl PopupRequest {
-    pub fn new(app_id: String, path: String) -> Self {
-        Self {
-            app_id,
-            path,
-            width_ratio: f64::NAN,
-            height_ratio: f64::NAN,
-            position: PopupPosition::Bottom,
-        }
+pub trait SurfacePresenter: Send + Sync + 'static {
+    fn present_surface(&self, _request: SurfaceRequest) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "surface is not supported on this platform".to_string(),
+        ))
     }
-}
 
-pub trait PopupPresenter: Send + Sync + 'static {
-    fn show_popup(&self, request: PopupRequest) -> Result<(), PlatformError>;
-    fn hide_popup(&self, app_id: &str) -> Result<(), PlatformError>;
+    fn close_surface(&self, _app_id: &str, _id: &str, _reason: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported(
+            "surface close is not supported on this platform".to_string(),
+        ))
+    }
 }
 
 pub trait UIUpdate: Send + Sync + 'static {
