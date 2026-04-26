@@ -271,16 +271,16 @@ public final class LxAppHostView: LxAppPlatformView {
     }
 
     /// Unmount the current session from this host view.
-    public func unmount() {
+    public func unmount(reason: String = "programmatic") {
         if case .string(let pageInstanceId)? = mountedSession?.userInfo["pageInstanceId"] {
-            _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+            _ = notifyPageInstanceHidden(pageInstanceId, reason)
         } else if let session = mountedSession {
             if let pageInstanceId = WebViewManager.resolvePageInstanceId(
                 appId: session.appId,
                 path: session.path,
                 sessionId: session.id.rawValue
             ) {
-                _ = notifyPageInstanceHidden(pageInstanceId, "programmatic")
+                _ = notifyPageInstanceHidden(pageInstanceId, reason)
             }
         }
         clearEventObservers()

@@ -680,7 +680,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             return
         }
 
-        let created = createPageInstance(homeLxAppId, "", sessionId, 0, "", -1)
+        let created = createPageInstance(homeLxAppId, "", sessionId, 0, "")
         let resolvedPath = created.resolved_path.toString()
         let createError = created.error.toString()
         guard created.ok, !resolvedPath.isEmpty else {
@@ -727,7 +727,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         if isNewViewController {
             let currentPath = LxAppCore.getCurrentPath()
-            let created = createPageInstance(appId, currentPath, sessionId, 0, "", -1)
+            let created = createPageInstance(appId, currentPath, sessionId, 0, "")
             let resolvedPath = created.resolved_path.toString()
             let createError = created.error.toString()
             if !created.ok || resolvedPath.isEmpty {

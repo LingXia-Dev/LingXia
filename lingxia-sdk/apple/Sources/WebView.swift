@@ -134,11 +134,10 @@ final class WebViewManager {
         let pageInstanceId = binding.page_instance_id
             .toString()
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        let webViewPtr = binding.webview_ptr
-        guard !pageInstanceId.isEmpty || webViewPtr != 0 else {
+        guard !pageInstanceId.isEmpty else {
             return nil
         }
-        return (pageInstanceId: pageInstanceId, webViewPtr: webViewPtr)
+        return (pageInstanceId: pageInstanceId, webViewPtr: binding.webview_ptr)
     }
 
     static func resolvePageInstanceId(appId: String, path: String, sessionId: UInt64) -> String? {

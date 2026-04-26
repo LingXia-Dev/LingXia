@@ -110,6 +110,65 @@ extension LxApp {
         }
     }
 
+    nonisolated static func presentSurface(
+        id: RustStr,
+        appid: RustStr,
+        path: RustStr,
+        session_id: UInt64,
+        page_instance_id: RustStr,
+        content: Int32,
+        kind: Int32,
+        width: Double,
+        height: Double,
+        width_ratio: Double,
+        height_ratio: Double,
+        position: Int32
+    ) -> Bool {
+        let idString = id.toString()
+        let appIdString = appid.toString()
+        let pathString = path.toString()
+        let pageInstanceId = page_instance_id.toString()
+        guard !idString.isEmpty, !appIdString.isEmpty, session_id > 0 else {
+            os_log(
+                "presentSurface rejected invalid args id=%{public}@ app=%{public}@ session=%{public}llu",
+                log: lxAppFFILog,
+                type: .error,
+                idString,
+                appIdString,
+                session_id
+            )
+            return false
+        }
+
+        return executeOnMain {
+            LxAppSurface.present(
+                id: idString,
+                appId: appIdString,
+                path: pathString,
+                sessionId: session_id,
+                pageInstanceId: pageInstanceId,
+                content: content,
+                kind: kind,
+                width: width,
+                height: height,
+                widthRatio: width_ratio,
+                heightRatio: height_ratio,
+                position: position
+            )
+        }
+    }
+
+    nonisolated static func closeSurface(id: RustStr, appid: RustStr, reason: RustStr) -> Bool {
+        let idString = id.toString()
+        let appIdString = appid.toString()
+        let reasonString = reason.toString()
+        guard !idString.isEmpty, !appIdString.isEmpty else { return false }
+
+        return executeOnMain {
+            LxAppSurface.close(id: idString, appId: appIdString, reason: reasonString)
+        }
+    }
+
     nonisolated static func exitApp() -> Bool {
         return executeOnMain {
             #if os(macOS)
@@ -316,33 +375,6 @@ extension LxApp {
 
     @MainActor static func showActionSheet(_ options: [String: Any], callback_id: UInt64) {
         LxAppActionSheet.showActionSheet(options, callback_id: callback_id)
-    }
-
-    nonisolated static func showPopup(
-        appid: RustStr,
-        path: RustStr,
-        width_ratio: Double,
-        height_ratio: Double,
-        position: PopupPositionBridge
-    ) -> Bool {
-        let appIdString = appid.toString()
-        let pathString = path.toString()
-        let displayPosition = position.toDisplayPosition()
-
-        return executeOnMain {
-            LxAppPopup.showPopup(
-                appId: appIdString,
-                path: pathString,
-                widthRatio: width_ratio,
-                heightRatio: height_ratio,
-                position: displayPosition
-            )
-        }
-    }
-
-    nonisolated static func hidePopup(appid: RustStr) -> Bool {
-        let appIdString = appid.toString()
-        return executeOnMain { LxAppPopup.hidePopup(appId: appIdString) }
     }
 
     nonisolated static func reviewDocument(file_path filePath: RustStr, mime_type mimeType: RustStr, show_menu showMenu: Bool) -> Bool {

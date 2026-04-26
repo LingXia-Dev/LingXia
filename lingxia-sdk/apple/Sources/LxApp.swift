@@ -81,8 +81,7 @@ final class LxAppCore {
         path: String,
         sessionId: UInt64,
         presentation: Int32 = 0,
-        panelId: String = "",
-        pageWarmTtlMs: Int64 = -1
+        panelId: String = ""
     ) -> Bool {
         guard sessionId > 0 else {
             os_log("executeOpenLxApp rejected invalid session for %@", log: log, type: .error, appId)
@@ -90,7 +89,7 @@ final class LxAppCore {
         }
 
         // owner_page_instance_id is for nested page ownership, not UI panel id.
-        let created = createPageInstance(appId, path, sessionId, presentation, "", pageWarmTtlMs)
+        let created = createPageInstance(appId, path, sessionId, presentation, "")
         let finalPath = created.resolved_path.toString()
         let createError = created.error.toString()
         guard created.ok, !finalPath.isEmpty else {

@@ -239,6 +239,24 @@ internal object NativeApi {
     @JvmStatic
     external fun findWebView(appId: String, path: String, sessionId: Long): com.lingxia.lxapp.WebView?
 
+    @JvmStatic
+    external fun findWebViewByPageInstanceId(pageInstanceId: String): com.lingxia.lxapp.WebView?
+
+    @JvmStatic
+    external fun notifyPageInstanceMounted(pageInstanceId: String): Boolean
+
+    @JvmStatic
+    external fun notifyPageInstanceVisible(pageInstanceId: String): Boolean
+
+    @JvmStatic
+    external fun notifyPageInstanceHidden(pageInstanceId: String, reason: String): Boolean
+
+    @JvmStatic
+    external fun disposePageInstance(pageInstanceId: String, reason: String): Boolean
+
+    @JvmStatic
+    external fun onSurfaceClosed(appId: String, id: String, reason: String): Boolean
+
     /**
      * Handle AppLink URL by passing the full URL to native layer.
      * @param applinkUrl The full AppLink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")

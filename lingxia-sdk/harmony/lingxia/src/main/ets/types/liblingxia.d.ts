@@ -265,6 +265,16 @@ declare module 'liblingxia.so' {
    */
   export function getPageInstanceId(appid: string, path: string, session_id: number): string;
 
+  export function notifyPageInstanceMounted(page_instance_id: string): boolean;
+
+  export function notifyPageInstanceVisible(page_instance_id: string): boolean;
+
+  export function notifyPageInstanceHidden(page_instance_id: string, reason: string): boolean;
+
+  export function disposePageInstance(page_instance_id: string, reason: string): boolean;
+
+  export function onSurfaceClosed(appid: string, id: string, reason: string): boolean;
+
   /**
    * Get page orientation for a specific page.
    * Returns: 0=auto, 1=portrait, 2=landscape, 3=reverse-portrait, 4=reverse-landscape

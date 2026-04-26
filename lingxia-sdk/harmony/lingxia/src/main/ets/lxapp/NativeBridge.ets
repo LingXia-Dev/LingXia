@@ -9,7 +9,7 @@ import { LxAppDevice } from './APIs/LxAppDevice';
 import { LxAppMedia } from './APIs/LxAppMedia';
 import { LxAppScan } from './APIs/LxAppScan';
 import { LxAppContainer } from './LxAppContainer';
-import { LxAppPopup } from './APIs/LxAppPopup';
+import { LxAppSurface } from './APIs/LxAppSurface';
 import { BrowserOverlayManager } from './APIs/LxAppBrowserOverlay';
 import { LxAppFile } from './APIs/LxAppFile';
 import { LxAppWifi } from './APIs/LxAppWifi';
@@ -295,18 +295,38 @@ class NativeBridge {
       );
     });
 
-    this.register('showPopup', (
+    this.register('presentSurface', (
+      id: string,
       appId: string,
       path: string,
+      sessionId: string,
+      pageInstanceId: string,
+      source: string,
+      form: string,
+      width: string,
+      height: string,
       widthRatio: string,
       heightRatio: string,
       position: string
     ): boolean => {
-      return LxAppPopup.showPopup(appId, path, widthRatio, heightRatio, position);
+      return LxAppSurface.present(
+        id,
+        appId,
+        path,
+        sessionId,
+        pageInstanceId,
+        source,
+        form,
+        width,
+        height,
+        widthRatio,
+        heightRatio,
+        position
+      );
     });
 
-    this.register('hidePopup', (appId: string): boolean => {
-      return LxAppPopup.hidePopup(appId);
+    this.register('closeSurface', (id: string, appId: string, reason: string): boolean => {
+      return LxAppSurface.close(id, appId, reason);
     });
 
     // Update TabBar APIs

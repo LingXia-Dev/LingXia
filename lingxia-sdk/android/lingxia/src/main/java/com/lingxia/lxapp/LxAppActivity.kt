@@ -1,8 +1,11 @@
 package com.lingxia.lxapp
 
 import android.app.Activity
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -1110,6 +1113,13 @@ class LxAppActivity : AppCompatActivity() {
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && isPageFullscreen) {
+            enterImmersiveMode()
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (::appId.isInitialized && appId.isNotBlank()) {
             val action = event.action
@@ -1815,6 +1825,10 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun shouldEnterImmersiveMode(orientation: Int, path: String): Boolean {
+        if (isTelevisionDevice()) {
+            return true
+        }
+
         if (
             orientation != NativeApi.ORIENTATION_LANDSCAPE &&
             orientation != NativeApi.ORIENTATION_REVERSE_LANDSCAPE
@@ -1830,9 +1844,6 @@ class LxAppActivity : AppCompatActivity() {
      * Enter immersive fullscreen mode (hide status bar and navigation bar)
      */
     private fun enterImmersiveMode() {
-        if (isPageFullscreen) {
-            return
-        }
         isPageFullscreen = true
 
         // Allow content to extend into display cutout (notch/punch hole) area
@@ -1854,6 +1865,7 @@ class LxAppActivity : AppCompatActivity() {
             hide(WindowInsetsCompat.Type.displayCutout())
             systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+        applyLegacyImmersiveFlags()
         // Trigger layout update
         rootContainer.setPadding(0, 0, 0, 0)
         rootContainer.requestApplyInsets()
@@ -1882,8 +1894,43 @@ class LxAppActivity : AppCompatActivity() {
             show(WindowInsetsCompat.Type.statusBars())
             show(WindowInsetsCompat.Type.navigationBars())
         }
+        clearLegacyImmersiveFlags()
         // Trigger layout update
         rootContainer.requestApplyInsets()
+    }
+
+    private fun isTelevisionDevice(): Boolean {
+        val uiModeType = resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK
+        if (uiModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true
+        }
+
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        if (uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            return true
+        }
+
+        return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun applyLegacyImmersiveFlags() {
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+    }
+
+    @Suppress("DEPRECATION")
+    private fun clearLegacyImmersiveFlags() {
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     // Helper to calculate the Y translation based on visible bars

@@ -3,7 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { window, display } from '@kit.ArkUI';
 import { common } from '@kit.AbilityKit';
 import { LxApp } from './LxApp';
-import { LxAppPopup, PopupLayoutConfig } from './APIs/LxAppPopup';
+import { LxAppSurface, SurfaceLayoutConfig } from './APIs/LxAppSurface';
 import {
   findWebview,
   toWebTag,
@@ -18,6 +18,7 @@ import {
 import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT } from './NavigationBar';
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
+import { notifyPageInstanceMounted, notifyPageInstanceVisible } from 'liblingxia.so';
 import { TabBar } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
 import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent } from 'liblingxia.so';
@@ -71,8 +72,8 @@ export struct LxAppContainer {
   @State webViewComponents: Map<string, webview.WebviewController> = new Map() // Store Web components for each WebView
   @State currentWebTag: string = '' // Current active WebView tag
   @State webViewKeys: string[] = [] // Array of WebView keys for ForEach
-  @State popupOverlayWebTag: string = '' // WebView tag currently displayed in popup (may include #instance suffix)
-  @State private popupPreviousWebTag: string = '' // Previously focused WebView before popup took focus
+  @State presentationOverlayWebTag: string = '' // WebView tag currently displayed in presentation (may include #instance suffix)
+  @State private presentationPreviousWebTag: string = '' // Previously focused WebView before presentation took focus
   @State overlayActive: boolean = false
   @State overlayWidthVp: number = 0
   @State overlayHeightVp: number = 0
@@ -403,7 +404,7 @@ export struct LxAppContainer {
   }
 
   /**
-   * Static method to set overlay (popup) state for an appId + path
+   * Static method to set overlay (presentation) state for an appId + path
    */
   public static setOverlay(
     appId: string,
@@ -487,14 +488,14 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
-        const activePopup: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
-        if (activePopup) {
-          const popupLogical = toWebTag(activePopup.appId, activePopup.path);
-          if (info.webtag === popupLogical || info.webtag.startsWith(`${popupLogical}#`)) {
+        const activePresentation: SurfaceLayoutConfig | null = LxAppSurface.getActiveLayout();
+        if (activePresentation) {
+          const dynamicPresentationLogical = toWebTag(activePresentation.appId, activePresentation.path);
+          if (info.webtag === dynamicPresentationLogical || info.webtag.startsWith(`${dynamicPresentationLogical}#`)) {
             this.webViewComponents.set(info.webtag, info.controller);
             this.webViewKeys = Array.from(this.webViewComponents.keys());
-            if (!this.popupPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
-              this.popupPreviousWebTag = this.currentWebTag;
+            if (!this.presentationPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
+              this.presentationPreviousWebTag = this.currentWebTag;
             }
             this.currentWebTag = info.webtag;
             if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
@@ -503,14 +504,16 @@ export struct LxAppContainer {
             this.applyOverlayState(
               info.webtag,
               true,
-              activePopup.widthVp,
-              activePopup.heightVp,
-              activePopup.position as number,
-              activePopup.bottomInset,
-              activePopup.fullWidth,
-              activePopup.fullHeight
+              activePresentation.widthVp,
+              activePresentation.heightVp,
+              activePresentation.position as number,
+              activePresentation.bottomInset,
+              activePresentation.fullWidth,
+              activePresentation.fullHeight
             );
-            hilog.info(DOMAIN, TAG, `Attach popup webtag on create: ${info.webtag}`);
+            notifyPageInstanceMounted(activePresentation.pageInstanceId);
+            notifyPageInstanceVisible(activePresentation.pageInstanceId);
+            hilog.info(DOMAIN, TAG, `Attach presentation webtag on create: ${info.webtag}`);
             break;
           }
         }
@@ -552,21 +555,21 @@ export struct LxAppContainer {
             this.pageShowTriggered.clear();
           }
           break;
-      case 'popup_show':
+      case 'surface_show':
         {
           const extracted = extractWebTag(info.webtag);
           if (extracted && extracted.appId === this.appId) {
             this.webViewComponents.set(info.webtag, info.controller);
             this.webViewKeys = Array.from(this.webViewComponents.keys());
-            if (!this.popupPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
-              this.popupPreviousWebTag = this.currentWebTag;
+            if (!this.presentationPreviousWebTag && this.currentWebTag && this.currentWebTag !== info.webtag) {
+              this.presentationPreviousWebTag = this.currentWebTag;
             }
             this.currentWebTag = info.webtag;
             if (this.keepAliveTags.indexOf(info.webtag) >= 0) {
               this.keepAliveTags = this.keepAliveTags.filter((tag: string) => tag !== info.webtag);
             }
 
-            const layout: PopupLayoutConfig | null = LxAppPopup.getActiveLayout();
+            const layout: SurfaceLayoutConfig | null = LxAppSurface.getActiveLayout();
             if (layout && layout.appId === this.appId) {
               this.applyOverlayState(
                 info.webtag,
@@ -578,6 +581,8 @@ export struct LxAppContainer {
                 layout.fullWidth,
                 layout.fullHeight
               );
+              notifyPageInstanceMounted(layout.pageInstanceId);
+              notifyPageInstanceVisible(layout.pageInstanceId);
               hilog.info(
                 DOMAIN,
                 TAG,
@@ -591,7 +596,7 @@ export struct LxAppContainer {
           }
         }
         break;
-      case 'popup_hide':
+      case 'surface_hide':
         {
           const extracted = extractWebTag(info.webtag);
           if (extracted && extracted.appId === this.appId) {
@@ -863,7 +868,7 @@ export struct LxAppContainer {
     fullHeight?: boolean
   ): void {
     if (active) {
-      this.popupOverlayWebTag = webTag;
+      this.presentationOverlayWebTag = webTag;
       this.overlayActive = true;
       if (widthVp !== undefined) this.overlayWidthVp = widthVp;
       if (heightVp !== undefined) this.overlayHeightVp = heightVp;
@@ -877,14 +882,14 @@ export struct LxAppContainer {
       this.animateOverlayMask(true);
       hilog.info(DOMAIN, TAG, `Overlay enabled for ${webTag} w=${this.overlayWidthVp} h=${this.overlayHeightVp}`);
     } else {
-      if (this.popupOverlayWebTag && this.getLogicalWebTag(this.popupOverlayWebTag) === this.getLogicalWebTag(webTag)) {
-        this.popupOverlayWebTag = '';
+      if (this.presentationOverlayWebTag && this.getLogicalWebTag(this.presentationOverlayWebTag) === this.getLogicalWebTag(webTag)) {
+        this.presentationOverlayWebTag = '';
       }
       this.overlayActive = false;
-      if (this.popupPreviousWebTag && this.currentWebTag === webTag) {
-        this.currentWebTag = this.popupPreviousWebTag;
+      if (this.presentationPreviousWebTag && this.currentWebTag === webTag) {
+        this.currentWebTag = this.presentationPreviousWebTag;
       }
-      this.popupPreviousWebTag = '';
+      this.presentationPreviousWebTag = '';
       this.animateOverlayMask(false);
       this.overlayFullWidth = false;
       this.overlayFullHeight = false;
@@ -1055,7 +1060,7 @@ export struct LxAppContainer {
   }
 
   private getContainerPadding(): Padding {
-    // Remove padding only when fullscreen is active; popup overlay should not
+    // Remove padding only when fullscreen is active; presentation overlay should not
     // affect the underlying layout to avoid content shifting on open/close.
     if (this.hasFullscreenTarget()) {
       return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
@@ -1495,18 +1500,18 @@ export struct LxAppContainer {
   }
 
   private isOverlayWebView(webTag: string): boolean {
-    if (!this.overlayActive || !this.popupOverlayWebTag) {
+    if (!this.overlayActive || !this.presentationOverlayWebTag) {
       return false;
     }
-    return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.popupOverlayWebTag);
+    return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.presentationOverlayWebTag);
   }
 
   private getRenderVisibility(webTag: string): Visibility {
     if (this.isOverlayWebView(webTag)) {
       return Visibility.Visible;
     }
-    // Keep the page behind the popup visible so it shows through the semi-transparent mask
-    if (this.overlayActive && this.popupPreviousWebTag && webTag === this.popupPreviousWebTag) {
+    // Keep the page behind the presentation visible so it shows through the semi-transparent mask
+    if (this.overlayActive && this.presentationPreviousWebTag && webTag === this.presentationPreviousWebTag) {
       return Visibility.Visible;
     }
     return this.getWebViewVisibility(webTag);
@@ -1545,7 +1550,7 @@ export struct LxAppContainer {
 
   private getStackWidth(webTag: string): string {
     // For left/right overlay WebViews, Stack width should match content width
-    // so the popup can be flush with screen edges
+    // so the presentation can be flush with screen edges
     if (this.isOverlayWebView(webTag)) {
       if (this.overlayPosition === 2 || this.overlayPosition === 3) {
         return this.getOverlayWidth();

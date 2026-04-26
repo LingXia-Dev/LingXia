@@ -16,7 +16,6 @@ final class LxAppMacAppUIRuntime: NSObject {
     private static let panelFirstPaintPollNs: UInt64 = 50_000_000
     private static let panelFirstPaintMaxPolls = 24
     private static let panelFirstPaintSettleNs: UInt64 = 16_000_000
-    private static let menuBarPanelWarmTtlMs: Int64 = 20_000
 
     nonisolated(unsafe) static weak var active: LxAppMacAppUIRuntime?
 
@@ -430,7 +429,6 @@ final class LxAppMacAppUIRuntime: NSObject {
                         path: path,
                         presentation: .panel,
                         panelId: surfaceID,
-                        pageWarmTtlMs: warmTtlMs(for: surface),
                         userInfo: ["appUISurfaceId": .string(surfaceID)]
                     )
                 )
@@ -504,8 +502,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                     appId: appId,
                     path: path,
                     presentation: presentation,
-                    panelId: panelID,
-                    pageWarmTtlMs: warmTtlMs(for: surface)
+                    panelId: panelID
                 )
             )
         case .terminal:
@@ -818,13 +815,6 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     private func isIndependentPanelSurface(_ surface: LxAppUIConfig.Surface) -> Bool {
         surface.presentation.kind == .panel && surface.presentation.anchor == .activator
-    }
-
-    private func warmTtlMs(for surface: LxAppUIConfig.Surface) -> Int64? {
-        guard isIndependentPanelSurface(surface) else {
-            return nil
-        }
-        return Self.menuBarPanelWarmTtlMs
     }
 
     private func resolveSurfacePageInstanceId(

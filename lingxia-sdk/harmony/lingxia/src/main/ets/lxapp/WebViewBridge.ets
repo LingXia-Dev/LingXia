@@ -103,8 +103,8 @@ export class WebViewManager {
     });
   }
 
-  static notifyPopupState(appId: string, path: string, active: boolean): void {
-    CoreWebViewManager.notifyPopupState(appId, path, active);
+  static notifySurfaceState(appId: string, path: string, active: boolean, pageInstanceId?: string): void {
+    CoreWebViewManager.notifySurfaceState(appId, path, active, pageInstanceId);
   }
 
   static getAllWebViewInfos(): WebViewInfo[] {

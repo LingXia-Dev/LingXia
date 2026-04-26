@@ -508,12 +508,6 @@ class LxApp private constructor(private val context: Context) {
          * Hide toast
          */
         /**
-         * Show popup WebView overlay.
-         */
-        /**
-         * Hide popup WebView overlay.
-         */
-        /**
          * Show modal dialog
          * @param title Modal title
          * @param content Modal content/message

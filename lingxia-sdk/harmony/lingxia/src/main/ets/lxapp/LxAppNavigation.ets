@@ -8,7 +8,7 @@ import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
 import { DatePickerManager } from './APIs/LxAppDatePicker';
 import { ActionSheetManager } from './APIs/LxAppActionSheet';
-import { PopupManager } from './APIs/LxAppPopup';
+import { SurfaceManager } from './APIs/LxAppSurface';
 import { MediaPreviewOverlay, MediaPreviewOverlayManager } from './APIs/media/MediaPreviewOverlay';
 import { CameraCaptureOverlay, CameraCaptureOverlayManager } from './APIs/media/CameraCaptureOverlay';
 import { PdfSinglePageViewerOverlay, PdfSingleViewerOverlayManager } from './APIs/document/PdfSinglePageViewerOverlay';
@@ -564,7 +564,7 @@ export struct LxAppNavigation {
       DatePickerManager()
         .zIndex(10003)
 
-      PopupManager()
+      SurfaceManager()
         .zIndex(10004)
 
       // Integrated media preview overlay

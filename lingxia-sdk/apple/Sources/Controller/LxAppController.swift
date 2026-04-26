@@ -102,7 +102,6 @@ public final class LxAppController {
             sessionId: sessionId,
             presentation: request.presentation,
             panelId: request.panelId ?? "",
-            pageWarmTtlMs: request.pageWarmTtlMs,
             userInfo: request.userInfo
         ) else {
             throw LxAppErrorPayload(
@@ -153,8 +152,7 @@ public final class LxAppController {
             path: request.path,
             sessionId: sessionId,
             presentation: request.presentation.ffiValue,
-            panelId: request.panelId ?? "",
-            pageWarmTtlMs: request.pageWarmTtlMs ?? -1
+            panelId: request.panelId ?? ""
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -203,7 +201,6 @@ public final class LxAppController {
         sessionId: UInt64,
         presentation: LxAppOpenPresentation = .normal,
         panelId: String = "",
-        pageWarmTtlMs: Int64? = nil,
         userInfo: [String: LxAppJSONValue] = [:]
     ) async -> LxAppSession? {
         let request = LxAppOpenRequest(
@@ -211,7 +208,6 @@ public final class LxAppController {
             path: path,
             presentation: presentation,
             panelId: panelId.isEmpty ? nil : panelId,
-            pageWarmTtlMs: pageWarmTtlMs,
             userInfo: userInfo
         )
         emit(.willOpen(request))
@@ -263,8 +259,7 @@ public final class LxAppController {
             path: path,
             sessionId: sessionId,
             presentation: presentation.ffiValue,
-            panelId: panelId,
-            pageWarmTtlMs: pageWarmTtlMs ?? -1
+            panelId: panelId
         ) else {
             let error = LxAppErrorPayload(
                 code: "OPEN_REJECTED",
@@ -421,9 +416,6 @@ public final class LxAppController {
         ]
         if let panelId = request.panelId {
             dict["panelId"] = .string(panelId)
-        }
-        if let pageWarmTtlMs = request.pageWarmTtlMs {
-            dict["pageWarmTtlMs"] = .number(Double(pageWarmTtlMs))
         }
         if !request.userInfo.isEmpty {
             dict["userInfo"] = .object(request.userInfo)
