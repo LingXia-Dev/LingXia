@@ -108,6 +108,7 @@ class LxAppActivity : AppCompatActivity() {
     )
     companion object {
         private const val TAG = "LingXia.WebView"
+        const val META_FORCE_IMMERSIVE = "com.lingxia.FORCE_IMMERSIVE"
         const val EXTRA_APP_ID = "appId"
         const val EXTRA_PATH = "path"
         const val EXTRA_SESSION_ID = "sessionId"
@@ -282,6 +283,7 @@ class LxAppActivity : AppCompatActivity() {
     private var systemBottomInset: Int = 0
     private var isMediaFullscreen = false
     private var isPageFullscreen = false  // For page-level fullscreen (landscape + custom navbar)
+    private var forceHostImmersive = false
     private var mediaFullscreenState: MediaFullscreenState? = null
     private var pendingTabBarVisibility: Int? = null
     private var pendingNavBarVisibility: Int? = null
@@ -358,6 +360,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // Configure transparent system bars for edge-to-edge experience
         configureTransparentSystemBars(this)
+        forceHostImmersive = isHostImmersiveEnabled()
 
         // Set reference to this activity in LxApp
         LxApp.setCurrentActivity(this)
@@ -471,6 +474,9 @@ class LxAppActivity : AppCompatActivity() {
             setupWebViewContent(appId, initialPath)
         } finally {
             executor.shutdown()
+        }
+        if (forceHostImmersive) {
+            enterImmersiveMode()
         }
 
         // Defer non-critical setup to post-layout
@@ -1109,13 +1115,16 @@ class LxAppActivity : AppCompatActivity() {
         if (!currentPath.isNullOrEmpty()) {
             applyPageOrientation(currentPath)
         }
+        if (forceHostImmersive) {
+            enterImmersiveMode()
+        }
         // Resume native components
         currentWebView?.let { NativeBridge.notifyPageActive(it) }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && isPageFullscreen) {
+        if (hasFocus && (isPageFullscreen || forceHostImmersive)) {
             enterImmersiveMode()
         }
     }
@@ -1825,6 +1834,10 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun shouldEnterImmersiveMode(orientation: Int, path: String): Boolean {
+        if (forceHostImmersive) {
+            return true
+        }
+
         if (isTelevisionDevice()) {
             return true
         }
@@ -1912,6 +1925,28 @@ class LxAppActivity : AppCompatActivity() {
 
         return packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
             packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK_ONLY)
+    }
+
+    private fun isHostImmersiveEnabled(): Boolean {
+        return try {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.ApplicationInfoFlags.of(
+                        android.content.pm.PackageManager.GET_META_DATA.toLong()
+                    )
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.GET_META_DATA
+                )
+            }
+            appInfo.metaData?.getBoolean(META_FORCE_IMMERSIVE, false) == true
+        } catch (error: Throwable) {
+            false
+        }
     }
 
     @Suppress("DEPRECATION")
