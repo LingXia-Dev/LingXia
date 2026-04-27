@@ -44,7 +44,6 @@ rsa = { version = "0.9", features = ["pem"] }
 sha2 = "0.11"
 sha1 = "0.11"
 hmac = "0.13"
-pbkdf2 = { version = "0.12", features = ["simple"] }
 aes = "0.9"
 aes-gcm = "0.10"
 cbc = "0.2"
@@ -66,17 +65,17 @@ lingxia-devtool-protocol = { workspace = true }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
-oxc_parser = "0.126"
+oxc_parser = "0.127"
 oxc_resolver = "11.19.1"
-oxc_transformer = "0.126"
-oxc_codegen = "0.126"
-oxc_minifier = "0.126"
-oxc_allocator = "0.126"
-oxc_span = "0.126"
-oxc_ast = "0.126"
-oxc_ast_visit = "0.126.0"
-oxc_syntax = "0.126"
-oxc_semantic = "0.126"
+oxc_transformer = "0.127"
+oxc_codegen = "0.127"
+oxc_minifier = "0.127"
+oxc_allocator = "0.127"
+oxc_span = "0.127"
+oxc_ast = "0.127"
+oxc_ast_visit = "0.127.0"
+oxc_syntax = "0.127"
+oxc_semantic = "0.127"
 oxc_sourcemap = "6.1.1"
 sysinfo = "0.38.4"
 
