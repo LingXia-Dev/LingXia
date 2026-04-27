@@ -89,11 +89,20 @@ pub(crate) fn emit_message(port: &JSObject, payload: JSValue) -> JSResult<()> {
     let Some(peer) = peer else {
         return Ok(());
     };
-    <JSMessagePort as EmitterExt>::do_emit(
-        This(peer),
-        EventKey::String("message".to_string()),
-        Rest(vec![payload]),
-    )?;
+
+    // Match browser MessagePort semantics: messages are delivered after the
+    // current call stack. This avoids re-entrant close/dispose while a page
+    // native notification is still executing.
+    rong::spawn_local(async move {
+        tokio::task::yield_now().await;
+        if let Err(err) = <JSMessagePort as EmitterExt>::do_emit(
+            This(peer),
+            EventKey::String("message".to_string()),
+            Rest(vec![payload]),
+        ) {
+            log::warn!("message port dispatch failed: {}", err);
+        }
+    });
     Ok(())
 }
 
