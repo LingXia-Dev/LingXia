@@ -3,7 +3,7 @@ set -eu
 
 REPO="${LINGXIA_REPO:-LingXia-Dev/LingXia}"
 INSTALL_DIR="$HOME/.local/bin"
-VERSION="0.5.1"
+VERSION="0.6.0"
 BIN_NAME="lingxia"
 INSTALL_META_NAME="lingxia-cli-install.json"
 RUNNER_ROOT_DIR="$HOME/.lingxia/runner"

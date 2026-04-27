@@ -29,8 +29,9 @@ exclude = ["examples/lingxia-lib"]
 resolver = "2"
 
 [workspace.package]
-version = "0.5.1"
+version = "0.6.0"
 edition = "2024"
+repository = "https://github.com/LingXia-Dev/LingXia"
 
 [workspace.dependencies]
 # Common dependencies that can be shared across workspace members
@@ -50,46 +51,46 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["registry"] }
 
 # Workspace-local crates
-lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.5.1", default-features = false }
-lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.5.1", default-features = false }
-lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.5.1" }
-lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.5.1" }
-lingxia-log = { path = "crates/lingxia-log", version = "0.5.1" }
-lingxia-provider = { path = "crates/lingxia-provider", version = "0.5.1" }
-lingxia-update = { path = "crates/lingxia-update", version = "0.5.1" }
-lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.5.1" }
-lingxia-media = { path = "crates/lingxia-media", version = "0.5.1" }
-lingxia-webview = { path = "crates/lingxia-webview", version = "0.5.1" }
-lingxia-platform = { path = "crates/lingxia-platform", version = "0.5.1" }
-lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.5.1" }
-lingxia-logic = { path = "crates/lingxia-logic", version = "0.5.1" }
-lingxia = { path = "crates/lingxia", version = "0.5.1" }
-lingxia-gen = { path = "crates/lingxia-gen", version = "0.1.0" }
-lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.5.1" }
-lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.5.1" }
-lingxia-browser = { path = "crates/lingxia-browser", version = "0.5.1" }
-lingxia-service = { path = "crates/lingxia-service", version = "0.5.1" }
-lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.5.1" }
-lingxia-settings = { path = "crates/lingxia-settings", version = "0.5.1" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.5.1" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.6.0", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.6.0", default-features = false }
+lingxia_devtool = { package = "lingxia-devtool", path = "crates/lingxia-devtool", version = "0.6.0" }
+lingxia-devtool-protocol = { path = "crates/lingxia-devtool-protocol", version = "0.6.0" }
+lingxia-log = { path = "crates/lingxia-log", version = "0.6.0" }
+lingxia-provider = { path = "crates/lingxia-provider", version = "0.6.0" }
+lingxia-update = { path = "crates/lingxia-update", version = "0.6.0" }
+lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.6.0" }
+lingxia-media = { path = "crates/lingxia-media", version = "0.6.0" }
+lingxia-webview = { path = "crates/lingxia-webview", version = "0.6.0" }
+lingxia-platform = { path = "crates/lingxia-platform", version = "0.6.0" }
+lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.6.0" }
+lingxia-logic = { path = "crates/lingxia-logic", version = "0.6.0" }
+lingxia = { path = "crates/lingxia", version = "0.6.0", default-features = false }
+lingxia-gen = { path = "crates/lingxia-gen", version = "0.6.0" }
+lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.6.0" }
+lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.6.0" }
+lingxia-browser = { path = "crates/lingxia-browser", version = "0.6.0" }
+lingxia-service = { path = "crates/lingxia-service", version = "0.6.0" }
+lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.6.0" }
+lingxia-settings = { path = "crates/lingxia-settings", version = "0.6.0" }
+lingxia-shell = { path = "crates/lingxia-shell", version = "0.6.0" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"
 napi-derive-ohos = "1.1.0"
 
 # Rong runtime (published on crates.io)
-rong = { version = "0.3.0", default-features = false }
-rong_rt = { version = "0.3.0", default-features = false }
-rong_modules = { version = "0.3.0", default-features = false }
-rong_http = { version = "0.3.0", default-features = false }
-rong_console = "0.3.0"
-rong_event = "0.3.0"
-rong_storage = "0.3.0"
-rong_abort = "0.3.0"
-rong_assert = "0.3.0"
-rong_buffer = "0.3.0"
-rong_encoding = "0.3.0"
-rong_exception = "0.3.0"
-rong_stream = "0.3.0"
-rong_timer = "0.3.0"
-rong_url = "0.3.0"
+rong = { version = "0.3.1", default-features = false }
+rong_rt = { version = "0.3.1", default-features = false }
+rong_modules = { version = "0.3.1", default-features = false }
+rong_http = { version = "0.3.1", default-features = false }
+rong_console = "0.3.1"
+rong_event = "0.3.1"
+rong_storage = "0.3.1"
+rong_abort = "0.3.1"
+rong_assert = "0.3.1"
+rong_buffer = "0.3.1"
+rong_encoding = "0.3.1"
+rong_exception = "0.3.1"
+rong_stream = "0.3.1"
+rong_timer = "0.3.1"
+rong_url = "0.3.1"

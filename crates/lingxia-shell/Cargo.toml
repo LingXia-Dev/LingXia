@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/LingXia-Dev/LingXia"
 documentation = "https://docs.rs/lingxia-shell"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 keywords = ["lingxia", "shell", "lxapp", "webview"]
 categories = ["web-programming", "api-bindings"]
 

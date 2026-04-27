@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Shared media streaming abstractions for LingXia"
 license = "MIT"
 readme = "README.md"
+repository.workspace = true
 
 [dependencies]
 lingxia-platform = { workspace = true }

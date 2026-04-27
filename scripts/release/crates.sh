@@ -8,26 +8,34 @@ CRATES=(
   # Foundational crates.
   "lingxia-app-context"
   "lingxia-provider"
-  "lingxia-observability"
+  "lingxia-log"
   "lingxia-update"
   "lingxia-messaging"
   "lingxia-webview"
   "lingxia-settings"
+  "lingxia-transfer"
   "lingxia-platform"
   "lingxia-media"
+  "lingxia-service"
 
   # Core runtime crates.
   "lingxia-lxapp"
-  "lingxia-transfer"
   "lingxia-logic"
+  "lingxia-proxy"
 
-  # Facade support crate required by lingxia.
+  # Facade and host support crates.
   "lingxia-native-macros"
   "lingxia-browser"
   "lingxia-shell"
 
+  # Devtool protocol is consumed by SDK/tools and by lingxia-devtool.
+  "lingxia-devtool-protocol"
+
   # Public facade.
   "lingxia"
+
+  # Devtool bridge depends on the public facade.
+  "lingxia-devtool"
 )
 
 usage() {
@@ -73,6 +81,12 @@ done
 
 if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
+fi
+
+if [[ "$ALLOW_DIRTY" -eq 0 ]] && ! git -C "$ROOT_DIR" diff --quiet; then
+  echo "Working directory has uncommitted changes." >&2
+  echo "Commit or stash changes before release, or pass --allow-dirty for local verification." >&2
+  exit 1
 fi
 
 workspace_version="$(awk '

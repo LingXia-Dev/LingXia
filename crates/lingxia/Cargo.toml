@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "LingXia - Cross-platform LxApp (lightweight application) framework for Android, iOS, and HarmonyOS"
 license = "MIT"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 keywords = ["lingxia", "lxapp", "cross-platform", "webview"]
 categories = ["web-programming", "api-bindings"]
 

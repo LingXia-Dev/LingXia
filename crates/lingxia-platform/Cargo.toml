@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Platform abstraction layer for LingXia framework (Android, iOS, HarmonyOS)"
 license = "MIT"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 keywords = ["lingxia", "platform", "lxapp", "cross-platform"]
 categories = ["api-bindings"]
 

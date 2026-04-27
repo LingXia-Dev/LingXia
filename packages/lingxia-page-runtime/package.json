@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/page-runtime",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": false,
   "description": "Shared page runtime core for LingXia lxapp frameworks",
   "type": "module",
@@ -19,7 +19,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": "0.5.1"
+    "@lingxia/bridge": "0.6.0"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",

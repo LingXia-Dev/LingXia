@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Shared app/product context for LingXia crates"
 license = "MIT"
 readme = "README.md"
+repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }

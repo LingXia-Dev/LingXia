@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Local HTTP CONNECT proxy with PAC routing and optional MITM capture"
 license = "MIT"
 readme = "README.md"
+repository.workspace = true
 
 [features]
 default = []

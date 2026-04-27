@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "LingXia structured logging domain and in-memory log pipeline primitives"
 license = "MIT"
+repository.workspace = true
 
 [dependencies]
 lingxia-provider = { workspace = true }

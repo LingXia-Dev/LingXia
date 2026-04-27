@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "JavaScript runtime for LingXia lightweight application"
 license = "MIT"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 keywords = ["lingxia", "javascript", "runtime"]
 categories = ["web-programming", "api-bindings"]
 

@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Shared settings/preferences store for LingXia"
 license = "MIT"
 readme = "README.md"
+repository.workspace = true
 
 [dependencies]
 lingxia-app-context = { workspace = true }

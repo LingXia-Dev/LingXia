@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Shared LingXia service APIs used by JS bindings, shell, and native facade"
 license = "MIT"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 
 [dependencies]
 lingxia-transfer = { workspace = true }

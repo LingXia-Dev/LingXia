@@ -5,6 +5,7 @@ edition.workspace = true
 description = "Shared file transfer domain/runtime for LingXia"
 license = "MIT"
 readme = "README.md"
+repository.workspace = true
 
 [dependencies]
 lingxia-settings = { workspace = true }

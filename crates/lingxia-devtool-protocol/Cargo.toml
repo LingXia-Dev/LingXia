@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "Devtool wire protocol types for LingXia tools"
 license = "MIT"
-repository = "https://github.com/LingXia-Dev/LingXia"
+repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }

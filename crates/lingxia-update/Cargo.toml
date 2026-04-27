@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 description = "LingXia update domain models and shared policy helpers"
 license = "MIT"
+repository.workspace = true
 
 [dependencies]
 lingxia-provider = { workspace = true }
