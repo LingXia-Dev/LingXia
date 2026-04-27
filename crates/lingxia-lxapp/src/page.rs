@@ -354,7 +354,6 @@ impl PageInstance {
         // Register closure-based scheme handlers so lingxia-webview
         // doesn't need to know about lxapp business logic.
         let appid_for_lx = appid.clone();
-        let appid_for_https = appid.clone();
 
         // Captures for navigation handler (no PageInstanceInner ref → no circular ref)
         let runtime_for_nav = lxapp.runtime.clone();
@@ -378,13 +377,6 @@ impl PageInstance {
                     let lxapp = lxapp::get(appid_for_lx);
                     let page = PageInstance::from_inner(inner);
                     lxapp.handle_lingxia_request(&page, req).into()
-                }
-            })
-            .on_scheme("https", move |req| {
-                let appid_for_https = appid_for_https.clone();
-                async move {
-                    let lxapp = lxapp::get(appid_for_https);
-                    lxapp.https_handler(req).into()
                 }
             })
             .on_navigation(move |url| {

@@ -404,10 +404,8 @@ fn ensure_output_quota(lxapp: &LxApp, path: &Path) -> JSResult<()> {
 
     match result {
         Ok(()) => {
-            if path.starts_with(&lxapp.user_cache_dir)
-                && let Ok(cache) = lxapp.cache()
-            {
-                cache.on_access(path);
+            if path.starts_with(&lxapp.user_cache_dir) {
+                lxapp::touch_access_time(path);
             }
             Ok(())
         }

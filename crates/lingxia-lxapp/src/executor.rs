@@ -10,11 +10,3 @@ where
 {
     RongExecutor::global().spawn(future)
 }
-
-pub(crate) fn spawn_blocking<F, T>(func: F) -> JoinHandle<T>
-where
-    F: FnOnce() -> T + Send + 'static,
-    T: Send + 'static,
-{
-    RongExecutor::global().spawn_blocking(func)
-}

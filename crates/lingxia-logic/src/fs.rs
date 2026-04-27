@@ -804,11 +804,9 @@ fn symlink_metadata(managed: &ManagedPath, api_name: &'static str) -> JSResult<s
         .map_err(|err| js_internal_error(format!("{api_name} stat failed: {err}")))
 }
 
-fn mark_usercache_access(lxapp: &LxApp, path: &ManagedPath) {
-    if path.kind == ManagedPathKind::UserCache
-        && let Ok(cache) = lxapp.cache()
-    {
-        cache.on_access(&path.path);
+fn mark_usercache_access(path: &ManagedPath) {
+    if path.kind == ManagedPathKind::UserCache {
+        lxapp::touch_access_time(&path.path);
     }
 }
 
@@ -818,7 +816,7 @@ fn cleanup_usercache_preserving(lxapp: &LxApp, preserve: Option<&Path>) {
 
 fn finish_write(lxapp: &LxApp, destination: &ManagedPath) {
     if destination.kind == ManagedPathKind::UserCache {
-        mark_usercache_access(lxapp, destination);
+        mark_usercache_access(destination);
         cleanup_usercache_preserving(lxapp, Some(&destination.path));
     }
 }
@@ -974,7 +972,7 @@ impl JSFileManager {
                 }
                 let exists = std::fs::symlink_metadata(&path.path).is_ok();
                 if exists {
-                    mark_usercache_access(&lxapp, &path);
+                    mark_usercache_access(&path);
                 }
                 Ok(exists)
             }
@@ -988,7 +986,7 @@ impl JSFileManager {
         let path = resolve_readable_path(&lxapp, &options.path, "stat", "path")?;
         ensure_no_symlink_ancestors(&lxapp, &path, "stat", "path")?;
         let metadata = symlink_metadata(&path, "stat")?;
-        mark_usercache_access(&lxapp, &path);
+        mark_usercache_access(&path);
         Ok(file_stats(metadata))
     }
 
@@ -1002,7 +1000,7 @@ impl JSFileManager {
                 "readDir path must reference a directory",
             ));
         }
-        mark_usercache_access(&lxapp, &path);
+        mark_usercache_access(&path);
         let entries = tokio_fs::read_dir(&path.path)
             .await
             .map_err(|err| js_internal_error(format!("readDir failed: {err}")))?;
@@ -1041,7 +1039,7 @@ impl JSFileManager {
                 "readFile filePath must reference a file",
             ));
         }
-        mark_usercache_access(&lxapp, &path);
+        mark_usercache_access(&path);
         let bytes = std::fs::read(&path.path)
             .map_err(|err| js_internal_error(format!("readFile failed: {err}")))?;
         bytes_to_read_file_result(&ctx, bytes, options.encoding.as_deref())
@@ -1075,7 +1073,7 @@ impl JSFileManager {
                 "copyFile srcPath must reference a file",
             ));
         }
-        mark_usercache_access(&lxapp, &source);
+        mark_usercache_access(&source);
         let destination =
             resolve_writable_path(&lxapp, &options.dest_path, "copyFile", "destPath")?;
         ensure_no_symlink_ancestors(&lxapp, &destination, "copyFile", "destPath")?;
@@ -1119,7 +1117,7 @@ impl JSFileManager {
                 "rename oldPath not found",
             ));
         }
-        mark_usercache_access(&lxapp, &old_path);
+        mark_usercache_access(&old_path);
         let incoming = storage::path_size(&old_path.path);
         ensure_write_quota(&lxapp, &new_path, incoming, Some(&old_path), true)?;
         if std::fs::symlink_metadata(&new_path.path).is_ok() {

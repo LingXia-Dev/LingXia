@@ -21,7 +21,6 @@ use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
 use crate::appservice::LxAppWorkers;
-use crate::cache::{LXAPP_WEBVIEW_CACHE_DIR, LxAppCache};
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
@@ -482,8 +481,6 @@ pub struct LxApp {
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
-    // Per-app cache for network and media artifacts
-    cache: Option<LxAppCache>,
 
     // Scripts injected into every page owned by this LxApp on page load.
     page_scripts: Mutex<Vec<Arc<str>>>,
@@ -958,7 +955,6 @@ impl LxApp {
             pending_restart_request: AtomicBool::new(false),
             session,
             state: Mutex::new(LxAppState::new()),
-            cache: None,
             page_scripts: Mutex::new(Vec::new()),
         }
     }
@@ -1139,30 +1135,7 @@ impl LxApp {
     fn setup(&mut self) -> Result<(), LxAppError> {
         self.initialize_paths()?;
         self.load_config()?;
-        let lxapp_webview_cache_dir = self.user_cache_dir.join(LXAPP_WEBVIEW_CACHE_DIR);
-        std::fs::create_dir_all(&lxapp_webview_cache_dir).map_err(|e| {
-            LxAppError::IoError(format!("Failed to create WebView cache directory: {}", e))
-        })?;
-
-        // Keep WebView resource cache isolated per lxapp while still under usercache cleanup.
-        self.cache = Some(
-            LxAppCache::new(
-                lxapp_webview_cache_dir,
-                lingxia_app_context::cache_max_size_bytes(),
-                Duration::from_secs(
-                    lingxia_app_context::cache_max_age_days().saturating_mul(86400),
-                ),
-                Duration::from_secs(30),
-            )
-            .map_err(|e| LxAppError::IoError(e.to_string()))?,
-        );
         Ok(())
-    }
-
-    pub fn cache(&self) -> Result<&LxAppCache, LxAppError> {
-        self.cache
-            .as_ref()
-            .ok_or_else(|| LxAppError::IoError("cache not initialized".to_string()))
     }
 
     /// Get the current installed version of this app variant from storage

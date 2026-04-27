@@ -38,9 +38,8 @@ pub use appservice::event_bus::{
     register_app_handler, register_page_handler, unregister_app_handler, unregister_page_handler,
 };
 pub use cache::{
-    LxAppCache, ResolveResult, cleanup_all_cache_dirs, cleanup_all_cache_dirs_keep,
-    cleanup_cache_dir, cleanup_cache_dir_keep, cleanup_cache_for_storage_pressure,
-    cleanup_cache_for_storage_pressure_keep,
+    cleanup_all_cache_dirs, cleanup_all_cache_dirs_keep, cleanup_cache_dir, cleanup_cache_dir_keep,
+    cleanup_cache_for_storage_pressure, cleanup_cache_for_storage_pressure_keep, touch_access_time,
 };
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
