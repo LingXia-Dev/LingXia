@@ -507,21 +507,14 @@ impl LxApp {
                         .as_deref()
                         .map(Self::infer_mime_type_ext)
                         .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
-                    let builder = http::Response::builder()
-                        .status(StatusCode::OK)
-                        .header("Content-Type", mime_type)
-                        .header("Access-Control-Allow-Origin", "null");
-                    let response = builder.body(()).unwrap_or_else(|_| {
-                        http::Response::builder()
-                            .status(StatusCode::INTERNAL_SERVER_ERROR)
-                            .body(())
-                            .expect("Failed to build cached file response")
-                    });
-                    let (parts, _) = response.into_parts();
-                    self.touch_user_cache_access_time(&file_path);
-                    return Some((parts, file_path).into());
+                    return Some(self.https_file_response(file_path, mime_type));
                 }
                 crate::cache::ResolveResult::NonExists(dest_path) => {
+                    let mime_type = ext_opt
+                        .as_deref()
+                        .map(Self::infer_mime_type_ext)
+                        .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
+
                     #[cfg(unix)]
                     {
                         // Coordinate in-flight downloads using a file lock next to cache destination.
@@ -590,23 +583,7 @@ impl LxApp {
                             // Another download is in progress. Serve existing cache file if present,
                             // otherwise stream a separate download without touching the cache path.
                             if dest_path.exists() {
-                                let mime_type = ext_opt
-                                    .as_deref()
-                                    .map(Self::infer_mime_type_ext)
-                                    .unwrap_or_else(|| Self::infer_mime_type(uri.path()));
-                                let builder = http::Response::builder()
-                                    .status(StatusCode::OK)
-                                    .header("Content-Type", mime_type)
-                                    .header("Access-Control-Allow-Origin", "null");
-                                let response = builder.body(()).unwrap_or_else(|_| {
-                                    http::Response::builder()
-                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                        .body(())
-                                        .expect("Failed to build cached file response")
-                                });
-                                let (parts, _) = response.into_parts();
-                                self.touch_user_cache_access_time(&dest_path);
-                                return Some((parts, dest_path).into());
+                                return Some(self.https_file_response(dest_path, mime_type));
                             }
 
                             let unique_suffix = SystemTime::now()
@@ -846,6 +823,25 @@ impl LxApp {
             "mp4" => "video/mp4",
             _ => "application/octet-stream",
         }
+    }
+
+    fn https_file_response(&self, file_path: PathBuf, mime_type: &str) -> WebResourceResponse {
+        let mut builder = http::Response::builder()
+            .status(StatusCode::OK)
+            .header("Content-Type", mime_type)
+            .header("Access-Control-Allow-Origin", "null");
+        if let Ok(metadata) = fs::metadata(&file_path) {
+            builder = builder.header("Content-Length", metadata.len().to_string());
+        }
+        let response = builder.body(()).unwrap_or_else(|_| {
+            http::Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(())
+                .expect("Failed to build cached file response")
+        });
+        let (parts, _) = response.into_parts();
+        self.touch_user_cache_access_time(&file_path);
+        (parts, file_path).into()
     }
 
     fn touch_user_cache_access_time(&self, path: &Path) {
