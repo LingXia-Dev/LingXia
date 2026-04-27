@@ -215,6 +215,7 @@ Page({
         "surfaceDemo.message": `Opened ${kind}: ${surface.id}`,
       });
       let unsubscribe = null;
+      let receivedMessage = "";
       const handleMessage = (payload) => {
         unsubscribe?.();
         unsubscribe = null;
@@ -222,8 +223,9 @@ Page({
           payload && typeof payload === "object"
             ? payload.message || JSON.stringify(payload)
             : payload;
+        receivedMessage = typeof message === "string" ? message : JSON.stringify(message);
         this.setData({
-          "surfaceDemo.message": `Message: ${message}`,
+          "surfaceDemo.message": `Message: ${receivedMessage}`,
         });
         surface.close().catch((error) => {
           console.warn("surface.close failed:", error);
@@ -231,8 +233,11 @@ Page({
       };
       unsubscribe = surface.onMessage(handleMessage);
       surface.onClose((event) => {
+        const status = `Closed ${event.id}: ${event.reason}`;
         this.setData({
-          "surfaceDemo.message": `Closed ${event.id}: ${event.reason}`,
+          "surfaceDemo.message": receivedMessage
+            ? `Message: ${receivedMessage}\n${status}`
+            : status,
         });
       });
     } catch (error) {
