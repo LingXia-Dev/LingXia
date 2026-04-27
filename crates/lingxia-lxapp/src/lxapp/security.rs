@@ -23,9 +23,18 @@ impl NetworkSecurity {
     ///
     /// Empty means deny all. Use `"*"` to explicitly allow all domains.
     pub fn is_domain_allowed(&self, domain: &str) -> bool {
-        self.trusted_domains.contains("*")
-            || normalize_trusted_domain(domain)
-                .is_some_and(|domain| self.trusted_domains.contains(&domain))
+        if self.trusted_domains.contains("*") {
+            return true;
+        }
+        let Some(domain) = normalize_trusted_domain(domain) else {
+            return false;
+        };
+        self.trusted_domains.contains(&domain)
+            || self.trusted_domains.iter().any(|trusted| {
+                trusted
+                    .strip_prefix("*.")
+                    .is_some_and(|suffix| domain.ends_with(&format!(".{suffix}")))
+            })
     }
 
     /// Set trusted domains from a list, replacing the current policy.
@@ -37,6 +46,12 @@ impl NetworkSecurity {
         {
             self.trusted_domains.insert(domain);
         }
+    }
+
+    pub(crate) fn domains_snapshot(&self) -> Vec<String> {
+        let mut domains: Vec<String> = self.trusted_domains.iter().cloned().collect();
+        domains.sort();
+        domains
     }
 }
 
@@ -102,6 +117,17 @@ pub(crate) fn normalize_trusted_domain(domain: &str) -> Option<String> {
         || trimmed.contains(':')
         || trimmed.chars().any(char::is_whitespace)
     {
+        return None;
+    }
+
+    if let Some(suffix) = trimmed.strip_prefix("*.") {
+        if suffix.contains('*') || !suffix.contains('.') {
+            return None;
+        }
+        return is_valid_trusted_host(suffix).then(|| format!("*.{}", suffix.to_ascii_lowercase()));
+    }
+
+    if trimmed.contains('*') {
         return None;
     }
 
@@ -198,10 +224,27 @@ mod tests {
     }
 
     #[test]
+    fn trusted_domain_matching_supports_subdomain_wildcard() {
+        let mut security = NetworkSecurity::new();
+        security.set_domains(&["*.example.com".to_string()]);
+
+        assert!(security.is_domain_allowed("cdn.example.com"));
+        assert!(security.is_domain_allowed("img.cdn.example.com"));
+        assert!(!security.is_domain_allowed("example.com"));
+        assert_eq!(
+            normalize_trusted_domain("*.Example.COM."),
+            Some("*.example.com".to_string())
+        );
+    }
+
+    #[test]
     fn rejects_invalid_trusted_domain_shape() {
         assert!(normalize_trusted_domain("https://api.example.com").is_none());
         assert!(normalize_trusted_domain("api.example.com/path").is_none());
         assert!(normalize_trusted_domain("api.example.com:443").is_none());
+        assert!(normalize_trusted_domain("*example.com").is_none());
+        assert!(normalize_trusted_domain("api.*.example.com").is_none());
+        assert!(normalize_trusted_domain("*.com").is_none());
         assert!(normalize_trusted_domain("api_internal.example.com").is_none());
         assert!(normalize_trusted_domain("-api.example.com").is_none());
         assert!(normalize_trusted_domain("api-.example.com").is_none());

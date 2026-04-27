@@ -4,6 +4,14 @@ use crate::info;
 use crate::lxapp::LxApp;
 
 impl LxApp {
+    fn trusted_domains_snapshot(&self) -> Vec<String> {
+        self.state
+            .lock()
+            .unwrap()
+            .network_security
+            .domains_snapshot()
+    }
+
     /// Generate processed HTML content for a page
     ///
     /// This reads the HTML file. If it cannot be read, returns a 404 page.
@@ -30,7 +38,8 @@ impl LxApp {
             }
         };
 
-        let mut injected_data = self.inject_bridge_config(&data, bridge_nonce);
+        let mut injected_data = self.inject_content_security_policy(&data);
+        injected_data = self.inject_bridge_config(&injected_data, bridge_nonce);
 
         // Inject global app.css if it exists (optional)
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
@@ -51,11 +60,13 @@ impl LxApp {
     fn get_404_page(&self, failed_path: &str, bridge_nonce: Option<&str>) -> Vec<u8> {
         let escaped_path = escape_js_string(failed_path);
         let bridge_script = build_bridge_config_script(bridge_nonce);
+        let csp_meta = self.content_security_policy_meta();
         let html = format!(
             r#"<!DOCTYPE html>
 <html>
   <head>
     <meta charset="UTF-8" />
+    {}
     <title>404</title>
   </head>
   <body>
@@ -68,27 +79,65 @@ impl LxApp {
     <script src="lx://assets/bridge-runtime.js"></script>
   </body>
 </html>"#,
-            bridge_script, escaped_path
+            csp_meta, bridge_script, escaped_path
         );
         html.into_bytes()
+    }
+
+    fn inject_content_security_policy(&self, html_data: &[u8]) -> Vec<u8> {
+        let html_str = String::from_utf8_lossy(html_data);
+        let html_str = strip_content_security_policy_meta(&html_str);
+        let meta = self.content_security_policy_meta();
+
+        if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "<head")
+            && let Some(head_end) = html_str[head_pos..].find('>')
+        {
+            let insert_pos = head_pos + head_end + 1;
+            let (before, after) = html_str.split_at(insert_pos);
+            return format!("{}\n{}\n{}", before, meta, after).into_bytes();
+        }
+
+        if let Some(html_pos) = find_ascii_case_insensitive(&html_str, "<html")
+            && let Some(html_end) = html_str[html_pos..].find('>')
+        {
+            let insert_pos = html_pos + html_end + 1;
+            let (before, after) = html_str.split_at(insert_pos);
+            return format!("{}\n<head>\n{}\n</head>\n{}", before, meta, after).into_bytes();
+        }
+
+        format!("<head>\n{}\n</head>\n{}", meta, html_str).into_bytes()
+    }
+
+    fn content_security_policy_meta(&self) -> String {
+        format!(
+            r#"<meta http-equiv="Content-Security-Policy" content="{}">"#,
+            escape_html_attr(&self.content_security_policy())
+        )
+    }
+
+    fn content_security_policy(&self) -> String {
+        build_content_security_policy(&self.trusted_domains_snapshot())
     }
 
     fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
         let html_str = String::from_utf8_lossy(html_data);
         let script_tag = build_bridge_config_script(bridge_nonce);
 
-        let lower = html_str.to_lowercase();
-        if let Some(src_pos) = lower.find("lx://assets/bridge-runtime.js") {
-            if let Some(script_start) = lower[..src_pos].rfind("<script") {
+        if let Some(src_pos) =
+            find_ascii_case_insensitive(&html_str, "lx://assets/bridge-runtime.js")
+        {
+            if let Some(script_start) =
+                find_ascii_case_insensitive_rev(&html_str[..src_pos], "<script")
+            {
                 let (before, after) = html_str.split_at(script_start);
                 return format!("{}{}\n{}", before, script_tag, after).into_bytes();
             }
         }
-        if let Some(head_pos) = lower.find("</head>") {
+        if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "</head>") {
             let (before, after) = html_str.split_at(head_pos);
             return format!("{}{}\n{}", before, script_tag, after).into_bytes();
         }
-        if let Some(body_pos) = lower.find("<body") {
+        if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body") {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
@@ -114,13 +163,13 @@ impl LxApp {
         let html_str = String::from_utf8_lossy(html_data);
 
         // Try to insert before </head> tag (preferred location for styles)
-        if let Some(head_pos) = html_str.to_lowercase().find("</head>") {
+        if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "</head>") {
             let (before, after) = html_str.split_at(head_pos);
             info!("Injected CSS before </head> in {}", path).with_appid(self.appid.clone());
             return Ok(format!("{}{}{}", before, style_tag, after).into_bytes());
         }
         // If no </head> tag, try to insert at the beginning of <body> tag
-        else if let Some(body_pos) = html_str.to_lowercase().find("<body") {
+        else if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body") {
             if let Some(body_end) = html_str[body_pos..].find('>') {
                 let insert_pos = body_pos + body_end + 1;
                 let (before, after) = html_str.split_at(insert_pos);
@@ -140,6 +189,44 @@ impl LxApp {
             .with_appid(self.appid.clone());
         Ok(html_data.to_vec())
     }
+}
+
+fn build_content_security_policy(trusted_domains: &[String]) -> String {
+    let mut img_sources = vec![
+        "'self'".to_string(),
+        "lx:".to_string(),
+        "data:".to_string(),
+        "blob:".to_string(),
+    ];
+
+    if trusted_domains.iter().any(|domain| domain == "*") {
+        img_sources.push("https:".to_string());
+    } else {
+        img_sources.extend(trusted_domains.iter().map(|domain| {
+            if let Some(suffix) = domain.strip_prefix("*.") {
+                format!("https://*.{suffix}")
+            } else {
+                format!("https://{domain}")
+            }
+        }));
+    }
+
+    [
+        "default-src 'self' lx:".to_string(),
+        format!("img-src {}", img_sources.join(" ")),
+        "connect-src 'none'".to_string(),
+        "script-src 'self' lx: 'unsafe-inline'".to_string(),
+        "style-src 'self' lx: 'unsafe-inline'".to_string(),
+        "font-src 'self' lx: data:".to_string(),
+        "media-src 'none'".to_string(),
+        "worker-src 'none'".to_string(),
+        "child-src 'none'".to_string(),
+        "frame-src 'none'".to_string(),
+        "object-src 'none'".to_string(),
+        "base-uri 'none'".to_string(),
+        "form-action 'none'".to_string(),
+    ]
+    .join("; ")
 }
 
 fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
@@ -181,4 +268,100 @@ fn escape_js_string(value: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r")
         .replace('\t', "\\t")
+}
+
+fn escape_html_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+}
+
+fn strip_content_security_policy_meta(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut cursor = 0;
+
+    while let Some(rel_start) = find_ascii_case_insensitive(&html[cursor..], "<meta") {
+        let start = cursor + rel_start;
+        let Some(rel_end) = html[start..].find('>') else {
+            break;
+        };
+        let end = start + rel_end + 1;
+        let meta = &html[start..end];
+        let meta_lower = meta.to_ascii_lowercase();
+
+        if meta_lower.contains("http-equiv") && meta_lower.contains("content-security-policy") {
+            out.push_str(&html[cursor..start]);
+        } else {
+            out.push_str(&html[cursor..end]);
+        }
+        cursor = end;
+    }
+
+    out.push_str(&html[cursor..]);
+    out
+}
+
+fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    let needle = needle.as_bytes();
+    if needle.is_empty() {
+        return Some(0);
+    }
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .position(|window| window.eq_ignore_ascii_case(needle))
+}
+
+fn find_ascii_case_insensitive_rev(haystack: &str, needle: &str) -> Option<usize> {
+    let needle = needle.as_bytes();
+    if needle.is_empty() {
+        return Some(haystack.len());
+    }
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .rposition(|window| window.eq_ignore_ascii_case(needle))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_content_security_policy, strip_content_security_policy_meta};
+
+    #[test]
+    fn csp_only_allows_trusted_https_images() {
+        let csp = build_content_security_policy(&[
+            "cdn.example.com".to_string(),
+            "*.img.example.com".to_string(),
+        ]);
+
+        assert!(csp.contains(
+            "img-src 'self' lx: data: blob: https://cdn.example.com https://*.img.example.com"
+        ));
+        assert!(csp.contains("connect-src 'none'"));
+        assert!(csp.contains("media-src 'none'"));
+        assert!(csp.contains("frame-src 'none'"));
+        assert!(!csp.contains("default-src 'self' lx: data:"));
+    }
+
+    #[test]
+    fn csp_wildcard_trusted_domain_allows_https_images() {
+        let csp = build_content_security_policy(&["*".to_string()]);
+
+        assert!(csp.contains("img-src 'self' lx: data: blob: https:"));
+        assert!(!csp.contains("https://*"));
+    }
+
+    #[test]
+    fn strips_page_owned_csp_before_runtime_injection() {
+        let html = r#"<html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src *"><title>x</title></head></html>"#;
+        let stripped = strip_content_security_policy_meta(html);
+
+        assert!(stripped.contains(r#"<meta charset="utf-8">"#));
+        assert!(
+            !stripped
+                .to_ascii_lowercase()
+                .contains("content-security-policy")
+        );
+    }
 }
