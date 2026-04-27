@@ -26,40 +26,12 @@ impl JSMessagePort {
 
     #[js_method(rename = "postMessage")]
     fn post_message(this: This<JSObject>, payload: JSValue) -> JSResult<()> {
-        let peer = {
-            let port = (*this).borrow::<Self>()?;
-            port.peer.borrow().clone()
-        };
-        let Some(peer) = peer else {
-            return Ok(());
-        };
-        <Self as EmitterExt>::do_emit(
-            This(peer),
-            EventKey::String("message".to_string()),
-            Rest(vec![payload]),
-        )?;
-        Ok(())
+        emit_message(&this, payload)
     }
 
     #[js_method(rename = "onMessage")]
     fn on_message(this: This<JSObject>, handler: JSFunc) -> JSResult<JSFunc> {
-        let target = (*this).clone();
-        let ctx = target.context();
-        let handler_for_off = handler.clone();
-        <Self as EmitterExt>::add_event_listener(
-            this,
-            EventKey::String("message".to_string()),
-            handler,
-            false,
-            false,
-        )?;
-        JSFunc::new(&ctx, move || {
-            <JSMessagePort as EmitterExt>::remove_event_listener(
-                This(target.clone()),
-                EventKey::String("message".to_string()),
-                handler_for_off.clone(),
-            )
-        })
+        add_message_listener(&this, handler)
     }
 
     #[js_method(gc_mark)]
@@ -103,5 +75,64 @@ pub(crate) fn pair(ctx: &JSContext) -> JSResult<(JSObject, JSObject)> {
         .peer
         .replace(Some(first.clone()));
 
+    attach_methods(ctx, &first)?;
+    attach_methods(ctx, &second)?;
+
     Ok((first, second))
+}
+
+pub(crate) fn emit_message(port: &JSObject, payload: JSValue) -> JSResult<()> {
+    let peer = {
+        let port = port.borrow::<JSMessagePort>()?;
+        port.peer.borrow().clone()
+    };
+    let Some(peer) = peer else {
+        return Ok(());
+    };
+    <JSMessagePort as EmitterExt>::do_emit(
+        This(peer),
+        EventKey::String("message".to_string()),
+        Rest(vec![payload]),
+    )?;
+    Ok(())
+}
+
+pub(crate) fn add_message_listener(port: &JSObject, handler: JSFunc) -> JSResult<JSFunc> {
+    let target = port.clone();
+    let ctx = target.context();
+    let handler_for_off = handler.clone();
+    <JSMessagePort as EmitterExt>::add_event_listener(
+        This(target.clone()),
+        EventKey::String("message".to_string()),
+        handler,
+        false,
+        false,
+    )?;
+    JSFunc::new(&ctx, move || {
+        <JSMessagePort as EmitterExt>::remove_event_listener(
+            This(target.clone()),
+            EventKey::String("message".to_string()),
+            handler_for_off.clone(),
+        )
+    })
+}
+
+fn attach_methods(ctx: &JSContext, port: &JSObject) -> JSResult<()> {
+    let post_port = port.clone();
+    port.set(
+        "postMessage",
+        JSFunc::new(ctx, move |payload: JSValue| {
+            emit_message(&post_port, payload)
+        })?,
+    )?;
+
+    let listen_port = port.clone();
+    port.set(
+        "onMessage",
+        JSFunc::new(ctx, move |handler: JSFunc| {
+            add_message_listener(&listen_port, handler)
+        })?,
+    )?;
+
+    Ok(())
 }

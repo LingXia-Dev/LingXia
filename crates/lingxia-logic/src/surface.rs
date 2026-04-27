@@ -10,6 +10,7 @@ use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use uuid::Uuid;
@@ -60,16 +61,12 @@ impl JSSurface {
 
     #[js_method(rename = "postMessage")]
     fn post_message(&self, payload: JSValue) -> JSResult<()> {
-        self.message_port
-            .get::<_, JSFunc>("postMessage")?
-            .call::<_, ()>(Some(self.message_port.clone()), (payload,))
+        crate::message_port::emit_message(&self.message_port, payload)
     }
 
     #[js_method(rename = "onMessage")]
     fn on_message(&self, handler: JSFunc) -> JSResult<JSFunc> {
-        self.message_port
-            .get::<_, JSFunc>("onMessage")?
-            .call::<_, JSFunc>(Some(self.message_port.clone()), (handler,))
+        crate::message_port::add_message_listener(&self.message_port, handler)
     }
 
     #[js_method(rename = "onClose")]
@@ -154,6 +151,13 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     });
     surface.set("id", opened_surface.id)?;
     surface.set("kind", kind)?;
+    attach_surface_methods(
+        &ctx,
+        &surface,
+        lxapp.clone(),
+        surface_id.clone(),
+        surface.clone(),
+    )?;
     let mut page_surface_for_close = None;
     if let Some(page_svc) = page_svc.as_ref() {
         let page_surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
@@ -163,6 +167,13 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         });
         page_surface.set("id", surface_id.clone())?;
         page_surface.set("kind", surface_kind_label(opened_surface.kind))?;
+        attach_surface_methods(
+            &ctx,
+            &page_surface,
+            lxapp.clone(),
+            surface_id.clone(),
+            page_surface.clone(),
+        )?;
         page_svc.bind_surface(page_surface.clone()).map_err(|err| {
             unregister_closed_sender(&surface_id);
             let _ = lxapp.close_surface(&surface_id, "failed");
@@ -190,6 +201,78 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         }
     })?;
     Ok(surface)
+}
+
+fn attach_surface_methods(
+    ctx: &JSContext,
+    surface: &JSObject,
+    lxapp: Arc<LxApp>,
+    surface_id: String,
+    surface_ref: JSObject,
+) -> JSResult<()> {
+    let close_lxapp = lxapp.clone();
+    let close_id = surface_id.clone();
+    surface.set(
+        "close",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let lxapp = close_lxapp.clone();
+            let id = close_id.clone();
+            Promise::from_future(&ctx, None, async move {
+                lxapp.close_surface(&id, "programmatic").map_err(|err| {
+                    surface_error(rong::error::E_INTERNAL, "surface_close_failed", err)
+                })?;
+                Ok(())
+            })
+        })?,
+    )?;
+
+    let post_surface = surface_ref.clone();
+    surface.set(
+        "postMessage",
+        JSFunc::new(ctx, move |payload: JSValue| {
+            let surface = post_surface.borrow::<JSSurface>()?;
+            crate::message_port::emit_message(&surface.message_port, payload)
+        })?,
+    )?;
+
+    let listen_surface = surface_ref.clone();
+    surface.set(
+        "onMessage",
+        JSFunc::new(ctx, move |handler: JSFunc| {
+            let surface = listen_surface.borrow::<JSSurface>()?;
+            crate::message_port::add_message_listener(&surface.message_port, handler)
+        })?,
+    )?;
+
+    let close_surface = surface_ref;
+    surface.set(
+        "onClose",
+        JSFunc::new(ctx, move |handler: JSFunc| {
+            add_close_listener(&close_surface, handler)
+        })?,
+    )?;
+
+    Ok(())
+}
+
+fn add_close_listener(surface: &JSObject, handler: JSFunc) -> JSResult<JSFunc> {
+    let target = surface.clone();
+    let ctx = target.context();
+    let handler_for_off = handler.clone();
+    <JSSurface as EmitterExt>::add_event_listener(
+        This(target.clone()),
+        EventKey::String("close".to_string()),
+        handler,
+        false,
+        false,
+    )?;
+    JSFunc::new(&ctx, move || {
+        <JSSurface as EmitterExt>::remove_event_listener(
+            This(target.clone()),
+            EventKey::String("close".to_string()),
+            handler_for_off.clone(),
+        )
+    })
 }
 
 fn emit_close(surface: &JSObject, event: &JSSurfaceClosed) -> JSResult<()> {
