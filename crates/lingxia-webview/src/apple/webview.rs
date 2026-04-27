@@ -42,13 +42,9 @@ use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKNavigation, WKNavigationDelegate, WKUIDelegate, WKURLSchemeHandler,
     WKWebViewConfiguration, WKWebsiteDataStore,
 };
-#[cfg(target_os = "ios")]
-use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
 use std::cell::RefCell;
-#[cfg(target_os = "ios")]
-use std::ptr::NonNull;
 use std::sync::mpsc::sync_channel;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -66,22 +62,7 @@ use crate::webview::{
     WebTag, WebViewCreateSender, WebViewCreateStage, configured_proxy_for_new_webviews,
 };
 
-#[cfg(target_os = "ios")]
-const HTTPS_BLOCK_RULE_IDENTIFIER: &str = "LingXiaHTTPSBlocker";
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
-#[cfg(target_os = "ios")]
-const HTTPS_BLOCK_RULE_JSON: &str = r#"
-[
-    {
-        "trigger": {
-            "url-filter": "^https:.*"
-        },
-        "action": {
-            "type": "block"
-        }
-    }
-]
-"#;
 
 #[link(name = "Network", kind = "framework")]
 unsafe extern "C" {
@@ -1846,14 +1827,6 @@ impl WebViewInner {
                 }
             }
 
-            // Profile policy on Apple:
-            // - StrictDefault: block HTTPS subresources
-            // - BrowserRelaxed: allow HTTPS subresources (no blocker on fresh config)
-            #[cfg(target_os = "ios")]
-            if is_strict {
-                Self::enable_https_resource_blocker(&config);
-            }
-
             // Create frame with zero size and hide the webview initially to prevent flicker due to size change on macOS.
             // It will be resized and unhidden by the Swift layout code.
             let frame = NSRect {
@@ -1979,73 +1952,6 @@ impl WebViewInner {
             };
 
             Ok(webview_inner)
-        }
-    }
-
-    /// Install a content blocking rule list that blocks all HTTPS subresource loads.
-    #[cfg(target_os = "ios")]
-    fn enable_https_resource_blocker(config: &WKWebViewConfiguration) {
-        let Some(mtm) = MainThreadMarker::new() else {
-            log::warn!("HTTPS resource blocker requires MainThreadMarker");
-            return;
-        };
-
-        let user_content_controller: *mut WKUserContentController =
-            unsafe { msg_send![config, userContentController] };
-        let Some(controller_ptr) = NonNull::new(user_content_controller) else {
-            log::warn!("Failed to obtain userContentController for HTTPS blocker");
-            return;
-        };
-
-        let Some(store) = (unsafe { WKContentRuleListStore::defaultStore(mtm) }) else {
-            log::warn!("Failed to access WKContentRuleListStore for HTTPS blocker");
-            return;
-        };
-
-        let controller_ref = unsafe { controller_ptr.as_ref() };
-        unsafe {
-            controller_ref.removeAllContentRuleLists();
-        }
-
-        let identifier = NSString::from_str(HTTPS_BLOCK_RULE_IDENTIFIER);
-        let rule_json = NSString::from_str(HTTPS_BLOCK_RULE_JSON);
-
-        let controller_raw = controller_ptr.as_ptr();
-        let completion = StackBlock::new(
-            move |rule_list_ptr: *mut WKContentRuleList, error_ptr: *mut NSError| {
-                if let Some(rule_list) = NonNull::new(rule_list_ptr) {
-                    unsafe {
-                        let controller = &*controller_raw;
-                        controller.addContentRuleList(rule_list.as_ref());
-                    }
-                    log::info!("HTTPS subresource blocking is ON for WebView");
-                } else if let Some(error) = NonNull::new(error_ptr) {
-                    let description = unsafe {
-                        let description_ptr: *mut NSString =
-                            msg_send![error.as_ptr(), localizedDescription];
-                        description_ptr
-                            .as_ref()
-                            .map(|ns_string| ns_string.to_string())
-                    };
-
-                    if let Some(description) = description {
-                        log::error!("Failed to compile HTTPS block rule: {}", description);
-                    } else {
-                        log::error!("Failed to compile HTTPS block rule with unknown error");
-                    }
-                } else {
-                    log::error!("Failed to compile HTTPS block rule with no error provided");
-                }
-            },
-        )
-        .copy();
-
-        unsafe {
-            store.compileContentRuleListForIdentifier_encodedContentRuleList_completionHandler(
-                Some(&identifier),
-                Some(&rule_json),
-                Some(&completion),
-            );
         }
     }
 
