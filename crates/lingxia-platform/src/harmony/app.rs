@@ -37,9 +37,6 @@ pub struct Platform {
     pub locale: String,
     /// Pointer to HarmonyOS NativeResourceManager (owned by JS layer, do not free)
     resource_manager: Option<*mut NativeResourceManager>,
-    // Store the original napi values for cloning
-    env: Option<napi_ohos::sys::napi_env>,
-    js_resource_manager: Option<napi_ohos::sys::napi_value>,
 }
 
 impl crate::traits::update::UpdateService for Platform {}
@@ -52,27 +49,11 @@ impl crate::traits::update::UpdateService for Platform {}
 
 impl Clone for Platform {
     fn clone(&self) -> Self {
-        // For cloning, we can recreate the ResourceManager if we have the original values
-        let resource_manager = if let (Some(env), Some(js_rm)) =
-            (self.env, self.js_resource_manager)
-        {
-            let native_mgr = unsafe { OH_ResourceManager_InitNativeResourceManager(env, js_rm) };
-            if native_mgr.is_null() {
-                None
-            } else {
-                Some(native_mgr)
-            }
-        } else {
-            None
-        };
-
         Platform {
             data_dir: self.data_dir.clone(),
             cache_dir: self.cache_dir.clone(),
             locale: self.locale.clone(),
-            resource_manager,
-            env: self.env,
-            js_resource_manager: self.js_resource_manager,
+            resource_manager: self.resource_manager,
         }
     }
 }
@@ -181,33 +162,30 @@ impl Platform {
         resource_manager: Option<Object>,
         locale: String,
     ) -> Result<Self, PlatformError> {
-        let (resource_manager_ptr, env_raw, js_rm_raw) =
-            if let Some(resource_manager) = resource_manager {
-                let env_raw = env.raw();
-                let js_rm_raw = resource_manager.raw();
-
-                // Extract the native ResourceManager pointer from the JS object
-                let native_mgr =
-                    unsafe { OH_ResourceManager_InitNativeResourceManager(env_raw, js_rm_raw) };
-
-                if native_mgr.is_null() {
-                    return Err(PlatformError::Platform(
-                        "Failed to initialize NativeResourceManager".to_string(),
-                    ));
-                }
-
-                (Some(native_mgr), Some(env_raw), Some(js_rm_raw))
-            } else {
-                (None, None, None)
+        let resource_manager_ptr = if let Some(resource_manager) = resource_manager {
+            // Extract the native ResourceManager pointer from the JS object once during
+            // NAPI initialization. Reinitializing it from cloned Platform values can crash
+            // Ark/NAPI when clones are made from async platform code.
+            let native_mgr = unsafe {
+                OH_ResourceManager_InitNativeResourceManager(env.raw(), resource_manager.raw())
             };
+
+            if native_mgr.is_null() {
+                return Err(PlatformError::Platform(
+                    "Failed to initialize NativeResourceManager".to_string(),
+                ));
+            }
+
+            Some(native_mgr)
+        } else {
+            None
+        };
 
         Ok(Platform {
             data_dir,
             cache_dir,
             locale,
             resource_manager: resource_manager_ptr,
-            env: env_raw,
-            js_resource_manager: js_rm_raw,
         })
     }
 
