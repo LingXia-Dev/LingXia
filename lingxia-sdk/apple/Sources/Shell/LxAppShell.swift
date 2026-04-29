@@ -8,6 +8,32 @@ import WebKit
 import Quartz
 import CLingXiaRustAPI
 
+private let lxShellTerminalOSLog = OSLog(subsystem: "LingXia", category: "TerminalShell")
+
+private func lxShellStdoutLog(_ message: String, level: Int32 = 2) {
+    let type: OSLogType = level >= 4 ? .error : .info
+    let debugEnabled = ProcessInfo.processInfo.environment["LX_TERMINAL_DEBUG_LOGS"] == "1"
+    if debugEnabled || type == .error || type == .fault {
+        os_log("%{public}@", log: lxShellTerminalOSLog, type: type, message)
+    }
+    guard ProcessInfo.processInfo.environment["LX_TERMINAL_STDOUT_LOGS"] == "1" else {
+        return
+    }
+    let line = "[LingXia][Shell] \(message)\n"
+    FileHandle.standardOutput.write(Data(line.utf8))
+    NSLog("%@", line.trimmingCharacters(in: .newlines))
+}
+
+private func lxShellFormatRect(_ rect: NSRect) -> String {
+    String(
+        format: "%.0f,%.0f %.0fx%.0f",
+        rect.minX,
+        rect.minY,
+        rect.width,
+        rect.height
+    )
+}
+
 @MainActor
 enum LxAppShellStartupBehavior {
     case automaticHome
@@ -304,6 +330,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
+        window.contentMinSize = CGSize(width: 720, height: 480)
+        window.minSize = CGSize(width: 720, height: 480)
         window.configureForTabStyle()
         window.center()
         window.isReleasedWhenClosed = false
@@ -366,6 +394,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     public func windowDidResize(_ notification: Notification) {
         syncSidebarHeaderButtonAlignment()
+        workspaceManager.relayoutPanels()
     }
 
     // MARK: - Sidebar Interface Setup
@@ -664,6 +693,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebarRevealButton.isHidden = !sidebarChromeEnabled || !sidebarHidden
         browserCoordinator.syncToolbarLeading(collapsed: sidebarHidden, animated: false)
         syncSidebarHeaderButtonAlignment()
+        window?.contentView?.layoutSubtreeIfNeeded()
+        workspaceManager.relayoutPanels()
     }
 
     // MARK: - Tab Lifecycle
@@ -995,6 +1026,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         if resizable && kind == .window {
             window.styleMask.insert(.resizable)
+            let minSize = minimumManagedWindowSize(for: size)
+            window.contentMinSize = minSize
+            window.minSize = minSize
             window.maxSize = NSSize(
                 width: CGFloat.greatestFiniteMagnitude,
                 height: CGFloat.greatestFiniteMagnitude
@@ -1020,6 +1054,17 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             window.collectionBehavior.remove(.transient)
             window.isMovableByWindowBackground = false
         }
+    }
+
+    private func minimumManagedWindowSize(for requestedSize: CGSize?) -> CGSize {
+        let defaultMinimum = CGSize(width: 720, height: 480)
+        guard let requestedSize else {
+            return defaultMinimum
+        }
+        return CGSize(
+            width: min(defaultMinimum.width, requestedSize.width),
+            height: min(defaultMinimum.height, requestedSize.height)
+        )
     }
 
     func retainAppUIRuntime(_ runtime: AnyObject) {
@@ -1175,25 +1220,167 @@ extension LxAppShell {
     private static let panelAttachRetryDelay: TimeInterval = 0.05
 
     func showPanelWithContent(id: String, position: PanelPosition, appId: String, path: String) {
-        if !workspaceManager.isPanelRegistered(id: id) {
+        let wasRegistered = workspaceManager.isPanelRegistered(id: id)
+        lxShellStdoutLog(
+            "showPanelWithContent start id=\(id) position=\(position.rawValue) registered=\(wasRegistered) appId=\(appId) path=\(path) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))"
+        )
+        if !wasRegistered {
             let config = PanelConfig(id: id, position: position)
             workspaceManager.registerPanel(config)
         }
 
-        workspaceManager.showPanel(id: id)
+        preserveWindowFrameDuringPanelLayout(reason: "showPanelWithContent:\(id)") {
+            workspaceManager.showPanel(id: id)
+        }
+        lxShellStdoutLog(
+            "showPanelWithContent afterShow id=\(id) containerFrame=\(lxShellFormatRect(workspaceManager.panelContainer(id: id)?.frame ?? .zero)) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))"
+        )
         attachPanelWebViewWhenReady(panelId: id, appId: appId, path: path, attempt: 0)
     }
 
+    func showPanelWithNativeContent(
+        id: String,
+        position: PanelPosition,
+        contentView: NSView,
+        defaultSize: CGFloat = 320
+    ) {
+        let wasRegistered = workspaceManager.isPanelRegistered(id: id)
+        lxShellStdoutLog(
+            "showPanelWithNativeContent start id=\(id) position=\(position.rawValue) registered=\(wasRegistered) defaultSize=\(String(format: "%.1f", defaultSize)) contentType=\(String(describing: type(of: contentView))) contentFrame=\(lxShellFormatRect(contentView.frame)) contentBounds=\(lxShellFormatRect(contentView.bounds)) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero)) contentViewBounds=\(lxShellFormatRect(window?.contentView?.bounds ?? .zero))"
+        )
+        if !wasRegistered {
+            let config = PanelConfig(
+                id: id,
+                position: position,
+                defaultSize: defaultSize
+            )
+            workspaceManager.registerPanel(config)
+        }
+
+        preserveWindowFrameDuringPanelLayout(reason: "showPanelWithNativeContent:\(id)") {
+            workspaceManager.showPanel(id: id)
+        }
+        guard let container = workspaceManager.panelContainer(id: id) else {
+            lxShellStdoutLog("showPanelWithNativeContent missingContainer id=\(id)")
+            return
+        }
+        lxShellStdoutLog(
+            "showPanelWithNativeContent container id=\(id) containerFrame=\(lxShellFormatRect(container.frame)) containerBounds=\(lxShellFormatRect(container.bounds)) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero)) contentViewBounds=\(lxShellFormatRect(window?.contentView?.bounds ?? .zero))"
+        )
+        attachPanelContentView(contentView, container: container)
+        DispatchQueue.main.async { [weak self, weak contentView, weak container] in
+            lxShellStdoutLog(
+                "showPanelWithNativeContent afterAttachAsync id=\(id) containerFrame=\(lxShellFormatRect(container?.frame ?? .zero)) containerBounds=\(lxShellFormatRect(container?.bounds ?? .zero)) contentFrame=\(lxShellFormatRect(contentView?.frame ?? .zero)) contentBounds=\(lxShellFormatRect(contentView?.bounds ?? .zero)) windowFrame=\(lxShellFormatRect(self?.window?.frame ?? .zero)) contentViewBounds=\(lxShellFormatRect(self?.window?.contentView?.bounds ?? .zero))"
+            )
+        }
+    }
+
     func hidePanel(id: String) {
-        workspaceManager.hidePanel(id: id)
+        lxShellStdoutLog("hidePanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
+        preserveWindowFrameDuringPanelLayout(reason: "hidePanel:\(id)") {
+            workspaceManager.hidePanel(id: id)
+        }
+        lxShellStdoutLog("hidePanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
     }
 
     func showPanel(id: String) {
-        workspaceManager.showPanel(id: id)
+        lxShellStdoutLog("showPanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
+        preserveWindowFrameDuringPanelLayout(reason: "showPanel:\(id)") {
+            workspaceManager.showPanel(id: id)
+        }
+        lxShellStdoutLog("showPanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
     }
 
     func togglePanel(id: String) {
-        workspaceManager.togglePanel(id: id)
+        lxShellStdoutLog("togglePanel start id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
+        preserveWindowFrameDuringPanelLayout(reason: "togglePanel:\(id)") {
+            workspaceManager.togglePanel(id: id)
+        }
+        lxShellStdoutLog("togglePanel end id=\(id) windowFrame=\(lxShellFormatRect(window?.frame ?? .zero))")
+    }
+
+    func setPanelFullscreen(id: String, enabled: Bool) {
+        lxShellStdoutLog("setPanelFullscreen start id=\(id) enabled=\(enabled)")
+        preserveWindowFrameDuringPanelLayout(reason: "setPanelFullscreen:\(id):\(enabled)") {
+            workspaceManager.setPanelFullscreen(id: id, enabled: enabled)
+        }
+        lxShellStdoutLog("setPanelFullscreen end id=\(id) enabled=\(enabled)")
+    }
+
+    private func sameFrame(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
+        abs(lhs.minX - rhs.minX) <= 0.5
+            && abs(lhs.minY - rhs.minY) <= 0.5
+            && abs(lhs.width - rhs.width) <= 0.5
+            && abs(lhs.height - rhs.height) <= 0.5
+    }
+
+    private func formatFrame(_ frame: NSRect) -> String {
+        String(
+            format: "%.0f,%.0f %.0fx%.0f",
+            frame.minX,
+            frame.minY,
+            frame.width,
+            frame.height
+        )
+    }
+
+    private func preserveWindowFrameDuringPanelLayout(reason: String, _ operation: () -> Void) {
+        guard let window else {
+            lxShellStdoutLog("preserveFrame noWindow reason=\(reason)")
+            operation()
+            return
+        }
+
+        let frameBefore = window.frame
+        let minSizeBefore = window.minSize
+        let contentMinSizeBefore = window.contentMinSize
+        let contentSizeBefore = window.contentView?.bounds.size ?? frameBefore.size
+        window.minSize = NSSize(
+            width: max(minSizeBefore.width, frameBefore.width),
+            height: max(minSizeBefore.height, frameBefore.height)
+        )
+        window.contentMinSize = NSSize(
+            width: max(contentMinSizeBefore.width, contentSizeBefore.width),
+            height: max(contentMinSizeBefore.height, contentSizeBefore.height)
+        )
+        lxShellStdoutLog("preserveFrame begin reason=\(reason) frame=\(formatFrame(frameBefore))")
+        operation()
+        lxShellStdoutLog("preserveFrame afterOperation reason=\(reason) frame=\(formatFrame(window.frame)) changed=\(!sameFrame(frameBefore, window.frame))")
+        restoreWindowFrameIfNeeded(frameBefore, reason: reason)
+
+        // Panel animations and AppKit constraint passes may settle on the next ticks.
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, let window else { return }
+            lxShellStdoutLog("preserveFrame asyncCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
+            self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):async")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self, weak window] in
+                guard let self, let window else { return }
+                lxShellStdoutLog("preserveFrame settledCheck reason=\(reason) frame=\(self.formatFrame(window.frame)) changed=\(!self.sameFrame(frameBefore, window.frame))")
+                self.restoreWindowFrameIfNeeded(frameBefore, reason: "\(reason):settled")
+                window.minSize = minSizeBefore
+                window.contentMinSize = contentMinSizeBefore
+                lxShellStdoutLog(
+                    "preserveFrame restoredMinSize reason=\(reason) min=\(String(format: "%.0fx%.0f", minSizeBefore.width, minSizeBefore.height)) contentMin=\(String(format: "%.0fx%.0f", contentMinSizeBefore.width, contentMinSizeBefore.height))"
+                )
+            }
+        }
+    }
+
+    private func restoreWindowFrameIfNeeded(_ frameBefore: NSRect, reason: String) {
+        guard let window else { return }
+        let current = window.frame
+        guard abs(current.width - frameBefore.width) > 0.5 || abs(current.height - frameBefore.height) > 0.5 else {
+            return
+        }
+        let message = "Panel layout changed window frame; restoring reason=\(reason) before=\(String(format: "%.1fx%.1f", frameBefore.width, frameBefore.height)) current=\(String(format: "%.1fx%.1f", current.width, current.height))"
+        lxShellStdoutLog(message, level: 4)
+        os_log(
+            "%{public}@",
+            log: Self.log,
+            type: .error,
+            message
+        )
+        window.setFrame(frameBefore, display: true)
     }
 
     private func attachPanelWebViewWhenReady(panelId: String, appId: String, path: String, attempt: Int) {
@@ -1216,6 +1403,33 @@ extension LxAppShell {
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.panelAttachRetryDelay) { [weak self] in
             self?.attachPanelWebViewWhenReady(panelId: panelId, appId: appId, path: path, attempt: attempt + 1)
         }
+    }
+
+    private func attachPanelContentView(_ view: NSView, container: NSView) {
+        if view.superview === container {
+            lxShellStdoutLog(
+                "attachPanelContentView alreadyAttached contentType=\(String(describing: type(of: view))) containerFrame=\(lxShellFormatRect(container.frame)) contentFrame=\(lxShellFormatRect(view.frame))"
+            )
+            return
+        }
+        lxShellStdoutLog(
+            "attachPanelContentView start contentType=\(String(describing: type(of: view))) oldSuperview=\(String(describing: view.superview.map { type(of: $0) })) containerFrame=\(lxShellFormatRect(container.frame)) containerBounds=\(lxShellFormatRect(container.bounds))"
+        )
+        container.subviews.forEach { $0.removeFromSuperview() }
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.topAnchor.constraint(equalTo: container.topAnchor),
+            view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+        container.layoutSubtreeIfNeeded()
+        lxShellStdoutLog(
+            "attachPanelContentView complete contentType=\(String(describing: type(of: view))) containerFrame=\(lxShellFormatRect(container.frame)) containerBounds=\(lxShellFormatRect(container.bounds)) contentFrame=\(lxShellFormatRect(view.frame)) contentBounds=\(lxShellFormatRect(view.bounds))"
+        )
     }
 }
 

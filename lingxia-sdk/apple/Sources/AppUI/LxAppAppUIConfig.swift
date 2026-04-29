@@ -71,6 +71,7 @@ struct LxAppUIConfig: Decodable, Sendable {
         let kind: Kind
         let appId: String?
         let path: String?
+        let backend: String?
 
         enum Kind: String, Decodable, Sendable {
             case lxapp

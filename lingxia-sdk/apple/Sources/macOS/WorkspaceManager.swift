@@ -1,6 +1,31 @@
 #if os(macOS)
 import AppKit
+import CLingXiaRustAPI
 import os.log
+
+private let lxWorkspaceTerminalOSLog = OSLog(subsystem: "LingXia", category: "TerminalWorkspace")
+
+private func lxWorkspaceStdoutLog(_ message: String) {
+    if ProcessInfo.processInfo.environment["LX_TERMINAL_DEBUG_LOGS"] == "1" {
+        os_log("%{public}@", log: lxWorkspaceTerminalOSLog, type: .info, message)
+    }
+    guard ProcessInfo.processInfo.environment["LX_TERMINAL_STDOUT_LOGS"] == "1" else {
+        return
+    }
+    let line = "[LingXia][Workspace] \(message)\n"
+    FileHandle.standardOutput.write(Data(line.utf8))
+    NSLog("%@", line.trimmingCharacters(in: .newlines))
+}
+
+private func lxWorkspaceFormatRect(_ rect: NSRect) -> String {
+    String(
+        format: "%.0f,%.0f %.0fx%.0f",
+        rect.minX,
+        rect.minY,
+        rect.width,
+        rect.height
+    )
+}
 
 enum PanelPosition: String {
     case left
@@ -92,6 +117,7 @@ private class PanelSlot {
 
     var isVisible: Bool = false
     var currentSize: CGFloat
+    var isFullscreen: Bool = false
 
     init(config: PanelConfig, cornerRadius: CGFloat) {
         self.config = config
@@ -227,6 +253,9 @@ class WorkspaceManager: NSObject {
         self.sidebarRef = sidebar
         self.padding = padding
         self.onCardEdgesChanged = onCardEdgesChanged
+        lxWorkspaceStdoutLog(
+            "configure parentBounds=\(lxWorkspaceFormatRect(overlayParent.bounds)) sidebarFrame=\(lxWorkspaceFormatRect(sidebar.frame)) padding=\(String(format: "%.1f", padding))"
+        )
     }
 
     /// Constrains `contentContainer` to fill `workspaceView` below the toolbar.
@@ -245,11 +274,19 @@ class WorkspaceManager: NSObject {
     /// Returns the container view where WebViews should be attached.
     @discardableResult
     func registerPanel(_ config: PanelConfig) -> NSView {
-        if let existing = panels[config.id] { return existing.containerView }
+        if let existing = panels[config.id] {
+            lxWorkspaceStdoutLog(
+                "registerPanel existing id=\(config.id) position=\(config.position.rawValue) visible=\(existing.isVisible) currentSize=\(String(format: "%.1f", existing.currentSize)) wrapperFrame=\(lxWorkspaceFormatRect(existing.shadowWrapper.frame))"
+            )
+            return existing.containerView
+        }
 
         let slot = PanelSlot(config: config, cornerRadius: Self.cornerRadius)
         slot.applyShadow(for: config.position)
         panels[config.id] = slot
+        lxWorkspaceStdoutLog(
+            "registerPanel new id=\(config.id) position=\(config.position.rawValue) defaultSize=\(String(format: "%.1f", config.defaultSize)) currentSize=\(String(format: "%.1f", slot.currentSize))"
+        )
 
         let slotId = config.id
         slot.resizeHandle.currentSizeProvider = { [weak slot] in slot?.currentSize ?? config.defaultSize }
@@ -259,20 +296,42 @@ class WorkspaceManager: NSObject {
 
         guard let parent = overlayParent, let sidebar = sidebarRef else {
             os_log("registerPanel: configure() not called yet — panel %@ deferred", log: Self.log, type: .error, config.id)
+            lxWorkspaceStdoutLog("registerPanel deferred id=\(config.id) missing parent/sidebar")
             return slot.containerView
         }
 
+        lxWorkspaceStdoutLog(
+            "registerPanel install id=\(config.id) parentBounds=\(lxWorkspaceFormatRect(parent.bounds)) sidebarFrame=\(lxWorkspaceFormatRect(sidebar.frame))"
+        )
         installCard(slot, in: parent, sidebar: sidebar)
+        lxWorkspaceStdoutLog(
+            "registerPanel installed id=\(config.id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame)) containerBounds=\(lxWorkspaceFormatRect(slot.containerView.bounds))"
+        )
         return slot.containerView
     }
 
     /// Show a panel, animating it in and shrinking the WebView card.
     func showPanel(id: String) {
-        guard let slot = panels[id], !slot.isVisible else { return }
+        guard let slot = panels[id] else {
+            lxWorkspaceStdoutLog("showPanel missing id=\(id)")
+            return
+        }
+        guard !slot.isVisible else {
+            lxWorkspaceStdoutLog(
+                "showPanel already-visible id=\(id) position=\(slot.config.position.rawValue) currentSize=\(String(format: "%.1f", slot.currentSize)) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
+            )
+            return
+        }
+        lxWorkspaceStdoutLog(
+            "showPanel start id=\(id) position=\(slot.config.position.rawValue) currentSize=\(String(format: "%.1f", slot.currentSize)) parentBounds=\(lxWorkspaceFormatRect(overlayParent?.bounds ?? .zero)) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
+        )
 
         // Clamp against current window size so panel cannot consume the whole main region.
         let normalizedSize = clampedPanelSize(slot.currentSize, for: slot.config.position)
         if normalizedSize != slot.currentSize {
+            lxWorkspaceStdoutLog(
+                "showPanel normalized id=\(id) from=\(String(format: "%.1f", slot.currentSize)) to=\(String(format: "%.1f", normalizedSize))"
+            )
             slot.currentSize = normalizedSize
             slot.sizeConstraint?.constant = normalizedSize
         }
@@ -284,7 +343,10 @@ class WorkspaceManager: NSObject {
 
         let offset = exitOffset(for: slot)
         slot.shadowWrapper.isHidden = false
-        slot.resizeHandle.isHidden = false
+        slot.resizeHandle.isHidden = slot.isFullscreen
+        if slot.isFullscreen {
+            bringPanelToFront(slot)
+        }
         slot.shadowWrapper.layer?.transform = CATransform3DMakeTranslation(offset.x, offset.y, 0)
 
         NSAnimationContext.runAnimationGroup { ctx in
@@ -292,27 +354,96 @@ class WorkspaceManager: NSObject {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             ctx.allowsImplicitAnimation = true
             slot.shadowWrapper.layer?.transform = CATransform3DIdentity
+            lxWorkspaceStdoutLog(
+                "showPanel animate id=\(id) trailingInset=\(String(format: "%.1f", cardTrailingInset())) bottomInset=\(String(format: "%.1f", cardBottomInset()))"
+            )
             onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
             overlayParent?.layoutSubtreeIfNeeded()
+            layoutFrameDrivenPanels()
         }
         os_log("Panel shown: %@ trailing=%.1f bottom=%.1f", log: Self.log, type: .info, id, cardTrailingInset(), cardBottomInset())
+        DispatchQueue.main.async { [weak self, weak slot] in
+            guard let self, let slot else { return }
+            self.layoutFrameDrivenPanels()
+            lxWorkspaceStdoutLog(
+                "showPanel after-layout id=\(id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame)) parentBounds=\(lxWorkspaceFormatRect(self.overlayParent?.bounds ?? .zero)) trailingInset=\(String(format: "%.1f", self.cardTrailingInset())) bottomInset=\(String(format: "%.1f", self.cardBottomInset()))"
+            )
+        }
     }
 
     /// Hide a panel, animating it out and restoring the WebView card's space.
     func hidePanel(id: String) {
-        guard let slot = panels[id], slot.isVisible else { return }
+        guard let slot = panels[id], slot.isVisible else {
+            lxWorkspaceStdoutLog("hidePanel ignored id=\(id)")
+            return
+        }
+        lxWorkspaceStdoutLog(
+            "hidePanel start id=\(id) position=\(slot.config.position.rawValue) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame))"
+        )
         hidePanelInternal(id: id, duration: Self.animationDuration, updateCardEdges: true)
         os_log("Panel hidden: %@", log: Self.log, type: .info, id)
     }
 
     func togglePanel(id: String) {
-        guard let slot = panels[id] else { return }
+        guard let slot = panels[id] else {
+            lxWorkspaceStdoutLog("togglePanel missing id=\(id)")
+            return
+        }
+        lxWorkspaceStdoutLog("togglePanel id=\(id) visible=\(slot.isVisible) position=\(slot.config.position.rawValue)")
         slot.isVisible ? hidePanel(id: id) : showPanel(id: id)
     }
 
     func isPanelVisible(id: String) -> Bool { panels[id]?.isVisible ?? false }
 
-    func panelContainer(id: String) -> NSView? { panels[id]?.containerView }
+    func panelContainer(id: String) -> NSView? {
+        guard let slot = panels[id] else {
+            lxWorkspaceStdoutLog("panelContainer missing id=\(id)")
+            return nil
+        }
+        lxWorkspaceStdoutLog(
+            "panelContainer id=\(id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) containerFrame=\(lxWorkspaceFormatRect(slot.containerView.frame)) containerBounds=\(lxWorkspaceFormatRect(slot.containerView.bounds)) visible=\(slot.isVisible)"
+        )
+        return slot.containerView
+    }
+
+    func relayoutPanels() {
+        layoutFrameDrivenPanels()
+    }
+
+    func setPanelFullscreen(id: String, enabled: Bool) {
+        guard let slot = panels[id] else {
+            lxWorkspaceStdoutLog("setPanelFullscreen missing id=\(id)")
+            return
+        }
+        guard slot.config.position == .bottom else {
+            lxWorkspaceStdoutLog("setPanelFullscreen ignored id=\(id) position=\(slot.config.position.rawValue)")
+            return
+        }
+        guard slot.isFullscreen != enabled else {
+            lxWorkspaceStdoutLog("setPanelFullscreen no-op id=\(id) enabled=\(enabled)")
+            return
+        }
+
+        slot.isFullscreen = enabled
+        lxWorkspaceStdoutLog("setPanelFullscreen id=\(id) enabled=\(enabled) visible=\(slot.isVisible)")
+        if enabled {
+            bringPanelToFront(slot)
+        }
+
+        if slot.isVisible {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = Self.animationDuration
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                ctx.allowsImplicitAnimation = true
+                onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
+                overlayParent?.layoutSubtreeIfNeeded()
+                layoutFrameDrivenPanels()
+            }
+        } else {
+            onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
+            layoutFrameDrivenPanels()
+        }
+    }
 
     // MARK: - Resize
 
@@ -320,10 +451,14 @@ class WorkspaceManager: NSObject {
     private func updatePanelSize(id: String, newSize: CGFloat) {
         guard let slot = panels[id] else { return }
         let clamped = clampedPanelSize(newSize, for: slot.config.position)
+        lxWorkspaceStdoutLog(
+            "resizePanel id=\(id) requested=\(String(format: "%.1f", newSize)) clamped=\(String(format: "%.1f", clamped)) position=\(slot.config.position.rawValue)"
+        )
         slot.currentSize = clamped
         slot.sizeConstraint?.constant = clamped
         onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
         overlayParent?.layoutSubtreeIfNeeded()
+        layoutFrameDrivenPanels()
     }
 
     // MARK: - Private
@@ -377,39 +512,51 @@ class WorkspaceManager: NSObject {
             ])
 
         case .bottom:
-            let hc = wrapper.heightAnchor.constraint(equalToConstant: size)
-            slot.sizeConstraint = hc
-            NSLayoutConstraint.activate([
-                wrapper.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
-                wrapper.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
-                wrapper.bottomAnchor.constraint(equalTo: parent.bottomAnchor, constant: -p),
-                hc,
-                // Handle sits in the gap above the panel card
-                handle.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: p),
-                handle.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -p),
-                handle.bottomAnchor.constraint(equalTo: wrapper.topAnchor),
-                handle.heightAnchor.constraint(equalToConstant: h),
-            ])
+            slot.sizeConstraint = nil
+            wrapper.translatesAutoresizingMaskIntoConstraints = true
+            handle.translatesAutoresizingMaskIntoConstraints = true
+            wrapper.autoresizingMask = []
+            handle.autoresizingMask = []
+            lxWorkspaceStdoutLog(
+                "installCard bottom frameDriven id=\(slot.config.id) size=\(String(format: "%.1f", size)) parentBounds=\(lxWorkspaceFormatRect(parent.bounds)) sidebarFrame=\(lxWorkspaceFormatRect(sidebar.frame)) padding=\(String(format: "%.1f", p))"
+            )
+            layoutBottomPanel(slot, in: parent, sidebar: sidebar)
         }
 
         parent.layoutSubtreeIfNeeded()
+        lxWorkspaceStdoutLog(
+            "installCard complete id=\(slot.config.id) position=\(slot.config.position.rawValue) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame))"
+        )
     }
 
     private func cardInset(for position: PanelPosition) -> CGFloat {
         let p = padding
         guard let id = activeByPosition[position], let slot = panels[id], slot.isVisible else { return p }
+        if position == .bottom, slot.isFullscreen {
+            return p
+        }
         return p + clampedPanelSize(slot.currentSize, for: position) + p
     }
 
     private func cardTrailingInset() -> CGFloat { cardInset(for: .right) }
     private func cardBottomInset() -> CGFloat { cardInset(for: .bottom) }
 
+    private func bringPanelToFront(_ slot: PanelSlot) {
+        guard let parent = overlayParent else { return }
+        parent.addSubview(slot.shadowWrapper, positioned: .above, relativeTo: nil)
+        parent.addSubview(slot.resizeHandle, positioned: .above, relativeTo: slot.shadowWrapper)
+    }
+
     private func exitOffset(for slot: PanelSlot) -> (x: CGFloat, y: CGFloat) {
         let size = clampedPanelSize(slot.currentSize, for: slot.config.position) + padding
         switch slot.config.position {
         case .right:  return (x: size, y: 0)
         case .left:   return (x: -size, y: 0)
-        case .bottom: return (x: 0, y: -size)
+        case .bottom:
+            if slot.isFullscreen, let parent = overlayParent {
+                return (x: 0, y: -(parent.bounds.height + padding))
+            }
+            return (x: 0, y: -size)
         }
     }
 
@@ -432,6 +579,7 @@ class WorkspaceManager: NSObject {
             if updateCardEdges {
                 onCardEdgesChanged?(cardTrailingInset(), cardBottomInset())
                 overlayParent?.layoutSubtreeIfNeeded()
+                layoutFrameDrivenPanels()
             }
         } completionHandler: { [weak slot] in
             Task { @MainActor in
@@ -439,8 +587,57 @@ class WorkspaceManager: NSObject {
                 slot.shadowWrapper.isHidden = true
                 slot.shadowWrapper.layer?.transform = CATransform3DIdentity
                 slot.resizeHandle.isHidden = true
+                lxWorkspaceStdoutLog(
+                    "hidePanel complete id=\(slot.config.id) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame))"
+                )
             }
         }
+    }
+
+    private func layoutFrameDrivenPanels() {
+        guard let parent = overlayParent, let sidebar = sidebarRef else { return }
+        for slot in panels.values where slot.config.position == .bottom {
+            layoutBottomPanel(slot, in: parent, sidebar: sidebar)
+        }
+    }
+
+    private func layoutBottomPanel(_ slot: PanelSlot, in parent: NSView, sidebar: NSView) {
+        let p = padding
+        if slot.isFullscreen {
+            let width = max(0, parent.bounds.width - (p * 2))
+            let height = max(0, parent.bounds.height - (p * 2))
+            slot.shadowWrapper.frame = NSRect(
+                x: p,
+                y: p,
+                width: width,
+                height: height
+            )
+            slot.resizeHandle.frame = .zero
+            slot.resizeHandle.isHidden = true
+        } else {
+            let size = clampedPanelSize(slot.currentSize, for: .bottom)
+            let leading = max(0, sidebar.frame.maxX)
+            let trailing = max(leading, parent.bounds.width - p)
+            let width = max(0, trailing - leading)
+            let bottom = p
+            slot.shadowWrapper.frame = NSRect(
+                x: leading,
+                y: bottom,
+                width: width,
+                height: size
+            )
+            slot.resizeHandle.frame = NSRect(
+                x: leading,
+                y: bottom + size,
+                width: width,
+                height: Self.handleSize
+            )
+            slot.resizeHandle.isHidden = !slot.isVisible
+        }
+        slot.shadowWrapper.layoutSubtreeIfNeeded()
+        lxWorkspaceStdoutLog(
+            "layoutBottomPanel id=\(slot.config.id) fullscreen=\(slot.isFullscreen) wrapperFrame=\(lxWorkspaceFormatRect(slot.shadowWrapper.frame)) handleFrame=\(lxWorkspaceFormatRect(slot.resizeHandle.frame)) parentBounds=\(lxWorkspaceFormatRect(parent.bounds)) sidebarFrame=\(lxWorkspaceFormatRect(sidebar.frame)) visible=\(slot.isVisible)"
+        )
     }
 
     /// Clamp panel size by absolute bounds and current window space,
@@ -460,7 +657,11 @@ class WorkspaceManager: NSObject {
             return base
         }
 
-        return min(base, max(Self.panelMinSize, maxByWindow))
+        let result = min(base, max(Self.panelMinSize, maxByWindow))
+        lxWorkspaceStdoutLog(
+            "clampPanel position=\(position.rawValue) requested=\(String(format: "%.1f", requested)) base=\(String(format: "%.1f", base)) maxByWindow=\(String(format: "%.1f", maxByWindow)) result=\(String(format: "%.1f", result)) parentBounds=\(lxWorkspaceFormatRect(parent.bounds))"
+        )
+        return result
     }
 }
 

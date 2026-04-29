@@ -3,6 +3,25 @@ import AppKit
 import CLingXiaRustAPI
 import OSLog
 
+private func lxTerminalRuntimeStdoutLog(_ message: String) {
+    guard ProcessInfo.processInfo.environment["LX_TERMINAL_STDOUT_LOGS"] == "1" else {
+        return
+    }
+    let line = "[LingXia][TerminalRuntime] \(message)\n"
+    FileHandle.standardOutput.write(Data(line.utf8))
+    NSLog("%@", line.trimmingCharacters(in: .newlines))
+}
+
+private func lxTerminalRuntimeFormatRect(_ rect: NSRect) -> String {
+    String(
+        format: "%.0f,%.0f %.0fx%.0f",
+        rect.minX,
+        rect.minY,
+        rect.width,
+        rect.height
+    )
+}
+
 @MainActor
 struct LxAppUIActionItem: Sendable {
     let id: String
@@ -47,6 +66,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     private var independentPanelOpenTasks: [String: Task<Void, Never>] = [:]
     private var independentPanelDisplayTasks: [String: Task<Void, Never>] = [:]
     private var surfacePageInstanceIDs: [String: String] = [:]
+    private var terminalWorkspaces: [String: LingXiaTerminalWorkspaceView] = [:]
     nonisolated(unsafe) private var independentPanelOutsideClickGlobalMonitor: Any?
     nonisolated(unsafe) private var independentPanelOutsideClickLocalMonitor: Any?
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
@@ -457,6 +477,11 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: parentID)
         }
 
+        if surface.content.kind == .terminal {
+            try openTerminalAttachPanelSurface(surface)
+            return
+        }
+
         if openedSurfaceIDs.contains(surface.id) {
             shell.show()
             shell.showPanel(id: surface.id)
@@ -472,13 +497,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         guard surface.presentation.kind == .attachPanel else {
             throw LxAppUIError.invalidConfig("surface \(surface.id) is not an attachPanel")
         }
-        guard case .lxapp = surface.content.kind,
-              let appId = surface.content.appId,
-              !appId.isEmpty else {
-            throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
+        switch surface.content.kind {
+        case .lxapp:
+            guard let appId = surface.content.appId, !appId.isEmpty else {
+                throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
+            }
+            openPanelLxapp(surface.id, appId, normalizedPath(surface.content.path))
+        case .terminal:
+            try openTerminalAttachPanelSurface(surface)
         }
-
-        openPanelLxapp(surface.id, appId, normalizedPath(surface.content.path))
     }
 
     private func openLxAppSurface(
@@ -508,6 +535,67 @@ final class LxAppMacAppUIRuntime: NSObject {
         case .terminal:
             throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported terminal content on macOS")
         }
+    }
+
+    private func openTerminalAttachPanelSurface(_ surface: LxAppUIConfig.Surface) throws {
+        guard let position = panelPosition(for: surface) else {
+            throw LxAppUIError.invalidConfig("surface \(surface.id) terminal panel requires a valid attachPanel edge")
+        }
+        let reused = terminalWorkspaces[surface.id] != nil
+        let defaultHeight = CGFloat(surface.presentation.size?.height ?? 320)
+        logTerminal(
+            "runtime.openTerminal surface=\(surface.id) position=\(position.rawValue) reused=\(reused) defaultHeight=\(String(format: "%.1f", defaultHeight)) windowFrameBefore=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+        )
+        shell.show()
+        let workspace = terminalWorkspaces[surface.id]
+            ?? LingXiaTerminalWorkspaceView(surfaceID: surface.id)
+        terminalWorkspaces[surface.id] = workspace
+        workspace.onRequestClosePanel = { [weak self] in
+            self?.logTerminal("runtime.workspaceRequestedClose surface=\(surface.id)")
+            self?.closeTerminalWorkspaceSurface(id: surface.id)
+        }
+        workspace.onToggleSurfaceZoom = { [weak self] zoomed in
+            guard let self else { return }
+            self.logTerminal("runtime.toggleSurfaceZoom surface=\(surface.id) enabled=\(zoomed)")
+            self.shell.setPanelFullscreen(id: surface.id, enabled: zoomed)
+        }
+        workspace.ensureOpenTab()
+        logTerminal(
+            "runtime.beforeShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+        )
+        shell.showPanelWithNativeContent(
+            id: surface.id,
+            position: position,
+            contentView: workspace,
+            defaultSize: defaultHeight
+        )
+        logTerminal(
+            "runtime.afterShowPanel surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace.frame)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace.bounds)) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))"
+        )
+        workspace.focusActiveTerminal()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak workspace, weak shell] in
+            self.logTerminal(
+                "runtime.delayedFocusTerminal surface=\(surface.id) workspaceFrame=\(lxTerminalRuntimeFormatRect(workspace?.frame ?? .zero)) workspaceBounds=\(lxTerminalRuntimeFormatRect(workspace?.bounds ?? .zero)) windowFrame=\(lxTerminalRuntimeFormatRect(shell?.hostWindow?.frame ?? .zero))"
+            )
+            workspace?.focusActiveTerminal()
+        }
+        openedSurfaceIDs.insert(surface.id)
+        visibleSurfaceIDs.insert(surface.id)
+        logTerminal("runtime.openTerminal markedVisible surface=\(surface.id) opened=\(openedSurfaceIDs.contains(surface.id)) visible=\(visibleSurfaceIDs.contains(surface.id))")
+        refreshChromeActivators()
+    }
+
+    private func closeTerminalWorkspaceSurface(id: String) {
+        logTerminal("runtime.closeTerminalWorkspace surface=\(id) windowFrame=\(lxTerminalRuntimeFormatRect(shell.hostWindow?.frame ?? .zero))")
+        shell.setPanelFullscreen(id: id, enabled: false)
+        terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+        terminalWorkspaces[id]?.disarmInput()
+        terminalWorkspaces.removeValue(forKey: id)
+        openedSurfaceIDs.remove(id)
+        visibleSurfaceIDs.remove(id)
+        shell.hidePanel(id: id)
+        updateIndependentPanelOutsideClickMonitors()
+        refreshChromeActivators()
     }
 
     private func focusSurface(id: String) {
@@ -560,6 +648,10 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
             }
         case .attachPanel:
+            logTerminal("runtime.closeAttachPanel surface=\(id)")
+            shell.setPanelFullscreen(id: id, enabled: false)
+            terminalWorkspaces[id]?.setSurfaceZoomEnabled(false, notifyRuntime: false)
+            terminalWorkspaces[id]?.disarmInput()
             shell.hidePanel(id: id)
         case .sheet, .embedded:
             break
@@ -568,6 +660,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         visibleSurfaceIDs.remove(id)
         updateIndependentPanelOutsideClickMonitors()
         refreshChromeActivators()
+    }
+
+    private func logTerminal(_ message: String, type: OSLogType = .info) {
+        lxTerminalRuntimeStdoutLog(message)
+        let debugEnabled = ProcessInfo.processInfo.environment["LX_TERMINAL_DEBUG_LOGS"] == "1"
+        guard debugEnabled || type == .error || type == .fault else {
+            return
+        }
+        os_log("%{public}@", log: Self.log, type: type, message)
     }
 
     private func discardOpenedSubtree(rootID: String) {
@@ -906,7 +1007,7 @@ final class LxAppMacAppUIRuntime: NSObject {
                 }
                 seenAppIDs.insert(appId)
             case .terminal:
-                throw LxAppUIError.unsupported("surface \(surface.id) uses unsupported terminal content on macOS")
+                break
             }
 
             if surface.presentation.anchor != nil && surface.presentation.kind != .panel {
@@ -938,6 +1039,15 @@ final class LxAppMacAppUIRuntime: NSObject {
         var childrenByParentId: [String: [String]] = [:]
 
         for surface in ui.surfaces {
+            if surface.content.kind == .terminal {
+                guard surface.presentation.kind == .attachPanel else {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.kind attachPanel")
+                }
+                guard surface.presentation.edge == .bottom else {
+                    throw LxAppUIError.unsupported("terminal surface \(surface.id) must use presentation.edge bottom")
+                }
+            }
+
             switch surface.presentation.kind {
             case .window, .panel:
                 if surface.presentation.attachTo != nil {
