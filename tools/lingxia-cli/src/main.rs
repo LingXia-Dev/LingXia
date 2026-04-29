@@ -38,11 +38,11 @@ struct BuildOptions {
     #[arg(long)]
     skip_native: bool,
 
-    /// Android ABIs (comma-separated)
+    /// Android ABIs (comma-separated). Default: arm64-v8a. Use `all` for arm32 + arm64.
     #[arg(
         long,
         value_delimiter = ',',
-        long_help = "Android ABIs (comma-separated).\n\nSupported values:\n  - arm64-v8a\n  - armeabi-v7a"
+        long_help = "Android ABIs (comma-separated).\n\nDefault: arm64-v8a.\nUse `--abis all` to build both arm32 and arm64.\n\nSupported values:\n  - all\n  - arm64-v8a\n  - armeabi-v7a"
     )]
     abis: Vec<String>,
 

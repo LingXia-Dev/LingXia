@@ -386,7 +386,7 @@ impl Platform for AndroidPlatform {
             println!("Installing ({:.1} MB) with adb...", size_mb);
         }
         install_with_adb(Some(device_id.as_str()), &apk_path, file_size, config.quiet)?;
-        println!("{}", "✓ Installed".green());
+        println!("{} APK → {}", "✓ Installed".green(), apk_path.display());
         Ok(())
     }
 
