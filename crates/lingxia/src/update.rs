@@ -5,6 +5,9 @@ use lingxia_service::update::{
     UpdateUiMode, configure_update, update_config,
 };
 use std::fmt;
+use std::path::Path;
+
+pub use lingxia_service::update::HostAppInstall;
 
 /// Disables built-in host app update UX and startup auto-check.
 ///
@@ -15,6 +18,23 @@ pub fn use_custom_host_app_update() {
     config.ui_mode = UpdateUiMode::Custom;
     config.auto_check_app = false;
     configure_update(config);
+}
+
+/// Registers a custom host app installer.
+///
+/// The installer is called only after the package has been downloaded and
+/// verified. Use [`use_custom_host_app_update`] when the host wants to disable
+/// LingXia's built-in startup check and update UI.
+///
+/// Return [`HostAppInstall::Handled`] when the installer has handled the
+/// package, or [`HostAppInstall::Fallback`] to use the default platform
+/// installer.
+pub fn set_host_app_installer(
+    installer: impl Fn(&Path) -> crate::Result<HostAppInstall> + Send + Sync + 'static,
+) {
+    lingxia_service::update::set_host_app_installer(move |path| {
+        installer(path).map_err(|error| lingxia_update::UpdateError::runtime(error.to_string()))
+    });
 }
 
 /// A checked host app update.

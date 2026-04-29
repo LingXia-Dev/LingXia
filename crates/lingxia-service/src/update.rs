@@ -11,7 +11,7 @@ use rong_rt::http as host_http;
 use std::fs;
 use std::io::{Error as IoError, Read};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 
 pub use lingxia_update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
@@ -19,6 +19,43 @@ pub use lingxia_update::{
     UpdateUiMode, Version, VersionError, configure_update, subscribe_app_update_events,
     update_config,
 };
+
+/// Result of a custom host app installer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostAppInstall {
+    /// The installer handled the package and no platform fallback is needed.
+    Handled,
+    /// The installer chose not to handle the package; use the default platform installer.
+    Fallback,
+}
+
+pub type HostAppInstaller =
+    dyn Fn(&Path) -> Result<HostAppInstall, UpdateError> + Send + Sync + 'static;
+
+static HOST_APP_INSTALLER: OnceLock<RwLock<Option<Arc<HostAppInstaller>>>> = OnceLock::new();
+
+fn host_app_installer() -> &'static RwLock<Option<Arc<HostAppInstaller>>> {
+    HOST_APP_INSTALLER.get_or_init(|| RwLock::new(None))
+}
+
+/// Registers a custom host app installer.
+///
+/// The installer receives the downloaded and verified package path. Return
+/// [`HostAppInstall::Handled`] after successfully handing off or applying the
+/// package, or [`HostAppInstall::Fallback`] when the default platform installer
+/// should be used instead.
+pub fn set_host_app_installer(
+    installer: impl Fn(&Path) -> Result<HostAppInstall, UpdateError> + Send + Sync + 'static,
+) {
+    match host_app_installer().write() {
+        Ok(mut guard) => {
+            *guard = Some(Arc::new(installer));
+        }
+        Err(error) => {
+            log::warn!("failed to register host app installer: {error}");
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct HostAppUpdateService {
@@ -156,6 +193,17 @@ impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     }
 
     fn install_app_update(&self, package_path: &Path) -> Result<(), UpdateError> {
+        if let Some(installer) = host_app_installer()
+            .read()
+            .ok()
+            .and_then(|guard| guard.as_ref().cloned())
+        {
+            match installer(package_path)? {
+                HostAppInstall::Handled => return Ok(()),
+                HostAppInstall::Fallback => {}
+            }
+        }
+
         self.runtime.install_update(package_path).map_err(|error| {
             UpdateError::runtime(format!("failed to request app update install: {error}"))
         })
