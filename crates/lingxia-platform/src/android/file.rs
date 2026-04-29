@@ -5,7 +5,7 @@ use crate::traits::file::{
 };
 use jni::objects::{JObject, JString, JValue};
 use jni::{jni_sig, jni_str};
-use lingxia_webview::platform::android::with_env;
+use super::with_env;
 use serde::Deserialize;
 use std::error::Error;
 

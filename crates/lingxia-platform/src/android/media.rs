@@ -12,7 +12,7 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, jlong};
 use jni::{jni_sig, jni_str};
-use lingxia_webview::platform::android::with_env;
+use super::with_env;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 

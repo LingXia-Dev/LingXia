@@ -1,4 +1,8 @@
-use jni::objects::{Global, JClass};
+use jni::{
+    Env, JavaVM,
+    errors::Error as JniError,
+    objects::{Global, JClass},
+};
 use std::sync::OnceLock;
 
 mod app;
@@ -19,6 +23,22 @@ pub use device::{
     get_android_id, get_api_level, has_telephony_feature, read_external_storage_text,
     write_external_storage_text,
 };
+
+static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+
+pub fn initialize_jni(vm: JavaVM) {
+    let _ = JAVA_VM.set(vm);
+}
+
+pub(crate) fn with_env<T, E>(f: impl FnOnce(&mut Env) -> Result<T, E>) -> Result<T, E>
+where
+    E: From<JniError>,
+{
+    let vm = JAVA_VM
+        .get()
+        .ok_or_else(|| E::from(JniError::UninitializedJavaVM))?;
+    vm.attach_current_thread(f)
+}
 
 /// Enumerates the cacheable Java classes we keep as global references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

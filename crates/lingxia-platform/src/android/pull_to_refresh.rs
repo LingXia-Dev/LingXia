@@ -22,7 +22,7 @@ fn call_pull_to_refresh(method: &str, app_id: &str, path: &str) -> Result<(), Pl
         .map_err(|e| PlatformError::Platform(e.to_string()))?;
     let method = JNIString::new(method_name.as_str());
 
-    lingxia_webview::platform::android::with_env(|env| {
+    super::with_env(|env| {
         let app_id_jstring = env.new_string(app_id).map_err(|e| {
             PlatformError::Platform(format!("Failed to create app_id string: {:?}", e))
         })?;

@@ -15,7 +15,7 @@ impl SurfacePresenter for Platform {
         let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
+        super::with_env(|env| -> Result<(), PlatformError> {
             let id = env.new_string(&request.id)?;
             let app_id = env.new_string(&request.app_id)?;
             let path = env.new_string(&request.path)?;
@@ -58,7 +58,7 @@ impl SurfacePresenter for Platform {
         let surface_class: &JClass = super::get_cached_class(super::CachedClass::LxAppSurface)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
-        lingxia_webview::platform::android::with_env(|env| -> Result<(), PlatformError> {
+        super::with_env(|env| -> Result<(), PlatformError> {
             let id = env.new_string(id)?;
             let app_id = env.new_string(app_id)?;
             let reason = env.new_string(reason)?;

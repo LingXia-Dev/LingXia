@@ -14,6 +14,27 @@ use lxapp::{
     CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
     PageInstanceEvent, PageOrientation, PageOwner, PageTarget, PresentationKind, SceneId,
 };
+use std::sync::OnceLock;
+
+static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+
+fn initialize_jni(vm: JavaVM) {
+    let _ = JAVA_VM.set(vm);
+}
+
+/// Run closure with a JNI `Env`, attaching current thread when needed.
+///
+/// This is the public helper for app-side native routes that need to call Java/Kotlin
+/// from non-JNI threads.
+pub fn with_env<T, E>(f: impl FnOnce(&mut Env) -> Result<T, E>) -> Result<T, E>
+where
+    E: From<jni::errors::Error>,
+{
+    let vm = JAVA_VM
+        .get()
+        .ok_or_else(|| E::from(jni::errors::Error::UninitializedJavaVM))?;
+    vm.attach_current_thread(f)
+}
 
 /// Parses a color string (e.g., "#RRGGBB" or "transparent") into an i32 ARGB value for Android.
 fn parse_color_to_i32(color_str: &str, default_color: i32) -> i32 {
@@ -129,9 +150,8 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
 #[allow(improper_ctypes_definitions)]
 pub extern "system" fn JNI_OnLoad(vm: JavaVM, _: *mut std::os::raw::c_void) -> jint {
     crate::logging::init();
-
-    // Only store JavaVM here. App/library classes must be cached from a Java->native call so
-    // `FindClass` uses the correct classloader.
+    initialize_jni(vm.clone());
+    lingxia_platform::initialize_jni(vm.clone());
     lingxia_webview::platform::android::initialize_jni(vm);
 
     info!("Rust library loaded successfully");

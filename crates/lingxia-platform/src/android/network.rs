@@ -11,7 +11,7 @@ fn call_network_method(method_name: &str, callback_id: u64) -> Result<(), Platfo
         .map_err(|e| PlatformError::Platform(format!("Failed to get LxAppNetwork class: {}", e)))?;
     let method = JNIString::new(method_name);
 
-    lingxia_webview::platform::android::with_env(|env| {
+    super::with_env(|env| {
         env.call_static_method(
             network_class,
             &method,

@@ -30,7 +30,6 @@ jni = "0.22.1"
 android_logger = "0.15.0"
 serde_json = { workspace = true }
 ndk-sys = "0.6.0"
-lingxia-webview = { workspace = true }
 base64 = { workspace = true }
 
 # Apple-specific dependencies (iOS and macOS)
