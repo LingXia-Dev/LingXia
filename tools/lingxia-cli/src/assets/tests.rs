@@ -142,6 +142,7 @@ fn generated_app_json_includes_capabilities() {
         features: None,
         capabilities: Some(crate::config::CapabilitiesConfig {
             notifications: true,
+            terminal: true,
         }),
         shell: None,
         ui: None,
@@ -154,6 +155,7 @@ fn generated_app_json_includes_capabilities() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["capabilities"]["notifications"], true);
+    assert_eq!(value["capabilities"]["terminal"], true);
 }
 
 #[test]
@@ -182,8 +184,11 @@ fn generated_ui_json_matches_ui_section() {
         resources: None,
     };
 
-    let ui_json = build_ui_json_from_config(&config, &[]).unwrap().unwrap();
+    let temp = TempDir::new().unwrap();
+    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+    println!("{}", serde_json::to_string_pretty(&value).unwrap());
     assert_eq!(value, ui);
 }
 
@@ -223,6 +228,177 @@ fn generated_ui_json_rewrites_app_ui_icons() {
     let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
     let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
     assert_eq!(value["activators"][0]["icon"], "icons/browser-deadbeef.pdf");
+}
+
+#[test]
+fn generated_ui_json_adds_terminal_for_capability() {
+    let config = LingXiaConfig {
+        app: None,
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        features: None,
+        capabilities: Some(crate::config::CapabilitiesConfig {
+            notifications: false,
+            terminal: true,
+        }),
+        shell: None,
+        ui: Some(serde_json::json!({
+            "launch": { "initialSurface": "main" },
+            "surfaces": [{
+                "id": "main",
+                "presentation": { "kind": "window" },
+                "content": { "kind": "lxapp", "appId": "demo-home" }
+            }],
+            "activators": []
+        })),
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+
+    let temp = TempDir::new().unwrap();
+    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+
+    assert_eq!(value["surfaces"][1]["id"], "terminal");
+    assert_eq!(value["surfaces"][1]["presentation"]["attachTo"], "main");
+    assert_eq!(value["surfaces"][1]["presentation"]["edge"], "bottom");
+    assert_eq!(value["surfaces"][1]["content"]["kind"], "terminal");
+    assert!(value["surfaces"][1]["content"].get("backend").is_none());
+    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
+    assert_eq!(value["activators"][0]["hostSurface"], "main");
+    assert!(
+        value["activators"][0]["icon"]
+            .as_str()
+            .unwrap()
+            .starts_with("icons/terminal-")
+    );
+    assert_eq!(value["activators"][0]["action"]["surface"], "terminal");
+}
+
+#[test]
+fn generated_ui_json_rejects_terminal_when_capability_disabled() {
+    let config = LingXiaConfig {
+        app: None,
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        features: None,
+        capabilities: Some(crate::config::CapabilitiesConfig {
+            notifications: false,
+            terminal: false,
+        }),
+        shell: None,
+        ui: Some(serde_json::json!({
+            "launch": { "initialSurface": "main" },
+            "surfaces": [{
+                "id": "main",
+                "presentation": { "kind": "window" },
+                "content": { "kind": "lxapp", "appId": "demo-home" }
+            }, {
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "bottom"
+                },
+                "content": { "kind": "terminal" }
+            }],
+            "activators": []
+        })),
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+
+    let err = build_ui_json_from_config(&config, &[])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("capabilities.terminal is not enabled"));
+}
+
+#[test]
+fn generated_ui_json_adds_terminal_activators_when_missing() {
+    let config = LingXiaConfig {
+        app: None,
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        features: None,
+        capabilities: Some(crate::config::CapabilitiesConfig {
+            notifications: false,
+            terminal: true,
+        }),
+        shell: None,
+        ui: Some(serde_json::json!({
+            "launch": { "initialSurface": "main" },
+            "surfaces": [{
+                "id": "main",
+                "presentation": { "kind": "window" },
+                "content": { "kind": "lxapp", "appId": "demo-home" }
+            }]
+        })),
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+
+    let temp = TempDir::new().unwrap();
+    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+
+    assert_eq!(value["activators"][0]["id"], "terminalSidebar");
+    assert_eq!(value["activators"][0]["hostSurface"], "main");
+}
+
+#[test]
+fn generated_ui_json_attaches_terminal_to_initial_root_surface() {
+    let config = LingXiaConfig {
+        app: None,
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        features: None,
+        capabilities: Some(crate::config::CapabilitiesConfig {
+            notifications: false,
+            terminal: true,
+        }),
+        shell: None,
+        ui: Some(serde_json::json!({
+            "launch": { "initialSurface": "mainPanel" },
+            "surfaces": [{
+                "id": "secondary",
+                "presentation": { "kind": "window" },
+                "content": { "kind": "lxapp", "appId": "secondary-home" }
+            }, {
+                "id": "mainPanel",
+                "presentation": { "kind": "panel", "anchor": "activator" },
+                "content": { "kind": "lxapp", "appId": "main-home" }
+            }],
+            "activators": []
+        })),
+        app_links: None,
+        storage: None,
+        resources: None,
+    };
+
+    let temp = TempDir::new().unwrap();
+    let icons = prepare_app_ui_icons(temp.path(), &config).unwrap();
+    let ui_json = build_ui_json_from_config(&config, &icons).unwrap().unwrap();
+    let value: serde_json::Value = serde_json::from_str(&ui_json).unwrap();
+
+    assert_eq!(
+        value["surfaces"][2]["presentation"]["attachTo"],
+        "mainPanel"
+    );
+    assert_eq!(value["activators"][0]["hostSurface"], "mainPanel");
 }
 
 #[test]

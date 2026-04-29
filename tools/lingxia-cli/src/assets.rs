@@ -48,6 +48,8 @@ mod sync;
 #[cfg(test)]
 #[path = "assets/tests.rs"]
 mod tests;
+#[path = "assets/ui.rs"]
+mod ui;
 
 fn is_png_path(path: &Path) -> bool {
     path.extension()

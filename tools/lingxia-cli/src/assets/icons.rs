@@ -8,11 +8,13 @@ use std::path::{Component, Path, PathBuf};
 
 use super::hash::sha256_hex;
 use super::sync::write_if_changed;
+use super::ui::{TERMINAL_ICON_SOURCE, effective_ui_config};
 
 const APP_UI_ICON_DIR: &str = "icons";
 const MAX_APP_UI_ICON_BYTES: u64 = 512 * 1024;
 const MIN_APP_UI_ICON_SIZE: f32 = 16.0;
 const MAX_APP_UI_ICON_SIZE: f32 = 512.0;
+const TERMINAL_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect x="7" y="11" width="50" height="42" rx="8" fill="none" stroke="#000000" stroke-width="5"/><path d="M17 25l8 7-8 7" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/><path d="M31 40h15" fill="none" stroke="#000000" stroke-width="5" stroke-linecap="round"/></svg>"##;
 
 #[derive(Clone, Debug)]
 pub(super) struct PreparedAppUiIcon {
@@ -26,17 +28,21 @@ pub(super) fn prepare_app_ui_icons(
     project_root: &Path,
     config: &LingXiaConfig,
 ) -> Result<Vec<PreparedAppUiIcon>> {
-    let Some(ui) = config.ui.as_ref() else {
+    let Some(ui) = effective_ui_config(config)? else {
         return Ok(Vec::new());
     };
 
     let mut icon_sources = Vec::new();
-    collect_app_ui_icon_sources(ui, &mut icon_sources)?;
+    collect_app_ui_icon_sources(&ui, &mut icon_sources)?;
     icon_sources.sort();
     icon_sources.dedup();
 
     let mut prepared = Vec::new();
     for source in icon_sources {
+        if source == TERMINAL_ICON_SOURCE {
+            prepared.push(prepare_builtin_terminal_icon()?);
+            continue;
+        }
         let source_path = resolve_project_relative_file(project_root, &source)
             .with_context(|| format!("Invalid ui activator icon '{}'", source))?;
         if !source_path.exists() {
@@ -89,6 +95,19 @@ pub(super) fn prepare_app_ui_icons(
     }
 
     Ok(prepared)
+}
+
+fn prepare_builtin_terminal_icon() -> Result<PreparedAppUiIcon> {
+    validate_app_ui_svg_icon(TERMINAL_ICON_SOURCE, TERMINAL_ICON_SVG)?;
+    let pdf = lingxia_gen::icons::svg_to_pdf_bytes(TERMINAL_ICON_SVG)
+        .with_context(|| "Failed to convert built-in terminal icon to PDF")?;
+    let hash = sha256_hex(&pdf);
+    Ok(PreparedAppUiIcon {
+        relative_path: format!("{}/terminal-{}.pdf", APP_UI_ICON_DIR, &hash[..12]),
+        source_path: TERMINAL_ICON_SOURCE.to_string(),
+        bytes: pdf,
+        hash,
+    })
 }
 
 pub(super) fn rewrite_app_ui_icon_paths(

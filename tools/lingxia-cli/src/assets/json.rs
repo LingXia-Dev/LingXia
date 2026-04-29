@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use super::bundles::PreparedResourceBundle;
 use super::icons::{PreparedAppUiIcon, rewrite_app_ui_icon_paths};
+use super::ui::effective_ui_config;
 
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
@@ -73,10 +74,10 @@ pub(super) fn build_ui_json_from_config(
     config: &LingXiaConfig,
     app_ui_icons: &[PreparedAppUiIcon],
 ) -> Result<Option<String>> {
-    let Some(ui) = config.ui.as_ref() else {
+    let Some(ui) = effective_ui_config(config)? else {
         return Ok(None);
     };
-    let mut rewritten = ui.clone();
+    let mut rewritten = ui;
     if !app_ui_icons.is_empty() {
         let by_source = app_ui_icons
             .iter()
