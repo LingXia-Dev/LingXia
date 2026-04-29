@@ -58,6 +58,15 @@ pub mod media;
 pub mod provider;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
+/// Terminal backend status and integration helpers.
+#[cfg(feature = "terminal-runtime")]
+pub mod terminal {
+    pub use lingxia_terminal::{
+        BackendStatus, TerminalBackend, ghostty_available, ghostty_status, ghostty_status_json,
+        terminal_close, terminal_create, terminal_exited, terminal_read, terminal_resize,
+        terminal_snapshot, terminal_write,
+    };
+}
 /// Host app update helpers and update event types.
 pub mod update;
 
@@ -66,6 +75,7 @@ pub use error::{Error, Result};
 /// Logging types and logger registration helpers.
 pub mod log {
     pub use crate::logging::{DownstreamLoggerError, register_downstream_logger};
+    pub use ::log::{debug, error, info, trace, warn};
     pub use lingxia_log::{
         AttachedLogStream, LogLevel, LogMessage, LogStreamError, LogTag, attach_log_stream,
         attach_log_stream_default,

@@ -292,6 +292,30 @@ mod bridge {
         // panel_id is forwarded so Swift can route the openLxApp callback to the right panel.
         #[swift_bridge(swift_name = "openPanelLxapp")]
         fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str);
+
+        #[swift_bridge(swift_name = "getTerminalBackendStatusJson")]
+        fn get_terminal_backend_status_json() -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionCreate")]
+        fn terminal_session_create(cols: u16, rows: u16) -> u64;
+
+        #[swift_bridge(swift_name = "terminalSessionWrite")]
+        fn terminal_session_write(id: u64, input: &str) -> bool;
+
+        #[swift_bridge(swift_name = "terminalSessionRead")]
+        fn terminal_session_read(id: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionSnapshot")]
+        fn terminal_session_snapshot(id: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionExited")]
+        fn terminal_session_exited(id: u64) -> bool;
+
+        #[swift_bridge(swift_name = "terminalSessionResize")]
+        fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool;
+
+        #[swift_bridge(swift_name = "terminalSessionClose")]
+        fn terminal_session_close(id: u64);
     }
 
     extern "Swift" {
@@ -1031,4 +1055,106 @@ pub fn get_panels_config_json() -> Option<String> {
 /// panel_id is used by Rust as the panel slot context for surface routing.
 pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
     crate::browser::open_panel_lxapp(panel_id, appid, path);
+}
+
+pub fn get_terminal_backend_status_json() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::ghostty_status_json();
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        r#"{"backend":"ghostty","available":false,"status":"terminal runtime disabled","sourceDir":null,"libDir":null}"#.to_string()
+    }
+}
+
+pub fn terminal_session_create(cols: u16, rows: u16) -> u64 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_create(cols, rows);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (cols, rows);
+        0
+    }
+}
+
+pub fn terminal_session_write(id: u64, input: &str) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_write(id, input);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, input);
+        false
+    }
+}
+
+pub fn terminal_session_read(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_read(id);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        String::new()
+    }
+}
+
+pub fn terminal_session_snapshot(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_snapshot(id);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        r#"{"cols":0,"rows":0,"lines":[],"cells":[],"cursor_row":0,"cursor_col":0,"cursor_visible":false,"application_cursor":false,"bracketed_paste":false,"alternate_screen":false,"title":null,"generation":0,"exited":true}"#.to_string()
+    }
+}
+
+pub fn terminal_session_exited(id: u64) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_exited(id);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        true
+    }
+}
+
+pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        return crate::terminal::terminal_resize(id, cols, rows);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, cols, rows);
+        false
+    }
+}
+
+pub fn terminal_session_close(id: u64) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::terminal_close(id);
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+    }
 }

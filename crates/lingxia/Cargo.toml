@@ -14,6 +14,7 @@ standard = ["lxapp/standard", "dep:lingxia-logic", "browser-runtime"]
 devtool = []
 browser-runtime = ["dep:lingxia-browser"]
 shell-runtime = ["browser-runtime", "dep:lingxia-shell"]
+terminal-runtime = ["dep:lingxia-terminal"]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
@@ -26,6 +27,7 @@ lingxia-app-context = { workspace = true }
 lingxia-media = { workspace = true }
 lingxia-service = { workspace = true }
 lingxia-transfer = { workspace = true }
+lingxia-terminal = { workspace = true, optional = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-logic = { workspace = true, optional = true }
 lingxia-shell = { workspace = true, optional = true }

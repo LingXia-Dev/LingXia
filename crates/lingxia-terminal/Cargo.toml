@@ -1,0 +1,16 @@
+[package]
+name = "lingxia-terminal"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+description = "Terminal backend integration helpers for LingXia hosts"
+license = "MIT"
+
+[dependencies]
+portable-pty = "0.9"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+parking_lot = "0.12"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
