@@ -42,6 +42,8 @@ capabilities:
   # Enable push/notification integration where supported.
   # When true, iOS/Harmony SDK initialization may request notification permission and fetch a push token.
   notifications: false
+  # Enable a macOS terminal attach panel. The CLI auto-generates the bottom terminal UI surface.
+  terminal: false
 
 # Resource bundle sources copied into native app assets.
 # app.homeAppId and ui surfaces reference appId; resources.bundles says where local/package assets come from.

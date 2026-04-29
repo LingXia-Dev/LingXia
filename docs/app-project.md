@@ -154,6 +154,7 @@ and a `logic: false` HTML home lxapp.
 | Field | Type | Default | Description |
 |---|---|---:|---|
 | `notifications` | bool | `false` | Enables push/notification integration where supported. iOS/Harmony SDK startup may request notification permission and fetch a push token. |
+| `terminal` | bool | `false` | Enables the macOS terminal runtime. When true, the CLI auto-generates a bottom `terminal` App UI attach panel and sidebar activator if they are not already declared. |
 
 ---
 
@@ -316,7 +317,7 @@ Content fields:
 
 | Field | Required | Description |
 |---|---:|---|
-| `kind` | Yes | Use `lxapp` for current macOS App UI. `terminal` is reserved for a future runtime implementation. |
+| `kind` | Yes | Use `lxapp` or `terminal`. `terminal` is currently macOS-only and must be used as a bottom `attachPanel`. |
 | `appId` | For `lxapp` | Lxapp appId to open in this surface. |
 | `path` | No | Initial route/path for `lxapp` content. |
 
@@ -431,6 +432,102 @@ ui:
         surface: assistant
 
 ```
+
+### Terminal Panel (Native Host, Shared Rust Engine)
+
+The App UI runtime supports a native terminal surface that can be opened from product chrome and shown as a bottom panel. macOS is the first host, but the runtime boundary is designed for Windows to reuse the same Rust terminal engine.
+
+Current scope and limits:
+
+- macOS first; Windows should attach to the same Rust session/snapshot API instead of reimplementing terminal semantics.
+- `content.kind: terminal` only.
+- `presentation.kind: attachPanel` only.
+- `presentation.edge: bottom` only.
+- `content.backend` is not product config. If present, validation rejects it.
+- Rust owns terminal sessions, PTY/conpty transport, `libghostty-vt` terminal semantics, themes, and the stable snapshot/input protocol.
+- Platform SDKs own only native view rendering, focus/input event capture, clipboard/menu integration, and host UX such as tabs/splits/panel lifecycle.
+
+Reference material used for backend direction:
+
+- [con-ghostty](https://github.com/nowledge-co/con/tree/main/crates/con-ghostty)
+- [libghostty-rs bindings](https://github.com/Uzaaft/libghostty-rs/blob/master/crates/libghostty-vt-sys/src/bindings.rs)
+
+Ghostty preparation is handled by `crates/lingxia-terminal/build.rs`. Terminal builds use a pinned Ghostty git checkout and build `libghostty-vt`; the build script does not fetch release tarballs.
+
+```bash
+cargo build -p lingxia --features shell-runtime
+```
+
+Supported build-time inputs:
+
+| Environment | Description |
+|---|---|
+| `LINGXIA_GHOSTTY_SOURCE_DIR=/path/to/ghostty` | Uses an existing local checkout/source tree. |
+| `LINGXIA_GHOSTTY_REV=<rev>` | Overrides the pinned Ghostty git revision. If omitted, LingXia uses the pinned revision in `crates/lingxia-terminal/build.rs`. |
+| `LINGXIA_GHOSTTY_REPO=<url>` | Overrides the git repo used with `LINGXIA_GHOSTTY_REV`. |
+| `LINGXIA_GHOSTTY_ZIG=/path/to/zig` | Overrides the `zig` executable. |
+| `LINGXIA_GHOSTTY_ZIG_ARGS="..."` | Appends extra `zig build` arguments. |
+
+Target behavior:
+
+- A terminal icon in product chrome toggles the terminal surface.
+- Terminal surface is attached to the main window with `attachPanel.edge: bottom`.
+- The terminal workspace supports multi-tab sessions.
+- Each tab supports pane split in `left`, `right`, `up`, and `down` directions.
+- Hiding the surface should preserve terminal sessions (same lifecycle expectation as `closeSurface`).
+
+Example shape:
+
+```yaml
+ui:
+  launch:
+    initialSurface: main
+  surfaces:
+    - id: main
+      presentation:
+        kind: window
+      content:
+        kind: lxapp
+        appId: lingxia-showcase
+    - id: terminal
+      presentation:
+        kind: attachPanel
+        attachTo: main
+        edge: bottom
+        size:
+          height: 320
+      content:
+        kind: terminal
+  activators:
+    - id: terminalSidebar
+      kind: sidebarItem
+      hostSurface: main
+      label: Terminal
+      icon: icons/terminal.svg
+      action:
+        kind: toggleSurface
+        surface: terminal
+```
+
+Engine/platform boundary:
+
+- `crates/lingxia-terminal` is the product terminal engine. Public APIs use `terminal_*` naming; `portable-pty` is an internal transport detail.
+- The engine emits JSON snapshots containing grid size, cells, grapheme text, colors, attributes, cursor state, title, alternate-screen state, and lifecycle state.
+- macOS renders snapshots into `NSView`; Windows should render the same snapshots into its native view while sharing session create/write/resize/close behavior.
+- Do not add backend selectors to `lingxia.yaml`; backend choice is owned by the runtime.
+
+Implementation notes for native hosts:
+
+- Terminal content is mounted as the platform-native terminal view (`NSView` on macOS, Windows-native view later) into the attachPanel container.
+- Keep terminal runtime state in native host scope: `surface -> tabs -> split tree -> panes`.
+- Drive split layouts with native split containers and map each pane to one terminal session.
+- Add native terminal commands for: new tab, close tab, split left/right/up/down, and focus movement between panes.
+
+Future phases:
+
+1. Phase 1: bottom terminal surface with single tab/single pane.
+2. Phase 2: multi-tab support with stable session lifecycle.
+3. Phase 3: four-direction split and pane focus/resize behavior.
 
 ### Menu Bar Panel Example
 
@@ -585,6 +682,8 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 - Using `attachPanel.edge: top`, which is not supported yet.
 - Expecting `closeSurface` to destroy WebViews; it hides the surface.
 - Using PNG or generated lxapp runtime images for `ui.activators[].icon`; App UI icons must be host-root-relative SVG source files.
+- Defining `content.kind: terminal` outside `attachPanel` or with non-`bottom` edge; current terminal surfaces are bottom attach panels only.
+- Adding terminal backend selectors to product config; the runtime owns backend selection.
 - Editing generated `app.json` or `ui.json`.
 - Running an older `lingxia` binary from `PATH` after changing config schema or CLI validation.
 
@@ -601,3 +700,5 @@ This page intentionally does not define product behavior for:
 - top-attach panels
 - reusing one lxapp appId across multiple surfaces
 - page-owned App UI APIs for toggling or closing surfaces from lxapp content
+- terminal surfaces outside macOS `attachPanel` bottom shape
+- terminal backend selection in App UI config

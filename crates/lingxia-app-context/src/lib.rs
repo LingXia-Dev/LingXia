@@ -62,6 +62,8 @@ pub struct AppConfig {
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
+    #[serde(default)]
+    pub terminal: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -241,6 +243,14 @@ pub fn notifications_enabled() -> bool {
         .get()
         .and_then(|c| c.capabilities.as_ref())
         .map(|capabilities| capabilities.notifications)
+        .unwrap_or(false)
+}
+
+pub fn terminal_enabled() -> bool {
+    APP_CONFIG
+        .get()
+        .and_then(|c| c.capabilities.as_ref())
+        .map(|capabilities| capabilities.terminal)
         .unwrap_or(false)
 }
 

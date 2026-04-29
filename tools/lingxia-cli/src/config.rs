@@ -68,6 +68,8 @@ impl Default for FeaturesConfig {
 pub struct CapabilitiesConfig {
     #[serde(default)]
     pub notifications: bool,
+    #[serde(default)]
+    pub terminal: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -284,12 +286,21 @@ impl LingXiaConfig {
     }
 
     pub fn shell_enabled(&self, platform: &str) -> bool {
-        let requested = self
+        let shell_requested = self
             .features
             .as_ref()
             .map(|features| features.shell)
             .unwrap_or(false);
-        requested && platform == "macos"
+        (shell_requested || self.terminal_enabled(platform)) && platform == "macos"
+    }
+
+    pub fn terminal_enabled(&self, platform: &str) -> bool {
+        let terminal_requested = self
+            .capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.terminal)
+            .unwrap_or(false);
+        terminal_requested && platform == "macos"
     }
 
     pub fn devtools_enabled(&self) -> bool {
@@ -306,6 +317,11 @@ impl LingXiaConfig {
         }
         if self.shell_enabled(platform) {
             features.push("shell-runtime".to_string());
+        }
+        if self.terminal_enabled(platform) {
+            features.push("terminal-runtime".to_string());
+        }
+        if self.shell_enabled(platform) {
             features.push("webview-input".to_string());
         }
         if self.devtools_enabled() {
@@ -432,7 +448,7 @@ impl LingXiaConfig {
                         "ui is required for macOS host app projects; define ui.launch, ui.surfaces, and ui.activators"
                     ));
                 };
-                validate_macos_ui_config(ui)?;
+                validate_macos_ui_config(ui, self.terminal_enabled("macos"))?;
             }
         }
         if let Some(app_links) = &self.app_links {
@@ -528,9 +544,16 @@ enum MacosUiSurfaceKind {
     AttachPanel,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MacosUiContentKind {
+    Lxapp,
+    Terminal,
+}
+
 #[derive(Debug, Clone)]
 struct MacosUiSurface {
     kind: MacosUiSurfaceKind,
+    content_kind: MacosUiContentKind,
     attach_to: Option<String>,
     edge: Option<String>,
 }
@@ -587,7 +610,7 @@ fn validate_applink_host(host: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_macos_ui_config(ui: &Value) -> Result<()> {
+fn validate_macos_ui_config(ui: &Value, terminal_enabled: bool) -> Result<()> {
     let ui_obj = ui
         .as_object()
         .ok_or_else(|| anyhow!("ui must be a JSON object"))?;
@@ -671,25 +694,44 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
             content.get("kind"),
             &format!("ui.surfaces[{index}].content.kind"),
         )?;
-        if kind != "lxapp" {
-            return Err(anyhow!(
-                "ui surface '{id}' uses unsupported macOS content.kind '{kind}'"
-            ));
-        }
-        let app_id = non_empty_str(
-            content.get("appId"),
-            &format!("ui.surfaces[{index}].content.appId"),
-        )?;
-        if !seen_app_ids.insert(app_id.to_string()) {
-            return Err(anyhow!(
-                "macOS app UI currently requires unique lxapp content.appId values; duplicate '{app_id}'"
-            ));
-        }
+        let content_kind = match kind {
+            "lxapp" => {
+                let app_id = non_empty_str(
+                    content.get("appId"),
+                    &format!("ui.surfaces[{index}].content.appId"),
+                )?;
+                if !seen_app_ids.insert(app_id.to_string()) {
+                    return Err(anyhow!(
+                        "macOS app UI currently requires unique lxapp content.appId values; duplicate '{app_id}'"
+                    ));
+                }
+                MacosUiContentKind::Lxapp
+            }
+            "terminal" => {
+                if !terminal_enabled {
+                    return Err(anyhow!(
+                        "ui surface '{id}' uses terminal content but capabilities.terminal is not enabled"
+                    ));
+                }
+                if optional_non_empty_str(content.get("backend")).is_some() {
+                    return Err(anyhow!(
+                        "ui surface '{id}' must not set content.backend; terminal runtime is selected internally"
+                    ));
+                }
+                MacosUiContentKind::Terminal
+            }
+            _ => {
+                return Err(anyhow!(
+                    "ui surface '{id}' uses unsupported macOS content.kind '{kind}'"
+                ));
+            }
+        };
 
         surface_by_id.insert(
             id.to_string(),
             MacosUiSurface {
                 kind: presentation_kind,
+                content_kind,
                 attach_to: optional_non_empty_str(presentation.get("attachTo")),
                 edge: optional_non_empty_str(presentation.get("edge")),
             },
@@ -728,6 +770,23 @@ fn validate_macos_ui_config(ui: &Value) -> Result<()> {
     let root_id = root_ids[0];
 
     for (id, surface) in &surface_by_id {
+        if surface.content_kind == MacosUiContentKind::Terminal {
+            if surface.kind != MacosUiSurfaceKind::AttachPanel {
+                return Err(anyhow!(
+                    "terminal ui surface '{id}' must use presentation.kind 'attachPanel'"
+                ));
+            }
+            let edge = surface
+                .edge
+                .as_deref()
+                .ok_or_else(|| anyhow!("terminal ui surface '{id}' requires presentation.edge"))?;
+            if edge != "bottom" {
+                return Err(anyhow!(
+                    "terminal ui surface '{id}' must use presentation.edge 'bottom'"
+                ));
+            }
+        }
+
         match surface.kind {
             MacosUiSurfaceKind::Window | MacosUiSurfaceKind::Panel => {
                 if surface.attach_to.is_some() {
@@ -915,6 +974,24 @@ mod tests {
     }
 
     #[test]
+    fn terminal_capability_enables_macos_shell_runtime() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.capabilities.as_mut().unwrap().terminal = true;
+
+        assert!(config.shell_enabled("macos"));
+        assert!(!config.shell_enabled("android"));
+        assert_eq!(
+            config.native_features_for_platform("macos"),
+            vec![
+                "standard".to_string(),
+                "shell-runtime".to_string(),
+                "terminal-runtime".to_string(),
+                "webview-input".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn save_and_load_yaml() {
         let temp = TempDir::new().unwrap();
         let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
@@ -978,6 +1055,169 @@ mod tests {
         }));
 
         config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_accepts_terminal_attach_panel_bottom() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "kind": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "bottom"
+                },
+                "content": {
+                    "kind": "terminal"
+                }
+            }],
+            "activators": [{
+                "id": "terminalSidebar",
+                "kind": "sidebarItem",
+                "hostSurface": "main",
+                "action": {
+                    "kind": "toggleSurface",
+                    "surface": "terminal"
+                }
+            }]
+        }));
+
+        config.validate().unwrap();
+    }
+
+    #[test]
+    fn macos_ui_rejects_terminal_when_capability_disabled() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "kind": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "my-app"
+                }
+            }, {
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "bottom"
+                },
+                "content": {
+                    "kind": "terminal"
+                }
+            }],
+            "activators": [{
+                "id": "terminalSidebar",
+                "kind": "sidebarItem",
+                "hostSurface": "main",
+                "action": {
+                    "kind": "toggleSurface",
+                    "surface": "terminal"
+                }
+            }]
+        }));
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("capabilities.terminal is not enabled"));
+    }
+
+    #[test]
+    fn macos_ui_rejects_terminal_non_bottom_edge() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "kind": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "main"
+                }
+            }, {
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "trailing"
+                },
+                "content": {
+                    "kind": "terminal"
+                }
+            }],
+            "activators": []
+        }));
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("must use presentation.edge 'bottom'"));
+    }
+
+    #[test]
+    fn macos_ui_rejects_terminal_backend() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.platforms = vec!["macos".to_string()];
+        config.capabilities.as_mut().unwrap().terminal = true;
+        config.ui = Some(serde_json::json!({
+            "launch": {
+                "initialSurface": "main"
+            },
+            "surfaces": [{
+                "id": "main",
+                "presentation": {
+                    "kind": "window"
+                },
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "main"
+                }
+            }, {
+                "id": "terminal",
+                "presentation": {
+                    "kind": "attachPanel",
+                    "attachTo": "main",
+                    "edge": "bottom"
+                },
+                "content": {
+                    "kind": "terminal",
+                    "backend": "xterm"
+                }
+            }],
+            "activators": []
+        }));
+
+        let err = config.validate().unwrap_err().to_string();
+        assert!(err.contains("must not set content.backend"));
     }
 
     #[test]
