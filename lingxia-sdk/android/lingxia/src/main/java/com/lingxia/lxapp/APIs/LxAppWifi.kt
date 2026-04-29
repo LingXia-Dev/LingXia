@@ -300,6 +300,35 @@ internal object LxAppWifi {
     }
 
     @Suppress("DEPRECATION")
+    private fun normalizeSsid(ssid: String?): String {
+        val value = ssid?.trim().orEmpty()
+        return if (value.length >= 2 && value.first() == '"' && value.last() == '"') {
+            value.substring(1, value.length - 1)
+        } else {
+            value
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isAlreadyConnectedToSsid(wifiMgr: WifiManager, ssid: String): Boolean {
+        val info = wifiMgr.connectionInfo ?: return false
+        if (info.networkId == -1) return false
+        return normalizeSsid(info.ssid) == normalizeSsid(ssid)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun findConfiguredNetworkId(wifiMgr: WifiManager, ssid: String): Int? {
+        val target = normalizeSsid(ssid)
+        val configured = wifiMgr.configuredNetworks ?: return null
+        for (network in configured) {
+            if (normalizeSsid(network.SSID) == target && network.networkId != -1) {
+                return network.networkId
+            }
+        }
+        return null
+    }
+
+    @Suppress("DEPRECATION")
     private fun connectWifiLegacy(
         wifiMgr: WifiManager,
         callbackId: Long,
@@ -307,6 +336,29 @@ internal object LxAppWifi {
         password: String?
     ) {
         try {
+            if (isAlreadyConnectedToSsid(wifiMgr, ssid)) {
+                Log.i(TAG, "Already connected to WiFi: $ssid")
+                NativeApi.onCallback(callbackId, true, "{}")
+                emitWifiConnectedToAll(ssid, password, true)
+                return
+            }
+
+            val existingNetworkId = findConfiguredNetworkId(wifiMgr, ssid)
+            if (existingNetworkId != null) {
+                val disconnected = wifiMgr.disconnect()
+                val enabled = wifiMgr.enableNetwork(existingNetworkId, true)
+                val reconnected = wifiMgr.reconnect()
+                Log.i(
+                    TAG,
+                    "Try reuse configured network id=$existingNetworkId ssid=$ssid disconnect=$disconnected enable=$enabled reconnect=$reconnected",
+                )
+                if (enabled && reconnected) {
+                    NativeApi.onCallback(callbackId, true, "{}")
+                    emitWifiConnectedToAll(ssid, password, null)
+                    return
+                }
+            }
+
             val config = WifiConfiguration().apply {
                 SSID = "\"$ssid\""
 
@@ -320,21 +372,29 @@ internal object LxAppWifi {
                 }
             }
 
-            val networkId = wifiMgr.addNetwork(config)
+            val networkId = try {
+                wifiMgr.addNetwork(config)
+            } catch (security: SecurityException) {
+                Log.e(TAG, "Permission denied while adding network", security)
+                NativeApi.onCallback(callbackId, false, "12006")
+                return
+            }
             if (networkId == -1) {
                 Log.e(TAG, "Failed to add network configuration")
-                NativeApi.onCallback(callbackId, false, "12002") // Password error or invalid config
+                NativeApi.onCallback(callbackId, false, "12006")
                 return
             }
 
+            val disconnected = wifiMgr.disconnect()
             val enabled = wifiMgr.enableNetwork(networkId, true)
-            if (!enabled) {
+            val reconnected = wifiMgr.reconnect()
+            if (!enabled || !reconnected) {
                 Log.e(TAG, "Failed to enable network")
                 NativeApi.onCallback(callbackId, false, "12003") // Connection timeout
                 return
             }
 
-            Log.i(TAG, "Successfully connected to WiFi: $ssid")
+            Log.i(TAG, "Successfully connected to WiFi: $ssid disconnect=$disconnected enable=$enabled reconnect=$reconnected")
             NativeApi.onCallback(callbackId, true, "{}")
             emitWifiConnectedToAll(ssid, password, null)
         } catch (e: Exception) {
@@ -705,72 +765,86 @@ internal object LxAppWifi {
                 return
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION)
-                    != PackageManager.PERMISSION_GRANTED) {
-                    val activity = LxApp.getCurrentActivity()
-                    if (activity == null) {
-                        Log.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi info")
-                        NativeApi.onCallback(callbackId, false, "12006") // Permission denied
-                        return
-                    }
-                    PermissionManager.ensurePermissions(activity, LOCATION_PERMISSIONS) { granted ->
-                        if (granted) {
-                            getConnectedWifi(callbackId)
-                        } else {
-                            Log.e(TAG, "Missing ACCESS_FINE_LOCATION permission for WiFi info")
-                            NativeApi.onCallback(callbackId, false, "12006") // Permission denied
-                        }
-                    }
-                    return
-                }
-            }
-
-            val wifiMgr = wifiManager ?: run {
+            val wifiMgr = (wifiManager
+                ?: context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
+                ?.also { wifiManager = it }
+                ?: run {
                 Log.e(TAG, "WiFi manager not available")
                 NativeApi.onCallback(callbackId, false, "12001") // System error
                 return
             }
 
-            val connectionInfo = wifiMgr.connectionInfo
-            if (connectionInfo == null || connectionInfo.ssid == "<unknown ssid>" || connectionInfo.ssid.isEmpty()) {
-                Log.w(TAG, "No WiFi connected")
-                NativeApi.onCallback(callbackId, false, "12001") // System error (not connected)
-                return
+            val connMgr = (connectivityManager
+                ?: context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager)
+                ?.also { connectivityManager = it }
+
+            val connectionInfo = try {
+                wifiMgr.connectionInfo
+            } catch (e: SecurityException) {
+                Log.w(TAG, "getConnectedWifi: permission restricted, fallback to empty SSID", e)
+                null
+            } catch (e: Throwable) {
+                Log.w(TAG, "getConnectedWifi: failed to read WifiInfo", e)
+                null
             }
 
-            // Remove quotes from SSID
-            val ssid = connectionInfo.ssid.removeSurrounding("\"")
-            val bssid = connectionInfo.bssid
+            val rawSsid = try {
+                connectionInfo?.ssid
+            } catch (e: Throwable) {
+                Log.w(TAG, "getConnectedWifi: failed to read SSID", e)
+                null
+            }
+            val ssid = rawSsid
+                ?.removeSurrounding("\"")
+                ?.takeIf { it.isNotEmpty() && it != "<unknown ssid>" }
+                ?: ""
+            val bssid = try {
+                connectionInfo?.bssid
+            } catch (e: Throwable) {
+                Log.w(TAG, "getConnectedWifi: failed to read BSSID", e)
+                null
+            }?.takeIf { it.isNotEmpty() && it != "02:00:00:00:00:00" }
+
+            // Android 8/9 may return "<unknown ssid>" when location is unavailable.
+            // In that case, keep API successful and return empty SSID to avoid hard failures.
+            val connected = isWifiConnected(connMgr) || ssid.isNotEmpty()
 
             // Convert signal strength
-            val rssi = connectionInfo.rssi
-            val signalStrength = when {
-                rssi >= -30 -> 100
-                rssi <= -100 -> 0
-                else -> ((rssi + 100) / 70.0 * 100).toInt()
-            }.coerceIn(0, 100)
-            val frequency = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                connectionInfo.frequency
+            val rssi = connectionInfo?.rssi ?: -100
+            val signalStrength = if (connected) {
+                when {
+                    rssi >= -30 -> 100
+                    rssi <= -100 -> 0
+                    else -> ((rssi + 100) / 70.0 * 100).toInt()
+                }.coerceIn(0, 100)
+            } else {
+                0
+            }
+            val frequency = if (connected && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                try {
+                    connectionInfo?.frequency
+                } catch (_: Throwable) {
+                    null
+                }
             } else {
                 null
             }
 
             val result = JSONObject().apply {
-                put("ssid", ssid)
-                if (bssid != null) {
+                put("ssid", if (connected) ssid else "")
+                if (connected && bssid != null) {
                     put("bssid", bssid)
                 }
-                put("secure", true) // Assume secure if connected
+                put("secure", connected)
                 put("signalStrength", signalStrength)
                 if (frequency != null && frequency > 0) {
                     put("frequency", frequency)
                 }
             }
 
-            Log.i(TAG, "Connected to WiFi: $ssid")
+            Log.i(TAG, "getConnectedWifi resolved: connected=$connected ssid=${if (ssid.isEmpty()) "<empty>" else ssid}")
             NativeApi.onCallback(callbackId, true, result.toString())
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "getConnectedWifi error", e)
             NativeApi.onCallback(callbackId, false, "12001") // System error
         }
