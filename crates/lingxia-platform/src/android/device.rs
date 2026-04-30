@@ -1,5 +1,6 @@
 //! Android platform device implementation
 
+use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::secure_store::SecureStore;
@@ -9,7 +10,6 @@ use jni::objects::{JClass, JObject, JString, JValue};
 use jni::signature::MethodSignature;
 use jni::strings::JNIStr;
 use jni::{Env, jni_sig, jni_str};
-use super::with_env;
 use std::fs;
 use std::process::Command;
 
@@ -46,7 +46,7 @@ fn get_lxapp_context<'a>(env: &mut Env<'a>) -> Result<JObject<'a>, Box<dyn std::
 }
 
 /// Get Android system property using getprop command
-fn get_system_property(key: &str) -> Option<String> {
+pub fn get_system_property(key: &str) -> Option<String> {
     Command::new("getprop")
         .arg(key)
         .output()

@@ -45,8 +45,9 @@ pub mod desktop;
 
 #[cfg(target_os = "android")]
 pub use android::{
-    CachedClass, Platform, get_android_id, get_api_level, has_telephony_feature,
-    init_cached_class, initialize_jni, read_external_storage_text, write_external_storage_text,
+    CachedClass, Platform, get_android_id, get_api_level, get_system_property,
+    has_telephony_feature, init_cached_class, initialize_jni, read_external_storage_text,
+    write_external_storage_text,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

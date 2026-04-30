@@ -20,8 +20,8 @@ mod video_player;
 mod wifi;
 pub use app::Platform;
 pub use device::{
-    get_android_id, get_api_level, has_telephony_feature, read_external_storage_text,
-    write_external_storage_text,
+    get_android_id, get_api_level, get_system_property, has_telephony_feature,
+    read_external_storage_text, write_external_storage_text,
 };
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();

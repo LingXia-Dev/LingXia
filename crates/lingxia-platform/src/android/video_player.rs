@@ -1,3 +1,4 @@
+use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::stream_decoder::{
     AudioCodec, AudioFrame, AudioStreamConfig, VideoCodec, VideoFormat, VideoFrame,
@@ -11,7 +12,6 @@ use jni::signature::MethodSignature;
 use jni::strings::JNIStr;
 use jni::sys::jboolean;
 use jni::{Env, jni_sig, jni_str};
-use super::with_env;
 use serde_json::json;
 
 use super::Platform;

@@ -1,11 +1,11 @@
 use super::app::Platform;
+use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
 };
 use jni::objects::{JObject, JString, JValue};
 use jni::{jni_sig, jni_str};
-use super::with_env;
 use serde::Deserialize;
 use std::error::Error;
 

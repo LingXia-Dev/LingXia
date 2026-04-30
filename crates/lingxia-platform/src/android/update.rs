@@ -1,8 +1,8 @@
+use super::with_env;
 use super::{CachedClass, get_cached_class};
 use crate::error::PlatformError;
 use jni::objects::{JClass, JValue};
 use jni::{jni_sig, jni_str};
-use super::with_env;
 
 /// Show download progress dialog
 pub fn show_download_progress() -> Result<(), PlatformError> {

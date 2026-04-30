@@ -1,9 +1,9 @@
 use super::app::Platform;
+use super::with_env;
 use crate::error::PlatformError;
 use crate::traits::ui::{ModalOptions, ToastOptions, UserFeedback};
 use jni::objects::{JClass, JObject, JValue};
 use jni::{jni_sig, jni_str};
-use super::with_env;
 
 impl UserFeedback for Platform {
     fn show_toast(&self, options: ToastOptions) -> Result<(), PlatformError> {
