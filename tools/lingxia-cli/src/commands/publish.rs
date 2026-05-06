@@ -15,7 +15,7 @@ pub struct PublishOptions {
     pub lingxia_server: Option<String>,
     pub package: Option<String>,
     pub platform: Option<String>,
-    pub release_type: Option<String>,
+    pub channel: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
 }
@@ -24,7 +24,7 @@ struct PackageMeta {
     target: String,
     target_id: String,
     version: String,
-    release_type: Option<String>, // Some only for lxapp
+    channel: Option<String>, // Some only for lxapp, lxplugin
 }
 
 struct ResolvedPackage {
@@ -44,7 +44,7 @@ impl Drop for ResolvedPackage {
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let meta = resolve_meta(&cwd, opts.release_type)?;
+    let meta = resolve_meta(&cwd, opts.channel)?;
     let lingxia_server = resolve_lingxia_server(&cwd, opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
 
@@ -62,10 +62,10 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "package".to_string());
 
-    let release_label = meta
-        .release_type
+    let channel_label = meta
+        .channel
         .as_deref()
-        .map(|r| format!(" ({r})"))
+        .map(|c| format!(" ({c})"))
         .unwrap_or_default();
     println!(
         "{}  Publishing {} {} v{}{} …",
@@ -73,7 +73,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         meta.target,
         meta.target_id.bold(),
         meta.version.bold(),
-        release_label,
+        channel_label,
     );
     println!("   Package: {}", package_path.display());
 
@@ -86,13 +86,13 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     println!("   Upload → {upload_url}");
 
     let mut fields: Vec<(&str, String)> = vec![
-        ("target", meta.target.clone()),
-        ("targetId", meta.target_id.clone()),
+        ("kind", meta.target.clone()),
+        ("id", meta.target_id.clone()),
         ("version", meta.version.clone()),
         ("sha256", sha256.clone()),
     ];
-    if let Some(rt) = &meta.release_type {
-        fields.push(("releaseType", rt.clone()));
+    if let Some(ch) = &meta.channel {
+        fields.push(("channel", ch.clone()));
     }
     if let Some(platform) = package.platform.as_deref() {
         fields.push(("platform", platform.to_string()));
@@ -178,34 +178,42 @@ fn package_current_project(
     })
 }
 
-fn resolve_meta(cwd: &Path, release_type_arg: Option<String>) -> Result<PackageMeta> {
+fn resolve_meta(cwd: &Path, channel_arg: Option<String>) -> Result<PackageMeta> {
     let target = detect_target(cwd)?;
 
     match target.as_str() {
         "lxapp" => {
             let (id, version) = read_lxapp_json(cwd)?;
-            let release_type = release_type_arg
+            let channel = channel_arg
                 .as_deref()
                 .ok_or_else(|| {
                     anyhow::anyhow!(
-                        "--release-type is required when publishing target=lxapp. Must be one of: release, preview, developer"
+                        "--channel is required when publishing target=lxapp. Must be one of: release, preview, developer"
                     )
                 })
-                .and_then(normalize_release_type)?;
+                .and_then(normalize_channel)?;
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                release_type: Some(release_type),
+                channel: Some(channel),
             })
         }
         "lxplugin" => {
             let (id, version) = read_lxplugin_json(cwd)?;
+            let channel = channel_arg
+                .as_deref()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "--channel is required when publishing target=lxplugin. Must be one of: release, preview, developer"
+                    )
+                })
+                .and_then(normalize_channel)?;
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                release_type: None,
+                channel: Some(channel),
             })
         }
         "app" => {
@@ -214,7 +222,7 @@ fn resolve_meta(cwd: &Path, release_type_arg: Option<String>) -> Result<PackageM
                 target,
                 target_id: id,
                 version,
-                release_type: None,
+                channel: None,
             })
         }
         _ => bail!("Unknown target: {target}"),
@@ -237,12 +245,12 @@ fn detect_target(cwd: &Path) -> Result<String> {
     );
 }
 
-fn normalize_release_type(s: &str) -> Result<String> {
+fn normalize_channel(s: &str) -> Result<String> {
     match s.to_lowercase().as_str() {
         "release" => Ok("release".to_string()),
         "preview" | "trial" => Ok("preview".to_string()),
         "developer" | "develop" => Ok("developer".to_string()),
-        _ => bail!("Invalid --release-type '{s}'. Must be one of: release, preview, developer"),
+        _ => bail!("Invalid --channel '{s}'. Must be one of: release, preview, developer"),
     }
 }
 
@@ -762,7 +770,7 @@ app:
     fn build_multipart_includes_app_platform_field() {
         let body = build_multipart(
             "boundary",
-            &[("target", "app"), ("platform", "android")],
+            &[("kind", "app"), ("platform", "android")],
             "app-release.apk",
             b"apk",
         );

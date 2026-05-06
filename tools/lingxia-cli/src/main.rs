@@ -282,9 +282,9 @@ enum Commands {
         #[arg(long, value_parser = ["android", "macos"])]
         platform: Option<String>,
 
-        /// Release channel (required for lxapp): release, preview, developer
+        /// Release channel: release, preview, developer
         #[arg(long, value_parser = ["release", "preview", "developer"])]
-        release_type: Option<String>,
+        channel: Option<String>,
 
         /// Override lxapp view framework detection
         #[arg(long, value_parser = ["react", "vue", "html"])]
@@ -571,7 +571,7 @@ fn main() -> Result<()> {
             lingxia_server,
             package_path,
             platform,
-            release_type,
+            channel,
             framework,
             progress,
         } => {
@@ -580,7 +580,7 @@ fn main() -> Result<()> {
                 lingxia_server,
                 package: package_path,
                 platform,
-                release_type,
+                channel,
                 framework,
                 progress,
             })?;
