@@ -9,7 +9,7 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
+import android.os.HandlerThread
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.util.Log
@@ -19,6 +19,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.Inet6Address
+import java.net.InetAddress
+import java.net.NetworkInterface
 import java.util.LinkedHashSet
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -26,9 +28,13 @@ internal object LxAppNetwork {
     private const val TAG = "LingXia.Network"
     private const val NETWORK_TYPE_NR = 20 // TelephonyManager.NETWORK_TYPE_NR (API 29+)
     private const val NETWORK_TYPE_LTE_CA = 19 // TelephonyManager.NETWORK_TYPE_LTE_CA (API 24+)
+    // Coalesce bursts of onAvailable/onCapabilitiesChanged/onLinkPropertiesChanged into a single resolve.
+    private const val EMIT_DEBOUNCE_MS = 50L
 
     private val changeCallbacks = CopyOnWriteArraySet<Long>()
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val workerThread = HandlerThread("LingXia.Network").apply { start() }
+    private val workerHandler = Handler(workerThread.looper)
+    private val emitRunnable = Runnable { emitInfoToAll() }
     @Volatile private var networkCallback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var connectivityManager: ConnectivityManager? = null
     @Volatile private var lastSignature: String? = null
@@ -70,30 +76,31 @@ internal object LxAppNetwork {
         }
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                emitInfoToAll()
+                dispatchNetworkChange()
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                emitInfoToAll()
+                dispatchNetworkChange()
             }
 
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
-                emitInfoToAll()
+                dispatchNetworkChange()
             }
 
             override fun onLost(network: Network) {
-                emitInfoToAll()
+                dispatchNetworkChange()
             }
         }
         networkCallback = callback
 
-        // Register on main thread (and with a stable Looper) to avoid lost callbacks when
-        // invoked from a non-looper/short-lived thread (e.g. JNI worker thread).
-        mainHandler.post {
+        // Run register/unregister and deliver callbacks on a dedicated worker looper. This keeps
+        // resolve work (telephony queries, NetworkInterface enumeration) off the main thread and
+        // gives the OS a stable Looper to deliver callbacks on.
+        workerHandler.post {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        connMgr.registerDefaultNetworkCallback(callback, mainHandler)
+                        connMgr.registerDefaultNetworkCallback(callback, workerHandler)
                     } else {
                         connMgr.registerDefaultNetworkCallback(callback)
                     }
@@ -101,7 +108,7 @@ internal object LxAppNetwork {
                     val request = NetworkRequest.Builder()
                         .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                         .build()
-                    connMgr.registerNetworkCallback(request, callback, mainHandler)
+                    connMgr.registerNetworkCallback(request, callback)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to register network callback", e)
@@ -110,12 +117,20 @@ internal object LxAppNetwork {
         }
     }
 
+    private fun dispatchNetworkChange() {
+        // Trailing-edge debounce: the OS often delivers onAvailable + onCapabilitiesChanged +
+        // onLinkPropertiesChanged in quick succession; collapse them into one resolve+emit.
+        workerHandler.removeCallbacks(emitRunnable)
+        workerHandler.postDelayed(emitRunnable, EMIT_DEBOUNCE_MS)
+    }
+
     private fun unregisterNetworkCallback() {
         val connMgr = connectivityManager ?: return
         val callback = networkCallback ?: return
         // Clear slot first to avoid add->remove->add races losing the active callback.
         networkCallback = null
-        mainHandler.post {
+        workerHandler.removeCallbacks(emitRunnable)
+        workerHandler.post {
             try {
                 connMgr.unregisterNetworkCallback(callback)
             } catch (e: Exception) {
@@ -194,6 +209,23 @@ internal object LxAppNetwork {
 
     private fun resolveNetworkStatus(context: Context?): NetworkStatusData {
         val connMgr = getConnectivityManager(context) ?: return NetworkStatusData(false, "none")
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            @Suppress("DEPRECATION")
+            val networkInfo = connMgr.activeNetworkInfo ?: return NetworkStatusData(false, "none")
+            @Suppress("DEPRECATION")
+            if (!networkInfo.isConnected) return NetworkStatusData(false, "none")
+
+            @Suppress("DEPRECATION")
+            val type = when (networkInfo.type) {
+                ConnectivityManager.TYPE_WIFI -> "wifi"
+                ConnectivityManager.TYPE_ETHERNET -> "ethernet"
+                ConnectivityManager.TYPE_MOBILE -> resolveCellularNetworkType(context, connMgr)
+                ConnectivityManager.TYPE_VPN -> "unknown"
+                else -> "unknown"
+            }
+            return NetworkStatusData(true, type)
+        }
+
         val network = connMgr.activeNetwork ?: return NetworkStatusData(false, "none")
         val capabilities = connMgr.getNetworkCapabilities(network)
             ?: return NetworkStatusData(false, "none")
@@ -432,6 +464,10 @@ internal object LxAppNetwork {
 
     private fun resolveLocalIpAddresses(context: Context?): LocalIpAddresses {
         val connMgr = getConnectivityManager(context) ?: return LocalIpAddresses(emptyList(), emptyList())
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return resolveLocalIpAddressesFromInterfaces()
+        }
+
         val network = connMgr.activeNetwork ?: return LocalIpAddresses(emptyList(), emptyList())
         val props: LinkProperties = connMgr.getLinkProperties(network)
             ?: return LocalIpAddresses(emptyList(), emptyList())
@@ -439,29 +475,63 @@ internal object LxAppNetwork {
         val ipv4 = LinkedHashSet<String>()
         val ipv6 = LinkedHashSet<String>()
         for (address in props.linkAddresses) {
-            val inet = address.address
-            when (inet) {
-                is Inet4Address -> {
-                    val value = (inet.hostAddress ?: "").trim()
-                    if (value.isNotEmpty() && !inet.isLoopbackAddress && value != "0.0.0.0") {
-                        ipv4.add(value)
-                    }
-                }
-
-                is Inet6Address -> {
-                    if (inet.isLoopbackAddress || inet.isLinkLocalAddress || inet.isAnyLocalAddress || inet.isMulticastAddress) {
-                        continue
-                    }
-                    val value = (inet.hostAddress ?: "").substringBefore('%').trim()
-                    if (value.isNotEmpty() && value != "::") {
-                        ipv6.add(value)
-                    }
-                }
-            }
+            collectInetAddress(address.address, ipv4, ipv6)
         }
         return LocalIpAddresses(
             ipv4 = selectPrimaryAddress(ipv4),
             ipv6 = selectPrimaryAddress(ipv6),
         )
+    }
+
+    private fun resolveLocalIpAddressesFromInterfaces(): LocalIpAddresses {
+        val ipv4 = LinkedHashSet<String>()
+        val ipv6 = LinkedHashSet<String>()
+
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return LocalIpAddresses(emptyList(), emptyList())
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback) {
+                    continue
+                }
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    collectInetAddress(addresses.nextElement(), ipv4, ipv6)
+                }
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Failed to enumerate local IP addresses", error)
+        }
+
+        return LocalIpAddresses(
+            ipv4 = selectPrimaryAddress(ipv4),
+            ipv6 = selectPrimaryAddress(ipv6),
+        )
+    }
+
+    private fun collectInetAddress(inet: InetAddress, ipv4: MutableSet<String>, ipv6: MutableSet<String>) {
+        when (inet) {
+            is Inet4Address -> {
+                val value = (inet.hostAddress ?: "").trim()
+                if (value.isNotEmpty() && !inet.isLoopbackAddress && value != "0.0.0.0") {
+                    ipv4.add(value)
+                }
+            }
+
+            is Inet6Address -> {
+                if (
+                    inet.isLoopbackAddress ||
+                        inet.isLinkLocalAddress ||
+                        inet.isAnyLocalAddress ||
+                        inet.isMulticastAddress
+                ) {
+                    return
+                }
+                val value = (inet.hostAddress ?: "").substringBefore('%').trim()
+                if (value.isNotEmpty() && value != "::") {
+                    ipv6.add(value)
+                }
+            }
+        }
     }
 }
