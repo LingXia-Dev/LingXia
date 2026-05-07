@@ -288,13 +288,6 @@ struct RunnerBuildTool {
             args.insert("--release", at: 4)
         }
 
-        if let features = ProcessInfo.processInfo.environment["LXAPP_FEATURES"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !features.isEmpty
-        {
-            args.append(contentsOf: ["--features", features])
-        }
-
         let libDir = pathJoin(projectRoot, "target/\(targetTriple)/\(buildConfig)")
         let prebuiltLib = try? resolveBuiltStaticLibrary(libDir: libDir)
 
