@@ -1,6 +1,6 @@
 //! Hello Extension - demonstrates native Rust extension API.
 
-use lingxia::LxLogicExtension;
+use lingxia::js::LxLogicExtension;
 use rong::function::Optional;
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 

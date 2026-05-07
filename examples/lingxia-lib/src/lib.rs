@@ -4,15 +4,17 @@
 //! 1. Links the core `lingxia` runtime into the final static/shared library
 //! 2. Exports host addon registration via platform FFI (JNI/NAPI/C)
 
+#[cfg(feature = "standard")]
 mod extension;
 
 struct ExampleHostAddon;
 
 impl lingxia::HostAddon for ExampleHostAddon {
+    #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         #[cfg(feature = "cloud")]
         let _ = lingxia_cloud::init();
-        lingxia::register_logic_extension(Box::new(extension::HelloExtension));
+        lingxia::js::register_logic_extension(Box::new(extension::HelloExtension));
     }
 
     fn start_services(&self) {

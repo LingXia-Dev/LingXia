@@ -10,13 +10,19 @@ name = "lingxia"
 crate-type = ["cdylib", "staticlib"]
 
 [features]
-shell = ["lingxia/shell"]
-cloud = ["dep:lingxia-cloud", "lingxia-cloud/all"]
+default = ["standard"]
+standard = ["lingxia/standard"]
+shell-runtime = ["lingxia/shell-runtime", "webview-input", "standard"]
+terminal-runtime = ["lingxia/terminal-runtime"]
+cloud = ["dep:lingxia-cloud", "lingxia-cloud/all", "standard"]
+devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
+webview-input = ["lingxia/webview-input"]
 
 [dependencies]
-lingxia = { path = "../../crates/lingxia" }
-lingxia-cloud = { path = "../../../lingxia-device-cloud", optional = true }
-rong = { version = "0.3.0", default-features = false }
+lingxia = { version = "0.6.3", default-features = false }
+lingxia_devtool = { package = "lingxia-devtool", version = "0.6.3", optional = true, default-features = false }
+lingxia-cloud = { git = "https://gitea.julibits.com/lingxia/lingxia-device-cloud.git", optional = true, features = ["all"] }
+rong = { version = "0.3.1", default-features = false }
 log = "0.4.29"
 
 # Platform-specific dependencies for FFI

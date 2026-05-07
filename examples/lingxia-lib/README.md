@@ -15,7 +15,3 @@ const greeting = lx.hello.sayHello("LingXia"); // "Hello, LingXia!"
 ## Optional Cloud Runtime
 
 Enable the `cloud` feature to opt into `lingxia-device-cloud`.
-
-```bash
-LXAPP_FEATURES=cloud lingxia build --platform macos --framework react
-```
