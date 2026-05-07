@@ -1,9 +1,10 @@
 use crate::i18n::js_error_from_business_code_with_detail;
 pub(crate) use lingxia_service::storage::{
-    StorageQuotaError, ensure_app_storage_quota, ensure_app_storage_quota_preserving,
-    ensure_temp_quota, ensure_usercache_quota, ensure_userdata_quota,
-    ensure_userdata_quota_with_removed, path_size,
+    StorageQuotaError, ensure_app_storage_quota, ensure_app_storage_quota_preserving_many,
+    ensure_temp_quota, ensure_usercache_quota, ensure_usercache_quota_preserving,
+    ensure_userdata_quota, ensure_userdata_quota_with_removed, path_size,
 };
+use lingxia_service::storage::{cleanup_cache_to_free_bytes, is_enospc};
 use rong::RongJSError;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,33 @@ static ATOMIC_WRITE_SEQ: AtomicU64 = AtomicU64::new(1);
 
 pub(crate) fn quota_error_to_js(err: StorageQuotaError) -> RongJSError {
     js_error_from_business_code_with_detail(1002, err.detail())
+}
+
+/// Run a write operation; if it fails with ENOSPC, free up usercache LRU
+/// across all LxApps and retry once. `preserve` lists usercache paths the
+/// recovery pass must not delete: typically the source (so a read-in-flight
+/// op can complete) and the destination (so the prior version of an
+/// overwrite isn't wiped before the retry succeeds).
+pub(crate) fn with_disk_pressure_recovery<T, F>(
+    user_cache_dir: &Path,
+    incoming_bytes: u64,
+    preserve: &[&Path],
+    mut op: F,
+) -> io::Result<T>
+where
+    F: FnMut() -> io::Result<T>,
+{
+    match op() {
+        Err(err) if is_enospc(&err) => {
+            let cache_parent = user_cache_dir.parent().unwrap_or(user_cache_dir);
+            let target = incoming_bytes
+                .saturating_add(incoming_bytes / 4)
+                .max(1 << 20);
+            cleanup_cache_to_free_bytes(cache_parent, target, preserve);
+            op()
+        }
+        other => other,
+    }
 }
 
 fn path_exists_no_follow(path: &Path) -> bool {

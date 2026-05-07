@@ -620,7 +620,10 @@ async fn finalize_download_result(
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::Quota(err)
         })?;
-        storage::move_file_atomic(&result.temp_path, &temp_path).map_err(|e| {
+        storage::with_disk_pressure_recovery(user_cache_dir, result.size, &[], || {
+            storage::move_file_atomic(&result.temp_path, &temp_path)
+        })
+        .map_err(|e| {
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::internal(format!("move download to temp failed: {e}"))
         })?;
@@ -668,7 +671,10 @@ async fn finalize_download_result(
         })?;
     }
     if result.temp_path != *output_path {
-        storage::move_file_atomic(&result.temp_path, output_path).map_err(|e| {
+        storage::with_disk_pressure_recovery(user_cache_dir, result.size, &[], || {
+            storage::move_file_atomic(&result.temp_path, output_path)
+        })
+        .map_err(|e| {
             cleanup_staging_file(&result.temp_path);
             DownloadFailureReason::internal(format!("move download to filePath failed: {e}"))
         })?;

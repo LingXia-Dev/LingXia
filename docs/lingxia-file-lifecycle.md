@@ -129,7 +129,6 @@ Userdata writes run userdata and appStorage quota checks. Usercache writes run u
 ```yaml
 storage:
   tempMaxSizeMB: 1024
-  cacheMaxAgeDays: 7
   cacheMaxSizeMB: 2048
   dataMaxSizeMB: 4096
   appStorageMaxSizeMB: 16384
@@ -138,14 +137,13 @@ storage:
 | Setting | Default | Scope | Meaning | `0` Means |
 | --- | ---: | --- | --- | --- |
 | `tempMaxSizeMB` | 1024 | per LxApp runtime session | max size for returned temp files | disable temp size limit |
-| `cacheMaxAgeDays` | 7 | host-wide policy applied to every LxApp usercache | max age by access metadata | disable age cleanup |
-| `cacheMaxSizeMB` | 2048 | per LxApp usercache | max size for one LxApp cache directory | disable per-LxApp cache size limit |
+| `cacheMaxSizeMB` | 2048 | per LxApp usercache | size cap for one LxApp cache directory; cleanup triggers at 80% high water and LRU-evicts down to 50% low water | disable usercache size enforcement |
 | `dataMaxSizeMB` | 4096 | per LxApp userdata | max durable files for one LxApp | disable userdata size limit |
 | `appStorageMaxSizeMB` | 16384 | whole LingXia-managed app storage | total userdata + usercache budget | disable app-wide storage limit |
 
-`cacheMaxAgeDays` is a host-wide policy value, not a per-LxApp config. LingXia applies the same retention rule to every LxApp usercache directory.
-
 `cacheMaxSizeMB` is per LxApp. Normal per-LxApp cleanup should not evict another LxApp's cache. Cross-LxApp cleanup happens only for app-wide storage pressure.
+
+There is no fixed age cutoff for usercache. In particular, LingXia does **not** delete files merely because they have not been accessed for 7 days. Eviction is capacity-driven and uses least-recently-used ordering only after a cleanup trigger fires.
 
 ## Cleanup Policy
 
@@ -156,8 +154,8 @@ Cleanup is triggered by runtime events, not by developers calling arbitrary clea
 | LxApp startup/open | stale temp sessions for that LxApp | old temp session dirs | current active temp session |
 | Temp output registration/finalization | current runtime temp session | old unpinned temp files | active `.download-staging`, current keep file |
 | LxApp destroy | current runtime temp session | current temp session dir | userdata |
-| App startup maintenance | all LxApp usercache dirs | expired/LRU usercache | userdata, temp staging |
-| Usercache access/write | current LxApp usercache | expired/LRU files in that LxApp cache | other LxApp caches in normal per-LxApp cleanup |
+| App startup maintenance | all LxApp usercache dirs | LRU usercache once over high water | userdata, temp staging |
+| Usercache write | current LxApp usercache | LRU files in that LxApp cache once over high water | other LxApp caches in normal per-LxApp cleanup |
 | `downloadFile({ filePath })` / FileManager managed writes under appStorage pressure | all LxApp usercache dirs | usercache across LxApps | userdata |
 | LxApp uninstall | that LxApp storage | its userdata, usercache, KV storage, bundle | other LxApps |
 
@@ -191,15 +189,33 @@ Usercache is for regenerable data only. LxApps may explicitly place files there 
 
 Cleanup modes:
 
-- app-wide maintenance cleanup scans `<app_data>/lingxia/usercache/*`
-- per-LxApp opportunistic cleanup runs when that LxApp accesses or writes usercache
-- appStorage pressure cleanup may delete usercache across LxApps
+- app-wide maintenance cleanup runs once on host process startup and scans `<app_data>/lingxia/usercache/*`
+- per-LxApp opportunistic cleanup runs when that LxApp writes to usercache (`writeFile`, `copyFile`, `rename` into usercache); reads only refresh access metadata, they do not trigger cleanup
+- appStorage pressure cleanup may delete usercache across LxApps when any FileManager write (userdata or usercache) would otherwise exceed `appStorageMaxSizeMB`
 
-Deletion order:
+LRU high water / low water:
 
-1. delete files older than `cacheMaxAgeDays`
-2. if still over `cacheMaxSizeMB`, delete least-recently-used files by access metadata
-3. under appStorage pressure, continue deleting LRU usercache across LxApps until app storage fits or no cache files remain
+Per-LxApp cleanup is gated on the cache reaching the **high water mark** at 80% of `cacheMaxSizeMB`. For write-time cleanup, LingXia evaluates the projected size after the operation: `current usercache bytes + incoming write bytes - replaced destination bytes - removed source bytes`. A write that would push the cache to or above high water can therefore trigger cleanup even if the cache is currently below high water. Overwrites and moves are judged by their net growth, so replacing an existing cache file does not double-count the old file.
+
+Once triggered, LingXia sorts eligible files by access time and deletes the oldest files first. The target is the **low water mark** at 50% of `cacheMaxSizeMB`; for write-time cleanup, LingXia evicts until `current bytes <= 50% - net incoming bytes`, so the cache lands near 50% after the pending write completes. Going deeper than just-under-cap prevents thrash: subsequent writes can fill back to 80% before another cleanup fires.
+
+Setting `cacheMaxSizeMB: 0` disables size enforcement entirely; the cache is then only bounded by `appStorageMaxSizeMB`, the OS, or LxApp uninstall.
+
+Deletion order and protections (once cleanup is triggered):
+
+1. skip protected files (`.lock`, `.part`, `.ok`) and data files with an active sibling `.lock`
+2. preserve active operation paths: the destination being written and any usercache source being copied or moved
+3. LRU-evict by access metadata, oldest atime first, until the low-water target is reached
+4. under appStorage or physical disk pressure, continue deleting eligible LRU usercache across LxApps until app storage fits or the requested physical bytes have been freed
+
+Access-time semantics:
+
+- access metadata is the file's atime; LingXia writes atime explicitly via `utimensat` rather than relying on the kernel
+- atime is updated on FileManager reads (`readFile`, `readDir`, `stat`, `exists`, and `copyFile`/`rename` from a usercache source) and on WebView `lx://usercache` resource loads
+- direct native reads that bypass these paths do not update atime
+- on Android and other mounts that use `relatime`/`noatime`, automatic kernel atime updates are unreliable; the explicit touch path above is the source of truth
+- a WebView page that keeps an asset in its internal resource cache will not re-hit the scheme handler, so the file's atime can go stale. The high water gate above prevents deletion as long as the cache is well under cap; once usage approaches `cacheMaxSizeMB`, stale-atime assets are the first LRU candidates. If a long-lived asset must survive cap pressure, write it to userdata or refresh atime explicitly with `fs.stat(path)` / `fs.exists(path)` at session start.
+- newly written usercache files are touched after the write succeeds and are preserved during the immediate post-write cleanup pass, so normal quota cleanup should not delete the file that was just written. Usercache is still regenerable storage: later cleanup passes may evict it if it becomes the least-recently-used eligible file under capacity pressure.
 
 Protection rules:
 
@@ -234,6 +250,29 @@ Failure behavior:
 - exceeding `dataMaxSizeMB` returns `USERDATA_QUOTA_EXCEEDED`
 - exceeding `appStorageMaxSizeMB` after usercache cleanup returns `APP_STORAGE_QUOTA_EXCEEDED`
 - existing userdata is not silently deleted
+
+## Physical Disk Pressure
+
+Configured quotas are logical caps measured against `dataMaxSizeMB`,
+`cacheMaxSizeMB`, and `appStorageMaxSizeMB`. The host device's physical
+filesystem can run out of space well before any of these caps are reached
+(low-end Android, near-full disks, shared volumes).
+
+LingXia FileManager writes (`writeFile`, `copyFile`, `rename`) and
+`downloadFile` finalization detect filesystem `ENOSPC` (and the
+platform-equivalent `StorageFull` error) and run a recovery pass:
+
+1. delete LRU usercache files across all LxApps until the freed bytes cover
+   the incoming write (with 25% headroom, minimum 1 MiB)
+2. retry the write once
+
+If the retry still fails with `ENOSPC`, the IO error is surfaced to the caller.
+Recovery only deletes usercache; userdata is never touched. FileManager
+recovery preserves active operation paths: the destination being written and
+any source file being copied or moved.
+
+This recovery is best-effort: if the device is full and there is no
+regenerable cache to evict, the LxApp must surface the failure to the user.
 
 ## Download Staging
 

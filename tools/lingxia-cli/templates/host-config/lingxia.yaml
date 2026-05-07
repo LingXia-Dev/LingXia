@@ -77,14 +77,13 @@ resources:
 #     version: '0.5.1'
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}
-# Storage and cache limits. Values are MiB except cacheMaxAgeDays.
-# Set cacheMaxAgeDays or cacheMaxSizeMB to 0 to disable that cleanup limit.
+# Storage and cache limits. Values are MiB.
+# Set a *MaxSizeMB to 0 to disable that limit.
 storage:
   # Maximum host temp storage size in MiB.
   tempMaxSizeMB: 1024
-  # Maximum lxapp cache age in days. 0 disables age cleanup.
-  cacheMaxAgeDays: 7
-  # Maximum lxapp cache size in MiB. 0 disables size cleanup.
+  # Per-LxApp usercache size cap in MiB. Cleanup triggers at 80% high water,
+  # then LRU-evicts down to 50% low water. 0 disables size enforcement.
   cacheMaxSizeMB: 2048
   # Maximum user data storage size in MiB.
   dataMaxSizeMB: 4096

@@ -494,7 +494,7 @@ Quick reminders:
 
 - `lingxia.yaml` is the source of truth for host app build metadata.
 - `homeAppVersion` is generated into runtime `app.json`; you do not set it manually.
-- Storage/cache limits live under `storage`; set `storage.cacheMaxAgeDays` or `storage.cacheMaxSizeMB` to `0` to disable that cleanup policy.
+- Storage/cache limits live under `storage`; set `storage.cacheMaxSizeMB` to `0` to disable usercache size enforcement.
 - When `splash` is configured, CLI requires a PNG source image and writes `splashTimeout` into runtime `app.json`.
 
 ---

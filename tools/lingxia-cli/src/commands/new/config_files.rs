@@ -163,7 +163,6 @@ mod tests {
             .as_ref()
             .expect("storage config should exist");
         assert_eq!(storage.temp_max_size_mb, Some(1024));
-        assert_eq!(storage.cache_max_age_days, Some(7));
         assert_eq!(storage.cache_max_size_mb, Some(2048));
         assert_eq!(storage.data_max_size_mb, Some(4096));
         assert_eq!(storage.app_storage_max_size_mb, Some(16384));

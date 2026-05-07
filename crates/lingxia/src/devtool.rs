@@ -171,7 +171,6 @@ fn build_host_app_config(
         lingxia_server: None,
         home_app_id: dev_config.identity.appid.clone(),
         home_app_version: dev_config.identity.version.clone(),
-        cache_max_age_days: 7,
         cache_max_size_mb: 1024,
         storage: None,
         dev_ws_url: None,

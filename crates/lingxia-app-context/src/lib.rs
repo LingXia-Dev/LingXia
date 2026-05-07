@@ -35,9 +35,6 @@ pub struct AppConfig {
     #[serde(rename = "homeAppVersion")]
     pub home_app_version: String,
 
-    #[serde(rename = "cacheMaxAgeDays", default = "default_cache_max_age_days")]
-    pub cache_max_age_days: u64,
-
     #[serde(rename = "cacheMaxSizeMB", default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
 
@@ -78,8 +75,6 @@ pub struct StorageConfig {
     #[serde(rename = "tempMaxSizeMB")]
     #[serde(default = "default_temp_max_size_mb")]
     pub temp_max_size_mb: u64,
-    #[serde(default = "default_cache_max_age_days")]
-    pub cache_max_age_days: u64,
     #[serde(rename = "cacheMaxSizeMB")]
     #[serde(default = "default_cache_max_size_mb")]
     pub cache_max_size_mb: u64,
@@ -121,10 +116,6 @@ pub struct PanelContent {
     pub app_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
-}
-
-fn default_cache_max_age_days() -> u64 {
-    7
 }
 
 fn default_cache_max_size_mb() -> u64 {
@@ -254,18 +245,6 @@ pub fn terminal_enabled() -> bool {
         .unwrap_or(false)
 }
 
-pub fn cache_max_age_days() -> u64 {
-    APP_CONFIG
-        .get()
-        .map(|c| {
-            c.storage
-                .as_ref()
-                .map(|storage| storage.cache_max_age_days)
-                .unwrap_or(c.cache_max_age_days)
-        })
-        .unwrap_or_else(default_cache_max_age_days)
-}
-
 pub fn temp_max_size_bytes() -> u64 {
     const MIB: u64 = 1024 * 1024;
     APP_CONFIG
@@ -389,7 +368,6 @@ mod tests {
             lingxia_server: None,
             home_app_id: "home".to_string(),
             home_app_version: "1.0.0".to_string(),
-            cache_max_age_days: 7,
             cache_max_size_mb: 1024,
             storage: None,
             dev_ws_url: None,

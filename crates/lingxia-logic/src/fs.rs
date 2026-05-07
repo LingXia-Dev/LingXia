@@ -842,12 +842,24 @@ fn ensure_write_quota(
                 incoming_bytes,
                 removed_source,
             ),
-            ManagedPathKind::UserCache => storage::ensure_usercache_quota(
-                &lxapp.user_cache_dir,
-                &destination.path,
-                incoming_bytes,
-                removed_source,
-            ),
+            ManagedPathKind::UserCache => match source
+                .filter(|source| source.kind == ManagedPathKind::UserCache)
+                .map(|source| source.path.as_path())
+            {
+                Some(source_path) => storage::ensure_usercache_quota_preserving(
+                    &lxapp.user_cache_dir,
+                    &destination.path,
+                    incoming_bytes,
+                    removed_source,
+                    &[source_path],
+                ),
+                None => storage::ensure_usercache_quota(
+                    &lxapp.user_cache_dir,
+                    &destination.path,
+                    incoming_bytes,
+                    removed_source,
+                ),
+            },
             ManagedPathKind::Temp => Err(storage::StorageQuotaError::Temp),
         }
         .map_err(storage::quota_error_to_js)?;
@@ -862,15 +874,19 @@ fn ensure_write_quota(
         incoming_bytes
     };
     if app_storage_incoming > 0 {
-        let keep_cache_path = source
-            .filter(|source| source.kind == ManagedPathKind::UserCache)
-            .map(|source| source.path.as_path());
-        storage::ensure_app_storage_quota_preserving(
+        let mut keep_cache_paths = Vec::with_capacity(2);
+        if destination.kind == ManagedPathKind::UserCache {
+            keep_cache_paths.push(destination.path.as_path());
+        }
+        if let Some(source) = source.filter(|source| source.kind == ManagedPathKind::UserCache) {
+            keep_cache_paths.push(source.path.as_path());
+        }
+        storage::ensure_app_storage_quota_preserving_many(
             &lxapp.user_data_dir,
             &lxapp.user_cache_dir,
             &destination.path,
             app_storage_incoming,
-            keep_cache_path,
+            &keep_cache_paths,
         )
         .map_err(storage::quota_error_to_js)?;
     }
@@ -1056,9 +1072,14 @@ impl JSFileManager {
         }
         let bytes = js_value_to_bytes(options.data, options.encoding.as_deref(), "writeFile")?;
         ensure_write_quota(&lxapp, &path, bytes.len() as u64, None, false)?;
-        storage::write_file_atomic(&bytes, &path.path, overwrite)
-            .map(|_| ())
-            .map_err(|err| js_internal_error(format!("writeFile failed: {err}")))?;
+        storage::with_disk_pressure_recovery(
+            &lxapp.user_cache_dir,
+            bytes.len() as u64,
+            &[path.path.as_path()],
+            || storage::write_file_atomic(&bytes, &path.path, overwrite),
+        )
+        .map(|_| ())
+        .map_err(|err| js_internal_error(format!("writeFile failed: {err}")))?;
         finish_write(&lxapp, &path);
         Ok(())
     }
@@ -1085,9 +1106,14 @@ impl JSFileManager {
             .map_err(|err| js_internal_error(format!("copyFile metadata failed: {err}")))?
             .len();
         ensure_write_quota(&lxapp, &destination, incoming, Some(&source), false)?;
-        storage::copy_file_atomic_with_overwrite(&source.path, &destination.path, overwrite)
-            .map(|_| ())
-            .map_err(|err| js_internal_error(format!("copyFile failed: {err}")))?;
+        storage::with_disk_pressure_recovery(
+            &lxapp.user_cache_dir,
+            incoming,
+            &[source.path.as_path(), destination.path.as_path()],
+            || storage::copy_file_atomic_with_overwrite(&source.path, &destination.path, overwrite),
+        )
+        .map(|_| ())
+        .map_err(|err| js_internal_error(format!("copyFile failed: {err}")))?;
         finish_write(&lxapp, &destination);
         Ok(())
     }
@@ -1134,8 +1160,13 @@ impl JSFileManager {
                     "rename overwrite only supports file destinations",
                 ));
             }
-            storage::move_file_atomic_with_overwrite(&old_path.path, &new_path.path, true)
-                .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
+            storage::with_disk_pressure_recovery(
+                &lxapp.user_cache_dir,
+                incoming,
+                &[old_path.path.as_path(), new_path.path.as_path()],
+                || storage::move_file_atomic_with_overwrite(&old_path.path, &new_path.path, true),
+            )
+            .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
             finish_write(&lxapp, &new_path);
             return Ok(());
         }
@@ -1143,8 +1174,13 @@ impl JSFileManager {
             std::fs::create_dir_all(parent)
                 .map_err(|err| js_internal_error(format!("rename create dir failed: {err}")))?;
         }
-        storage::move_file_atomic(&old_path.path, &new_path.path)
-            .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
+        storage::with_disk_pressure_recovery(
+            &lxapp.user_cache_dir,
+            incoming,
+            &[old_path.path.as_path(), new_path.path.as_path()],
+            || storage::move_file_atomic(&old_path.path, &new_path.path),
+        )
+        .map_err(|err| js_internal_error(format!("rename failed: {err}")))?;
         finish_write(&lxapp, &new_path);
         Ok(())
     }

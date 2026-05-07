@@ -213,13 +213,12 @@ If a bundle entry has only `type` and `appId`, it declares the appId but does no
 
 ## `storage` Section
 
-`storage` makes storage policy visible instead of relying on hidden defaults. Values are MiB except `cacheMaxAgeDays`.
+`storage` makes storage policy visible instead of relying on hidden defaults. Values are MiB.
 
 | Field | Type | Default | Description |
 |---|---|---:|---|
 | `tempMaxSizeMB` | number | `1024` | Maximum host temp storage size. |
-| `cacheMaxAgeDays` | number | `7` | Maximum lxapp cache age. `0` disables age cleanup. |
-| `cacheMaxSizeMB` | number | `2048` | Maximum lxapp cache size. `0` disables size cleanup. |
+| `cacheMaxSizeMB` | number | `2048` | Per-LxApp usercache size cap. Cleanup triggers at 80% high water and LRU-evicts down to 50% low water. `0` disables size enforcement. |
 | `dataMaxSizeMB` | number | `4096` | Maximum user data storage size. |
 | `appStorageMaxSizeMB` | number | `16384` | Maximum app-scoped storage size. |
 

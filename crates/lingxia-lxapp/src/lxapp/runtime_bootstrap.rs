@@ -28,10 +28,8 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
 
 fn spawn_cache_cleanup(runtime: Arc<Platform>) {
     let max_bytes = lingxia_app_context::cache_max_size_bytes();
-    let max_age =
-        Duration::from_secs(lingxia_app_context::cache_max_age_days().saturating_mul(86400));
-    if max_bytes == 0 && max_age.is_zero() {
-        info!("Cache cleanup disabled (cacheMaxSizeMB=0 and cacheMaxAgeDays=0)");
+    if max_bytes == 0 {
+        info!("Cache cleanup disabled (cacheMaxSizeMB=0)");
         return;
     }
 
@@ -40,11 +38,11 @@ fn spawn_cache_cleanup(runtime: Arc<Platform>) {
             .app_data_dir()
             .join(LINGXIA_DIR)
             .join(USER_CACHE_DIR);
-        cleanup_cache_base_dir(&cache_base_dir, max_bytes, max_age);
+        cleanup_cache_base_dir(&cache_base_dir, max_bytes);
     });
 }
 
-fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64, max_age: Duration) {
+fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64) {
     if let Ok(entries) = fs::read_dir(cache_base_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -52,7 +50,7 @@ fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64, max_age: Durati
                 continue;
             };
             if file_type.is_dir() && !file_type.is_symlink() {
-                lingxia_service::storage::cleanup_cache_dir(&path, max_bytes, max_age);
+                lingxia_service::storage::cleanup_cache_dir(&path, max_bytes);
             }
         }
     }

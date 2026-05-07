@@ -7,7 +7,6 @@ struct LxAppGeneratedAppConfig: Decodable, Sendable {
     let lingxiaServer: String?
     let homeAppId: String?
     let homeAppVersion: String?
-    let cacheMaxAgeDays: Int?
     let cacheMaxSizeMB: Int?
 }
 

@@ -107,8 +107,6 @@ pub struct StorageConfig {
     #[serde(rename = "tempMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temp_max_size_mb: Option<u64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_max_age_days: Option<u64>,
     #[serde(rename = "cacheMaxSizeMB")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_max_size_mb: Option<u64>,

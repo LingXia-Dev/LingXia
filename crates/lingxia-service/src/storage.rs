@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const DOWNLOAD_STAGING_DIR: &str = ".download-staging";
 
@@ -40,6 +40,7 @@ struct CacheEntry {
 struct PressureCacheEntry {
     cache_root: PathBuf,
     path: PathBuf,
+    size: u64,
     last_access: SystemTime,
 }
 
@@ -157,29 +158,47 @@ pub fn ensure_usercache_quota(
     incoming_bytes: u64,
     removed_source: Option<&Path>,
 ) -> Result<(), StorageQuotaError> {
+    ensure_usercache_quota_preserving(
+        user_cache_dir,
+        destination,
+        incoming_bytes,
+        removed_source,
+        &[],
+    )
+}
+
+pub fn ensure_usercache_quota_preserving(
+    user_cache_dir: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    removed_source: Option<&Path>,
+    preserve: &[&Path],
+) -> Result<(), StorageQuotaError> {
     let max = lingxia_app_context::cache_max_size_bytes();
-    let max_age = cache_max_age_duration();
-    if max == 0 && max_age.is_zero() {
+    if max == 0 {
         return Ok(());
     }
 
-    if max > 0 && incoming_bytes > max {
+    if incoming_bytes > max {
         return Err(StorageQuotaError::UserCache);
     }
 
-    cleanup_cache_dir_preserving(user_cache_dir, max, max_age, None);
-
+    let replaced = existing_file_size(destination);
     let removed = removed_source
         .filter(|source| source.starts_with(user_cache_dir) && *source != destination)
         .map(path_size)
         .unwrap_or(0);
-    if max > 0
-        && projected_size_with_removed(
-            dir_size(user_cache_dir),
-            incoming_bytes,
-            existing_file_size(destination),
-            removed,
-        ) > max
+    let net_incoming = incoming_bytes.saturating_sub(replaced.saturating_add(removed));
+    let mut preserve_for_cleanup = Vec::with_capacity(preserve.len() + 2);
+    preserve_for_cleanup.push(destination);
+    preserve_for_cleanup.extend_from_slice(preserve);
+    if let Some(source) = removed_source {
+        preserve_for_cleanup.push(source);
+    }
+    cleanup_cache_dir_for_write(user_cache_dir, max, net_incoming, &preserve_for_cleanup);
+
+    if projected_size_with_removed(dir_size(user_cache_dir), incoming_bytes, replaced, removed)
+        > max
     {
         return Err(StorageQuotaError::UserCache);
     }
@@ -208,6 +227,31 @@ pub fn ensure_app_storage_quota_preserving(
     incoming_bytes: u64,
     keep_cache_path: Option<&Path>,
 ) -> Result<(), StorageQuotaError> {
+    match keep_cache_path {
+        Some(path) => ensure_app_storage_quota_preserving_many(
+            user_data_dir,
+            user_cache_dir,
+            destination,
+            incoming_bytes,
+            &[path],
+        ),
+        None => ensure_app_storage_quota_preserving_many(
+            user_data_dir,
+            user_cache_dir,
+            destination,
+            incoming_bytes,
+            &[],
+        ),
+    }
+}
+
+pub fn ensure_app_storage_quota_preserving_many(
+    user_data_dir: &Path,
+    user_cache_dir: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    preserve_cache_paths: &[&Path],
+) -> Result<(), StorageQuotaError> {
     let max = lingxia_app_context::app_storage_max_size_bytes();
     if max == 0 {
         return Ok(());
@@ -218,25 +262,24 @@ pub fn ensure_app_storage_quota_preserving(
         return Ok(());
     }
 
-    cleanup_all_cache_dirs_preserving(
+    cleanup_all_cache_dirs_preserving_many(
         user_cache_dir,
         lingxia_app_context::cache_max_size_bytes(),
-        cache_max_age_duration(),
-        keep_cache_path,
+        preserve_cache_paths,
     );
     if app_storage_projected_size(user_data_dir, user_cache_dir, destination, incoming_bytes) <= max
     {
         return Ok(());
     }
 
-    if cleanup_cache_for_storage_pressure_preserving(
+    if cleanup_cache_for_storage_pressure_preserving_many(
         user_cache_dir,
         storage_class_root(user_data_dir),
         storage_class_root(user_cache_dir),
         destination,
         incoming_bytes,
         max,
-        keep_cache_path,
+        preserve_cache_paths,
     ) {
         Ok(())
     } else {
@@ -291,56 +334,139 @@ pub fn ensure_temp_quota(
     }
 }
 
-pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
-    cleanup_cache_dir_preserving(cache_dir, max_bytes, max_age, None)
+pub fn cleanup_cache_dir(cache_dir: &Path, max_bytes: u64) {
+    cleanup_cache_dir_preserving(cache_dir, max_bytes, None)
 }
 
 pub fn cleanup_usercache_preserving(user_cache_dir: &Path, preserve: Option<&Path>) {
     cleanup_cache_dir_preserving(
         user_cache_dir,
         lingxia_app_context::cache_max_size_bytes(),
-        cache_max_age_duration(),
         preserve,
     )
 }
 
-pub fn cleanup_cache_dir_preserving(
-    cache_dir: &Path,
-    max_bytes: u64,
-    max_age: Duration,
-    preserve: Option<&Path>,
-) {
-    if max_bytes == 0 && max_age.is_zero() {
+pub fn cleanup_cache_dir_preserving(cache_dir: &Path, max_bytes: u64, preserve: Option<&Path>) {
+    if max_bytes == 0 {
         return;
     }
-    let _ = enforce_cache_limits_preserving(cache_dir, max_bytes, max_age, preserve);
+    match preserve {
+        Some(preserve) => {
+            let _ = enforce_cache_limits_preserving(cache_dir, max_bytes, 0, &[preserve]);
+        }
+        None => {
+            let _ = enforce_cache_limits_preserving(cache_dir, max_bytes, 0, &[]);
+        }
+    }
 }
 
-pub fn cleanup_all_cache_dirs(cache_dir: &Path, max_bytes: u64, max_age: Duration) {
-    cleanup_all_cache_dirs_preserving(cache_dir, max_bytes, max_age, None)
+/// Run cleanup before a write. `incoming_bytes` is the operation's net cache
+/// growth after accounting for overwritten destination or removed source bytes.
+/// Trigger and target use `current + incoming` so a write that would push usage
+/// over the high water mark fires cleanup even if current usage alone is still
+/// below it.
+pub fn cleanup_cache_dir_for_write(
+    cache_dir: &Path,
+    max_bytes: u64,
+    incoming_bytes: u64,
+    preserve: &[&Path],
+) {
+    if max_bytes == 0 {
+        return;
+    }
+    let _ = enforce_cache_limits_preserving(cache_dir, max_bytes, incoming_bytes, preserve);
+}
+
+pub fn cleanup_all_cache_dirs(cache_dir: &Path, max_bytes: u64) {
+    cleanup_all_cache_dirs_preserving(cache_dir, max_bytes, None)
 }
 
 pub fn cleanup_all_cache_dirs_preserving(
     cache_dir: &Path,
     max_bytes: u64,
-    max_age: Duration,
     preserve: Option<&Path>,
 ) {
+    match preserve {
+        Some(preserve) => cleanup_all_cache_dirs_preserving_many(cache_dir, max_bytes, &[preserve]),
+        None => cleanup_all_cache_dirs_preserving_many(cache_dir, max_bytes, &[]),
+    }
+}
+
+fn cleanup_all_cache_dirs_preserving_many(cache_dir: &Path, max_bytes: u64, preserve: &[&Path]) {
     let Some(cache_parent) = cache_dir.parent() else {
-        cleanup_cache_dir_preserving(cache_dir, max_bytes, max_age, preserve);
+        cleanup_cache_dir_for_write(cache_dir, max_bytes, 0, preserve);
         return;
     };
     let Ok(entries) = fs::read_dir(cache_parent) else {
-        cleanup_cache_dir_preserving(cache_dir, max_bytes, max_age, preserve);
+        cleanup_cache_dir_for_write(cache_dir, max_bytes, 0, preserve);
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
-            let preserve_for_dir = preserve.filter(|path_to_keep| path_to_keep.starts_with(&path));
-            cleanup_cache_dir_preserving(&path, max_bytes, max_age, preserve_for_dir);
+            let preserve_for_dir: Vec<&Path> = preserve
+                .iter()
+                .copied()
+                .filter(|path_to_keep| path_to_keep.starts_with(&path))
+                .collect();
+            cleanup_cache_dir_for_write(&path, max_bytes, 0, &preserve_for_dir);
         }
     }
+}
+
+pub fn is_enospc(err: &std::io::Error) -> bool {
+    if matches!(err.kind(), std::io::ErrorKind::StorageFull) {
+        return true;
+    }
+    err.raw_os_error() == Some(28)
+}
+
+pub fn cleanup_cache_to_free_bytes(
+    cache_parent: &Path,
+    target_bytes: u64,
+    preserve: &[&Path],
+) -> u64 {
+    if target_bytes == 0 {
+        return 0;
+    }
+    let mut entries = Vec::new();
+    collect_all_cache_entries(cache_parent, &mut entries);
+    entries.sort_by_key(|entry| entry.last_access);
+    let preserve = canonicalize_preserve_paths(preserve);
+    let mut freed = 0u64;
+    for entry in entries {
+        if freed >= target_bytes {
+            break;
+        }
+        if matches_preserve(&entry.path, &preserve) {
+            continue;
+        }
+        let cache_root = entry
+            .cache_root
+            .canonicalize()
+            .unwrap_or_else(|_| entry.cache_root.clone());
+        if try_remove_cache_entry(&entry.cache_root, &cache_root, &entry.path) {
+            freed = freed.saturating_add(entry.size);
+        }
+    }
+    freed
+}
+
+fn canonicalize_preserve_paths(paths: &[&Path]) -> Vec<PathBuf> {
+    paths
+        .iter()
+        .filter_map(|path| path.canonicalize().ok())
+        .collect()
+}
+
+fn matches_preserve(path: &Path, preserve: &[PathBuf]) -> bool {
+    if preserve.is_empty() {
+        return false;
+    }
+    let Ok(canon) = path.canonicalize() else {
+        return false;
+    };
+    preserve.iter().any(|p| p == &canon)
 }
 
 pub fn cleanup_cache_for_storage_pressure(
@@ -371,6 +497,37 @@ pub fn cleanup_cache_for_storage_pressure_preserving(
     max_bytes: u64,
     preserve: Option<&Path>,
 ) -> bool {
+    match preserve {
+        Some(preserve) => cleanup_cache_for_storage_pressure_preserving_many(
+            cache_dir,
+            user_data_root,
+            user_cache_root,
+            destination,
+            incoming_bytes,
+            max_bytes,
+            &[preserve],
+        ),
+        None => cleanup_cache_for_storage_pressure_preserving_many(
+            cache_dir,
+            user_data_root,
+            user_cache_root,
+            destination,
+            incoming_bytes,
+            max_bytes,
+            &[],
+        ),
+    }
+}
+
+fn cleanup_cache_for_storage_pressure_preserving_many(
+    cache_dir: &Path,
+    user_data_root: &Path,
+    user_cache_root: &Path,
+    destination: &Path,
+    incoming_bytes: u64,
+    max_bytes: u64,
+    preserve: &[&Path],
+) -> bool {
     let Some(cache_parent) = cache_dir.parent() else {
         return app_storage_fits(
             user_data_root,
@@ -383,7 +540,7 @@ pub fn cleanup_cache_for_storage_pressure_preserving(
     let mut files = Vec::new();
     collect_all_cache_entries(cache_parent, &mut files);
     files.sort_by_key(|entry| entry.last_access);
-    let preserve = preserve.and_then(|path| path.canonicalize().ok());
+    let preserve = canonicalize_preserve_paths(preserve);
 
     for entry in files {
         if app_storage_fits(
@@ -395,12 +552,7 @@ pub fn cleanup_cache_for_storage_pressure_preserving(
         ) {
             return true;
         }
-        if preserve.as_ref().is_some_and(|preserve| {
-            entry
-                .path
-                .canonicalize()
-                .is_ok_and(|path| path == *preserve)
-        }) {
+        if matches_preserve(&entry.path, &preserve) {
             continue;
         }
         let cache_root = entry
@@ -422,56 +574,50 @@ pub fn cleanup_cache_for_storage_pressure_preserving(
 fn enforce_cache_limits_preserving(
     cache_dir: &Path,
     max_bytes: u64,
-    max_age: Duration,
-    preserve: Option<&Path>,
+    incoming_bytes: u64,
+    preserve: &[&Path],
 ) -> (u32, u64) {
+    if max_bytes == 0 {
+        return (0, 0);
+    }
     let cache_root = cache_dir
         .canonicalize()
         .unwrap_or_else(|_| cache_dir.to_path_buf());
     let mut total_bytes = 0u64;
     let mut entries = collect_cache_entries(cache_dir, &mut total_bytes);
-    let preserve = preserve.and_then(|path| path.canonicalize().ok());
+
+    // High-water trigger / low-water target — both computed against projected
+    // size (current + net incoming), not just current. This way a write that
+    // would push usage over the high water mark fires cleanup even if current
+    // usage alone is still below it.
+    //
+    // Trigger: projected (current + net incoming) >= 80% of `max_bytes`.
+    // Below that, do nothing — keep assets intact even if their atime has
+    // gone stale (e.g. a WebView served the file from its own resource cache
+    // for days without re-hitting the scheme handler).
+    //
+    // Target: evict LRU until current <= (50% of `max_bytes` - net incoming)
+    // so that after the pending write the cache settles around 50%. Going
+    // deeper than just-under-cap prevents thrash: the next round of writes
+    // can fill back to 80% before another cleanup fires.
+    let high_water = max_bytes.saturating_mul(8) / 10;
+    if total_bytes.saturating_add(incoming_bytes) < high_water {
+        return (0, 0);
+    }
+    let low_water = max_bytes / 2;
+    let target_total = low_water.saturating_sub(incoming_bytes);
+
+    let preserve = canonicalize_preserve_paths(preserve);
     let mut files_removed = 0u32;
     let mut bytes_freed = 0u64;
 
-    if !max_age.is_zero() {
-        let now = SystemTime::now();
-        entries.retain(|entry| {
-            let age = now
-                .duration_since(entry.last_access)
-                .unwrap_or(Duration::ZERO);
-            if age <= max_age {
-                return true;
-            }
-            if preserve.as_ref().is_some_and(|preserve| {
-                entry
-                    .path
-                    .canonicalize()
-                    .is_ok_and(|path| path == *preserve)
-            }) {
-                return true;
-            }
-            if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
-                total_bytes = total_bytes.saturating_sub(entry.size);
-                files_removed += 1;
-                bytes_freed = bytes_freed.saturating_add(entry.size);
-            }
-            false
-        });
-    }
-
-    if max_bytes > 0 && total_bytes > max_bytes {
+    {
         entries.sort_by_key(|entry| entry.last_access);
         for entry in entries {
-            if total_bytes <= max_bytes {
+            if total_bytes <= target_total {
                 break;
             }
-            if preserve.as_ref().is_some_and(|preserve| {
-                entry
-                    .path
-                    .canonicalize()
-                    .is_ok_and(|path| path == *preserve)
-            }) {
+            if matches_preserve(&entry.path, &preserve) {
                 continue;
             }
             if try_remove_cache_entry(cache_dir, &cache_root, &entry.path) {
@@ -527,6 +673,7 @@ fn collect_all_cache_entries(cache_parent: &Path, out: &mut Vec<PressureCacheEnt
             out.push(PressureCacheEntry {
                 cache_root: cache_dir.clone(),
                 path: entry.path,
+                size: entry.size,
                 last_access: entry.last_access,
             });
         }
@@ -655,8 +802,4 @@ fn remove_empty_parent_dirs(cache_root: &Path, data_path: &Path) {
 
 fn should_skip_cleanup(filename: &str) -> bool {
     filename.ends_with(".lock") || filename.ends_with(".part")
-}
-
-fn cache_max_age_duration() -> Duration {
-    Duration::from_secs(lingxia_app_context::cache_max_age_days().saturating_mul(86400))
 }
