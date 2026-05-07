@@ -403,23 +403,14 @@ impl LxApp {
         }
     }
 
-    fn sanitize_for_filename(value: &str) -> String {
-        value
-            .chars()
-            .map(|c| match c {
-                'a'..='z' | 'A'..='Z' | '0'..='9' => c,
-                _ => '_',
-            })
-            .collect()
-    }
-    /// Create a simple centered error response
+    /// Create a simple centered error response (returned inline, no disk write).
     pub(crate) fn create_error_response(
         &self,
         status: StatusCode,
         title: &str,
         message: &str,
     ) -> WebResourceResponse {
-        let html_content = format!(
+        let html = format!(
             r#"<!DOCTYPE html>
 <html>
 <head>
@@ -446,50 +437,14 @@ impl LxApp {
             title,
             message
         );
-
-        let mut target_dir = self.user_cache_dir.join("webview_errors");
-        if let Err(e) = fs::create_dir_all(&target_dir) {
-            error!("Failed to prepare error directory: {}", e).with_appid(self.appid.clone());
-            target_dir = std::env::temp_dir().join("lingxia-webview-errors");
-            let _ = fs::create_dir_all(&target_dir);
-        }
-
-        let file_name = format!(
-            "{}_{}.html",
-            status.as_u16(),
-            Self::sanitize_for_filename(title)
-        );
-        let mut file_path = target_dir.join(file_name);
-
-        if let Err(e) = fs::write(&file_path, html_content.as_bytes()) {
-            error!(
-                "Failed to write error response file ({}): {}",
-                file_path.display(),
-                e
-            )
-            .with_appid(self.appid.clone());
-            let unique_suffix = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or(0);
-            file_path = target_dir.join(format!(
-                "{}_{}_{}.html",
-                status.as_u16(),
-                Self::sanitize_for_filename(title),
-                unique_suffix
-            ));
-            let _ = fs::write(&file_path, html_content.as_bytes());
-        }
-
-        let file_len = fs::metadata(&file_path)
-            .map(|meta| meta.len())
-            .unwrap_or_else(|_| html_content.len() as u64);
+        let body = html.into_bytes();
 
         let mut builder = Response::builder()
             .status(status)
-            .header("Content-Type", "text/html; charset=utf-8");
+            .header("Content-Type", "text/html; charset=utf-8")
+            .header("Access-Control-Allow-Origin", "null");
 
-        if let Ok(value) = http::HeaderValue::from_str(&file_len.to_string()) {
+        if let Ok(value) = http::HeaderValue::from_str(&body.len().to_string()) {
             builder = builder.header("Content-Length", value);
         }
 
@@ -501,6 +456,6 @@ impl LxApp {
         });
 
         let (parts, _) = response.into_parts();
-        (parts, file_path).into()
+        (parts, body).into()
     }
 }
