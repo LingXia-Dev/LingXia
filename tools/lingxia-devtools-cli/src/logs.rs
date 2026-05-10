@@ -2,9 +2,15 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
 use lingxia_devtool_protocol::{DevtoolsLogLevel, DevtoolsLogMessage, DevtoolsLogSource};
+use owo_colors::OwoColorize;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
+
+const POLL_INTERVAL: Duration = Duration::from_millis(100);
+const MISSING_FILE_BACKOFF: Duration = Duration::from_millis(500);
 
 #[derive(Args, Clone)]
 pub struct LogsOptions {
@@ -28,84 +34,168 @@ pub struct LogsOptions {
     #[arg(long)]
     pub path: Option<String>,
 
-    /// Show only the most recent N matching entries
+    /// Show only the most recent N matching backlog entries (0 to skip backlog when --follow)
     #[arg(long, default_value_t = 200)]
     pub limit: usize,
 
     /// Print matching entries as JSONL
-    #[arg(long)]
+    #[arg(long, conflicts_with = "pretty")]
     pub json: bool,
+
+    /// Keep running and stream new matching entries as they are appended
+    #[arg(long, short = 'f')]
+    pub follow: bool,
+
+    /// Colorize output by level (TTY decoration; not for machine consumption)
+    #[arg(long)]
+    pub pretty: bool,
+}
+
+struct Filters {
+    level: Option<DevtoolsLogLevel>,
+    source: Option<DevtoolsLogSource>,
+    grep: Option<String>,
+    path: Option<String>,
+}
+
+#[derive(Clone, Copy)]
+struct RenderOpts {
+    json: bool,
+    pretty: bool,
 }
 
 pub fn execute(log_file: &Path, options: LogsOptions) -> Result<()> {
-    let level_filter = options.level.as_deref().map(parse_level).transpose()?;
-    let source_filter = options.source.as_deref().map(parse_source).transpose()?;
-    let grep = options.grep.as_deref().map(str::to_lowercase);
-    let path = options.path.as_deref().map(str::to_lowercase);
+    let filters = Filters {
+        level: options.level.as_deref().map(parse_level).transpose()?,
+        source: options.source.as_deref().map(parse_source).transpose()?,
+        grep: options.grep.as_deref().map(str::to_lowercase),
+        path: options.path.as_deref().map(str::to_lowercase),
+    };
+    let render = RenderOpts {
+        json: options.json,
+        pretty: options.pretty,
+    };
 
-    let file =
-        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
-    let reader = BufReader::new(file);
-    let mut matches = Vec::new();
+    let end_offset = drain_backlog(log_file, &filters, options.limit, render, options.follow)?;
 
-    for line in reader.lines() {
-        let line = line.context("Failed to read log line")?;
-        if line.trim().is_empty() {
-            continue;
+    if options.follow {
+        if render.pretty {
+            println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
         }
-        let entry: DevtoolsLogMessage =
-            serde_json::from_str(&line).context("Failed to parse log JSON line")?;
-        if !matches_filters(
-            &entry,
-            level_filter,
-            source_filter,
-            grep.as_deref(),
-            path.as_deref(),
-        ) {
-            continue;
-        }
-        matches.push(entry);
+        tail_loop(log_file, end_offset, &filters, render)?;
     }
-
-    let start = matches.len().saturating_sub(options.limit);
-    for entry in matches.into_iter().skip(start) {
-        if options.json {
-            println!(
-                "{}",
-                serde_json::to_string(&entry).context("Failed to encode log JSON")?
-            );
-        } else {
-            println!("{}", format_entry(&entry)?);
-        }
-    }
-
     Ok(())
 }
 
-fn matches_filters(
-    entry: &DevtoolsLogMessage,
-    level_filter: Option<DevtoolsLogLevel>,
-    source_filter: Option<DevtoolsLogSource>,
-    grep: Option<&str>,
-    path_filter: Option<&str>,
-) -> bool {
-    if let Some(level_filter) = level_filter
-        && entry.level != level_filter
+fn drain_backlog(
+    log_file: &Path,
+    filters: &Filters,
+    limit: usize,
+    render: RenderOpts,
+    follow: bool,
+) -> Result<u64> {
+    let mut file =
+        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
+    let reader = BufReader::new(&file);
+
+    if follow && limit == 0 {
+        let end = file.seek(SeekFrom::End(0))?;
+        return Ok(end);
+    }
+
+    let mut matches = Vec::new();
+    for line in reader.lines() {
+        let line = line.context("Failed to read log line")?;
+        if let Some(entry) = parse_and_filter(&line, filters)? {
+            matches.push(entry);
+        }
+    }
+
+    let start = matches.len().saturating_sub(limit);
+    for entry in matches.into_iter().skip(start) {
+        println!("{}", render_entry(&entry, render)?);
+    }
+
+    let end = file.seek(SeekFrom::End(0))?;
+    Ok(end)
+}
+
+fn tail_loop(
+    log_file: &Path,
+    mut offset: u64,
+    filters: &Filters,
+    render: RenderOpts,
+) -> Result<()> {
+    let mut pending = String::new();
+    loop {
+        let mut file = match File::open(log_file) {
+            Ok(f) => f,
+            Err(_) => {
+                thread::sleep(MISSING_FILE_BACKOFF);
+                continue;
+            }
+        };
+
+        let len = file.metadata()?.len();
+        if len < offset {
+            // Truncation / rotation: replay from the start.
+            offset = 0;
+            pending.clear();
+        }
+
+        if len > offset {
+            file.seek(SeekFrom::Start(offset))?;
+            let mut reader = BufReader::new(&file);
+            loop {
+                let mut buf = String::new();
+                let read = reader.read_line(&mut buf)?;
+                if read == 0 {
+                    break;
+                }
+                pending.push_str(&buf);
+                offset += read as u64;
+                if !pending.ends_with('\n') {
+                    // Half-line; wait for the rest before parsing.
+                    break;
+                }
+                let line = std::mem::take(&mut pending);
+                if let Some(entry) = parse_and_filter(line.trim_end_matches('\n'), filters)? {
+                    println!("{}", render_entry(&entry, render)?);
+                }
+            }
+        }
+
+        thread::sleep(POLL_INTERVAL);
+    }
+}
+
+fn parse_and_filter(line: &str, filters: &Filters) -> Result<Option<DevtoolsLogMessage>> {
+    if line.trim().is_empty() {
+        return Ok(None);
+    }
+    let entry: DevtoolsLogMessage =
+        serde_json::from_str(line).context("Failed to parse log JSON line")?;
+    Ok(matches_filters(&entry, filters).then_some(entry))
+}
+
+fn matches_filters(entry: &DevtoolsLogMessage, filters: &Filters) -> bool {
+    if let Some(level) = filters.level
+        && entry.level != level
     {
         return false;
     }
-    if let Some(source_filter) = source_filter
-        && entry.source != source_filter
+    if let Some(source) = filters.source
+        && entry.source != source
     {
         return false;
     }
-    if let Some(path_filter) = path_filter {
+    if let Some(path_filter) = filters.path.as_deref() {
         let hay = entry.path.as_deref().unwrap_or("").to_lowercase();
         if !hay.contains(path_filter) {
             return false;
         }
     }
-    if let Some(grep) = grep {
+    if let Some(grep) = filters.grep.as_deref() {
         let mut haystacks = vec![entry.message.to_lowercase()];
         if let Some(path) = entry.path.as_deref() {
             haystacks.push(path.to_lowercase());
@@ -120,23 +210,52 @@ fn matches_filters(
     true
 }
 
-fn format_entry(entry: &DevtoolsLogMessage) -> Result<String> {
+fn render_entry(entry: &DevtoolsLogMessage, render: RenderOpts) -> Result<String> {
+    if render.json {
+        return serde_json::to_string(entry).context("Failed to encode log JSON");
+    }
     let dt = DateTime::from_timestamp_millis(entry.timestamp_ms as i64)
         .ok_or_else(|| anyhow!("Invalid log timestamp: {}", entry.timestamp_ms))?
         .with_timezone(&Local);
-    let mut prefix = format!(
-        "{} {:<7} {:<22}",
-        dt.format("%H:%M:%S%.3f"),
-        format_level(entry.level),
-        format_source(entry.source)
-    );
-    if let Some(path) = entry.path.as_deref()
-        && !path.is_empty()
-    {
-        prefix.push(' ');
-        prefix.push_str(path);
+    let timestamp = dt.format("%H:%M:%S%.3f").to_string();
+    let level = format_level(entry.level);
+    let source = format_source(entry.source);
+    let path = entry
+        .path
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .unwrap_or("");
+
+    if render.pretty {
+        let level_field = format!("{level:<7}");
+        let source_field = format!("{source:<22}");
+        let level_colored = match entry.level {
+            DevtoolsLogLevel::Error => level_field.red().bold().to_string(),
+            DevtoolsLogLevel::Warn => level_field.yellow().bold().to_string(),
+            DevtoolsLogLevel::Info => level_field.clone(),
+            DevtoolsLogLevel::Debug | DevtoolsLogLevel::Verbose => level_field.dimmed().to_string(),
+        };
+        let mut line = format!(
+            "{} {} {}",
+            timestamp.dimmed(),
+            level_colored,
+            source_field.dimmed()
+        );
+        if !path.is_empty() {
+            line.push(' ');
+            line.push_str(&path.dimmed().to_string());
+        }
+        line.push(' ');
+        line.push_str(&entry.message);
+        Ok(line)
+    } else {
+        let mut prefix = format!("{timestamp} {level:<7} {source:<22}");
+        if !path.is_empty() {
+            prefix.push(' ');
+            prefix.push_str(path);
+        }
+        Ok(format!("{prefix} {}", entry.message))
     }
-    Ok(format!("{prefix} {}", entry.message))
 }
 
 fn parse_level(value: &str) -> Result<DevtoolsLogLevel> {
