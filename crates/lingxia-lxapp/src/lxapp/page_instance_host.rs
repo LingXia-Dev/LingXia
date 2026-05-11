@@ -285,7 +285,7 @@ impl LxApp {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
                 async move {
-                    let (ack_tx, ack_rx) = oneshot::channel::<()>();
+                    let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
                     if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
                         lxapp_arc.clone(),
                         page_clone.path(),
@@ -297,7 +297,10 @@ impl LxApp {
 
                     ack_rx
                         .await
-                        .map_err(|e| format!("PageInstance service creation ack failed: {}", e))?;
+                        .map_err(|e| {
+                            format!("PageInstance service creation channel closed: {}", e)
+                        })?
+                        .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
 
                     page_clone
                         .load_html()
@@ -484,26 +487,22 @@ impl LxApp {
         let path = resolved.internal_path();
         let query = resolved.query;
 
-        {
-            let state = self.state.lock().unwrap();
-            if let Some(page) = state.pages.lock().unwrap().get(&path) {
-                if let Some(query) = query.clone() {
-                    page.set_query(query);
-                }
-                return page.clone();
+        let _creation_guard = self.page_creation_lock.lock().unwrap();
+        if let Some(page) = self.get_page(&path) {
+            if let Some(query) = query.clone() {
+                page.set_query(query);
             }
+            return page;
         }
 
         let appid = self.appid.clone();
-
-        // Gate HTML load when create_page_svc is false; caller will unblock after creating PageSvc.
         let lxapp_arc = self.clone_arc();
-        let page = PageInstance::new(appid.clone(), path.to_string(), self, move |page| {
+        let candidate = PageInstance::new(appid.clone(), path.to_string(), self, move |page| {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
                 // Ensure PageSvc exists before loading HTML (for both regular and plugin pages)
-                let (ack_tx, ack_rx) = oneshot::channel::<()>();
+                let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
                 if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
                     lxapp_arc.clone(),
                     page_clone.path(),
@@ -515,7 +514,8 @@ impl LxApp {
 
                 ack_rx
                     .await
-                    .map_err(|e| format!("PageInstance service creation ack failed: {}", e))?;
+                    .map_err(|e| format!("PageInstance service creation channel closed: {}", e))?
+                    .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
 
                 page_clone
                     .load_html()
@@ -523,20 +523,23 @@ impl LxApp {
             }
         });
 
-        // Insert the new page first to ensure it's protected
-        {
+        let page = {
             let state = self.state.lock().unwrap();
-            state
-                .pages_by_id
-                .lock()
-                .unwrap()
-                .insert(page.instance_id_string(), page.clone());
-            state
-                .pages
-                .lock()
-                .unwrap()
-                .insert(path.clone(), page.clone());
-        }
+            let mut pages = state.pages.lock().unwrap();
+
+            if let Some(page) = pages.get(&path) {
+                page.clone()
+            } else {
+                state
+                    .pages_by_id
+                    .lock()
+                    .unwrap()
+                    .insert(candidate.instance_id_string(), candidate.clone());
+                pages.insert(path.clone(), candidate.clone());
+                candidate
+            }
+        };
+        drop(_creation_guard);
 
         self.evict_inactive_pages_if_needed();
 

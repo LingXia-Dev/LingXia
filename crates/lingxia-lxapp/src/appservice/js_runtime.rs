@@ -49,7 +49,7 @@ pub(crate) enum ServiceMessage {
         lxapp: Arc<LxApp>,
         path: String,
         page_instance_id: Option<String>,
-        ack_tx: oneshot::Sender<()>,
+        ack_tx: oneshot::Sender<Result<(), String>>,
     },
     // Delete a page service (object-identity safe)
     TerminatePage {
@@ -473,18 +473,25 @@ pub(crate) async fn lxapp_service_handler(
             page_instance_id,
             ack_tx,
         } => {
-            if let Some(ctx) = current_ctx.as_ref() {
+            let result = if let Some(ctx) = current_ctx.as_ref() {
                 match PageSvc::create_in_ctx(ctx, &path, page_instance_id.as_deref()).await {
-                    Ok(()) => {
-                        let _ = ack_tx.send(());
-                    }
+                    Ok(()) => Ok(()),
                     Err(e) => {
+                        let msg = e.to_string();
                         error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
                             .with_appid(lxapp.appid.clone())
-                            .with_path(path);
+                            .with_path(&path);
+                        Err(msg)
                     }
                 }
-            }
+            } else {
+                let msg = "JS context not available".to_string();
+                error!("[Worker {}] create_in_ctx: {}", worker_id, msg)
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(&path);
+                Err(msg)
+            };
+            let _ = ack_tx.send(result);
         }
         ServiceMessage::TerminatePage {
             lxapp,

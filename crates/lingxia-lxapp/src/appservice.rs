@@ -83,12 +83,12 @@ mod no_js_runtime {
             lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
             _page_instance_id: Option<String>,
-            ack_tx: Sender<()>,
+            ack_tx: Sender<Result<(), String>>,
         ) -> Result<(), LxAppError> {
             if lxapp.logic_enabled() {
                 return Err(unsupported_js_runtime());
             }
-            let _ = ack_tx.send(());
+            let _ = ack_tx.send(Ok(()));
             Ok(())
         }
 

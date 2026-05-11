@@ -304,10 +304,10 @@ impl LxAppWorkers {
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         page_instance_id: Option<String>,
-        ack_tx: Sender<()>,
+        ack_tx: Sender<Result<(), String>>,
     ) -> Result<(), LxAppError> {
         if !lxapp.logic_enabled() {
-            let _ = ack_tx.send(());
+            let _ = ack_tx.send(Ok(()));
             return Ok(());
         }
         if !crate::js_appservice_supported() {
