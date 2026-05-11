@@ -12,10 +12,27 @@ app:
   productName: {{PRODUCT_NAME}}
   # Host app version. Must be semantic version major.minor.patch.
   productVersion: 0.0.1
-  # Optional LingXia server base URL, paired with lingxiaId.
-  # lingxiaServer: https://api.example.com
   # Optional logical publishing ID used by app publishing flows.
   # lingxiaId: {{PROJECT_NAME_COMMENT}}
+  # Per-environment server + identity-suffix overrides.
+  #
+  # Default env per command:
+  #   - `lingxia build` / `lingxia dev`: developer (so day-to-day work is safe)
+  #   - `lingxia package`: release (produces a shippable artifact)
+  # Override on any command with --env <developer|preview|release>.
+  #
+  # When the active env has no block here, the CLI synthesizes one:
+  # default suffix `.dev` / `.preview` (none for release) and no server. To
+  # change the server or disable the suffix, declare the block explicitly.
+  environments:
+    release:
+      lingxiaServer: https://api.example.com
+    # developer:
+    #   lingxiaServer: http://127.0.0.1:8080
+    #   # implicit: packageIdSuffix=".dev"; set "" to disable
+    # preview:
+    #   lingxiaServer: https://preview-api.example.com
+    #   # implicit: packageIdSuffix=".preview"; set "" to disable
   # Native platforms included in this project: android, ios, macos, harmony.
   platforms:
 {{PLATFORMS}}
