@@ -42,6 +42,30 @@ pub enum HostOutput {
     Stream(HostStream),
 }
 
+#[doc(hidden)]
+pub mod __native {
+    use super::{Future, HostResult, LxAppError};
+
+    pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        crate::executor::spawn(future)
+    }
+
+    pub async fn spawn_blocking<F, R>(f: F) -> HostResult<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        rong_rt::RongExecutor::global()
+            .spawn_blocking(f)
+            .await
+            .map_err(|err| LxAppError::Runtime(err.to_string()))
+    }
+}
+
 /// Wire-level method kind, serialized into the handshake schema so the JS
 /// bridge can automatically choose `invoke` vs `stream`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

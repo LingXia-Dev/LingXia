@@ -34,18 +34,6 @@ pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::io::Read;
-#[doc(hidden)]
-pub mod task {
-    pub use tokio;
-
-    pub fn spawn<F>(future: F) -> tokio::task::JoinHandle<F::Output>
-    where
-        F: std::future::Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
-        tokio::task::spawn(future)
-    }
-}
 
 const BROWSER_WEBUI_MANIFEST_ASSET_PATH: &str = "app.lingxia.browser/lxapp.json";
 const BROWSER_CONTEXT_MENU_ASSET_PATH: &str = "app.lingxia.browser/public/browser-context-menu.js";

@@ -19,7 +19,7 @@ fn expand_host_attribute(attr: TokenStream, item: TokenStream, macro_name: &str)
         Err(err) => return err.to_compile_error().into(),
     };
 
-    let (route_lit, mode) = match parse_host_attr(args, macro_name) {
+    let (route_lit, options) = match parse_host_attr(args, macro_name) {
         Ok(parsed) => parsed,
         Err(err) => return err.to_compile_error().into(),
     };
@@ -51,17 +51,19 @@ fn expand_host_attribute(attr: TokenStream, item: TokenStream, macro_name: &str)
     }
 
     let input_fn = parse_macro_input!(item as ItemFn);
-    match mode {
+    match options.mode {
         HostMode::Stream => expand_stream(route_lit.clone(), namespace, method, input_fn).into(),
         HostMode::Channel => expand_channel(route_lit.clone(), namespace, method, input_fn).into(),
-        HostMode::Unary => expand_host(route_lit.clone(), namespace, method, mode, input_fn).into(),
+        HostMode::Unary => {
+            expand_host(route_lit.clone(), namespace, method, options, input_fn).into()
+        }
     }
 }
 
 fn parse_host_attr(
     args: Punctuated<Expr, Token![,]>,
     macro_name: &str,
-) -> syn::Result<(LitStr, HostMode)> {
+) -> syn::Result<(LitStr, HostOptions)> {
     let Some(first) = args.first() else {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -82,6 +84,7 @@ fn parse_host_attr(
     };
 
     let mut mode = HostMode::Unary;
+    let mut blocking = false;
     for arg in args.iter().skip(1) {
         match arg {
             Expr::Path(path) if path.path.is_ident("stream") => {
@@ -102,18 +105,34 @@ fn parse_host_attr(
                 }
                 mode = HostMode::Channel;
             }
+            Expr::Path(path) if path.path.is_ident("blocking") => {
+                if blocking {
+                    return Err(syn::Error::new_spanned(
+                        arg,
+                        format!("duplicate blocking flag in #[{macro_name}(...)]"),
+                    ));
+                }
+                blocking = true;
+            }
             _ => {
                 return Err(syn::Error::new_spanned(
                     arg,
                     format!(
-                        "expected only #[{macro_name}(\"namespace.method\")], #[{macro_name}(\"namespace.method\", stream)], or #[{macro_name}(\"namespace.method\", channel)]"
+                        "expected only #[{macro_name}(\"namespace.method\")], #[{macro_name}(\"namespace.method\", blocking)], #[{macro_name}(\"namespace.method\", stream)], or #[{macro_name}(\"namespace.method\", channel)]"
                     ),
                 ));
             }
         }
     }
 
-    Ok((route_lit.clone(), mode))
+    if blocking && !matches!(mode, HostMode::Unary) {
+        return Err(syn::Error::new_spanned(
+            route_lit,
+            format!("blocking is only supported for unary #[{macro_name}] handlers"),
+        ));
+    }
+
+    Ok((route_lit.clone(), HostOptions { mode, blocking }))
 }
 
 #[derive(Clone, Copy)]
@@ -123,11 +142,17 @@ enum HostMode {
     Channel,
 }
 
+#[derive(Clone, Copy)]
+struct HostOptions {
+    mode: HostMode,
+    blocking: bool,
+}
+
 fn expand_host(
     route_lit: LitStr,
     namespace: &str,
     method: &str,
-    mode: HostMode,
+    options: HostOptions,
     input_fn: ItemFn,
 ) -> proc_macro2::TokenStream {
     let fn_ident = input_fn.sig.ident.clone();
@@ -141,13 +166,22 @@ fn expand_host(
         Err(err) => return err.to_compile_error(),
     };
 
-    let call_expr = call_plan.call_expr(&fn_ident, input_fn.sig.asyncness.is_some());
-    let ctor_ident = match mode {
+    let is_async = input_fn.sig.asyncness.is_some();
+    if options.blocking && is_async {
+        return syn::Error::new_spanned(
+            &input_fn.sig.asyncness,
+            "#[native(..., blocking)] is only supported on non-async functions",
+        )
+        .to_compile_error();
+    }
+
+    let call_expr = call_plan.call_expr(&fn_ident, is_async, options.blocking);
+    let ctor_ident = match options.mode {
         HostMode::Unary => format_ident!("new"),
         HostMode::Stream => format_ident!("stream"),
         HostMode::Channel => unreachable!("channel mode is handled by expand_channel"),
     };
-    let serialize_expr = match mode {
+    let serialize_expr = match options.mode {
         HostMode::Unary => quote! {
             ::lingxia::host::serialize_result(__lingxia_result)
         },
@@ -250,7 +284,12 @@ impl HostFnPlan {
         })
     }
 
-    fn call_expr(&self, fn_ident: &syn::Ident, is_async: bool) -> proc_macro2::TokenStream {
+    fn call_expr(
+        &self,
+        fn_ident: &syn::Ident,
+        is_async: bool,
+        blocking: bool,
+    ) -> proc_macro2::TokenStream {
         let mut args = Vec::new();
         let mut prelude = Vec::new();
 
@@ -272,6 +311,10 @@ impl HostFnPlan {
 
         let invoke = if is_async {
             quote! { #fn_ident(#(#args),*).await }
+        } else if blocking {
+            quote! {
+                ::lingxia::host::__native::spawn_blocking(move || #fn_ident(#(#args),*)).await?
+            }
         } else {
             quote! { #fn_ident(#(#args),*) }
         };
@@ -570,7 +613,7 @@ fn expand_stream(
                         ::lingxia::host::new_stream_context::<#event_ty, #result_ty>(__lingxia_cancel);
                     let __lingxia_error_tx = __lingxia_stream.error_sender();
 
-                    ::lingxia::task::spawn(async move {
+                    ::lingxia::host::__native::spawn(async move {
                         let __lingxia_result: ::lingxia::host::HostResult<()> = {
                             let __lingxia_lxapp = __lingxia_lxapp;
                             let __lingxia_input = __lingxia_input;
@@ -752,7 +795,7 @@ fn expand_channel(
                 __lingxia_ctx: ::lingxia::host::ChannelContext,
                 __lingxia_input: Option<String>,
             ) {
-                ::lingxia::task::spawn(async move {
+                ::lingxia::host::__native::spawn(async move {
                     let mut __lingxia_ctx = __lingxia_ctx;
                     let __lingxia_close = __lingxia_ctx.close_handle();
                     __lingxia_ctx.disable_close_on_drop();
