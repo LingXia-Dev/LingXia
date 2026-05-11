@@ -181,6 +181,7 @@ mod tests {
                 product_version: "0.1.0".into(),
                 lingxia_server: None,
                 lingxia_id: None,
+                environments: None,
                 platforms: vec!["android".into(), "ios".into(), "harmony".into()],
                 home_app_id: "demo-home".into(),
             }),

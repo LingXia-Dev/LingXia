@@ -167,11 +167,121 @@ pub struct HostAppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lingxia_id: Option<String>,
 
+    /// Optional per-environment overrides for `lingxiaServer` and package-id
+    /// suffix. If this block is present, the active build env must have a
+    /// matching entry.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environments: Option<Environments>,
+
     /// Platforms to build for this app (e.g. ["android"]).
     pub platforms: Vec<String>,
 
     #[serde(rename = "homeAppId")]
     pub home_app_id: String,
+}
+
+/// Per-environment configuration overrides. The three keys mirror
+/// `lingxia_update::ReleaseType` to keep the env-version contract consistent
+/// across crates. `deny_unknown_fields` ensures typos surface as errors.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct Environments {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub developer: Option<EnvOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<EnvOverride>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<EnvOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EnvOverride {
+    /// Optional server override for this environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lingxia_server: Option<String>,
+    /// Optional `.suffix` (e.g. `.dev`) appended to platform-specific
+    /// package/bundle IDs to enable side-by-side install.
+    /// Format: starts with `.`, lowercase alphanumeric segments separated by `.`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_id_suffix: Option<String>,
+}
+
+/// Canonical env-version enum. Wire-compatible with `lingxia_update::ReleaseType`
+/// — both serialize as lowercase `"developer" | "preview" | "release"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EnvVersion {
+    Developer,
+    Preview,
+    #[default]
+    Release,
+}
+
+impl EnvVersion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Developer => "developer",
+            Self::Preview => "preview",
+            Self::Release => "release",
+        }
+    }
+
+    /// Parse the user-facing CLI value. Case-sensitive on purpose — clap's
+    /// `value_parser` already restricts inputs to the lowercase forms below,
+    /// so accepting other cases here would silently widen the contract.
+    pub fn parse_cli(value: &str) -> Result<Self> {
+        match value.trim() {
+            "developer" | "dev" => Ok(Self::Developer),
+            "preview" => Ok(Self::Preview),
+            "release" => Ok(Self::Release),
+            other => Err(anyhow!(
+                "unknown env version '{other}'; valid: developer (or dev), preview, release"
+            )),
+        }
+    }
+
+    /// Built-in default `packageIdSuffix` for this environment. Used when the
+    /// override block doesn't specify one — most projects never need to. An
+    /// explicit `packageIdSuffix: ""` in YAML opts out (no suffix at all).
+    pub fn default_package_id_suffix(self) -> Option<&'static str> {
+        match self {
+            Self::Developer => Some(".dev"),
+            Self::Preview => Some(".preview"),
+            Self::Release => None,
+        }
+    }
+}
+
+impl std::fmt::Display for EnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Resolved per-build environment context, single source of truth threaded
+/// through the build pipeline (asset generation + each platform builder).
+#[derive(Debug, Clone)]
+pub struct ResolvedEnv {
+    pub version: EnvVersion,
+    pub lingxia_server: String,
+    pub uses_environment_block: bool,
+    pub package_id_suffix: Option<String>,
+}
+
+impl ResolvedEnv {
+    /// Suffix to apply to package/bundle IDs, or `None` when no suffixing
+    /// should occur. Centralizes the "is environments configured AND is the
+    /// suffix non-empty" decision so callers cannot disagree.
+    pub fn effective_package_id_suffix(&self) -> Option<&str> {
+        if !self.uses_environment_block {
+            return None;
+        }
+        self.package_id_suffix
+            .as_deref()
+            .filter(|suffix| !suffix.is_empty())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,6 +486,13 @@ impl LingXiaConfig {
                 product_version: "0.0.1".to_string(),
                 lingxia_server: None,
                 lingxia_id: None,
+                environments: Some(Environments {
+                    release: Some(EnvOverride {
+                        lingxia_server: Some("https://api.example.com".to_string()),
+                        package_id_suffix: None,
+                    }),
+                    ..Default::default()
+                }),
                 platforms: vec!["android".to_string()],
                 home_app_id: home_app_id.to_string(),
             }),
@@ -435,6 +552,9 @@ impl LingXiaConfig {
             }
             if app.home_app_id.trim().is_empty() {
                 return Err(anyhow!("app.homeAppId must not be empty"));
+            }
+            if let Some(envs) = app.environments.as_ref() {
+                validate_environments(envs)?;
             }
             let has_macos = app
                 .platforms
@@ -899,6 +1019,128 @@ pub fn has_host_config(project_root: &Path) -> bool {
     project_root.join(HOST_CONFIG_FILE).exists()
 }
 
+/// Validate optional per-environment overrides.
+fn validate_environments(envs: &Environments) -> Result<()> {
+    let entries = [
+        ("developer", envs.developer.as_ref()),
+        ("preview", envs.preview.as_ref()),
+        ("release", envs.release.as_ref()),
+    ];
+    if entries.iter().all(|(_, env)| env.is_none()) {
+        return Err(anyhow!(
+            "app.environments must configure at least one of developer, preview, or release"
+        ));
+    }
+    for (name, env) in entries {
+        if let Some(env) = env {
+            if let Some(server) = env.lingxia_server.as_deref()
+                && server.trim().is_empty()
+            {
+                return Err(anyhow!(
+                    "environments.{name}.lingxiaServer must not be empty"
+                ));
+            }
+            if let Some(suffix) = env.package_id_suffix.as_deref() {
+                // Empty string is the explicit "opt out of default suffix" form.
+                if !suffix.is_empty() && !is_valid_package_id_suffix(suffix) {
+                    return Err(anyhow!(
+                        "environments.{name}.packageIdSuffix must start with '.' \
+                         and use lowercase a-z 0-9 segments (got '{suffix}'); \
+                         use \"\" to opt out of the default"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn is_valid_package_id_suffix(suffix: &str) -> bool {
+    // Pattern: ^\.[a-z0-9]+(\.[a-z0-9]+)*$
+    if !suffix.starts_with('.') || suffix.len() < 2 {
+        return false;
+    }
+    let body = &suffix[1..];
+    body.split('.').all(|seg| {
+        !seg.is_empty()
+            && seg
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+    })
+}
+
+impl LingXiaConfig {
+    /// Resolve the active environment for this build (strict).
+    ///
+    /// Precedence:
+    /// - If `app.environments` is absent, use top-level optional defaults and
+    ///   only stamp `envVersion`; no suffix or server override is inferred.
+    /// - If `app.environments` is present, the active env must have a matching
+    ///   block. Values from that block override top-level values when set.
+    pub fn resolve_env(&self, version: EnvVersion) -> Result<ResolvedEnv> {
+        self.resolve_env_impl(version, true)
+    }
+
+    /// Same as [`resolve_env`], but when the env block is present yet the
+    /// requested version has no entry, synthesize a default using the
+    /// env-version's built-in suffix plus the top-level `app.lingxiaServer`.
+    /// Use this on implicit `--env` (omitted) so freshly-initialized projects
+    /// build without forcing users to declare every env up front.
+    pub fn resolve_env_or_default(&self, version: EnvVersion) -> Result<ResolvedEnv> {
+        self.resolve_env_impl(version, false)
+    }
+
+    fn resolve_env_impl(&self, version: EnvVersion, strict: bool) -> Result<ResolvedEnv> {
+        let app = self
+            .app
+            .as_ref()
+            .ok_or_else(|| anyhow!("Missing app section in {}", HOST_CONFIG_FILE))?;
+        let Some(envs) = app.environments.as_ref() else {
+            return Ok(ResolvedEnv {
+                version,
+                lingxia_server: app.lingxia_server.clone().unwrap_or_default(),
+                uses_environment_block: false,
+                package_id_suffix: None,
+            });
+        };
+
+        let over = match version {
+            EnvVersion::Developer => envs.developer.as_ref(),
+            EnvVersion::Preview => envs.preview.as_ref(),
+            EnvVersion::Release => envs.release.as_ref(),
+        };
+        let (configured_server, configured_suffix) = match over {
+            Some(o) => (o.lingxia_server.as_deref(), o.package_id_suffix.as_deref()),
+            None if strict => {
+                return Err(anyhow!(
+                    "--env {version} requested but app.environments.{version} is not configured"
+                ));
+            }
+            None => (None, None),
+        };
+
+        let package_id_suffix =
+            resolve_env_suffix(configured_suffix, version.default_package_id_suffix());
+        Ok(ResolvedEnv {
+            version,
+            lingxia_server: configured_server
+                .map(str::to_string)
+                .or_else(|| app.lingxia_server.clone())
+                .unwrap_or_default(),
+            uses_environment_block: true,
+            package_id_suffix,
+        })
+    }
+}
+
+fn resolve_env_suffix(configured: Option<&str>, default: Option<&str>) -> Option<String> {
+    match configured {
+        None => default.map(str::to_string),
+        Some("") => None,
+        Some(value) => Some(value.to_string()),
+    }
+}
+
 pub fn dir_matches_host_config(dir: &Path, requested_name: &str) -> bool {
     dir.join(requested_name).exists()
 }
@@ -987,6 +1229,52 @@ mod tests {
                 "webview-input".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn resolve_env_without_environments_uses_top_level_optional_server_only() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.environments = None;
+        app.lingxia_server = Some("https://api.example.com".to_string());
+
+        let env = config.resolve_env(EnvVersion::Developer).unwrap();
+
+        assert_eq!(env.version, EnvVersion::Developer);
+        assert_eq!(env.lingxia_server, "https://api.example.com");
+        assert!(!env.uses_environment_block);
+        assert_eq!(env.package_id_suffix, None);
+    }
+
+    #[test]
+    fn resolve_env_requires_matching_block_when_environments_exist() {
+        let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+
+        let err = config
+            .resolve_env(EnvVersion::Developer)
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("app.environments.developer is not configured"));
+    }
+
+    #[test]
+    fn resolve_env_allows_environment_without_server() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let app = config.app.as_mut().unwrap();
+        app.environments = Some(Environments {
+            developer: Some(EnvOverride {
+                lingxia_server: None,
+                package_id_suffix: None,
+            }),
+            ..Default::default()
+        });
+
+        let env = config.resolve_env(EnvVersion::Developer).unwrap();
+
+        assert_eq!(env.lingxia_server, "");
+        assert!(env.uses_environment_block);
+        assert_eq!(env.package_id_suffix.as_deref(), Some(".dev"));
     }
 
     #[test]

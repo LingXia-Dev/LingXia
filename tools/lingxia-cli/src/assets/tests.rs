@@ -2,10 +2,19 @@ use super::{
     build_app_json_from_config, build_ui_json_from_config, is_png_path, prepare_app_ui_icons,
     validate_app_ui_svg_icon,
 };
-use crate::config::{HostAppConfig, LingXiaConfig};
+use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, ResolvedEnv};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
+
+fn test_resolved_env() -> ResolvedEnv {
+    ResolvedEnv {
+        version: EnvVersion::Release,
+        lingxia_server: "https://api.example.com".to_string(),
+        uses_environment_block: false,
+        package_id_suffix: None,
+    }
+}
 
 #[test]
 fn png_path_check_accepts_png_case_insensitively() {
@@ -31,6 +40,7 @@ fn generated_app_json_excludes_ui_fields() {
             product_version: "1.2.3".into(),
             lingxia_server: Some("http://127.0.0.1:8080".into()),
             lingxia_id: Some("demo".into()),
+            environments: None,
             platforms: vec!["macos".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -51,7 +61,7 @@ fn generated_app_json_excludes_ui_fields() {
         resources: None,
     };
 
-    let app_json = build_app_json_from_config(&config, None, None).unwrap();
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert!(value.get("ui").is_none());
@@ -68,6 +78,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
+            environments: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -84,7 +95,13 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         resources: None,
     };
 
-    let app_json = build_app_json_from_config(&config, None, Some("ws://127.0.0.1:12345")).unwrap();
+    let app_json = build_app_json_from_config(
+        &config,
+        None,
+        Some("ws://127.0.0.1:12345"),
+        &test_resolved_env(),
+    )
+    .unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["devWsUrl"], "ws://127.0.0.1:12345");
@@ -99,6 +116,7 @@ fn generated_app_json_includes_app_link_hosts() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
+            environments: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -117,7 +135,7 @@ fn generated_app_json_includes_app_link_hosts() {
         resources: None,
     };
 
-    let app_json = build_app_json_from_config(&config, None, None).unwrap();
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["appLinks"]["hosts"][0], "www.example.com");
@@ -132,6 +150,7 @@ fn generated_app_json_includes_capabilities() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
+            environments: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -151,7 +170,7 @@ fn generated_app_json_includes_capabilities() {
         resources: None,
     };
 
-    let app_json = build_app_json_from_config(&config, None, None).unwrap();
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["capabilities"]["notifications"], true);
