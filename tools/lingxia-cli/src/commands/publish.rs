@@ -423,9 +423,8 @@ fn resolve_lingxia_server(
         bail!("Use --lingxia-server to specify the package upload server URL.");
     };
 
-    // Prefer the env-specific server when a channel is known and the project
-    // declares per-env overrides. Falls through to the top-level
-    // `app.lingxiaServer` for projects that haven't migrated.
+    // Channel comes from the package's envVersion; route to the env-specific
+    // server when configured.
     if let Some(channel) = channel
         && let Ok(env_version) = EnvVersion::parse_cli(channel)
         && let Ok(resolved) = cfg.resolve_env(env_version)
@@ -434,12 +433,6 @@ fn resolve_lingxia_server(
         return Ok(resolved.lingxia_server);
     }
 
-    if let Some(url) = cfg.app.and_then(|a| a.lingxia_server) {
-        let trimmed = url.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
-    }
     bail!("Use --lingxia-server to specify the package upload server URL.");
 }
 
@@ -819,9 +812,7 @@ app:
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
-  environments:
-    release:
-      lingxiaServer: https://api.example.com
+  lingxiaServer: https://api.example.com
   platforms:
     - android
     - macos
@@ -880,9 +871,7 @@ app:
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
-  environments:
-    release:
-      lingxiaServer: https://api.example.com
+  lingxiaServer: https://api.example.com
   platforms:
     - android
     - harmony

@@ -435,26 +435,18 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
 
 /// Resolve the active environment for a build/dev/package invocation.
 ///
-/// When `--env` is omitted we default to `Developer`. Release / preview must
-/// be requested explicitly so day-to-day commands stay safe (no accidental
-/// release builds, package-id suffixes match the developer profile, etc.).
-///
-/// Explicit `--env <name>` is strict: the matching block in
-/// `app.environments` must exist. Implicit (omitted) falls back to a
-/// synthesized default if the developer block isn't configured, so
-/// freshly-initialized projects build without forcing users to declare every
-/// env in `lingxia.yaml`.
+/// `--env <name>` chooses the env; omitted defaults to `Developer` (callers
+/// like `package` override the default before getting here). env-version is
+/// a build-time property with built-in defaults — no yaml block is required.
 pub(crate) fn resolve_build_env(
     config: &LingXiaConfig,
     requested: Option<&str>,
 ) -> Result<crate::config::ResolvedEnv> {
-    match requested {
-        Some(value) => {
-            let version = crate::config::EnvVersion::parse_cli(value)?;
-            config.resolve_env(version)
-        }
-        None => config.resolve_env_or_default(crate::config::EnvVersion::Developer),
-    }
+    let version = requested
+        .map(crate::config::EnvVersion::parse_cli)
+        .transpose()?
+        .unwrap_or(crate::config::EnvVersion::Developer);
+    config.resolve_env(version)
 }
 
 #[cfg(test)]
@@ -507,61 +499,26 @@ mod tests {
     }
 
     #[test]
-    fn omitted_env_defaults_to_developer() {
-        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-        config.app.as_mut().unwrap().environments = None;
+    fn omitted_env_defaults_to_developer_with_builtin_suffix() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
 
         let resolved = resolve_build_env(&config, None).unwrap();
 
         assert_eq!(resolved.version, EnvVersion::Developer);
+        assert_eq!(resolved.effective_package_id_suffix(), Some(".dev"));
     }
 
     #[test]
-    fn explicit_env_overrides_default() {
-        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-        config.app.as_mut().unwrap().environments = None;
+    fn explicit_env_release_clears_suffix() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
 
         let release = resolve_build_env(&config, Some("release")).unwrap();
         let preview = resolve_build_env(&config, Some("preview")).unwrap();
 
         assert_eq!(release.version, EnvVersion::Release);
+        assert_eq!(release.effective_package_id_suffix(), None);
         assert_eq!(preview.version, EnvVersion::Preview);
-    }
-
-    /// The freshly-initialized project template ships an `environments` block
-    /// that only configures `release`. Implicit `--env` (developer) must not
-    /// error in that case — synthesize a developer env with the built-in
-    /// `.dev` suffix so out-of-the-box `lingxia build` works.
-    #[test]
-    fn omitted_env_falls_back_when_developer_block_missing() {
-        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-        assert!(
-            config
-                .app
-                .as_ref()
-                .unwrap()
-                .environments
-                .as_ref()
-                .unwrap()
-                .developer
-                .is_none(),
-            "template precondition: developer block must be absent"
-        );
-
-        let resolved = resolve_build_env(&config, None).unwrap();
-
-        assert_eq!(resolved.version, EnvVersion::Developer);
-        assert!(resolved.uses_environment_block);
-        assert_eq!(resolved.package_id_suffix.as_deref(), Some(".dev"));
-    }
-
-    #[test]
-    fn explicit_env_remains_strict_when_block_missing() {
-        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-        let err = resolve_build_env(&config, Some("developer"))
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("app.environments.developer is not configured"));
+        assert_eq!(preview.effective_package_id_suffix(), Some(".preview"));
     }
 }
 
@@ -642,7 +599,6 @@ fn build_standalone_apple_swift_package(
             resolved_env: crate::config::ResolvedEnv {
                 version: crate::config::EnvVersion::Release,
                 lingxia_server: String::new(),
-                uses_environment_block: false,
                 package_id_suffix: None,
             },
         };

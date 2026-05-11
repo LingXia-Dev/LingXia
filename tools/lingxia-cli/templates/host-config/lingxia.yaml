@@ -14,25 +14,27 @@ app:
   productVersion: 0.0.1
   # Optional logical publishing ID used by app publishing flows.
   # lingxiaId: {{PROJECT_NAME_COMMENT}}
-  # Per-environment server + identity-suffix overrides.
-  #
-  # Default env per command:
-  #   - `lingxia build` / `lingxia dev`: developer (so day-to-day work is safe)
-  #   - `lingxia package`: release (produces a shippable artifact)
-  # Override on any command with --env <developer|preview|release>.
-  #
-  # When the active env has no block here, the CLI synthesizes one:
-  # default suffix `.dev` / `.preview` (none for release) and no server. To
-  # change the server or disable the suffix, declare the block explicitly.
-  environments:
-    release:
-      lingxiaServer: https://api.example.com
-    # developer:
-    #   lingxiaServer: http://127.0.0.1:8080
-    #   # implicit: packageIdSuffix=".dev"; set "" to disable
-    # preview:
-    #   lingxiaServer: https://preview-api.example.com
-    #   # implicit: packageIdSuffix=".preview"; set "" to disable
+
+  # Default env per command (override with --env <developer|preview|release>):
+  #   - `lingxia build` / `lingxia dev`: developer (day-to-day work)
+  #   - `lingxia package`: release (shippable artifact)
+  # Each env has a built-in package-id suffix: developer=".dev",
+  # preview=".preview", release=(none). Override via packageIdSuffix below.
+
+  # Optional cloud server. Use a single URL for all envs:
+  lingxiaServer: https://api.example.com
+  # ...or a per-env map for separate backends:
+  # lingxiaServer:
+  #   developer: http://127.0.0.1:8080
+  #   preview: https://preview-api.example.com
+  #   release: https://api.example.com
+
+  # Optional: override the built-in package-id suffix per env. Use "" to opt
+  # out of a default. Most projects do not need this block.
+  # packageIdSuffix:
+  #   developer: ".dev"
+  #   preview: ".preview"
+  #   release: ""
   # Native platforms included in this project: android, ios, macos, harmony.
   platforms:
 {{PLATFORMS}}

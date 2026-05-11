@@ -2,7 +2,7 @@ use super::{
     build_app_json_from_config, build_ui_json_from_config, is_png_path, prepare_app_ui_icons,
     validate_app_ui_svg_icon,
 };
-use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, ResolvedEnv};
+use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -11,7 +11,6 @@ fn test_resolved_env() -> ResolvedEnv {
     ResolvedEnv {
         version: EnvVersion::Release,
         lingxia_server: "https://api.example.com".to_string(),
-        uses_environment_block: false,
         package_id_suffix: None,
     }
 }
@@ -38,9 +37,9 @@ fn generated_app_json_excludes_ui_fields() {
             project_name: "demo".into(),
             product_name: "Demo".into(),
             product_version: "1.2.3".into(),
-            lingxia_server: Some("http://127.0.0.1:8080".into()),
+            lingxia_server: Some(LingxiaServer::Single("http://127.0.0.1:8080".into())),
             lingxia_id: Some("demo".into()),
-            environments: None,
+            package_id_suffix: None,
             platforms: vec!["macos".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -78,7 +77,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
-            environments: None,
+            package_id_suffix: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -116,7 +115,7 @@ fn generated_app_json_includes_app_link_hosts() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
-            environments: None,
+            package_id_suffix: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
@@ -150,7 +149,7 @@ fn generated_app_json_includes_capabilities() {
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
-            environments: None,
+            package_id_suffix: None,
             platforms: vec!["android".into()],
             home_app_id: "demo-home".into(),
         }),
