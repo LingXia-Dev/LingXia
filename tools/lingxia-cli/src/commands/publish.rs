@@ -3,9 +3,10 @@ use colored::Colorize;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
+use crate::config::{EnvVersion, HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::http_client;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
@@ -20,11 +21,12 @@ pub struct PublishOptions {
     pub progress: Option<String>,
 }
 
+#[derive(Debug)]
 struct PackageMeta {
     target: String,
     target_id: String,
     version: String,
-    channel: Option<String>, // Some only for lxapp, lxplugin
+    channel: Option<String>,
 }
 
 struct ResolvedPackage {
@@ -44,10 +46,7 @@ impl Drop for ResolvedPackage {
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let meta = resolve_meta(&cwd, opts.channel)?;
-    let lingxia_server = resolve_lingxia_server(&cwd, opts.lingxia_server)?;
-    let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
-
+    let mut meta = resolve_meta(&cwd, opts.channel.as_deref())?;
     let package = resolve_package_for_publish(
         &cwd,
         &meta,
@@ -57,6 +56,29 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         opts.progress,
     )?;
     let package_path = &package.path;
+    if meta.target == "app" {
+        let metadata = read_app_package_metadata(package_path).with_context(|| {
+            format!(
+                "Failed to read app package metadata from {}",
+                package_path.display()
+            )
+        })?;
+        meta.channel = Some(metadata.env_version);
+        // The runtime uses the suffixed lingxiaId from the baked-in app.json
+        // for update checks. Mirror that on the server side so id matches,
+        // otherwise developer/preview packages would upload to the base id but
+        // clients would poll for the suffixed one.
+        if let Some(id) = metadata.lingxia_id {
+            meta.target_id = id;
+        }
+    } else if meta.channel.is_none() {
+        meta.channel = Some("release".to_string());
+    }
+    // Resolve server *after* channel is known so we can prefer the per-env
+    // server from app.environments.<channel>.lingxiaServer.
+    let lingxia_server =
+        resolve_lingxia_server(&cwd, meta.channel.as_deref(), opts.lingxia_server)?;
+    let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
     let file_name = package_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -178,45 +200,36 @@ fn package_current_project(
     })
 }
 
-fn resolve_meta(cwd: &Path, channel_arg: Option<String>) -> Result<PackageMeta> {
+fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
     let target = detect_target(cwd)?;
 
     match target.as_str() {
         "lxapp" => {
             let (id, version) = read_lxapp_json(cwd)?;
-            let channel = channel_arg
-                .as_deref()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "--channel is required when publishing target=lxapp. Must be one of: release, preview, developer"
-                    )
-                })
-                .and_then(normalize_channel)?;
+            let channel = channel_arg.map(normalize_channel).transpose()?;
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel),
+                channel: Some(channel.unwrap_or_else(|| "release".to_string())),
             })
         }
         "lxplugin" => {
             let (id, version) = read_lxplugin_json(cwd)?;
-            let channel = channel_arg
-                .as_deref()
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "--channel is required when publishing target=lxplugin. Must be one of: release, preview, developer"
-                    )
-                })
-                .and_then(normalize_channel)?;
+            let channel = channel_arg.map(normalize_channel).transpose()?;
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel),
+                channel: Some(channel.unwrap_or_else(|| "release".to_string())),
             })
         }
         "app" => {
+            if channel_arg.is_some() {
+                bail!(
+                    "--env/--channel is not supported when publishing target=app; app channel is read from the packaged app.json envVersion"
+                );
+            }
             let (id, version) = read_app_config(cwd)?;
             Ok(PackageMeta {
                 target,
@@ -250,8 +263,94 @@ fn normalize_channel(s: &str) -> Result<String> {
         "release" => Ok("release".to_string()),
         "preview" | "trial" => Ok("preview".to_string()),
         "developer" | "develop" => Ok("developer".to_string()),
-        _ => bail!("Invalid --channel '{s}'. Must be one of: release, preview, developer"),
+        _ => bail!("Invalid envVersion '{s}'. Must be one of: release, preview, developer"),
     }
+}
+
+struct AppPackageMetadata {
+    env_version: String,
+    /// Suffixed lingxiaId baked into the package, if any. Authoritative for
+    /// publish because the runtime resolves updates against this exact id.
+    lingxia_id: Option<String>,
+}
+
+fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
+    let app_json = if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("apk"))
+    {
+        read_zip_entry(path, &["assets/app.json", "app/src/main/assets/app.json"])?
+    } else if path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with("-macos.zip"))
+    {
+        read_macos_zip_app_json(path)?
+    } else {
+        bail!("unsupported app package type; expected Android .apk or macOS *-macos.zip");
+    };
+    let value: serde_json::Value =
+        serde_json::from_slice(&app_json).context("Failed to parse app.json in package")?;
+    let env_version = value
+        .get("envVersion")
+        .and_then(|value| value.as_str())
+        .context("app.json in package is missing envVersion; rebuild the app with a newer CLI")?;
+    let env_version = normalize_channel(env_version)?;
+    let lingxia_id = value
+        .get("lingxiaId")
+        .and_then(|value| value.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    Ok(AppPackageMetadata {
+        env_version,
+        lingxia_id,
+    })
+}
+
+fn read_zip_entry(path: &Path, names: &[&str]) -> Result<Vec<u8>> {
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut zip = zip::ZipArchive::new(file)
+        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
+    for name in names {
+        if let Ok(mut entry) = zip.by_name(name) {
+            let mut data = Vec::new();
+            entry
+                .read_to_end(&mut data)
+                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
+            return Ok(data);
+        }
+    }
+    bail!(
+        "app.json not found in {}; looked for {}",
+        path.display(),
+        names.join(", ")
+    )
+}
+
+fn read_macos_zip_app_json(path: &Path) -> Result<Vec<u8>> {
+    let file =
+        fs::File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let mut outer = zip::ZipArchive::new(file)
+        .with_context(|| format!("Failed to read zip archive {}", path.display()))?;
+    // A single unreadable entry (corrupt header, ZIP64 edge, etc.) shouldn't
+    // abort the whole publish — skip it and keep scanning.
+    for index in 0..outer.len() {
+        let mut entry = match outer.by_index(index) {
+            Ok(entry) => entry,
+            Err(_) => continue,
+        };
+        let name = entry.name().to_string();
+        if name.ends_with(".app/Contents/Resources/app.json") {
+            let mut data = Vec::new();
+            entry
+                .read_to_end(&mut data)
+                .with_context(|| format!("Failed to read {name} from {}", path.display()))?;
+            return Ok(data);
+        }
+    }
+    bail!("app.json not found in macOS app package {}", path.display())
 }
 
 fn read_lxapp_json(cwd: &Path) -> Result<(String, String)> {
@@ -304,7 +403,11 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
     Ok(s)
 }
 
-fn resolve_lingxia_server(cwd: &Path, lingxia_server_arg: Option<String>) -> Result<String> {
+fn resolve_lingxia_server(
+    cwd: &Path,
+    channel: Option<&str>,
+    lingxia_server_arg: Option<String>,
+) -> Result<String> {
     if let Some(s) = lingxia_server_arg {
         let trimmed = s.trim();
         if trimmed.is_empty() {
@@ -313,14 +416,28 @@ fn resolve_lingxia_server(cwd: &Path, lingxia_server_arg: Option<String>) -> Res
         return Ok(trimmed.to_string());
     }
     let config_path = cwd.join(HOST_CONFIG_FILE);
-    if config_path.exists() {
-        if let Ok(cfg) = LingXiaConfig::load(cwd) {
-            if let Some(url) = cfg.app.and_then(|a| a.lingxia_server) {
-                let trimmed = url.trim();
-                if !trimmed.is_empty() {
-                    return Ok(trimmed.to_string());
-                }
-            }
+    if !config_path.exists() {
+        bail!("Use --lingxia-server to specify the package upload server URL.");
+    }
+    let Ok(cfg) = LingXiaConfig::load(cwd) else {
+        bail!("Use --lingxia-server to specify the package upload server URL.");
+    };
+
+    // Prefer the env-specific server when a channel is known and the project
+    // declares per-env overrides. Falls through to the top-level
+    // `app.lingxiaServer` for projects that haven't migrated.
+    if let Some(channel) = channel
+        && let Ok(env_version) = EnvVersion::parse_cli(channel)
+        && let Ok(resolved) = cfg.resolve_env(env_version)
+        && !resolved.lingxia_server.is_empty()
+    {
+        return Ok(resolved.lingxia_server);
+    }
+
+    if let Some(url) = cfg.app.and_then(|a| a.lingxia_server) {
+        let trimmed = url.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
         }
     }
     bail!("Use --lingxia-server to specify the package upload server URL.");
@@ -612,10 +729,12 @@ fn build_multipart(
 mod tests {
     use super::{
         build_multipart, find_or_resolve_package, normalize_platform, package_matches,
-        resolve_publish_platform,
+        read_app_package_metadata, resolve_meta, resolve_publish_platform,
     };
     use std::fs;
+    use std::io::Write;
     use tempfile::TempDir;
+    use zip::write::SimpleFileOptions;
 
     #[test]
     fn app_package_match_accepts_cli_generated_macos_zip_only_in_dist_macos() {
@@ -700,10 +819,17 @@ app:
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
+  environments:
+    release:
+      lingxiaServer: https://api.example.com
   platforms:
     - android
     - macos
   homeAppId: demo.home
+android:
+  packageId: app.example.demo
+macos:
+  bundleId: app.example.demo
 ui:
   launch:
     initialSurface: main
@@ -754,10 +880,17 @@ app:
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
+  environments:
+    release:
+      lingxiaServer: https://api.example.com
   platforms:
     - android
     - harmony
   homeAppId: demo.home
+android:
+  packageId: app.example.demo
+harmony:
+  bundleName: app.example.demo
 "#,
         )
         .unwrap();
@@ -776,5 +909,112 @@ app:
         );
         let body = String::from_utf8(body).unwrap();
         assert!(body.contains("name=\"platform\"\r\n\r\nandroid"));
+    }
+
+    #[test]
+    fn lxapp_publish_channel_can_be_selected() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lxapp.json"),
+            br#"{"appId":"demo","version":"1.0.0","pages":["index.html"]}"#,
+        )
+        .unwrap();
+
+        let meta = resolve_meta(temp.path(), Some("preview")).unwrap();
+
+        assert_eq!(meta.target, "lxapp");
+        assert_eq!(meta.channel.as_deref(), Some("preview"));
+    }
+
+    #[test]
+    fn app_publish_rejects_explicit_channel() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 1.0.0
+  lingxiaId: demo
+  platforms:
+    - android
+  homeAppId: demo.home
+android:
+  packageId: app.example.demo
+"#,
+        )
+        .unwrap();
+
+        let err = resolve_meta(temp.path(), Some("developer"))
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("not supported when publishing target=app"));
+    }
+
+    #[test]
+    fn publish_reads_channel_from_android_app_json_env_version() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app-preview.apk");
+        write_zip(
+            &apk,
+            &[(
+                "assets/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"preview"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&apk).unwrap();
+
+        assert_eq!(metadata.env_version, "preview");
+        assert!(metadata.lingxia_id.is_none());
+    }
+
+    #[test]
+    fn publish_reads_channel_from_macos_app_json_env_version() {
+        let temp = TempDir::new().unwrap();
+        let zip = temp.path().join("Demo-1.0.0-macos.zip");
+        write_zip(
+            &zip,
+            &[(
+                "Demo.app/Contents/Resources/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"developer"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&zip).unwrap();
+
+        assert_eq!(metadata.env_version, "developer");
+    }
+
+    #[test]
+    fn publish_picks_up_suffixed_lingxia_id_from_app_package() {
+        // dev/preview builds bake a suffixed id into app.json. publish must
+        // upload that exact id so update checks line up.
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app-dev.apk");
+        write_zip(
+            &apk,
+            &[(
+                "assets/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"developer","lingxiaId":"demo.dev"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&apk).unwrap();
+
+        assert_eq!(metadata.env_version, "developer");
+        assert_eq!(metadata.lingxia_id.as_deref(), Some("demo.dev"));
+    }
+
+    fn write_zip(path: &std::path::Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        for (name, data) in entries {
+            zip.start_file(*name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(data).unwrap();
+        }
+        zip.finish().unwrap();
     }
 }
