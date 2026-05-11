@@ -141,10 +141,15 @@ impl IosPlatform {
     ) -> Result<PathBuf> {
         use apple::app_bundle::{AppBundleConfig, AppBundler};
 
-        // Get bundle ID and other config
-        let bundle_id = ios_config
+        // Get bundle ID and other config. Apply env-version package suffixes
+        // here without touching the source Info.plist on disk.
+        let base_bundle_id = ios_config
             .map(|c| c.bundle_id.clone())
             .unwrap_or_else(|| "com.example.app".to_string());
+        let bundle_id = match config.resolved_env.effective_package_id_suffix() {
+            Some(suffix) => format!("{base_bundle_id}{suffix}"),
+            None => base_bundle_id,
+        };
 
         let app_config = config
             .lingxia_config
@@ -290,8 +295,28 @@ impl Platform for IosPlatform {
             .and_then(|c| c.app.as_ref())
             .map(|a| a.project_name.as_str());
         let resources_dir = get_resources_dir(&ios_dir, ios_config, app_project_name)?;
-        if let Err(err) = apple::assets::compile_asset_catalog(
+        // For developer/preview env, point actool at a staging copy of
+        // Assets.xcassets whose AppIcon.appiconset has each PNG composited
+        // with a circular D/P badge — same visual language as the Android
+        // launcher overlay. Source xcassets is never mutated.
+        let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
+            &ios_dir,
             &resources_dir,
+            config.resolved_env.version,
+        ) {
+            Ok(Some(staging)) => staging,
+            Ok(None) => resources_dir.clone(),
+            Err(err) => {
+                eprintln!(
+                    "  {} Skipping env app-icon overlay: {}",
+                    "Warning:".yellow(),
+                    err
+                );
+                resources_dir.clone()
+            }
+        };
+        if let Err(err) = apple::assets::compile_asset_catalog(
+            &resources_for_compile,
             &app_path,
             &deployment_target,
             apple::assets::AssetPlatform::Ios,

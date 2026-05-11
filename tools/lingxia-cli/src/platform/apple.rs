@@ -12,6 +12,7 @@ pub mod auth;
 pub mod capabilities;
 pub mod developer_services;
 pub mod devicectl;
+pub mod env_icon;
 pub mod grandslam;
 pub mod keychain;
 pub mod provisioning;

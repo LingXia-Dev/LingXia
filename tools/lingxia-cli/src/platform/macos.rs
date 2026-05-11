@@ -282,7 +282,7 @@ impl Platform for MacosPlatform {
             macos_dir.display()
         );
 
-        let bundle_id = macos_config
+        let base_bundle_id = macos_config
             .and_then(|c| c.bundle_id.clone())
             .or_else(|| {
                 config
@@ -297,6 +297,10 @@ impl Platform for MacosPlatform {
                     .and_then(|d| d.bundle_id.clone())
             })
             .unwrap_or_else(|| "com.example.app".to_string());
+        let bundle_id = match config.resolved_env.effective_package_id_suffix() {
+            Some(suffix) => format!("{base_bundle_id}{suffix}"),
+            None => base_bundle_id,
+        };
         let granted_entitlements =
             load_cached_apple_entitlements(PermissionPlatform::Macos, &bundle_id);
 
@@ -431,8 +435,26 @@ impl Platform for MacosPlatform {
             info_plist.as_ref(),
         )?;
 
-        if let Err(err) = apple::assets::compile_asset_catalog(
+        // Mirror the iOS env-icon overlay so dev/preview macOS builds also
+        // get the D/P badge on the dock icon.
+        let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
+            &macos_dir,
             &resources_dir,
+            config.resolved_env.version,
+        ) {
+            Ok(Some(staging)) => staging,
+            Ok(None) => resources_dir.clone(),
+            Err(err) => {
+                eprintln!(
+                    "  {} Skipping env app-icon overlay: {}",
+                    "Warning:".yellow(),
+                    err
+                );
+                resources_dir.clone()
+            }
+        };
+        if let Err(err) = apple::assets::compile_asset_catalog(
+            &resources_for_compile,
             &app_path,
             &deployment_target,
             apple::assets::AssetPlatform::Macos,
@@ -453,6 +475,7 @@ impl Platform for MacosPlatform {
                 err
             );
         }
+        sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
         ensure_sdk_resource_bundles_at_app_root(&bin_dir, &app_path)?;
 
         let update_zip_path = if config.package {
@@ -571,6 +594,7 @@ fn create_macos_app_bundle(
     let app_name = format!("{}.app", product_name);
     let output_dir = macos_dir.join(".lingxia");
     fs::create_dir_all(&output_dir)?;
+    remove_stale_macos_app_bundles(&output_dir, &app_name)?;
 
     let app_bundle = output_dir.join(&app_name);
     let contents_dir = app_bundle.join("Contents");
@@ -633,6 +657,28 @@ fn create_macos_app_bundle(
     Ok(app_bundle)
 }
 
+fn remove_stale_macos_app_bundles(output_dir: &Path, current_app_name: &str) -> Result<()> {
+    let Ok(entries) = fs::read_dir(output_dir) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".app") || name == current_app_name {
+            continue;
+        }
+        fs::remove_dir_all(&path)
+            .with_context(|| format!("Failed to remove stale app bundle {}", path.display()))?;
+        println!("  Removed stale macOS app bundle → {}", path.display());
+    }
+    Ok(())
+}
+
 fn ensure_sdk_resource_bundles_at_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
     for entry in fs::read_dir(bin_dir)? {
         let entry = entry?;
@@ -653,6 +699,40 @@ fn ensure_sdk_resource_bundles_at_app_root(bin_dir: &Path, app_bundle: &Path) ->
         let _ = fs::remove_dir_all(&dest);
         apple::copy_dir_recursive(&path, &dest)?;
     }
+    Ok(())
+}
+
+fn sync_primary_spm_resources_to_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
+    let contents_resources_dir = app_bundle.join("Contents").join("Resources");
+    if contents_resources_dir.join("app.json").exists() {
+        return Ok(());
+    }
+
+    let mut resource_roots = Vec::new();
+    for entry in fs::read_dir(bin_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.extension().is_some_and(|e| e == "bundle") {
+            continue;
+        }
+        let resources_dir = path.join("Resources");
+        if resources_dir.join("app.json").exists() {
+            resource_roots.push(resources_dir);
+        }
+    }
+    resource_roots.sort();
+
+    let Some(resources_dir) = resource_roots.into_iter().next() else {
+        return Ok(());
+    };
+
+    apple::copy_dir_recursive(&resources_dir, &contents_resources_dir).with_context(|| {
+        format!(
+            "Failed to copy primary SwiftPM resources {} -> {}",
+            resources_dir.display(),
+            contents_resources_dir.display()
+        )
+    })?;
     Ok(())
 }
 
