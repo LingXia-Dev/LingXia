@@ -16,6 +16,37 @@ pub enum AppContextError {
     InvalidConfig(String),
 }
 
+/// Build-time environment version baked into `app.json`.
+///
+/// Wire-compatible with `lingxia_update::ReleaseType` — both serialize as
+/// lowercase `"developer" | "preview" | "release"`. Defined locally here
+/// (rather than imported) to keep `lingxia-app-context` free of additional
+/// crate dependencies; the JSON contract is what callers rely on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum EnvVersion {
+    #[default]
+    Release,
+    Preview,
+    Developer,
+}
+
+impl EnvVersion {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Release => "release",
+            Self::Preview => "preview",
+            Self::Developer => "developer",
+        }
+    }
+}
+
+impl std::fmt::Display for EnvVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AppConfig {
     #[serde(rename = "productName")]
@@ -28,6 +59,11 @@ pub struct AppConfig {
 
     #[serde(rename = "lingxiaServer", default)]
     pub lingxia_server: Option<String>,
+
+    /// The environment this build was produced for. Defaults to [`EnvVersion::Release`]
+    /// when missing, matching pre-envVersion app.json artifacts.
+    #[serde(rename = "envVersion", default)]
+    pub env_version: EnvVersion,
 
     #[serde(rename = "homeAppId")]
     pub home_app_id: String,
@@ -229,6 +265,13 @@ pub fn lingxia_id() -> Option<&'static str> {
         .filter(|s| !s.is_empty())
 }
 
+/// Active environment version baked into the running build. Defaults to
+/// [`EnvVersion::Release`] before [`set_app_config`] is called and for any
+/// `app.json` produced before the envVersion field existed.
+pub fn env_version() -> EnvVersion {
+    APP_CONFIG.get().map(|c| c.env_version).unwrap_or_default()
+}
+
 pub fn notifications_enabled() -> bool {
     APP_CONFIG
         .get()
@@ -366,6 +409,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
             lingxia_server: None,
+            env_version: super::EnvVersion::Release,
             home_app_id: "home".to_string(),
             home_app_version: "1.0.0".to_string(),
             cache_max_size_mb: 1024,

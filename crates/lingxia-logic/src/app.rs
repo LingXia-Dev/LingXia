@@ -1,5 +1,5 @@
 use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
-use lingxia_app_context::app_config;
+use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use rong::{IntoJSObj, JSContext, JSFunc, JSObject, JSResult};
@@ -53,6 +53,9 @@ fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
+    // `envVersion` is a synchronous, build-time-fixed string property — set
+    // once at namespace init so JS reads it as a plain field on `lx.app`.
+    app.set("envVersion", env_version().as_str())?;
     app.set("getBaseInfo", JSFunc::new(ctx, get_app_base_info)?)?;
     app.set("exit", JSFunc::new(ctx, exit_app)?)?;
     update::init(ctx, &app)?;

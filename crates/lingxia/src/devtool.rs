@@ -169,6 +169,7 @@ fn build_host_app_config(
         product_version: env!("CARGO_PKG_VERSION").to_string(),
         lingxia_id: None,
         lingxia_server: None,
+        env_version: lingxia_app_context::EnvVersion::Developer,
         home_app_id: dev_config.identity.appid.clone(),
         home_app_version: dev_config.identity.version.clone(),
         cache_max_size_mb: 1024,
