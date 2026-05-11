@@ -22,6 +22,8 @@ pub struct BuildExecuteOptions {
     pub ipa: bool,
     pub dmg: bool,
     pub package: bool,
+    /// Raw `--env` value from CLI; resolved against `app.environments`.
+    pub env_version: Option<String>,
 }
 
 /// Execute the build command
@@ -41,6 +43,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         ipa,
         dmg,
         package,
+        env_version,
     } = options;
 
     // Detect project root (current directory)
@@ -271,6 +274,18 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
 
     // Parse build profile (cargo-like): debug unless explicitly set to release.
     let build_profile = resolve_build_profile(release);
+    // Resolve environment-version independently from debug/release profile.
+    let resolved_env = resolve_build_env(&config, env_version.as_deref())?;
+    println!(
+        "{} Build env: {}{}",
+        "ℹ".blue(),
+        resolved_env.version,
+        if env_version.is_some() {
+            " (--env)"
+        } else {
+            " (default)"
+        }
+    );
 
     let has_android = platforms_to_build
         .iter()
@@ -300,6 +315,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         &build_targets,
         constrained_platforms,
         None,
+        &resolved_env,
     )?;
 
     // Build each selected platform
@@ -342,6 +358,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             },
             native_features: config.native_features_for_platform(platform_type.as_str()),
             native_default_features: config.native_default_features_enabled(),
+            resolved_env: resolved_env.clone(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -416,9 +433,34 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
     }
 }
 
+/// Resolve the active environment for a build/dev/package invocation.
+///
+/// When `--env` is omitted we default to `Developer`. Release / preview must
+/// be requested explicitly so day-to-day commands stay safe (no accidental
+/// release builds, package-id suffixes match the developer profile, etc.).
+///
+/// Explicit `--env <name>` is strict: the matching block in
+/// `app.environments` must exist. Implicit (omitted) falls back to a
+/// synthesized default if the developer block isn't configured, so
+/// freshly-initialized projects build without forcing users to declare every
+/// env in `lingxia.yaml`.
+pub(crate) fn resolve_build_env(
+    config: &LingXiaConfig,
+    requested: Option<&str>,
+) -> Result<crate::config::ResolvedEnv> {
+    match requested {
+        Some(value) => {
+            let version = crate::config::EnvVersion::parse_cli(value)?;
+            config.resolve_env(version)
+        }
+        None => config.resolve_env_or_default(crate::config::EnvVersion::Developer),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::stage_package_artifact;
+    use super::{resolve_build_env, stage_package_artifact};
+    use crate::config::{EnvVersion, LingXiaConfig};
     use crate::platform::BuildArtifacts;
     use crate::platform::detector::PlatformType;
     use std::fs;
@@ -462,6 +504,64 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn omitted_env_defaults_to_developer() {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.app.as_mut().unwrap().environments = None;
+
+        let resolved = resolve_build_env(&config, None).unwrap();
+
+        assert_eq!(resolved.version, EnvVersion::Developer);
+    }
+
+    #[test]
+    fn explicit_env_overrides_default() {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.app.as_mut().unwrap().environments = None;
+
+        let release = resolve_build_env(&config, Some("release")).unwrap();
+        let preview = resolve_build_env(&config, Some("preview")).unwrap();
+
+        assert_eq!(release.version, EnvVersion::Release);
+        assert_eq!(preview.version, EnvVersion::Preview);
+    }
+
+    /// The freshly-initialized project template ships an `environments` block
+    /// that only configures `release`. Implicit `--env` (developer) must not
+    /// error in that case — synthesize a developer env with the built-in
+    /// `.dev` suffix so out-of-the-box `lingxia build` works.
+    #[test]
+    fn omitted_env_falls_back_when_developer_block_missing() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        assert!(
+            config
+                .app
+                .as_ref()
+                .unwrap()
+                .environments
+                .as_ref()
+                .unwrap()
+                .developer
+                .is_none(),
+            "template precondition: developer block must be absent"
+        );
+
+        let resolved = resolve_build_env(&config, None).unwrap();
+
+        assert_eq!(resolved.version, EnvVersion::Developer);
+        assert!(resolved.uses_environment_block);
+        assert_eq!(resolved.package_id_suffix.as_deref(), Some(".dev"));
+    }
+
+    #[test]
+    fn explicit_env_remains_strict_when_block_missing() {
+        let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        let err = resolve_build_env(&config, Some("developer"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("app.environments.developer is not configured"));
     }
 }
 
@@ -537,6 +637,14 @@ fn build_standalone_apple_swift_package(
                 Vec::new()
             },
             native_default_features: true,
+            // Standalone Apple SwiftPM builds have no `lingxia.yaml` to draw
+            // env config from; they always run as the default release env.
+            resolved_env: crate::config::ResolvedEnv {
+                version: crate::config::EnvVersion::Release,
+                lingxia_server: String::new(),
+                uses_environment_block: false,
+                package_id_suffix: None,
+            },
         };
 
         let artifacts = platform.build(&build_config)?;

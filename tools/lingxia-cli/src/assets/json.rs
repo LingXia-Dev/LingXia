@@ -1,4 +1,4 @@
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, ResolvedEnv};
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
@@ -6,16 +6,23 @@ use super::bundles::PreparedResourceBundle;
 use super::icons::{PreparedAppUiIcon, rewrite_app_ui_icon_paths};
 use super::ui::effective_ui_config;
 
+/// Build the runtime `app.json` for the host app.
+///
+/// `resolved_env` is the single source of truth for the active environment:
+/// - `lingxiaServer` is taken from the resolved environment.
+/// - `lingxiaId` gets `package_id_suffix` appended when present.
+/// - `envVersion` is always emitted (defaults to `release`).
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
     home_bundle: Option<&PreparedResourceBundle>,
     dev_ws_url: Option<&str>,
+    resolved_env: &ResolvedEnv,
 ) -> Result<String> {
     let app = config
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing app settings in {}", HOST_CONFIG_FILE))?;
-    let lingxia_server = app.lingxia_server.as_deref();
+    let lingxia_server = resolved_env.lingxia_server.as_str();
 
     let mut obj = serde_json::Map::new();
     obj.insert(
@@ -27,15 +34,23 @@ pub(super) fn build_app_json_from_config(
         serde_json::json!(app.product_version),
     );
 
-    if let Some(lingxia_server) = lingxia_server.filter(|s| !s.is_empty()) {
+    if !lingxia_server.is_empty() {
         obj.insert(
             "lingxiaServer".to_string(),
             serde_json::json!(lingxia_server),
         );
     }
     if let Some(lingxia_id) = app.lingxia_id.as_deref().filter(|s| !s.is_empty()) {
-        obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
+        let resolved_id = match resolved_env.effective_package_id_suffix() {
+            Some(suffix) => format!("{lingxia_id}{suffix}"),
+            None => lingxia_id.to_string(),
+        };
+        obj.insert("lingxiaId".to_string(), serde_json::json!(resolved_id));
     }
+    obj.insert(
+        "envVersion".to_string(),
+        serde_json::json!(resolved_env.version.as_str()),
+    );
 
     if let Some(home_bundle) = home_bundle {
         obj.insert("homeAppId".to_string(), serde_json::json!(app.home_app_id));

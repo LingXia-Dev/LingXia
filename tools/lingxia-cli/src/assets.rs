@@ -92,6 +92,7 @@ pub(crate) fn prepare_configured_host_assets(
     build_targets: &[String],
     _explicit_platforms: bool,
     dev_ws_url: Option<&str>,
+    resolved_env: &crate::config::ResolvedEnv,
 ) -> Result<()> {
     let mut cache = HostAssetsCache::load(project_root);
     let app_project_name = config.app.as_ref().map(|a| a.project_name.as_str());
@@ -136,7 +137,8 @@ pub(crate) fn prepare_configured_host_assets(
             &mut cache,
         )?);
     }
-    let app_json = build_app_json_from_config(config, prepared_bundles.first(), dev_ws_url)?;
+    let app_json =
+        build_app_json_from_config(config, prepared_bundles.first(), dev_ws_url, resolved_env)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
     let prepared_app_ui_icons = prepare_app_ui_icons(project_root, config)?;
     let ui_json = build_ui_json_from_config(config, &prepared_app_ui_icons)?;

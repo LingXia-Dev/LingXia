@@ -42,6 +42,7 @@ pub struct DevExecuteOptions {
     pub device: Option<String>,
     pub platform_arg: Option<String>,
     pub reinstall: bool,
+    pub env_version: Option<String>,
 }
 
 #[derive(Clone)]
@@ -54,6 +55,7 @@ struct DevContext {
     progress: Option<String>,
     device: Option<String>,
     reinstall: bool,
+    resolved_env: crate::config::ResolvedEnv,
 }
 
 /// Execute the dev command.
@@ -134,6 +136,9 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         })?;
     }
 
+    let resolved_env =
+        crate::commands::build::resolve_build_env(&config, options.env_version.as_deref())?;
+
     let ctx = DevContext {
         project_root,
         config,
@@ -147,6 +152,7 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         progress: options.progress,
         device: options.device,
         reinstall: options.reinstall,
+        resolved_env,
     };
 
     match platform_type {
@@ -178,6 +184,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             &build_targets,
             true,
             Some(&device_ws_url),
+            &ctx.resolved_env,
         )?;
 
         // Step 1: Build
@@ -194,6 +201,7 @@ fn execute_android(ctx: DevContext, abis: Vec<String>) -> Result<()> {
             macos_arch: None,
             native_features: dev_native_features(&ctx.config, "android"),
             native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -278,6 +286,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             &[],
             true,
             Some(&device_ws_url),
+            &ctx.resolved_env,
         )?;
 
         // Step 1: Build
@@ -294,6 +303,7 @@ fn execute_ios(ctx: DevContext) -> Result<()> {
             macos_arch: None,
             native_features: dev_native_features(&ctx.config, "ios"),
             native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
         };
 
         let artifacts = platform.build(&build_config)?;
@@ -380,6 +390,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         &[],
         true,
         None,
+        &ctx.resolved_env,
     )?;
 
     // Step 1: Build
@@ -396,6 +407,7 @@ Use `lingxia build --platform macos --macos-arch {}` for cross-arch builds.",
         macos_arch,
         native_features: dev_native_features(&ctx.config, "macos"),
         native_default_features: ctx.config.native_default_features_enabled(),
+        resolved_env: ctx.resolved_env.clone(),
     };
 
     let artifacts = platform.build(&build_config)?;
@@ -476,6 +488,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             &[],
             true,
             Some(&device_ws_url),
+            &ctx.resolved_env,
         )?;
 
         // Step 1: Build
@@ -492,6 +505,7 @@ fn execute_harmony(ctx: DevContext) -> Result<()> {
             macos_arch: None,
             native_features: dev_native_features(&ctx.config, "harmony"),
             native_default_features: ctx.config.native_default_features_enabled(),
+            resolved_env: ctx.resolved_env.clone(),
         };
 
         let artifacts = harmony_platform.build(&build_config)?;

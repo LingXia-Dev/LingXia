@@ -57,6 +57,14 @@ struct BuildOptions {
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
+
+    /// Environment (developer | preview | release; alias `dev` for developer).
+    /// All commands default to developer when --env is omitted; release and
+    /// preview must be requested explicitly. Independent from --release/debug
+    /// profile. If app.environments is configured, the selected env must
+    /// exist.
+    #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
+    env_version: Option<String>,
 }
 
 #[derive(clap::Args, Clone)]
@@ -282,8 +290,8 @@ enum Commands {
         #[arg(long, value_parser = ["android", "macos"])]
         platform: Option<String>,
 
-        /// Release channel: release, preview, developer
-        #[arg(long, value_parser = ["release", "preview", "developer"])]
+        /// Release channel for lxapp/lxplugin publishing: release, preview, developer.
+        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
         channel: Option<String>,
 
         /// Override lxapp view framework detection
@@ -440,6 +448,7 @@ fn main() -> Result<()> {
                 ipa,
                 dmg,
                 package: false,
+                env_version: build_options.env_version,
             })?;
         }
         Commands::Clean => {
@@ -458,6 +467,7 @@ fn main() -> Result<()> {
                 progress: package_options.progress,
                 platforms: platform,
                 all_platforms,
+                env_version: package_options.env_version,
             })?;
         }
         Commands::Devices { platform } => {
@@ -498,6 +508,7 @@ fn main() -> Result<()> {
                 device: dev_options.device,
                 platform_arg: dev_options.platform,
                 reinstall: dev_options.reinstall,
+                env_version: dev_options.build_options.env_version,
             })?;
         }
         Commands::Doctor { platform } => {

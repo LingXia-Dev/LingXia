@@ -60,6 +60,10 @@ pub struct BuildConfig {
     pub native_features: Vec<String>,
     /// Build native crate with Cargo default features enabled.
     pub native_default_features: bool,
+    /// Resolved environment-version context. Platform builders apply
+    /// `package_id_suffix` to package/bundle IDs for side-by-side installs
+    /// without source-tree mutation.
+    pub resolved_env: crate::config::ResolvedEnv,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

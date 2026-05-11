@@ -27,6 +27,10 @@ pub struct PackageOptions {
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     pub progress: Option<String>,
+
+    /// Environment (developer | preview | release; alias `dev`).
+    #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
+    pub env_version: Option<String>,
 }
 
 pub struct PackageExecuteOptions {
@@ -37,9 +41,14 @@ pub struct PackageExecuteOptions {
     pub progress: Option<String>,
     pub platforms: Vec<String>,
     pub all_platforms: bool,
+    pub env_version: Option<String>,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
+    // `package` produces shippable artifacts; default to the release env when
+    // --env is omitted. `build`/`dev` keep their developer default for
+    // day-to-day work. Explicit --env on `package` always wins.
+    let env_version = options.env_version.or_else(|| Some("release".to_string()));
     build::execute(BuildExecuteOptions {
         release: true,
         build_native: options.build_native,
@@ -52,5 +61,6 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         ipa: false,
         dmg: false,
         package: true,
+        env_version,
     })
 }
