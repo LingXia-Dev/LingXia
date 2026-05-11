@@ -234,7 +234,12 @@ Supported Rust target triples:\n\
     }
 
     /// Build Gradle project
-    fn build_gradle(&self, project_root: &Path, config: &BuildConfig) -> Result<PathBuf> {
+    fn build_gradle(
+        &self,
+        project_root: &Path,
+        config: &BuildConfig,
+        icon_overlay: Option<&LauncherIconOverlay>,
+    ) -> Result<PathBuf> {
         println!("{}", "Building APK...".cyan());
 
         let gradlew = if cfg!(windows) {
@@ -255,11 +260,48 @@ Supported Rust target triples:\n\
             super::BuildProfile::Release => "assembleRelease",
         };
 
-        let status = Command::new(&gradlew)
+        // Inject env-version overrides via Gradle project properties. Android
+        // projects are expected to consume these in app/build.gradle(.kts).
+        // Empty suffix props are still passed so the build is deterministic.
+        let app_id_suffix = config
+            .resolved_env
+            .effective_package_id_suffix()
+            .unwrap_or("");
+        let app_name = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|app| app.product_name.clone())
+            .unwrap_or_default();
+        let app_id_arg = format!("-Plingxia.applicationIdSuffix={app_id_suffix}");
+        let app_name_arg = format!("-Plingxia.appName={app_name}");
+
+        let mut command = Command::new(&gradlew);
+        command
             .arg(task)
-            .current_dir(project_root)
-            .status()
-            .context("Failed to execute gradlew")?;
+            .arg(app_id_arg)
+            .arg(app_name_arg)
+            .current_dir(project_root);
+        if let Some(overlay) = icon_overlay {
+            command.arg(format!(
+                "-Plingxia.resOverlayDir={}",
+                overlay.res_overlay_dir.to_string_lossy()
+            ));
+            // Manifest placeholders need both icon and roundIcon resolved.
+            // For projects without a round icon, fall back to the standard
+            // icon so the placeholder still resolves to something valid.
+            let round_resource = if overlay.has_round_icon {
+                format!("{}_round", overlay.icon_resource_name)
+            } else {
+                overlay.icon_resource_name.clone()
+            };
+            command.arg(format!(
+                "-Plingxia.appIcon=@mipmap/{}",
+                overlay.icon_resource_name
+            ));
+            command.arg(format!("-Plingxia.appRoundIcon=@mipmap/{round_resource}"));
+        }
+        let status = command.status().context("Failed to execute gradlew")?;
 
         if !status.success() {
             return Err(anyhow!("Gradle build failed"));
@@ -319,8 +361,13 @@ impl Platform for AndroidPlatform {
         // Build Rust libraries
         self.build_rust_library(&config.project_root, config)?;
 
+        // Stage env-version overlay resources outside the source tree and let
+        // Gradle merge them via sourceSets.main.res.srcDirs. No source-tree
+        // mutation, no Drop-based rollback to fail on SIGKILL.
+        let icon_overlay = prepare_launcher_icon_overlay(&android_root, config)?;
+
         // Build Gradle project
-        let apk_path = self.build_gradle(&android_root, config)?;
+        let apk_path = self.build_gradle(&android_root, config, icon_overlay.as_ref())?;
 
         Ok(BuildArtifacts::Android { apk_path })
     }
@@ -420,6 +467,219 @@ impl Platform for AndroidPlatform {
 
     fn list_devices(&self) -> Result<Vec<Device>> {
         list_adb_devices()
+    }
+}
+
+/// Result of staging launcher-icon overlay resources. The Gradle template
+/// reads both fields:
+/// - `res_overlay_dir` is added to `sourceSets.main.res.srcDirs` so AGP picks
+///   up the new (uniquely-named) drawables/mipmaps.
+/// - `icon_resource_name` (e.g. `ic_launcher_lingxia_env`) flows into the
+///   manifest via `manifestPlaceholders`, swapping which icon the launcher
+///   shows. We deliberately *don't* override the existing `ic_launcher.xml`
+///   in place — Gradle's resource merger treats duplicate qualified names as
+///   build errors, not silent overrides.
+struct LauncherIconOverlay {
+    res_overlay_dir: PathBuf,
+    icon_resource_name: String,
+    has_round_icon: bool,
+}
+
+/// Generate the env-version launcher-icon overlay resources to a staging
+/// directory outside the source tree. Returns the overlay descriptor if an
+/// overlay was produced, or `None` when no badge applies (release env, no
+/// adaptive icon to badge, etc.).
+///
+/// Nothing under the user's git tree is modified, so SIGKILL/abort can never
+/// leave the project dirty.
+fn prepare_launcher_icon_overlay(
+    android_root: &Path,
+    config: &BuildConfig,
+) -> Result<Option<LauncherIconOverlay>> {
+    let Some((badge, accent)) = android_env_icon_badge(config.resolved_env.version) else {
+        return Ok(None);
+    };
+    let res_dir = android_root.join("app/src/main/res");
+    let icon_path = res_dir.join("mipmap-anydpi-v26/ic_launcher.xml");
+    let round_icon_path = res_dir.join("mipmap-anydpi-v26/ic_launcher_round.xml");
+    if !icon_path.exists() {
+        return Ok(None);
+    }
+
+    let icon_content = fs::read_to_string(&icon_path)
+        .with_context(|| format!("Failed to read {}", icon_path.display()))?;
+    let foreground = extract_adaptive_icon_foreground(&icon_content)
+        .unwrap_or_else(|| "@mipmap/ic_launcher_foreground".to_string());
+    let background = extract_adaptive_icon_background(&icon_content)
+        .unwrap_or_else(|| "@color/ic_launcher_background".to_string());
+    if !mipmap_resource_exists(&res_dir, &foreground) {
+        return Ok(None);
+    }
+
+    // Stage under <android_root>/.lingxia/overlay/<env>/res so the dir lives
+    // alongside iOS's `.lingxia/` build outputs. Gradle's `clean` won't touch
+    // this, but we wipe per-env on every build so stale resources never leak.
+    let staging_root = android_root
+        .join(".lingxia")
+        .join("overlay")
+        .join(config.resolved_env.version.as_str());
+    let staging_res = staging_root.join("res");
+    if staging_root.exists() {
+        fs::remove_dir_all(&staging_root)
+            .with_context(|| format!("Failed to clean {}", staging_root.display()))?;
+    }
+
+    let icon_resource_name = "ic_launcher_lingxia_env".to_string();
+    let round_icon_resource_name = format!("{icon_resource_name}_round");
+    let adaptive_icon = android_env_adaptive_icon_xml(&background);
+    write_overlay_file(
+        &staging_res.join(format!("mipmap-anydpi-v26/{icon_resource_name}.xml")),
+        adaptive_icon.as_bytes(),
+    )?;
+    let has_round_icon = round_icon_path.exists();
+    if has_round_icon {
+        write_overlay_file(
+            &staging_res.join(format!("mipmap-anydpi-v26/{round_icon_resource_name}.xml")),
+            adaptive_icon.as_bytes(),
+        )?;
+    }
+    write_overlay_file(
+        &staging_res.join("drawable/lingxia_env_icon_foreground.xml"),
+        android_env_icon_foreground_xml(&foreground, accent, badge).as_bytes(),
+    )?;
+
+    Ok(Some(LauncherIconOverlay {
+        res_overlay_dir: staging_res,
+        icon_resource_name,
+        has_round_icon,
+    }))
+}
+
+fn write_overlay_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(path, bytes).with_context(|| format!("Failed to write {}", path.display()))
+}
+
+/// Check whether the launcher foreground reference resolves under any
+/// density bucket. Earlier versions only probed `mipmap-mdpi`, which broke
+/// projects that ship icons in higher-density buckets only.
+fn mipmap_resource_exists(res_dir: &Path, drawable_ref: &str) -> bool {
+    let Some(name) = drawable_ref.strip_prefix("@mipmap/") else {
+        // `@drawable/...` or anything custom: assume the user knows what they
+        // are doing; AGP will fail link-time with a clear error otherwise.
+        return true;
+    };
+    const DENSITY_DIRS: &[&str] = &[
+        "mipmap-mdpi",
+        "mipmap-hdpi",
+        "mipmap-xhdpi",
+        "mipmap-xxhdpi",
+        "mipmap-xxxhdpi",
+        "mipmap-anydpi",
+        "mipmap-anydpi-v26",
+    ];
+    const EXTS: &[&str] = &["webp", "png", "xml"];
+    DENSITY_DIRS.iter().any(|density| {
+        EXTS.iter()
+            .any(|ext| res_dir.join(format!("{density}/{name}.{ext}")).exists())
+    })
+}
+
+fn android_env_icon_badge(
+    version: crate::config::EnvVersion,
+) -> Option<(&'static str, &'static str)> {
+    match version {
+        crate::config::EnvVersion::Developer => Some(("D", "#D32F2F")),
+        crate::config::EnvVersion::Preview => Some(("P", "#D32F2F")),
+        crate::config::EnvVersion::Release => None,
+    }
+}
+
+fn extract_adaptive_icon_foreground(content: &str) -> Option<String> {
+    extract_adaptive_icon_drawable(content, "foreground")
+}
+
+fn extract_adaptive_icon_background(content: &str) -> Option<String> {
+    extract_adaptive_icon_drawable(content, "background")
+}
+
+fn extract_adaptive_icon_drawable(content: &str, tag_name: &str) -> Option<String> {
+    let tag_start = content.find(&format!("<{tag_name}"))?;
+    let tag_end = content[tag_start..].find('>')? + tag_start;
+    let tag = &content[tag_start..tag_end];
+    let attr_start = tag.find("android:drawable=")? + "android:drawable=".len();
+    let quote = tag.as_bytes().get(attr_start).copied()?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    let value_start = attr_start + 1;
+    let value_end = tag[value_start..].find(quote as char)? + value_start;
+    Some(tag[value_start..value_end].to_string())
+}
+
+fn android_env_adaptive_icon_xml(background: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="{background}" />
+    <foreground android:drawable="@drawable/lingxia_env_icon_foreground" />
+</adaptive-icon>
+"#
+    )
+}
+
+fn android_env_icon_foreground_xml(foreground: &str, accent: &str, badge: &str) -> String {
+    format!(
+        r###"<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="{foreground}" />
+    <item
+        android:width="42dp"
+        android:height="42dp"
+        android:gravity="bottom|end"
+        android:bottom="14dp"
+        android:right="14dp">
+        <shape android:shape="oval">
+            <solid android:color="{accent}" />
+            <stroke android:width="4dp" android:color="#FFFFFF" />
+        </shape>
+    </item>
+    <item
+        android:width="42dp"
+        android:height="42dp"
+        android:gravity="bottom|end"
+        android:bottom="14dp"
+        android:right="14dp">
+        <vector
+            android:width="42dp"
+            android:height="42dp"
+            android:viewportWidth="42"
+            android:viewportHeight="42">
+            {badge_path}
+        </vector>
+    </item>
+</layer-list>
+"###,
+        badge_path = android_env_icon_badge_path(badge),
+    )
+}
+
+fn android_env_icon_badge_path(badge: &str) -> &'static str {
+    match badge {
+        "D" => {
+            r##"<path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M12,10 L22,10 C29,10 34,15 34,21 C34,27 29,32 22,32 L12,32 Z M18,16 L18,26 L22,26 C25.5,26 28,24 28,21 C28,18 25.5,16 22,16 Z" />"##
+        }
+        "P" => {
+            r##"<path
+                android:fillColor="#FFFFFFFF"
+                android:pathData="M13,10 L25,10 C30,10 34,14 34,19 C34,24 30,28 25,28 L19,28 L19,32 L13,32 Z M19,16 L19,22 L24,22 C26.5,22 28,20.8 28,19 C28,17.2 26.5,16 24,16 Z" />"##
+        }
+        _ => "",
     }
 }
 
@@ -781,4 +1041,45 @@ pub fn generate_icons(
 /// Resolve Android assets/res directory
 fn resolve_android_assets_dir(project_root: &Path) -> PathBuf {
     project_root.join("android/app/src/main/res")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        android_env_adaptive_icon_xml, android_env_icon_foreground_xml,
+        extract_adaptive_icon_background, extract_adaptive_icon_foreground,
+    };
+
+    #[test]
+    fn env_overlay_extracts_adaptive_icon_foreground() {
+        let icon = r#"<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>"#;
+
+        assert_eq!(
+            extract_adaptive_icon_foreground(icon).as_deref(),
+            Some("@mipmap/ic_launcher_foreground")
+        );
+        assert_eq!(
+            extract_adaptive_icon_background(icon).as_deref(),
+            Some("@color/ic_launcher_background")
+        );
+    }
+
+    #[test]
+    fn env_overlay_preserves_adaptive_icon_background() {
+        let icon = android_env_adaptive_icon_xml("@color/ic_launcher_background");
+        assert!(icon.contains(r#"android:drawable="@color/ic_launcher_background""#));
+        assert!(icon.contains(r#"android:drawable="@drawable/lingxia_env_icon_foreground""#));
+    }
+
+    #[test]
+    fn env_overlay_generates_badged_foreground_drawable() {
+        let drawable =
+            android_env_icon_foreground_xml("@mipmap/ic_launcher_foreground", "#D32F2F", "D");
+        assert!(drawable.contains(r#"android:drawable="@mipmap/ic_launcher_foreground""#));
+        assert!(drawable.contains(r##"android:color="#D32F2F""##));
+        assert!(drawable.contains("android:viewportWidth=\"42\""));
+    }
 }
