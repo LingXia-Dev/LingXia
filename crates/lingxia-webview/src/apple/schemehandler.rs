@@ -237,6 +237,12 @@ define_class!(
                 let response = if let Some(webview) = find_webview(webtag) {
                     webview.handle_scheme_request(&scheme, http_request)
                 } else {
+                    log::warn!(
+                        "WebView not found for webtag={} (scheme={} url={})",
+                        webtag.as_str(),
+                        scheme,
+                        url
+                    );
                     None
                 };
                 match response {
@@ -248,7 +254,7 @@ define_class!(
                         self.send_response_to_task(task, http_response, request);
                     }
                     None => {
-                        log::warn!("Scheme handler returned None, sending 404");
+                        log::warn!("No handler for {} {}, sending 404", method, url);
                         self.send_404_response(task, request);
                     }
                 }

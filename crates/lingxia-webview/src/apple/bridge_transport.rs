@@ -6,6 +6,8 @@ use std::os::fd::IntoRawFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Condvar, Mutex};
 
+pub(crate) const APPLE_BRIDGE_DOWNSTREAM_URL: &str = "lx-apple://bridge/downstream";
+pub(crate) const APPLE_BRIDGE_DOWNSTREAM_CSP_SOURCE: &str = "lx-apple:";
 pub(super) const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
 const APPLE_BRIDGE_DOWNSTREAM_HOST: &str = "bridge";
 const APPLE_BRIDGE_DOWNSTREAM_PATH: &str = "/downstream";
@@ -75,13 +77,24 @@ impl AppleBridgeTransport {
     }
 
     pub(super) fn connect_downstream(&self) -> Result<SystemPipeReader, WebViewError> {
-        let (read_end, write_end) = UnixStream::pair().map_err(|e| {
+        let (read_end, mut write_end) = UnixStream::pair().map_err(|e| {
             WebViewError::WebView(format!(
                 "Failed to create Apple bridge downstream pipe: {e}"
             ))
         })?;
         let read_fd = read_end.into_raw_fd();
         let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
+
+        // Avoid an idle custom-scheme streaming response. WebKit can fail a
+        // fetch before native has a real bridge frame ready if no body bytes
+        // arrive promptly; an empty NDJSON line is ignored by the JS parser.
+        if let Err(e) = write_end.write_all(b"\n") {
+            log::debug!(
+                "Apple bridge downstream priming write failed webtag={}: {}",
+                self.webtag,
+                e
+            );
+        }
 
         let (replaced_existing, dropped_queued_frames) = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());

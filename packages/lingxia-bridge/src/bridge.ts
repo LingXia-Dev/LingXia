@@ -44,7 +44,7 @@ const LOG_PREFIX = "[LX.Bridge]";
 const MESSAGE_PORT_TYPE = "messageport";
 const JS_INTERFACE_TYPE = "jsinterface";
 const OUTBOX_LIMIT = 256;
-const APPLE_DOWNSTREAM_URL = "lx-apple://bridge/downstream";
+const APPLE_DOWNSTREAM_URL = BRIDGE_CONFIG.appleDownstreamURL;
 const APPLE_RECONNECT_BASE_MS = 200;
 const APPLE_RECONNECT_MAX_MS = 2000;
 
@@ -226,20 +226,18 @@ function processAppleDownstreamBuffer(buffer: string): string {
 }
 
 async function runAppleDownstream(): Promise<void> {
+  if (!APPLE_DOWNSTREAM_URL) {
+    throw new Error("Apple downstream URL is not configured");
+  }
+
   const controller = new AbortController();
   appleDownstreamAbortController = controller;
-  let response: Response;
-  try {
-    response = await fetch(APPLE_DOWNSTREAM_URL, {
-      method: "GET",
-      cache: "no-store",
-      headers: { Accept: "application/x-ndjson" },
-      signal: controller.signal,
-    });
-  } catch (e) {
-    if (controller.signal.aborted) return;
-    throw e;
-  }
+  const response = await fetch(APPLE_DOWNSTREAM_URL, {
+    method: "GET",
+    cache: "no-store",
+    headers: { Accept: "application/x-ndjson" },
+    signal: controller.signal,
+  });
 
   if (!response.ok) {
     throw new Error(`Apple downstream HTTP ${response.status}`);
@@ -272,6 +270,9 @@ async function runAppleDownstream(): Promise<void> {
         warn("Apple downstream trailing parse error:", e, tail);
       }
     }
+  } catch (e) {
+    if (controller.signal.aborted) return;
+    throw e;
   } finally {
     try {
       reader.releaseLock();

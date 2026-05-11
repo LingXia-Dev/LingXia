@@ -214,7 +214,7 @@ fn build_content_security_policy(trusted_domains: &[String]) -> String {
     [
         "default-src 'self' lx:".to_string(),
         format!("img-src {}", img_sources.join(" ")),
-        "connect-src 'none'".to_string(),
+        build_connect_src_policy(),
         "script-src 'self' lx: 'unsafe-inline'".to_string(),
         "style-src 'self' lx: 'unsafe-inline'".to_string(),
         "font-src 'self' lx: data:".to_string(),
@@ -227,6 +227,21 @@ fn build_content_security_policy(trusted_domains: &[String]) -> String {
         "form-action 'none'".to_string(),
     ]
     .join("; ")
+}
+
+fn build_connect_src_policy() -> String {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    {
+        return format!(
+            "connect-src {}",
+            lingxia_webview::platform::apple::BRIDGE_DOWNSTREAM_CSP_SOURCE
+        );
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    {
+        "connect-src 'none'".to_string()
+    }
 }
 
 fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
@@ -248,16 +263,29 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     )))]
     let bridge_os = "unknown";
 
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    let apple_downstream_url = Some(escape_js_string(
+        lingxia_webview::platform::apple::BRIDGE_DOWNSTREAM_URL,
+    ));
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    let apple_downstream_url: Option<String> = None;
+    let apple_downstream_kv = match apple_downstream_url {
+        Some(url) if !url.is_empty() => format!(r#",appleDownstreamURL:"{}""#, url),
+        _ => String::new(),
+    };
+
     let nonce_json = bridge_nonce.map(escape_js_string);
     let nonce_kv = match nonce_json {
         Some(nonce) if !nonce.is_empty() => format!(r#",nonce:"{}""#, nonce),
         _ => String::new(),
     };
 
+    let generated_kv = format!("{}{}", nonce_kv, apple_downstream_kv);
+
     // Merge rather than overwrite so developer-provided config can coexist.
     format!(
         r#"<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}}; window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{os:"{}"{}}});}})();</script>"#,
-        bridge_os, nonce_kv
+        bridge_os, generated_kv
     )
 }
 
@@ -338,6 +366,9 @@ mod tests {
         assert!(csp.contains(
             "img-src 'self' lx: data: blob: https://cdn.example.com https://*.img.example.com"
         ));
+        #[cfg(any(target_os = "ios", target_os = "macos"))]
+        assert!(csp.contains("connect-src lx-apple:"));
+        #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         assert!(csp.contains("connect-src 'none'"));
         assert!(csp.contains("media-src 'none'"));
         assert!(csp.contains("frame-src 'none'"));

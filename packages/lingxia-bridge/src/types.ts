@@ -1,6 +1,7 @@
 export interface BridgeConfig {
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS';
   nonce?: string;
+  appleDownstreamURL?: string;
 }
 
 export interface RuntimeConfig {
