@@ -548,18 +548,37 @@ fn fetch_harmony_udid(target: &str) -> Result<String> {
 }
 
 fn auto_detect_hap(harmony_dir: &Path) -> Result<PathBuf> {
-    let signed = harmony_dir.join("entry/build/default/outputs/default/entry-default-signed.hap");
-    let unsigned =
-        harmony_dir.join("entry/build/default/outputs/default/entry-default-unsigned.hap");
+    // Builds since 0.6.4 mirror the Harmony project into `.lingxia/build/<env>/`
+    // and emit the hap there. Older builds (and the SwiftPM-style standalone
+    // path) leave artifacts directly under the source tree. Scan staging first,
+    // fall back to source, and pick the newest by mtime so the most recent
+    // build always wins regardless of where it landed.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    let staging_root = harmony_dir.join(".lingxia").join("build");
+    if let Ok(entries) = std::fs::read_dir(&staging_root) {
+        for entry in entries.flatten() {
+            collect_hap_candidates(&entry.path(), &mut candidates);
+        }
+    }
+    collect_hap_candidates(harmony_dir, &mut candidates);
 
+    candidates
+        .into_iter()
+        .filter(|p| p.is_file())
+        .max_by_key(|p| std::fs::metadata(p).and_then(|meta| meta.modified()).ok())
+        .ok_or_else(|| {
+            anyhow!("No HAP found. Build the project first with 'lingxia build --platform harmony'")
+        })
+}
+
+fn collect_hap_candidates(base: &Path, out: &mut Vec<PathBuf>) {
+    let outputs = base.join("entry/build/default/outputs/default");
+    let signed = outputs.join("entry-default-signed.hap");
+    let unsigned = outputs.join("entry-default-unsigned.hap");
     if signed.exists() {
-        Ok(signed)
+        out.push(signed);
     } else if unsigned.exists() {
-        Ok(unsigned)
-    } else {
-        Err(anyhow!(
-            "No HAP found. Build the project first with 'lingxia build --platform harmony'"
-        ))
+        out.push(unsigned);
     }
 }
 
