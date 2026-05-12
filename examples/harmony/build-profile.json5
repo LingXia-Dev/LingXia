@@ -36,6 +36,13 @@
           ]
         }
       ]
+    },
+    {
+      // SDK source module — mirrors the Android example's `include(":lingxia")`
+      // wiring so edits to lingxia-sdk/harmony/lingxia/... rebuild on the next
+      // app build with no `.har` packaging or `ohpm install` round-trip.
+      "name": "lingxia",
+      "srcPath": "../../lingxia-sdk/harmony/lingxia"
     }
   ]
 }
