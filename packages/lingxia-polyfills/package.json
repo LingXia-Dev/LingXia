@@ -1,0 +1,31 @@
+{
+  "name": "@lingxia/polyfills",
+  "version": "0.6.4",
+  "private": false,
+  "description": "ES5 stdlib polyfills shipped to the lxapp runtime when targeting old Android WebView (Chromium 37–44).",
+  "type": "module",
+  "main": "dist/polyfills.es5.js",
+  "exports": {
+    ".": "./dist/polyfills.es5.js",
+    "./dist/polyfills.es5.js": "./dist/polyfills.es5.js",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node ./scripts/build.mjs && npm run check",
+    "check": "node ./scripts/check.mjs",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "devDependencies": {
+    "terser": "^5.39.0"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "license": "MIT"
+}
