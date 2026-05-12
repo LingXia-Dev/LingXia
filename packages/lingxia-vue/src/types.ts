@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'vue';
-import type { LxVideoAttributes } from '@lingxia/elements';
+import type { LxMediaSwiperAttributes, LxVideoAttributes } from '@lingxia/elements';
 import type {
   LxNavigatorEvent,
   NavigatorEnvVersion,
@@ -9,6 +9,11 @@ import type {
 } from '@lingxia/elements';
 
 export interface LxVideoProps extends Omit<LxVideoAttributes, 'ref' | 'className' | 'style'> {
+  class?: string;
+  style?: CSSProperties;
+}
+
+export interface LxMediaSwiperProps extends Omit<LxMediaSwiperAttributes, 'ref' | 'className' | 'style'> {
   class?: string;
   style?: CSSProperties;
 }

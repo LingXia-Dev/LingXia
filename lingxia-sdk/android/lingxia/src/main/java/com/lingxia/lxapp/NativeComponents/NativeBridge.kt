@@ -8,6 +8,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.webkit.JavascriptInterface
 import android.widget.FrameLayout
+import com.lingxia.lxapp.NativeComponents.Components.MediaSwiperComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponentFactory
 import com.lingxia.lxapp.NativeComponents.Components.PickerComponentFactory
 import com.lingxia.webview.LingXiaWebView
@@ -256,6 +257,7 @@ internal class NativeBridge private constructor(
             if (defaultsRegistered) return
             defaultsRegistered = true
             registeredFactories.getOrPut("video.native") { VideoComponentFactory() }
+            registeredFactories.getOrPut("media-swiper.native") { MediaSwiperComponentFactory() }
             registeredFactories.getOrPut("picker.native") { PickerComponentFactory() }
         }
 

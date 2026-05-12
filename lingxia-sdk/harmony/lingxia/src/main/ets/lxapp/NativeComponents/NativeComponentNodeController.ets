@@ -163,7 +163,15 @@ export class NativeComponentNodeController extends NodeController {
       this.props = nextProps;
     }
 
-    // Push updated params into the builder without recreating the node
+    // Push updated params into the builder without recreating the node.
+    // The media-swiper builder used to take a special `rootNode = null;
+    // rebuild()` path here when items/direction/peek changed, on the theory
+    // that Swiper couldn't reconcile axis/margins/child-shape via update().
+    // In practice the rebuild call did not refresh the FrameNode until some
+    // other prop changed (toggling loop "fixed" the stale view) — so updates
+    // appeared lost. The MediaSwiperPageView refactor in MediaSwiperBuilder
+    // gives the Swiper stable per-item children, which means normal update
+    // reconciles everything correctly.
     if (this.rootNode) {
       const updated = new NativeComponentParams();
       updated.width = this.componentWidth;

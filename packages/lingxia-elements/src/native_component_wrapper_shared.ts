@@ -1,5 +1,6 @@
 import type { NavigatorEnvVersion, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
+import type { LxMediaSwiperItem } from "./media_swiper.js";
 import type { LxVideoQuality } from "./video.js";
 
 export function appendDataAttrs(
@@ -245,6 +246,75 @@ export function buildVideoNativeAttrs(
   if (options.volume !== undefined) result.volume = options.volume;
   if (options.qualities?.length) result.qualities = JSON.stringify(options.qualities);
   if (options.playbackRates?.length) result["playback-rates"] = JSON.stringify(options.playbackRates);
+
+  const extraNativeAttrs: Record<string, string> = {};
+  appendPassthroughAttrs(extraAttrs, extraNativeAttrs);
+  return { ...result, ...extraNativeAttrs };
+}
+
+export const MEDIA_SWIPER_DOM_EVENT_MAP = {
+  onChange: "change",
+  onTransitionEnd: "transitionend",
+  onEndReached: "endreached",
+  onTap: "tap",
+  onVideoEnded: "videoended",
+  onError: "error",
+} as const;
+
+export interface MediaSwiperNativeAttrOptions {
+  id?: string;
+  items?: LxMediaSwiperItem[];
+  index?: number;
+  initialIndex?: number;
+  loop?: boolean;
+  autoplay?: boolean;
+  interval?: number;
+  animation?: "slide" | "none";
+  animationDuration?: number;
+  direction?: "horizontal" | "vertical";
+  contentRotate?: 0 | 90 | 180 | 270;
+  objectFit?: "cover" | "contain" | "fill" | "fit";
+  controls?: boolean;
+  muted?: boolean;
+  dots?: boolean | { color?: string; activeColor?: string };
+  swipeEnabled?: boolean;
+  peek?: number | { previous?: number; next?: number };
+}
+
+export function buildMediaSwiperNativeAttrs(
+  options: MediaSwiperNativeAttrOptions,
+  extraAttrs: Record<string, unknown> = {}
+): Record<string, string | number> {
+  const result: Record<string, string | number> = {};
+  const explicitId = typeof options.id === "string" ? options.id.trim() : "";
+
+  if (explicitId.length > 0) result.id = explicitId;
+  if (Array.isArray(options.items)) result.items = JSON.stringify(options.items);
+  if (typeof options.index === "number") result.index = options.index;
+  if (typeof options.initialIndex === "number") result["initial-index"] = options.initialIndex;
+  if (options.loop) result.loop = "";
+  if (options.autoplay) result.autoplay = "";
+  if (typeof options.interval === "number") result.interval = options.interval;
+  if (options.animation) result.animation = options.animation;
+  if (typeof options.animationDuration === "number") result["animation-duration"] = options.animationDuration;
+  if (options.direction) result.direction = options.direction;
+  if (typeof options.contentRotate === "number") result["content-rotate"] = options.contentRotate;
+  if (options.objectFit) result["object-fit"] = options.objectFit;
+  if (options.controls) result.controls = "";
+  if (options.muted === false) result.muted = "false";
+  if (options.muted === true) result.muted = "";
+  if (options.dots === true) result.dots = "";
+  if (options.dots && typeof options.dots === "object") result.dots = JSON.stringify(options.dots);
+  if (options.swipeEnabled === false) result["swipe-enabled"] = "false";
+  if (typeof options.peek === "number" && options.peek > 0) {
+    result.peek = options.peek;
+  } else if (options.peek && typeof options.peek === "object") {
+    const previous = Math.max(0, Number(options.peek.previous) || 0);
+    const next = Math.max(0, Number(options.peek.next) || 0);
+    if (previous > 0 || next > 0) {
+      result.peek = JSON.stringify({ previous, next });
+    }
+  }
 
   const extraNativeAttrs: Record<string, string> = {};
   appendPassthroughAttrs(extraAttrs, extraNativeAttrs);

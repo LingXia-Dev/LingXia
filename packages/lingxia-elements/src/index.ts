@@ -5,6 +5,25 @@ export {
 } from "./video.js";
 
 export {
+  registerMediaSwiperComponent,
+  LxMediaSwiperElement,
+  type LxMediaSwiperAttributes,
+  type LxMediaSwiperItem,
+  type LxMediaSwiperChangeEvent,
+  type LxMediaSwiperChangeEventDetail,
+  type LxMediaSwiperTransitionEndEvent,
+  type LxMediaSwiperTransitionEndEventDetail,
+  type LxMediaSwiperItemEvent,
+  type LxMediaSwiperEventDetail,
+  type LxMediaSwiperEndReachedEvent,
+  type LxMediaSwiperEndReachedEventDetail,
+  type LxMediaSwiperErrorEvent,
+  type LxMediaSwiperErrorEventDetail,
+  type LxMediaSwiperChangeSource,
+  type LxMediaSwiperErrorCode,
+} from "./media_swiper.js";
+
+export {
   registerPickerComponent,
   LxPickerElement,
   type LxPickerAttributes,
@@ -43,11 +62,13 @@ export {
 
 export {
   buildVideoNativeAttrs,
+  buildMediaSwiperNativeAttrs,
   buildNavigatorNativeAttrs,
   buildPickerNativeAttrs,
   getPickerDisplayText,
   getPickerValueFromIndex,
   VIDEO_DOM_EVENT_MAP,
+  MEDIA_SWIPER_DOM_EVENT_MAP,
 } from "./native_component_wrapper_shared.js";
 
 export {

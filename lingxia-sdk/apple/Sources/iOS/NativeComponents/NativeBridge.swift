@@ -243,6 +243,9 @@ extension NativeBridge {
         if registeredFactories["video.native"] == nil {
             registeredFactories["video.native"] = VideoComponentFactory()
         }
+        if registeredFactories["media-swiper.native"] == nil {
+            registeredFactories["media-swiper.native"] = MediaSwiperComponentFactory()
+        }
         if registeredFactories["picker.native"] == nil {
             registeredFactories["picker.native"] = PickerComponentFactory()
         }
