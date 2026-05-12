@@ -16,7 +16,10 @@ pub(super) fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     }
     let html = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
-    let output_html = inject_runtime_script(html);
+    let include_polyfills = html_view_target(project)?
+        .as_deref()
+        .is_some_and(|t| t.eq_ignore_ascii_case("es5"));
+    let output_html = inject_runtime_script(html, include_polyfills);
     fs::write(&output_path, &output_html)
         .with_context(|| format!("Failed to write {}", output_path.display()))?;
 
@@ -53,7 +56,14 @@ pub(super) fn html_pages_require_bundling(project: &Project) -> Result<bool> {
 }
 
 pub(super) fn html_view_target(project: &Project) -> Result<Option<String>> {
-    let config_path = project.root.join("lxapp.config.ts");
+    view_target_from_dir(&project.root)
+}
+
+/// Read `view.target` from a bundle's `lxapp.config.ts`, if present.
+/// Public so the build-time WebView-compatibility check in `assets.rs` can
+/// use the same parser as the legacy-mode detector here.
+pub(crate) fn view_target_from_dir(bundle_dir: &Path) -> Result<Option<String>> {
+    let config_path = bundle_dir.join("lxapp.config.ts");
     if !config_path.exists() {
         return Ok(None);
     }
@@ -258,16 +268,27 @@ pub(super) fn extract_html_module_entry_script_path(source: &str) -> Option<Stri
     None
 }
 
-pub(super) fn inject_runtime_script(mut html: String) -> String {
+pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -> String {
+    // Polyfills must load and execute BEFORE the bridge runtime so that any
+    // ES5 stdlib gap (Object.assign, Promise.prototype.finally, ...) is filled
+    // before bridge — and everything downstream — runs. Only inject the
+    // polyfills tag in the legacy ES5 pipeline; modern builds run on Chromium
+    // >= 51 where every method we'd polyfill is native.
+    let polyfills_script = "<script src=\"lx://assets/polyfills.es5.js\"></script>";
     let runtime_script = "<script src=\"lx://assets/bridge-runtime.js\"></script>";
+    let to_insert = if include_polyfills {
+        format!("{polyfills_script}{runtime_script}")
+    } else {
+        runtime_script.to_string()
+    };
     if html.contains(runtime_script) {
         return html;
     }
     if let Some(index) = html.find("</head>") {
-        html.insert_str(index, runtime_script);
+        html.insert_str(index, &to_insert);
         return html;
     }
-    format!("{runtime_script}{html}")
+    format!("{to_insert}{html}")
 }
 
 pub(super) fn inject_bridge_metadata(mut html: String, actions: &[PageAction]) -> String {

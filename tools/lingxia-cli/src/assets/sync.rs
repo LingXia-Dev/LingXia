@@ -1,4 +1,4 @@
-use super::runtime_asset::PreparedRuntimeAsset;
+use super::runtime_asset::{PreparedPolyfillsAsset, PreparedRuntimeAsset};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::fs;
@@ -70,6 +70,37 @@ pub(super) fn sync_runtime_file(
             "  {} remove stale bridge-runtime.js → {}",
             "✓".green(),
             runtime_path.display()
+        );
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+pub(super) fn sync_polyfills_file(
+    polyfills_path: &Path,
+    polyfills_asset: Option<&PreparedPolyfillsAsset>,
+    prev_polyfills_hash: Option<&str>,
+) -> Result<bool> {
+    if let Some(polyfills_asset) = polyfills_asset {
+        if write_if_changed(polyfills_path, &polyfills_asset.bytes)? {
+            println!(
+                "  {} polyfills.es5.js → {}",
+                "✓".green(),
+                polyfills_path.display()
+            );
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    if prev_polyfills_hash.is_some() && polyfills_path.exists() {
+        fs::remove_file(polyfills_path)
+            .with_context(|| format!("Failed to remove {}", polyfills_path.display()))?;
+        println!(
+            "  {} remove stale polyfills.es5.js → {}",
+            "✓".green(),
+            polyfills_path.display()
         );
         return Ok(true);
     }

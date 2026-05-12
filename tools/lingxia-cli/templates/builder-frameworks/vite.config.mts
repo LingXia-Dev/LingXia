@@ -87,7 +87,18 @@ __MAYBE_CONFIG_IMPORT__
 
 const viewConfig = projectConfig.view ?? {};
 const css = typeof viewConfig.cssConfig === 'function' ? await viewConfig.cssConfig(buildDir) : undefined;
-const buildTarget = __BUILD_TARGET_JSON__;
+const defaultBuildTarget = __BUILD_TARGET_JSON__;
+// Rolldown only supports ES2015+. For `target: 'es5'` users, this template
+// emits ES2015 here; the legacy HTML pipeline post-transpiles the bundle to
+// ES5 via tsc (see vite_pipeline::build_html_pages_legacy on the CLI side).
+const requestedTarget =
+  typeof viewConfig.target === 'string' && viewConfig.target.length > 0
+    ? viewConfig.target
+    : defaultBuildTarget;
+const buildTarget =
+  typeof requestedTarget === 'string' && requestedTarget.toLowerCase() === 'es5'
+    ? 'es2015'
+    : requestedTarget;
 const outputFormat = __OUTPUT_FORMAT_JSON__;
 const inlineDynamicImports = __INLINE_DYNAMIC_IMPORTS__;
 const modulePreload = __MODULE_PRELOAD__;

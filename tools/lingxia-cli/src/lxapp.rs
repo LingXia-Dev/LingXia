@@ -13,6 +13,7 @@ use std::path::Path;
 pub(crate) use framework::ProjectFramework;
 pub(crate) use project::Project;
 pub(crate) use view::configured_native_rust_dir;
+pub(crate) use view::view_target_from_dir;
 
 /// Page lifecycle method names that are NOT user-defined action handlers.
 /// Shared between logic (binding meta extraction) and view (action mode inference).

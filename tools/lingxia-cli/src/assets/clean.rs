@@ -3,8 +3,13 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const GENERATED_HOST_RESOURCE_FILES: &[&str] =
-    &["app.json", "ui.json", "bridge-runtime.js", "splash.png"];
+const GENERATED_HOST_RESOURCE_FILES: &[&str] = &[
+    "app.json",
+    "ui.json",
+    "bridge-runtime.js",
+    "polyfills.es5.js",
+    "splash.png",
+];
 
 pub(crate) fn clean_configured_host_assets(project_root: &Path) -> Result<Vec<PathBuf>> {
     let cache = HostAssetsCache::load(project_root);

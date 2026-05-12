@@ -1,6 +1,6 @@
 use super::{
-    build_app_json_from_config, build_ui_json_from_config, is_png_path, prepare_app_ui_icons,
-    validate_app_ui_svg_icon,
+    any_path_bundle_targets_es5, build_app_json_from_config, build_ui_json_from_config,
+    collect_view_target_warnings, is_png_path, prepare_app_ui_icons, validate_app_ui_svg_icon,
 };
 use crate::config::{EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv};
 use std::fs;
@@ -463,4 +463,193 @@ fn app_ui_icon_preparation_requires_svg() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("only SVG source icons"));
+}
+
+mod view_target_warnings {
+    use super::*;
+    use crate::config::{
+        AndroidConfig, ResourceBundleConfig, ResourceBundleType, ResourcesConfig,
+    };
+
+    fn android_config_with(min_sdk: Option<u32>) -> AndroidConfig {
+        AndroidConfig {
+            package_id: "com.example.demo".to_string(),
+            min_sdk,
+            target_sdk: Some(35),
+            compile_sdk: Some(35),
+            ndk_version: None,
+            api_level: None,
+        }
+    }
+
+    fn host_config(min_sdk: Option<u32>, bundle_path: &str, bundle_app_id: &str) -> LingXiaConfig {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", bundle_app_id);
+        config.android = Some(android_config_with(min_sdk));
+        config.resources = Some(ResourcesConfig {
+            bundles: vec![ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: bundle_app_id.to_string(),
+                path: Some(bundle_path.to_string()),
+                package: None,
+                version: None,
+            }],
+        });
+        config
+    }
+
+    fn write_lxapp_config(root: &Path, bundle_path: &str, contents: &str) {
+        let dir = root.join(bundle_path);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("lxapp.config.ts"), contents).unwrap();
+    }
+
+    #[test]
+    fn warns_when_min_sdk_low_and_target_es2015() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: 'es2015' } };",
+        );
+        let config = host_config(Some(21), "muke", "muke");
+        let warnings = collect_view_target_warnings(temp.path(), &config, Some(21));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("muke/lxapp.config.ts"));
+        assert!(warnings[0].contains("'es2015'"));
+        assert!(warnings[0].contains("minSdk = 21"));
+    }
+
+    #[test]
+    fn warns_when_no_lxapp_config_present() {
+        // Default (no view.target) routes through the modern pipeline,
+        // which is exactly the dangerous case on old WebView.
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("muke")).unwrap();
+        let config = host_config(Some(21), "muke", "muke");
+        let warnings = collect_view_target_warnings(temp.path(), &config, Some(21));
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("(default, modern)"));
+    }
+
+    #[test]
+    fn no_warning_when_target_es5() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: \"ES5\" } };", // case-insensitive
+        );
+        let config = host_config(Some(21), "muke", "muke");
+        assert!(collect_view_target_warnings(temp.path(), &config, Some(21)).is_empty());
+    }
+
+    #[test]
+    fn no_warning_when_min_sdk_modern() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: 'es2015' } };",
+        );
+        let config = host_config(Some(28), "muke", "muke");
+        assert!(collect_view_target_warnings(temp.path(), &config, Some(28)).is_empty());
+    }
+
+    #[test]
+    fn no_warning_when_min_sdk_unset() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: 'es2015' } };",
+        );
+        let config = host_config(None, "muke", "muke");
+        assert!(collect_view_target_warnings(temp.path(), &config, None).is_empty());
+    }
+}
+
+mod polyfills_asset_decision {
+    use super::*;
+    use crate::config::{ResourceBundleConfig, ResourceBundleType, ResourcesConfig};
+
+    fn config_with_bundle(bundle_path: &str) -> LingXiaConfig {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "muke");
+        config.resources = Some(ResourcesConfig {
+            bundles: vec![ResourceBundleConfig {
+                bundle_type: ResourceBundleType::Lxapp,
+                app_id: "muke".to_string(),
+                path: Some(bundle_path.to_string()),
+                package: None,
+                version: None,
+            }],
+        });
+        config
+    }
+
+    fn write_lxapp_config(root: &Path, bundle_path: &str, contents: &str) {
+        let dir = root.join(bundle_path);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("lxapp.config.ts"), contents).unwrap();
+    }
+
+    #[test]
+    fn true_when_bundle_view_target_is_es5() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: 'es5' } };",
+        );
+        assert!(any_path_bundle_targets_es5(
+            temp.path(),
+            &config_with_bundle("muke"),
+        ));
+    }
+
+    #[test]
+    fn case_insensitive_match() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: \"ES5\" } };",
+        );
+        assert!(any_path_bundle_targets_es5(
+            temp.path(),
+            &config_with_bundle("muke"),
+        ));
+    }
+
+    #[test]
+    fn false_when_bundle_view_target_is_modern() {
+        let temp = TempDir::new().unwrap();
+        write_lxapp_config(
+            temp.path(),
+            "muke",
+            "export default { view: { target: 'es2015' } };",
+        );
+        assert!(!any_path_bundle_targets_es5(
+            temp.path(),
+            &config_with_bundle("muke"),
+        ));
+    }
+
+    #[test]
+    fn false_when_bundle_has_no_lxapp_config() {
+        // No lxapp.config.ts ⇒ default (modern) pipeline, no polyfills script.
+        let temp = TempDir::new().unwrap();
+        fs::create_dir_all(temp.path().join("muke")).unwrap();
+        assert!(!any_path_bundle_targets_es5(
+            temp.path(),
+            &config_with_bundle("muke"),
+        ));
+    }
+
+    #[test]
+    fn false_when_no_resources() {
+        let temp = TempDir::new().unwrap();
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "muke");
+        config.resources = None;
+        assert!(!any_path_bundle_targets_es5(temp.path(), &config));
+    }
 }

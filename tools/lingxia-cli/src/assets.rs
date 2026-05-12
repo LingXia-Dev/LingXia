@@ -19,7 +19,7 @@ use icons::prepare_app_ui_icons;
 #[cfg(test)]
 use icons::validate_app_ui_svg_icon;
 use json::{build_app_json_from_config, build_ui_json_from_config};
-use runtime_asset::prepare_runtime_asset;
+use runtime_asset::{prepare_polyfills_es5_asset, prepare_runtime_asset};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -56,6 +56,96 @@ fn is_png_path(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.eq_ignore_ascii_case("png"))
         .unwrap_or(false)
+}
+
+/// Collect build-time warnings for any path-based lxapp bundle whose
+/// `view.target` won't run on the Android floor declared in `lingxia.yaml`.
+///
+/// Background: Vite's modulepreload polyfill (emitted whenever the build is
+/// not in legacy/ES5 mode) uses `for...of` over a `NodeList`, which only works
+/// from Chromium 51. Android 5.x/6.0 stock WebView is older than that, so a
+/// `target: 'es2015'` bundle throws `TypeError: undefined is not a function`
+/// on those devices at page load.
+///
+/// We only inspect *path-based* bundles (source visible in this repo).
+/// Package-based bundles are pre-built upstream and outside our control.
+fn collect_view_target_warnings(
+    project_root: &Path,
+    config: &LingXiaConfig,
+    android_min_sdk: Option<u32>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let Some(min_sdk) = android_min_sdk else {
+        return warnings;
+    };
+    if min_sdk >= runtime::MODERN_WEBVIEW_MIN_SDK {
+        return warnings;
+    }
+    let Some(resources) = config.resources.as_ref() else {
+        return warnings;
+    };
+    for bundle in &resources.bundles {
+        let Some(path) = bundle
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+        else {
+            continue;
+        };
+        let bundle_dir = project_root.join(path);
+        let target = match crate::lxapp::view_target_from_dir(&bundle_dir) {
+            Ok(Some(t)) => t,
+            // Missing target == default modern path, which is the dangerous case.
+            Ok(None) => String::new(),
+            // Unreadable lxapp.config.ts isn't worth failing for; skip silently.
+            Err(_) => continue,
+        };
+        if target.eq_ignore_ascii_case("es5") {
+            continue;
+        }
+        let displayed_target = if target.is_empty() {
+            "(default, modern)".to_string()
+        } else {
+            format!("'{target}'")
+        };
+        warnings.push(format!(
+            "android.minSdk = {min_sdk} but {path}/lxapp.config.ts has view.target = {displayed_target}.\n  \
+             Stock WebView on Android < {threshold} (Chromium < 51) cannot iterate NodeList, \
+             which Vite's modulepreload polyfill depends on. Set view.target = 'es5' to route \
+             through the legacy pipeline (post-transpile to ES5, no modulepreload polyfill).",
+            threshold = runtime::MODERN_WEBVIEW_MIN_SDK,
+        ));
+    }
+    warnings
+}
+
+/// Whether any path-based lxapp bundle in the host config opts into the
+/// legacy ES5 view pipeline. When true, the bundle's emitted HTML carries a
+/// `<script src="lx://assets/polyfills.es5.js">` tag (see vite_html.rs /
+/// vite_pipeline.rs), so the polyfills asset has to ship alongside it.
+/// Decoupled from the global runtime decision: a single bundle in legacy
+/// mode still needs the polyfills script even on a minSdk-modern app.
+fn any_path_bundle_targets_es5(project_root: &Path, config: &LingXiaConfig) -> bool {
+    let Some(resources) = config.resources.as_ref() else {
+        return false;
+    };
+    for bundle in &resources.bundles {
+        let Some(path) = bundle
+            .path
+            .as_deref()
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+        else {
+            continue;
+        };
+        if let Ok(Some(target)) = crate::lxapp::view_target_from_dir(&project_root.join(path))
+            && target.eq_ignore_ascii_case("es5")
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn copy_splash_asset(config: &LingXiaConfig, project_root: &Path, dest_dir: &Path) -> Result<()> {
@@ -150,8 +240,15 @@ pub(crate) fn prepare_configured_host_assets(
     let has_non_android = platforms
         .iter()
         .any(|p| !matches!(p, platform::detector::PlatformType::Android));
+    let android_min_sdk = config.android.as_ref().and_then(|a| a.min_sdk);
+    if has_android {
+        for warning in collect_view_target_warnings(project_root, config, android_min_sdk) {
+            eprintln!("{}: {warning}", "warning".yellow().bold());
+        }
+    }
     let needs_es5_runtime = has_android
-        && runtime::target_from_build_targets(build_targets) == runtime::RuntimeEcmaTarget::Es5;
+        && runtime::target_from_build_targets(build_targets, android_min_sdk)
+            == runtime::RuntimeEcmaTarget::Es5;
 
     // Only Android can require ES5 runtime here (for armv7 builds).
     let prepared_runtime_es5 = if needs_es5_runtime {
@@ -161,6 +258,16 @@ pub(crate) fn prepare_configured_host_assets(
     };
     let prepared_runtime_es2020 = if has_non_android || !needs_es5_runtime {
         Some(prepare_runtime_asset(runtime::RuntimeEcmaTarget::Es2020))
+    } else {
+        None
+    };
+    // Polyfills ship whenever a bundle's HTML references them — i.e., the
+    // bundle opts into view.target = 'es5'. Independent of needs_es5_runtime:
+    // an app with minSdk >= 24 can still contain a single bundle in legacy
+    // mode whose HTML loads polyfills.es5.js.
+    let prepared_polyfills_es5 = if has_android && any_path_bundle_targets_es5(project_root, config)
+    {
+        Some(prepare_polyfills_es5_asset())
     } else {
         None
     };
@@ -182,6 +289,7 @@ pub(crate) fn prepare_configured_host_assets(
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
+                    prepared_polyfills_es5.as_ref(),
                     &mut cache,
                 )?;
                 copy_splash_asset(config, project_root, &assets_root)?;

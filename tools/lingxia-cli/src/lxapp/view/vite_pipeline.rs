@@ -440,7 +440,10 @@ fn finalize_html_legacy_page(
     let mut html = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
     html = super::vite_html::rewrite_module_entry_script(html, &page.entry_src, "./view.js");
-    html = super::vite_html::inject_runtime_script(html);
+    // Legacy pipeline — emitted because the user opted into ES5 — needs the
+    // polyfills script before bridge-runtime so old Android WebView gets
+    // Object.assign / Promise.finally / etc.
+    html = super::vite_html::inject_runtime_script(html, true);
     html = super::vite_html::inject_bridge_metadata(html, &page.actions);
 
     let base = Path::new(&page.page_path)
@@ -523,7 +526,8 @@ fn finalize_component_page(
     let mut html = fs::read_to_string(&html_path)
         .with_context(|| format!("Failed to read {}", html_path.display()))?;
     html = super::vite_html::rewrite_entry_script_path(html, &page.page_id);
-    html = super::vite_html::inject_runtime_script(html);
+    // Modern pipeline targets Chromium >= 51 (Android 7+); no polyfills.
+    html = super::vite_html::inject_runtime_script(html, false);
     html = super::vite_html::inject_bridge_metadata(html, &page.actions);
     let page_file = page_output_dir.join(format!("{base}{}", page.output_extension));
     fs::write(&page_file, html)

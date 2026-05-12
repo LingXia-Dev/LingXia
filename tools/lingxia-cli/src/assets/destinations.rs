@@ -2,8 +2,8 @@ use super::bundles::{PreparedResourceBundle, bundle_hashes, sync_resource_bundle
 use super::cache::{DestinationStamp, HostAssetsCache};
 use super::hash::path_key;
 use super::icons::{PreparedAppUiIcon, app_ui_icon_hashes, sync_app_ui_icons};
-use super::runtime_asset::PreparedRuntimeAsset;
-use super::sync::{sync_optional_json_file, sync_runtime_file, write_if_changed};
+use super::runtime_asset::{PreparedPolyfillsAsset, PreparedRuntimeAsset};
+use super::sync::{sync_optional_json_file, sync_polyfills_file, sync_runtime_file, write_if_changed};
 use anyhow::Result;
 use colored::Colorize;
 use std::collections::{BTreeMap, HashSet};
@@ -18,6 +18,7 @@ pub(super) fn prepare_android_assets_root(
     ui_json_hash: Option<&str>,
     bundles: &[PreparedResourceBundle],
     runtime_asset: Option<&PreparedRuntimeAsset>,
+    polyfills_asset: Option<&PreparedPolyfillsAsset>,
     cache: &mut HostAssetsCache,
 ) -> Result<()> {
     fs::create_dir_all(assets_root)?;
@@ -31,6 +32,7 @@ pub(super) fn prepare_android_assets_root(
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: BTreeMap::new(),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
+        polyfills_hash: polyfills_asset.map(|p| p.hash.clone()),
     };
 
     let mut changed = false;
@@ -50,6 +52,11 @@ pub(super) fn prepare_android_assets_root(
         &assets_root.join("bridge-runtime.js"),
         runtime_asset,
         prev.as_ref().and_then(|s| s.runtime_hash.as_deref()),
+    )?;
+    changed |= sync_polyfills_file(
+        &assets_root.join("polyfills.es5.js"),
+        polyfills_asset,
+        prev.as_ref().and_then(|s| s.polyfills_hash.as_deref()),
     )?;
     changed |= sync_resource_bundles(
         assets_root,
@@ -96,6 +103,7 @@ pub(super) fn prepare_apple_resources_root(
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: app_ui_icon_hashes(app_ui_icons),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
+        polyfills_hash: None,
     };
 
     let mut changed = false;
@@ -160,6 +168,7 @@ pub(super) fn prepare_harmony_rawfile_root(
         bundle_hashes: bundle_hashes(bundles),
         app_ui_icon_hashes: BTreeMap::new(),
         runtime_hash: runtime_asset.map(|r| r.runtime_hash.clone()),
+        polyfills_hash: None,
     };
 
     let mut changed = false;
