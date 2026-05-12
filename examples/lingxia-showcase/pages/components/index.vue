@@ -43,6 +43,31 @@
           </div>
         </div>
 
+        <!-- Media Swiper -->
+        <div
+          class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
+          @click="navigateTo({ page: 'swiper' })"
+        >
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-gradient-to-br from-orange-500 to-rose-500 rounded-lg flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" class="w-5 h-5">
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+                <circle cx="9" cy="11" r="1.5" fill="white" />
+                <path d="M21 15l-5-5-9 9" />
+              </svg>
+            </div>
+            <div>
+              <div class="text-sm font-medium text-gray-900">Media Swiper</div>
+              <div class="text-xs text-gray-500">Image/video carousel via chooseMedia</div>
+            </div>
+          </div>
+          <div class="w-5 h-5 text-gray-400 group-hover:text-rose-500 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </div>
+        </div>
+
         <!-- Navigator -->
         <div
           class="px-4 py-3.5 hover:bg-gray-50 cursor-pointer flex items-center justify-between group transition-colors"
