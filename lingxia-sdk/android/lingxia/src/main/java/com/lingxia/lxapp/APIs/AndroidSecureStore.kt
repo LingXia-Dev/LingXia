@@ -138,14 +138,28 @@ internal object AndroidSecureStore {
         storageKey: String,
         value: ByteArray
     ): EncryptedBlob {
+        val key = getOrCreateMasterKey(context, prefs)
         val cipher = Cipher.getInstance(AES_TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateMasterKey(context, prefs))
+        val iv: ByteArray
+        if (key is SecretKeySpec) {
+            // Software key (legacy path): generate our own IV to avoid
+            // vendor-specific Cipher IV quirks on some Android ROMs.
+            iv = ByteArray(SECURE_STORE_GCM_IV_BYTES)
+            secureRandom.nextBytes(iv)
+            cipher.init(Cipher.ENCRYPT_MODE, key, GCMParameterSpec(SECURE_STORE_TAG_BITS, iv))
+        } else {
+            // Hardware-backed key: AndroidKeyStore generates the IV.
+            // Read it immediately after init — some implementations
+            // clear or corrupt it after doFinal().
+            cipher.init(Cipher.ENCRYPT_MODE, key)
+            val cipherIv = cipher.iv
+            require(cipherIv != null && cipherIv.size == SECURE_STORE_GCM_IV_BYTES) {
+                "Unexpected IV length for secure store: ${cipherIv?.size}"
+            }
+            iv = cipherIv
+        }
         cipher.updateAAD(storageKey.toByteArray(StandardCharsets.UTF_8))
         val ciphertext = cipher.doFinal(value)
-        val iv = cipher.iv
-        require(iv != null && iv.size == SECURE_STORE_GCM_IV_BYTES) {
-            "Unexpected IV length for secure store"
-        }
         return EncryptedBlob(SECURE_STORE_BLOB_VERSION, iv, ciphertext)
     }
 
