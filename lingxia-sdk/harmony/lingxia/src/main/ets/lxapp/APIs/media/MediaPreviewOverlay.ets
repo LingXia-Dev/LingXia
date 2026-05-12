@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
+import { image } from '@kit.ImageKit';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
@@ -8,6 +9,8 @@ import {
   VideoErrorDetail
 } from '../../media/LxNativeVideoPlayer';
 import { VideoControlsView, VideoControlSize } from '../../media/VideoControls';
+import { LxMediaFrameCache } from '../../media/LxMediaFrameCache';
+import { resolveLxUriForFileAccess } from '../../media/LxUri';
 import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
 export interface MediaPreviewItem {
@@ -74,13 +77,24 @@ export class MediaPreviewOverlayManager {
    */
   public static closeOverlay(reason: MediaPreviewCloseReason = 'manual'): void {
     MediaPreviewOverlayManager.emitSessionResult(reason);
-    // Close action must release all preview players immediately.
-    MediaPreviewOverlayManager.destroyActivePlayers();
+    // Order matters: flip isShowing → notifyListeners FIRST so the overlay
+    // Stack unmounts in one render pass. Each MediaViewer's aboutToDisappear
+    // then tears down its player as the component tree shrinks. Doing it the
+    // other way around (destroy players, then notify) creates a one-frame
+    // window where players are gone (XComponent renders solid black) but the
+    // overlay Stack is still on screen — visible as a close-time flicker.
     MediaPreviewOverlayManager.isShowing = false;
     MediaPreviewOverlayManager.overlayData = null;
     MediaPreviewOverlayManager.currentIndex = 0;
     hilog.info(DOMAIN, TAG, `Hiding media preview overlay, reason=${reason}`);
     MediaPreviewOverlayManager.notifyListeners();
+    // Defensive: catch any player that escaped the natural aboutToDisappear
+    // teardown (e.g. component leaked from a prior session). Delay this one
+    // frame so ArkUI can remove the overlay tree before native XComponents are
+    // force-destroyed; immediate destroy can still produce a close-time flash.
+    setTimeout(() => {
+      MediaPreviewOverlayManager.destroyActivePlayers();
+    }, 80);
   }
 
   /**
@@ -325,6 +339,7 @@ struct MediaPreviewContent {
   @State private statusBarHeight: number = 44;
   @State private isZoomed: boolean = false;
   private imageAutoTimer: number = -1;
+  private transitionGeneration: number = 0;
   private readonly swiperController: SwiperController = new SwiperController();
 
   aboutToAppear() {
@@ -332,6 +347,11 @@ struct MediaPreviewContent {
     MediaPreviewOverlayManager.updateCurrentIndex(this.currentIndex);
     this.initStatusBarHeight();
     this.handleCurrentItemChanged();
+    // Warm the first-frame cache for the initial item + its neighbour so the
+    // transition overlay paints synchronously when the user swipes. Player
+    // alone can't hide the black gap because AVImageGenerator decode is
+    // typically slower than the engine reaching its first decoded frame.
+    this.prefetchFramesAround(this.currentIndex);
   }
 
   aboutToDisappear() {
@@ -369,6 +389,7 @@ struct MediaPreviewContent {
               item: item,
               isActive: this.currentIndex === index,
               loopPlayback: this.shouldLoopCurrentItem(index),
+              statusBarHeight: this.statusBarHeight,
               onZoomStateChanged: (zoomed: boolean) => {
                 if (this.currentIndex === index) {
                   this.isZoomed = zoomed;
@@ -433,6 +454,35 @@ struct MediaPreviewContent {
     if (currentItem.mediaType !== 1) {
       this.scheduleImageAutoAction();
     }
+    this.prefetchFramesAround(this.currentIndex);
+  }
+
+  private prefetchFramesAround(centerIndex: number): void {
+    const items = this.params.items;
+    if (items.length === 0) {
+      return;
+    }
+    const cache = LxMediaFrameCache.getInstance();
+    // Prefetch the centre item plus immediate neighbours. The Swiper's
+    // cachedCount keeps neighbour viewers ready; we want their first frames
+    // ready in cache too so showOverlayForUrl resolves synchronously when the
+    // player mounts on swipe.
+    const candidates = [centerIndex, centerIndex - 1, centerIndex + 1];
+    for (let i = 0; i < candidates.length; i++) {
+      const idx = candidates[i];
+      if (idx < 0 || idx >= items.length) {
+        continue;
+      }
+      const item = items[idx];
+      if (!item || item.mediaType !== 1) {
+        continue;
+      }
+      const localPath = resolveLxUriForFileAccess(item.uri);
+      if (!localPath) {
+        continue;
+      }
+      cache.prefetch(localPath);
+    }
   }
 
   private shouldUseLoopPager(): boolean {
@@ -455,14 +505,31 @@ struct MediaPreviewContent {
     this.handleCurrentItemChanged();
   }
 
-  private changeToIndex(nextIndex: number, animated: boolean): void {
+  private async changeToIndex(nextIndex: number, animated: boolean): Promise<void> {
     const normalizedIndex = this.clampIndex(nextIndex);
     if (normalizedIndex === this.currentIndex) {
       this.handleCurrentItemChanged();
       return;
     }
+    const generation = ++this.transitionGeneration;
+    await this.ensureFrameReadyForIndex(normalizedIndex);
+    if (generation !== this.transitionGeneration) {
+      return;
+    }
     this.isZoomed = false;
     this.swiperController.changeIndex(normalizedIndex, animated);
+  }
+
+  private async ensureFrameReadyForIndex(index: number): Promise<void> {
+    const item = this.params.items[index];
+    if (!item || item.mediaType !== 1) {
+      return;
+    }
+    const localPath = resolveLxUriForFileAccess(item.uri);
+    if (!localPath) {
+      return;
+    }
+    await LxMediaFrameCache.getInstance().load(localPath);
   }
 
   private scheduleImageAutoAction(): void {
@@ -521,6 +588,10 @@ struct MediaViewer {
   @Prop @Watch('onItemChange') item: MediaPreviewItem;
   @Prop @Watch('onActiveStateChange') isActive: boolean = false;
   @Prop loopPlayback: boolean = false;
+  // Safe-area top inset, propagated from MediaPreviewContent so the close
+  // button can avoid the status bar / notch. Default matches the parent's
+  // pre-measurement fallback (44 vp).
+  @Prop statusBarHeight: number = 44;
   onZoomStateChanged: (zoomed: boolean) => void = () => {};
   onDismiss: () => void = () => {};
   onVideoTerminal: (event: 'ended' | 'error') => void = () => {};
@@ -540,6 +611,12 @@ struct MediaViewer {
   @State private explicitRotation: number = -1;
   @State private effectiveRotation: number = 0;
   @State private orientationDetected: boolean = false;
+  @State private framePixelMap: image.PixelMap | undefined = undefined;
+  // Becomes true on the first 'playing' event for the current player and stays
+  // true until the item is replaced. Gates the centre play button so that
+  // autoplay never shows a fake "paused" overlay before the first frame, and
+  // spurious early 'pause' signals from the decoder don't flash it either.
+  @State private hasPlayedOnce: boolean = false;
   private readonly minScale: number = 1;
   private readonly maxScale: number = 3;
   private readonly tapDismissMoveThresholdPx: number = 16;
@@ -553,6 +630,8 @@ struct MediaViewer {
   private lastTapDismissAt: number = 0;
   private controlsTimer: number = -1;
   private progressTimer: number = -1;
+  private frameGeneration: number = 0;
+  private framePath: string = '';
 
   aboutToAppear() {
     this.initScreenDimensions();
@@ -590,6 +669,10 @@ struct MediaViewer {
       return ImageFit.Fill;
     }
     return ImageFit.Contain;
+  }
+
+  private resolveFrameFit(): ImageFit {
+    return this.resolveImageFit(this.item.objectFit);
   }
 
   private resolveImageRotation(): number {
@@ -644,7 +727,7 @@ struct MediaViewer {
     // Cleanup timers
     this.clearControlsTimer();
     this.stopProgressTimer();
-    this.teardownVideoPlayer();
+    this.teardownVideoPlayer(true);
     this.resetZoomState();
   }
 
@@ -810,8 +893,16 @@ struct MediaViewer {
     this.resetTapTracking();
     this.clearControlsTimer();
     this.stopProgressTimer();
-    this.teardownVideoPlayer();
+    // Defer the native AVPlayer release so it can't stall the swipe animation
+    // frame. Pause + mute happen synchronously inside teardownVideoPlayer so
+    // there's no audible bleed during the 80ms grace window.
+    this.teardownVideoPlayer(true);
 
+    // hasPlayedOnce MUST be reset BEFORE videoState. The videoState assignment
+    // is a @State object reassignment that triggers an ArkUI re-render; if
+    // hasPlayedOnce were still stale-true from the previous item at that
+    // render, the centre play button would flash for one frame.
+    this.hasPlayedOnce = false;
     this.showControls = false;
     this.isSeeking = false;
     this.sliderValue = 0;
@@ -820,6 +911,7 @@ struct MediaViewer {
     this.explicitRotation = -1;
     this.effectiveRotation = 0;
     this.orientationDetected = false;
+    this.loadFramePreviewForCurrentItem();
 
     if (!this.isActive) {
       return;
@@ -850,13 +942,66 @@ struct MediaViewer {
     hilog.info(DOMAIN, TAG, `Video player initialized: playerId=${this.playerId}, src=${this.videoConfig.src}`);
   }
 
-  private teardownVideoPlayer(): void {
+  private loadFramePreviewForCurrentItem(): void {
+    if (this.item.mediaType !== 1) {
+      this.frameGeneration += 1;
+      this.framePath = '';
+      this.framePixelMap = undefined;
+      return;
+    }
+    const localPath = resolveLxUriForFileAccess(this.item.uri);
+    if (!localPath) {
+      this.frameGeneration += 1;
+      this.framePath = '';
+      this.framePixelMap = undefined;
+      return;
+    }
+
+    if (localPath !== this.framePath) {
+      this.framePath = localPath;
+      this.framePixelMap = undefined;
+    }
+    const cache = LxMediaFrameCache.getInstance();
+    const cached = cache.peek(localPath);
+    if (cached) {
+      this.framePixelMap = cached;
+      return;
+    }
+
+    const generation = ++this.frameGeneration;
+    cache.load(localPath).then((pixelMap) => {
+      if (!pixelMap) {
+        return;
+      }
+      if (generation !== this.frameGeneration || localPath !== this.framePath) {
+        return;
+      }
+      this.framePixelMap = pixelMap;
+    });
+  }
+
+  private teardownVideoPlayer(deferDestroy: boolean = false): void {
     if (!this.playerId) {
       return;
     }
     const previousPlayerId = this.playerId;
     this.playerId = '';
     MediaPreviewOverlayManager.unregisterPreviewPlayer(previousPlayerId);
+    if (deferDestroy) {
+      // Synchronously mute + pause so the deferred destroy can't bleed audio
+      // during the swipe animation. videoPlayerDestroy itself (native AVPlayer
+      // release) is the expensive part — pause/setVolume are cheap.
+      try {
+        videoPlayerSetVolume(previousPlayerId, 0);
+        LxNativeVideoPlayer.pauseStatic(previousPlayerId);
+      } catch {
+        // Best-effort; proceed to destroy regardless.
+      }
+      setTimeout(() => {
+        LxNativeVideoPlayer.destroyStatic(previousPlayerId);
+      }, 80);
+      return;
+    }
     LxNativeVideoPlayer.destroyStatic(previousPlayerId);
   }
 
@@ -868,36 +1013,66 @@ struct MediaViewer {
     if (event !== 'timeupdate') {
       hilog.info(DOMAIN, TAG, `Video event: ${event}`);
     }
-    const isPlayIntent = event === 'playrequest' || event === 'play' || event === 'waiting';
-    const isStopped = event === 'pause' || event === 'ended' || event === 'stop' || event === 'error';
 
-    if (isPlayIntent || event === 'playing') {
-      this.videoState.isPlaying = true;
-      this.videoState.isPaused = false;
-      this.videoState.isBuffering = event !== 'playing';
-      if (event === 'playing') {
-        this.startProgressTimer();
-        this.detectVideoOrientation();
-      } else {
+    switch (event) {
+      case 'playing':
+        // Set isPlaying BEFORE flipping hasPlayedOnce. videoState's nested
+        // property changes don't trigger re-render in ArkUI v1, but
+        // hasPlayedOnce (primitive @State) does — if it flipped first, the
+        // render snapshot would see hasPlayedOnce=true && isPlaying=false and
+        // flash the centre play button for a frame.
+        this.videoState.isPlaying = true;
+        this.videoState.isPaused = false;
+        this.videoState.isBuffering = false;
+        this.hasPlayedOnce = true;
+        if (this.isActive) {
+          this.startProgressTimer();
+          this.detectVideoOrientation();
+        }
+        break;
+      case 'play':
+      case 'playrequest':
+        this.videoState.isPlaying = true;
+        this.videoState.isPaused = false;
+        this.videoState.isBuffering = false;
+        break;
+      case 'waiting':
+        this.videoState.isPlaying = true;
+        this.videoState.isPaused = false;
+        this.videoState.isBuffering = true;
+        break;
+      case 'pause':
+      case 'stop':
+        this.videoState.isPlaying = false;
+        this.videoState.isPaused = true;
+        this.videoState.isBuffering = false;
         this.stopProgressTimer();
-      }
-    } else if (isStopped) {
-      this.videoState.isPlaying = false;
-      this.videoState.isPaused = true;
-      this.videoState.isBuffering = false;
-      this.stopProgressTimer();
-      if (event === 'ended') {
+        break;
+      case 'ended':
+        this.videoState.isPlaying = false;
+        this.videoState.isPaused = true;
+        this.videoState.isBuffering = false;
+        this.stopProgressTimer();
         this.sliderValue = 100;
-        this.onVideoTerminal('ended');
-      } else if (event === 'error') {
+        if (this.isActive) {
+          this.onVideoTerminal('ended');
+        }
+        break;
+      case 'error':
         hilog.error(DOMAIN, TAG, `Video error: ${(detail as VideoErrorDetail).message}`);
-        this.onVideoTerminal('error');
-      }
-    } else if (event === 'seeking') {
-      this.isSeeking = true;
-    } else if (event === 'seeked') {
-      this.isSeeking = false;
-      if (this.playerId) {
+        this.videoState.isPlaying = false;
+        this.videoState.isPaused = true;
+        this.videoState.isBuffering = false;
+        this.stopProgressTimer();
+        if (this.isActive) {
+          this.onVideoTerminal('error');
+        }
+        break;
+      case 'seeking':
+        this.isSeeking = true;
+        break;
+      case 'seeked': {
+        this.isSeeking = false;
         const current = LxNativeVideoPlayer.getCurrentTimeStatic(this.playerId);
         if (current >= 0) {
           this.videoState.currentTime = current;
@@ -905,9 +1080,14 @@ struct MediaViewer {
             this.sliderValue = (current / this.videoState.duration) * 100;
           }
         }
+        break;
       }
-    } else if (event === 'loadedmetadata' || event === 'prepared') {
-      this.detectVideoOrientation();
+      case 'loadedmetadata':
+      case 'prepared':
+        this.detectVideoOrientation();
+        break;
+      default:
+        break;
     }
   }
 
@@ -989,19 +1169,25 @@ struct MediaViewer {
 
   @Builder
   buildCloseButton(): void {
-    // Close button at top-left - subtle style
+    // Always-visible close affordance at the top-right. Anchored via
+    // safe-area-aware `top: statusBarHeight + 8` so the button doesn't collide
+    // with the status bar on devices with notches. `hitTestBehavior(Block)`
+    // stops the tap from bubbling to the underlying image/video which would
+    // otherwise trigger tap-to-dismiss / tap-to-toggle-controls behaviour.
     Row() {
       Image($r('sys.media.ohos_ic_public_cancel'))
         .width(20)
         .height(20)
-        .fillColor('rgba(255,255,255,0.7)')
+        .fillColor('rgba(255,255,255,0.9)')
     }
-    .width(36)
-    .height(36)
+    .width(40)
+    .height(40)
     .justifyContent(FlexAlign.Center)
-    .borderRadius(18)
-    .backgroundColor('rgba(0,0,0,0.3)')
-    .position({ x: 12, y: 48 })
+    .borderRadius(20)
+    .backgroundColor('rgba(0,0,0,0.45)')
+    .position({ right: 12, top: this.statusBarHeight + 8 })
+    .zIndex(20)
+    .hitTestBehavior(HitTestMode.Block)
     .onClick(() => {
       this.onDismiss();
     })
@@ -1046,11 +1232,31 @@ struct MediaViewer {
             })
               .width('100%')
               .height('100%')
+              .zIndex(0)
           } else {
-            Column()
+            if (this.framePixelMap !== undefined) {
+              Image(this.framePixelMap)
+                .width('100%')
+                .height('100%')
+                .objectFit(this.resolveFrameFit())
+                .hitTestBehavior(HitTestMode.Transparent)
+                .zIndex(0)
+            } else {
+              Column()
+                .width('100%')
+                .height('100%')
+                .backgroundColor(Color.Black)
+                .zIndex(0)
+            }
+          }
+
+          if (this.isActive && !this.hasPlayedOnce && this.framePixelMap !== undefined) {
+            Image(this.framePixelMap)
               .width('100%')
               .height('100%')
-              .backgroundColor(Color.Black)
+              .objectFit(this.resolveFrameFit())
+              .hitTestBehavior(HitTestMode.Transparent)
+              .zIndex(1)
           }
 
           // Video controls overlay
@@ -1058,15 +1264,16 @@ struct MediaViewer {
             this.buildVideoControls()
           }
 
-          // Center play button when paused (rendered above controls for easy access)
-          if (this.isActive && !this.videoState.isPlaying) {
+          // Centre play button only after the player has reached its first
+          // 'playing' event for the current item. That gate kills both the
+          // initial autoplay flash and any spurious early-pause flash.
+          if (this.isActive && this.hasPlayedOnce && !this.videoState.isPlaying) {
             this.buildCenterPlayButton()
           }
 
-          // Close button (show with controls on tap)
-          if (this.isActive && this.showControls) {
-            this.buildCloseButton()
-          }
+          // Close button is rendered at the outer MediaViewer Stack level (see
+          // below) so it stays screen-aligned and doesn't rotate together with
+          // landscape videos.
         }
         // Swap dimensions for 90/270 rotation so content can fill screen.
         .width(this.effectiveRotation === 90 || this.effectiveRotation === 270 ? this.screenHeightVp : '100%')
@@ -1126,6 +1333,15 @@ struct MediaViewer {
         .onTouch((event: TouchEvent) => {
           this.handleImageTouch(event);
         })
+      }
+
+      // Close button is hoisted out of the rotated content layer so it stays
+      // screen-aligned even when the inner video/image is rotated 90/180/270
+      // (landscape videos on portrait devices). Gated on `showControls` so it
+      // tracks the same tap-to-reveal affordance as the video controls bar —
+      // not a persistent overlay.
+      if (this.isActive && this.showControls) {
+        this.buildCloseButton()
       }
     }
     .width('100%')

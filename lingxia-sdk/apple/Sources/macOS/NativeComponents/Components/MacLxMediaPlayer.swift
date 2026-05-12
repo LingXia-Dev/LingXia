@@ -36,6 +36,8 @@ final class MacLxMediaPlayer: NSObject {
     private var controlsEnabled = true
     private var showProgressBar = true
     private var loopEnabled = false
+    private var playlist: [URL] = []
+    private var playlistIndex = 0
     private var displayRotationDegrees: Int = 0
 
     private var controlsVisible = false
@@ -308,6 +310,7 @@ final class MacLxMediaPlayer: NSObject {
         core.onEnded = { [weak self] in
             guard let self else { return }
             self.updatePlayPauseUI(isPlaying: false)
+            self.advancePlaylist(reason: "ended")
         }
 
         core.onTimeUpdate = { [weak self] currentTime, duration in
@@ -605,7 +608,7 @@ final class MacLxMediaPlayer: NSObject {
     func update(config: LxMediaPlayerConfig) {
         if let loop = config.loop {
             loopEnabled = loop
-            core.setLoop(loop)
+            core.setLoop(loop && playlist.count <= 1)
         }
 
         if let controls = config.controls {
@@ -668,12 +671,20 @@ final class MacLxMediaPlayer: NSObject {
         }
 
         var videoURL: URL?
-        if let source = config.source {
+        if let nextPlaylist = config.playlist, !nextPlaylist.isEmpty {
+            applyPlaylist(nextPlaylist)
+        } else if let source = config.source {
+            playlist = []
+            playlistIndex = 0
+            core.setLoop(loopEnabled)
             switch source {
             case .url(let url): videoURL = url
             case .file(let path): videoURL = URL(fileURLWithPath: path)
             }
         } else if let src = config.src {
+            playlist = []
+            playlistIndex = 0
+            core.setLoop(loopEnabled)
             videoURL = src
         }
 
@@ -700,6 +711,66 @@ final class MacLxMediaPlayer: NSObject {
         }
     }
 
+    private func applyPlaylist(_ urls: [URL]) {
+        guard urls.count > 1 else {
+            playlist = []
+            playlistIndex = 0
+            core.setLoop(loopEnabled)
+            if let url = urls.first {
+                loadPlaylistURL(url, autoplay: false)
+            }
+            return
+        }
+        if urls == playlist { return }
+        playlist = urls
+        playlistIndex = 0
+        core.setLoop(false)
+        loadPlaylistURL(urls[0], autoplay: false)
+    }
+
+    private func goToPlaylistIndex(_ target: Int, reason: String) {
+        guard playlist.count > 1 else { return }
+        let resolved: Int
+        if loopEnabled {
+            let n = playlist.count
+            resolved = ((target % n) + n) % n
+        } else {
+            resolved = Swift.max(0, Swift.min(target, playlist.count - 1))
+        }
+        if resolved == playlistIndex { return }
+        playlistIndex = resolved
+        let url = playlist[resolved]
+        rawEventSink(LxMediaEvent.playlistChange(index: resolved, url: url.absoluteString, reason: reason).rawPayload)
+        loadPlaylistURL(url, autoplay: true)
+    }
+
+    private func advancePlaylist(reason: String) {
+        guard playlist.count > 1 else { return }
+        let isLast = playlistIndex >= playlist.count - 1
+        if isLast && !loopEnabled {
+            rawEventSink(LxMediaEvent.playlistEnd(index: playlistIndex, url: playlist[playlistIndex].absoluteString).rawPayload)
+            return
+        }
+        goToPlaylistIndex(playlistIndex + 1, reason: reason)
+    }
+
+    private func loadPlaylistURL(_ url: URL, autoplay: Bool) {
+        guard url != currentLoadingURL else { return }
+        currentLoadingURL = url
+        hasEverStartedPlayback = false
+        stoppedByUser = true
+        loadingIndicator.startAnimation(nil)
+        loadingIndicator.isHidden = false
+        showPoster()
+        core.loadVideo(url: url)
+        playerLayerView.playerLayer.player = core.player
+        if autoplay {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.core.play()
+            }
+        }
+    }
+
     func handle(command: LxMediaCommand) {
         switch command {
         case .play:
@@ -718,6 +789,12 @@ final class MacLxMediaPlayer: NSObject {
             enterFullscreen()
         case .exitFullscreen:
             exitFullscreen()
+        case .playlistNext:
+            goToPlaylistIndex(playlistIndex + 1, reason: "manual")
+        case .playlistPrevious:
+            goToPlaylistIndex(playlistIndex - 1, reason: "manual")
+        case .playlistGoToIndex(let target):
+            goToPlaylistIndex(target, reason: "manual")
         case .stop:
             stoppedByUser = true
             core.handle(command: .stop)

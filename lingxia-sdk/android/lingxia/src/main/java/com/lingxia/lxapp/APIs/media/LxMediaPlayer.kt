@@ -95,6 +95,7 @@ internal enum class LxMediaObjectFit {
 internal data class LxMediaPlayerConfig(
     var source: LxMediaSource? = null,
     var src: String? = null,
+    var playlist: List<String>? = null,
     var poster: String? = null,
     var autoplay: Boolean? = null,
     var loop: Boolean? = null,
@@ -127,6 +128,9 @@ sealed class LxMediaCommand {
     data class SetPlaybackRate(val rate: Double) : LxMediaCommand()
     object EnterFullscreen : LxMediaCommand()
     object ExitFullscreen : LxMediaCommand()
+    object PlaylistNext : LxMediaCommand()
+    object PlaylistPrevious : LxMediaCommand()
+    data class PlaylistGoToIndex(val index: Int) : LxMediaCommand()
 }
 
 // Events emitted by the player
@@ -143,6 +147,8 @@ sealed class LxMediaEvent {
     data class FullscreenChange(val fullScreen: Boolean, val direction: String) : LxMediaEvent()
     data class LoadedMetadata(val width: Double, val height: Double, val duration: Double) : LxMediaEvent()
     data class QualityChange(val quality: String, val url: String?) : LxMediaEvent()
+    data class PlaylistChange(val index: Int, val url: String, val reason: String) : LxMediaEvent()
+    data class PlaylistEnd(val index: Int, val url: String) : LxMediaEvent()
     data class Error(val code: String, val message: String) : LxMediaEvent()
     data class Raw(val name: String, val data: Map<String, Any>) : LxMediaEvent()
 
@@ -160,6 +166,8 @@ sealed class LxMediaEvent {
             is FullscreenChange -> "fullscreenchange"
             is LoadedMetadata -> "loadedmetadata"
             is QualityChange -> "qualitychange"
+            is PlaylistChange -> "playlistchange"
+            is PlaylistEnd -> "playlistend"
             is Error -> "error"
             is Raw -> name
         }
@@ -174,6 +182,8 @@ sealed class LxMediaEvent {
             is FullscreenChange -> mapOf("fullScreen" to fullScreen, "direction" to direction)
             is LoadedMetadata -> mapOf("width" to width, "height" to height, "duration" to duration)
             is QualityChange -> mapOf("quality" to quality, "url" to (url ?: ""))
+            is PlaylistChange -> mapOf("index" to index, "url" to url, "reason" to reason)
+            is PlaylistEnd -> mapOf("index" to index, "url" to url)
             is Error -> mapOf("code" to code, "message" to message)
             is Raw -> data
         }
@@ -292,6 +302,36 @@ internal class LxMediaPlayer(
     private var rectSyncScheduledAtMs: Long = 0
     private var rectSyncRunnable: Runnable? = null
 
+    // Playlist mode: controller drives advance / overlay / prefetch.
+    // Source of truth for playlist state lives on the controller; LxMediaPlayer
+    // forwards config / events / commands and exposes the surface needed for it
+    // to drive playback (parseUri / loadSource / play / emitEvent).
+    private val transitionOverlay = VideoTransitionOverlay(view)
+    private val playlistHostImpl = object : LxMediaPlaylistController.PlaylistHost {
+        override val context: Context get() = this@LxMediaPlayer.context
+        override val isLoopEnabled: Boolean get() = loopEnabled
+        override fun parseUri(src: String): Uri? = this@LxMediaPlayer.parseUri(src)
+        override fun loadSourceForPlaylist(uri: Uri) {
+            // Match the pre-refactor inline behavior: clear `hasEnded` BEFORE
+            // loading the next source. PlayerCore suppresses `Waiting` events
+            // when (hasEnded && !playIntent), so leaving it true through the
+            // brief loadSource→play window risks dropping a buffering event.
+            hasEnded = false
+            loadSource(uri)
+        }
+        override fun playFromPlaylist() { play() }
+        override fun emit(event: LxMediaEvent) { emitEvent(event) }
+        override fun applyItemDisplay(item: LxMediaPlaylistItem) {
+            // Per-item overrides only — null fields preserve element-level
+            // values that were applied via update(config). lx-video's
+            // string-array playlist therefore produces a no-op here, while
+            // preview supplies real per-item objectFit / rotateDegrees.
+            item.objectFit?.let { setObjectFit(it) }
+            item.rotateDegrees?.let { setDisplayRotationDegrees(it) }
+        }
+    }
+    private val playlistController = LxMediaPlaylistController(playlistHostImpl)
+
     init {
         setupUI()
         setupCore()
@@ -383,13 +423,33 @@ internal class LxMediaPlayer(
         }
         view.addView(loadingIndicator)
 
+        // Transition overlay sits above the player surface + loading spinner,
+        // below the controls overlay. Hidden by default; shown only during
+        // item transitions to bridge the visual gap (see LxMediaPlaylistController).
+        transitionOverlay.attach()
+        playlistController.bindOverlay(transitionOverlay)
+
         controlsOverlay = LxMediaControlsOverlay(context, this).also {
             view.addView(it.view)
         }
     }
 
     fun update(config: LxMediaPlayerConfig) {
-        if (config.source != null || config.src != null) {
+        // Playlist takes priority over single source. The controller is the
+        // sole owner of playlist state; if the URL list is unchanged it's a
+        // no-op (no restart-mid-stream). Single-source path also resets the
+        // controller via deactivate().
+        val incomingPlaylist = config.playlist?.takeIf { it.isNotEmpty() }
+        if (incomingPlaylist != null) {
+            // JS-facing playlist is `string[]` — map to items with null
+            // per-item overrides so element-level objectFit / rotateDegrees
+            // (set further down in this method) keep applying uniformly.
+            // Route through applyPlaylist so a prior native autoAdvance=false
+            // call doesn't leak into JS's default semantics.
+            applyPlaylist(incomingPlaylist.map { LxMediaPlaylistItem(it) })
+            activeUrlEngine?.setLoopEnabled(false)
+        } else if (config.source != null || config.src != null) {
+            playlistController.deactivate()
             val uri = when (val source = config.source) {
                 is LxMediaSource.Url -> parseUri(source.url)
                 is LxMediaSource.FilePath -> parseUri(source.path)
@@ -409,7 +469,7 @@ internal class LxMediaPlayer(
         updatePosterVisibility()
         config.loop?.let {
             loopEnabled = it
-            activeUrlEngine?.setLoopEnabled(it)
+            activeUrlEngine?.setLoopEnabled(it && !playlistController.isActive)
         }
         config.muted?.let { setMuted(it) }
         config.volume?.let { setVolume(it) }
@@ -545,7 +605,50 @@ internal class LxMediaPlayer(
             is LxMediaCommand.SetPlaybackRate -> setPlaybackRate(command.rate)
             is LxMediaCommand.EnterFullscreen -> enterFullscreen()
             is LxMediaCommand.ExitFullscreen -> exitFullscreen()
+            is LxMediaCommand.PlaylistNext -> playlistController.next()
+            is LxMediaCommand.PlaylistPrevious -> playlistController.previous()
+            is LxMediaCommand.PlaylistGoToIndex -> playlistController.goToIndex(command.index)
         }
+    }
+
+    /**
+     * Direct Kotlin entry point for in-process callers (e.g. MediaPreview)
+     * that need to feed a playlist with per-item display overrides — a richer
+     * shape than the JS-facing `LxMediaPlayerConfig.playlist: string[]`.
+     *
+     * Equivalent to [update] with `config.playlist=...` for the cases JS
+     * needs, but skips the rest of the config dance and accepts the typed
+     * item form. No-op if the item list is unchanged.
+     *
+     * @param autoAdvance When `true` (default) the controller advances to
+     *   the next item on Ended / Error — the lx-video element behavior. Set
+     *   to `false` for scenarios that drive navigation externally (e.g.
+     *   MediaPreview, where the ViewPager is the source of truth) so the
+     *   controller doesn't queue up the next video's audio behind a UI
+     *   page change the consumer hasn't made yet.
+     * @param startingIndex Where playback should begin on the *initial*
+     *   apply. Defaults to 0; callers opening on a non-zero item should
+     *   pass it here so the controller doesn't first load item 0 only
+     *   to immediately seek away. Ignored when [items] is structurally
+     *   unchanged from the previous apply — use [playlistGoToIndex] to
+     *   move within an already-applied playlist.
+     */
+    fun applyPlaylist(
+        items: List<LxMediaPlaylistItem>,
+        autoAdvance: Boolean = true,
+        startingIndex: Int = 0,
+    ) {
+        playlistController.autoAdvance = autoAdvance
+        if (items.isEmpty()) {
+            playlistController.deactivate()
+            return
+        }
+        playlistController.apply(items, startingIndex)
+    }
+
+    /** Switch playlist position; no-op when not in playlist mode or already there. */
+    fun playlistGoToIndex(index: Int) {
+        playlistController.goToIndex(index)
     }
 
     fun acquireStreamTextureView(): TextureView? {
@@ -570,6 +673,8 @@ internal class LxMediaPlayer(
         controlsOverlay?.cancelPendingDeferredActions()
         cancelPosterLoad()
         posterImageView?.setImageDrawable(null)
+        playlistController.release()
+        transitionOverlay.detach()
         playerCore?.release()
         playerCore = null
         activeUrlEngine = null
@@ -697,6 +802,15 @@ internal class LxMediaPlayer(
     fun setSuppressAutoShowControls(suppress: Boolean) {
         controlsOverlay?.setSuppressAutoShow(suppress)
     }
+
+    /// Subscribe to controls visibility transitions. Fires only on actual
+    /// shown ↔ hidden flips. Used by the preview fragment to mirror its own
+    /// close button visibility against the inline tap-to-reveal affordance.
+    fun setOnControlsVisibilityChanged(listener: ((Boolean) -> Unit)?) {
+        controlsOverlay?.visibilityListener = listener
+    }
+
+    fun isControlsVisible(): Boolean = controlsOverlay?.isControlsVisible == true
 
     fun setShowLoadingIndicator(show: Boolean) {
         loadingIndicatorEnabled = show
@@ -1594,6 +1708,7 @@ internal class LxMediaPlayer(
         objectFit = fit
         playerView?.resizeMode = fit.toResizeMode()
         posterImageView?.scaleType = posterScaleTypeForObjectFit(fit)
+        transitionOverlay.setObjectFit(fit)
     }
 
     private fun posterScaleTypeForObjectFit(fit: LxMediaObjectFit): ImageView.ScaleType {
@@ -1676,6 +1791,8 @@ internal class LxMediaPlayer(
         // Rotate URL playback at PlayerView level for stability across decoders.
         // Some device pipelines override internal surface transforms every frame.
         apply(playerView)
+        // Keep the transition overlay's bitmap aligned with the rotated player.
+        transitionOverlay.applyInlineTransform(degrees, scaleX, scaleY)
         reset(findFirstTextureView(playerView))
         reset(findFirstSurfaceView(playerView))
         apply(streamTextureView)
@@ -1882,15 +1999,24 @@ internal class LxMediaPlayer(
                 uiSeeking = false
                 hasEnded = true
                 updatePosterVisibility()
-                controlsOverlay?.showCenterPlayButton(true)
-                controlsOverlay?.updatePlayPauseButton()
+                // Only surface the center play / pause UI when controls are
+                // actually enabled. With controls=false (e.g. swiper pages),
+                // `showCenterPlayButton(true)` would re-show the overlay
+                // because it bypasses the `isEnabled` gate — leaving a play
+                // button stuck on the page after the first playback cycle.
+                if (controlsEnabled) {
+                    controlsOverlay?.showCenterPlayButton(true)
+                    controlsOverlay?.updatePlayPauseButton()
+                }
             }
             is CorePlayerEvent.Error -> {
                 isBufferingForUi = false
                 hideLoadingIndicator()
                 uiSeeking = false
-                controlsOverlay?.showCenterPlayButton(true)
-                controlsOverlay?.updatePlayPauseButton()
+                if (controlsEnabled) {
+                    controlsOverlay?.showCenterPlayButton(true)
+                    controlsOverlay?.updatePlayPauseButton()
+                }
             }
             is CorePlayerEvent.RateChange -> Unit
             is CorePlayerEvent.VolumeChange -> {
@@ -1903,14 +2029,22 @@ internal class LxMediaPlayer(
                 firstFrameDisplayed = false
                 hasEnded = false
                 updatePosterVisibility()
-                controlsOverlay?.showCenterPlayButton(true)
-                controlsOverlay?.updatePlayPauseButton()
+                if (controlsEnabled) {
+                    controlsOverlay?.showCenterPlayButton(true)
+                    controlsOverlay?.updatePlayPauseButton()
+                }
             }
             is CorePlayerEvent.FullscreenChange -> Unit
         }
 
         eventSink(JsEventMapper.toPayload(event))
         mapCoreEventToTypedEvent(event)?.let { typedEventSink?.invoke(it) }
+
+        // Playlist orchestration runs AFTER the per-item event reaches JS so
+        // listeners observe `ended`/`error` for the item that finished before
+        // any `playlistchange` for the next item. The controller also drives the
+        // transition overlay (hide on FirstFrameRendered / Playing).
+        playlistController.onCoreEvent(event)
     }
 
     private fun mapCoreEventToTypedEvent(event: CorePlayerEvent): LxMediaEvent? {

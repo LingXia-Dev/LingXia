@@ -175,7 +175,22 @@ final class LxMediaPlayer: NSObject {
     private var isLiveContent = false   // Live content hides progress and disables seek
     private var showCloseButton = false // Only show in preview mode
     private var showFullscreenButton = true // Show fullscreen button
-    private var loopEnabled = false // Loop playback when video ends
+    private var loopEnabled = false // Loop playback when video ends (or whole playlist when playlist > 1)
+    /// Sequential items; len > 1 means playlist mode. Each item can carry
+    /// per-item display overrides (objectFit / rotateDegrees); when nil they
+    /// inherit element-level values. JS `playlist: string[]` maps to items
+    /// with nil overrides — lx-video keeps the same uniform display behavior.
+    private var playlist: [LxMediaPlaylistItem] = []
+    private var playlistIndex: Int = 0
+    /// Whether the player auto-advances to the next playlist item on
+    /// Ended / Error. lx-video needs this (the whole point of a playlist
+    /// element). MediaPreview drives advance from the page UI and disables
+    /// this — otherwise the player would queue the next video's audio
+    /// behind whatever page the user is on.
+    private var playlistAutoAdvance: Bool = true
+    /// Bridges visual gaps during playlist transitions; see `LxMediaTransitionOverlay`.
+    private lazy var transitionOverlay = LxMediaTransitionOverlay(host: view)
+    private var transitionGeneration: UInt64 = 0
     private var videoGravity: AVLayerVideoGravity = .resizeAspectFill // Default to cover for native components
     private var configuredCornerRadius: CGFloat = 0
     private var displayRotationDegrees: Int = 0
@@ -307,6 +322,16 @@ final class LxMediaPlayer: NSObject {
 
         setupOverlayUI()
 
+        // Transition overlay sits above playerLayer and below the controls
+        // overlayView. Hidden in lockstep with the `playerLayer.opacity = 1`
+        // transition (see `revealPlayerLayer` / time-progress observer): if we
+        // hid on `isReadyForDisplay` instead, the layer reports "ready" at
+        // ~50 ms but `opacity` only flips to 1 once playback time advances
+        // past 0.2 s — that gap is what shows up to users as a black flash
+        // during item switches.
+        transitionOverlay.attach(belowSubview: overlayView)
+        transitionOverlay.setVideoGravity(videoGravity)
+
         // Note: Removed tap gesture recognizer from root view - using tapCatcher button instead
         // This prevents gesture recognizer from interfering with UISlider drag
     }
@@ -417,15 +442,29 @@ final class LxMediaPlayer: NSObject {
         }
 
         // Source
-        if let source = config.source {
+        // Playlist takes priority. When the URL list changes, reset to the first
+        // item and reload; if it's just the same list re-sent (props update),
+        // do nothing so we don't restart playback mid-stream.
+        if let nextPlaylist = config.playlist, !nextPlaylist.isEmpty {
+            // JS-facing playlist is `[URL]` — wrap in items with nil
+            // overrides so element-level objectFit / rotateDegrees keep
+            // applying uniformly (lx-video behavior preserved). Routing
+            // through applyPlaylist also resets `playlistAutoAdvance` to
+            // the default `true`, so a prior in-process call with
+            // autoAdvance=false doesn't leak into JS's default semantics.
+            let nextItems = nextPlaylist.map { LxMediaPlaylistItem(url: $0) }
+            applyPlaylist(nextItems)
+        } else if let source = config.source {
+            self.playlist = []
             switch source {
             case .url(let url):
-                loadVideo(url: url)
+                beginSingleSourceColdStart(url: url)
             case .file(let path):
-                loadVideo(url: URL(fileURLWithPath: path))
+                beginSingleSourceColdStart(url: URL(fileURLWithPath: path))
             }
         } else if let src = config.src {
-            loadVideo(url: src)
+            self.playlist = []
+            beginSingleSourceColdStart(url: src)
         }
 
         // Always use .pause to receive end notification, handle loop in videoDidEnd
@@ -520,24 +559,9 @@ final class LxMediaPlayer: NSObject {
 
         // Video display mode: cover/contain/fill/fit
         if clearProps.contains("objectFit") {
-            videoGravity = .resizeAspectFill
-            posterImageView.contentMode = .scaleAspectFill
-            playerLayer.videoGravity = videoGravity
-            applyDisplayRotationTransform()
+            applyObjectFit(.cover)
         } else if let objectFit = config.objectFit {
-            switch objectFit {
-            case .cover:
-                videoGravity = .resizeAspectFill
-                posterImageView.contentMode = .scaleAspectFill
-            case .contain, .fit:
-                videoGravity = .resizeAspect
-                posterImageView.contentMode = .scaleAspectFit
-            case .fill:
-                videoGravity = .resize
-                posterImageView.contentMode = .scaleToFill
-            }
-            playerLayer.videoGravity = videoGravity
-            applyDisplayRotationTransform()
+            applyObjectFit(objectFit)
         }
 
         if clearProps.contains("rotate") {
@@ -557,6 +581,27 @@ final class LxMediaPlayer: NSObject {
             return
         }
         displayRotationDegrees = normalized ?? 0
+        applyDisplayRotationTransform()
+    }
+
+    /// Single source of truth for translating LxMediaObjectFit into AVPlayer
+    /// videoGravity + UIImageView contentMode + transition overlay state.
+    /// Used by the element-level config path AND the per-item playlist path.
+    @MainActor
+    private func applyObjectFit(_ fit: LxMediaObjectFit) {
+        switch fit {
+        case .cover:
+            videoGravity = .resizeAspectFill
+            posterImageView.contentMode = .scaleAspectFill
+        case .contain, .fit:
+            videoGravity = .resizeAspect
+            posterImageView.contentMode = .scaleAspectFit
+        case .fill:
+            videoGravity = .resize
+            posterImageView.contentMode = .scaleToFill
+        }
+        playerLayer.videoGravity = videoGravity
+        transitionOverlay.setVideoGravity(videoGravity)
         applyDisplayRotationTransform()
     }
 
@@ -663,7 +708,150 @@ final class LxMediaPlayer: NSObject {
             enterFullscreen()
         case .exitFullscreen:
             exitFullscreen()
+        case .playlistNext:
+            goToPlaylistIndex(playlistIndex + 1, reason: "manual")
+        case .playlistPrevious:
+            goToPlaylistIndex(playlistIndex - 1, reason: "manual")
+        case .playlistGoToIndex(let target):
+            goToPlaylistIndex(target, reason: "manual")
         }
+    }
+
+    /// Direct Swift entry point for in-process callers (e.g. MediaPreview)
+    /// that need to feed a playlist with per-item display overrides — a
+    /// richer shape than the JS-facing `LxMediaPlayerConfig.playlist: [URL]`.
+    /// Equivalent to `update(config: ...)` with `config.playlist=...` for
+    /// the cases JS needs, but skips the rest of the config dance and
+    /// accepts the typed item form.
+    ///
+    /// - Parameters:
+    ///   - autoAdvance: When `true` (default) the player advances on
+    ///     Ended / Error — the lx-video element behavior. Set to `false`
+    ///     for scenarios that drive navigation externally (e.g.
+    ///     MediaPreview, where the page UI is the source of truth) so the
+    ///     player doesn't queue up the next video's audio behind a UI
+    ///     change the consumer hasn't made yet.
+    ///   - startingIndex: Where playback should begin on the *initial*
+    ///     apply. Defaults to 0; callers opening on a non-zero item should
+    ///     pass it here so the player doesn't first load item 0 only to
+    ///     immediately seek away. Ignored when `items` is structurally
+    ///     unchanged from the previous apply — use `playlistGoToIndex(_:)`
+    ///     to move within an already-applied playlist.
+    @MainActor
+    func applyPlaylist(
+        _ items: [LxMediaPlaylistItem],
+        autoAdvance: Bool = true,
+        startingIndex: Int = 0
+    ) {
+        playlistAutoAdvance = autoAdvance
+        guard !items.isEmpty else {
+            self.playlist = []
+            self.playlistIndex = 0
+            transitionOverlay.hide()
+            return
+        }
+        if items == self.playlist { return }
+        self.playlist = items
+        self.playlistIndex = max(0, min(startingIndex, items.count - 1))
+        transitionGeneration += 1
+        let first = items[self.playlistIndex]
+        applyItemDisplay(first)
+        showOverlayForUrl(first.url)
+        prefetchUpcomingFrame(after: self.playlistIndex)
+        loadVideo(url: first.url)
+    }
+
+    /// Switch playlist position; no-op when not in playlist mode or already there.
+    @MainActor
+    func playlistGoToIndex(_ index: Int) {
+        goToPlaylistIndex(index, reason: "manual")
+    }
+
+    /// Navigate to a playlist position. Wraps around when `loop` is set; otherwise clamps
+    /// out-of-range targets and treats the no-op case (same index) silently. Used both by
+    /// natural advance/error recovery and by the imperative playlist commands.
+    @MainActor
+    private func goToPlaylistIndex(_ target: Int, reason: String) {
+        guard playlist.count > 1 else { return }
+        let lastIdx = playlist.count - 1
+        let resolved: Int
+        if loopEnabled {
+            let n = playlist.count
+            resolved = ((target % n) + n) % n
+        } else {
+            resolved = max(0, min(target, lastIdx))
+        }
+        if resolved == playlistIndex { return }
+        playlistIndex = resolved
+        transitionGeneration += 1
+        let item = playlist[resolved]
+        urlHasEnded = false
+        // Apply per-item display overrides BEFORE loadVideo so the new
+        // frame, when it arrives, is laid out correctly from the first paint.
+        // Nil fields preserve element-level values (lx-video path).
+        applyItemDisplay(item)
+        // Show overlay BEFORE loadVideo so the brief codec init gap doesn't
+        // show black; the readyForDisplay KVO observer hides it on first frame.
+        showOverlayForUrl(item.url)
+        send(.playlistChange(index: resolved, url: item.url.absoluteString, reason: reason))
+        loadVideo(url: item.url)
+        play()
+        // Warm next-next so further jumps stay smooth.
+        prefetchUpcomingFrame(after: resolved)
+    }
+
+    /// Apply per-item display overrides. Nil fields are no-ops so element-level
+    /// values from the previous `update(config)` keep applying.
+    @MainActor
+    private func applyItemDisplay(_ item: LxMediaPlaylistItem) {
+        if let fit = item.objectFit { applyObjectFit(fit) }
+        if let degrees = item.rotateDegrees { setDisplayRotationDegrees(degrees) }
+    }
+
+    /// Single-source cold start. Mirrors the playlist transition path so any
+    /// consumer that swaps the player's URL via `update(config:)` (notably the
+    /// per-page video preview) gets the same gap-filling behavior — the
+    /// overlay covers the AVPlayer's ~50-200 ms codec init that would
+    /// otherwise show as a black flash on the player's own black background.
+    @MainActor
+    private func beginSingleSourceColdStart(url: URL) {
+        // Bump generation so any in-flight async frame load from a previous
+        // URL is suppressed by the guard inside the load callback.
+        transitionGeneration &+= 1
+        showOverlayForUrl(url)
+        loadVideo(url: url)
+    }
+
+    /// Show transition overlay using a cached or freshly-extracted first frame
+    /// for `url`. No-op for non-local URLs — the AVPlayerLayer's last frame is
+    /// retained naturally during the brief item-switch gap.
+    @MainActor
+    private func showOverlayForUrl(_ url: URL) {
+        if let cached = LxMediaFrameCache.shared.peek(for: url) {
+            transitionOverlay.show(cached)
+            return
+        }
+        let target = playlistIndex
+        let generation = transitionGeneration
+        LxMediaFrameCache.shared.load(url) { [weak self] image in
+            guard let self = self, let image = image else { return }
+            // Suppress if we've moved on or the layer already rendered the new item.
+            guard self.transitionGeneration == generation else { return }
+            guard self.playlistIndex == target else { return }
+            guard !self.playerLayer.isReadyForDisplay else { return }
+            self.transitionOverlay.show(image)
+        }
+    }
+
+    /// Prefetch first frames for the upcoming item (current+1) so subsequent
+    /// transitions can show the overlay synchronously.
+    @MainActor
+    private func prefetchUpcomingFrame(after index: Int) {
+        let n = playlist.count
+        guard n > 1 else { return }
+        let next = loopEnabled ? (index + 1) % n : index + 1
+        guard next < n else { return }
+        LxMediaFrameCache.shared.prefetch(playlist[next].url)
     }
 
     func setStreamDecoderActive(
@@ -787,6 +975,7 @@ final class LxMediaPlayer: NSObject {
         revealVideoWorkItem?.cancel()
         revealVideoWorkItem = nil
         NotificationCenter.default.removeObserver(self)
+        transitionOverlay.detach()
         player = nil
         view.removeFromSuperview()
     }
@@ -843,6 +1032,18 @@ final class LxMediaPlayer: NSObject {
         hasEverRenderedFrame = true
         firstFrameDisplayed = true
         hidePosterView()
+    }
+
+    private func revealRenderableVideoFrame() {
+        pendingPosterHide = false
+        markFirstFrameRendered()
+        loadingIndicator.stopAnimating()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        playerLayer.opacity = 1
+        playerLayer.isHidden = false
+        CATransaction.commit()
+        transitionOverlay.hide()
     }
 
     // MARK: Player core
@@ -1003,6 +1204,7 @@ final class LxMediaPlayer: NSObject {
                     self.loadingIndicator.stopAnimating()
                     // Only show poster on cold start (never rendered a frame)
                     self.showPosterIfAvailable()
+                    self.advancePlaylistAfterError()
                 default:
                     break
                 }
@@ -1067,6 +1269,7 @@ final class LxMediaPlayer: NSObject {
             self.loadingIndicator.stopAnimating()
             // Only show poster on cold start (never rendered a frame)
             self.showPosterIfAvailable()
+            self.advancePlaylistAfterError()
         }
 
         // timeupdate event triggers every 250ms
@@ -1085,6 +1288,17 @@ final class LxMediaPlayer: NSObject {
 
     }
 
+    @MainActor
+    private func advancePlaylistAfterError() {
+        guard playlist.count > 1, playlistAutoAdvance else { return }
+        let isLast = playlistIndex >= playlist.count - 1
+        if isLast && !loopEnabled {
+            send(.playlistEnd(index: playlistIndex, url: playlist[playlistIndex].url.absoluteString))
+            return
+        }
+        goToPlaylistIndex(playlistIndex + 1, reason: "error")
+    }
+
     @objc private func videoDidEnd() {
         Task { @MainActor in
             os_log("MediaPlayer video ended (loop=%{public}@)", log: OSLog(subsystem: "LingXia", category: "Media"), type: .info, String(loopEnabled))
@@ -1092,7 +1306,19 @@ final class LxMediaPlayer: NSObject {
             // Cancel pending play event on end
             pendingPlayEvent = false
 
-            if loopEnabled {
+            // Playlist mode: advance to next item if possible. For the last item with
+            // no loop, fall through to the natural ended UI sequence below and append
+            // a playlistEnd event after. Skipped when the host disabled auto-advance
+            // (preview-style scenarios drive navigation externally).
+            let isPlaylist = playlist.count > 1
+            let isLastInPlaylist = isPlaylist && playlistIndex >= playlist.count - 1
+            if isPlaylist && playlistAutoAdvance && !(isLastInPlaylist && !loopEnabled) {
+                send(.ended)
+                goToPlaylistIndex(playlistIndex + 1, reason: "ended")
+                return
+            }
+
+            if loopEnabled && !isPlaylist {
                 urlHasEnded = false
                 // Loop: restart from beginning and continue playing without spinner
                 waitingForFirstFrame = false
@@ -1127,6 +1353,15 @@ final class LxMediaPlayer: NSObject {
             urlHasEnded = true
             updateEndedPosterVisibility()
             send(.ended)
+
+            // Emit playlistEnd as the closing signal when we reached this
+            // block by exhausting an auto-advancing playlist. When auto-advance
+            // is disabled the consumer drives navigation and is responsible
+            // for any "playlist done" signal — keeping the controller silent
+            // matches Android / Harmony.
+            if isLastInPlaylist && playlistAutoAdvance {
+                send(.playlistEnd(index: playlistIndex, url: playlist[playlistIndex].url.absoluteString))
+            }
         }
     }
 
@@ -1447,14 +1682,7 @@ final class LxMediaPlayer: NSObject {
         if pendingPosterHide {
             let timeAdvanced = lastTimeForPosterHide >= 0 && currentTime > lastTimeForPosterHide
             if currentTime > 0.2 && timeAdvanced {
-                pendingPosterHide = false
-                markFirstFrameRendered()
-
-                // Always stop loading indicator when video is ready
-                loadingIndicator.stopAnimating()
-
-                // Show video layer
-                playerLayer.opacity = 1
+                revealRenderableVideoFrame()
 
                 // Crossfade poster to video (if poster was visible)
                 if !posterImageView.isHidden {
@@ -2180,25 +2408,14 @@ final class LxMediaPlayer: NSObject {
 
         os_log("MediaPlayer reveal video seq=%llu (reason=%{public}@)", log: log, type: .info, sequence, reason)
 
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        playerLayer.isHidden = false
-        CATransaction.commit()
-
         waitingForFirstFrame = false
+        revealRenderableVideoFrame()
 
-        // Don't set firstFrameDisplayed here - let sendProgress handle it
-        // This ensures poster is only hidden when video time actually progresses
-        // (prevents black screen flash)
-
-        // Start playback - poster hiding will happen in sendProgress when time progresses
         let shouldPlay = desiredPlayWhenReady
         if shouldPlay {
             startPlaybackNow()
         } else {
-            // If not playing, just enable pending poster hide for when playback starts
-            pendingPosterHide = true
-            lastTimeForPosterHide = -1
+            updatePlayPauseUI(isPlaying: false)
         }
     }
 

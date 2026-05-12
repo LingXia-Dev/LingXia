@@ -23,6 +23,8 @@ import {
 import { calculateSliderValue, calculateTimeFromSlider } from './VideoUtils';
 import { VideoControlsView, VideoControlSize } from './VideoControls';
 import { resolveLxUriForFileAccess } from './LxUri';
+import { LxMediaFrameCache } from './LxMediaFrameCache';
+import { image } from '@kit.ImageKit';
 
 const TAG = 'LingXia.NativeVideoPlayer';
 function log(message: string): void { console.info(`${TAG}: ${message}`); }
@@ -82,6 +84,15 @@ export class LxMediaQualityChangeDetail {
 export class LxMediaRateChangeDetail {
   rate: number = 1.0;
 }
+export class LxMediaPlaylistChangeDetail {
+  index: number = 0;
+  url: string = '';
+  reason: string = ''; // 'ended' | 'error'
+}
+export class LxMediaPlaylistEndDetail {
+  index: number = 0;
+  url: string = '';
+}
 
 interface NativeErrorPayload {
   code?: string;
@@ -98,7 +109,9 @@ export type VideoEventDetail =
   | VideoWaitingDetail
   | VideoControlDetail
   | LxMediaQualityChangeDetail
-  | LxMediaRateChangeDetail;
+  | LxMediaRateChangeDetail
+  | LxMediaPlaylistChangeDetail
+  | LxMediaPlaylistEndDetail;
 
 // Quality structure
 export class LxMediaQuality {
@@ -106,9 +119,29 @@ export class LxMediaQuality {
   url?: string = '';
 }
 
+/**
+ * One item in a playlist. `url` is required; the display-property fields
+ * are optional per-item overrides. When undefined, the item inherits
+ * whatever element-level value is currently set on `config` — that is the
+ * path lx-video takes (its JS-facing `playlist: string[]` API maps to items
+ * with all overrides undefined, so element-level `objectFit` / `rotate`
+ * keep applying uniformly across the whole list).
+ *
+ * Per-item overrides are used by application scenarios that genuinely need
+ * different display per item (e.g. MediaPreview, where each captured video
+ * carries its own EXIF rotation and objectFit).
+ */
+export class LxMediaPlaylistItem {
+  url: string = '';
+  objectFit?: string;
+  rotate?: number;
+}
+
 // Configuration
 export class LxNativeVideoConfig {
   src: string = '';
+  // Sequential source list. When length > 1, enters playlist mode (auto-advance, wrap-on-loop, skip-on-error).
+  playlist: string[] = [];
   poster?: string;
   autoplay: boolean = false;
   loop: boolean = false;
@@ -188,6 +221,23 @@ export struct LxNativeVideoPlayer {
   @State private hasEnded: boolean = false;  // Track if video has ended - @State for poster UI binding
   private pendingPlayEvent: boolean = false;  // Delay playing event until video actually starts
   private lastTimeForPlayEvent: number = -1;  // Track time progression for playing event
+  // Playlist mode state. Active when playlistItems.length > 1. Each item can
+  // carry per-item display overrides (objectFit / rotate); when undefined
+  // they inherit element-level values from `this.config`. JS-facing
+  // `playlist: string[]` maps to items with undefined overrides.
+  private playlistItems: LxMediaPlaylistItem[] = [];
+  private playlistIndex: number = 0;
+  /**
+   * Whether the player auto-advances on Ended / Error. lx-video element
+   * needs this. MediaPreview-style consumers drive navigation externally
+   * and disable it so the player doesn't bleed audio behind a UI page
+   * change the consumer hasn't made yet.
+   */
+  private playlistAutoAdvance: boolean = true;
+  /** Bridges visual gaps during playlist transitions (cold start, jumps, errors). */
+  @State private overlayPixelMap: image.PixelMap | undefined = undefined;
+  /** Generation counter to suppress stale async overlay loads. */
+  private overlayGeneration: number = 0;
   private streamState: StreamPlaybackState = 'idle';
   private streamTimeAnchorMs: number = -1;
   private streamTimeAnchorPositionMs: number = 0;
@@ -400,6 +450,21 @@ export struct LxNativeVideoPlayer {
       videoPlayerStop(componentId);
       LxNativeVideoPlayer.patchRuntimeState(componentId, false, false, true, 0);
     }
+  }
+
+  static playlistNextStatic(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    instance?.goToPlaylistIndex(instance.playlistIndex + 1, 'manual');
+  }
+
+  static playlistPreviousStatic(componentId: string): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    instance?.goToPlaylistIndex(instance.playlistIndex - 1, 'manual');
+  }
+
+  static playlistGoToIndexStatic(componentId: string, index: number): void {
+    const instance = LxNativeVideoPlayer.rebindInstance.get(componentId);
+    instance?.goToPlaylistIndex(index, 'manual');
   }
 
   static resumeStatic(componentId: string): void {
@@ -762,7 +827,7 @@ export struct LxNativeVideoPlayer {
         videoPlayerSetSurface(this.componentId, surface);
 
         if (this.config.volume !== undefined) videoPlayerSetVolume(this.componentId, this.config.volume);
-        videoPlayerSetLoop(this.componentId, this.config.loop);
+        videoPlayerSetLoop(this.componentId, this.playlistItems.length > 1 ? false : this.config.loop);
         if (this.state.currentPlaybackRate !== 1.0) videoPlayerSetSpeed(this.componentId, this.state.currentPlaybackRate);
 
         this.pendingQualitySwitchTime = currentTime;
@@ -967,6 +1032,9 @@ export struct LxNativeVideoPlayer {
     if (!this.state.currentQuality && this.config.qualities.length > 0) {
       this.state.currentQuality = this.config.qualities[0].label;
     }
+    // Seed playlist state before createPlayer so single-item path uses config.src and playlist mode
+    // is recognized by ended/error handlers from the first source.
+    this.syncPlaylistFromConfig();
     log(`[${this.componentId}] aboutToAppear: poster=${this.config.poster}, cachedPoster=${this.cachedPoster}, autoplay=${this.config.autoplay}, cachedAutoplay=${this.cachedAutoplay}, progressBar=${this.config.progressBar}, xComponentId=${this.xComponentId}, playerCreated=${this.playerCreated}, boundSurfaceId=${this.boundSurfaceId}, hasNativePlayer=${LxNativeVideoPlayer.hasNativePlayer(this.componentId)}, currentQuality=${this.state.currentQuality}, hasOnEvent=${!!this.onEvent}`);
 
     // Reset state for clean recreation (same-level remount may skip aboutToDisappear)
@@ -1002,11 +1070,227 @@ export struct LxNativeVideoPlayer {
         this.appliedCornerRadius = this.config.cornerRadius;
       }, 50);
     }
+
+    // Trigger the transition overlay BEFORE the first build() so the cached
+    // first frame paints in the same render pass that creates the XComponent.
+    // Putting this in createPlayer (called from XComponent.onLoad) is too late
+    // — the XComponent has already painted its empty black surface by then,
+    // producing the visible black flash on swipe. For non-stream / non-
+    // playlist single-video startup only; playlist mode runs its own call
+    // from startPlaylist().
+    if (this.config.src
+      && this.playlistItems.length <= 1
+      && !this.hasRenderedFirstFrame
+      && !this.isStreamMode()) {
+      this.showOverlayForUrl(this.config.src);
+    }
   }
 
   private onConfigChange(): void {
     log(`[${this.componentId}] onConfigChange rotate=${this.config.rotate} appliedRotation=${this.appliedRotation}`);
     this.syncAppliedRotation();
+    this.syncPlaylistFromConfig();
+  }
+
+  private syncPlaylistFromConfig(): void {
+    const incoming: string[] = (this.config.playlist ?? []).filter(u => typeof u === 'string' && u.length > 0);
+    if (incoming.length > 1) {
+      // JS-facing playlist is `string[]` — wrap in items with undefined
+      // overrides so element-level objectFit / rotate keep applying
+      // uniformly (lx-video behavior preserved). Reset auto-advance to
+      // its JS default; a prior in-process applyPlaylist(...,
+      // autoAdvance=false) call must not leak into the JS path.
+      this.playlistAutoAdvance = true;
+      const incomingItems: LxMediaPlaylistItem[] = incoming.map((u): LxMediaPlaylistItem => {
+        const item = new LxMediaPlaylistItem();
+        item.url = u;
+        return item;
+      });
+      const same = incomingItems.length === this.playlistItems.length
+        && incomingItems.every((item, i) => item.url === this.playlistItems[i].url
+          && item.objectFit === this.playlistItems[i].objectFit
+          && item.rotate === this.playlistItems[i].rotate);
+      if (!same) {
+        this.playlistItems = incomingItems;
+        this.playlistIndex = 0;
+        // Disable native single-item loop; we wrap at playlist level on `loop`.
+        videoPlayerSetLoop(this.componentId, false);
+        // Cold-start overlay for item 0; hideOverlay fires on first real frame.
+        this.showOverlayForUrl(incomingItems[0].url);
+        this.triggerUpcomingPrefetch();
+      }
+    } else {
+      this.playlistItems = [];
+      this.playlistIndex = 0;
+      this.hideOverlay();
+      videoPlayerSetLoop(this.componentId, this.config.loop ?? false);
+    }
+  }
+
+  private advancePlaylist(reason: string): void {
+    if (this.playlistItems.length <= 1) return;
+    if (!this.playlistAutoAdvance) return;
+    const isLast = this.playlistIndex >= this.playlistItems.length - 1;
+    if (isLast && !this.config.loop) {
+      const detail = new LxMediaPlaylistEndDetail();
+      detail.index = this.playlistIndex;
+      detail.url = this.playlistItems[this.playlistIndex].url;
+      this.emitEvent('playlistend', detail);
+      return;
+    }
+    this.goToPlaylistIndex(this.playlistIndex + 1, reason);
+  }
+
+  /**
+   * Navigate to a playlist position. Wraps when `loop` is set; otherwise clamps to
+   * [0, len-1] and treats same-index as no-op. Used by both natural advance and
+   * imperative playlist commands (next/previous/goToIndex).
+   */
+  goToPlaylistIndex(target: number, reason: string): void {
+    if (this.playlistItems.length <= 1) return;
+    const n = this.playlistItems.length;
+    const resolved = this.config.loop
+      ? ((target % n) + n) % n
+      : Math.max(0, Math.min(target, n - 1));
+    if (resolved === this.playlistIndex) return;
+    this.playlistIndex = resolved;
+    const item = this.playlistItems[resolved];
+    const nextUrl = item.url;
+
+    // Apply per-item display overrides BEFORE setUrl so the next first frame
+    // is laid out correctly. Undefined fields preserve element-level values
+    // (lx-video path is a no-op here; preview supplies real per-item props).
+    this.applyItemDisplay(item);
+
+    const detail = new LxMediaPlaylistChangeDetail();
+    detail.index = resolved;
+    detail.url = nextUrl;
+    detail.reason = reason;
+    this.emitEvent('playlistchange', detail);
+
+    // Critical for HarmonyOS: XComponent does NOT retain the previous frame
+    // across surface recreation, so without an overlay the user sees BLACK
+    // during videoPlayerSetUrl + prepare. Show overlay before swapping URL.
+    this.showOverlayForUrl(nextUrl);
+    this.triggerUpcomingPrefetch();
+
+    this.hasEnded = false;
+    const resolvedUri = resolveLxUriForFileAccess(nextUrl);
+    if (videoPlayerSetUrl(this.componentId, resolvedUri) as boolean) {
+      videoPlayerPrepare(this.componentId);
+      videoPlayerPlay(this.componentId);
+    }
+  }
+
+  /**
+   * Apply per-item display overrides. Undefined fields are no-ops so
+   * element-level values from `this.config` keep applying. This is what
+   * makes lx-video's string-array path equivalent to the legacy behavior.
+   */
+  private applyItemDisplay(item: LxMediaPlaylistItem): void {
+    if (item.objectFit !== undefined) {
+      this.config.objectFit = item.objectFit;
+    }
+    if (item.rotate !== undefined) {
+      this.config.rotate = item.rotate;
+      this.syncAppliedRotation();
+    }
+  }
+
+  /**
+   * Direct entry point for in-process callers (e.g. MediaPreview) that need
+   * to feed a playlist with per-item display overrides — a richer shape
+   * than the JS-facing `LxNativeVideoConfig.playlist: string[]`. No-op if
+   * the item list is structurally unchanged.
+   *
+   * @param items per-item playlist with optional objectFit / rotate overrides
+   * @param autoAdvance when true (default) the player advances on Ended /
+   *   Error — the lx-video element behavior. Set false for scenarios that
+   *   drive navigation externally (e.g. MediaPreview) so the player doesn't
+   *   queue up the next video's audio behind a UI change the consumer
+   *   hasn't made yet.
+   * @param startingIndex where playback should begin on the *initial*
+   *   apply; defaults to 0. Ignored when items is structurally unchanged
+   *   from the previous apply — use the playlistGoToIndex command to move
+   *   within an already-applied playlist.
+   */
+  applyPlaylist(items: LxMediaPlaylistItem[], autoAdvance: boolean = true, startingIndex: number = 0): void {
+    this.playlistAutoAdvance = autoAdvance;
+    if (items.length === 0) {
+      this.playlistItems = [];
+      this.playlistIndex = 0;
+      this.hideOverlay();
+      return;
+    }
+    if (items.length === this.playlistItems.length
+      && items.every((it, i) => it.url === this.playlistItems[i].url
+        && it.objectFit === this.playlistItems[i].objectFit
+        && it.rotate === this.playlistItems[i].rotate)) {
+      return;
+    }
+    this.playlistItems = items;
+    this.playlistIndex = Math.max(0, Math.min(startingIndex, items.length - 1));
+    videoPlayerSetLoop(this.componentId, false);
+    const first = items[this.playlistIndex];
+    this.applyItemDisplay(first);
+    this.showOverlayForUrl(first.url);
+    this.triggerUpcomingPrefetch();
+    const resolvedUri = resolveLxUriForFileAccess(first.url);
+    if (videoPlayerSetUrl(this.componentId, resolvedUri) as boolean) {
+      videoPlayerPrepare(this.componentId);
+    }
+  }
+
+  /**
+   * Show the transition overlay using a cached or freshly-extracted first
+   * frame for [url]. No-op for non-local URLs — there's currently no cheap
+   * way to obtain a remote frame on Harmony, so we accept a brief black gap
+   * for those (covered later by ExoPlayer-style prebuffer if needed).
+   *
+   * Generation-guarded: a stale async load that races a subsequent transition
+   * or a real first-frame render is suppressed.
+   */
+  private showOverlayForUrl(url: string): void {
+    if (!url) return;
+    const localPath = resolveLxUriForFileAccess(url);
+    if (!localPath) return;
+
+    this.overlayGeneration += 1;
+    const gen = this.overlayGeneration;
+    const cache = LxMediaFrameCache.getInstance();
+
+    const cached = cache.peek(localPath);
+    if (cached) {
+      this.overlayPixelMap = cached;
+      return;
+    }
+    cache.load(localPath).then((pixelMap) => {
+      if (!pixelMap) return;
+      if (gen !== this.overlayGeneration) return; // moved on
+      if (this.hasRenderedFirstFrame) return;     // engine already rendered
+      this.overlayPixelMap = pixelMap;
+    });
+  }
+
+  /** Hide the transition overlay. Called when the engine renders a new first frame. */
+  private hideOverlay(): void {
+    if (this.overlayPixelMap !== undefined) {
+      this.overlayPixelMap = undefined;
+    }
+  }
+
+  private triggerUpcomingPrefetch(): void {
+    if (this.playlistItems.length <= 1) return;
+    const n = this.playlistItems.length;
+    const nextIdx = this.config.loop
+      ? (this.playlistIndex + 1) % n
+      : this.playlistIndex + 1;
+    if (nextIdx >= n) return;
+    const url = this.playlistItems[nextIdx].url;
+    if (!url) return;
+    const localPath = resolveLxUriForFileAccess(url);
+    if (!localPath) return;
+    LxMediaFrameCache.getInstance().prefetch(localPath);
   }
 
   applyExternalRotation(degrees: number | undefined): void {
@@ -1173,8 +1457,12 @@ export struct LxNativeVideoPlayer {
   }
 
   private onPlaybackEnded(): void {
-    log(`[${this.componentId}] onPlaybackEnded() called, loop=${this.config.loop}, hasEnded=${this.hasEnded}`);
-    if (this.config.loop || this.hasEnded) return;
+    log(`[${this.componentId}] onPlaybackEnded() called, loop=${this.config.loop}, hasEnded=${this.hasEnded}, playlistLen=${this.playlistItems.length}`);
+    if (this.hasEnded) return;
+    // Single-source loop is handled by the native player (videoPlayerSetLoop), so a true `loop`
+    // here means it'll restart on its own — bail unless we're in playlist mode where loop
+    // is owned by us (wrap to first item).
+    if (this.config.loop && this.playlistItems.length <= 1) return;
     if (this.isStreamMode()) {
       // Enforce real stop in stream mode: without this the progress can reach 100% while audio/video continues.
       const ok = videoPlayerPause(this.componentId) as boolean;
@@ -1202,6 +1490,11 @@ export struct LxNativeVideoPlayer {
     this.stopProgressTimer();
     this.saveRuntimeState();  // Save ended state
     this.emitEvent('ended', new VideoEmptyDetail());
+
+    // Playlist mode: advance to next item, wrap on loop, or fire playlistend.
+    if (this.playlistItems.length > 1) {
+      this.advancePlaylist('ended');
+    }
   }
 
   static hasEndedStatic(componentId: string): boolean {
@@ -1357,7 +1650,7 @@ export struct LxNativeVideoPlayer {
     }
 
     if (this.config.volume !== undefined) videoPlayerSetVolume(this.componentId, this.config.volume);
-    videoPlayerSetLoop(this.componentId, this.config.loop ?? false);
+    videoPlayerSetLoop(this.componentId, this.playlistItems.length > 1 ? false : (this.config.loop ?? false));
     if (this.config.src) {
       videoPlayerPrepare(this.componentId);
     }
@@ -1862,6 +2155,10 @@ export struct LxNativeVideoPlayer {
     detail.code = code || 'unknown';
     detail.message = message || 'unknown error';
     this.emitEvent('error', detail);
+
+    if (this.playlistItems.length > 1) {
+      this.advancePlaylist('error');
+    }
   }
 
   getCurrentTime(): number { return videoPlayerGetCurrentTime(this.componentId); }
@@ -2026,6 +2323,19 @@ export struct LxNativeVideoPlayer {
     this.hasRenderedFirstFrame = true;
     this.hasEverPlayed = true;
     LxNativeVideoPlayer.hasEverRenderedFrame.add(this.componentId);
+    // Real first frame is on screen; transition overlay can come down.
+    this.hideOverlay();
+  }
+
+  /** Map config.objectFit to ArkUI ImageFit for the transition overlay. */
+  private objectFitForOverlay(): ImageFit {
+    switch (this.config.objectFit) {
+      case 'cover': return ImageFit.Cover;
+      case 'contain': return ImageFit.Contain;
+      case 'fill': return ImageFit.Fill;
+      case 'fit': return ImageFit.Contain;
+      default: return ImageFit.Cover;
+    }
   }
 
   private getXComponentType(): XComponentType {
@@ -2326,6 +2636,18 @@ export struct LxNativeVideoPlayer {
           .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
           .clip(!this.isFullscreen && !this.isStreamMode())
           .hitTestBehavior(HitTestMode.Transparent).zIndex(0)
+
+        // Transition overlay: shown only during item transitions to bridge the
+        // gap left by HarmonyOS XComponent's no-frame-retention behavior.
+        // Sits above XComponent (zIndex 1), below poster/controls.
+        if (this.overlayPixelMap !== undefined) {
+          Image(this.overlayPixelMap)
+            .width('100%').height('100%')
+            .objectFit(this.objectFitForOverlay())
+            .borderRadius((this.isFullscreen || this.isStreamMode()) ? 0 : this.appliedCornerRadius)
+            .clip(!this.isFullscreen && !this.isStreamMode())
+            .hitTestBehavior(HitTestMode.Transparent).zIndex(1)
+        }
 
         this.buildPoster()
         this.buildBufferingIndicator()

@@ -80,12 +80,32 @@ extension LxAppMedia {
         activePreviewController?.finishPreview(reason: .interrupted)
 
         let window = UIWindow(windowScene: windowScene)
+        window.frame = windowScene.coordinateSpace.bounds
         window.windowLevel = .statusBar + 1
         window.backgroundColor = .black
+        window.alpha = 0
         window.rootViewController = previewController
         previewWindow = window
         activePreviewController = previewController
-        window.makeKeyAndVisible()
+        previewController.onInitialContentReady = { [weak previewController, weak window] in
+            guard let previewController, activePreviewController === previewController else { return }
+            window?.makeKeyAndVisible()
+            window?.layoutIfNeeded()
+            previewController.view.layoutIfNeeded()
+            DispatchQueue.main.async { [weak previewController, weak window] in
+                guard let previewController, activePreviewController === previewController else { return }
+                window?.layoutIfNeeded()
+                previewController.view.layoutIfNeeded()
+                UIView.animate(
+                    withDuration: 0.12,
+                    delay: 0,
+                    options: [.curveEaseOut, .beginFromCurrentState]
+                ) {
+                    window?.alpha = 1
+                }
+            }
+        }
+        previewController.loadViewIfNeeded()
         return true
     }
 
@@ -117,10 +137,24 @@ extension LxAppMedia {
             activePreviewController = nil
         }
         if previewWindow?.rootViewController === controller {
-            makeMainWindowKeyIfNeeded(excluding: previewWindow)
-            previewWindow?.isHidden = true
-            previewWindow?.rootViewController = nil
-            previewWindow = nil
+            let window = previewWindow
+            UIView.animate(
+                withDuration: 0.16,
+                delay: 0,
+                options: [.curveEaseOut, .beginFromCurrentState]
+            ) {
+                window?.alpha = 0
+            } completion: { _ in
+                controller.cleanupPreviewResources()
+                if previewWindow === window {
+                    makeMainWindowKeyIfNeeded(excluding: window)
+                }
+                window?.isHidden = true
+                window?.rootViewController = nil
+                if previewWindow === window {
+                    previewWindow = nil
+                }
+            }
         }
     }
 
@@ -188,14 +222,12 @@ private struct PreviewMediaItem {
     let rotate: Int?
     let objectFit: LxMediaObjectFit?
     let durationMs: UInt64?
+    var requiresFirstFrameBeforeDisplay: Bool {
+        type == .video && url.isFileURL
+    }
 
     init(payload: LxAppMedia.PreviewMediaPayload) {
-        let pathString = payload.path
-        if let parsed = URL(string: pathString), parsed.scheme != nil {
-            self.url = parsed
-        } else {
-            self.url = URL(fileURLWithPath: pathString)
-        }
+        self.url = Self.resolveURL(payload.path)
 
         self.type = MediaType(rawValue: payload.media_type)
         self.rotate = {
@@ -213,6 +245,44 @@ private struct PreviewMediaItem {
         }()
         self.durationMs = payload.durationMs
     }
+
+    // Not @MainActor: only invokes pure FFI helpers (`getCurrentLxApp` /
+    // `resolveLxUri`) and string transforms. Keeping it actor-free lets the
+    // synchronous `init(payload:)` (also actor-free) construct items from any
+    // context — the previous @MainActor annotation produced an
+    // ActorIsolatedCall error on every call site.
+    private static func resolveURL(_ pathString: String) -> URL {
+        let raw = pathString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
+            return URL(string: raw) ?? URL(fileURLWithPath: raw)
+        }
+
+        let current = getCurrentLxApp()
+        let appId = current.appid.toString()
+        let resolved = resolveLxUri(appId, raw)?.toString() ?? raw
+
+        if let filePath = resolved.strippingFileScheme(), filePath.hasPrefix("/") {
+            return URL(fileURLWithPath: filePath)
+        }
+        if resolved.hasPrefix("/") {
+            return URL(fileURLWithPath: resolved)
+        }
+        if let parsed = URL(string: resolved), parsed.scheme != nil {
+            return parsed
+        }
+        return URL(fileURLWithPath: resolved)
+    }
+}
+
+private extension String {
+    /// If self starts with "file://", returns the path remainder; otherwise nil.
+    /// Duplicated from MediaSwiperComponent.swift (which scopes the same helper
+    /// private to its own file). Worth folding into a shared util if a third
+    /// caller shows up.
+    func strippingFileScheme() -> String? {
+        guard self.hasPrefix("file://") else { return nil }
+        return String(self.dropFirst("file://".count))
+    }
 }
 
 @MainActor
@@ -228,13 +298,19 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     private var currentController: (UIViewController & IndexedPreviewController)?
     private var isCurrentImageZoomed = false
     private var isTransitioning = false
+    private var previewTransitionGeneration: UInt64 = 0
     private let showIndexIndicator: Bool
+    fileprivate var onInitialContentReady: (() -> Void)?
 
     private lazy var closeButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.backgroundColor = .clear
+        // Circular semi-transparent chip so the X is legible against any
+        // video frame, not just dark ones.
+        button.backgroundColor = UIColor.black.withAlphaComponent(0.45)
         button.tintColor = .white
+        button.layer.cornerRadius = 18
+        button.layer.masksToBounds = true
         button.contentEdgeInsets = .zero
         return button
     }()
@@ -354,33 +430,40 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             indicatorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
 
-        if let backImage = LxIcon.image(named: "icon_close")?.withRenderingMode(.alwaysOriginal) {
+        // SF Symbol "xmark" is the iOS-native close glyph; the rendering-mode
+        // override keeps the button's `tintColor` in effect (avoids the
+        // "alwaysOriginal" template path that previously zeroed tintColor).
+        if #available(iOS 13.0, *) {
+            let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+            let xmark = UIImage(systemName: "xmark", withConfiguration: symbolConfig)?
+                .withRenderingMode(.alwaysTemplate)
+            closeButton.setImage(xmark, for: .normal)
+        } else if let backImage = LxIcon.image(named: "icon_close")?.withRenderingMode(.alwaysTemplate) {
             closeButton.setImage(backImage, for: .normal)
-            closeButton.tintColor = .clear
         } else {
-            closeButton.setTitle("Back", for: .normal)
+            closeButton.setTitle("✕", for: .normal)
             closeButton.setTitleColor(.white, for: .normal)
+            closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
         }
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         view.addSubview(closeButton)
         NSLayoutConstraint.activate([
-            closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            closeButton.widthAnchor.constraint(equalToConstant: 44),
-            closeButton.heightAnchor.constraint(equalToConstant: 44)
+            closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 2),
+            closeButton.widthAnchor.constraint(equalToConstant: 36),
+            closeButton.heightAnchor.constraint(equalToConstant: 36)
         ])
 
         view.addGestureRecognizer(previewTapGesture)
         view.addGestureRecognizer(previousEdgePanGesture)
         view.addGestureRecognizer(nextEdgePanGesture)
 
-        if let initial = viewController(for: currentIndex) {
-            displayInitialController(initial)
-        }
+        displayInitialControllerWhenReady(index: currentIndex)
         updateManualNavigationGestures()
         updateIndicator()
         updateCloseButtonVisibility()
         scheduleBehaviorForCurrentItem()
+        prefetchVideoFramesAroundCurrentIndex()
     }
 
     override func viewDidLayoutSubviews() {
@@ -398,7 +481,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         }
     }
 
-    private func viewController(for index: Int) -> (UIViewController & IndexedPreviewController)? {
+    private func viewController(
+        for index: Int,
+        firstFrame: UIImage? = nil
+    ) -> (UIViewController & IndexedPreviewController)? {
         guard items.indices.contains(index) else { return nil }
         let item = items[index]
         switch item.type {
@@ -406,6 +492,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
             return MediaPreviewVideoController(
                 item: item,
                 index: index,
+                firstFrame: firstFrame,
                 loopPlayback: shouldLoopCurrentVideo(at: index),
                 endedHandler: { [weak self] in
                     guard let self, self.currentIndex == index else { return }
@@ -435,13 +522,37 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
     private func displayInitialController(_ controller: UIViewController & IndexedPreviewController) {
         controller.beginAppearanceTransition(true, animated: false)
         addChild(controller)
+        view.layoutIfNeeded()
+        contentContainer.layoutIfNeeded()
         controller.view.frame = contentContainer.bounds
         controller.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         contentContainer.addSubview(controller.view)
+        controller.view.layoutIfNeeded()
         controller.didMove(toParent: self)
         controller.endAppearanceTransition()
         currentController = controller
         isCurrentImageZoomed = false
+        notifyInitialContentReady()
+    }
+
+    private func notifyInitialContentReady() {
+        guard let onInitialContentReady else { return }
+        self.onInitialContentReady = nil
+        onInitialContentReady()
+    }
+
+    private func displayInitialControllerWhenReady(index: Int) {
+        guard items.indices.contains(index) else { return }
+        loadFirstFrameIfNeeded(for: index) { [weak self] image in
+            guard let self else { return }
+            guard self.currentController == nil, self.currentIndex == index else { return }
+            guard !self.items[index].requiresFirstFrameBeforeDisplay || image != nil else {
+                self.finishPreview(reason: .error)
+                return
+            }
+            guard let initial = self.viewController(for: index, firstFrame: image) else { return }
+            self.displayInitialController(initial)
+        }
     }
 
     private func updateManualNavigationGestures() {
@@ -462,14 +573,61 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         animated: Bool
     ) {
         guard items.indices.contains(index) else { return }
-        guard let controller = viewController(for: index) else { return }
-        suppressVideoEndedUntil = 0
-        isCurrentImageZoomed = false
-        currentIndex = index
-        updateIndicator()
-        updateCloseButtonVisibility()
-        transition(to: controller, direction: direction, animated: animated)
-        scheduleBehaviorForCurrentItem()
+        previewTransitionGeneration &+= 1
+        let generation = previewTransitionGeneration
+        loadFirstFrameIfNeeded(for: index) { [weak self] image in
+            guard let self else { return }
+            guard generation == self.previewTransitionGeneration else { return }
+            guard !self.items[index].requiresFirstFrameBeforeDisplay || image != nil else {
+                self.finishPreview(reason: .error)
+                return
+            }
+            guard let controller = self.viewController(for: index, firstFrame: image) else { return }
+            self.suppressVideoEndedUntil = 0
+            self.isCurrentImageZoomed = false
+            self.currentIndex = index
+            self.updateIndicator()
+            self.updateCloseButtonVisibility()
+            self.transition(to: controller, direction: direction, animated: animated)
+            self.scheduleBehaviorForCurrentItem()
+            self.prefetchVideoFramesAroundCurrentIndex()
+        }
+    }
+
+    private func loadFirstFrameIfNeeded(for index: Int, completion: @MainActor @escaping (UIImage?) -> Void) {
+        guard items.indices.contains(index), items[index].type == .video else {
+            completion(nil)
+            return
+        }
+        if let cached = LxMediaFrameCache.shared.peek(for: items[index].url) {
+            completion(cached)
+            return
+        }
+        LxMediaFrameCache.shared.load(items[index].url, completion: completion)
+    }
+
+    /// Warm `LxMediaFrameCache` with first frames of current + adjacent video
+    /// items so the first page and next swipe can synchronously show a still
+    /// frame instead of the player's black background while AVPlayer initializes.
+    private func prefetchVideoFramesAroundCurrentIndex() {
+        guard !items.isEmpty else { return }
+        let n = items.count
+        var indices: Set<Int> = [currentIndex]
+        let prev = currentIndex - 1
+        if prev >= 0 {
+            indices.insert(prev)
+        } else if advance == .loop {
+            indices.insert(n - 1)
+        }
+        let next = currentIndex + 1
+        if next < n {
+            indices.insert(next)
+        } else if advance == .loop {
+            indices.insert(0)
+        }
+        for idx in indices where items[idx].type == .video {
+            LxMediaFrameCache.shared.prefetch(items[idx].url)
+        }
     }
 
     private func transition(
@@ -606,7 +764,12 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         if gestureRecognizer === previewTapGesture {
-            return !touchOriginatesFromControl(touch.view)
+            // Only suppress the gesture for taps that originate inside the
+            // preview's own close button — letting it fire for taps on the
+            // video page (including the player's tap-catcher UIButton, which
+            // shows the player's controls overlay) is what makes our custom
+            // close button toggle visible together with playback controls.
+            return !touchOriginatesFromCloseButton(touch.view)
         }
         if gestureRecognizer === previousEdgePanGesture || gestureRecognizer === nextEdgePanGesture {
             guard !isTransitioning, items.indices.contains(currentIndex), items.count > 1 else { return false }
@@ -621,10 +784,10 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         return true
     }
 
-    private func touchOriginatesFromControl(_ view: UIView?) -> Bool {
+    private func touchOriginatesFromCloseButton(_ view: UIView?) -> Bool {
         var current = view
         while let candidate = current {
-            if candidate is UIControl {
+            if candidate === closeButton {
                 return true
             }
             current = candidate.superview
@@ -636,7 +799,7 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
         finishPreview(reason: .manual)
     }
 
-    private func cleanupPreviewResources() {
+    fileprivate func cleanupPreviewResources() {
         if didCleanup {
             return
         }
@@ -730,7 +893,6 @@ private final class MediaPreviewViewController: UIViewController, UIGestureRecog
            let jsonString = String(data: jsonData, encoding: .utf8) {
             let _ = onCallback(callbackId, true, jsonString)
         }
-        cleanupPreviewResources()
         LxAppMedia.dismissPreviewWindow(for: self)
     }
 }
@@ -786,6 +948,7 @@ private final class MediaPreviewImageController: UIViewController, IndexedPrevie
 private final class MediaPreviewVideoController: UIViewController, IndexedPreviewController {
     let index: Int
     private let item: PreviewMediaItem
+    private let firstFrame: UIImage?
     private let loopPlayback: Bool
     private let endedHandler: () -> Void
     private let errorHandler: () -> Void
@@ -793,12 +956,14 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     private let log = OSLog(subsystem: "LingXia", category: "MediaPreview")
 
     private var player: LxMediaPlayer?
+    private let firstFrameImageView = UIImageView()
     private var hasStartedPlayback = false
     fileprivate private(set) var isScrubbing = false
 
     init(
         item: PreviewMediaItem,
         index: Int,
+        firstFrame: UIImage?,
         loopPlayback: Bool,
         endedHandler: @escaping () -> Void,
         errorHandler: @escaping () -> Void,
@@ -806,6 +971,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     ) {
         self.item = item
         self.index = index
+        self.firstFrame = firstFrame
         self.loopPlayback = loopPlayback
         self.endedHandler = endedHandler
         self.errorHandler = errorHandler
@@ -820,7 +986,7 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        embedPlayerInline()
+        configureFirstFrameImageView()
     }
 
     override func viewDidLayoutSubviews() {
@@ -838,7 +1004,13 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         player?.refreshGestureInterference()
-        // Resume playback when returning to this page
+        if player == nil {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.view.window != nil, self.player == nil else { return }
+                self.embedPlayerInline()
+            }
+            return
+        }
         if hasStartedPlayback {
             player?.handle(command: .play)
         }
@@ -850,7 +1022,55 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         player = nil
     }
 
+    private func configureFirstFrameImageView() {
+        firstFrameImageView.translatesAutoresizingMaskIntoConstraints = false
+        firstFrameImageView.backgroundColor = .black
+        firstFrameImageView.contentMode = imageContentMode(for: item.objectFit)
+        firstFrameImageView.clipsToBounds = true
+        firstFrameImageView.image = firstFrame
+        firstFrameImageView.isHidden = firstFrame == nil
+        firstFrameImageView.layer.zPosition = 3000
+        view.addSubview(firstFrameImageView)
+        NSLayoutConstraint.activate([
+            firstFrameImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            firstFrameImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            firstFrameImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            firstFrameImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        applyFirstFrameRotation()
+    }
+
+    private func imageContentMode(for objectFit: LxMediaObjectFit?) -> UIView.ContentMode {
+        switch objectFit ?? .contain {
+        case .cover:
+            return .scaleAspectFill
+        case .fill:
+            return .scaleToFill
+        case .contain, .fit:
+            return .scaleAspectFit
+        @unknown default:
+            return .scaleAspectFit
+        }
+    }
+
+    private func applyFirstFrameRotation() {
+        let degrees = item.rotate ?? 0
+        let normalized = ((degrees % 360) + 360) % 360
+        guard normalized == 0 || normalized == 90 || normalized == 180 || normalized == 270 else {
+            firstFrameImageView.transform = .identity
+            return
+        }
+        firstFrameImageView.transform = CGAffineTransform(rotationAngle: CGFloat(normalized) * .pi / 180)
+    }
+
+    private func handOffFirstFrameToPlayerOverlay() {
+        guard !firstFrameImageView.isHidden else { return }
+        firstFrameImageView.isHidden = true
+        firstFrameImageView.image = nil
+    }
+
     private func embedPlayerInline() {
+        view.layoutIfNeeded()
         let config = LxMediaPlayerConfig(
             src: item.url,
             poster: nil,
@@ -867,6 +1087,14 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
             case .play:
                 self?.hasStartedPlayback = true
                 os_log("MediaPreview player event: play", log: self?.log ?? .default, type: .info)
+            case .playing:
+                // .playing fires when AVPlayer actually starts rendering frames
+                // — that's the right moment to hand off from the still poster
+                // (firstFrameImageView) to the live player surface. Hiding the
+                // poster on attach (which used to happen) caused a visible
+                // black gap between attach and first decoded frame, i.e. the
+                // flicker the user reported.
+                self?.handOffFirstFrameToPlayerOverlay()
             case .ended:
                 self?.endedHandler()
             case .error(let code, let message):
@@ -888,7 +1116,11 @@ private final class MediaPreviewVideoController: UIViewController, IndexedPrevie
         }
         self.player = player
 
+        player.view.layer.zPosition = 1000
         player.attach(to: view)
+        // Don't hand off the poster yet — wait for the player's `.playing`
+        // event which signals the first decoded frame has been rendered.
+        // Hiding the poster eagerly here is what produced the post-load flicker.
     }
 
     private func startPlaybackIfNeeded() {

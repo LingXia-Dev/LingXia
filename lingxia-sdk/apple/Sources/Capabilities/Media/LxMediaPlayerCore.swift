@@ -381,6 +381,8 @@ final class LxMediaPlayerCore: NSObject {
         case .setPlaybackRate(let r): setPlaybackRate(r)
         case .enterFullscreen, .exitFullscreen:
             break // Handled by UI layer
+        case .playlistNext, .playlistPrevious, .playlistGoToIndex:
+            break // Playlist mode is owned by LxMediaPlayer; Core (macOS) is single-source only.
         }
     }
 

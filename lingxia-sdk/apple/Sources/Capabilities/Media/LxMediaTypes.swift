@@ -46,9 +46,32 @@ enum LxMediaObjectFit: String {
     }
 }
 
+/// One item in a playlist. `url` is required; the display-property fields
+/// are optional per-item overrides. When `nil`, the item inherits whatever
+/// element-level value the player currently has — that is the path lx-video
+/// takes (its JS-facing `playlist: string[]` API maps to items with all
+/// overrides `nil`, so element-level `objectFit` / `rotateDegrees` keep
+/// applying uniformly across the whole list).
+///
+/// Per-item overrides are used by application scenarios that genuinely need
+/// different display per item (e.g. MediaPreview, where each captured video
+/// carries its own EXIF rotation and objectFit).
+struct LxMediaPlaylistItem: Equatable {
+    var url: URL
+    var objectFit: LxMediaObjectFit?
+    var rotateDegrees: Int?
+
+    init(url: URL, objectFit: LxMediaObjectFit? = nil, rotateDegrees: Int? = nil) {
+        self.url = url
+        self.objectFit = objectFit
+        self.rotateDegrees = rotateDegrees
+    }
+}
+
 struct LxMediaPlayerConfig {
     var source: LxMediaSource?
     var src: URL?
+    var playlist: [URL]?
     var poster: URL?
     var duration: Double?
     var autoplay: Bool?
@@ -69,6 +92,7 @@ struct LxMediaPlayerConfig {
     init(
         source: LxMediaSource? = nil,
         src: URL? = nil,
+        playlist: [URL]? = nil,
         poster: URL? = nil,
         duration: Double? = nil,
         autoplay: Bool? = nil,
@@ -88,6 +112,7 @@ struct LxMediaPlayerConfig {
     ) {
         self.source = source
         self.src = src
+        self.playlist = playlist
         self.poster = poster
         self.duration = duration
         self.autoplay = autoplay
@@ -112,6 +137,7 @@ struct LxMediaPlayerConfig {
             dict["source"] = source.bridgeValue
         }
         if let src { dict["src"] = src.absoluteString }
+        if let playlist { dict["playlist"] = playlist.map { $0.absoluteString } }
         if let poster { dict["poster"] = poster.absoluteString }
         if let duration { dict["duration"] = duration }
         if let autoplay { dict["autoplay"] = autoplay }
@@ -144,6 +170,9 @@ enum LxMediaCommand {
     case setPlaybackRate(Double)
     case enterFullscreen
     case exitFullscreen
+    case playlistNext
+    case playlistPrevious
+    case playlistGoToIndex(Int)
 }
 
 enum LxMediaEvent {
@@ -160,6 +189,8 @@ enum LxMediaEvent {
     case fullscreenChange(fullScreen: Bool, direction: String)
     case loadedMetadata(width: Double, height: Double, duration: Double)
     case qualityChange(quality: String, url: String?)
+    case playlistChange(index: Int, url: String, reason: String)
+    case playlistEnd(index: Int, url: String)
     case error(code: String, message: String)
     case raw(name: String, data: [String: Any])
 
@@ -178,6 +209,8 @@ enum LxMediaEvent {
         case .fullscreenChange: return "fullscreenchange"
         case .loadedMetadata: return "loadedmetadata"
         case .qualityChange: return "qualitychange"
+        case .playlistChange: return "playlistchange"
+        case .playlistEnd: return "playlistend"
         case .error: return "error"
         case .raw(let name, _): return name
         }
@@ -201,6 +234,10 @@ enum LxMediaEvent {
             return ["width": width, "height": height, "duration": duration]
         case .qualityChange(let quality, let url):
             return ["quality": quality, "url": url ?? ""]
+        case .playlistChange(let index, let url, let reason):
+            return ["index": index, "url": url, "reason": reason]
+        case .playlistEnd(let index, let url):
+            return ["index": index, "url": url]
         case .error(let code, let message):
             return ["code": code, "message": message]
         case .raw(_, let data):

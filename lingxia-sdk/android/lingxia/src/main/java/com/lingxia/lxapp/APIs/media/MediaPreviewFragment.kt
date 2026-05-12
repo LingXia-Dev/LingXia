@@ -7,11 +7,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Typeface
-import android.media.MediaMetadataRetriever
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -26,6 +27,7 @@ import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -38,6 +40,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.NativeApi
+import com.lingxia.lxapp.R
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.lang.ref.WeakReference
@@ -66,6 +69,7 @@ internal class MediaPreviewFragment : Fragment() {
     private var viewPager: ViewPager2? = null
     private var previewAdapter: PreviewPagerAdapter? = null
     private var indicatorText: TextView? = null
+    private var closeButton: ImageButton? = null
     private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
     private var totalItems: Int = 0
     private var windowUiSnapshot: ImmersiveWindowUi.Snapshot? = null
@@ -88,6 +92,36 @@ internal class MediaPreviewFragment : Fragment() {
     private var pendingSwitchPrefetchGeneration: Long = 0L
     private var pendingUpcomingPrefetch: Future<*>? = null
     private var runtimeProfile: PreviewRuntimeProfile = PreviewRuntimeProfile.default()
+
+    // Single LxMediaPlayer instance shared across all video pages. Its view
+    // is parented to sharedPlayerHost ONCE in onCreateView and never
+    // re-parented — this is what prevents the surface destroy/recreate that
+    // produced black flicker between videos.
+    //
+    // Multi-source orchestration is delegated to the player's playlist
+    // controller (LxMediaPlaylistController). MediaPreview just builds the
+    // video subset of items once, calls applyPlaylist, then drives navigation
+    // via playlistGoToIndex on each page change. Manual update(src) per page
+    // is gone — the controller is the sole owner of "who plays next".
+    private var sharedPlayerHost: FrameLayout? = null
+    private var sharedPlayer: LxMediaPlayer? = null
+    /**
+     * One-time guard for `applyPlaylist`. Set on the first time we mount the
+     * shared player on a video page, cleared in [cleanupPreviewResources].
+     * Assumes [previewItems] is fixed for the lifetime of the fragment (it
+     * is sourced from arguments in [onCreate] and never mutated). If that
+     * assumption ever breaks, this gate plus [sharedPlaylistItems] both need
+     * to be re-derived on the change.
+     */
+    private var sharedPlaylistApplied: Boolean = false
+    private var sharedPlaylistItems: List<LxMediaPlaylistItem> = emptyList()
+    /**
+     * For each preview index in [previewItems], the corresponding playlist
+     * index in [sharedPlaylistItems]; -1 for non-video items. Built once in
+     * [computeVideoPlaylist].
+     */
+    private var videoPlaylistIndexByPreviewIndex: IntArray = IntArray(0)
+    private var sharedPlayerScrollState: Int = ViewPager2.SCROLL_STATE_IDLE
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -143,6 +177,13 @@ internal class MediaPreviewFragment : Fragment() {
         viewPager = pager
         root.addView(pager)
 
+        val playerHost = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+            visibility = View.GONE
+        }
+        sharedPlayerHost = playerHost
+        root.addView(playerHost)
+
         val overlay = ImageView(context).apply {
             layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             setBackgroundColor(Color.BLACK)
@@ -160,6 +201,9 @@ internal class MediaPreviewFragment : Fragment() {
         val callback = object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 handlePageSelected(position)
+            }
+            override fun onPageScrollStateChanged(state: Int) {
+                onPagerScrollStateChanged(state)
             }
         }
         pageChangeCallback = callback
@@ -220,14 +264,21 @@ internal class MediaPreviewFragment : Fragment() {
         }
         pageChangeCallback = null
         previewAdapter?.release()
-        // Force ViewPager to detach/recycle pages so video players are destroyed immediately.
+        // Force ViewPager to detach/recycle pages so any per-page resources release.
         viewPager?.adapter = null
         previewAdapter = null
         viewPager = null
+        sharedPlayer?.detach()
+        sharedPlayer = null
+        sharedPlaylistApplied = false
+        sharedPlaylistItems = emptyList()
+        videoPlaylistIndexByPreviewIndex = IntArray(0)
+        sharedPlayerHost = null
         previewRoot = null
         hideTransitionOverlay()
         transitionOverlay = null
         indicatorText = null
+        closeButton = null
 
         restoreWindowUiIfNeeded()
     }
@@ -280,7 +331,44 @@ internal class MediaPreviewFragment : Fragment() {
         }
 
         indicatorText?.let(topContainer::addView)
+        closeButton = createCloseButton(context).also(topContainer::addView)
         return topContainer
+    }
+
+    /// Mirror of the iOS preview close button: 36dp circular semi-transparent
+    /// black chip pinned to the top-right with a white X glyph. Uses the
+    /// existing `icon_close_x` vector (originally `#1F1F1F`) tinted white.
+    private fun createCloseButton(context: Context): ImageButton {
+        val displayMetrics = context.resources.displayMetrics
+        fun dp(value: Float): Int = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            value,
+            displayMetrics
+        ).toInt()
+        val statusInset = statusBarHeight(context)
+        val chipBackground = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(115, 0, 0, 0))
+        }
+        val edgeMargin = dp(12f)
+        return ImageButton(context).apply {
+            background = chipBackground
+            setImageResource(R.drawable.icon_close_x)
+            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
+            contentDescription = context.getString(android.R.string.cancel)
+            // Default hidden; `updateCloseButtonVisibility()` shows it on
+            // video pages once the page selection settles. Avoids a brief
+            // flash on image-first previews.
+            visibility = View.GONE
+            layoutParams = FrameLayout.LayoutParams(dp(36f), dp(36f)).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = statusInset + dp(2f)
+                rightMargin = edgeMargin
+            }
+            setOnClickListener { finishPreview("manual") }
+        }
     }
 
     private fun updateIndicator(position: Int) {
@@ -319,9 +407,201 @@ internal class MediaPreviewFragment : Fragment() {
         currentPagerPosition = position
         currentIndex = realIndexFor(position)
         updateIndicator(currentIndex)
+        updateCloseButtonVisibility()
         previewAdapter?.onPageSelected(position)
+        applySharedPlayerForCurrentItem()
         scheduleCurrentItemBehaviorWhenVisualReady("page_selected")
         prefetchUpcomingVisual(position)
+    }
+
+    /// Match iOS / Harmony: chip is gated on (video page AND inline player
+    /// controls currently visible). Images use their own dismiss gestures
+    /// inside the adapter, and a video page only reveals close when the user
+    /// taps to expose play/pause/scrub — same affordance as the controls bar.
+    private fun updateCloseButtonVisibility() {
+        val item = previewItems.getOrNull(currentIndex)
+        val isVideo = item?.mediaType == MediaPreviewType.VIDEO
+        val controlsShown = sharedPlayer?.isControlsVisible() == true
+        val showChip = isVideo && controlsShown
+        closeButton?.visibility = if (showChip) View.VISIBLE else View.GONE
+    }
+
+    private fun onPagerScrollStateChanged(state: Int) {
+        sharedPlayerScrollState = state
+        // Hide the player view while the user (or programmatic settle) is
+        // mid-swipe so the underlying ViewPager pages — which carry the
+        // first-frame placeholders — remain visible during the gesture.
+        // Once the page settles we re-evaluate visibility based on the
+        // newly-current item.
+        when (state) {
+            ViewPager2.SCROLL_STATE_DRAGGING,
+            ViewPager2.SCROLL_STATE_SETTLING -> {
+                sharedPlayerHost?.visibility = View.INVISIBLE
+            }
+            ViewPager2.SCROLL_STATE_IDLE -> {
+                applySharedPlayerForCurrentItem()
+            }
+        }
+    }
+
+    private fun ensureSharedPlayer(): LxMediaPlayer {
+        sharedPlayer?.let { return it }
+        val context = requireContext()
+        val player = LxMediaPlayer(
+            context.applicationContext,
+            eventSink = { payload ->
+                val event = payload["event"] as? String
+                if (event == "firstframerendered" || event == "playing" || event == "timeupdate") {
+                    mainHandler.post { onSharedPlayerFirstFrame() }
+                }
+            },
+            typedEventSink = { event ->
+                when (event) {
+                    is LxMediaEvent.Ended -> mainHandler.post { onSharedPlayerTerminal("ended") }
+                    is LxMediaEvent.Error -> mainHandler.post { onSharedPlayerTerminal("error") }
+                    else -> Unit
+                }
+            }
+        )
+        // Use the preview-level close button (createTopBar) instead of the
+        // player's built-in one so the visual treatment matches iOS: top-right
+        // 36dp circular semi-transparent chip with a white X glyph. Keeping
+        // the player's plain top-left X here would diverge from iOS.
+        player.setShowCloseButton(false)
+        player.setShowFullscreenButton(false)
+        player.setShowLoadingIndicator(false)
+        player.setSuppressAutoShowControls(true)
+        // Mirror the preview-level close button against the inline controls
+        // overlay — when the user taps the video to reveal play/pause/scrub,
+        // the close affordance appears in the same beat; when controls hide
+        // (auto-hide or another tap), so does close. No persistent overlay.
+        player.setOnControlsVisibilityChanged { _ ->
+            updateCloseButtonVisibility()
+        }
+        sharedPlayerHost?.let { player.attach(it) }
+        sharedPlayer = player
+        return player
+    }
+
+    /**
+     * Build the video subset of the preview list as a playlist of items, plus
+     * the preview-index → playlist-index lookup. Called once per preview;
+     * idempotent (only computes when not yet built).
+     */
+    private fun computeVideoPlaylist() {
+        if (sharedPlaylistItems.isNotEmpty() ||
+            videoPlaylistIndexByPreviewIndex.isNotEmpty()
+        ) return
+        val map = IntArray(previewItems.size) { -1 }
+        val items = ArrayList<LxMediaPlaylistItem>()
+        for ((i, p) in previewItems.withIndex()) {
+            if (p.mediaType != MediaPreviewType.VIDEO) continue
+            map[i] = items.size
+            items.add(
+                LxMediaPlaylistItem(
+                    url = p.uri.toString(),
+                    objectFit = p.objectFit ?: LxMediaObjectFit.CONTAIN,
+                    rotateDegrees = p.rotate
+                )
+            )
+        }
+        sharedPlaylistItems = items
+        videoPlaylistIndexByPreviewIndex = map
+    }
+
+    private fun applySharedPlayerForCurrentItem() {
+        if (sharedPlayerScrollState != ViewPager2.SCROLL_STATE_IDLE) return
+        val host = sharedPlayerHost ?: return
+        val item = previewItems.getOrNull(currentIndex) ?: run {
+            host.visibility = View.INVISIBLE
+            sharedPlayer?.pause()
+            return
+        }
+        when (item.mediaType) {
+            MediaPreviewType.VIDEO -> {
+                computeVideoPlaylist()
+                if (sharedPlaylistItems.isEmpty()) {
+                    // Defensive: video items list is empty although the page is
+                    // typed VIDEO. Hide the host so we don't accidentally show
+                    // stale player content on top of the (now placeholder-only)
+                    // ViewPager page.
+                    host.visibility = View.INVISIBLE
+                    return
+                }
+
+                val playlistIdx = videoPlaylistIndexByPreviewIndex
+                    .getOrNull(currentIndex)
+                    ?.takeIf { it >= 0 }
+                    ?: run {
+                        // Unreachable in practice (mediaType==VIDEO implies a
+                        // mapping exists), but be explicit instead of letting
+                        // host visibility drift to whatever it was before.
+                        host.visibility = View.INVISIBLE
+                        return
+                    }
+
+                val player = ensureSharedPlayer()
+
+                // First time we see a video page: feed the whole video subset
+                // to the player's playlist controller. Element-level config
+                // (loop, controls, etc.) is set once; per-item objectFit /
+                // rotateDegrees travel inside each playlist item.
+                //
+                // autoAdvance = false: ViewPager is the source of truth for
+                // "what plays next" in preview. Without this the controller
+                // would jump to the next playlist item on Ended/Error and
+                // bleed audio behind whatever (possibly image) page the user
+                // is now on. See LxMediaPlaylistController.autoAdvance.
+                if (!sharedPlaylistApplied) {
+                    player.update(
+                        LxMediaPlayerConfig(
+                            poster = null,
+                            autoplay = false,
+                            loop = shouldLoopSingleItemVideo(),
+                            controls = true,
+                        )
+                    )
+                    player.applyPlaylist(
+                        items = sharedPlaylistItems,
+                        autoAdvance = false,
+                        startingIndex = playlistIdx,
+                    )
+                    sharedPlaylistApplied = true
+                }
+
+                // Hide the host while the controller swaps source; promoted
+                // back to VISIBLE on firstframerendered so the holder's
+                // first-frame placeholder beneath bridges the decode gap.
+                host.visibility = View.INVISIBLE
+                player.playlistGoToIndex(playlistIdx)
+                player.play()
+            }
+            MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> {
+                sharedPlayer?.pause()
+                // INVISIBLE (not GONE) so the player's TextureView keeps its
+                // SurfaceTexture alive — switching back to a video page later
+                // can resume rendering immediately without a surface rebind.
+                host.visibility = View.INVISIBLE
+            }
+        }
+    }
+
+    private fun onSharedPlayerFirstFrame() {
+        val item = previewItems.getOrNull(currentIndex)
+        // Reveal the host only if the current preview item is a video and
+        // we're settled on it — events for a stale source must not flash
+        // a wrong frame.
+        if (item?.mediaType == MediaPreviewType.VIDEO &&
+            sharedPlayerScrollState == ViewPager2.SCROLL_STATE_IDLE
+        ) {
+            sharedPlayerHost?.visibility = View.VISIBLE
+        }
+        hideTransitionOverlay()
+        previewAdapter?.notifyVideoRenderedAt(currentPagerPosition)
+    }
+
+    private fun onSharedPlayerTerminal(terminal: String) {
+        onVideoTerminal(currentPagerPosition, terminal)
     }
 
     private fun scheduleCurrentItemBehaviorWhenVisualReady(reason: String) {
@@ -500,7 +780,15 @@ internal class MediaPreviewFragment : Fragment() {
             revealPreviewRoot()
         }
         if (position == currentPagerPosition) {
-            hideTransitionOverlay()
+            val item = previewItems.getOrNull(currentIndex)
+            // For video items, the placeholder being ready does not mean the
+            // player has decoded its first frame yet. Keep the transition
+            // overlay up until the shared player's firstframerendered event
+            // fires (handled in onSharedPlayerFirstFrame). For images, the
+            // visual is fully on-screen now, so we can hide it immediately.
+            if (item?.mediaType != MediaPreviewType.VIDEO) {
+                hideTransitionOverlay()
+            }
             scheduleCurrentItemBehavior("visual_ready")
         }
     }
@@ -549,9 +837,9 @@ internal class MediaPreviewFragment : Fragment() {
             return
         }
         val context = context ?: return
-        previewAdapter?.prewarmUpcomingVideo(target) {
-            finishPreview("manual")
-        }
+        // Player engine is shared across pages; no per-page prewarm needed.
+        // Visual prefetch (first-frame for video, decoded bitmap for image)
+        // still runs so the placeholder is ready before the page is visible.
         pendingUpcomingPrefetch = PreviewPagerAdapter.prefetchItemVisual(
             context = context,
             item = target,
@@ -827,16 +1115,14 @@ private data class PreviewRuntimeProfile(
     val isConstrainedDevice: Boolean,
     val enableVisualPrefetchBeforeSwitch: Boolean,
     val enableUpcomingVisualPrefetch: Boolean,
-    val enableLocalVideoFirstFrameExtraction: Boolean,
-    val enableVideoPlayerPrewarm: Boolean
+    val enableLocalVideoFirstFrameExtraction: Boolean
 ) {
     companion object {
         fun default(): PreviewRuntimeProfile = PreviewRuntimeProfile(
             isConstrainedDevice = false,
             enableVisualPrefetchBeforeSwitch = true,
             enableUpcomingVisualPrefetch = true,
-            enableLocalVideoFirstFrameExtraction = true,
-            enableVideoPlayerPrewarm = true
+            enableLocalVideoFirstFrameExtraction = true
         )
 
         fun from(context: Context): PreviewRuntimeProfile {
@@ -849,8 +1135,7 @@ private data class PreviewRuntimeProfile(
                 isConstrainedDevice = constrained,
                 enableVisualPrefetchBeforeSwitch = true,
                 enableUpcomingVisualPrefetch = true,
-                enableLocalVideoFirstFrameExtraction = true,
-                enableVideoPlayerPrewarm = !constrained
+                enableLocalVideoFirstFrameExtraction = true
             )
         }
     }
@@ -909,12 +1194,6 @@ private fun resolveLxUriIfNeeded(input: String): String? {
     return resolved?.takeIf { it.isNotBlank() }
 }
 
-private fun isLocalUri(uri: Uri): Boolean {
-    if (uri == Uri.EMPTY) return false
-    val scheme = uri.scheme
-    return scheme.isNullOrEmpty() || scheme.equals("file", true) || scheme.equals("content", true)
-}
-
 private fun previewFrameScaleType(objectFit: LxMediaObjectFit?): ImageView.ScaleType {
     return when (objectFit ?: LxMediaObjectFit.CONTAIN) {
         LxMediaObjectFit.COVER -> ImageView.ScaleType.CENTER_CROP
@@ -934,53 +1213,23 @@ private class PreviewPagerAdapter(
     private val onItemVisualReady: (Int) -> Unit
 ) : RecyclerView.Adapter<PreviewPagerAdapter.MediaViewHolder>() {
 
-    class ReusablePreviewVideoPlayer(context: Context) {
-        private var onFirstFrameRendered: (() -> Unit)? = null
-        private var onVideoTerminal: ((String) -> Unit)? = null
-
-        val player = LxMediaPlayer(
-            context,
-            eventSink = { payload ->
-                val event = payload["event"] as? String
-                if (event == "firstframerendered" || event == "playing" || event == "timeupdate") {
-                    onFirstFrameRendered?.invoke()
-                }
-            },
-            typedEventSink = { event ->
-                when (event) {
-                    is LxMediaEvent.Ended -> onVideoTerminal?.invoke("ended")
-                    is LxMediaEvent.Error -> onVideoTerminal?.invoke("error")
-                    else -> Unit
-                }
-            }
-        )
-
-        fun bindCallbacks(
-            onFirstFrameRendered: (() -> Unit)?,
-            onVideoTerminal: ((String) -> Unit)?
-        ) {
-            this.onFirstFrameRendered = onFirstFrameRendered
-            this.onVideoTerminal = onVideoTerminal
-        }
-
-        fun clearCallbacks() {
-            bindCallbacks(null, null)
-        }
-    }
-
     private var viewPager: ViewPager2? = null
     private var currentPosition: Int = RecyclerView.NO_POSITION
     private var pendingHidePosition: Int = RecyclerView.NO_POSITION
     private var visibleHolder: MediaViewHolder? = null
-    private var warmedVideoUri: String? = null
-    private var warmedVideoPlayer: ReusablePreviewVideoPlayer? = null
+
+    fun notifyVideoRenderedAt(position: Int) {
+        val recyclerView = viewPager?.getChildAt(0) as? RecyclerView ?: return
+        val holder = recyclerView.findViewHolderForAdapterPosition(position) as? MediaViewHolder
+            ?: return
+        holder.markVideoRendered()
+    }
 
     fun attachToViewPager(pager: ViewPager2) {
         viewPager = pager
     }
 
     fun release() {
-        discardWarmedVideoPlayer()
         val recyclerView = viewPager?.getChildAt(0) as? RecyclerView
         recyclerView?.let { rv ->
             for (index in 0 until rv.childCount) {
@@ -1079,8 +1328,7 @@ private class PreviewPagerAdapter(
         }
         holder.bind(
             items[realIndexFor(position)],
-            loopSingleItemVideo,
-            acquireWarmedVideoPlayer(items[realIndexFor(position)])
+            loopSingleItemVideo
         )
         if (position == currentPosition) {
             visibleHolder = holder
@@ -1154,60 +1402,6 @@ private class PreviewPagerAdapter(
         return null
     }
 
-    fun prewarmUpcomingVideo(item: PreviewItem, onDismiss: () -> Unit) {
-        if (!runtimeProfile.enableVideoPlayerPrewarm) {
-            discardWarmedVideoPlayer()
-            return
-        }
-        if (item.mediaType != MediaPreviewType.VIDEO || !isLocalUri(item.uri)) {
-            discardWarmedVideoPlayer()
-            return
-        }
-        val key = item.uri.toString()
-        if (warmedVideoUri == key && warmedVideoPlayer != null) {
-            return
-        }
-
-        discardWarmedVideoPlayer()
-        val context = viewPager?.context ?: return
-        val warmed = ReusablePreviewVideoPlayer(context)
-        warmed.player.setShowCloseButton(true)
-        warmed.player.setShowFullscreenButton(false)
-        warmed.player.setShowLoadingIndicator(false)
-        warmed.player.setSuppressAutoShowControls(true)
-        warmed.player.setCloseRequestListener(onDismiss)
-        warmed.player.update(
-            LxMediaPlayerConfig(
-                src = item.uri.toString(),
-                poster = null,
-                autoplay = false,
-                loop = loopSingleItemVideo,
-                controls = true,
-                objectFit = item.objectFit ?: LxMediaObjectFit.CONTAIN,
-                rotateDegrees = item.rotate
-            )
-        )
-        warmedVideoUri = key
-        warmedVideoPlayer = warmed
-    }
-
-    private fun acquireWarmedVideoPlayer(item: PreviewItem): ReusablePreviewVideoPlayer? {
-        if (item.mediaType != MediaPreviewType.VIDEO) return null
-        val key = item.uri.toString()
-        if (warmedVideoUri != key) return null
-        val warmed = warmedVideoPlayer
-        warmedVideoUri = null
-        warmedVideoPlayer = null
-        return warmed
-    }
-
-    private fun discardWarmedVideoPlayer() {
-        warmedVideoPlayer?.clearCallbacks()
-        warmedVideoPlayer?.player?.detach()
-        warmedVideoPlayer = null
-        warmedVideoUri = null
-    }
-
     class MediaViewHolder(
         private val container: FrameLayout,
         private val runtimeProfile: PreviewRuntimeProfile,
@@ -1217,29 +1411,17 @@ private class PreviewPagerAdapter(
         private var onVisualReady: () -> Unit
     ) : RecyclerView.ViewHolder(container) {
         private var currentLoader: Future<*>? = null
-        private var currentMediaPlayer: LxMediaPlayer? = null
         private var boundItem: PreviewItem? = null
         private var imageView: ZoomImageView? = null
         private var loopVideoPlayback: Boolean = false
         private var videoFrameView: ImageView? = null
-        private var gatePlaybackOnFrameReady: Boolean = false
-        private var frameReadyForPlayback: Boolean = true
-        private var pendingPlayUntilFrameReady: Boolean = false
         private var frameLoadGeneration: Long = 0L
-        private var renderedFrameVisible: Boolean = false
-        private var reusableVideoPlayer: ReusablePreviewVideoPlayer? = null
         private var visualReadyForDisplay: Boolean = false
         private var displayGeneration: Long = 0L
-        private var videoRevealWatchdog: Runnable? = null
-
-        companion object {
-            private const val VIDEO_REVEAL_WATCHDOG_MS = 1_200L
-        }
 
         fun bind(
             item: PreviewItem,
-            loopVideoPlayback: Boolean,
-            reusableVideoPlayer: ReusablePreviewVideoPlayer?
+            loopVideoPlayback: Boolean
         ) {
             reset()
             val generation = displayGeneration + 1L
@@ -1247,11 +1429,20 @@ private class PreviewPagerAdapter(
             container.removeAllViews()
             boundItem = item
             this.loopVideoPlayback = loopVideoPlayback
-            this.reusableVideoPlayer = reusableVideoPlayer
             when (item.mediaType) {
-                MediaPreviewType.VIDEO -> bindVideoFramePlaceholder(item, prepareFrame = true, displayGeneration = generation)
+                MediaPreviewType.VIDEO -> bindVideoFramePlaceholder(item, displayGeneration = generation)
                 MediaPreviewType.IMAGE, MediaPreviewType.UNKNOWN -> bindImage(item, generation)
             }
+        }
+
+        fun markVideoRendered() {
+            // Shared player has rendered its first frame for the current
+            // video; no per-holder bookkeeping is needed in this design — the
+            // fragment-level player view sits on top of the holder, so the
+            // placeholder beneath is already covered. Visibility is also
+            // already reported via onVideoFrameReady when the placeholder
+            // bitmap is loaded.
+            // Kept as an explicit hook in case future overlays need it.
         }
 
         fun setVideoTerminalHandler(handler: (String) -> Unit) {
@@ -1303,19 +1494,10 @@ private class PreviewPagerAdapter(
         fun reset() {
             currentLoader?.cancel(true)
             currentLoader = null
-            reusableVideoPlayer?.clearCallbacks()
-            reusableVideoPlayer = null
-            currentMediaPlayer?.detach()
-            currentMediaPlayer = null
-            cancelVideoRevealWatchdog()
             boundItem = null
             imageView = null
             videoFrameView = null
-            gatePlaybackOnFrameReady = false
-            frameReadyForPlayback = true
-            pendingPlayUntilFrameReady = false
             frameLoadGeneration += 1L
-            renderedFrameVisible = false
             visualReadyForDisplay = false
             clearImageReferences(container)
             container.removeAllViews()
@@ -1401,7 +1583,6 @@ private class PreviewPagerAdapter(
 
         private fun bindVideoFramePlaceholder(
             item: PreviewItem,
-            prepareFrame: Boolean,
             displayGeneration: Long
         ) {
             currentLoader?.cancel(true)
@@ -1423,10 +1604,6 @@ private class PreviewPagerAdapter(
                 FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
             )
 
-            gatePlaybackOnFrameReady = false
-            frameReadyForPlayback = true
-            pendingPlayUntilFrameReady = false
-
             if (mediaUri == Uri.EMPTY) {
                 frameView.setImageResource(android.R.drawable.ic_dialog_alert)
                 frameView.scaleType = ImageView.ScaleType.CENTER
@@ -1434,25 +1611,14 @@ private class PreviewPagerAdapter(
                 return
             }
 
-            if (!prepareFrame) {
-                if (isLocalUri(mediaUri)) {
-                    ImageLoader.getCachedVideoFirstFrame(context, mediaUri)?.let { cached ->
-                        frameView.setImageBitmap(cached)
-                    }
-                }
-                return
-            }
-
             if (isLocalUri(mediaUri)) {
                 if (!runtimeProfile.enableLocalVideoFirstFrameExtraction) {
-                    onVideoFrameUnavailable(generation)
+                    notifyVisualReady(displayGeneration)
                     return
                 }
-                gatePlaybackOnFrameReady = true
-                frameReadyForPlayback = false
                 ImageLoader.getCachedVideoFirstFrame(context, mediaUri)?.let { cached ->
                     frameView.setImageBitmap(cached)
-                    onVideoFrameReady(generation, displayGeneration)
+                    notifyVisualReady(displayGeneration)
                     return
                 }
                 currentLoader = ImageLoader.loadVideoFirstFrame(
@@ -1460,17 +1626,17 @@ private class PreviewPagerAdapter(
                     uri = mediaUri,
                     target = frameView,
                     onComplete = {
-                        if (frameView.drawable != null) {
-                            onVideoFrameReady(generation, displayGeneration)
-                        } else {
-                            onVideoFrameUnavailable(generation)
+                        if (generation == frameLoadGeneration) {
+                            notifyVisualReady(displayGeneration)
                         }
                     }
                 )
                 return
             }
 
-            onVideoFrameUnavailable(generation)
+            // Remote video: no local first-frame extraction; rely on the
+            // shared player's poster/buffering display once it takes over.
+            notifyVisualReady(displayGeneration)
         }
 
         private fun frameScaleType(objectFit: LxMediaObjectFit?): ImageView.ScaleType {
@@ -1479,131 +1645,6 @@ private class PreviewPagerAdapter(
                 LxMediaObjectFit.FILL -> ImageView.ScaleType.FIT_XY
                 LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> ImageView.ScaleType.FIT_CENTER
             }
-        }
-
-        private fun onVideoFrameReady(generation: Long, displayGeneration: Long) {
-            if (generation != frameLoadGeneration) return
-            frameReadyForPlayback = true
-            notifyVisualReady(displayGeneration)
-            if (pendingPlayUntilFrameReady) {
-                pendingPlayUntilFrameReady = false
-                currentMediaPlayer?.play()
-            }
-        }
-
-        private fun onVideoFrameUnavailable(generation: Long) {
-            if (generation != frameLoadGeneration) return
-            gatePlaybackOnFrameReady = false
-            frameReadyForPlayback = true
-            if (pendingPlayUntilFrameReady) {
-                pendingPlayUntilFrameReady = false
-                currentMediaPlayer?.play()
-            }
-        }
-
-        private fun hideVideoFrame() {
-            cancelVideoRevealWatchdog()
-            renderedFrameVisible = true
-            videoFrameView?.visibility = View.GONE
-            notifyVisualReady(displayGeneration)
-        }
-
-        private fun scheduleVideoRevealWatchdog() {
-            cancelVideoRevealWatchdog()
-            val generation = displayGeneration
-            val task = Runnable {
-                videoRevealWatchdog = null
-                if (generation != displayGeneration || currentMediaPlayer == null) return@Runnable
-                hideVideoFrame()
-            }
-            videoRevealWatchdog = task
-            container.postDelayed(task, VIDEO_REVEAL_WATCHDOG_MS)
-        }
-
-        private fun cancelVideoRevealWatchdog() {
-            videoRevealWatchdog?.let(container::removeCallbacks)
-            videoRevealWatchdog = null
-        }
-
-        private fun ensureVideoPlayer(item: PreviewItem) {
-            if (currentMediaPlayer != null) return
-            val context = container.context
-            val mediaUri = item.uri
-            if (mediaUri == Uri.EMPTY) {
-                container.removeAllViews()
-                showVideoError(context)
-                onVideoTerminal("error")
-                return
-            }
-
-            val reusable = reusableVideoPlayer
-            val mediaPlayer = reusable?.player ?: LxMediaPlayer(
-                context,
-                eventSink = { payload ->
-                    val event = payload["event"] as? String
-                    if (event == "firstframerendered" || event == "playing" || event == "timeupdate") {
-                        container.post { hideVideoFrame() }
-                    }
-                },
-                typedEventSink = { event ->
-                    when (event) {
-                        is LxMediaEvent.Ended -> onVideoTerminal("ended")
-                        is LxMediaEvent.Error -> onVideoTerminal("error")
-                        else -> Unit
-                    }
-                }
-            )
-            reusable?.bindCallbacks(
-                onFirstFrameRendered = { container.post { hideVideoFrame() } },
-                onVideoTerminal = onVideoTerminal
-            )
-            mediaPlayer.setShowCloseButton(true)
-            mediaPlayer.setShowFullscreenButton(false)
-            mediaPlayer.setShowLoadingIndicator(false)
-            mediaPlayer.setSuppressAutoShowControls(true)  // Prevent auto-showing controls in preview mode
-            mediaPlayer.setCloseRequestListener {
-                onDismiss()
-            }
-
-            if (reusable == null) {
-                mediaPlayer.update(
-                    LxMediaPlayerConfig(
-                        src = mediaUri.toString(),
-                        poster = null,
-                        autoplay = false,
-                        loop = loopVideoPlayback,
-                        controls = true,
-                        objectFit = item.objectFit ?: LxMediaObjectFit.CONTAIN,
-                        rotateDegrees = item.rotate
-                    )
-                )
-            }
-
-            // Keep the first-frame view on top until video starts rendering.
-            mediaPlayer.attach(container)
-            val playerView = mediaPlayer.view
-            val targetIndex = container.indexOfChild(videoFrameView)
-            if (targetIndex >= 0 && container.indexOfChild(playerView) != targetIndex - 1) {
-                container.removeView(playerView)
-                container.addView(
-                    playerView,
-                    targetIndex.coerceAtLeast(0),
-                    FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                )
-            }
-            videoFrameView?.bringToFront()
-
-            currentMediaPlayer = mediaPlayer
-        }
-
-        private fun showVideoError(context: Context) {
-            val errorView = ImageView(context).apply {
-                layoutParams = FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
-                setBackgroundColor(Color.BLACK)
-                setImageResource(android.R.drawable.ic_dialog_alert)
-                scaleType = ImageView.ScaleType.CENTER
-            }
-            container.addView(errorView)
         }
 
         private fun clearImageReferences(view: View?) {
@@ -1619,33 +1660,14 @@ private class PreviewPagerAdapter(
         }
 
         fun onVisible() {
-            val item = boundItem
-            if (item?.mediaType == MediaPreviewType.VIDEO) {
-                ensureVideoPlayer(item)
-                pendingPlayUntilFrameReady = false
-                currentMediaPlayer?.play()
-                if (!renderedFrameVisible) {
-                    scheduleVideoRevealWatchdog()
-                }
-            }
+            // Player lifecycle is now driven by MediaPreviewFragment via the
+            // shared LxMediaPlayer. Holders only own the placeholder; nothing
+            // to do here.
         }
 
         fun onHidden() {
-            val item = boundItem
-            if (item?.mediaType == MediaPreviewType.VIDEO) {
-                currentLoader?.cancel(true)
-                currentLoader = null
-                cancelVideoRevealWatchdog()
-                currentMediaPlayer?.pause()
-                currentMediaPlayer?.seek(0.0)
-                currentMediaPlayer?.exitFullscreen()
-                currentMediaPlayer?.detach()
-                currentMediaPlayer = null
-                reusableVideoPlayer?.clearCallbacks()
-                reusableVideoPlayer = null
-                container.removeAllViews()
-                bindVideoFramePlaceholder(item, prepareFrame = false, displayGeneration = displayGeneration)
-            }
+            // Mirror of onVisible: fragment-level player handles pause/seek
+            // when the current item changes. Holder just keeps its placeholder.
         }
     }
 
@@ -1656,15 +1678,11 @@ private class PreviewPagerAdapter(
         private const val MAX_LOCAL_IMAGE_CACHE_BYTES = 16 * 1024 * 1024
         private const val CONSTRAINED_MIN_LOCAL_IMAGE_CACHE_BYTES = 1 * 1024 * 1024
         private const val CONSTRAINED_MAX_LOCAL_IMAGE_CACHE_BYTES = 8 * 1024 * 1024
-        private const val MIN_VIDEO_FIRST_FRAME_CACHE_BYTES = 1 * 1024 * 1024
-        private const val MAX_VIDEO_FIRST_FRAME_CACHE_BYTES = 8 * 1024 * 1024
-        private const val CONSTRAINED_MIN_VIDEO_FIRST_FRAME_CACHE_BYTES = 512 * 1024
-        private const val CONSTRAINED_MAX_VIDEO_FIRST_FRAME_CACHE_BYTES = 6 * 1024 * 1024
         private const val LOCAL_IMAGE_CACHE_DIVISOR = 96L
         private const val CONSTRAINED_LOCAL_IMAGE_CACHE_DIVISOR = 256L
-        private const val VIDEO_FIRST_FRAME_CACHE_DIVISOR = 192L
-        private const val CONSTRAINED_VIDEO_FIRST_FRAME_CACHE_DIVISOR = 384L
         private const val CONSTRAINED_HEAP_THRESHOLD_BYTES = 256L * 1024L * 1024L
+        // Video first-frame cache lives in LocalVideoFrameCache (shared with
+        // LxMediaPlayer). Preview only owns the local-image LRU.
         private val mainHandler = Handler(Looper.getMainLooper())
         @Volatile
         private var memoryCallbacksRegistered: Boolean = false
@@ -1675,11 +1693,6 @@ private class PreviewPagerAdapter(
         }
         private var pinnedLocalImageKey: String? = null
         private var pinnedLocalImage: Bitmap? = null
-        private val videoFirstFrameCache = object : LruCache<String, Bitmap>(
-            resolveVideoFirstFrameCacheSizeBytes()
-        ) {
-            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount.coerceAtLeast(1)
-        }
 
         private val executor = Executors.newFixedThreadPool(resolveDecodeThreadCount()) { runnable ->
             Thread(runnable, "LingXiaPreviewImage").apply { isDaemon = true }
@@ -1719,28 +1732,6 @@ private class PreviewPagerAdapter(
             return budget.coerceIn(minCache, maxCache)
         }
 
-        private fun resolveVideoFirstFrameCacheSizeBytes(): Int {
-            val constrained = useConstrainedStrategy()
-            val minCache = if (constrained) {
-                CONSTRAINED_MIN_VIDEO_FIRST_FRAME_CACHE_BYTES
-            } else {
-                MIN_VIDEO_FIRST_FRAME_CACHE_BYTES
-            }
-            val maxCache = if (constrained) {
-                CONSTRAINED_MAX_VIDEO_FIRST_FRAME_CACHE_BYTES
-            } else {
-                MAX_VIDEO_FIRST_FRAME_CACHE_BYTES
-            }
-            val divisor = if (constrained) {
-                CONSTRAINED_VIDEO_FIRST_FRAME_CACHE_DIVISOR
-            } else {
-                VIDEO_FIRST_FRAME_CACHE_DIVISOR
-            }
-            val maxHeapBytes = Runtime.getRuntime().maxMemory().coerceAtLeast(minCache.toLong())
-            val budget = (maxHeapBytes / divisor).toInt()
-            return budget.coerceIn(minCache, maxCache)
-        }
-
         private fun ensureMemoryCallbacksRegistered(context: Context) {
             if (memoryCallbacksRegistered) return
             synchronized(this) {
@@ -1749,6 +1740,7 @@ private class PreviewPagerAdapter(
                 appContext.registerComponentCallbacks(object : ComponentCallbacks2 {
                     @Suppress("DEPRECATION")
                     override fun onTrimMemory(level: Int) {
+                        // Video first-frame eviction is owned by LocalVideoFrameCache.
                         synchronized(localImageCache) {
                             when {
                                 level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE ||
@@ -1762,18 +1754,6 @@ private class PreviewPagerAdapter(
                                 }
                             }
                         }
-                        synchronized(videoFirstFrameCache) {
-                            when {
-                                level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE ||
-                                    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
-                                    videoFirstFrameCache.evictAll()
-                                }
-                                level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
-                                    level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE -> {
-                                    videoFirstFrameCache.trimToSize(videoFirstFrameCache.maxSize() / 2)
-                                }
-                            }
-                        }
                     }
 
                     override fun onLowMemory() {
@@ -1784,10 +1764,6 @@ private class PreviewPagerAdapter(
                 })
                 memoryCallbacksRegistered = true
             }
-        }
-
-        private fun buildVideoFrameCacheKey(context: Context, uri: Uri): String {
-            return buildLocalVisualCacheKey(context, uri, prefix = "video")
         }
 
         private fun buildLocalImageCacheKey(context: Context, uri: Uri): String {
@@ -1823,10 +1799,7 @@ private class PreviewPagerAdapter(
         }
 
         fun getCachedVideoFirstFrame(context: Context, uri: Uri): Bitmap? {
-            val key = buildVideoFrameCacheKey(context, uri)
-            return synchronized(videoFirstFrameCache) {
-                videoFirstFrameCache.get(key)
-            }
+            return LocalVideoFrameCache.peek(context, uri)
         }
 
         fun prefetchVideoFirstFrame(
@@ -1834,31 +1807,13 @@ private class PreviewPagerAdapter(
             uri: Uri,
             onComplete: ((Boolean) -> Unit)? = null
         ): Future<*>? {
-            val key = buildVideoFrameCacheKey(context, uri)
-            if (getCachedVideoFirstFrame(context, uri) != null) {
-                mainHandler.post { onComplete?.invoke(true) }
-                return null
-            }
-            val appContext = context.applicationContext
-            ensureMemoryCallbacksRegistered(appContext)
-            val metrics = context.resources.displayMetrics
-            val targetW = metrics?.widthPixels ?: 1080
-            val targetH = metrics?.heightPixels ?: 1920
-            return executor.submit {
-                val bitmap = decodeLocalVideoFirstFrame(appContext, uri, targetW, targetH)
-                if (bitmap != null) {
-                    synchronized(videoFirstFrameCache) {
-                        videoFirstFrameCache.put(key, bitmap)
-                    }
-                }
-                mainHandler.post { onComplete?.invoke(bitmap != null) }
+            return LocalVideoFrameCache.load(context, uri) { bitmap ->
+                onComplete?.invoke(bitmap != null)
             }
         }
 
         fun clearVideoFirstFrameCache() {
-            synchronized(videoFirstFrameCache) {
-                videoFirstFrameCache.evictAll()
-            }
+            LocalVideoFrameCache.evictAll()
         }
 
         fun clearVisualCaches() {
@@ -2015,85 +1970,13 @@ private class PreviewPagerAdapter(
             target: ImageView,
             onComplete: (() -> Unit)? = null
         ): Future<*>? {
-            val appContext = context.applicationContext
-            ensureMemoryCallbacksRegistered(appContext)
             val imageRef = WeakReference(target)
-            return executor.submit {
-                val imageView = imageRef.get()
-                val metrics = imageView?.context?.resources?.displayMetrics
-                val targetW = metrics?.widthPixels ?: 1080
-                val targetH = metrics?.heightPixels ?: 1920
-                val bitmap = decodeLocalVideoFirstFrame(appContext, uri, targetW, targetH)
-                imageView?.post {
-                    if (bitmap != null) {
-                        val key = buildVideoFrameCacheKey(appContext, uri)
-                        synchronized(videoFirstFrameCache) {
-                            videoFirstFrameCache.put(key, bitmap)
-                        }
-                        imageView.setImageBitmap(bitmap)
-                    }
-                    onComplete?.invoke()
+            return LocalVideoFrameCache.load(context, uri) { bitmap ->
+                val view = imageRef.get()
+                if (view != null && bitmap != null) {
+                    view.setImageBitmap(bitmap)
                 }
-            }
-        }
-
-        private fun decodeLocalVideoFirstFrame(
-            context: Context,
-            uri: Uri,
-            targetWidth: Int,
-            targetHeight: Int
-        ): Bitmap? {
-            val retriever = MediaMetadataRetriever()
-            return try {
-                when {
-                    uri.scheme.isNullOrEmpty() || uri.scheme.equals("file", true) -> {
-                        val path = uri.path ?: return null
-                        retriever.setDataSource(path)
-                    }
-                    uri.scheme.equals("content", true) -> {
-                        retriever.setDataSource(context, uri)
-                    }
-                    else -> return null
-                }
-                val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(-1L)
-                    ?: return null
-                downscaleBitmapIfNeeded(frame, targetWidth, targetHeight)
-            } catch (_: OutOfMemoryError) {
-                clearVideoFirstFrameCache()
-                null
-            } catch (_: Exception) {
-                null
-            } finally {
-                try {
-                    retriever.release()
-                } catch (_: Exception) {
-                }
-            }
-        }
-
-        private fun downscaleBitmapIfNeeded(
-            bitmap: Bitmap,
-            targetWidth: Int,
-            targetHeight: Int
-        ): Bitmap {
-            val maxEdge = max(targetWidth, targetHeight)
-                .coerceAtLeast(720)
-                .coerceAtMost(1080)
-            val longest = max(bitmap.width, bitmap.height)
-            if (longest <= maxEdge) return bitmap
-
-            val scale = maxEdge.toFloat() / longest.toFloat()
-            val scaledWidth = max(1, (bitmap.width * scale).toInt())
-            val scaledHeight = max(1, (bitmap.height * scale).toInt())
-            return try {
-                Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true).also { scaled ->
-                    if (scaled != bitmap) {
-                        bitmap.recycle()
-                    }
-                }
-            } catch (_: Exception) {
-                bitmap
+                onComplete?.invoke()
             }
         }
 

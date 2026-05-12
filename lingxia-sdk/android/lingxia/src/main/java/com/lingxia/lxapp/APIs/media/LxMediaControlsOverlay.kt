@@ -463,6 +463,7 @@ internal class LxMediaControlsOverlay(
     }
 
     private fun setControlsVisible(visible: Boolean) {
+        val changed = controlsVisible != visible
         controlsVisible = visible
         val targetAlpha = if (visible) 1f else 0f
         val duration = 300L
@@ -481,7 +482,23 @@ internal class LxMediaControlsOverlay(
         } else {
             cancelAutoHide()
         }
+
+        if (changed) {
+            visibilityListener?.invoke(visible)
+        }
     }
+
+    /// Notified whenever the controls overlay transitions between shown and
+    /// hidden. Used by the preview overlay to gate its own top-right close
+    /// button so it tracks the same tap-to-reveal affordance as the inline
+    /// player controls — never sticking around as a persistent overlay.
+    var visibilityListener: ((Boolean) -> Unit)? = null
+
+    /// Whether the overlay is currently in its visible (shown) state. Exposed
+    /// so external code (preview close button) can pull the value when first
+    /// binding before any toggle has fired.
+    val isControlsVisible: Boolean
+        get() = controlsVisible
 
     fun setSuppressAutoShow(suppress: Boolean) {
         suppressAutoShow = suppress
