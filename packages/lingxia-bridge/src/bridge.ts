@@ -51,6 +51,27 @@ const APPLE_RECONNECT_MAX_MS = 2000;
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
 
+// Plain-object equivalent of `new Proxy(debugFlags, ...)`. Avoids referencing
+// the `Proxy` global so the module loads on older WebViews (Android 5.x stock
+// WebView is Chromium 37–39, which predates Chromium 49's Proxy support).
+function createDebugObject(flags: typeof debugFlags): typeof debugFlags {
+  const target = {} as typeof debugFlags;
+  (Object.keys(flags) as Array<keyof typeof debugFlags>).forEach((key) => {
+    Object.defineProperty(target, key, {
+      enumerable: true,
+      configurable: false,
+      get(): boolean {
+        return flags[key];
+      },
+      set(value: boolean): void {
+        flags[key] = !!value;
+        console.log(`[LX] ${key}: ${value}`);
+      },
+    });
+  });
+  return target;
+}
+
 function installEarlyReceiver(): void {
   if (typeof window === "undefined") return;
   if (typeof window[GLOBAL_RECEIVER_NAME] === "function") return;
@@ -1725,19 +1746,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     }
   },
 
-  debug: new Proxy(debugFlags, {
-    get(target, prop: keyof typeof debugFlags) {
-      return target[prop];
-    },
-    set(target, prop: keyof typeof debugFlags, value: boolean) {
-      if (prop in target) {
-        target[prop] = !!value;
-        console.log(`[LX] ${prop}: ${value}`);
-        return true;
-      }
-      return false;
-    },
-  }),
+  debug: createDebugObject(debugFlags),
 
   platform: {
     isHarmony,
