@@ -174,7 +174,7 @@ public class LingXiaWebView extends WebView {
      */
     public static void setApplicationContext(android.content.Context context) {
         sApplicationContext = context.getApplicationContext();
-        Log.d(TAG, "Application context set for WebView creation");
+        Log.i(TAG, "Application context set for WebView creation");
     }
 
     /**
@@ -347,7 +347,7 @@ public class LingXiaWebView extends WebView {
     }
 
     public void initializeWebView(String appId, String path, long sessionId) {
-        Log.d(TAG, "initializeWebView called, thread: " + Thread.currentThread().getName());
+        Log.i(TAG, "initializeWebView called, thread: " + Thread.currentThread().getName());
         this.appId = appId;
         this.currentPath = path;
         this.sessionId = sessionId;
@@ -357,7 +357,7 @@ public class LingXiaWebView extends WebView {
             public void run() {
                 try {
                     initializeWebViewInternal();
-                    Log.d(TAG, "WebView initialized successfully on main thread");
+                    Log.i(TAG, "WebView initialized successfully on main thread");
                 } catch (Exception e) {
                     Log.e(TAG, "Failed to initialize WebView on main thread", e);
                 }
@@ -378,13 +378,36 @@ public class LingXiaWebView extends WebView {
     }
 
     private void initializeWebViewInternal() {
-        Log.d(TAG, "initializeWebViewInternal on thread: " + Thread.currentThread().getName());
+        Log.i(TAG, "initializeWebViewInternal on thread: " + Thread.currentThread().getName());
 
-        applyWebViewSettings();
-        setupJavaScriptInterface();
-        maybeInitMessagePortBridge();
-        setupWebViewClients();
-        Log.d(TAG, "LingXiaWebView initialized for appId=" + appId + ", path=" + currentPath);
+        // On non-standard Android builds (e.g. certain MStar bennet devices),
+        // WebView internals may be fragile. Guard each init step so one
+        // failure does not prevent the rest from running.
+        try {
+            applyWebViewSettings();
+        } catch (Throwable t) {
+            Log.w(TAG, "applyWebViewSettings failed, continuing with defaults", t);
+        }
+
+        try {
+            setupJavaScriptInterface();
+        } catch (Throwable t) {
+            Log.w(TAG, "setupJavaScriptInterface failed, JS bridge may be unavailable", t);
+        }
+
+        try {
+            maybeInitMessagePortBridge();
+        } catch (Throwable t) {
+            Log.w(TAG, "maybeInitMessagePortBridge failed", t);
+        }
+
+        try {
+            setupWebViewClients();
+        } catch (Throwable t) {
+            Log.w(TAG, "setupWebViewClients failed", t);
+        }
+
+        Log.i(TAG, "LingXiaWebView initialized for appId=" + appId + ", path=" + currentPath);
     }
 
     private void maybeInitMessagePortBridge() {
@@ -401,7 +424,7 @@ public class LingXiaWebView extends WebView {
             sendPortMethod = bridgeClz.getMethod("sendMessagePortToWebView");
             postMessageMethod = bridgeClz.getMethod("postMessageToWebView", String.class);
             cleanupMethod = bridgeClz.getMethod("cleanup");
-            Log.d(TAG, "MessagePort bridge enabled (API=" + Build.VERSION.SDK_INT + ")");
+            Log.i(TAG, "MessagePort bridge enabled (API=" + Build.VERSION.SDK_INT + ")");
         } catch (Throwable t) {
             messagePortBridge = null;
             sendPortMethod = null;
@@ -484,7 +507,12 @@ public class LingXiaWebView extends WebView {
      * Instance method wrapper for unified settings
      */
     private void applyWebViewSettings() {
-        applyWebViewSettings(getSettings(), this.createOptions);
+        WebSettings settings = getSettings();
+        if (settings == null) {
+            Log.w(TAG, "WebView.getSettings() returned null, skipping settings");
+            return;
+        }
+        applyWebViewSettings(settings, this.createOptions);
     }
 
     private void setupJavaScriptInterface() {
@@ -549,7 +577,7 @@ public class LingXiaWebView extends WebView {
         setWebChromeClient(new LingXiaWebChromeClient(this, isBrowserProfile()));
         setWebViewClient(new LingXiaWebViewClient(this));
         setupDownloadSupport();
-        Log.d(TAG, "WebView clients setup completed");
+        Log.i(TAG, "WebView clients setup completed");
     }
 
     private void setupDownloadSupport() {
