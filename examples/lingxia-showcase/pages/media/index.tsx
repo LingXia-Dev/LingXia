@@ -633,7 +633,7 @@ export default function MediaPage() {
             <LxVideo
               id={`media-video-${index}`}
               src={item.path}
-              rotate={componentRotateValue}
+              contentRotate={componentRotateValue}
               objectFit={componentObjectFitValue}
               controls
               autoplay

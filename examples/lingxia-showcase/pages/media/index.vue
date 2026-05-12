@@ -757,7 +757,7 @@
                   <LxVideo
                     :id="`media-video-${index}`"
                     :src="item.path"
-                    :rotate="componentRotateValue"
+                    :content-rotate="componentRotateValue"
                     :object-fit="componentObjectFitValue"
                     controls
                     autoplay
