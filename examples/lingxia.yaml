@@ -1,14 +1,22 @@
 app:
   projectName: lingxia
   lingxiaId: lingxia-showcase
-  productName: LingXia App Demo
-  productVersion: 0.2.0
+  productName: LingXia
+  productVersion: 0.2.5
   platforms:
     - android
     - ios
     - macos
     - harmony
   homeAppId: lingxia-showcase
+
+  environments:
+    developer:
+      lingxiaServer: http://192.168.37.77:8080
+    release:
+      lingxiaServer: http://192.168.37.77:8080
+    preview:
+      lingxiaServer: http://192.168.37.77:8080
 
 android:
   packageId: com.lingxia.example.lxapp
@@ -37,6 +45,7 @@ features:
 
 capabilities:
   notifications: true
+  terminal: true
 
 resources:
   bundles:
@@ -83,7 +92,6 @@ appLinks:
 
 storage:
   tempMaxSizeMB: 1024
-  cacheMaxAgeDays: 7
   cacheMaxSizeMB: 2048
   dataMaxSizeMB: 4096
   appStorageMaxSizeMB: 16384
