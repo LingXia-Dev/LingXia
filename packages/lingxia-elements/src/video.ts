@@ -18,7 +18,7 @@ export type LxVideoAttributes = {
   src?: string;
   poster?: string;
   objectFit?: "cover" | "contain" | "fill" | "fit";
-  rotate?: 0 | 90 | 180 | 270;
+  contentRotate?: 0 | 90 | 180 | 270;
   autoplay?: boolean;
   loop?: boolean;
   muted?: boolean;
@@ -67,7 +67,7 @@ export class LxVideoElement extends HTMLElement {
       "src",
       "poster",
       "object-fit",
-      "rotate",
+      "content-rotate",
       "autoplay",
       "loop",
       "muted",
@@ -151,6 +151,18 @@ export class LxVideoElement extends HTMLElement {
     return this._pageBindings;
   }
 
+  set src(value: string | null | undefined) {
+    if (value == null) {
+      this.removeAttribute("src");
+      return;
+    }
+    this.setAttribute("src", String(value));
+  }
+
+  get src(): string | null {
+    return this.getAttribute("src");
+  }
+
   private dataAttrToDatasetKey(attr: string): string {
     const raw = attr.slice(5).trim();
     if (!raw) return "";
@@ -186,23 +198,24 @@ export class LxVideoElement extends HTMLElement {
     self[propName] = value;
   }
 
-  set rotate(value: unknown) {
+  set contentRotate(value: unknown) {
     const normalized = this.parseRotateValue(value);
     if (normalized === undefined) {
-      this.removeAttribute("rotate");
+      this.removeAttribute("content-rotate");
       return;
     }
-    this.setAttribute("rotate", String(normalized));
+    this.setAttribute("content-rotate", String(normalized));
   }
 
-  get rotate(): 0 | 90 | 180 | 270 | undefined {
-    return this.parseRotateValue(this.getAttribute("rotate"));
+  get contentRotate(): 0 | 90 | 180 | 270 | undefined {
+    return this.parseRotateValue(this.getAttribute("content-rotate"));
   }
 
   connectedCallback() {
     // React may set custom-element properties before upgrade; replay through setters.
     this.upgradeProperty("pageBindings");
-    this.upgradeProperty("rotate");
+    this.upgradeProperty("contentRotate");
+    this.upgradeProperty("src");
     this.upgradeProperty("onplayrequest");
     this.upgradeProperty("onplay");
     this.upgradeProperty("onplaying");
@@ -301,8 +314,8 @@ export class LxVideoElement extends HTMLElement {
       }
     }
     if (!this.isConnected) return;
-    // Keep rotate/object-fit updates immediate across all native platforms.
-    const forcePropsUpdate = name === "rotate" || name === "object-fit" || name === "objectfit";
+    // Keep content-rotate/object-fit updates immediate across all native platforms.
+    const forcePropsUpdate = name === "content-rotate" || name === "object-fit" || name === "objectfit";
     if (isHarmony() && forcePropsUpdate) {
       // Bridge callbacks can race on Harmony; force a deterministic embed recreate for visual props.
       this.forceHarmonyEmbedRecreate = true;
@@ -430,13 +443,13 @@ export class LxVideoElement extends HTMLElement {
       ? (progressBarAttr !== null && progressBarAttr !== "false")
       : (progressBarAttr !== "false");
 
-    const rawRotate = this.getAttribute("rotate");
-    const validRotate = this.parseRotateValue(rawRotate);
+    const rawContentRotate = this.getAttribute("content-rotate");
+    const validContentRotate = this.parseRotateValue(rawContentRotate);
     const pageFuncBindings = this._pageBindings;
     const dataset = this.collectDataset();
     const clearProps: string[] = [];
-    if (rawRotate === null || validRotate === undefined) {
-      clearProps.push("rotate");
+    if (rawContentRotate === null || validContentRotate === undefined) {
+      clearProps.push("contentRotate");
     }
     if (rawObjectFit == null || objectFit === undefined) {
       clearProps.push("objectFit");
@@ -453,7 +466,7 @@ export class LxVideoElement extends HTMLElement {
       live: isLive,
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
       objectFit,
-      rotate: validRotate,
+      contentRotate: validContentRotate,
       ...(clearProps.length > 0 ? { __clearProps: clearProps } : {}),
       qualities,
       playbackRates,

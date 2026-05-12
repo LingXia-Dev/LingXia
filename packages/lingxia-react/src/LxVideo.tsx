@@ -25,7 +25,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
   src,
   poster,
   objectFit,
-  rotate,
+  contentRotate,
   autoplay,
   loop,
   muted,
@@ -120,17 +120,17 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
   useEffect(() => {
     const el = elementRef.current;
     if (!el) return;
-    if (rotate === undefined || rotate === null) {
-      el.removeAttribute("rotate");
+    if (contentRotate === undefined || contentRotate === null) {
+      el.removeAttribute("content-rotate");
     } else {
-      el.setAttribute("rotate", String(rotate).trim());
+      el.setAttribute("content-rotate", String(contentRotate).trim());
     }
     if (objectFit === undefined || objectFit === null) {
       el.removeAttribute("object-fit");
     } else {
       el.setAttribute("object-fit", String(objectFit).trim().toLowerCase());
     }
-  }, [rotate, objectFit]);
+  }, [contentRotate, objectFit]);
 
   // Set pageBindings property on custom element
   useEffect(() => {

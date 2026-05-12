@@ -228,8 +228,8 @@ final class MacVideoComponent: NSObject, MacNativeComponent {
            let fit = LxMediaObjectFit(rawValue: objectFitRaw) {
             config.objectFit = fit
         }
-        if !clearProps.contains("rotate"),
-           let rotation = Self.double(from: props["rotate"]) {
+        if !clearProps.contains("contentRotate"),
+           let rotation = Self.double(from: props["contentRotate"]) {
             config.rotateDegrees = Int(rotation)
         }
 

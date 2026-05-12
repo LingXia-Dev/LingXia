@@ -266,8 +266,8 @@ final class VideoComponent: NSObject, LxNativeComponent {
            let fit = LxMediaObjectFit(rawValue: objectFitRaw) {
             config.objectFit = fit
         }
-        if !clearProps.contains("rotate"),
-           let rotation = Self.int(from: props["rotate"]) {
+        if !clearProps.contains("contentRotate"),
+           let rotation = Self.int(from: props["contentRotate"]) {
             config.rotateDegrees = rotation
         }
 

@@ -69,15 +69,15 @@ onBeforeUnmount(() => {
 });
 
 watch(
-  [elementRef, () => props.rotate, () => props.objectFit],
+  [elementRef, () => props.contentRotate, () => props.objectFit],
   () => {
     const el = elementRef.value;
     if (!el) return;
-    const rotate = props.rotate;
-    if (rotate === undefined || rotate === null || rotate === '') {
-      el.removeAttribute('rotate');
+    const contentRotate = props.contentRotate;
+    if (contentRotate === undefined || contentRotate === null || contentRotate === '') {
+      el.removeAttribute('content-rotate');
     } else {
-      el.setAttribute('rotate', String(rotate).trim());
+      el.setAttribute('content-rotate', String(contentRotate).trim());
     }
     const objectFit = props.objectFit;
     if (objectFit === undefined || objectFit === null || objectFit === '') {

@@ -112,10 +112,10 @@ struct NativeVideoComponent {
     if (!clearPropsContains(props, 'objectFit') && typeof objectFit === 'string') {
       config.objectFit = objectFit;
     }
-    if (clearPropsContains(props, 'rotate')) {
+    if (clearPropsContains(props, 'contentRotate')) {
       config.rotate = undefined;
     } else {
-      const rotate = props.get('rotate');
+      const rotate = props.get('contentRotate');
       if (typeof rotate === 'number') {
         config.rotate = rotate;
       } else if (typeof rotate === 'string') {

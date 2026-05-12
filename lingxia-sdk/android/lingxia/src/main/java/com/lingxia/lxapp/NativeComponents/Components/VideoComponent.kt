@@ -133,12 +133,12 @@ internal class VideoComponent(
                 (props["objectFit"] as? String)?.let { config.objectFit = LxMediaObjectFit.fromString(it) }
             }
             // Rotate video content (0/90/180/270). Accept numeric strings for bridge compatibility.
-            val rotateDegrees = when (val raw = props["rotate"]) {
+            val rotateDegrees = when (val raw = props["contentRotate"]) {
                 is Number -> raw.toInt()
                 is String -> raw.toIntOrNull()
                 else -> null
             }
-            if ("rotate" !in clearProps) {
+            if ("contentRotate" !in clearProps) {
                 rotateDegrees?.let { config.rotateDegrees = it }
             }
 

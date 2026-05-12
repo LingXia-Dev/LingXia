@@ -164,7 +164,7 @@ export class NativeComponentEmbedManager {
     if (componentType === 'video.native') {
       this.applyVideoRotationFromProps(componentId, props);
       nativeComponentLog(
-        `embed create(video props): componentId=${componentId} rotate=${String(props.get('rotate'))} clearRotate=${this.shouldClearProp(props, 'rotate')}`
+        `embed create(video props): componentId=${componentId} contentRotate=${String(props.get('contentRotate'))} clearContentRotate=${this.shouldClearProp(props, 'contentRotate')}`
       );
     }
     this.updateComponentAdjustPosition(componentId, props);
@@ -403,15 +403,15 @@ export class NativeComponentEmbedManager {
   }
 
   private applyVideoRotationFromProps(componentId: string, freshProps: NativeComponentRecord): void {
-    const rawRotate = freshProps.get('rotate');
+    const rawRotate = freshProps.get('contentRotate');
     const finalRotate = this.parseRotateDegrees(rawRotate);
-    const shouldClearRotation = this.shouldClearProp(freshProps, 'rotate');
+    const shouldClearRotation = this.shouldClearProp(freshProps, 'contentRotate');
     nativeComponentLog(
-      `updateComponentProps(video): componentId=${componentId} clearRotate=${shouldClearRotation} rotate=${finalRotate}`
+      `updateComponentProps(video): componentId=${componentId} clearContentRotate=${shouldClearRotation} contentRotate=${finalRotate}`
     );
     if (shouldClearRotation) {
       LxNativeVideoPlayer.setRotationStatic(componentId, undefined);
-    } else if (freshProps.has('rotate') && finalRotate !== undefined) {
+    } else if (freshProps.has('contentRotate') && finalRotate !== undefined) {
       LxNativeVideoPlayer.setRotationStatic(componentId, finalRotate);
     }
   }
