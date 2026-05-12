@@ -4,6 +4,25 @@ plugins {
 }
 
 val requestedMinSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
+val lingxiaApplicationIdSuffix = providers
+    .gradleProperty("lingxia.applicationIdSuffix")
+    .orElse("")
+    .get()
+val lingxiaAppName = providers
+    .gradleProperty("lingxia.appName")
+    .orElse("LingXia App Demo")
+    .get()
+val lingxiaResOverlayDir = providers
+    .gradleProperty("lingxia.resOverlayDir")
+    .orNull
+val lingxiaAppIcon = providers
+    .gradleProperty("lingxia.appIcon")
+    .orElse("@mipmap/ic_launcher")
+    .get()
+val lingxiaAppRoundIcon = providers
+    .gradleProperty("lingxia.appRoundIcon")
+    .orElse("@mipmap/ic_launcher_round")
+    .get()
 
 android {
     namespace = "com.lingxia.example.lxapp"
@@ -11,12 +30,24 @@ android {
 
     defaultConfig {
         applicationId = "com.lingxia.example.lxapp"
+        if (lingxiaApplicationIdSuffix.isNotEmpty()) {
+            applicationIdSuffix = lingxiaApplicationIdSuffix
+        }
+        manifestPlaceholders["lxAppName"] = lingxiaAppName
+        manifestPlaceholders["lxAppIcon"] = lingxiaAppIcon
+        manifestPlaceholders["lxAppRoundIcon"] = lingxiaAppRoundIcon
         minSdk = requestedMinSdk
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets.getByName("main") {
+        lingxiaResOverlayDir?.let { dir ->
+            res.srcDir(file(dir))
+        }
     }
 
     buildTypes {
