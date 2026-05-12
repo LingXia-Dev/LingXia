@@ -78,7 +78,31 @@ export interface HostAppUpdateTask
   wait(): Promise<HostAppUpdateResult>;
 }
 
+/**
+ * Build-time environment version of the host app.
+ *
+ * Surfaced via {@link HostAppApi.envVersion}. Mirrors the
+ * `crates/lingxia-update::ReleaseType` enum and the `envVersion` field in the
+ * generated `app.json`. Pre-envVersion app artifacts are treated as `'release'`.
+ *
+ * Note: this is *separate* from `LxAppEnvVersion` in the navigator module,
+ * which encodes lxapp release channels (`'develop' | 'preview' | 'release'`)
+ * for cross-app navigation URLs and uses the truncated `develop` form.
+ */
+export type HostAppEnvVersion = 'developer' | 'preview' | 'release';
+
 export interface HostAppApi {
+  /**
+   * The environment this build was produced for, mirroring `app.json::envVersion`.
+   * Always present; defaults to `'release'` for builds produced before the field
+   * existed in the artifact.
+   *
+   * Use this to branch on environment-specific behavior (e.g. verbose logging in
+   * developer builds, distinct theme tinting, distinct error-reporter tags).
+   * Synchronous; the value is fixed at app boot.
+   */
+  readonly envVersion: HostAppEnvVersion;
+
   getBaseInfo(): AppBaseInfo;
 
   /**
