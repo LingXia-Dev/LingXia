@@ -3,6 +3,34 @@ export function __lx_filter_payload(name, args) {
   const clean = [];
   for (let i = 0; i < args.length; i += 1) {
     const value = args[i];
+    // CustomEvent carries serializable data on `.detail`. Repackage as a plain
+    // `{type, detail}` so page actions bound directly to DOM events (e.g.
+    // `onVideoEnded={action}`) keep the familiar `event.detail` shape without
+    // forwarding the non-portable Event instance. Stripping it wholesale —
+    // which is what the previous unconditional `instanceof Event` did — is
+    // why every event-driven page action received `undefined` and the showcase
+    // logged "video ended undefined".
+    if (typeof CustomEvent !== "undefined" && value instanceof CustomEvent) {
+      clean.push({ type: value.type, detail: value.detail });
+      continue;
+    }
+    // Cross-realm safety: in some WebView setups (Harmony/iOS WKWebView under
+    // certain configurations) the CustomEvent flowing through the React/Vue
+    // wrapper does NOT satisfy `instanceof CustomEvent` from the page-runtime
+    // realm, because the CustomEvent constructor reference differs across
+    // frames or contexts. Duck-type the same `{type: string, detail}` shape
+    // before the generic Event stripping path so these wrapped events still
+    // forward their payload instead of getting eaten by the stopPropagation
+    // guard below.
+    if (
+      value
+      && typeof value === "object"
+      && typeof value.type === "string"
+      && "detail" in value
+    ) {
+      clean.push({ type: value.type, detail: value.detail });
+      continue;
+    }
     if (value instanceof Event) continue;
     if (value && typeof value === "object" && typeof value.stopPropagation === "function") continue;
     clean.push(value);

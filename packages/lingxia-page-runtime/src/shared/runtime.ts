@@ -190,6 +190,31 @@ function definePageBridgeAction(
 function filterPayload(name: string, args: unknown[]): unknown {
   const clean: unknown[] = [];
   for (const value of args) {
+    // CustomEvent carries serializable data on `.detail`, but the DOM Event
+    // wrapper itself is not portable across the bridge. Repackage as a plain
+    // `{detail, type}` so page actions bound directly to DOM listeners (e.g.
+    // `onVideoEnded={action}`) keep the familiar `event.detail` shape without
+    // forwarding the live Event instance. Without this rewrite the bare Event
+    // was stripped wholesale, producing `event = undefined` on the receiving
+    // side — surfaced in the showcase as "video ended undefined".
+    if (typeof CustomEvent !== "undefined" && value instanceof CustomEvent) {
+      clean.push({ type: value.type, detail: value.detail });
+      continue;
+    }
+    // Some framework wrappers / WebView realms do not preserve
+    // `instanceof CustomEvent`, but still expose the portable event payload
+    // shape. Keep it before the generic Event stripping path so page actions
+    // receive `event.detail` consistently.
+    const maybeEvent = value as { type?: unknown; detail?: unknown } | null;
+    if (maybeEvent && typeof maybeEvent === "object" && typeof maybeEvent.type === "string" && "detail" in maybeEvent) {
+      clean.push({
+        type: maybeEvent.type,
+        detail: maybeEvent.detail,
+      });
+      continue;
+    }
+    // Generic Event / event-like objects with non-serializable methods stay
+    // stripped — there's no portable payload to extract.
     if (value instanceof Event) continue;
     if (
       value &&
