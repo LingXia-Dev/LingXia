@@ -689,37 +689,24 @@ fn install_with_adb(
     file_size: u64,
     quiet: bool,
 ) -> Result<()> {
-    let remote_apk_path = remote_install_apk_path(apk_path);
-
-    let upload_spinner = (!quiet).then(|| {
+    let spinner = (!quiet).then(|| {
         status_spinner(&format!(
-            "Uploading APK ({})...",
+            "Transferring & installing APK ({})...",
             format_transfer_size(file_size)
         ))
     });
-    let upload_result = adb_push_file(device_id, apk_path, &remote_apk_path);
-    finish_spinner(upload_spinner);
-    upload_result?;
+    let result = run_adb_checked(
+        device_id,
+        &["install", "-r", apk_path.to_string_lossy().as_ref()],
+        "adb install",
+    );
+    finish_spinner(spinner);
 
-    let install_spinner = (!quiet).then(|| status_spinner("Installing package on device..."));
-    let install_result = adb_pm_install(device_id, &remote_apk_path);
-    finish_spinner(install_spinner);
-
-    let cleanup_spinner = (!quiet).then(|| status_spinner("Cleaning temporary files..."));
-    let cleanup_result = adb_cleanup_remote_file(device_id, &remote_apk_path);
-    finish_spinner(cleanup_spinner);
-
-    install_result?;
-    if let Err(err) = cleanup_result {
-        eprintln!(
-            "{} failed to remove temporary APK {}: {}",
-            "Warning:".yellow(),
-            remote_apk_path,
-            err
-        );
+    let output = result?;
+    if output.lines().any(|line| line.trim() == "Success") {
+        return Ok(());
     }
-
-    Ok(())
+    Err(anyhow!("adb install failed: {}", output.trim()))
 }
 
 fn adb_command(device_id: Option<&str>) -> Command {
@@ -823,35 +810,6 @@ fn resolve_adb_device_id(device_id: Option<&str>) -> Result<String> {
     }
 }
 
-fn remote_install_apk_path(apk_path: &Path) -> String {
-    let file_name = apk_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("app.apk")
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    format!(
-        "/data/local/tmp/lingxia-install-{}-{file_name}",
-        std::process::id()
-    )
-}
-
-fn adb_push_file(device_id: Option<&str>, local_path: &Path, remote_path: &str) -> Result<()> {
-    run_adb_checked(
-        device_id,
-        &["push", local_path.to_string_lossy().as_ref(), remote_path],
-        "adb push",
-    )
-    .map(|_| ())
-}
-
 fn status_spinner(message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -874,29 +832,6 @@ fn finish_spinner(spinner: Option<ProgressBar>) {
 fn format_transfer_size(bytes: u64) -> String {
     let mb = bytes as f64 / 1024.0 / 1024.0;
     format!("{mb:.1} MB")
-}
-
-fn adb_pm_install(device_id: Option<&str>, remote_path: &str) -> Result<()> {
-    let output = run_adb_checked(
-        device_id,
-        &["shell", "pm", "install", "-r", remote_path],
-        "adb shell pm install",
-    )?;
-
-    if output.lines().any(|line| line.trim() == "Success") {
-        return Ok(());
-    }
-
-    Err(anyhow!("adb shell pm install failed: {}", output.trim()))
-}
-
-fn adb_cleanup_remote_file(device_id: Option<&str>, remote_path: &str) -> Result<()> {
-    run_adb_checked(
-        device_id,
-        &["shell", "rm", "-f", remote_path],
-        "adb shell rm -f",
-    )
-    .map(|_| ())
 }
 
 fn adb_uninstall_package(device_id: Option<&str>, package_id: &str) -> Result<()> {
