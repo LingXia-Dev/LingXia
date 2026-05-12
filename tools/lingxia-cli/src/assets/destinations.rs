@@ -3,7 +3,9 @@ use super::cache::{DestinationStamp, HostAssetsCache};
 use super::hash::path_key;
 use super::icons::{PreparedAppUiIcon, app_ui_icon_hashes, sync_app_ui_icons};
 use super::runtime_asset::{PreparedPolyfillsAsset, PreparedRuntimeAsset};
-use super::sync::{sync_optional_json_file, sync_polyfills_file, sync_runtime_file, write_if_changed};
+use super::sync::{
+    sync_optional_json_file, sync_polyfills_file, sync_runtime_file, write_if_changed,
+};
 use anyhow::Result;
 use colored::Colorize;
 use std::collections::{BTreeMap, HashSet};

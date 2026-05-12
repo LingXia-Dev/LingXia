@@ -467,9 +467,7 @@ fn app_ui_icon_preparation_requires_svg() {
 
 mod view_target_warnings {
     use super::*;
-    use crate::config::{
-        AndroidConfig, ResourceBundleConfig, ResourceBundleType, ResourcesConfig,
-    };
+    use crate::config::{AndroidConfig, ResourceBundleConfig, ResourceBundleType, ResourcesConfig};
 
     fn android_config_with(min_sdk: Option<u32>) -> AndroidConfig {
         AndroidConfig {

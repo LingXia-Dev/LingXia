@@ -516,9 +516,7 @@ impl LingXiaConfig {
                 project_name: project_name.to_string(),
                 product_name: project_name.to_string(),
                 product_version: "0.0.1".to_string(),
-                lingxia_server: Some(LingxiaServer::Single(
-                    "https://api.example.com".to_string(),
-                )),
+                lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),
                 lingxia_id: None,
                 package_id_suffix: None,
                 platforms: vec!["android".to_string()],

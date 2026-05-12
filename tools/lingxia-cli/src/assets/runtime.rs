@@ -28,11 +28,7 @@ pub(super) struct PreparedPolyfillsAsset {
 
 pub(super) fn prepare_polyfills_es5_asset() -> PreparedPolyfillsAsset {
     let resolved = runtime::embedded_polyfills_es5();
-    println!(
-        "  {} polyfills.es5.js ← {}",
-        "✓".green(),
-        resolved.source
-    );
+    println!("  {} polyfills.es5.js ← {}", "✓".green(), resolved.source);
     PreparedPolyfillsAsset {
         bytes: resolved.bytes.to_vec(),
         hash: resolved.hash,

@@ -144,6 +144,9 @@ mod tests {
     #[test]
     fn arm64_with_no_min_sdk_picks_es2020() {
         let t = targets(&["aarch64-linux-android"]);
-        assert_eq!(target_from_build_targets(&t, None), RuntimeEcmaTarget::Es2020);
+        assert_eq!(
+            target_from_build_targets(&t, None),
+            RuntimeEcmaTarget::Es2020
+        );
     }
 }

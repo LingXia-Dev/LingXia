@@ -128,9 +128,11 @@ Install Node.js/npm, then retry `cargo build -p lingxia-cli`."
 
 fn ensure_npm_bin_installed(package_dir: &Path, bin_name: &str) -> Result<(), String> {
     let node_modules = package_dir.join("node_modules");
-    let bin_file = node_modules
-        .join(".bin")
-        .join(if cfg!(windows) { format!("{bin_name}.cmd") } else { bin_name.to_string() });
+    let bin_file = node_modules.join(".bin").join(if cfg!(windows) {
+        format!("{bin_name}.cmd")
+    } else {
+        bin_name.to_string()
+    });
 
     if node_modules.is_dir() && bin_file.is_file() {
         return Ok(());
@@ -225,8 +227,12 @@ fn should_rebuild_npm_package(package_dir: &Path, outputs: &[&Path]) -> Result<b
         .max(latest_modified(package_dir.join("scripts"))?)
         .max(file_mtime(&package_dir.join("package.json"))?)
         .max(optional_file_mtime(&package_dir.join("package-lock.json"))?)
-        .max(optional_file_mtime(&package_dir.join("rolldown.config.js"))?)
-        .max(optional_file_mtime(&package_dir.join("tsconfig.modules.json"))?)
+        .max(optional_file_mtime(
+            &package_dir.join("rolldown.config.js"),
+        )?)
+        .max(optional_file_mtime(
+            &package_dir.join("tsconfig.modules.json"),
+        )?)
         .max(optional_file_mtime(
             &package_dir.join("tsconfig.modules.legacy.json"),
         )?);
