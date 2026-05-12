@@ -19,8 +19,8 @@ devtools = ["dep:lingxia_devtool", "lingxia_devtool/browser"]
 webview-input = ["lingxia/webview-input"]
 
 [dependencies]
-lingxia = { version = "0.6.3", default-features = false }
-lingxia_devtool = { package = "lingxia-devtool", version = "0.6.3", optional = true, default-features = false }
+lingxia = { version = "0.6.4", default-features = false }
+lingxia_devtool = { package = "lingxia-devtool", version = "0.6.4", optional = true, default-features = false }
 lingxia-cloud = { git = "https://gitea.julibits.com/lingxia/lingxia-device-cloud.git", optional = true, features = ["all"] }
 rong = { version = "0.3.1", default-features = false }
 log = "0.4.29"
@@ -39,3 +39,26 @@ opt-level = 'z'
 lto = true
 codegen-units = 1
 strip = true
+
+[patch.crates-io]
+lingxia = { path = "../../crates/lingxia" }
+lingxia-app-context = { path = "../../crates/lingxia-app-context" }
+lingxia-browser = { path = "../../crates/lingxia-browser" }
+lingxia-devtool = { path = "../../crates/lingxia-devtool" }
+lingxia-devtool-protocol = { path = "../../crates/lingxia-devtool-protocol" }
+lingxia-log = { path = "../../crates/lingxia-log" }
+lingxia-logic = { path = "../../crates/lingxia-logic" }
+lingxia-lxapp = { path = "../../crates/lingxia-lxapp" }
+lingxia-media = { path = "../../crates/lingxia-media" }
+lingxia-messaging = { path = "../../crates/lingxia-messaging" }
+lingxia-native-macros = { path = "../../crates/lingxia-native-macros" }
+lingxia-platform = { path = "../../crates/lingxia-platform" }
+lingxia-provider = { path = "../../crates/lingxia-provider" }
+lingxia-proxy = { path = "../../crates/lingxia-proxy" }
+lingxia-service = { path = "../../crates/lingxia-service" }
+lingxia-settings = { path = "../../crates/lingxia-settings" }
+lingxia-shell = { path = "../../crates/lingxia-shell" }
+lingxia-terminal = { path = "../../crates/lingxia-terminal" }
+lingxia-transfer = { path = "../../crates/lingxia-transfer" }
+lingxia-update = { path = "../../crates/lingxia-update" }
+lingxia-webview = { path = "../../crates/lingxia-webview" }
